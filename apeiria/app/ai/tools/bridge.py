@@ -71,6 +71,8 @@ async def invoke_capability_with_policy(
 
     tool = registry.get(request.capability_name)
     if tool is None:
+        tool = registry.get("plugin.capability")
+    if tool is None:
         raise CapabilityNotAllowedError(request.capability_name)
 
     decision = evaluate_tool_policy(tool, policy)

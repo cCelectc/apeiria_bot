@@ -48,6 +48,7 @@ if TYPE_CHECKING:
         AIToolObservationRequest,
         AIToolPolicy,
         AIToolSpec,
+        AIToolTurnCreateInput,
     )
 
 
@@ -325,7 +326,7 @@ async def _update_relationship_state(
 async def _run_tool_observations(
     session: AsyncSession,
     context: AIToolObservationContext,
-) -> tuple[str, tuple[str, ...]]:
+) -> tuple[str, tuple[str, ...], tuple["AIToolTurnCreateInput", ...]]:
     all_tools = ai_tool_service.registry.list_tools()
     observations = await ai_tool_service.observe_read_only_tools(
         session,
@@ -335,6 +336,7 @@ async def _run_tool_observations(
     return (
         _build_tool_policy_context(context.policy, available_tools=all_tools),
         tuple(observation.summary for observation in observations),
+        tuple(ai_tool_service.build_tool_turns(observations)),
     )
 
 
@@ -342,19 +344,19 @@ async def _append_tool_observation_turns(
     session: AsyncSession,
     *,
     identity: AIConversationIdentity,
-    tool_results: tuple[str, ...],
+    tool_turns: tuple["AIToolTurnCreateInput", ...],
 ) -> None:
-    for index, result in enumerate(tool_results):
+    for index, turn in enumerate(tool_turns):
         await ai_context_service.append_turn(
             session,
             identity,
             AITurnCreate(
                 sender_type="tool",
-                sender_id="ai_tool_observation",
-                content_text=result,
+                sender_id=turn.sender_id,
+                content_text=turn.content_text,
                 raw_payload={
-                    "source": "read_only_tool_observation",
                     "index": index,
+                    **turn.raw_payload,
                 },
             ),
         )
@@ -452,7 +454,11 @@ class AIOrchestrationService:
                 session,
                 target=relationship_target,
             )
-            tool_policy_context, tool_results = await _run_tool_observations(
+            (
+                tool_policy_context,
+                tool_results,
+                tool_turns,
+            ) = await _run_tool_observations(
                 session,
                 AIToolObservationContext(
                     conversation_id=identity.conversation_id,
@@ -465,7 +471,7 @@ class AIOrchestrationService:
             await _append_tool_observation_turns(
                 session,
                 identity=identity,
-                tool_results=tool_results,
+                tool_turns=tool_turns,
             )
             selected = await ai_model_service.select_model(
                 session,

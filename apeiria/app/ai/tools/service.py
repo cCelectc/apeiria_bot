@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass, is_dataclass
 from datetime import timezone
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
+import nonebot
 from sqlalchemy import select
 
 from apeiria.app.ai.tools.bridge import (
@@ -15,17 +16,24 @@ from apeiria.app.ai.tools.bridge import (
     invoke_capability_with_policy,
 )
 from apeiria.app.ai.tools.models import (
+    AICapabilityInvokeObservationOutput,
+    AIMemoryQueryObservationInput,
+    AIMemoryQueryObservationOutput,
     AINoneBotCapabilityRequest,
+    AIRelationshipInspectObservationOutput,
     AIToolExecutionView,
+    AIToolIntent,
     AIToolObservationRequest,
     AIToolObservationResult,
     AIToolPolicy,
     AIToolSpec,
+    AIToolTurnCreateInput,
 )
 from apeiria.app.ai.tools.policy import evaluate_tool_policy
 from apeiria.app.ai.tools.registry import AIToolRegistry
-from apeiria.app.ai.tools.selection import select_tools_for_message
+from apeiria.app.ai.tools.selection import plan_tool_intents_for_message
 from apeiria.infra.db.models import AIToolExecution
+from apeiria.shared.plugin_introspection import get_plugin_name
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -49,6 +57,7 @@ class AIToolService:
         self.registry = AIToolRegistry()
         self.capability_bridge = AINoneBotCapabilityBridge()
         self._register_builtin_tools()
+        self._register_builtin_capabilities()
 
     def _register_builtin_tools(self) -> None:
         """Register built-in AI-visible tool declarations."""
@@ -77,6 +86,11 @@ class AIToolService:
         ):
             self.registry.register(tool)
 
+    def _register_builtin_capabilities(self) -> None:
+        """Register built-in whitelist capability handlers."""
+
+        self.capability_bridge.register("help.show", self._capability_help_show)
+
     def list_allowed_tools(self, policy: AIToolPolicy) -> list[AIToolSpec]:
         """List the tools allowed under one scene policy."""
 
@@ -94,38 +108,84 @@ class AIToolService:
         """Run low-risk read-only tool observations and persist execution logs."""
 
         allowed_tools = self.list_allowed_tools(request.policy)
-        selected_tools = select_tools_for_message(
+        intents = plan_tool_intents_for_message(
             message_text=request.message_text,
             available_tools=allowed_tools,
         )
+        return await self.execute_tool_intents(
+            session,
+            request=request,
+            intents=intents,
+        )
+
+    async def execute_tool_intents(
+        self,
+        session: AsyncSession,
+        *,
+        request: AIToolObservationRequest,
+        intents: list[AIToolIntent],
+    ) -> list[AIToolObservationResult]:
+        """Execute pre-planned tool intents within the current scene policy."""
+
         observations: list[AIToolObservationResult] = []
 
-        for tool in selected_tools:
-            if tool.name == "memory.query" and request.recalled_memory_contents:
+        for intent in intents:
+            if (
+                intent.tool_name == "memory.query"
+                and request.recalled_memory_contents
+                and isinstance(intent.input_payload, AIMemoryQueryObservationInput)
+            ):
                 observations.append(
                     AIToolObservationResult(
-                        tool_name=tool.name,
+                        tool_name=intent.tool_name,
                         summary=_format_memory_observation(
                             request.recalled_memory_contents,
                         ),
-                        input_payload={"query_text": request.message_text},
-                        output_payload={
-                            "memory_ids": list(request.recalled_memory_ids),
-                        },
+                        input_payload=intent.input_payload,
+                        output_payload=AIMemoryQueryObservationOutput(
+                            memory_ids=request.recalled_memory_ids,
+                        ),
                     )
                 )
-            if tool.name == "relationship.inspect" and request.relationship_context:
+                continue
+            if (
+                intent.tool_name == "relationship.inspect"
+                and request.relationship_context
+            ):
                 observations.append(
                     AIToolObservationResult(
-                        tool_name=tool.name,
+                        tool_name=intent.tool_name,
                         summary=(
                             "- [relationship.inspect] "
                             f"{request.relationship_context}"
                         ),
-                        input_payload={},
-                        output_payload={
-                            "relationship_context": request.relationship_context,
-                        },
+                        input_payload=intent.input_payload,
+                        output_payload=AIRelationshipInspectObservationOutput(
+                            relationship_context=request.relationship_context,
+                        ),
+                    )
+                )
+                continue
+            if (
+                intent.tool_name == "plugin.capability"
+                and isinstance(intent.input_payload, AINoneBotCapabilityRequest)
+            ):
+                result = await self.invoke_capability(
+                    request=intent.input_payload,
+                    policy=request.policy,
+                )
+                observations.append(
+                    AIToolObservationResult(
+                        tool_name=intent.tool_name,
+                        summary=_format_capability_observation(
+                            intent.input_payload.capability_name,
+                            result,
+                        ),
+                        input_payload=intent.input_payload,
+                        output_payload=AICapabilityInvokeObservationOutput(
+                            capability_name=intent.input_payload.capability_name,
+                            result=result,
+                        ),
                     )
                 )
 
@@ -139,8 +199,43 @@ class AIToolService:
                     input_payload=observation.input_payload,
                     output_payload=observation.output_payload,
                 ),
-            )
+        )
         return observations
+
+    async def _capability_help_show(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """Return a compact help summary from the real plugin catalog."""
+
+        topic = str(payload.get("topic", "plugins")).strip() or "plugins"
+        plugins = [
+            plugin
+            for plugin in nonebot.get_loaded_plugins()
+            if plugin.module_name and "help" not in plugin.module_name
+        ]
+        return {
+            "topic": topic,
+            "count": len(plugins),
+            "plugins": [get_plugin_name(plugin) for plugin in plugins[:8]],
+        }
+
+    def build_tool_turns(
+        self,
+        observations: list[AIToolObservationResult],
+    ) -> list[AIToolTurnCreateInput]:
+        """Convert tool observations into context turns."""
+
+        return [
+            AIToolTurnCreateInput(
+                sender_id="ai_tool_observation",
+                content_text=observation.summary,
+                raw_payload={
+                    "source": "read_only_tool_observation",
+                    "tool_name": observation.tool_name,
+                    "input": _to_jsonable_payload(observation.input_payload),
+                    "output": _to_jsonable_payload(observation.output_payload),
+                },
+            )
+            for observation in observations
+        ]
 
     async def invoke_capability(
         self,
@@ -171,7 +266,7 @@ class AIToolService:
             status=create_input.status,
             input_json=(
                 json.dumps(
-                    create_input.input_payload,
+                    _to_jsonable_payload(create_input.input_payload),
                     ensure_ascii=False,
                     sort_keys=True,
                     default=str,
@@ -181,7 +276,7 @@ class AIToolService:
             ),
             output_json=(
                 json.dumps(
-                    create_input.output_payload,
+                    _to_jsonable_payload(create_input.output_payload),
                     ensure_ascii=False,
                     sort_keys=True,
                     default=str,
@@ -234,3 +329,22 @@ def _format_memory_observation(
 ) -> str:
     memory_text = "; ".join(recalled_memory_contents[:3])
     return f"- [memory.query] Retrieved relevant memories: {memory_text}"
+
+
+def _format_capability_observation(
+    capability_name: str,
+    result: Any,
+) -> str:
+    if isinstance(result, dict):
+        summary = ", ".join(
+            f"{key}={value}"
+            for key, value in sorted(result.items())
+        )
+        return f"- [plugin.capability] {capability_name}: {summary}"
+    return f"- [plugin.capability] {capability_name}: {result}"
+
+
+def _to_jsonable_payload(payload: Any) -> Any:
+    if is_dataclass(payload) and not isinstance(payload, type):
+        return asdict(payload)
+    return payload

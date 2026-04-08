@@ -9,6 +9,7 @@ if TYPE_CHECKING:
     from datetime import datetime
 
 AIToolRiskLevel = Literal["low", "medium", "high"]
+AIToolIntentKind = Literal["observe_read_only", "invoke_capability"]
 
 
 @dataclass(frozen=True)
@@ -64,6 +65,15 @@ class AIToolExecutionView:
 
 
 @dataclass(frozen=True)
+class AIToolIntent:
+    """One planned tool action awaiting execution."""
+
+    tool_name: str
+    kind: AIToolIntentKind
+    input_payload: Any
+
+
+@dataclass(frozen=True)
 class AIToolObservationRequest:
     """Inputs for low-risk read-only tool observations."""
 
@@ -76,10 +86,48 @@ class AIToolObservationRequest:
 
 
 @dataclass(frozen=True)
+class AIMemoryQueryObservationInput:
+    """Structured input payload for memory.query observations."""
+
+    query_text: str
+
+
+@dataclass(frozen=True)
+class AIMemoryQueryObservationOutput:
+    """Structured output payload for memory.query observations."""
+
+    memory_ids: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class AIRelationshipInspectObservationOutput:
+    """Structured output payload for relationship.inspect observations."""
+
+    relationship_context: str
+
+
+@dataclass(frozen=True)
+class AICapabilityInvokeObservationOutput:
+    """Structured output payload for plugin.capability observations."""
+
+    capability_name: str
+    result: Any
+
+
+@dataclass(frozen=True)
 class AIToolObservationResult:
     """One read-only tool observation ready for prompt injection."""
 
     tool_name: str
     summary: str
-    input_payload: dict[str, Any]
-    output_payload: dict[str, Any]
+    input_payload: Any
+    output_payload: Any
+
+
+@dataclass(frozen=True)
+class AIToolTurnCreateInput:
+    """One tool observation turn to be written into conversation context."""
+
+    sender_id: str
+    content_text: str
+    raw_payload: dict[str, Any]
