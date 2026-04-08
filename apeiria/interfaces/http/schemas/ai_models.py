@@ -68,3 +68,33 @@ class AIToolExecutionItem(BaseModel):
     input_json: str | None = None
     output_json: str | None = None
     created_at: str
+
+
+class AIModelProfileItem(BaseModel):
+    profile_id: str
+    name: str
+    provider_id: str
+    model_name: str
+    task_class: str
+    priority: int
+    enabled: bool
+    fallback_profile_id: str | None = None
+
+
+class AIProviderItem(BaseModel):
+    provider_id: str
+    name: str
+    provider_type: str
+    api_base: str | None = None
+    enabled: bool
+    default_model: str | None = None
+
+
+class AIProviderModelListRequest(BaseModel):
+    provider_id: str = Field(min_length=1, max_length=64)
+    api_key: str = Field(min_length=1, max_length=512)
+
+
+class AIProviderModelItem(BaseModel):
+    id: str
+    name: str

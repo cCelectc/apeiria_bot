@@ -11,16 +11,23 @@ from apeiria.app.ai.tools.models import AIToolPolicy
 from apeiria.interfaces.http.auth import require_control_panel
 from apeiria.interfaces.http.routes.ai_route_support import (
     to_ai_memory_item,
+    to_ai_model_profile_item,
     to_ai_persona_binding_item,
     to_ai_persona_item,
+    to_ai_provider_item,
+    to_ai_provider_model_item,
     to_ai_relationship_state_item,
     to_ai_tool_execution_item,
     to_ai_tool_item,
 )
 from apeiria.interfaces.http.schemas.ai_models import (
     AIMemoryItem,
+    AIModelProfileItem,
     AIPersonaBindingItem,
     AIPersonaItem,
+    AIProviderItem,
+    AIProviderModelItem,
+    AIProviderModelListRequest,
     AIRelationshipScoreUpdateRequest,
     AIRelationshipStateItem,
     AIToolExecutionItem,
@@ -28,6 +35,34 @@ from apeiria.interfaces.http.schemas.ai_models import (
 )
 
 router = APIRouter()
+
+
+@router.get("/providers", response_model=list[AIProviderItem])
+async def list_ai_providers(
+    _: Annotated[Any, Depends(require_control_panel)],
+) -> list[AIProviderItem]:
+    providers = await ai_admin_service.list_providers()
+    return [to_ai_provider_item(item) for item in providers]
+
+
+@router.post("/providers/models", response_model=list[AIProviderModelItem])
+async def list_ai_provider_models(
+    payload: AIProviderModelListRequest,
+    _: Annotated[Any, Depends(require_control_panel)],
+) -> list[AIProviderModelItem]:
+    rows = await ai_admin_service.list_provider_models(
+        provider_id=payload.provider_id,
+        api_key=payload.api_key,
+    )
+    return [to_ai_provider_model_item(item) for item in rows]
+
+
+@router.get("/model-profiles", response_model=list[AIModelProfileItem])
+async def list_ai_model_profiles(
+    _: Annotated[Any, Depends(require_control_panel)],
+) -> list[AIModelProfileItem]:
+    profiles = await ai_admin_service.list_model_profiles()
+    return [to_ai_model_profile_item(item) for item in profiles]
 
 
 @router.get("/personas", response_model=list[AIPersonaItem])

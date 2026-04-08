@@ -6,8 +6,11 @@ from typing import TYPE_CHECKING
 
 from apeiria.interfaces.http.schemas.ai_models import (
     AIMemoryItem,
+    AIModelProfileItem,
     AIPersonaBindingItem,
     AIPersonaItem,
+    AIProviderItem,
+    AIProviderModelItem,
     AIRelationshipStateItem,
     AIToolExecutionItem,
     AIToolItem,
@@ -15,10 +18,15 @@ from apeiria.interfaces.http.schemas.ai_models import (
 
 if TYPE_CHECKING:
     from apeiria.app.ai.memory.models import AIMemoryDefinition
+    from apeiria.app.ai.models.models import AIModelProfileDefinition
+    from apeiria.app.ai.models.provider import (
+        AIProviderModelItem as DomainProviderModelItem,
+    )
     from apeiria.app.ai.persona.models import (
         AIPersonaBindingSpec,
         AIPersonaDefinition,
     )
+    from apeiria.app.ai.providers.models import AIProviderDefinition
     from apeiria.app.ai.relationship.models import AIRelationshipState
     from apeiria.app.ai.tools.models import AIToolExecutionView, AIToolSpec
 
@@ -57,6 +65,37 @@ def to_ai_memory_item(item: "AIMemoryDefinition") -> AIMemoryItem:
             item.last_recalled_at.isoformat() if item.last_recalled_at else None
         ),
         created_at=item.created_at.isoformat(),
+    )
+
+
+def to_ai_model_profile_item(item: "AIModelProfileDefinition") -> AIModelProfileItem:
+    return AIModelProfileItem(
+        profile_id=item.profile_id,
+        name=item.name,
+        provider_id=item.provider_id,
+        model_name=item.model_name,
+        task_class=item.task_class,
+        priority=item.priority,
+        enabled=item.enabled,
+        fallback_profile_id=item.fallback_profile_id,
+    )
+
+
+def to_ai_provider_item(item: "AIProviderDefinition") -> AIProviderItem:
+    return AIProviderItem(
+        provider_id=item.provider_id,
+        name=item.name,
+        provider_type=item.provider_type,
+        api_base=item.api_base,
+        enabled=item.enabled,
+        default_model=item.default_model,
+    )
+
+
+def to_ai_provider_model_item(item: "DomainProviderModelItem") -> AIProviderModelItem:
+    return AIProviderModelItem(
+        id=item.id,
+        name=item.name,
     )
 
 

@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 
 from nonebot.log import logger
 
-CURRENT_SCHEMA_VERSION = 10
+CURRENT_SCHEMA_VERSION = 12
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncConnection, AsyncSession
@@ -22,6 +22,8 @@ CORE_TABLE_NAMES = frozenset(
         "ai_affinity",
         "ai_conversation",
         "ai_memory_item",
+        "ai_model_profile",
+        "ai_provider",
         "ai_persona",
         "ai_persona_binding",
         "ai_tool_execution",
@@ -342,3 +344,51 @@ async def _migrate_v9_to_v10(session: AsyncSession) -> None:
 
 
 MIGRATIONS[9] = _migrate_v9_to_v10
+
+
+async def _migrate_v10_to_v11(session: AsyncSession) -> None:
+    from nonebot_plugin_orm import Model
+
+    conn = await session.connection()
+    await conn.run_sync(Model.metadata.create_all)
+
+
+MIGRATIONS[10] = _migrate_v10_to_v11
+
+
+async def _migrate_v11_to_v12(session: AsyncSession) -> None:
+    from nonebot_plugin_orm import Model
+    from sqlalchemy import inspect as sa_inspect
+    from sqlalchemy import text
+
+    conn = await session.connection()
+    await conn.run_sync(Model.metadata.create_all)
+
+    def _has_provider_id(sync_conn):  # noqa: ANN001
+        inspector = sa_inspect(sync_conn)
+        columns = inspector.get_columns("ai_model_profile")
+        return any(column["name"] == "provider_id" for column in columns)
+
+    try:
+        has_provider_id = await conn.run_sync(_has_provider_id)
+    except Exception:  # noqa: BLE001
+        has_provider_id = False
+
+    if not has_provider_id:
+        await session.execute(
+            text(
+                "ALTER TABLE ai_model_profile "
+                "ADD COLUMN provider_id VARCHAR(64) NOT NULL DEFAULT 'provider_default'"
+            )
+        )
+        await session.execute(
+            text(
+                "UPDATE ai_model_profile "
+                "SET provider_id = 'provider_default'"
+            )
+        )
+
+    await session.commit()
+
+
+MIGRATIONS[11] = _migrate_v11_to_v12
