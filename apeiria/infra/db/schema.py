@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 
 from nonebot.log import logger
 
-CURRENT_SCHEMA_VERSION = 7
+CURRENT_SCHEMA_VERSION = 10
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncConnection, AsyncSession
@@ -19,10 +19,12 @@ MigrationFunc = Callable[["AsyncSession"], Awaitable[None]]
 MIGRATIONS: dict[int, MigrationFunc] = {}
 CORE_TABLE_NAMES = frozenset(
     {
+        "ai_affinity",
         "ai_conversation",
         "ai_memory_item",
         "ai_persona",
         "ai_persona_binding",
+        "ai_tool_execution",
         "ai_turn",
         "apeiria_schema_meta",
         "access_policy_entry",
@@ -275,3 +277,68 @@ async def _migrate_v6_to_v7(session: AsyncSession) -> None:
 
 
 MIGRATIONS[6] = _migrate_v6_to_v7
+
+
+async def _migrate_v7_to_v8(session: AsyncSession) -> None:
+    from nonebot_plugin_orm import Model
+
+    conn = await session.connection()
+    await conn.run_sync(Model.metadata.create_all)
+
+
+MIGRATIONS[7] = _migrate_v7_to_v8
+
+
+async def _migrate_v8_to_v9(session: AsyncSession) -> None:
+    from nonebot_plugin_orm import Model
+
+    conn = await session.connection()
+    await conn.run_sync(Model.metadata.create_all)
+
+
+MIGRATIONS[8] = _migrate_v8_to_v9
+
+
+async def _migrate_v9_to_v10(session: AsyncSession) -> None:
+    from sqlalchemy import inspect as sa_inspect
+    from sqlalchemy import text
+
+    conn = await session.connection()
+
+    def _has_scope_key(sync_conn):  # noqa: ANN001
+        inspector = sa_inspect(sync_conn)
+        columns = inspector.get_columns("ai_affinity")
+        return any(column["name"] == "scope_key" for column in columns)
+
+    try:
+        has_scope_key = await conn.run_sync(_has_scope_key)
+    except Exception:  # noqa: BLE001
+        has_scope_key = False
+
+    if not has_scope_key:
+        await session.execute(
+            text(
+                "ALTER TABLE ai_affinity "
+                "ADD COLUMN scope_key VARCHAR(160) NOT NULL DEFAULT 'private'"
+            )
+        )
+        await session.execute(
+            text(
+                "UPDATE ai_affinity "
+                "SET scope_key = CASE "
+                "WHEN group_id IS NULL THEN 'private' "
+                "ELSE 'group:' || group_id END"
+            )
+        )
+
+    await session.execute(
+        text(
+            "CREATE UNIQUE INDEX IF NOT EXISTS "
+            "uq_ai_affinity_scope_key_subject "
+            "ON ai_affinity (platform, scope_key, user_id)"
+        )
+    )
+    await session.commit()
+
+
+MIGRATIONS[9] = _migrate_v9_to_v10
