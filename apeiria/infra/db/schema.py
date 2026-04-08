@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 
 from nonebot.log import logger
 
-CURRENT_SCHEMA_VERSION = 4
+CURRENT_SCHEMA_VERSION = 5
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncConnection, AsyncSession
@@ -19,6 +19,8 @@ MigrationFunc = Callable[["AsyncSession"], Awaitable[None]]
 MIGRATIONS: dict[int, MigrationFunc] = {}
 CORE_TABLE_NAMES = frozenset(
     {
+        "ai_conversation",
+        "ai_turn",
         "apeiria_schema_meta",
         "access_policy_entry",
         "command_statistics",
@@ -240,3 +242,13 @@ async def _migrate_v3_to_v4(session: AsyncSession) -> None:
 
 
 MIGRATIONS[3] = _migrate_v3_to_v4
+
+
+async def _migrate_v4_to_v5(session: AsyncSession) -> None:
+    from nonebot_plugin_orm import Model
+
+    conn = await session.connection()
+    await conn.run_sync(Model.metadata.create_all)
+
+
+MIGRATIONS[4] = _migrate_v4_to_v5

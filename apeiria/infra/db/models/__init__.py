@@ -1,6 +1,8 @@
 """ORM models exposed from the infrastructure database layer."""
 
 from .access_policy import AccessPolicyEntry
+from .ai_conversation import AIConversation
+from .ai_turn import AITurn
 from .group import GroupConsole
 from .level import LevelUser
 from .plugin_info import PluginInfo
@@ -10,6 +12,8 @@ from .statistics import CommandStatistics
 from .user import UserConsole
 
 __all__ = [
+    "AIConversation",
+    "AITurn",
     "AccessPolicyEntry",
     "CommandStatistics",
     "GroupConsole",

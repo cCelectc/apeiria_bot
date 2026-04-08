@@ -16,6 +16,7 @@ FRAMEWORK_PLUGIN_MODULES = (
 )
 
 BUILTIN_APPLICATION_PLUGIN_MODULES = (
+    "apeiria.builtin_plugins.ai",
     "apeiria.builtin_plugins.render",
     "apeiria.builtin_plugins.admin",
     "apeiria.builtin_plugins.help",
@@ -33,7 +34,7 @@ def iter_builtin_plugin_modules() -> tuple[str, ...]:
 def get_framework_dependency_plugin_modules() -> frozenset[str]:
     """Return non-builtin plugin modules required by the framework runtime."""
     discovered: set[str] = set()
-    pending = list(FRAMEWORK_PLUGIN_MODULES)
+    pending: list[str] = list(FRAMEWORK_PLUGIN_MODULES)
     builtin_modules = set(iter_builtin_plugin_modules())
 
     while pending:
