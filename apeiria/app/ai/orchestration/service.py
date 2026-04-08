@@ -24,6 +24,9 @@ from apeiria.app.ai.orchestration.prompting import (
 from apeiria.app.ai.persona.models import AIPersonaBindingTarget
 from apeiria.app.ai.persona.service import ai_persona_service
 from apeiria.app.ai.providers.service import ai_provider_service
+from apeiria.app.ai.relationship.scoring import project_emotion
+from apeiria.app.ai.relationship.service import ai_relationship_service
+from apeiria.app.ai.relationship.signals import derive_relationship_delta
 
 if TYPE_CHECKING:
     from nonebot.adapters import Bot, Event
@@ -32,6 +35,7 @@ if TYPE_CHECKING:
     from apeiria.app.ai.context.models import AIConversationIdentity
     from apeiria.app.ai.memory.models import AIMemoryDefinition
     from apeiria.app.ai.models.selection import AISelectedModel
+    from apeiria.app.ai.relationship.models import AIRelationshipState
 
 
 def _is_private_like_event(event: Event, user_id: str) -> bool:
@@ -84,6 +88,27 @@ class AIMemoryRecallTarget:
     subject_id: str
 
 
+@dataclass(frozen=True)
+class AIRelationshipTarget:
+    """Resolved relationship target for one incoming user message."""
+
+    platform: str
+    group_id: str | None
+    user_id: str
+    is_private: bool
+
+
+_MEMORY_TYPE_LIMITS: dict[str, int] = {
+    "preference": 2,
+    "relationship": 1,
+    "episode": 1,
+    "fact": 1,
+    "summary": 1,
+    "operator_note": 1,
+}
+_MAX_RECALLED_MEMORIES = 4
+
+
 def _build_memory_targets(
     identity: AIConversationIdentity,
     user_id: str,
@@ -103,6 +128,70 @@ def _build_memory_targets(
             )
         )
     return targets
+
+
+def _apply_memory_budget(
+    memories: list["AIMemoryDefinition"],
+) -> list["AIMemoryDefinition"]:
+    selected: list[AIMemoryDefinition] = []
+    selected_ids: set[str] = set()
+    type_counts: dict[str, int] = {}
+
+    for memory in memories:
+        type_limit = _MEMORY_TYPE_LIMITS.get(memory.memory_type, 1)
+        if type_counts.get(memory.memory_type, 0) >= type_limit:
+            continue
+        selected.append(memory)
+        selected_ids.add(memory.memory_id)
+        type_counts[memory.memory_type] = type_counts.get(memory.memory_type, 0) + 1
+        if len(selected) >= _MAX_RECALLED_MEMORIES:
+            return selected
+
+    for memory in memories:
+        if memory.memory_id in selected_ids:
+            continue
+        selected.append(memory)
+        selected_ids.add(memory.memory_id)
+        if len(selected) >= _MAX_RECALLED_MEMORIES:
+            break
+    return selected
+
+
+def _build_relationship_target(
+    identity: AIConversationIdentity,
+    user_id: str,
+) -> AIRelationshipTarget:
+    return AIRelationshipTarget(
+        platform=identity.platform,
+        group_id=identity.scope_id if identity.scope_type == "group" else None,
+        user_id=identity.subject_user_id or user_id,
+        is_private=identity.scope_type == "private",
+    )
+
+
+def _format_relationship_context(
+    state: "AIRelationshipState",
+) -> str | None:
+    projection = project_emotion(state)
+    mood_part = (
+        f"Recent mood tags: {', '.join(state.mood_tags)}."
+        if state.mood_tags
+        else "Recent mood tags: none."
+    )
+    return (
+        f"Current affinity score toward this user: {state.score:.2f}. "
+        f"Projected tone: {projection.tone}. "
+        f"Warmth bias: {projection.warmth_bias:.2f}. "
+        f"Initiative bias: {projection.initiative_bias:.2f}. "
+        f"{mood_part}"
+    )
+
+
+def _build_tool_policy_context() -> str:
+    return (
+        "No external tool execution is enabled in this reply path. "
+        "Do not claim to have performed actions outside the visible chat context."
+    )
 
 
 async def _recall_memories(
@@ -129,7 +218,45 @@ async def _recall_memories(
                 continue
             seen_ids.add(row.memory_id)
             recalled.append(row)
-    return recalled[:4]
+    return _apply_memory_budget(recalled)
+
+
+async def _load_relationship_context(
+    session: AsyncSession,
+    *,
+    target: AIRelationshipTarget,
+) -> str | None:
+    state = await ai_relationship_service.get_state(
+        session,
+        platform=target.platform,
+        group_id=target.group_id,
+        user_id=target.user_id,
+    )
+    return _format_relationship_context(state)
+
+
+async def _update_relationship_state(
+    session: AsyncSession,
+    *,
+    target: AIRelationshipTarget,
+    message_text: str,
+    is_tome: bool,
+) -> None:
+    delta = derive_relationship_delta(
+        text=message_text,
+        is_private=target.is_private,
+        is_tome=is_tome,
+    )
+    if delta is None:
+        return
+
+    await ai_relationship_service.apply_delta(
+        session,
+        platform=target.platform,
+        group_id=target.group_id,
+        user_id=target.user_id,
+        delta=delta,
+    )
 
 
 def _resolve_model_name(selected: AISelectedModel) -> str | None:
@@ -173,17 +300,28 @@ class AIOrchestrationService:
                 identity,
                 max_turns=8,
             )
+            relationship_target = _build_relationship_target(identity, user_id)
             persona_target = _to_persona_target(identity, user_id)
             model_target = _to_model_target(identity, user_id)
             persona = await ai_persona_service.build_persona_prompt_bundle(
                 session,
                 target=persona_target,
             )
+            await _update_relationship_state(
+                session,
+                target=relationship_target,
+                message_text=message_text,
+                is_tome=bool(hasattr(event, "is_tome") and event.is_tome()),
+            )
             recalled_memories = await _recall_memories(
                 session,
                 identity=identity,
                 user_id=user_id,
                 query_text=message_text,
+            )
+            relationship_context = await _load_relationship_context(
+                session,
+                target=relationship_target,
             )
             selected = await ai_model_service.select_model(
                 session,
@@ -213,6 +351,8 @@ class AIOrchestrationService:
                         prompt=render_reply_prompt(
                             build_reply_prompt_channels(
                                 persona=persona,
+                                relationship=relationship_context,
+                                tool_policy=_build_tool_policy_context(),
                                 memories=recalled_memories,
                                 turns=turns,
                             )

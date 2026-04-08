@@ -29,6 +29,8 @@ class AIReplyPromptChannels:
 
     persona: str
     style: str | None
+    relationship: str | None
+    tool_policy: str | None
     memories: tuple[str, ...]
     conversation: tuple[str, ...]
     instruction: str
@@ -37,6 +39,8 @@ class AIReplyPromptChannels:
 def build_reply_prompt_channels(
     *,
     persona: AIPersonaPromptBundleLike | None,
+    relationship: str | None,
+    tool_policy: str | None,
     memories: list["AIMemoryDefinition"],
     turns: list["AIContextTurnView"],
 ) -> AIReplyPromptChannels:
@@ -51,6 +55,8 @@ def build_reply_prompt_channels(
     return AIReplyPromptChannels(
         persona=persona_channel,
         style=style_channel,
+        relationship=relationship,
+        tool_policy=tool_policy,
         memories=tuple(_format_memory(memory) for memory in memories),
         conversation=tuple(
             _format_turn(turn)
@@ -71,6 +77,10 @@ def render_reply_prompt(channels: AIReplyPromptChannels) -> str:
     sections = [f"[Persona]\n{channels.persona}"]
     if channels.style:
         sections.append(f"[Style]\n{channels.style}")
+    if channels.relationship:
+        sections.append(f"[Relationship]\n{channels.relationship}")
+    if channels.tool_policy:
+        sections.append(f"[ToolPolicy]\n{channels.tool_policy}")
     if channels.memories:
         sections.append("[Memories]\n" + "\n".join(channels.memories))
     conversation_text = (
