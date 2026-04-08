@@ -45,6 +45,34 @@ class AIToolService:
     def __init__(self) -> None:
         self.registry = AIToolRegistry()
         self.capability_bridge = AINoneBotCapabilityBridge()
+        self._register_builtin_tools()
+
+    def _register_builtin_tools(self) -> None:
+        """Register built-in AI-visible tool declarations."""
+
+        for tool in (
+            AIToolSpec(
+                name="memory.query",
+                description="inspect recalled long-term memory",
+                read_only=True,
+                concurrency_safe=True,
+            ),
+            AIToolSpec(
+                name="relationship.inspect",
+                description="inspect current affinity and mood projection",
+                read_only=True,
+                concurrency_safe=True,
+            ),
+            AIToolSpec(
+                name="plugin.capability",
+                description="invoke a whitelisted NoneBot capability bridge",
+                read_only=False,
+                concurrency_safe=False,
+                risk_level="high",
+                is_capability_bridge=True,
+            ),
+        ):
+            self.registry.register(tool)
 
     def list_allowed_tools(self, policy: AIToolPolicy) -> list[AIToolSpec]:
         """List the tools allowed under one scene policy."""

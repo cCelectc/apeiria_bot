@@ -27,6 +27,7 @@ class AIToolSpec:
 class AIToolPolicy:
     """Pure tool access policy for one AI scene."""
 
+    execution_enabled: bool = False
     allowed_tool_names: set[str] | None = None
     denied_tool_names: set[str] = field(default_factory=set)
     allow_high_risk_tools: bool = False

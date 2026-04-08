@@ -27,6 +27,12 @@ from apeiria.app.ai.providers.service import ai_provider_service
 from apeiria.app.ai.relationship.scoring import project_emotion
 from apeiria.app.ai.relationship.service import ai_relationship_service
 from apeiria.app.ai.relationship.signals import derive_relationship_delta
+from apeiria.app.ai.tools.policy import summarize_tool_policy
+from apeiria.app.ai.tools.resolver import (
+    AIToolSceneContext,
+    resolve_default_tool_policy,
+)
+from apeiria.app.ai.tools.service import ai_tool_service
 
 if TYPE_CHECKING:
     from nonebot.adapters import Bot, Event
@@ -187,10 +193,20 @@ def _format_relationship_context(
     )
 
 
-def _build_tool_policy_context() -> str:
-    return (
-        "No external tool execution is enabled in this reply path. "
-        "Do not claim to have performed actions outside the visible chat context."
+def _build_tool_policy_context(
+    identity: AIConversationIdentity,
+    *,
+    is_tome: bool,
+) -> str:
+    policy = resolve_default_tool_policy(
+        AIToolSceneContext(
+            scope_type=identity.scope_type,
+            is_tome=is_tome,
+        )
+    )
+    return summarize_tool_policy(
+        ai_tool_service.registry.list_tools(),
+        policy,
     )
 
 
@@ -352,7 +368,12 @@ class AIOrchestrationService:
                             build_reply_prompt_channels(
                                 persona=persona,
                                 relationship=relationship_context,
-                                tool_policy=_build_tool_policy_context(),
+                                tool_policy=_build_tool_policy_context(
+                                    identity,
+                                    is_tome=bool(
+                                        hasattr(event, "is_tome") and event.is_tome()
+                                    ),
+                                ),
                                 memories=recalled_memories,
                                 turns=turns,
                             )
