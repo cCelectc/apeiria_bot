@@ -2,6 +2,7 @@
 
 from fastapi import APIRouter
 
+from .ai_routes import router as ai_router
 from .auth_routes import router as auth_router
 from .chat_routes import router as chat_router
 from .dashboard_routes import router as dashboard_router
@@ -14,6 +15,7 @@ from .plugin_store_routes import router as plugin_store_router
 
 router = APIRouter()
 router.include_router(auth_router, prefix="/auth", tags=["auth"])
+router.include_router(ai_router, prefix="/ai", tags=["ai"])
 router.include_router(dashboard_router, prefix="/dashboard", tags=["dashboard"])
 router.include_router(
     plugin_store_router,
