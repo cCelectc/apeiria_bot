@@ -17,11 +17,14 @@ from apeiria.app.ai.tools.bridge import (
 from apeiria.app.ai.tools.models import (
     AINoneBotCapabilityRequest,
     AIToolExecutionView,
+    AIToolObservationRequest,
+    AIToolObservationResult,
     AIToolPolicy,
     AIToolSpec,
 )
 from apeiria.app.ai.tools.policy import evaluate_tool_policy
 from apeiria.app.ai.tools.registry import AIToolRegistry
+from apeiria.app.ai.tools.selection import select_tools_for_message
 from apeiria.infra.db.models import AIToolExecution
 
 if TYPE_CHECKING:
@@ -82,6 +85,62 @@ class AIToolService:
             for tool in self.registry.list_tools()
             if evaluate_tool_policy(tool, policy).allowed
         ]
+
+    async def observe_read_only_tools(
+        self,
+        session: AsyncSession,
+        request: AIToolObservationRequest,
+    ) -> list[AIToolObservationResult]:
+        """Run low-risk read-only tool observations and persist execution logs."""
+
+        allowed_tools = self.list_allowed_tools(request.policy)
+        selected_tools = select_tools_for_message(
+            message_text=request.message_text,
+            available_tools=allowed_tools,
+        )
+        observations: list[AIToolObservationResult] = []
+
+        for tool in selected_tools:
+            if tool.name == "memory.query" and request.recalled_memory_contents:
+                observations.append(
+                    AIToolObservationResult(
+                        tool_name=tool.name,
+                        summary=_format_memory_observation(
+                            request.recalled_memory_contents,
+                        ),
+                        input_payload={"query_text": request.message_text},
+                        output_payload={
+                            "memory_ids": list(request.recalled_memory_ids),
+                        },
+                    )
+                )
+            if tool.name == "relationship.inspect" and request.relationship_context:
+                observations.append(
+                    AIToolObservationResult(
+                        tool_name=tool.name,
+                        summary=(
+                            "- [relationship.inspect] "
+                            f"{request.relationship_context}"
+                        ),
+                        input_payload={},
+                        output_payload={
+                            "relationship_context": request.relationship_context,
+                        },
+                    )
+                )
+
+        for observation in observations:
+            await self.record_execution(
+                session,
+                AIToolExecutionCreateInput(
+                    conversation_id=request.conversation_id,
+                    tool_name=observation.tool_name,
+                    status="success",
+                    input_payload=observation.input_payload,
+                    output_payload=observation.output_payload,
+                ),
+            )
+        return observations
 
     async def invoke_capability(
         self,
@@ -168,3 +227,10 @@ class AIToolService:
 
 
 ai_tool_service = AIToolService()
+
+
+def _format_memory_observation(
+    recalled_memory_contents: tuple[str, ...],
+) -> str:
+    memory_text = "; ".join(recalled_memory_contents[:3])
+    return f"- [memory.query] Retrieved relevant memories: {memory_text}"

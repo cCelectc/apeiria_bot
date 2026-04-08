@@ -20,6 +20,8 @@ from apeiria.infra.db.models import AIMemoryItem
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
+    from apeiria.app.ai.memory.extraction import AIMemoryExtractionCandidate
+
 
 @dataclass(frozen=True)
 class AIMemoryCreateInput:
@@ -57,6 +59,55 @@ class AIMemoryService:
         session.add(memory)
         await session.flush()
         return memory
+
+    async def create_memory_if_absent(
+        self,
+        session: AsyncSession,
+        create_input: AIMemoryCreateInput,
+    ) -> AIMemoryItem | None:
+        """Create one memory item only when an identical item does not exist."""
+
+        result = await session.execute(
+            select(AIMemoryItem).where(
+                AIMemoryItem.memory_type == create_input.memory_type,
+                AIMemoryItem.subject_type == create_input.subject_type,
+                AIMemoryItem.subject_id == create_input.subject_id,
+                AIMemoryItem.content == create_input.content,
+            )
+        )
+        existing = result.scalar_one_or_none()
+        if existing is not None:
+            return None
+        return await self.create_memory(session, create_input)
+
+    async def remember_candidates(
+        self,
+        session: AsyncSession,
+        *,
+        subject_type: str,
+        subject_id: str,
+        source_turn_id: str | None,
+        candidates: list[AIMemoryExtractionCandidate],
+    ) -> list[AIMemoryItem]:
+        """Persist extracted memory candidates while avoiding exact duplicates."""
+
+        created: list[AIMemoryItem] = []
+        for candidate in candidates:
+            row = await self.create_memory_if_absent(
+                session,
+                AIMemoryCreateInput(
+                    memory_type=candidate.memory_type,
+                    subject_type=subject_type,
+                    subject_id=subject_id,
+                    content=candidate.content,
+                    source_turn_id=source_turn_id,
+                    salience=0.7 if candidate.memory_type == "preference" else 0.6,
+                    confidence=0.75,
+                ),
+            )
+            if row is not None:
+                created.append(row)
+        return created
 
     async def list_memories(
         self,

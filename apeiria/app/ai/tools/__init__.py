@@ -9,6 +9,8 @@ from .bridge import (
 from .models import (
     AINoneBotCapabilityRequest,
     AIToolExecutionView,
+    AIToolObservationRequest,
+    AIToolObservationResult,
     AIToolPolicy,
     AIToolPolicyDecision,
     AIToolRiskLevel,
@@ -16,11 +18,14 @@ from .models import (
 )
 from .policy import evaluate_tool_policy
 from .registry import AIToolRegistry
+from .selection import select_tools_for_message
 
 __all__ = [
     "AINoneBotCapabilityBridge",
     "AINoneBotCapabilityRequest",
     "AIToolExecutionView",
+    "AIToolObservationRequest",
+    "AIToolObservationResult",
     "AIToolPolicy",
     "AIToolPolicyDecision",
     "AIToolRegistry",
@@ -30,4 +35,5 @@ __all__ = [
     "ToolPolicyDeniedError",
     "evaluate_tool_policy",
     "invoke_capability_with_policy",
+    "select_tools_for_message",
 ]

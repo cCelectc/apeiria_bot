@@ -61,3 +61,25 @@ class AIToolExecutionView:
     input_json: str | None
     output_json: str | None
     created_at: datetime
+
+
+@dataclass(frozen=True)
+class AIToolObservationRequest:
+    """Inputs for low-risk read-only tool observations."""
+
+    conversation_id: str
+    message_text: str
+    policy: AIToolPolicy
+    recalled_memory_ids: tuple[str, ...]
+    recalled_memory_contents: tuple[str, ...]
+    relationship_context: str | None
+
+
+@dataclass(frozen=True)
+class AIToolObservationResult:
+    """One read-only tool observation ready for prompt injection."""
+
+    tool_name: str
+    summary: str
+    input_payload: dict[str, Any]
+    output_payload: dict[str, Any]

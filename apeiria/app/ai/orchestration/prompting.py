@@ -31,36 +31,49 @@ class AIReplyPromptChannels:
     style: str | None
     relationship: str | None
     tool_policy: str | None
+    tool_results: tuple[str, ...]
     memories: tuple[str, ...]
     conversation: tuple[str, ...]
     instruction: str
 
 
+@dataclass(frozen=True)
+class AIReplyPromptContext:
+    """Structured inputs used to build reply prompt channels."""
+
+    persona: AIPersonaPromptBundleLike | None
+    relationship: str | None
+    tool_policy: str | None
+    tool_results: tuple[str, ...]
+    memories: list["AIMemoryDefinition"]
+    turns: list["AIContextTurnView"]
+
+
 def build_reply_prompt_channels(
-    *,
-    persona: AIPersonaPromptBundleLike | None,
-    relationship: str | None,
-    tool_policy: str | None,
-    memories: list["AIMemoryDefinition"],
-    turns: list["AIContextTurnView"],
+    context: AIReplyPromptContext,
 ) -> AIReplyPromptChannels:
     """Build separated prompt channels for one social reply."""
 
     persona_channel = (
-        persona.system_prompt
-        if persona is not None
+        context.persona.system_prompt
+        if context.persona is not None
         else "You are a helpful social AI in a chat."
     )
-    style_channel = persona.style_prompt if persona and persona.style_prompt else None
+    style_channel = (
+        context.persona.style_prompt
+        if context.persona and context.persona.style_prompt
+        else None
+    )
     return AIReplyPromptChannels(
         persona=persona_channel,
         style=style_channel,
-        relationship=relationship,
-        tool_policy=tool_policy,
-        memories=tuple(_format_memory(memory) for memory in memories),
+        relationship=context.relationship,
+        tool_policy=context.tool_policy,
+        tool_results=context.tool_results,
+        memories=tuple(_format_memory(memory) for memory in context.memories),
         conversation=tuple(
             _format_turn(turn)
-            for turn in turns
+            for turn in context.turns
             if turn.content_text.strip()
         ),
         instruction=(
@@ -81,6 +94,8 @@ def render_reply_prompt(channels: AIReplyPromptChannels) -> str:
         sections.append(f"[Relationship]\n{channels.relationship}")
     if channels.tool_policy:
         sections.append(f"[ToolPolicy]\n{channels.tool_policy}")
+    if channels.tool_results:
+        sections.append("[ToolResults]\n" + "\n".join(channels.tool_results))
     if channels.memories:
         sections.append("[Memories]\n" + "\n".join(channels.memories))
     conversation_text = (

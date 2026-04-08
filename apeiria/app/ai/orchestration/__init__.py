@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 
 from .prompting import (
     AIReplyPromptChannels,
+    AIReplyPromptContext,
     build_reply_prompt_channels,
     render_reply_prompt,
 )
@@ -16,6 +17,7 @@ if TYPE_CHECKING:
 __all__ = [
     "AIOrchestrationService",
     "AIReplyPromptChannels",
+    "AIReplyPromptContext",
     "ai_orchestration_service",
     "build_reply_prompt_channels",
     "render_reply_prompt",

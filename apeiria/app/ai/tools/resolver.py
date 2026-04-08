@@ -23,7 +23,7 @@ def resolve_default_tool_policy(context: AIToolSceneContext) -> AIToolPolicy:
         allowed_tool_names.update({"memory.query", "relationship.inspect"})
 
     return AIToolPolicy(
-        execution_enabled=False,
+        execution_enabled=bool(allowed_tool_names),
         allowed_tool_names=allowed_tool_names or None,
         allow_high_risk_tools=False,
         allow_capability_bridge=False,

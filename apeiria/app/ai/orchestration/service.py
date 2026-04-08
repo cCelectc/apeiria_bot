@@ -9,6 +9,7 @@ from nonebot.log import logger
 from nonebot_plugin_orm import get_session
 
 from apeiria.app.ai.context.service import AITurnCreate, ai_context_service
+from apeiria.app.ai.memory.extraction import extract_memory_candidates
 from apeiria.app.ai.memory.models import AIMemoryQuery
 from apeiria.app.ai.memory.service import ai_memory_service
 from apeiria.app.ai.models.bindings import AIModelBindingTarget
@@ -18,6 +19,7 @@ from apeiria.app.ai.models.models import AIModelRouteQuery
 from apeiria.app.ai.models.provider import AIModelGenerateRequest
 from apeiria.app.ai.models.service import ai_model_service
 from apeiria.app.ai.orchestration.prompting import (
+    AIReplyPromptContext,
     build_reply_prompt_channels,
     render_reply_prompt,
 )
@@ -42,6 +44,11 @@ if TYPE_CHECKING:
     from apeiria.app.ai.memory.models import AIMemoryDefinition
     from apeiria.app.ai.models.selection import AISelectedModel
     from apeiria.app.ai.relationship.models import AIRelationshipState
+    from apeiria.app.ai.tools.models import (
+        AIToolObservationRequest,
+        AIToolPolicy,
+        AIToolSpec,
+    )
 
 
 def _is_private_like_event(event: Event, user_id: str) -> bool:
@@ -102,6 +109,17 @@ class AIRelationshipTarget:
     group_id: str | None
     user_id: str
     is_private: bool
+
+
+@dataclass(frozen=True)
+class AIToolObservationContext:
+    """Inputs for low-risk read-only tool observation execution."""
+
+    conversation_id: str
+    message_text: str
+    policy: "AIToolPolicy"
+    recalled_memories: tuple["AIMemoryDefinition", ...]
+    relationship_context: str | None
 
 
 _MEMORY_TYPE_LIMITS: dict[str, int] = {
@@ -194,19 +212,26 @@ def _format_relationship_context(
 
 
 def _build_tool_policy_context(
+    policy: "AIToolPolicy",
+    *,
+    available_tools: list["AIToolSpec"],
+) -> str:
+    return summarize_tool_policy(
+        available_tools,
+        policy,
+    )
+
+
+def _resolve_tool_policy(
     identity: AIConversationIdentity,
     *,
     is_tome: bool,
-) -> str:
-    policy = resolve_default_tool_policy(
+) -> "AIToolPolicy":
+    return resolve_default_tool_policy(
         AIToolSceneContext(
             scope_type=identity.scope_type,
             is_tome=is_tome,
         )
-    )
-    return summarize_tool_policy(
-        ai_tool_service.registry.list_tools(),
-        policy,
     )
 
 
@@ -235,6 +260,28 @@ async def _recall_memories(
             seen_ids.add(row.memory_id)
             recalled.append(row)
     return _apply_memory_budget(recalled)
+
+
+async def _store_extracted_memories(
+    session: AsyncSession,
+    *,
+    identity: AIConversationIdentity,
+    user_id: str,
+    message_text: str,
+    source_turn_id: str | None,
+) -> None:
+    subject_id = identity.subject_user_id or user_id
+    candidates = extract_memory_candidates(message_text)
+    if not candidates:
+        return
+
+    await ai_memory_service.remember_candidates(
+        session,
+        subject_type="user",
+        subject_id=subject_id,
+        source_turn_id=source_turn_id,
+        candidates=candidates,
+    )
 
 
 async def _load_relationship_context(
@@ -275,6 +322,63 @@ async def _update_relationship_state(
     )
 
 
+async def _run_tool_observations(
+    session: AsyncSession,
+    context: AIToolObservationContext,
+) -> tuple[str, tuple[str, ...]]:
+    all_tools = ai_tool_service.registry.list_tools()
+    observations = await ai_tool_service.observe_read_only_tools(
+        session,
+        _build_tool_observation_request(context),
+    )
+
+    return (
+        _build_tool_policy_context(context.policy, available_tools=all_tools),
+        tuple(observation.summary for observation in observations),
+    )
+
+
+async def _append_tool_observation_turns(
+    session: AsyncSession,
+    *,
+    identity: AIConversationIdentity,
+    tool_results: tuple[str, ...],
+) -> None:
+    for index, result in enumerate(tool_results):
+        await ai_context_service.append_turn(
+            session,
+            identity,
+            AITurnCreate(
+                sender_type="tool",
+                sender_id="ai_tool_observation",
+                content_text=result,
+                raw_payload={
+                    "source": "read_only_tool_observation",
+                    "index": index,
+                },
+            ),
+        )
+
+
+def _build_tool_observation_request(
+    context: AIToolObservationContext,
+) -> "AIToolObservationRequest":
+    from apeiria.app.ai.tools.models import AIToolObservationRequest
+
+    return AIToolObservationRequest(
+        conversation_id=context.conversation_id,
+        message_text=context.message_text,
+        policy=context.policy,
+        recalled_memory_ids=tuple(
+            memory.memory_id for memory in context.recalled_memories
+        ),
+        recalled_memory_contents=tuple(
+            memory.content for memory in context.recalled_memories
+        ),
+        relationship_context=context.relationship_context,
+    )
+
+
 def _resolve_model_name(selected: AISelectedModel) -> str | None:
     model_name = selected.profile.model_name.strip()
     if model_name:
@@ -310,7 +414,15 @@ class AIOrchestrationService:
             if ingested is None:
                 return None
 
-            identity, _turn = ingested
+            identity, turn = ingested
+            is_tome = bool(hasattr(event, "is_tome") and event.is_tome())
+            await _store_extracted_memories(
+                session,
+                identity=identity,
+                user_id=user_id,
+                message_text=message_text,
+                source_turn_id=turn.turn_id,
+            )
             turns = await ai_context_service.list_recent_turns(
                 session,
                 identity,
@@ -319,6 +431,7 @@ class AIOrchestrationService:
             relationship_target = _build_relationship_target(identity, user_id)
             persona_target = _to_persona_target(identity, user_id)
             model_target = _to_model_target(identity, user_id)
+            tool_policy = _resolve_tool_policy(identity, is_tome=is_tome)
             persona = await ai_persona_service.build_persona_prompt_bundle(
                 session,
                 target=persona_target,
@@ -327,7 +440,7 @@ class AIOrchestrationService:
                 session,
                 target=relationship_target,
                 message_text=message_text,
-                is_tome=bool(hasattr(event, "is_tome") and event.is_tome()),
+                is_tome=is_tome,
             )
             recalled_memories = await _recall_memories(
                 session,
@@ -338,6 +451,21 @@ class AIOrchestrationService:
             relationship_context = await _load_relationship_context(
                 session,
                 target=relationship_target,
+            )
+            tool_policy_context, tool_results = await _run_tool_observations(
+                session,
+                AIToolObservationContext(
+                    conversation_id=identity.conversation_id,
+                    message_text=message_text,
+                    policy=tool_policy,
+                    recalled_memories=tuple(recalled_memories),
+                    relationship_context=relationship_context,
+                ),
+            )
+            await _append_tool_observation_turns(
+                session,
+                identity=identity,
+                tool_results=tool_results,
             )
             selected = await ai_model_service.select_model(
                 session,
@@ -366,16 +494,14 @@ class AIOrchestrationService:
                         model_name=model_name,
                         prompt=render_reply_prompt(
                             build_reply_prompt_channels(
-                                persona=persona,
-                                relationship=relationship_context,
-                                tool_policy=_build_tool_policy_context(
-                                    identity,
-                                    is_tome=bool(
-                                        hasattr(event, "is_tome") and event.is_tome()
-                                    ),
-                                ),
-                                memories=recalled_memories,
-                                turns=turns,
+                                AIReplyPromptContext(
+                                    persona=persona,
+                                    relationship=relationship_context,
+                                    tool_policy=tool_policy_context,
+                                    tool_results=tool_results,
+                                    memories=recalled_memories,
+                                    turns=turns,
+                                )
                             )
                         ),
                     )
