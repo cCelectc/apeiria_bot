@@ -13,6 +13,11 @@ from apeiria.app.ai.models.service import ai_model_service
 from apeiria.app.ai.persona.service import ai_persona_service
 from apeiria.app.ai.providers.service import ai_provider_service
 from apeiria.app.ai.relationship.service import ai_relationship_service
+from apeiria.app.ai.tools.resolver import (
+    AIToolSceneContext,
+    AIToolScenePolicyProfile,
+    resolve_default_tool_policy,
+)
 from apeiria.app.ai.tools.service import ai_tool_service
 
 if TYPE_CHECKING:
@@ -147,6 +152,25 @@ class AIAdminService:
         if policy is None:
             return ai_tool_service.registry.list_tools()
         return ai_tool_service.list_allowed_tools(policy)
+
+    def preview_tool_policy(
+        self,
+        *,
+        scope_type: str,
+        is_tome: bool,
+        allow_read_only_tools: bool = True,
+        capability_mode: str = "off",
+    ) -> AIToolPolicy:
+        return resolve_default_tool_policy(
+            AIToolSceneContext(
+                scope_type=scope_type,
+                is_tome=is_tome,
+            ),
+            AIToolScenePolicyProfile(
+                allow_read_only_tools=allow_read_only_tools,
+                capability_mode=capability_mode,  # type: ignore[arg-type]
+            ),
+        )
 
     async def list_tool_executions(
         self,

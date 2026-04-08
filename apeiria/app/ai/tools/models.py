@@ -10,6 +10,7 @@ if TYPE_CHECKING:
 
 AIToolRiskLevel = Literal["low", "medium", "high"]
 AIToolIntentKind = Literal["observe_read_only", "invoke_capability"]
+AIToolCapabilityMode = Literal["off", "private_only", "direct_only"]
 
 
 @dataclass(frozen=True)
@@ -112,6 +113,24 @@ class AICapabilityInvokeObservationOutput:
 
     capability_name: str
     result: Any
+
+
+@dataclass(frozen=True)
+class AIPluginInspectCapabilityInput:
+    """Structured input payload for plugin.inspect capability."""
+
+    plugin_query: str
+
+
+@dataclass(frozen=True)
+class AIPluginInspectCapabilityOutput:
+    """Structured output payload for plugin.inspect capability."""
+
+    plugin_query: str
+    plugin_name: str
+    module_name: str
+    description: str
+    usage: str
 
 
 @dataclass(frozen=True)

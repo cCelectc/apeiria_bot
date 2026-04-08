@@ -70,6 +70,21 @@ class AIToolExecutionItem(BaseModel):
     created_at: str
 
 
+class AIToolPolicyPreviewRequest(BaseModel):
+    scope_type: str = Field(min_length=1, max_length=32)
+    is_tome: bool = False
+    allow_read_only_tools: bool = True
+    capability_mode: str = Field(default="off", min_length=1, max_length=32)
+
+
+class AIToolPolicyPreviewItem(BaseModel):
+    execution_enabled: bool
+    allowed_tool_names: list[str] | None = None
+    denied_tool_names: list[str] = []
+    allow_high_risk_tools: bool
+    allow_capability_bridge: bool
+
+
 class AIModelProfileItem(BaseModel):
     profile_id: str
     name: str

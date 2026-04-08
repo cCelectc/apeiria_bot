@@ -8,13 +8,13 @@ from datetime import timezone
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
-import nonebot
 from sqlalchemy import select
 
 from apeiria.app.ai.tools.bridge import (
     AINoneBotCapabilityBridge,
     invoke_capability_with_policy,
 )
+from apeiria.app.ai.tools.capabilities import register_builtin_capabilities
 from apeiria.app.ai.tools.models import (
     AICapabilityInvokeObservationOutput,
     AIMemoryQueryObservationInput,
@@ -33,7 +33,6 @@ from apeiria.app.ai.tools.policy import evaluate_tool_policy
 from apeiria.app.ai.tools.registry import AIToolRegistry
 from apeiria.app.ai.tools.selection import plan_tool_intents_for_message
 from apeiria.infra.db.models import AIToolExecution
-from apeiria.shared.plugin_introspection import get_plugin_name
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -57,7 +56,7 @@ class AIToolService:
         self.registry = AIToolRegistry()
         self.capability_bridge = AINoneBotCapabilityBridge()
         self._register_builtin_tools()
-        self._register_builtin_capabilities()
+        register_builtin_capabilities(self.capability_bridge)
 
     def _register_builtin_tools(self) -> None:
         """Register built-in AI-visible tool declarations."""
@@ -85,11 +84,6 @@ class AIToolService:
             ),
         ):
             self.registry.register(tool)
-
-    def _register_builtin_capabilities(self) -> None:
-        """Register built-in whitelist capability handlers."""
-
-        self.capability_bridge.register("help.show", self._capability_help_show)
 
     def list_allowed_tools(self, policy: AIToolPolicy) -> list[AIToolSpec]:
         """List the tools allowed under one scene policy."""
@@ -201,21 +195,6 @@ class AIToolService:
                 ),
         )
         return observations
-
-    async def _capability_help_show(self, payload: dict[str, Any]) -> dict[str, Any]:
-        """Return a compact help summary from the real plugin catalog."""
-
-        topic = str(payload.get("topic", "plugins")).strip() or "plugins"
-        plugins = [
-            plugin
-            for plugin in nonebot.get_loaded_plugins()
-            if plugin.module_name and "help" not in plugin.module_name
-        ]
-        return {
-            "topic": topic,
-            "count": len(plugins),
-            "plugins": [get_plugin_name(plugin) for plugin in plugins[:8]],
-        }
 
     def build_tool_turns(
         self,
