@@ -11,6 +11,7 @@ from apeiria.app.ai.tools.models import AIToolPolicy
 from apeiria.interfaces.http.auth import require_control_panel
 from apeiria.interfaces.http.routes.ai_route_support import (
     to_ai_memory_item,
+    to_ai_model_binding_item,
     to_ai_model_profile_item,
     to_ai_persona_binding_item,
     to_ai_persona_item,
@@ -22,6 +23,7 @@ from apeiria.interfaces.http.routes.ai_route_support import (
 )
 from apeiria.interfaces.http.schemas.ai_models import (
     AIMemoryItem,
+    AIModelBindingItem,
     AIModelProfileItem,
     AIPersonaBindingItem,
     AIPersonaItem,
@@ -63,6 +65,14 @@ async def list_ai_model_profiles(
 ) -> list[AIModelProfileItem]:
     profiles = await ai_admin_service.list_model_profiles()
     return [to_ai_model_profile_item(item) for item in profiles]
+
+
+@router.get("/model-bindings", response_model=list[AIModelBindingItem])
+async def list_ai_model_bindings(
+    _: Annotated[Any, Depends(require_control_panel)],
+) -> list[AIModelBindingItem]:
+    bindings = await ai_admin_service.list_model_bindings()
+    return [to_ai_model_binding_item(item) for item in bindings]
 
 
 @router.get("/personas", response_model=list[AIPersonaItem])

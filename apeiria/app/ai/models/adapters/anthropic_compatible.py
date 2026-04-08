@@ -17,6 +17,10 @@ if TYPE_CHECKING:
         [str, dict[str, str], dict[str, Any]],
         Awaitable[dict[str, Any]],
     ]
+    AnthropicListRequestFunc = Callable[
+        [str, dict[str, str]],
+        Awaitable[dict[str, Any]],
+    ]
 
 
 class AnthropicCompatibleProviderConfigError(RuntimeError):
@@ -35,10 +39,16 @@ class AnthropicCompatibleProvider:
         api_base: str | None,
         api_key: str | None = None,
         request_func: "AnthropicRequestFunc | None" = None,
+        list_request_func: "AnthropicListRequestFunc | None" = None,
     ) -> None:
         self.api_base = api_base
         self.api_key = api_key
         self._request_func = request_func or self._request_json
+        self._list_request_func = (
+            list_request_func
+            or _wrap_list_request(request_func)
+            or self._request_json_get
+        )
 
     async def generate_text(
         self,
@@ -86,14 +96,13 @@ class AnthropicCompatibleProvider:
         if not resolved_api_key:
             raise AnthropicCompatibleProviderConfigError("api_key")
 
-        raw = await self._request_func(
+        raw = await self._list_request_func(
             f"{self.api_base.rstrip('/')}/models",
             {
                 "x-api-key": resolved_api_key,
                 "anthropic-version": "2023-06-01",
                 "Content-Type": "application/json",
             },
-            {},
         )
         return _extract_anthropic_models(raw)
 
@@ -112,12 +121,41 @@ class AnthropicCompatibleProvider:
             response.raise_for_status()
             return await response.json()
 
+    async def _request_json_get(
+        self,
+        url: str,
+        headers: dict[str, str],
+    ) -> dict[str, Any]:
+        import aiohttp
+
+        async with (
+            aiohttp.ClientSession(headers=headers) as session,
+            session.get(url) as response,
+        ):
+            response.raise_for_status()
+            return await response.json()
+
 
 def _coerce_str(extra: dict[str, Any] | None, key: str) -> str | None:
     if not extra:
         return None
     value = extra.get(key)
     return value if isinstance(value, str) and value.strip() else None
+
+
+def _wrap_list_request(
+    request_func: "AnthropicRequestFunc | None",
+) -> "AnthropicListRequestFunc | None":
+    if request_func is None:
+        return None
+
+    async def _wrapped(
+        url: str,
+        headers: dict[str, str],
+    ) -> dict[str, Any]:
+        return await request_func(url, headers, {})
+
+    return _wrapped
 
 
 def _extract_anthropic_content(raw: dict[str, Any]) -> str:

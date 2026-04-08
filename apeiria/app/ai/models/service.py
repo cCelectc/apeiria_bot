@@ -8,6 +8,11 @@ from uuid import uuid4
 
 from sqlalchemy import select
 
+from apeiria.app.ai.models.bindings import (
+    AIModelBindingSpec,
+    AIModelBindingTarget,
+    resolve_model_binding,
+)
 from apeiria.app.ai.models.models import (
     AIModelProfileDefinition,
     AIModelRouteQuery,
@@ -19,7 +24,7 @@ from apeiria.app.ai.models.selection import (
     select_provider_for_profile,
 )
 from apeiria.app.ai.providers.service import ai_provider_service
-from apeiria.infra.db.models import AIModelProfile
+from apeiria.infra.db.models import AIModelBinding, AIModelProfile
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -65,6 +70,23 @@ class AIModelService:
             for row in result.scalars().all()
         ]
 
+    async def list_bindings(
+        self,
+        session: AsyncSession,
+    ) -> list[AIModelBindingSpec]:
+        result = await session.execute(
+            select(AIModelBinding).order_by(AIModelBinding.id.asc())
+        )
+        return [
+            AIModelBindingSpec(
+                binding_id=row.binding_id,
+                scope_type=row.scope_type,
+                scope_id=row.scope_id,
+                profile_id=row.profile_id,
+            )
+            for row in result.scalars().all()
+        ]
+
     async def create_profile(
         self,
         session: AsyncSession,
@@ -92,14 +114,38 @@ class AIModelService:
         profiles = await self.list_profiles(session)
         return resolve_model_profile(profiles, query)
 
+    async def resolve_profile_for_target(
+        self,
+        session: AsyncSession,
+        *,
+        target: AIModelBindingTarget,
+    ) -> AIModelProfileDefinition | None:
+        profiles = await self.list_profiles(session)
+        bindings = await self.list_bindings(session)
+        binding = resolve_model_binding(bindings, target)
+        if binding is None:
+            return None
+        profile_map = {
+            profile.profile_id: profile for profile in profiles if profile.enabled
+        }
+        return profile_map.get(binding.profile_id)
+
     async def select_model(
         self,
         session: AsyncSession,
-        query: AIModelRouteQuery,
+        query: AIModelRouteQuery | None = None,
+        *,
+        target: AIModelBindingTarget | None = None,
     ) -> AISelectedModel | None:
         """Resolve the effective provider + profile pair for one task class."""
 
-        profile = await self.resolve_profile(session, query)
+        profile = None
+        if target is not None:
+            profile = await self.resolve_profile_for_target(session, target=target)
+        if profile is None:
+            if query is None:
+                return None
+            profile = await self.resolve_profile(session, query)
         if profile is None:
             return None
         providers = await ai_provider_service.list_providers(session)

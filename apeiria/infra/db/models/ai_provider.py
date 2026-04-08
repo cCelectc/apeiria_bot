@@ -20,6 +20,7 @@ class AIProvider(Model):
     name: Mapped[str] = mapped_column(String(128), index=True)
     provider_type: Mapped[str] = mapped_column(String(64), index=True)
     api_base: Mapped[str | None] = mapped_column(Text, nullable=True)
+    api_key_env_name: Mapped[str | None] = mapped_column(String(128), nullable=True)
     enabled: Mapped[bool] = mapped_column(default=True)
     default_model: Mapped[str | None] = mapped_column(String(128), nullable=True)
     created_at: Mapped[datetime] = mapped_column(insert_default=func.now())

@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 
 from nonebot.log import logger
 
-CURRENT_SCHEMA_VERSION = 12
+CURRENT_SCHEMA_VERSION = 14
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncConnection, AsyncSession
@@ -20,6 +20,7 @@ MIGRATIONS: dict[int, MigrationFunc] = {}
 CORE_TABLE_NAMES = frozenset(
     {
         "ai_affinity",
+        "ai_model_binding",
         "ai_conversation",
         "ai_memory_item",
         "ai_model_profile",
@@ -392,3 +393,45 @@ async def _migrate_v11_to_v12(session: AsyncSession) -> None:
 
 
 MIGRATIONS[11] = _migrate_v11_to_v12
+
+
+async def _migrate_v12_to_v13(session: AsyncSession) -> None:
+    from nonebot_plugin_orm import Model
+
+    conn = await session.connection()
+    await conn.run_sync(Model.metadata.create_all)
+
+
+MIGRATIONS[12] = _migrate_v12_to_v13
+
+
+async def _migrate_v13_to_v14(session: AsyncSession) -> None:
+    from nonebot_plugin_orm import Model
+    from sqlalchemy import inspect as sa_inspect
+    from sqlalchemy import text
+
+    conn = await session.connection()
+    await conn.run_sync(Model.metadata.create_all)
+
+    def _has_api_key_env_name(sync_conn):  # noqa: ANN001
+        inspector = sa_inspect(sync_conn)
+        columns = inspector.get_columns("ai_provider")
+        return any(column["name"] == "api_key_env_name" for column in columns)
+
+    try:
+        has_api_key_env_name = await conn.run_sync(_has_api_key_env_name)
+    except Exception:  # noqa: BLE001
+        has_api_key_env_name = False
+
+    if not has_api_key_env_name:
+        await session.execute(
+            text(
+                "ALTER TABLE ai_provider "
+                "ADD COLUMN api_key_env_name VARCHAR(128)"
+            )
+        )
+
+    await session.commit()
+
+
+MIGRATIONS[13] = _migrate_v13_to_v14

@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 
 from apeiria.interfaces.http.schemas.ai_models import (
     AIMemoryItem,
+    AIModelBindingItem,
     AIModelProfileItem,
     AIPersonaBindingItem,
     AIPersonaItem,
@@ -18,6 +19,7 @@ from apeiria.interfaces.http.schemas.ai_models import (
 
 if TYPE_CHECKING:
     from apeiria.app.ai.memory.models import AIMemoryDefinition
+    from apeiria.app.ai.models.bindings import AIModelBindingSpec
     from apeiria.app.ai.models.models import AIModelProfileDefinition
     from apeiria.app.ai.models.provider import (
         AIProviderModelItem as DomainProviderModelItem,
@@ -81,12 +83,22 @@ def to_ai_model_profile_item(item: "AIModelProfileDefinition") -> AIModelProfile
     )
 
 
+def to_ai_model_binding_item(item: "AIModelBindingSpec") -> AIModelBindingItem:
+    return AIModelBindingItem(
+        binding_id=item.binding_id,
+        scope_type=item.scope_type,
+        scope_id=item.scope_id,
+        profile_id=item.profile_id,
+    )
+
+
 def to_ai_provider_item(item: "AIProviderDefinition") -> AIProviderItem:
     return AIProviderItem(
         provider_id=item.provider_id,
         name=item.name,
         provider_type=item.provider_type,
         api_base=item.api_base,
+        api_key_env_name=item.api_key_env_name,
         enabled=item.enabled,
         default_model=item.default_model,
     )

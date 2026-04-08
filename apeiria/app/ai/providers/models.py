@@ -8,6 +8,7 @@ from typing import Literal
 AIProviderType = Literal[
     "openai_compatible",
     "anthropic",
+    "anthropic_compatible",
     "gemini",
     "ollama",
     "litellm",
@@ -23,5 +24,6 @@ class AIProviderDefinition:
     name: str
     provider_type: AIProviderType
     api_base: str | None
+    api_key_env_name: str | None = None
     enabled: bool = True
     default_model: str | None = None

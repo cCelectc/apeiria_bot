@@ -35,7 +35,7 @@ def build_provider_adapter(
             api_key=api_key,
             request_func=request_func,
         )
-    if provider.provider_type == "anthropic":
+    if provider.provider_type in {"anthropic", "anthropic_compatible"}:
         return AnthropicCompatibleProvider(
             api_base=provider.api_base,
             api_key=api_key,

@@ -1,4 +1,4 @@
-"""Minimal AI domain service used by the builtin AI plugin skeleton."""
+"""Minimal AI domain service used by the builtin AI plugin shell."""
 
 from __future__ import annotations
 
@@ -14,19 +14,14 @@ class AIServiceStatus:
 
 
 class AIService:
-    """Small facade for the phase-1 AI plugin skeleton.
-
-    The real AI domain logic will land in later phases under dedicated
-    subpackages. This service only exposes enough state for a safe plugin
-    smoke test and a minimal operator command.
-    """
+    """Small facade for reporting the active AI rewrite milestone."""
 
     def get_status(self) -> AIServiceStatus:
         return AIServiceStatus(
-            phase="phase_1_skeleton",
+            phase="phase_11_minimal_reply_loop",
             summary=(
-                "AI plugin skeleton is loaded. Context, persona, and memory "
-                "domains are not implemented yet."
+                "AI plugin shell is loaded with context ingestion, persona/model "
+                "binding, provider dispatch, and minimal auto-reply flow."
             ),
         )
 

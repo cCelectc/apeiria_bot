@@ -81,11 +81,19 @@ class AIModelProfileItem(BaseModel):
     fallback_profile_id: str | None = None
 
 
+class AIModelBindingItem(BaseModel):
+    binding_id: str
+    scope_type: str
+    scope_id: str
+    profile_id: str
+
+
 class AIProviderItem(BaseModel):
     provider_id: str
     name: str
     provider_type: str
     api_base: str | None = None
+    api_key_env_name: str | None = None
     enabled: bool
     default_model: str | None = None
 

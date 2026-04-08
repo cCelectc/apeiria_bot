@@ -17,6 +17,7 @@ from apeiria.app.ai.tools.service import ai_tool_service
 
 if TYPE_CHECKING:
     from apeiria.app.ai.memory.models import AIMemoryDefinition
+    from apeiria.app.ai.models.bindings import AIModelBindingSpec
     from apeiria.app.ai.models.models import AIModelProfileDefinition
     from apeiria.app.ai.models.provider import AIProviderModelItem
     from apeiria.app.ai.persona.models import (
@@ -43,6 +44,10 @@ class AIAdminService:
         async with get_session() as session:
             return await ai_model_service.list_profiles(session)
 
+    async def list_model_bindings(self) -> list[AIModelBindingSpec]:
+        async with get_session() as session:
+            return await ai_model_service.list_bindings(session)
+
     async def list_provider_models(
         self,
         *,
@@ -60,7 +65,10 @@ class AIAdminService:
 
         ai_model_client.registry.register(
             provider.provider_id,
-            build_provider_adapter(provider, api_key=api_key),
+            build_provider_adapter(
+                provider,
+                api_key=api_key or ai_provider_service.get_provider_api_key(provider),
+            ),
         )
         return await ai_model_client.list_models(
             provider_id=provider.provider_id,

@@ -4,6 +4,7 @@ from .access_policy import AccessPolicyEntry
 from .ai_affinity import AIAffinity
 from .ai_conversation import AIConversation
 from .ai_memory_item import AIMemoryItem
+from .ai_model_binding import AIModelBinding
 from .ai_model_profile import AIModelProfile
 from .ai_persona import AIPersona
 from .ai_persona_binding import AIPersonaBinding
@@ -22,6 +23,7 @@ __all__ = [
     "AIAffinity",
     "AIConversation",
     "AIMemoryItem",
+    "AIModelBinding",
     "AIModelProfile",
     "AIPersona",
     "AIPersonaBinding",
