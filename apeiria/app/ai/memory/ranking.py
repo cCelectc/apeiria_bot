@@ -7,27 +7,42 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from apeiria.app.ai.memory.models import AIMemoryDefinition, AIMemoryQuery
 
+BIGRAM_SIZE = 2
+
 
 def _score_memory_item(
     memory: AIMemoryDefinition,
     query_text: str,
 ) -> tuple[float, float, float]:
-    query_terms = {
-        token.strip().lower()
-        for token in query_text.split()
-        if token.strip()
-    }
-    content_terms = {
-        token.strip().lower()
-        for token in memory.content.split()
-        if token.strip()
-    }
+    query_terms = _extract_terms(query_text)
+    content_terms = _extract_terms(memory.content)
     overlap = len(query_terms & content_terms)
     return (
         float(overlap),
         float(memory.salience),
         float(memory.confidence),
     )
+
+
+def _extract_terms(text: str) -> set[str]:
+    normalized = text.strip().lower()
+    if not normalized:
+        return set()
+
+    terms = {
+        token.strip()
+        for token in normalized.split()
+        if token.strip()
+    }
+    if not terms:
+        terms.add(normalized)
+    if len(normalized) >= BIGRAM_SIZE:
+        terms.update(
+            normalized[index : index + BIGRAM_SIZE]
+            for index in range(len(normalized) - BIGRAM_SIZE + 1)
+            if normalized[index : index + BIGRAM_SIZE].strip()
+        )
+    return terms
 
 
 def rank_memory_items(

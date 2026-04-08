@@ -2,28 +2,36 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from nonebot.log import logger
 from nonebot_plugin_orm import get_session
 
 from apeiria.app.ai.context.service import AITurnCreate, ai_context_service
+from apeiria.app.ai.memory.models import AIMemoryQuery
+from apeiria.app.ai.memory.service import ai_memory_service
 from apeiria.app.ai.models.bindings import AIModelBindingTarget
 from apeiria.app.ai.models.client import ai_model_client
 from apeiria.app.ai.models.factory import build_provider_adapter
 from apeiria.app.ai.models.models import AIModelRouteQuery
 from apeiria.app.ai.models.provider import AIModelGenerateRequest
 from apeiria.app.ai.models.service import ai_model_service
+from apeiria.app.ai.orchestration.prompting import (
+    build_reply_prompt_channels,
+    render_reply_prompt,
+)
 from apeiria.app.ai.persona.models import AIPersonaBindingTarget
 from apeiria.app.ai.persona.service import ai_persona_service
 from apeiria.app.ai.providers.service import ai_provider_service
 
 if TYPE_CHECKING:
     from nonebot.adapters import Bot, Event
+    from sqlalchemy.ext.asyncio import AsyncSession
 
-    from apeiria.app.ai.context.models import AIContextTurnView, AIConversationIdentity
+    from apeiria.app.ai.context.models import AIConversationIdentity
+    from apeiria.app.ai.memory.models import AIMemoryDefinition
     from apeiria.app.ai.models.selection import AISelectedModel
-    from apeiria.app.ai.persona.service import AIPersonaPromptBundle
 
 
 def _is_private_like_event(event: Event, user_id: str) -> bool:
@@ -68,40 +76,60 @@ def _to_model_target(
     )
 
 
-def _format_turn(turn: AIContextTurnView) -> str:
-    speaker_map = {
-        "user": "User",
-        "bot": "Assistant",
-        "system": "System",
-        "tool": "Tool",
-    }
-    return f"{speaker_map.get(turn.sender_type, 'Message')}: {turn.content_text}"
+@dataclass(frozen=True)
+class AIMemoryRecallTarget:
+    """One memory retrieval boundary for reply orchestration."""
+
+    subject_type: str
+    subject_id: str
 
 
-def _render_turns(turns: list[AIContextTurnView]) -> str:
-    if not turns:
-        return "User: <empty>"
-    return "\n".join(_format_turn(turn) for turn in turns if turn.content_text.strip())
+def _build_memory_targets(
+    identity: AIConversationIdentity,
+    user_id: str,
+) -> list[AIMemoryRecallTarget]:
+    targets = [
+        AIMemoryRecallTarget(
+            subject_type="conversation",
+            subject_id=identity.conversation_id,
+        )
+    ]
+    effective_user_id = identity.subject_user_id or user_id
+    if effective_user_id:
+        targets.append(
+            AIMemoryRecallTarget(
+                subject_type="user",
+                subject_id=effective_user_id,
+            )
+        )
+    return targets
 
 
-def _build_prompt(
-    persona: "AIPersonaPromptBundle | None",
-    turns: list[AIContextTurnView],
-) -> str:
-    sections: list[str] = []
-    if persona is not None:
-        sections.append(f"[Persona]\n{persona.system_prompt}")
-        if persona.style_prompt:
-            sections.append(f"[Style]\n{persona.style_prompt}")
-    else:
-        sections.append("[Persona]\nYou are a helpful social AI in a chat.")
-    sections.append(f"[Conversation]\n{_render_turns(turns)}")
-    sections.append(
-        "[Instruction]\n"
-        "Reply naturally as the assistant in the same conversation. "
-        "Keep the answer grounded in the visible conversation context."
-    )
-    return "\n\n".join(sections)
+async def _recall_memories(
+    session: AsyncSession,
+    *,
+    identity: AIConversationIdentity,
+    user_id: str,
+    query_text: str,
+) -> list["AIMemoryDefinition"]:
+    recalled: list[AIMemoryDefinition] = []
+    seen_ids: set[str] = set()
+    for target in _build_memory_targets(identity, user_id):
+        rows = await ai_memory_service.recall_memories(
+            session,
+            AIMemoryQuery(
+                subject_type=target.subject_type,
+                subject_id=target.subject_id,
+                query_text=query_text,
+                limit=3,
+            ),
+        )
+        for row in rows:
+            if row.memory_id in seen_ids:
+                continue
+            seen_ids.add(row.memory_id)
+            recalled.append(row)
+    return recalled[:4]
 
 
 def _resolve_model_name(selected: AISelectedModel) -> str | None:
@@ -130,7 +158,8 @@ class AIOrchestrationService:
             return None
         if not _should_handle_event(bot, event, user_id):
             return None
-        if not _extract_plaintext(event):
+        message_text = _extract_plaintext(event)
+        if not message_text:
             return None
 
         async with get_session() as session:
@@ -149,6 +178,12 @@ class AIOrchestrationService:
             persona = await ai_persona_service.build_persona_prompt_bundle(
                 session,
                 target=persona_target,
+            )
+            recalled_memories = await _recall_memories(
+                session,
+                identity=identity,
+                user_id=user_id,
+                query_text=message_text,
             )
             selected = await ai_model_service.select_model(
                 session,
@@ -175,7 +210,13 @@ class AIOrchestrationService:
                     AIModelGenerateRequest(
                         provider_id=provider.provider_id,
                         model_name=model_name,
-                        prompt=_build_prompt(persona, turns),
+                        prompt=render_reply_prompt(
+                            build_reply_prompt_channels(
+                                persona=persona,
+                                memories=recalled_memories,
+                                turns=turns,
+                            )
+                        ),
                     )
                 )
             except Exception as exc:  # noqa: BLE001

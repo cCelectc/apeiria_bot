@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import timezone
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING, cast
 from uuid import uuid4
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 
 from apeiria.app.ai.memory.models import (
     AIMemoryDefinition,
@@ -91,6 +91,39 @@ class AIMemoryService:
         )
         return rank_memory_items(memories, query)
 
+    async def recall_memories(
+        self,
+        session: AsyncSession,
+        query: AIMemoryQuery,
+    ) -> list[AIMemoryDefinition]:
+        """Retrieve memories for live AI use and stamp recall time."""
+
+        recalled = await self.retrieve_memories(session, query)
+        if not recalled:
+            return []
+
+        recalled_at = datetime.now(timezone.utc)
+        await self._mark_memories_recalled(
+            session,
+            memory_ids=[memory.memory_id for memory in recalled],
+            recalled_at=recalled_at,
+        )
+        return [
+            AIMemoryDefinition(
+                memory_id=memory.memory_id,
+                memory_type=memory.memory_type,
+                subject_type=memory.subject_type,
+                subject_id=memory.subject_id,
+                content=memory.content,
+                source_turn_id=memory.source_turn_id,
+                salience=memory.salience,
+                confidence=memory.confidence,
+                last_recalled_at=recalled_at,
+                created_at=memory.created_at,
+            )
+            for memory in recalled
+        ]
+
     async def delete_memory(
         self,
         session: AsyncSession,
@@ -126,6 +159,23 @@ class AIMemoryService:
             subject_type=subject_type,
             subject_id=subject_id,
         )
+
+    async def _mark_memories_recalled(
+        self,
+        session: AsyncSession,
+        *,
+        memory_ids: list[str],
+        recalled_at: datetime,
+    ) -> None:
+        if not memory_ids:
+            return
+
+        await session.execute(
+            update(AIMemoryItem)
+            .where(AIMemoryItem.memory_id.in_(memory_ids))
+            .values(last_recalled_at=recalled_at.replace(tzinfo=None))
+        )
+        await session.flush()
 
     @staticmethod
     def _to_definition(row: AIMemoryItem) -> AIMemoryDefinition:
