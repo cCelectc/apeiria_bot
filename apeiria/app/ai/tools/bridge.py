@@ -47,6 +47,9 @@ class AINoneBotCapabilityBridge:
     ) -> None:
         self._handlers[capability_name] = handler
 
+    def list_capabilities(self) -> list[str]:
+        return sorted(self._handlers)
+
     def can_handle(self, capability_name: str) -> bool:
         return capability_name in self._handlers
 

@@ -5,6 +5,8 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from apeiria.interfaces.http.schemas.ai_models import (
+    AICapabilityItem,
+    AICapabilityPreviewItem,
     AIMemoryItem,
     AIModelBindingItem,
     AIModelProfileItem,
@@ -15,6 +17,7 @@ from apeiria.interfaces.http.schemas.ai_models import (
     AIRelationshipStateItem,
     AIToolExecutionItem,
     AIToolItem,
+    AIToolPolicyPreviewItem,
 )
 
 if TYPE_CHECKING:
@@ -30,7 +33,13 @@ if TYPE_CHECKING:
     )
     from apeiria.app.ai.providers.models import AIProviderDefinition
     from apeiria.app.ai.relationship.models import AIRelationshipState
-    from apeiria.app.ai.tools.models import AIToolExecutionView, AIToolSpec
+    from apeiria.app.ai.tools.models import (
+        AICapabilityDefinition,
+        AICapabilityPreview,
+        AIToolExecutionView,
+        AIToolPolicy,
+        AIToolSpec,
+    )
 
 
 def to_ai_persona_item(item: "AIPersonaDefinition") -> AIPersonaItem:
@@ -145,4 +154,38 @@ def to_ai_tool_execution_item(item: "AIToolExecutionView") -> AIToolExecutionIte
         input_json=item.input_json,
         output_json=item.output_json,
         created_at=item.created_at.isoformat(),
+    )
+
+
+def to_ai_tool_policy_preview_item(item: "AIToolPolicy") -> AIToolPolicyPreviewItem:
+    return AIToolPolicyPreviewItem(
+        execution_enabled=item.execution_enabled,
+        allowed_tool_names=(
+            sorted(item.allowed_tool_names)
+            if item.allowed_tool_names is not None
+            else None
+        ),
+        denied_tool_names=sorted(item.denied_tool_names),
+        allow_high_risk_tools=item.allow_high_risk_tools,
+        allow_capability_bridge=item.allow_capability_bridge,
+    )
+
+
+def to_ai_capability_preview_item(
+    item: "AICapabilityPreview",
+) -> AICapabilityPreviewItem:
+    return AICapabilityPreviewItem(
+        capability_name=item.capability_name,
+        registered=item.registered,
+        allowed=item.allowed,
+        reason=item.reason,
+        allow_capability_bridge=item.allow_capability_bridge,
+        execution_enabled=item.execution_enabled,
+    )
+
+
+def to_ai_capability_item(item: "AICapabilityDefinition") -> AICapabilityItem:
+    return AICapabilityItem(
+        capability_name=item.capability_name,
+        bound_tool_name=item.bound_tool_name,
     )

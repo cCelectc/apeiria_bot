@@ -7,7 +7,9 @@ from .bridge import (
     invoke_capability_with_policy,
 )
 from .models import (
+    AICapabilityDefinition,
     AICapabilityInvokeObservationOutput,
+    AICapabilityPreview,
     AIMemoryQueryObservationInput,
     AIMemoryQueryObservationOutput,
     AINoneBotCapabilityRequest,
@@ -36,7 +38,9 @@ from .resolver import (
 from .selection import plan_tool_intents_for_message, select_tools_for_message
 
 __all__ = [
+    "AICapabilityDefinition",
     "AICapabilityInvokeObservationOutput",
+    "AICapabilityPreview",
     "AIMemoryQueryObservationInput",
     "AIMemoryQueryObservationOutput",
     "AINoneBotCapabilityBridge",

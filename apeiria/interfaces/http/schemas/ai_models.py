@@ -85,6 +85,33 @@ class AIToolPolicyPreviewItem(BaseModel):
     allow_capability_bridge: bool
 
 
+class AICapabilityPreviewRequest(BaseModel):
+    capability_name: str = Field(min_length=1, max_length=128)
+    scope_type: str = Field(min_length=1, max_length=32)
+    is_tome: bool = False
+    allow_read_only_tools: bool = True
+    capability_mode: str = Field(default="off", min_length=1, max_length=32)
+
+
+class AICapabilityPreviewItem(BaseModel):
+    capability_name: str
+    registered: bool
+    allowed: bool
+    reason: str
+    allow_capability_bridge: bool
+    execution_enabled: bool
+
+
+class AICapabilityItem(BaseModel):
+    capability_name: str
+    bound_tool_name: str
+
+
+class AICapabilityItem(BaseModel):
+    capability_name: str
+    bound_tool_name: str
+
+
 class AIModelProfileItem(BaseModel):
     profile_id: str
     name: str

@@ -13,6 +13,7 @@ from apeiria.app.ai.models.service import ai_model_service
 from apeiria.app.ai.persona.service import ai_persona_service
 from apeiria.app.ai.providers.service import ai_provider_service
 from apeiria.app.ai.relationship.service import ai_relationship_service
+from apeiria.app.ai.tools.policy import evaluate_tool_policy
 from apeiria.app.ai.tools.resolver import (
     AIToolSceneContext,
     AIToolScenePolicyProfile,
@@ -32,6 +33,8 @@ if TYPE_CHECKING:
     from apeiria.app.ai.providers.models import AIProviderDefinition
     from apeiria.app.ai.relationship.models import AIRelationshipState
     from apeiria.app.ai.tools.models import (
+        AICapabilityDefinition,
+        AICapabilityPreview,
         AIToolExecutionView,
         AIToolPolicy,
         AIToolSpec,
@@ -153,6 +156,17 @@ class AIAdminService:
             return ai_tool_service.registry.list_tools()
         return ai_tool_service.list_allowed_tools(policy)
 
+    def list_capabilities(self) -> list["AICapabilityDefinition"]:
+        from apeiria.app.ai.tools.models import AICapabilityDefinition
+
+        return [
+            AICapabilityDefinition(
+                capability_name=name,
+                bound_tool_name="plugin.capability",
+            )
+            for name in ai_tool_service.capability_bridge.list_capabilities()
+        ]
+
     def preview_tool_policy(
         self,
         *,
@@ -171,6 +185,68 @@ class AIAdminService:
                 capability_mode=capability_mode,  # type: ignore[arg-type]
             ),
         )
+
+    def preview_capability(
+        self,
+        *,
+        capability_name: str,
+        scope_type: str,
+        is_tome: bool,
+        allow_read_only_tools: bool = True,
+        capability_mode: str = "off",
+    ) -> "AICapabilityPreview":
+        from apeiria.app.ai.tools.models import AICapabilityPreview
+
+        policy = self.preview_tool_policy(
+            scope_type=scope_type,
+            is_tome=is_tome,
+            allow_read_only_tools=allow_read_only_tools,
+            capability_mode=capability_mode,
+        )
+        registered = ai_tool_service.capability_bridge.can_handle(capability_name)
+        tool = (
+            ai_tool_service.registry.get(capability_name)
+            or ai_tool_service.registry.get("plugin.capability")
+        )
+        if not registered:
+            return AICapabilityPreview(
+                capability_name=capability_name,
+                registered=False,
+                allowed=False,
+                reason="capability is not registered",
+                allow_capability_bridge=policy.allow_capability_bridge,
+                execution_enabled=policy.execution_enabled,
+            )
+        if tool is None:
+            return AICapabilityPreview(
+                capability_name=capability_name,
+                registered=True,
+                allowed=False,
+                reason="capability tool binding is missing",
+                allow_capability_bridge=policy.allow_capability_bridge,
+                execution_enabled=policy.execution_enabled,
+            )
+
+        decision = evaluate_tool_policy(tool, policy)
+        return AICapabilityPreview(
+            capability_name=capability_name,
+            registered=True,
+            allowed=decision.allowed,
+            reason=decision.reason,
+            allow_capability_bridge=policy.allow_capability_bridge,
+            execution_enabled=policy.execution_enabled,
+        )
+
+    def list_capabilities(self) -> list["AICapabilityDefinition"]:
+        from apeiria.app.ai.tools.models import AICapabilityDefinition
+
+        return [
+            AICapabilityDefinition(
+                capability_name=capability_name,
+                bound_tool_name="plugin.capability",
+            )
+            for capability_name in ai_tool_service.capability_bridge.list_capabilities()
+        ]
 
     async def list_tool_executions(
         self,

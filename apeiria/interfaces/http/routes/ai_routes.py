@@ -10,6 +10,8 @@ from apeiria.app.ai.admin_service import ai_admin_service
 from apeiria.app.ai.tools.models import AIToolPolicy
 from apeiria.interfaces.http.auth import require_control_panel
 from apeiria.interfaces.http.routes.ai_route_support import (
+    to_ai_capability_item,
+    to_ai_capability_preview_item,
     to_ai_memory_item,
     to_ai_model_binding_item,
     to_ai_model_profile_item,
@@ -20,8 +22,12 @@ from apeiria.interfaces.http.routes.ai_route_support import (
     to_ai_relationship_state_item,
     to_ai_tool_execution_item,
     to_ai_tool_item,
+    to_ai_tool_policy_preview_item,
 )
 from apeiria.interfaces.http.schemas.ai_models import (
+    AICapabilityItem,
+    AICapabilityPreviewItem,
+    AICapabilityPreviewRequest,
     AIMemoryItem,
     AIModelBindingItem,
     AIModelProfileItem,
@@ -34,6 +40,8 @@ from apeiria.interfaces.http.schemas.ai_models import (
     AIRelationshipStateItem,
     AIToolExecutionItem,
     AIToolItem,
+    AIToolPolicyPreviewItem,
+    AIToolPolicyPreviewRequest,
 )
 
 router = APIRouter()
@@ -153,6 +161,43 @@ async def list_ai_tools(
     )
     tools = ai_admin_service.list_tools(policy=policy)
     return [to_ai_tool_item(item) for item in tools]
+
+
+@router.post("/tools/policy-preview", response_model=AIToolPolicyPreviewItem)
+async def preview_ai_tool_policy(
+    payload: AIToolPolicyPreviewRequest,
+    _: Annotated[Any, Depends(require_control_panel)],
+) -> AIToolPolicyPreviewItem:
+    policy = ai_admin_service.preview_tool_policy(
+        scope_type=payload.scope_type,
+        is_tome=payload.is_tome,
+        allow_read_only_tools=payload.allow_read_only_tools,
+        capability_mode=payload.capability_mode,
+    )
+    return to_ai_tool_policy_preview_item(policy)
+
+
+@router.post("/tools/capability-preview", response_model=AICapabilityPreviewItem)
+async def preview_ai_capability(
+    payload: AICapabilityPreviewRequest,
+    _: Annotated[Any, Depends(require_control_panel)],
+) -> AICapabilityPreviewItem:
+    preview = ai_admin_service.preview_capability(
+        capability_name=payload.capability_name,
+        scope_type=payload.scope_type,
+        is_tome=payload.is_tome,
+        allow_read_only_tools=payload.allow_read_only_tools,
+        capability_mode=payload.capability_mode,
+    )
+    return to_ai_capability_preview_item(preview)
+
+
+@router.get("/tools/capabilities", response_model=list[AICapabilityItem])
+async def list_ai_capabilities(
+    _: Annotated[Any, Depends(require_control_panel)],
+) -> list[AICapabilityItem]:
+    rows = ai_admin_service.list_capabilities()
+    return [to_ai_capability_item(item) for item in rows]
 
 
 @router.get("/tools/executions", response_model=list[AIToolExecutionItem])
