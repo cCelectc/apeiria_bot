@@ -10,6 +10,7 @@ from .ai_persona import AIPersona
 from .ai_persona_binding import AIPersonaBinding
 from .ai_provider import AIProvider
 from .ai_tool_execution import AIToolExecution
+from .ai_tool_policy_binding import AIToolPolicyBinding
 from .ai_turn import AITurn
 from .group import GroupConsole
 from .level import LevelUser
@@ -29,6 +30,7 @@ __all__ = [
     "AIPersonaBinding",
     "AIProvider",
     "AIToolExecution",
+    "AIToolPolicyBinding",
     "AITurn",
     "AccessPolicyEntry",
     "CommandStatistics",

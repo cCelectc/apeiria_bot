@@ -85,6 +85,27 @@ class AIToolPolicyPreviewItem(BaseModel):
     allow_capability_bridge: bool
 
 
+class AIToolPolicyBindingItem(BaseModel):
+    binding_id: str
+    scope_type: str
+    scope_id: str
+    allow_read_only_tools: bool
+    capability_mode: str
+
+
+class AIToolPolicyBindingCreateRequest(BaseModel):
+    scope_type: str = Field(min_length=1, max_length=32)
+    scope_id: str = Field(min_length=1, max_length=128)
+    allow_read_only_tools: bool = True
+    capability_mode: str = Field(default="off", min_length=1, max_length=32)
+
+
+class AIToolPolicyBindingUpdateRequest(BaseModel):
+    binding_id: str = Field(min_length=1, max_length=64)
+    allow_read_only_tools: bool
+    capability_mode: str = Field(min_length=1, max_length=32)
+
+
 class AICapabilityPreviewRequest(BaseModel):
     capability_name: str = Field(min_length=1, max_length=128)
     scope_type: str = Field(min_length=1, max_length=32)
@@ -100,11 +121,6 @@ class AICapabilityPreviewItem(BaseModel):
     reason: str
     allow_capability_bridge: bool
     execution_enabled: bool
-
-
-class AICapabilityItem(BaseModel):
-    capability_name: str
-    bound_tool_name: str
 
 
 class AICapabilityItem(BaseModel):

@@ -75,7 +75,7 @@ def _mount_routes() -> None:
     app = nonebot.get_app()
     from nonebot_plugin_localstore import get_plugin_data_dir
 
-    from apeiria.interfaces.http.routes import router
+    from apeiria.interfaces.http.routes.router import router
 
     app.include_router(router, prefix="/api")
 

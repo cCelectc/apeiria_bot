@@ -22,6 +22,7 @@ from apeiria.interfaces.http.routes.ai_route_support import (
     to_ai_relationship_state_item,
     to_ai_tool_execution_item,
     to_ai_tool_item,
+    to_ai_tool_policy_binding_item,
     to_ai_tool_policy_preview_item,
 )
 from apeiria.interfaces.http.schemas.ai_models import (
@@ -40,6 +41,9 @@ from apeiria.interfaces.http.schemas.ai_models import (
     AIRelationshipStateItem,
     AIToolExecutionItem,
     AIToolItem,
+    AIToolPolicyBindingCreateRequest,
+    AIToolPolicyBindingItem,
+    AIToolPolicyBindingUpdateRequest,
     AIToolPolicyPreviewItem,
     AIToolPolicyPreviewRequest,
 )
@@ -175,6 +179,54 @@ async def preview_ai_tool_policy(
         capability_mode=payload.capability_mode,
     )
     return to_ai_tool_policy_preview_item(policy)
+
+
+@router.get("/tools/policy-bindings", response_model=list[AIToolPolicyBindingItem])
+async def list_ai_tool_policy_bindings(
+    _: Annotated[Any, Depends(require_control_panel)],
+) -> list[AIToolPolicyBindingItem]:
+    rows = await ai_admin_service.list_tool_policy_bindings()
+    return [to_ai_tool_policy_binding_item(item) for item in rows]
+
+
+@router.post("/tools/policy-bindings", response_model=AIToolPolicyBindingItem)
+async def create_ai_tool_policy_binding(
+    payload: AIToolPolicyBindingCreateRequest,
+    _: Annotated[Any, Depends(require_control_panel)],
+) -> AIToolPolicyBindingItem:
+    item = await ai_admin_service.create_tool_policy_binding(
+        scope_type=payload.scope_type,
+        scope_id=payload.scope_id,
+        allow_read_only_tools=payload.allow_read_only_tools,
+        capability_mode=payload.capability_mode,
+    )
+    return to_ai_tool_policy_binding_item(item)
+
+
+@router.patch("/tools/policy-bindings", response_model=AIToolPolicyBindingItem | None)
+async def update_ai_tool_policy_binding(
+    payload: AIToolPolicyBindingUpdateRequest,
+    _: Annotated[Any, Depends(require_control_panel)],
+) -> AIToolPolicyBindingItem | None:
+    item = await ai_admin_service.update_tool_policy_binding(
+        binding_id=payload.binding_id,
+        allow_read_only_tools=payload.allow_read_only_tools,
+        capability_mode=payload.capability_mode,
+    )
+    if item is None:
+        return None
+    return to_ai_tool_policy_binding_item(item)
+
+
+@router.delete("/tools/policy-bindings")
+async def delete_ai_tool_policy_binding(
+    _: Annotated[Any, Depends(require_control_panel)],
+    binding_id: Annotated[str, Query(min_length=1)],
+) -> dict[str, bool]:
+    deleted = await ai_admin_service.delete_tool_policy_binding(
+        binding_id=binding_id,
+    )
+    return {"deleted": deleted}
 
 
 @router.post("/tools/capability-preview", response_model=AICapabilityPreviewItem)

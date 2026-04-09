@@ -29,12 +29,11 @@ from apeiria.app.ai.providers.service import ai_provider_service
 from apeiria.app.ai.relationship.scoring import project_emotion
 from apeiria.app.ai.relationship.service import ai_relationship_service
 from apeiria.app.ai.relationship.signals import derive_relationship_delta
-from apeiria.app.ai.tools.policy import summarize_tool_policy
 from apeiria.app.ai.tools.resolver import (
     AIToolSceneContext,
     resolve_default_tool_policy,
 )
-from apeiria.app.ai.tools.service import ai_tool_service
+from apeiria.app.ai.tools.runtime import AIToolRuntimeRequest, ai_tool_runtime
 
 if TYPE_CHECKING:
     from nonebot.adapters import Bot, Event
@@ -44,12 +43,7 @@ if TYPE_CHECKING:
     from apeiria.app.ai.memory.models import AIMemoryDefinition
     from apeiria.app.ai.models.selection import AISelectedModel
     from apeiria.app.ai.relationship.models import AIRelationshipState
-    from apeiria.app.ai.tools.models import (
-        AIToolObservationRequest,
-        AIToolPolicy,
-        AIToolSpec,
-        AIToolTurnCreateInput,
-    )
+    from apeiria.app.ai.tools.models import AIToolPolicy, AIToolTurnCreateInput
 
 
 def _is_private_like_event(event: Event, user_id: str) -> bool:
@@ -212,17 +206,6 @@ def _format_relationship_context(
     )
 
 
-def _build_tool_policy_context(
-    policy: "AIToolPolicy",
-    *,
-    available_tools: list["AIToolSpec"],
-) -> str:
-    return summarize_tool_policy(
-        available_tools,
-        policy,
-    )
-
-
 def _resolve_tool_policy(
     identity: AIConversationIdentity,
     *,
@@ -323,23 +306,6 @@ async def _update_relationship_state(
     )
 
 
-async def _run_tool_observations(
-    session: AsyncSession,
-    context: AIToolObservationContext,
-) -> tuple[str, tuple[str, ...], tuple["AIToolTurnCreateInput", ...]]:
-    all_tools = ai_tool_service.registry.list_tools()
-    observations = await ai_tool_service.observe_read_only_tools(
-        session,
-        _build_tool_observation_request(context),
-    )
-
-    return (
-        _build_tool_policy_context(context.policy, available_tools=all_tools),
-        tuple(observation.summary for observation in observations),
-        tuple(ai_tool_service.build_tool_turns(observations)),
-    )
-
-
 async def _append_tool_observation_turns(
     session: AsyncSession,
     *,
@@ -360,25 +326,6 @@ async def _append_tool_observation_turns(
                 },
             ),
         )
-
-
-def _build_tool_observation_request(
-    context: AIToolObservationContext,
-) -> "AIToolObservationRequest":
-    from apeiria.app.ai.tools.models import AIToolObservationRequest
-
-    return AIToolObservationRequest(
-        conversation_id=context.conversation_id,
-        message_text=context.message_text,
-        policy=context.policy,
-        recalled_memory_ids=tuple(
-            memory.memory_id for memory in context.recalled_memories
-        ),
-        recalled_memory_contents=tuple(
-            memory.content for memory in context.recalled_memories
-        ),
-        relationship_context=context.relationship_context,
-    )
 
 
 def _resolve_model_name(selected: AISelectedModel) -> str | None:
@@ -454,13 +401,9 @@ class AIOrchestrationService:
                 session,
                 target=relationship_target,
             )
-            (
-                tool_policy_context,
-                tool_results,
-                tool_turns,
-            ) = await _run_tool_observations(
+            tool_runtime = await ai_tool_runtime.run_for_message(
                 session,
-                AIToolObservationContext(
+                AIToolRuntimeRequest(
                     conversation_id=identity.conversation_id,
                     message_text=message_text,
                     policy=tool_policy,
@@ -471,7 +414,7 @@ class AIOrchestrationService:
             await _append_tool_observation_turns(
                 session,
                 identity=identity,
-                tool_turns=tool_turns,
+                tool_turns=tool_runtime.turns,
             )
             selected = await ai_model_service.select_model(
                 session,
@@ -503,8 +446,8 @@ class AIOrchestrationService:
                                 AIReplyPromptContext(
                                     persona=persona,
                                     relationship=relationship_context,
-                                    tool_policy=tool_policy_context,
-                                    tool_results=tool_results,
+                                    tool_policy=tool_runtime.policy_text,
+                                    tool_results=tool_runtime.result_lines,
                                     memories=recalled_memories,
                                     turns=turns,
                                 )

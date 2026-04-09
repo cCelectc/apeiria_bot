@@ -13,7 +13,12 @@ from apeiria.app.ai.models.service import ai_model_service
 from apeiria.app.ai.persona.service import ai_persona_service
 from apeiria.app.ai.providers.service import ai_provider_service
 from apeiria.app.ai.relationship.service import ai_relationship_service
+from apeiria.app.ai.tools.bindings import AIToolPolicyBindingSpec
 from apeiria.app.ai.tools.policy import evaluate_tool_policy
+from apeiria.app.ai.tools.policy_binding_service import (
+    AIToolPolicyBindingCreateInput,
+    ai_tool_policy_binding_service,
+)
 from apeiria.app.ai.tools.resolver import (
     AIToolSceneContext,
     AIToolScenePolicyProfile,
@@ -32,9 +37,11 @@ if TYPE_CHECKING:
     )
     from apeiria.app.ai.providers.models import AIProviderDefinition
     from apeiria.app.ai.relationship.models import AIRelationshipState
-    from apeiria.app.ai.tools.models import (
+    from apeiria.app.ai.tools.admin_models import (
         AICapabilityDefinition,
         AICapabilityPreview,
+    )
+    from apeiria.app.ai.tools.models import (
         AIToolExecutionView,
         AIToolPolicy,
         AIToolSpec,
@@ -157,7 +164,7 @@ class AIAdminService:
         return ai_tool_service.list_allowed_tools(policy)
 
     def list_capabilities(self) -> list["AICapabilityDefinition"]:
-        from apeiria.app.ai.tools.models import AICapabilityDefinition
+        from apeiria.app.ai.tools.admin_models import AICapabilityDefinition
 
         return [
             AICapabilityDefinition(
@@ -166,6 +173,76 @@ class AIAdminService:
             )
             for name in ai_tool_service.capability_bridge.list_capabilities()
         ]
+
+    async def list_tool_policy_bindings(self) -> list[AIToolPolicyBindingSpec]:
+        async with get_session() as session:
+            return await ai_tool_policy_binding_service.list_bindings(session)
+
+    async def create_tool_policy_binding(
+        self,
+        *,
+        scope_type: str,
+        scope_id: str,
+        allow_read_only_tools: bool,
+        capability_mode: str,
+    ) -> AIToolPolicyBindingSpec:
+        async with get_session() as session:
+            row = await ai_tool_policy_binding_service.create_binding(
+                session,
+                AIToolPolicyBindingCreateInput(
+                    scope_type=scope_type,
+                    scope_id=scope_id,
+                    allow_read_only_tools=allow_read_only_tools,
+                    capability_mode=capability_mode,  # type: ignore[arg-type]
+                ),
+            )
+            await session.commit()
+            return AIToolPolicyBindingSpec(
+                binding_id=row.binding_id,
+                scope_type=row.scope_type,
+                scope_id=row.scope_id,
+                allow_read_only_tools=row.allow_read_only_tools,
+                capability_mode=row.capability_mode,  # type: ignore[arg-type]
+            )
+
+    async def update_tool_policy_binding(
+        self,
+        *,
+        binding_id: str,
+        allow_read_only_tools: bool,
+        capability_mode: str,
+    ) -> AIToolPolicyBindingSpec | None:
+        async with get_session() as session:
+            row = await ai_tool_policy_binding_service.update_binding(
+                session,
+                binding_id=binding_id,
+                allow_read_only_tools=allow_read_only_tools,
+                capability_mode=capability_mode,  # type: ignore[arg-type]
+            )
+            if row is None:
+                return None
+            await session.commit()
+            return AIToolPolicyBindingSpec(
+                binding_id=row.binding_id,
+                scope_type=row.scope_type,
+                scope_id=row.scope_id,
+                allow_read_only_tools=row.allow_read_only_tools,
+                capability_mode=row.capability_mode,  # type: ignore[arg-type]
+            )
+
+    async def delete_tool_policy_binding(
+        self,
+        *,
+        binding_id: str,
+    ) -> bool:
+        async with get_session() as session:
+            deleted = await ai_tool_policy_binding_service.delete_binding(
+                session,
+                binding_id=binding_id,
+            )
+            if deleted:
+                await session.commit()
+            return deleted
 
     def preview_tool_policy(
         self,
@@ -195,7 +272,7 @@ class AIAdminService:
         allow_read_only_tools: bool = True,
         capability_mode: str = "off",
     ) -> "AICapabilityPreview":
-        from apeiria.app.ai.tools.models import AICapabilityPreview
+        from apeiria.app.ai.tools.admin_models import AICapabilityPreview
 
         policy = self.preview_tool_policy(
             scope_type=scope_type,
@@ -236,17 +313,6 @@ class AIAdminService:
             allow_capability_bridge=policy.allow_capability_bridge,
             execution_enabled=policy.execution_enabled,
         )
-
-    def list_capabilities(self) -> list["AICapabilityDefinition"]:
-        from apeiria.app.ai.tools.models import AICapabilityDefinition
-
-        return [
-            AICapabilityDefinition(
-                capability_name=capability_name,
-                bound_tool_name="plugin.capability",
-            )
-            for capability_name in ai_tool_service.capability_bridge.list_capabilities()
-        ]
 
     async def list_tool_executions(
         self,

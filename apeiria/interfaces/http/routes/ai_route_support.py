@@ -17,6 +17,7 @@ from apeiria.interfaces.http.schemas.ai_models import (
     AIRelationshipStateItem,
     AIToolExecutionItem,
     AIToolItem,
+    AIToolPolicyBindingItem,
     AIToolPolicyPreviewItem,
 )
 
@@ -33,9 +34,12 @@ if TYPE_CHECKING:
     )
     from apeiria.app.ai.providers.models import AIProviderDefinition
     from apeiria.app.ai.relationship.models import AIRelationshipState
-    from apeiria.app.ai.tools.models import (
+    from apeiria.app.ai.tools.admin_models import (
         AICapabilityDefinition,
         AICapabilityPreview,
+    )
+    from apeiria.app.ai.tools.bindings import AIToolPolicyBindingSpec
+    from apeiria.app.ai.tools.models import (
         AIToolExecutionView,
         AIToolPolicy,
         AIToolSpec,
@@ -168,6 +172,18 @@ def to_ai_tool_policy_preview_item(item: "AIToolPolicy") -> AIToolPolicyPreviewI
         denied_tool_names=sorted(item.denied_tool_names),
         allow_high_risk_tools=item.allow_high_risk_tools,
         allow_capability_bridge=item.allow_capability_bridge,
+    )
+
+
+def to_ai_tool_policy_binding_item(
+    item: "AIToolPolicyBindingSpec",
+) -> AIToolPolicyBindingItem:
+    return AIToolPolicyBindingItem(
+        binding_id=item.binding_id,
+        scope_type=item.scope_type,
+        scope_id=item.scope_id,
+        allow_read_only_tools=item.allow_read_only_tools,
+        capability_mode=item.capability_mode,
     )
 
 

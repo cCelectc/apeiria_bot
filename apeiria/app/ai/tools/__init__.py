@@ -1,15 +1,15 @@
 """Tool registry, policy, and capability bridge for the AI domain."""
 
+from .admin_models import AICapabilityDefinition, AICapabilityPreview
 from .bridge import (
     AINoneBotCapabilityBridge,
     CapabilityNotAllowedError,
     ToolPolicyDeniedError,
     invoke_capability_with_policy,
 )
+from .intent_builders import build_capability_intents
 from .models import (
-    AICapabilityDefinition,
     AICapabilityInvokeObservationOutput,
-    AICapabilityPreview,
     AIMemoryQueryObservationInput,
     AIMemoryQueryObservationOutput,
     AINoneBotCapabilityRequest,
@@ -64,6 +64,7 @@ __all__ = [
     "AIToolTurnCreateInput",
     "CapabilityNotAllowedError",
     "ToolPolicyDeniedError",
+    "build_capability_intents",
     "evaluate_tool_policy",
     "invoke_capability_with_policy",
     "plan_tool_intents_for_message",
