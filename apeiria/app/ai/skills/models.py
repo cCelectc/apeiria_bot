@@ -11,6 +11,7 @@ if TYPE_CHECKING:
 AIToolRiskLevel = Literal["low", "medium", "high"]
 AIToolIntentKind = Literal["observe_read_only", "invoke_capability"]
 AIToolCapabilityMode = Literal["off", "private_only", "direct_only"]
+AIToolExecutionStatus = Literal["success", "error", "timeout"]
 
 
 @dataclass(frozen=True)
@@ -84,6 +85,7 @@ class AIToolObservationRequest:
     recalled_memory_ids: tuple[str, ...]
     recalled_memory_contents: tuple[str, ...]
     relationship_context: str | None
+    execution_timeout_seconds: float | None = None
 
 
 @dataclass(frozen=True)
@@ -141,6 +143,7 @@ class AIToolObservationResult:
     summary: str
     input_payload: Any
     output_payload: Any
+    status: AIToolExecutionStatus = "success"
 
 
 @dataclass(frozen=True)

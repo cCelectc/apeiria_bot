@@ -124,6 +124,21 @@
                     {{ t('ai.noTraceIds') }}
                   </div>
                 </v-sheet>
+
+                <v-sheet class="surface-gradient-card pa-4" rounded="lg">
+                  <div class="text-subtitle-2 mb-2">{{ t('ai.toolExecutionSummary') }}</div>
+                  <div class="d-flex flex-wrap ga-2">
+                    <v-chip color="success" size="small" variant="tonal">
+                      {{ t('ai.toolStatusSuccess') }}: {{ toolExecutionStats.success }}
+                    </v-chip>
+                    <v-chip color="error" size="small" variant="tonal">
+                      {{ t('ai.toolStatusError') }}: {{ toolExecutionStats.error }}
+                    </v-chip>
+                    <v-chip color="warning" size="small" variant="tonal">
+                      {{ t('ai.toolStatusTimeout') }}: {{ toolExecutionStats.timeout }}
+                    </v-chip>
+                  </div>
+                </v-sheet>
               </v-col>
             </v-row>
 
@@ -148,7 +163,23 @@
               :headers="toolExecutionHeaders"
               :items="toolExecutions"
               :loading="loadingTurns"
-            />
+            >
+              <template #item.status="{ value }">
+                <v-chip
+                  :color="value === 'success' ? 'success' : value === 'timeout' ? 'warning' : 'error'"
+                  size="x-small"
+                  variant="tonal"
+                >
+                  {{ value }}
+                </v-chip>
+              </template>
+              <template #item.input_json="{ value }">
+                <span class="text-medium-emphasis">{{ summarizeJsonText(value) }}</span>
+              </template>
+              <template #item.output_json="{ value }">
+                <span class="text-medium-emphasis">{{ summarizeJsonText(value) }}</span>
+              </template>
+            </v-data-table>
           </v-card-text>
         </v-window-item>
 
@@ -552,8 +583,10 @@
     loadingTurns,
     loadingWorkbench,
     selectedConversation,
+    summarizeJsonText,
     summarizeRawPayload,
     toolExecutions,
+    toolExecutionStats,
     traceIds,
     turns,
     workbenchForm,
@@ -657,6 +690,8 @@
   const toolExecutionHeaders = computed(() => [
     { title: t('ai.toolName'), key: 'tool_name', sortable: false },
     { title: t('ai.toolStatus'), key: 'status', sortable: false },
+    { title: t('ai.toolInput'), key: 'input_json', sortable: false },
+    { title: t('ai.toolOutput'), key: 'output_json', sortable: false },
     { title: t('ai.createdAt'), key: 'created_at', sortable: false },
   ])
 

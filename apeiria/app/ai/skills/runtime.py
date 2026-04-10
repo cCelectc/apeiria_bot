@@ -57,6 +57,7 @@ class AIToolRuntime:
                     memory.content for memory in request.recalled_memories
                 ),
                 relationship_context=request.relationship_context,
+                execution_timeout_seconds=None,
             ),
         )
         return AIToolRuntimeResult(

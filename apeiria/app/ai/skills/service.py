@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 from dataclasses import asdict, dataclass, is_dataclass
 from datetime import timezone
@@ -19,8 +20,12 @@ from apeiria.app.ai.skills.debug import (
     AICapabilityDefinition,
     AICapabilityPreview,
 )
+from apeiria.app.ai.skills.execution import (
+    build_capability_error_result,
+    build_capability_success_result,
+    build_capability_timeout_result,
+)
 from apeiria.app.ai.skills.models import (
-    AICapabilityInvokeObservationOutput,
     AIMemoryQueryObservationInput,
     AIMemoryQueryObservationOutput,
     AINoneBotCapabilityRequest,
@@ -77,6 +82,8 @@ class AIToolExecutionCreateInput:
 
 class AISkillService:
     """Product-facing skill registry, policy, and execution service."""
+
+    DEFAULT_TOOL_TIMEOUT_SECONDS = 5.0
 
     def __init__(self) -> None:
         self.registry = AIToolRegistry()
@@ -207,24 +214,11 @@ class AISkillService:
                 intent.tool_name == "plugin.capability"
                 and isinstance(intent.input_payload, AINoneBotCapabilityRequest)
             ):
-                result = await self.invoke_capability(
-                    request=intent.input_payload,
-                    policy=request.policy,
+                observation = await self._execute_capability_intent(
+                    request=request,
+                    intent=intent,
                 )
-                observations.append(
-                    AIToolObservationResult(
-                        tool_name=intent.tool_name,
-                        summary=_format_capability_observation(
-                            intent.input_payload.capability_name,
-                            result,
-                        ),
-                        input_payload=intent.input_payload,
-                        output_payload=AICapabilityInvokeObservationOutput(
-                            capability_name=intent.input_payload.capability_name,
-                            result=result,
-                        ),
-                    )
-                )
+                observations.append(observation)
 
         for observation in observations:
             await self.record_execution(
@@ -232,7 +226,7 @@ class AISkillService:
                 AIToolExecutionCreateInput(
                     conversation_id=request.conversation_id,
                     tool_name=observation.tool_name,
-                    status="success",
+                    status=observation.status,
                     input_payload=observation.input_payload,
                     output_payload=observation.output_payload,
                 ),
@@ -250,12 +244,49 @@ class AISkillService:
                 raw_payload={
                     "source": "read_only_tool_observation",
                     "tool_name": observation.tool_name,
+                    "status": observation.status,
                     "input": _to_jsonable_payload(observation.input_payload),
                     "output": _to_jsonable_payload(observation.output_payload),
                 },
             )
             for observation in observations
         ]
+
+    async def _execute_capability_intent(
+        self,
+        *,
+        request: AIToolObservationRequest,
+        intent: AIToolIntent,
+    ) -> AIToolObservationResult:
+        capability_request = intent.input_payload
+        assert isinstance(capability_request, AINoneBotCapabilityRequest)
+        timeout_seconds = (
+            request.execution_timeout_seconds or self.DEFAULT_TOOL_TIMEOUT_SECONDS
+        )
+
+        try:
+            result = await asyncio.wait_for(
+                self.invoke_capability(
+                    request=capability_request,
+                    policy=request.policy,
+                ),
+                timeout=timeout_seconds,
+            )
+        except TimeoutError:
+            return build_capability_timeout_result(
+                capability_request,
+                timeout_seconds,
+            )
+        except Exception as exc:  # noqa: BLE001
+            return build_capability_error_result(
+                capability_request,
+                str(exc),
+            )
+
+        return build_capability_success_result(
+            capability_request,
+            result,
+        )
 
     async def invoke_capability(
         self,
@@ -389,19 +420,6 @@ def _format_memory_observation(
 ) -> str:
     memory_text = "; ".join(recalled_memory_contents[:3])
     return f"- [memory.query] Retrieved relevant memories: {memory_text}"
-
-
-def _format_capability_observation(
-    capability_name: str,
-    result: Any,
-) -> str:
-    if isinstance(result, dict):
-        summary = ", ".join(
-            f"{key}={value}"
-            for key, value in sorted(result.items())
-        )
-        return f"- [plugin.capability] {capability_name}: {summary}"
-    return f"- [plugin.capability] {capability_name}: {result}"
 
 
 def _to_jsonable_payload(payload: Any) -> Any:

@@ -29,6 +29,12 @@ export function useAIWorkbenchTab (t: (key: string, params?: Record<string, unkn
     return [...values]
   })
 
+  const toolExecutionStats = computed(() => ({
+    success: toolExecutions.value.filter(item => item.status === 'success').length,
+    error: toolExecutions.value.filter(item => item.status === 'error').length,
+    timeout: toolExecutions.value.filter(item => item.status === 'timeout').length,
+  }))
+
   async function loadWorkbenchData () {
     loadingWorkbench.value = true
     try {
@@ -81,6 +87,24 @@ export function useAIWorkbenchTab (t: (key: string, params?: Record<string, unkn
     return entries.join(' · ') || t('common.none')
   }
 
+  function summarizeJsonText (value: string | null) {
+    if (!value) {
+      return t('common.none')
+    }
+    try {
+      const parsed = JSON.parse(value) as Record<string, unknown> | unknown[]
+      if (Array.isArray(parsed)) {
+        return parsed.slice(0, 3).map(item => JSON.stringify(item)).join(' · ')
+      }
+      return Object.entries(parsed)
+        .slice(0, 4)
+        .map(([key, item]) => `${key}: ${typeof item === 'object' ? JSON.stringify(item) : String(item)}`)
+        .join(' · ')
+    } catch {
+      return value
+    }
+  }
+
   return {
     conversations,
     loadConversationDetails,
@@ -90,7 +114,9 @@ export function useAIWorkbenchTab (t: (key: string, params?: Record<string, unkn
     selectedConversation,
     selectedConversationId,
     summarizeRawPayload,
+    summarizeJsonText,
     toolExecutions,
+    toolExecutionStats,
     traceIds,
     turns,
     workbenchForm,
