@@ -34,6 +34,34 @@ class AIMemoryItem(BaseModel):
     created_at: str
 
 
+class AIConversationItem(BaseModel):
+    conversation_id: str
+    platform: str
+    bot_id: str
+    scope_type: str
+    scope_id: str
+    subject_user_id: str | None = None
+    short_summary: str | None = None
+    created_at: str
+    updated_at: str
+    last_active_at: str
+
+
+class AIConversationTurnItem(BaseModel):
+    turn_id: str
+    conversation_id: str
+    sender_type: str
+    sender_id: str
+    content_text: str
+    created_at: str
+    raw_payload: dict[str, object] | None = None
+    trace_id: str | None = None
+    provider_id: str | None = None
+    model_name: str | None = None
+    recalled_memory_count: int | None = None
+    tool_observation_count: int | None = None
+
+
 class AIRelationshipStateItem(BaseModel):
     affinity_id: str
     platform: str

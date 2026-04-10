@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 
 from nonebot_plugin_orm import get_session
 
+from apeiria.app.ai.conversation.service import ai_conversation_service
 from apeiria.app.ai.memory.service import AIMemoryQuery, ai_memory_service
 from apeiria.app.ai.model.service import ai_model_facade
 from apeiria.app.ai.persona.service import ai_persona_service
@@ -21,6 +22,10 @@ from apeiria.app.ai.skills.policy import (
 from apeiria.app.ai.skills.service import ai_skill_service
 
 if TYPE_CHECKING:
+    from apeiria.app.ai.conversation.models import (
+        AIConversationAdminView,
+        AIConversationTurnDetailView,
+    )
     from apeiria.app.ai.memory.models import AIMemoryDefinition
     from apeiria.app.ai.model import (
         AIModelBindingSpec,
@@ -105,6 +110,30 @@ class AIAdminService:
                 subject_id=subject_id,
             )
             return memories[:limit]
+
+    async def list_recent_conversations(
+        self,
+        *,
+        limit: int = 20,
+    ) -> list["AIConversationAdminView"]:
+        async with get_session() as session:
+            return await ai_conversation_service.list_recent_conversations(
+                session,
+                limit=limit,
+            )
+
+    async def list_conversation_turns(
+        self,
+        *,
+        conversation_id: str,
+        limit: int = 50,
+    ) -> list["AIConversationTurnDetailView"]:
+        async with get_session() as session:
+            return await ai_conversation_service.list_turns_for_conversation(
+                session,
+                conversation_id=conversation_id,
+                limit=limit,
+            )
 
     async def get_relationship_state(
         self,

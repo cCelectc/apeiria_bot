@@ -7,11 +7,13 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Depends, Query
 
 from apeiria.app.ai.admin.service import ai_admin_service
-from apeiria.app.ai.skills.policy import AIToolPolicy
+from apeiria.app.ai.skills.models import AIToolPolicy
 from apeiria.interfaces.http.auth import require_control_panel
 from apeiria.interfaces.http.routes.ai_route_support import (
     to_ai_capability_item,
     to_ai_capability_preview_item,
+    to_ai_conversation_item,
+    to_ai_conversation_turn_item,
     to_ai_memory_item,
     to_ai_model_binding_item,
     to_ai_model_profile_item,
@@ -30,6 +32,8 @@ from apeiria.interfaces.http.schemas.ai_models import (
     AICapabilityItem,
     AICapabilityPreviewItem,
     AICapabilityPreviewRequest,
+    AIConversationItem,
+    AIConversationTurnItem,
     AIMemoryItem,
     AIModelBindingItem,
     AIModelProfileItem,
@@ -120,6 +124,28 @@ async def list_ai_memories(
         limit=limit,
     )
     return [to_ai_memory_item(item) for item in memories]
+
+
+@router.get("/conversations", response_model=list[AIConversationItem])
+async def list_ai_conversations(
+    _: Annotated[Any, Depends(require_control_panel)],
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
+) -> list[AIConversationItem]:
+    conversations = await ai_admin_service.list_recent_conversations(limit=limit)
+    return [to_ai_conversation_item(item) for item in conversations]
+
+
+@router.get("/conversations/turns", response_model=list[AIConversationTurnItem])
+async def list_ai_conversation_turns(
+    _: Annotated[Any, Depends(require_control_panel)],
+    conversation_id: Annotated[str, Query(min_length=1)],
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
+) -> list[AIConversationTurnItem]:
+    turns = await ai_admin_service.list_conversation_turns(
+        conversation_id=conversation_id,
+        limit=limit,
+    )
+    return [to_ai_conversation_turn_item(item) for item in turns]
 
 
 @router.get("/relationships", response_model=AIRelationshipStateItem)

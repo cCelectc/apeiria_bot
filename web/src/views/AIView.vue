@@ -34,6 +34,7 @@
 
     <v-card class="page-panel">
       <v-tabs v-model="tab" color="primary">
+        <v-tab value="workbench">{{ t('ai.workbenchTab') }}</v-tab>
         <v-tab value="tools">{{ t('ai.toolsTab') }}</v-tab>
         <v-tab value="personas">{{ t('ai.personasTab') }}</v-tab>
         <v-tab value="memory">{{ t('ai.memoryTab') }}</v-tab>
@@ -42,6 +43,114 @@
       </v-tabs>
 
       <v-window v-model="tab">
+        <v-window-item value="workbench">
+          <v-card-text class="d-flex flex-column ga-5">
+            <div class="ai-binding-form">
+              <v-text-field
+                v-model.number="workbenchForm.limit"
+                density="comfortable"
+                hide-details
+                :label="t('ai.workbenchConversationLimit')"
+                min="1"
+                type="number"
+              />
+              <v-text-field
+                v-model.number="workbenchForm.turnLimit"
+                density="comfortable"
+                hide-details
+                :label="t('ai.workbenchTurnLimit')"
+                min="1"
+                type="number"
+              />
+            </div>
+
+            <div class="d-flex justify-end">
+              <v-btn color="primary" :loading="loadingWorkbench" @click="loadWorkbenchData">
+                {{ t('ai.loadWorkbench') }}
+              </v-btn>
+            </div>
+
+            <v-row>
+              <v-col cols="12" lg="5">
+                <v-data-table
+                  class="page-table"
+                  density="compact"
+                  :headers="conversationHeaders"
+                  :items="conversations"
+                  :loading="loadingWorkbench"
+                >
+                  <template #item.conversation_id="{ item }">
+                    <v-btn
+                      color="primary"
+                      size="small"
+                      variant="text"
+                      @click="loadConversationDetails(item.conversation_id)"
+                    >
+                      {{ item.conversation_id.slice(0, 16) }}...
+                    </v-btn>
+                  </template>
+                </v-data-table>
+              </v-col>
+
+              <v-col cols="12" lg="7">
+                <v-sheet class="surface-gradient-card pa-4 mb-4" rounded="lg">
+                  <div class="text-subtitle-2 mb-2">{{ t('ai.workbenchSelectedConversation') }}</div>
+                  <div v-if="selectedConversation" class="d-flex flex-column ga-2 text-body-2">
+                    <div>{{ t('ai.conversationId') }}: {{ selectedConversation.conversation_id }}</div>
+                    <div>{{ t('ai.scopeType') }}: {{ selectedConversation.scope_type }}</div>
+                    <div>{{ t('ai.scopeId') }}: {{ selectedConversation.scope_id }}</div>
+                    <div>{{ t('ai.lastActiveAt') }}: {{ selectedConversation.last_active_at }}</div>
+                  </div>
+                  <div v-else class="text-body-2 text-medium-emphasis">
+                    {{ t('ai.noConversationSelected') }}
+                  </div>
+                </v-sheet>
+
+                <v-sheet class="surface-gradient-card pa-4 mb-4" rounded="lg">
+                  <div class="text-subtitle-2 mb-2">{{ t('ai.traceIds') }}</div>
+                  <div v-if="traceIds.length > 0" class="d-flex flex-wrap ga-2">
+                    <v-chip
+                      v-for="traceId in traceIds"
+                      :key="traceId"
+                      color="primary"
+                      size="small"
+                      variant="tonal"
+                    >
+                      {{ traceId }}
+                    </v-chip>
+                  </div>
+                  <div v-else class="text-body-2 text-medium-emphasis">
+                    {{ t('ai.noTraceIds') }}
+                  </div>
+                </v-sheet>
+              </v-col>
+            </v-row>
+
+            <v-data-table
+              class="page-table"
+              density="compact"
+              :headers="turnHeaders"
+              :items="turns"
+              :loading="loadingTurns"
+            >
+              <template #item.content_text="{ value }">
+                <span class="ai-turn-content">{{ value }}</span>
+              </template>
+              <template #item.raw_payload="{ item }">
+                <span class="text-medium-emphasis">{{ summarizeRawPayload(item.raw_payload) }}</span>
+              </template>
+            </v-data-table>
+
+            <v-data-table
+              class="page-table"
+              density="compact"
+              :headers="toolExecutionHeaders"
+              :items="toolExecutions"
+              :loading="loadingTurns"
+            />
+          </v-card-text>
+        </v-window-item>
+
         <v-window-item value="tools">
           <v-card-text class="d-flex flex-column ga-5">
             <v-row>
@@ -427,12 +536,27 @@
   import { useAIPersonasTab } from '@/composables/useAIPersonasTab'
   import { useAIRelationshipTab } from '@/composables/useAIRelationshipTab'
   import { useAIToolsTab } from '@/composables/useAIToolsTab'
+  import { useAIWorkbenchTab } from '@/composables/useAIWorkbenchTab'
 
   const { t } = useI18n()
 
   const loading = ref(false)
   const errorMessage = ref('')
-  const tab = ref('tools')
+  const tab = ref('workbench')
+
+  const {
+    conversations,
+    loadConversationDetails,
+    loadWorkbenchData,
+    loadingTurns,
+    loadingWorkbench,
+    selectedConversation,
+    summarizeRawPayload,
+    toolExecutions,
+    traceIds,
+    turns,
+    workbenchForm,
+  } = useAIWorkbenchTab(t)
 
   const {
     bindingForm,
@@ -513,6 +637,27 @@
     { title: t('ai.skillReadOnly'), key: 'read_only', sortable: false },
   ])
 
+  const conversationHeaders = computed(() => [
+    { title: t('ai.conversationId'), key: 'conversation_id', sortable: false },
+    { title: t('ai.scopeType'), key: 'scope_type', sortable: false },
+    { title: t('ai.scopeId'), key: 'scope_id', sortable: false },
+    { title: t('ai.lastActiveAt'), key: 'last_active_at', sortable: false },
+  ])
+
+  const turnHeaders = computed(() => [
+    { title: t('ai.turnSender'), key: 'sender_type', sortable: false },
+    { title: t('ai.turnContent'), key: 'content_text', sortable: false },
+    { title: t('ai.traceId'), key: 'trace_id', sortable: false },
+    { title: t('ai.modelName'), key: 'model_name', sortable: false },
+    { title: t('ai.turnRawPayload'), key: 'raw_payload', sortable: false },
+  ])
+
+  const toolExecutionHeaders = computed(() => [
+    { title: t('ai.toolName'), key: 'tool_name', sortable: false },
+    { title: t('ai.toolStatus'), key: 'status', sortable: false },
+    { title: t('ai.createdAt'), key: 'created_at', sortable: false },
+  ])
+
   const personaHeaders = computed(() => [
     { title: t('ai.personaName'), key: 'name', sortable: false },
     { title: t('ai.personaDescription'), key: 'description', sortable: false },
@@ -562,6 +707,7 @@
     errorMessage.value = ''
     try {
       await Promise.all([
+        loadWorkbenchData(),
         loadToolsData(),
         loadPersonasData(),
         loadModelsData(),

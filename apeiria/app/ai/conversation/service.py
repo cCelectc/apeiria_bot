@@ -16,7 +16,9 @@ from apeiria.app.ai.conversation.identity import (
 )
 from apeiria.app.ai.conversation.models import (
     AIContextTurnView,
+    AIConversationAdminView,
     AIConversationIdentity,
+    AIConversationTurnDetailView,
     SenderType,
 )
 from apeiria.infra.db.models import AIConversation, AITurn
@@ -25,6 +27,7 @@ if TYPE_CHECKING:
     from nonebot.adapters import Bot, Event
     from sqlalchemy.ext.asyncio import AsyncSession
 
+    from apeiria.app.ai.conversation.models import ScopeType
 
 def _utcnow_naive() -> datetime:
     return datetime.now(timezone.utc).replace(tzinfo=None)
@@ -42,6 +45,16 @@ class AITurnCreate:
 
 class AIConversationService:
     """Conversation service for conversation upsert and turn append."""
+
+    @staticmethod
+    def _deserialize_raw_payload(raw_payload_json: str | None) -> dict[str, Any] | None:
+        if not raw_payload_json:
+            return None
+        try:
+            payload = json.loads(raw_payload_json)
+        except json.JSONDecodeError:
+            return None
+        return payload if isinstance(payload, dict) else None
 
     async def ensure_conversation(
         self,
@@ -156,6 +169,95 @@ class AIConversationService:
             for turn in result.scalars().all()
         ]
         return trim_turn_window(turns, max_turns=max_turns)
+
+    async def list_recent_conversations(
+        self,
+        session: "AsyncSession",
+        *,
+        limit: int,
+    ) -> list[AIConversationAdminView]:
+        result = await session.execute(
+            select(AIConversation)
+            .order_by(AIConversation.last_active_at.desc(), AIConversation.id.desc())
+            .limit(limit)
+        )
+        return [
+            AIConversationAdminView(
+                conversation_id=row.conversation_id,
+                platform=row.platform,
+                bot_id=row.bot_id,
+                scope_type=cast("ScopeType", row.scope_type),
+                scope_id=row.scope_id,
+                subject_user_id=row.subject_user_id,
+                short_summary=row.short_summary,
+                created_at=row.created_at.replace(tzinfo=timezone.utc)
+                if row.created_at.tzinfo is None
+                else row.created_at,
+                updated_at=row.updated_at.replace(tzinfo=timezone.utc)
+                if row.updated_at.tzinfo is None
+                else row.updated_at,
+                last_active_at=row.last_active_at.replace(tzinfo=timezone.utc)
+                if row.last_active_at.tzinfo is None
+                else row.last_active_at,
+            )
+            for row in result.scalars().all()
+        ]
+
+    async def list_turns_for_conversation(
+        self,
+        session: "AsyncSession",
+        *,
+        conversation_id: str,
+        limit: int,
+    ) -> list[AIConversationTurnDetailView]:
+        result = await session.execute(
+            select(AITurn, AIConversation.conversation_id)
+            .join(AIConversation, AITurn.conversation_pk == AIConversation.id)
+            .where(AIConversation.conversation_id == conversation_id)
+            .order_by(AITurn.created_at.desc(), AITurn.id.desc())
+            .limit(limit)
+        )
+        rows = result.all()
+        turns = [
+            self._to_turn_detail_view(turn=turn, conversation_id=conversation_id_value)
+            for turn, conversation_id_value in rows
+        ]
+        turns.reverse()
+        return turns
+
+    def _to_turn_detail_view(
+        self,
+        *,
+        turn: AITurn,
+        conversation_id: str,
+    ) -> AIConversationTurnDetailView:
+        raw_payload = self._deserialize_raw_payload(turn.raw_payload_json)
+        return AIConversationTurnDetailView(
+            turn_id=turn.turn_id,
+            conversation_id=conversation_id,
+            sender_type=cast("SenderType", turn.sender_type),
+            sender_id=turn.sender_id,
+            content_text=turn.content_text,
+            created_at=turn.created_at.replace(tzinfo=timezone.utc)
+            if turn.created_at.tzinfo is None
+            else turn.created_at,
+            raw_payload=raw_payload,
+            trace_id=raw_payload.get("trace_id") if raw_payload else None,
+            provider_id=raw_payload.get("provider_id") if raw_payload else None,
+            model_name=raw_payload.get("model_name") if raw_payload else None,
+            recalled_memory_count=(
+                int(raw_payload["recalled_memory_count"])
+                if raw_payload
+                and raw_payload.get("recalled_memory_count") is not None
+                else None
+            ),
+            tool_observation_count=(
+                int(raw_payload["tool_observation_count"])
+                if raw_payload
+                and raw_payload.get("tool_observation_count") is not None
+                else None
+            ),
+        )
 
 
 ai_conversation_service = AIConversationService()

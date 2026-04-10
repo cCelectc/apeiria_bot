@@ -7,6 +7,8 @@ from typing import TYPE_CHECKING
 from apeiria.interfaces.http.schemas.ai_models import (
     AICapabilityItem,
     AICapabilityPreviewItem,
+    AIConversationItem,
+    AIConversationTurnItem,
     AIMemoryItem,
     AIModelBindingItem,
     AIModelProfileItem,
@@ -23,6 +25,10 @@ from apeiria.interfaces.http.schemas.ai_models import (
 )
 
 if TYPE_CHECKING:
+    from apeiria.app.ai.conversation.models import (
+        AIConversationAdminView,
+        AIConversationTurnDetailView,
+    )
     from apeiria.app.ai.memory.models import AIMemoryDefinition
     from apeiria.app.ai.model import (
         AIModelBindingSpec,
@@ -41,11 +47,13 @@ if TYPE_CHECKING:
         AICapabilityDefinition,
         AICapabilityPreview,
     )
-    from apeiria.app.ai.skills.policy import (
+    from apeiria.app.ai.skills.models import (
         AIToolExecutionView,
         AIToolPolicy,
-        AIToolPolicyBindingSpec,
         AIToolSpec,
+    )
+    from apeiria.app.ai.skills.policy import (
+        AIToolPolicyBindingSpec,
     )
 
 
@@ -83,6 +91,40 @@ def to_ai_memory_item(item: "AIMemoryDefinition") -> AIMemoryItem:
             item.last_recalled_at.isoformat() if item.last_recalled_at else None
         ),
         created_at=item.created_at.isoformat(),
+    )
+
+
+def to_ai_conversation_item(item: "AIConversationAdminView") -> AIConversationItem:
+    return AIConversationItem(
+        conversation_id=item.conversation_id,
+        platform=item.platform,
+        bot_id=item.bot_id,
+        scope_type=item.scope_type,
+        scope_id=item.scope_id,
+        subject_user_id=item.subject_user_id,
+        short_summary=item.short_summary,
+        created_at=item.created_at.isoformat(),
+        updated_at=item.updated_at.isoformat(),
+        last_active_at=item.last_active_at.isoformat(),
+    )
+
+
+def to_ai_conversation_turn_item(
+    item: "AIConversationTurnDetailView",
+) -> AIConversationTurnItem:
+    return AIConversationTurnItem(
+        turn_id=item.turn_id,
+        conversation_id=item.conversation_id,
+        sender_type=item.sender_type,
+        sender_id=item.sender_id,
+        content_text=item.content_text,
+        created_at=item.created_at.isoformat(),
+        raw_payload=item.raw_payload,
+        trace_id=item.trace_id,
+        provider_id=item.provider_id,
+        model_name=item.model_name,
+        recalled_memory_count=item.recalled_memory_count,
+        tool_observation_count=item.tool_observation_count,
     )
 
 

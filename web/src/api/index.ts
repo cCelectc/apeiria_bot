@@ -351,6 +351,16 @@ export interface AIToolPolicyBindingItem {
   capability_mode: string
 }
 
+export interface AIToolExecutionItem {
+  execution_id: string
+  conversation_id: string
+  tool_name: string
+  status: string
+  input_json: string | null
+  output_json: string | null
+  created_at: string
+}
+
 export interface AIToolPolicyPreviewItem {
   execution_enabled: boolean
   allowed_tool_names: string[] | null
@@ -400,6 +410,34 @@ export interface AIMemoryItem {
   confidence: number
   last_recalled_at: string | null
   created_at: string
+}
+
+export interface AIConversationItem {
+  conversation_id: string
+  platform: string
+  bot_id: string
+  scope_type: string
+  scope_id: string
+  subject_user_id: string | null
+  short_summary: string | null
+  created_at: string
+  updated_at: string
+  last_active_at: string
+}
+
+export interface AIConversationTurnItem {
+  turn_id: string
+  conversation_id: string
+  sender_type: string
+  sender_id: string
+  content_text: string
+  created_at: string
+  raw_payload: Record<string, unknown> | null
+  trace_id: string | null
+  provider_id: string | null
+  model_name: string | null
+  recalled_memory_count: number | null
+  tool_observation_count: number | null
 }
 
 export interface AIRelationshipStateItem {
@@ -843,6 +881,19 @@ export function getAIMemories (params: {
   return client.get<AIMemoryItem[]>('/ai/memories', { params })
 }
 
+export function getAIConversations (params?: {
+  limit?: number
+}) {
+  return client.get<AIConversationItem[]>('/ai/conversations', { params })
+}
+
+export function getAIConversationTurns (params: {
+  conversation_id: string
+  limit?: number
+}) {
+  return client.get<AIConversationTurnItem[]>('/ai/conversations/turns', { params })
+}
+
 export function getAIRelationshipState (params: {
   platform: string
   user_id: string
@@ -862,6 +913,12 @@ export function updateAIRelationshipScore (payload: {
 
 export function getAICapabilities () {
   return client.get<AICapabilityItem[]>('/ai/tools/capabilities')
+}
+
+export function getAIToolExecutions (params: {
+  conversation_id: string
+}) {
+  return client.get<AIToolExecutionItem[]>('/ai/tools/executions', { params })
 }
 
 export function getAIToolPolicyBindings () {
