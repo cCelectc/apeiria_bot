@@ -6,8 +6,8 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Query
 
-from apeiria.app.ai.admin_service import ai_admin_service
-from apeiria.app.ai.tools.models import AIToolPolicy
+from apeiria.app.ai.admin.service import ai_admin_service
+from apeiria.app.ai.skills.policy import AIToolPolicy
 from apeiria.interfaces.http.auth import require_control_panel
 from apeiria.interfaces.http.routes.ai_route_support import (
     to_ai_capability_item,
@@ -20,6 +20,7 @@ from apeiria.interfaces.http.routes.ai_route_support import (
     to_ai_provider_item,
     to_ai_provider_model_item,
     to_ai_relationship_state_item,
+    to_ai_skill_item,
     to_ai_tool_execution_item,
     to_ai_tool_item,
     to_ai_tool_policy_binding_item,
@@ -39,6 +40,7 @@ from apeiria.interfaces.http.schemas.ai_models import (
     AIProviderModelListRequest,
     AIRelationshipScoreUpdateRequest,
     AIRelationshipStateItem,
+    AISkillItem,
     AIToolExecutionItem,
     AIToolItem,
     AIToolPolicyBindingCreateRequest,
@@ -167,11 +169,47 @@ async def list_ai_tools(
     return [to_ai_tool_item(item) for item in tools]
 
 
+@router.get("/skills", response_model=list[AISkillItem])
+async def list_ai_skills(
+    _: Annotated[Any, Depends(require_control_panel)],
+    *,
+    allowed_only: Annotated[bool, Query()] = False,
+) -> list[AISkillItem]:
+    """List product-facing AI skills."""
+
+    policy = (
+        AIToolPolicy(
+            allow_high_risk_tools=False,
+            allow_capability_bridge=False,
+        )
+        if allowed_only
+        else None
+    )
+    skills = ai_admin_service.list_skills(policy=policy)
+    return [to_ai_skill_item(item) for item in skills]
+
+
 @router.post("/tools/policy-preview", response_model=AIToolPolicyPreviewItem)
 async def preview_ai_tool_policy(
     payload: AIToolPolicyPreviewRequest,
     _: Annotated[Any, Depends(require_control_panel)],
 ) -> AIToolPolicyPreviewItem:
+    policy = ai_admin_service.preview_tool_policy(
+        scope_type=payload.scope_type,
+        is_tome=payload.is_tome,
+        allow_read_only_tools=payload.allow_read_only_tools,
+        capability_mode=payload.capability_mode,
+    )
+    return to_ai_tool_policy_preview_item(policy)
+
+
+@router.post("/debug/skills/policy-preview", response_model=AIToolPolicyPreviewItem)
+async def preview_ai_skill_policy_debug(
+    payload: AIToolPolicyPreviewRequest,
+    _: Annotated[Any, Depends(require_control_panel)],
+) -> AIToolPolicyPreviewItem:
+    """Advanced debug alias retained during the boundary-freeze phase."""
+
     policy = ai_admin_service.preview_tool_policy(
         scope_type=payload.scope_type,
         is_tome=payload.is_tome,
@@ -244,6 +282,23 @@ async def preview_ai_capability(
     return to_ai_capability_preview_item(preview)
 
 
+@router.post("/debug/skills/capability-preview", response_model=AICapabilityPreviewItem)
+async def preview_ai_skill_capability_debug(
+    payload: AICapabilityPreviewRequest,
+    _: Annotated[Any, Depends(require_control_panel)],
+) -> AICapabilityPreviewItem:
+    """Advanced debug alias retained during the boundary-freeze phase."""
+
+    preview = ai_admin_service.preview_capability(
+        capability_name=payload.capability_name,
+        scope_type=payload.scope_type,
+        is_tome=payload.is_tome,
+        allow_read_only_tools=payload.allow_read_only_tools,
+        capability_mode=payload.capability_mode,
+    )
+    return to_ai_capability_preview_item(preview)
+
+
 @router.get("/tools/capabilities", response_model=list[AICapabilityItem])
 async def list_ai_capabilities(
     _: Annotated[Any, Depends(require_control_panel)],
@@ -257,6 +312,19 @@ async def list_ai_tool_executions(
     _: Annotated[Any, Depends(require_control_panel)],
     conversation_id: Annotated[str, Query(min_length=1)],
 ) -> list[AIToolExecutionItem]:
+    rows = await ai_admin_service.list_tool_executions(
+        conversation_id=conversation_id,
+    )
+    return [to_ai_tool_execution_item(item) for item in rows]
+
+
+@router.get("/debug/skills/executions", response_model=list[AIToolExecutionItem])
+async def list_ai_skill_executions_debug(
+    _: Annotated[Any, Depends(require_control_panel)],
+    conversation_id: Annotated[str, Query(min_length=1)],
+) -> list[AIToolExecutionItem]:
+    """Advanced debug alias retained during the boundary-freeze phase."""
+
     rows = await ai_admin_service.list_tool_executions(
         conversation_id=conversation_id,
     )

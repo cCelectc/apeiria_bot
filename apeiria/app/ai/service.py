@@ -18,10 +18,11 @@ class AIService:
 
     def get_status(self) -> AIServiceStatus:
         return AIServiceStatus(
-            phase="phase_11_minimal_reply_loop",
+            phase="phase_16_cleanup_in_progress",
             summary=(
-                "AI plugin shell is loaded with context ingestion, persona/model "
-                "binding, provider dispatch, and minimal auto-reply flow."
+                "AI plugin shell now runs through runtime, model, skill, and "
+                "admin boundaries while legacy orchestration and admin files "
+                "remain as compatibility shims."
             ),
         )
 

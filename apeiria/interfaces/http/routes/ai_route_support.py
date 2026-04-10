@@ -15,6 +15,7 @@ from apeiria.interfaces.http.schemas.ai_models import (
     AIProviderItem,
     AIProviderModelItem,
     AIRelationshipStateItem,
+    AISkillItem,
     AIToolExecutionItem,
     AIToolItem,
     AIToolPolicyBindingItem,
@@ -23,25 +24,27 @@ from apeiria.interfaces.http.schemas.ai_models import (
 
 if TYPE_CHECKING:
     from apeiria.app.ai.memory.models import AIMemoryDefinition
-    from apeiria.app.ai.models.bindings import AIModelBindingSpec
-    from apeiria.app.ai.models.models import AIModelProfileDefinition
-    from apeiria.app.ai.models.provider import (
+    from apeiria.app.ai.model import (
+        AIModelBindingSpec,
+        AIModelProfileDefinition,
+        AIProviderDefinition,
+    )
+    from apeiria.app.ai.model import (
         AIProviderModelItem as DomainProviderModelItem,
     )
     from apeiria.app.ai.persona.models import (
         AIPersonaBindingSpec,
         AIPersonaDefinition,
     )
-    from apeiria.app.ai.providers.models import AIProviderDefinition
     from apeiria.app.ai.relationship.models import AIRelationshipState
-    from apeiria.app.ai.tools.admin_models import (
+    from apeiria.app.ai.skills.debug import (
         AICapabilityDefinition,
         AICapabilityPreview,
     )
-    from apeiria.app.ai.tools.bindings import AIToolPolicyBindingSpec
-    from apeiria.app.ai.tools.models import (
+    from apeiria.app.ai.skills.policy import (
         AIToolExecutionView,
         AIToolPolicy,
+        AIToolPolicyBindingSpec,
         AIToolSpec,
     )
 
@@ -140,6 +143,17 @@ def to_ai_relationship_state_item(
 
 def to_ai_tool_item(item: "AIToolSpec") -> AIToolItem:
     return AIToolItem(
+        name=item.name,
+        description=item.description,
+        read_only=item.read_only,
+        concurrency_safe=item.concurrency_safe,
+        risk_level=item.risk_level,
+        is_capability_bridge=item.is_capability_bridge,
+    )
+
+
+def to_ai_skill_item(item: "AIToolSpec") -> AISkillItem:
+    return AISkillItem(
         name=item.name,
         description=item.description,
         read_only=item.read_only,

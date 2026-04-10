@@ -2,16 +2,23 @@
 
 This builtin plugin is the NoneBot-facing shell for the Apeiria AI rewrite.
 
-Phase 1 only provides:
+Current boundary-freeze phase provides:
 
 - plugin metadata
 - startup wiring
 - a minimal superuser command for smoke testing
+- a thin NoneBot-facing shell over the AI runtime
 
-It does not yet provide:
+The runtime now also exposes explicit phase-1 boundaries for:
+
+- reply decision
+- skill compatibility
+- admin/debug compatibility
+
+It does not yet provide a full product implementation for:
 
 - conversation context management
 - persona switching
 - long-term memory
-- tool calling
+- skill-first management UI
 - WebUI management routes

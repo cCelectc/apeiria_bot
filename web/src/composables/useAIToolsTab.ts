@@ -1,7 +1,7 @@
 import type {
   AICapabilityItem,
   AICapabilityPreviewItem,
-  AIToolItem,
+  AISkillItem,
   AIToolPolicyBindingItem,
   AIToolPolicyPreviewItem,
 } from '@/api'
@@ -10,10 +10,10 @@ import {
   createAIToolPolicyBinding,
   deleteAIToolPolicyBinding,
   getAICapabilities,
+  getAISkills,
   getAIToolPolicyBindings,
-  getAITools,
-  previewAICapability,
-  previewAIToolPolicy,
+  previewAISkillCapabilityDebug,
+  previewAISkillPolicyDebug,
   updateAIToolPolicyBinding,
 } from '@/api'
 import { getErrorMessage } from '@/api/client'
@@ -26,7 +26,7 @@ export function useAIToolsTab (t: (key: string) => string) {
   const previewingPolicy = ref(false)
   const previewingCapability = ref(false)
 
-  const tools = ref<AIToolItem[]>([])
+  const tools = ref<AISkillItem[]>([])
   const capabilities = ref<AICapabilityItem[]>([])
   const bindings = ref<AIToolPolicyBindingItem[]>([])
   const policyPreview = ref<AIToolPolicyPreviewItem | null>(null)
@@ -51,7 +51,7 @@ export function useAIToolsTab (t: (key: string) => string) {
 
   async function loadToolsData () {
     const [toolsResponse, capabilitiesResponse, bindingsResponse] = await Promise.all([
-      getAITools(),
+      getAISkills(),
       getAICapabilities(),
       getAIToolPolicyBindings(),
     ])
@@ -121,7 +121,7 @@ export function useAIToolsTab (t: (key: string) => string) {
   async function runPolicyPreview () {
     previewingPolicy.value = true
     try {
-      const response = await previewAIToolPolicy(previewForm)
+      const response = await previewAISkillPolicyDebug(previewForm)
       policyPreview.value = response.data
     } catch (error) {
       noticeStore.show(getErrorMessage(error, t('ai.previewFailed')), 'error')
@@ -133,7 +133,7 @@ export function useAIToolsTab (t: (key: string) => string) {
   async function runCapabilityPreview () {
     previewingCapability.value = true
     try {
-      const response = await previewAICapability({
+      const response = await previewAISkillCapabilityDebug({
         capability_name: capabilityPreviewName.value,
         ...previewForm,
       })

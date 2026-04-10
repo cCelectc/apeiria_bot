@@ -7,7 +7,7 @@ from nonebot.plugin import PluginMetadata, inherit_supported_adapters
 from nonebot.plugin.on import on_command, on_message
 
 from apeiria.app.ai import ai_service
-from apeiria.app.ai.orchestration import ai_orchestration_service
+from apeiria.app.ai.runtime import ai_runtime_service
 from apeiria.shared.plugin_metadata import PluginExtraData, PluginType, UiExtra
 
 require("nonebot_plugin_alconna")
@@ -45,6 +45,6 @@ async def handle_ai_status() -> None:
 @ai_message.handle()
 async def handle_ai_message(bot: Bot, event: Event) -> None:
     """Minimal working AI reply loop."""
-    reply = await ai_orchestration_service.handle_message(bot, event)
+    reply = await ai_runtime_service.handle_message(bot, event)
     if reply:
         await bot.send(event, reply)

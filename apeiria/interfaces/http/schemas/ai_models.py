@@ -60,6 +60,15 @@ class AIToolItem(BaseModel):
     is_capability_bridge: bool = False
 
 
+class AISkillItem(BaseModel):
+    name: str
+    description: str
+    read_only: bool
+    concurrency_safe: bool
+    risk_level: str
+    is_capability_bridge: bool = False
+
+
 class AIToolExecutionItem(BaseModel):
     execution_id: str
     conversation_id: str
