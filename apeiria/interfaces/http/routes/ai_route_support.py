@@ -19,6 +19,7 @@ from apeiria.interfaces.http.schemas.ai_models import (
     AIRelationshipStateItem,
     AISkillItem,
     AIToolExecutionItem,
+    AIToolIntentPreviewItem,
     AIToolItem,
     AIToolPolicyBindingItem,
     AIToolPolicyPreviewItem,
@@ -43,16 +44,18 @@ if TYPE_CHECKING:
         AIPersonaDefinition,
     )
     from apeiria.app.ai.relationship.models import AIRelationshipState
-    from apeiria.app.ai.skills.debug import (
+    from apeiria.app.ai.skills.catalog import AISkillDefinition
+    from apeiria.app.ai.tools.debug import (
         AICapabilityDefinition,
         AICapabilityPreview,
+        AIToolIntentPreview,
     )
-    from apeiria.app.ai.skills.models import (
+    from apeiria.app.ai.tools.models import (
         AIToolExecutionView,
         AIToolPolicy,
         AIToolSpec,
     )
-    from apeiria.app.ai.skills.policy import (
+    from apeiria.app.ai.tools.policy import (
         AIToolPolicyBindingSpec,
     )
 
@@ -194,14 +197,20 @@ def to_ai_tool_item(item: "AIToolSpec") -> AIToolItem:
     )
 
 
-def to_ai_skill_item(item: "AIToolSpec") -> AISkillItem:
+def to_ai_skill_item(item: "AISkillDefinition") -> AISkillItem:
     return AISkillItem(
-        name=item.name,
+        name=item.skill_name,
         description=item.description,
-        read_only=item.read_only,
-        concurrency_safe=item.concurrency_safe,
-        risk_level=item.risk_level,
-        is_capability_bridge=item.is_capability_bridge,
+        read_only=item.contract.side_effect_level == "read_only",
+        concurrency_safe=item.contract.idempotency == "idempotent",
+        risk_level=(
+            "high"
+            if item.contract.side_effect_level == "high_risk"
+            else "low"
+            if item.contract.side_effect_level == "read_only"
+            else "medium"
+        ),
+        is_capability_bridge=item.skill_name == "plugin.capability",
     )
 
 
@@ -214,6 +223,17 @@ def to_ai_tool_execution_item(item: "AIToolExecutionView") -> AIToolExecutionIte
         input_json=item.input_json,
         output_json=item.output_json,
         created_at=item.created_at.isoformat(),
+    )
+
+
+def to_ai_tool_intent_preview_item(
+    item: "AIToolIntentPreview",
+) -> AIToolIntentPreviewItem:
+    return AIToolIntentPreviewItem(
+        tool_name=item.tool_name,
+        kind=item.kind,
+        reason=item.reason,
+        input_payload=item.input_payload,
     )
 
 

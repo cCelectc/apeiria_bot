@@ -11,7 +11,8 @@ from apeiria.app.ai.memory.service import AIMemoryQuery, ai_memory_service
 from apeiria.app.ai.model.service import ai_model_facade
 from apeiria.app.ai.persona.service import ai_persona_service
 from apeiria.app.ai.relationship.service import ai_relationship_service
-from apeiria.app.ai.skills.policy import (
+from apeiria.app.ai.skills.service import ai_skill_service
+from apeiria.app.ai.tools.policy import (
     AIToolPolicyBindingCreateInput,
     AIToolPolicyBindingSpec,
     AIToolSceneContext,
@@ -19,7 +20,7 @@ from apeiria.app.ai.skills.policy import (
     ai_tool_policy_binding_service,
     resolve_default_tool_policy,
 )
-from apeiria.app.ai.skills.service import ai_skill_service
+from apeiria.app.ai.tools.service import ai_tool_service
 
 if TYPE_CHECKING:
     from apeiria.app.ai.conversation.models import (
@@ -38,11 +39,13 @@ if TYPE_CHECKING:
         AIPersonaDefinition,
     )
     from apeiria.app.ai.relationship.models import AIRelationshipState
-    from apeiria.app.ai.skills.debug import (
+    from apeiria.app.ai.skills.catalog import AISkillDefinition
+    from apeiria.app.ai.tools.debug import (
         AICapabilityDefinition,
         AICapabilityPreview,
+        AIToolIntentPreview,
     )
-    from apeiria.app.ai.skills.models import (
+    from apeiria.app.ai.tools.models import (
         AIToolExecutionView,
         AIToolPolicy,
         AIToolSpec,
@@ -170,13 +173,36 @@ class AIAdminService:
             return state
 
     def list_tools(self, policy: "AIToolPolicy | None" = None) -> list["AIToolSpec"]:
-        return ai_skill_service.list_skill_specs(policy)
+        return ai_tool_service.list_tool_specs(policy)
 
     def list_capabilities(self) -> list["AICapabilityDefinition"]:
-        return ai_skill_service.list_capabilities()
+        return ai_tool_service.list_capabilities()
 
-    def list_skills(self, policy: "AIToolPolicy | None" = None) -> list["AIToolSpec"]:
-        return ai_skill_service.list_skill_specs(policy)
+    def list_skills(
+        self,
+        policy: "AIToolPolicy | None" = None,
+    ) -> list["AISkillDefinition"]:
+        return ai_skill_service.list_skills(policy)
+
+    def preview_tool_intents(
+        self,
+        *,
+        message_text: str,
+        scope_type: str,
+        is_tome: bool,
+        allow_read_only_tools: bool = True,
+        capability_mode: str = "off",
+    ) -> list["AIToolIntentPreview"]:
+        policy = self.preview_tool_policy(
+            scope_type=scope_type,
+            is_tome=is_tome,
+            allow_read_only_tools=allow_read_only_tools,
+            capability_mode=capability_mode,
+        )
+        return ai_tool_service.preview_tool_intents(
+            message_text=message_text,
+            policy=policy,
+        )
 
     async def list_tool_policy_bindings(self) -> list[AIToolPolicyBindingSpec]:
         async with get_session() as session:
@@ -282,7 +308,7 @@ class AIAdminService:
             allow_read_only_tools=allow_read_only_tools,
             capability_mode=capability_mode,
         )
-        return ai_skill_service.preview_capability(
+        return ai_tool_service.preview_capability(
             capability_name=capability_name,
             policy=policy,
         )
@@ -293,7 +319,7 @@ class AIAdminService:
         conversation_id: str,
     ) -> list["AIToolExecutionView"]:
         async with get_session() as session:
-            return await ai_skill_service.list_executions(
+            return await ai_tool_service.list_executions(
                 session,
                 conversation_id=conversation_id,
             )

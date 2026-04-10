@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any
 from apeiria.app.ai.model.provider import (
     AIModelGenerateRequest,
     AIModelGenerateResponse,
+    AIModelToolCall,
     AIProviderModelItem,
 )
 
@@ -65,6 +66,18 @@ class OpenAICompatibleProvider:
             "model": request.model_name,
             "messages": [{"role": "user", "content": request.prompt}],
         }
+        if request.tools:
+            payload["tools"] = [
+                {
+                    "type": "function",
+                    "function": {
+                        "name": tool.name,
+                        "description": tool.description,
+                        "parameters": tool.parameters,
+                    },
+                }
+                for tool in request.tools
+            ]
         if request.temperature is not None:
             payload["temperature"] = request.temperature
         if request.max_tokens is not None:
@@ -82,6 +95,7 @@ class OpenAICompatibleProvider:
             provider_id=request.provider_id,
             model_name=request.model_name,
             content=_extract_openai_content(raw),
+            tool_calls=tuple(_extract_openai_tool_calls(raw)),
             raw=raw,
         )
 
@@ -184,3 +198,52 @@ def _extract_openai_models(raw: dict[str, Any]) -> list[AIProviderModelItem]:
             continue
         models.append(AIProviderModelItem(id=model_id, name=model_id))
     return models
+
+
+def _extract_openai_tool_calls(raw: dict[str, Any]) -> list[AIModelToolCall]:
+    choices = raw.get("choices")
+    if not isinstance(choices, list) or not choices:
+        return []
+    first_choice = choices[0]
+    if not isinstance(first_choice, dict):
+        return []
+    message = first_choice.get("message")
+    if not isinstance(message, dict):
+        return []
+    tool_calls = message.get("tool_calls")
+    if not isinstance(tool_calls, list):
+        return []
+
+    extracted: list[AIModelToolCall] = []
+    for index, tool_call in enumerate(tool_calls):
+        if not isinstance(tool_call, dict):
+            continue
+        function = tool_call.get("function")
+        if not isinstance(function, dict):
+            continue
+        name = function.get("name")
+        if not isinstance(name, str) or not name.strip():
+            continue
+        arguments = _parse_tool_arguments(function.get("arguments"))
+        extracted.append(
+            AIModelToolCall(
+                tool_call_id=str(tool_call.get("id") or f"tool_call_{index}"),
+                name=name,
+                arguments=arguments,
+            )
+        )
+    return extracted
+
+
+def _parse_tool_arguments(arguments: Any) -> dict[str, Any]:
+    if isinstance(arguments, dict):
+        return arguments
+    if not isinstance(arguments, str) or not arguments.strip():
+        return {}
+    import json
+
+    try:
+        parsed = json.loads(arguments)
+    except json.JSONDecodeError:
+        return {}
+    return parsed if isinstance(parsed, dict) else {}

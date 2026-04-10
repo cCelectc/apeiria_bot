@@ -28,7 +28,7 @@ class AISkillContract:
 
 @dataclass(frozen=True)
 class AISkillDefinition:
-    """Product-facing skill definition built on top of legacy tool specs."""
+    """Product-facing skill definition built on top of runtime tool specs."""
 
     skill_name: str
     description: str

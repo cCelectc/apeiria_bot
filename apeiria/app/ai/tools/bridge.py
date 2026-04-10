@@ -1,17 +1,17 @@
-"""Whitelist-based NoneBot skill bridge."""
+"""Whitelist-based NoneBot tool bridge."""
 
 from __future__ import annotations
 
 import inspect
 from typing import TYPE_CHECKING, Any
 
-from apeiria.app.ai.skills.policy import evaluate_tool_policy
+from apeiria.app.ai.tools.policy import evaluate_tool_policy
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
 
-    from apeiria.app.ai.skills.models import AINoneBotCapabilityRequest, AIToolPolicy
-    from apeiria.app.ai.skills.registry import AIToolRegistry
+    from apeiria.app.ai.tools.models import AINoneBotCapabilityRequest, AIToolPolicy
+    from apeiria.app.ai.tools.registry import AIToolRegistry
 
     CapabilityHandler = Callable[[dict[str, Any]], Any | Awaitable[Any]]
 

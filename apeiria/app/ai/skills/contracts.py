@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Literal
 from apeiria.app.ai.skills.catalog import AISkillContract, AISkillDefinition
 
 if TYPE_CHECKING:
-    from apeiria.app.ai.skills.models import AIToolSpec
+    from apeiria.app.ai.tools.models import AIToolSpec
 
 
 def build_skill_definition(tool: "AIToolSpec") -> AISkillDefinition:

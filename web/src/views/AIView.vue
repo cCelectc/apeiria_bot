@@ -348,11 +348,20 @@
                             :items="capabilities"
                             :label="t('ai.capabilityName')"
                           />
+                          <v-text-field
+                            v-model.trim="intentPreviewForm.message_text"
+                            density="comfortable"
+                            hide-details
+                            :label="t('ai.intentPreviewMessage')"
+                          />
                         </div>
 
                         <div class="d-flex ga-3 justify-end mb-4">
                           <v-btn :loading="previewingPolicy" variant="tonal" @click="runPolicyPreview">
                             {{ t('ai.previewPolicy') }}
+                          </v-btn>
+                          <v-btn :loading="previewingIntents" variant="tonal" @click="runIntentPreview">
+                            {{ t('ai.previewIntents') }}
                           </v-btn>
                           <v-btn color="primary" :loading="previewingCapability" @click="runCapabilityPreview">
                             {{ t('ai.previewCapability') }}
@@ -382,6 +391,16 @@
                           <div v-else class="text-body-2 text-medium-emphasis">
                             {{ t('ai.noPreviewYet') }}
                           </div>
+                        </v-sheet>
+
+                        <v-sheet class="surface-gradient-card pa-4 mt-4" rounded="lg">
+                          <div class="text-subtitle-2 mb-2">{{ t('ai.intentPreviewResult') }}</div>
+                          <v-data-table
+                            class="page-table"
+                            density="compact"
+                            :headers="intentPreviewHeaders"
+                            :items="intentPreview"
+                          />
                         </v-sheet>
                       </v-expansion-panel-text>
                     </v-expansion-panel>
@@ -600,14 +619,18 @@
     capabilityPreviewName,
     editBinding,
     editingBindingId,
+    intentPreview,
+    intentPreviewForm,
     loadToolsData,
     policyPreview,
     previewForm,
     previewingCapability,
+    previewingIntents,
     previewingPolicy,
     removeBinding,
     resetBindingForm,
     runCapabilityPreview,
+    runIntentPreview,
     runPolicyPreview,
     saving,
     submitBinding,
@@ -669,6 +692,12 @@
     { title: t('ai.skillDescription'), key: 'description', sortable: false },
     { title: t('ai.skillRiskLevel'), key: 'risk_level', sortable: false },
     { title: t('ai.skillReadOnly'), key: 'read_only', sortable: false },
+  ])
+
+  const intentPreviewHeaders = computed(() => [
+    { title: t('ai.toolName'), key: 'tool_name', sortable: false },
+    { title: t('ai.intentKind'), key: 'kind', sortable: false },
+    { title: t('ai.reason'), key: 'reason', sortable: false },
   ])
 
   const conversationHeaders = computed(() => [

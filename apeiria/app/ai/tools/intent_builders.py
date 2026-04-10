@@ -1,17 +1,17 @@
-"""Helpers for building structured skill intents."""
+"""Helpers for building structured tool intents."""
 
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from apeiria.app.ai.skills.models import AIToolIntent
+    from apeiria.app.ai.tools.models import AIToolIntent
 
 
 def build_capability_intents(message_text: str) -> list["AIToolIntent"]:
     """Build capability intents for the current message."""
 
-    from apeiria.app.ai.skills.models import (
+    from apeiria.app.ai.tools.models import (
         AINoneBotCapabilityRequest,
         AIPluginInspectCapabilityInput,
         AIToolIntent,
@@ -29,6 +29,7 @@ def build_capability_intents(message_text: str) -> list["AIToolIntent"]:
                     capability_name="help.show",
                     arguments={},
                 ),
+                reason="help-related keyword detected",
             )
         )
 
@@ -43,6 +44,7 @@ def build_capability_intents(message_text: str) -> list["AIToolIntent"]:
                         plugin_query=message_text,
                     ).__dict__,
                 ),
+                reason="plugin inspection keyword detected",
             )
         )
 

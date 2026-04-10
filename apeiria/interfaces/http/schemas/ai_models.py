@@ -114,6 +114,21 @@ class AIToolPolicyPreviewRequest(BaseModel):
     capability_mode: str = Field(default="off", min_length=1, max_length=32)
 
 
+class AIToolIntentPreviewRequest(BaseModel):
+    message_text: str = Field(min_length=1, max_length=2000)
+    scope_type: str = Field(min_length=1, max_length=32)
+    is_tome: bool = False
+    allow_read_only_tools: bool = True
+    capability_mode: str = Field(default="off", min_length=1, max_length=32)
+
+
+class AIToolIntentPreviewItem(BaseModel):
+    tool_name: str
+    kind: str
+    reason: str | None = None
+    input_payload: object | None = None
+
+
 class AIToolPolicyPreviewItem(BaseModel):
     execution_enabled: bool
     allowed_tool_names: list[str] | None = None

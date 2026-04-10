@@ -1,4 +1,4 @@
-"""Pure helpers for skill policy bindings and scene evaluation."""
+"""Pure helpers for tool policy bindings and scene evaluation."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ from uuid import uuid4
 
 from sqlalchemy import select
 
-from apeiria.app.ai.skills.models import (
+from apeiria.app.ai.tools.models import (
     AIToolCapabilityMode,
     AIToolPolicy,
     AIToolPolicyDecision,
@@ -39,7 +39,7 @@ class AIToolScenePolicyProfile:
 
 @dataclass(frozen=True)
 class AIToolPolicyBindingSpec:
-    """One persisted skill policy binding record."""
+    """One persisted tool policy binding record."""
 
     binding_id: str
     scope_type: str
@@ -59,7 +59,7 @@ class AIToolPolicyBindingTarget:
 
 @dataclass(frozen=True)
 class AIToolPolicyBindingCreateInput:
-    """Create payload for one persisted skill policy binding."""
+    """Create payload for one persisted tool policy binding."""
 
     scope_type: str
     scope_id: str
@@ -119,7 +119,7 @@ def summarize_tool_policy(
     tools: list[AIToolSpec],
     policy: AIToolPolicy,
 ) -> str:
-    """Build a compact textual summary of skill availability for prompts."""
+    """Build a compact textual summary of tool availability for prompts."""
 
     preauthorized_tools = [
         tool
@@ -168,7 +168,7 @@ def resolve_default_tool_policy(
     context: AIToolSceneContext,
     profile: AIToolScenePolicyProfile | None = None,
 ) -> AIToolPolicy:
-    """Return the conservative default skill policy for one scene."""
+    """Return the conservative default tool policy for one scene."""
 
     profile = profile or AIToolScenePolicyProfile()
     allowed_tool_names: set[str] = set()
@@ -204,7 +204,7 @@ def resolve_tool_policy_binding(
     bindings: list[AIToolPolicyBindingSpec],
     target: AIToolPolicyBindingTarget,
 ) -> AIToolPolicyBindingSpec | None:
-    """Resolve the effective skill policy binding for one AI scene."""
+    """Resolve the effective tool policy binding for one AI scene."""
 
     ordered_scopes: list[tuple[str, str | None]] = [
         ("conversation", target.conversation_id),
@@ -236,7 +236,7 @@ def tool_policy_binding_to_profile(
 
 
 class AIToolPolicyBindingService:
-    """Persistence and resolution service for skill policy bindings."""
+    """Persistence and resolution service for tool policy bindings."""
 
     async def list_bindings(
         self,

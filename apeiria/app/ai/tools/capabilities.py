@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 from nonebot import get_loaded_plugins
 
 if TYPE_CHECKING:
-    from apeiria.app.ai.skills.bridge import AINoneBotSkillBridge
+    from apeiria.app.ai.tools.bridge import AINoneBotSkillBridge
 
 
 def register_builtin_capabilities(bridge: "AINoneBotSkillBridge") -> None:

@@ -2,6 +2,7 @@ import type {
   AICapabilityItem,
   AICapabilityPreviewItem,
   AISkillItem,
+  AIToolIntentPreviewItem,
   AIToolPolicyBindingItem,
   AIToolPolicyPreviewItem,
 } from '@/api'
@@ -14,6 +15,7 @@ import {
   getAIToolPolicyBindings,
   previewAISkillCapabilityDebug,
   previewAISkillPolicyDebug,
+  previewAIToolIntents,
   updateAIToolPolicyBinding,
 } from '@/api'
 import { getErrorMessage } from '@/api/client'
@@ -25,12 +27,14 @@ export function useAIToolsTab (t: (key: string) => string) {
   const saving = ref(false)
   const previewingPolicy = ref(false)
   const previewingCapability = ref(false)
+  const previewingIntents = ref(false)
 
   const tools = ref<AISkillItem[]>([])
   const capabilities = ref<AICapabilityItem[]>([])
   const bindings = ref<AIToolPolicyBindingItem[]>([])
   const policyPreview = ref<AIToolPolicyPreviewItem | null>(null)
   const capabilityPreview = ref<AICapabilityPreviewItem | null>(null)
+  const intentPreview = ref<AIToolIntentPreviewItem[]>([])
 
   const editingBindingId = ref('')
   const capabilityPreviewName = ref('help.show')
@@ -47,6 +51,10 @@ export function useAIToolsTab (t: (key: string) => string) {
     is_tome: false,
     allow_read_only_tools: true,
     capability_mode: 'off',
+  })
+
+  const intentPreviewForm = reactive({
+    message_text: '请帮我查看插件帮助',
   })
 
   async function loadToolsData () {
@@ -145,6 +153,21 @@ export function useAIToolsTab (t: (key: string) => string) {
     }
   }
 
+  async function runIntentPreview () {
+    previewingIntents.value = true
+    try {
+      const response = await previewAIToolIntents({
+        message_text: intentPreviewForm.message_text,
+        ...previewForm,
+      })
+      intentPreview.value = response.data
+    } catch (error) {
+      noticeStore.show(getErrorMessage(error, t('ai.previewFailed')), 'error')
+    } finally {
+      previewingIntents.value = false
+    }
+  }
+
   return {
     bindingForm,
     bindings,
@@ -152,14 +175,18 @@ export function useAIToolsTab (t: (key: string) => string) {
     capabilityPreview,
     capabilityPreviewName,
     editingBindingId,
+    intentPreview,
+    intentPreviewForm,
     loadToolsData,
     policyPreview,
     previewForm,
     previewingCapability,
+    previewingIntents,
     previewingPolicy,
     removeBinding,
     resetBindingForm,
     runCapabilityPreview,
+    runIntentPreview,
     runPolicyPreview,
     saving,
     submitBinding,

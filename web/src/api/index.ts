@@ -361,6 +361,13 @@ export interface AIToolExecutionItem {
   created_at: string
 }
 
+export interface AIToolIntentPreviewItem {
+  tool_name: string
+  kind: string
+  reason: string | null
+  input_payload: unknown
+}
+
 export interface AIToolPolicyPreviewItem {
   execution_enabled: boolean
   allowed_tool_names: string[] | null
@@ -955,6 +962,16 @@ export function previewAIToolPolicy (payload: {
   capability_mode: string
 }) {
   return client.post<AIToolPolicyPreviewItem>('/ai/tools/policy-preview', payload)
+}
+
+export function previewAIToolIntents (payload: {
+  message_text: string
+  scope_type: string
+  is_tome: boolean
+  allow_read_only_tools: boolean
+  capability_mode: string
+}) {
+  return client.post<AIToolIntentPreviewItem[]>('/ai/tools/intent-preview', payload)
 }
 
 export function previewAISkillPolicyDebug (payload: {

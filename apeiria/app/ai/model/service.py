@@ -20,6 +20,7 @@ if TYPE_CHECKING:
     )
     from apeiria.app.ai.model.provider import (
         AIModelGenerateResponse,
+        AIModelToolDefinition,
         AIProviderModelItem,
     )
     from apeiria.app.ai.model.providers import AIProviderDefinition
@@ -85,6 +86,7 @@ class AIModelFacade:
         selected: "AISelectedModel",
         *,
         prompt: str,
+        tools: tuple["AIModelToolDefinition", ...] = (),
     ) -> "AIModelGenerateResponse | None":
         api_key = ai_provider_service.get_provider_api_key(selected.provider)
         model_name = self.resolve_model_name(selected)
@@ -97,6 +99,7 @@ class AIModelFacade:
                 provider_id=selected.provider.provider_id,
                 model_name=model_name,
                 prompt=prompt,
+                tools=tools,
             )
         )
 

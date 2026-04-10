@@ -1,10 +1,8 @@
-"""Advanced debug models for the skill boundary."""
+"""Advanced debug models for the tool boundary."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-
-from apeiria.app.ai.skills.models import AIToolExecutionView as AISkillExecutionView
 
 
 @dataclass(frozen=True)
@@ -27,8 +25,18 @@ class AICapabilityDefinition:
     bound_tool_name: str
 
 
+@dataclass(frozen=True)
+class AIToolIntentPreview:
+    """One planned tool intent visible to admin preview surfaces."""
+
+    tool_name: str
+    kind: str
+    reason: str | None
+    input_payload: object | None
+
+
 __all__ = [
     "AICapabilityDefinition",
     "AICapabilityPreview",
-    "AISkillExecutionView",
+        "AIToolIntentPreview",
 ]

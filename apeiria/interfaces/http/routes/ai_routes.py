@@ -7,7 +7,7 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Depends, Query
 
 from apeiria.app.ai.admin.service import ai_admin_service
-from apeiria.app.ai.skills.models import AIToolPolicy
+from apeiria.app.ai.tools.models import AIToolPolicy
 from apeiria.interfaces.http.auth import require_control_panel
 from apeiria.interfaces.http.routes.ai_route_support import (
     to_ai_capability_item,
@@ -24,6 +24,7 @@ from apeiria.interfaces.http.routes.ai_route_support import (
     to_ai_relationship_state_item,
     to_ai_skill_item,
     to_ai_tool_execution_item,
+    to_ai_tool_intent_preview_item,
     to_ai_tool_item,
     to_ai_tool_policy_binding_item,
     to_ai_tool_policy_preview_item,
@@ -46,6 +47,8 @@ from apeiria.interfaces.http.schemas.ai_models import (
     AIRelationshipStateItem,
     AISkillItem,
     AIToolExecutionItem,
+    AIToolIntentPreviewItem,
+    AIToolIntentPreviewRequest,
     AIToolItem,
     AIToolPolicyBindingCreateRequest,
     AIToolPolicyBindingItem,
@@ -227,6 +230,21 @@ async def preview_ai_tool_policy(
         capability_mode=payload.capability_mode,
     )
     return to_ai_tool_policy_preview_item(policy)
+
+
+@router.post("/tools/intent-preview", response_model=list[AIToolIntentPreviewItem])
+async def preview_ai_tool_intents(
+    payload: AIToolIntentPreviewRequest,
+    _: Annotated[Any, Depends(require_control_panel)],
+) -> list[AIToolIntentPreviewItem]:
+    intents = ai_admin_service.preview_tool_intents(
+        message_text=payload.message_text,
+        scope_type=payload.scope_type,
+        is_tome=payload.is_tome,
+        allow_read_only_tools=payload.allow_read_only_tools,
+        capability_mode=payload.capability_mode,
+    )
+    return [to_ai_tool_intent_preview_item(item) for item in intents]
 
 
 @router.post("/debug/skills/policy-preview", response_model=AIToolPolicyPreviewItem)

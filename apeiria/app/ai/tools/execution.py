@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from apeiria.app.ai.skills.models import (
+from apeiria.app.ai.tools.models import (
     AICapabilityInvokeObservationOutput,
     AINoneBotCapabilityRequest,
     AIToolObservationResult,

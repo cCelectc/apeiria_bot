@@ -1,15 +1,15 @@
-"""Pure in-memory skill registry."""
+"""Pure in-memory tool registry."""
 
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from apeiria.app.ai.skills.models import AIToolSpec
+    from apeiria.app.ai.tools.models import AIToolSpec
 
 
 class AIToolRegistry:
-    """Simple registry for AI-visible skills."""
+    """Simple registry for AI-visible tools."""
 
     def __init__(self) -> None:
         self._tools: dict[str, AIToolSpec] = {}

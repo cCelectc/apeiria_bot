@@ -1,4 +1,4 @@
-"""Skill domain models."""
+"""Tool domain models."""
 
 from __future__ import annotations
 
@@ -16,7 +16,7 @@ AIToolExecutionStatus = Literal["success", "error", "timeout"]
 
 @dataclass(frozen=True)
 class AIToolSpec:
-    """Pure skill declaration visible to the AI runtime layer."""
+    """Pure tool declaration visible to the AI runtime layer."""
 
     name: str
     description: str
@@ -28,7 +28,7 @@ class AIToolSpec:
 
 @dataclass(frozen=True)
 class AIToolPolicy:
-    """Pure skill access policy for one AI scene."""
+    """Pure tool access policy for one AI scene."""
 
     execution_enabled: bool = False
     allowed_tool_names: set[str] | None = None
@@ -68,16 +68,17 @@ class AIToolExecutionView:
 
 @dataclass(frozen=True)
 class AIToolIntent:
-    """One planned skill action awaiting execution."""
+    """One planned tool action awaiting execution."""
 
     tool_name: str
     kind: AIToolIntentKind
     input_payload: Any
+    reason: str | None = None
 
 
 @dataclass(frozen=True)
 class AIToolObservationRequest:
-    """Inputs for low-risk read-only skill observations."""
+    """Inputs for low-risk read-only tool observations."""
 
     conversation_id: str
     message_text: str
@@ -137,7 +138,7 @@ class AIPluginInspectCapabilityOutput:
 
 @dataclass(frozen=True)
 class AIToolObservationResult:
-    """One read-only skill observation ready for prompt injection."""
+    """One read-only tool observation ready for prompt injection."""
 
     tool_name: str
     summary: str
@@ -148,7 +149,7 @@ class AIToolObservationResult:
 
 @dataclass(frozen=True)
 class AIToolTurnCreateInput:
-    """One skill observation turn to be written into conversation context."""
+    """One tool observation turn to be written into conversation context."""
 
     sender_id: str
     content_text: str

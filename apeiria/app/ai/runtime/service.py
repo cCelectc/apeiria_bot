@@ -30,19 +30,19 @@ from apeiria.app.ai.runtime.relationship_steps import (
     load_relationship_context,
     update_relationship_state,
 )
-from apeiria.app.ai.skills.policy import (
+from apeiria.app.ai.tools.policy import (
     AIToolPolicyBindingTarget,
     AIToolSceneContext,
     ai_tool_policy_binding_service,
 )
-from apeiria.app.ai.skills.runtime import AIToolRuntimeRequest, ai_tool_runtime
+from apeiria.app.ai.tools.runtime import AIToolRuntimeRequest, ai_tool_runtime
 
 if TYPE_CHECKING:
     from nonebot.adapters import Bot, Event
     from sqlalchemy.ext.asyncio import AsyncSession
 
     from apeiria.app.ai.conversation.models import AIConversationIdentity
-    from apeiria.app.ai.skills.policy import AIToolPolicy, AIToolTurnCreateInput
+    from apeiria.app.ai.tools.models import AIToolPolicy, AIToolTurnCreateInput
 
 
 def _to_persona_target(
@@ -114,7 +114,7 @@ async def _append_tool_observation_turns(
 class AIRuntimeService:
     """Minimal end-to-end runtime path for the AI plugin."""
 
-    async def handle_message(  # noqa: PLR0911
+    async def handle_message(  # noqa: C901, PLR0911
         self,
         bot: "Bot",
         event: "Event",
@@ -192,12 +192,6 @@ class AIRuntimeService:
                     relationship_context=relationship_context,
                 ),
             )
-            await _append_tool_observation_turns(
-                session,
-                identity=identity,
-                trace_id=trace_id,
-                tool_turns=skill_runtime.turns,
-            )
             selected = await ai_model_facade.select_model(
                 session,
                 query=AIModelRouteQuery(task_class="reply_default"),
@@ -226,6 +220,7 @@ class AIRuntimeService:
                             turns=turns,
                         )
                     ),
+                    tools=skill_runtime.available_tools,
                 )
             except Exception as exc:  # noqa: BLE001
                 logger.opt(exception=exc).warning(
@@ -235,7 +230,68 @@ class AIRuntimeService:
                 )
                 return None
 
-            if response is None or not response.content.strip():
+            if response is None:
+                logger.debug(
+                    "AI trace {} skipped reply: empty provider response for "
+                    "conversation {}",
+                    trace_id,
+                    identity.conversation_id,
+                )
+                return None
+
+            if response.tool_calls:
+                skill_runtime = await ai_tool_runtime.execute_tool_calls(
+                    session,
+                    AIToolRuntimeRequest(
+                        conversation_id=identity.conversation_id,
+                        message_text=message_text,
+                        policy=tool_policy,
+                        recalled_memories=tuple(recalled_memories),
+                        relationship_context=relationship_context,
+                    ),
+                    tool_calls=response.tool_calls,
+                )
+                await _append_tool_observation_turns(
+                    session,
+                    identity=identity,
+                    trace_id=trace_id,
+                    tool_turns=skill_runtime.turns,
+                )
+                await session.commit()
+                try:
+                    response = await ai_model_facade.generate_text(
+                        selected,
+                        prompt=compose_reply_prompt(
+                            AIRuntimeComposeInput(
+                                persona=persona,
+                                relationship=relationship_context,
+                                skill_policy=skill_runtime.policy_text,
+                                skill_results=skill_runtime.result_lines,
+                                memories=recalled_memories,
+                                conversation_summary=conversation_summary,
+                                turns=turns,
+                            )
+                        ),
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    logger.opt(exception=exc).warning(
+                        "AI trace {} reply generation failed after tool calls for "
+                        "conversation {}",
+                        trace_id,
+                        identity.conversation_id,
+                    )
+                    return None
+
+            if response is None:
+                logger.debug(
+                    "AI trace {} skipped reply: empty provider response after "
+                    "tool calls for conversation {}",
+                    trace_id,
+                    identity.conversation_id,
+                )
+                return None
+
+            if not response.content.strip():
                 logger.debug(
                     "AI trace {} skipped reply: empty provider response for "
                     "conversation {}",

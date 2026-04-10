@@ -7,6 +7,24 @@ from typing import Any, Protocol
 
 
 @dataclass(frozen=True)
+class AIModelToolDefinition:
+    """One function-calling tool definition exposed to a provider."""
+
+    name: str
+    description: str
+    parameters: dict[str, Any]
+
+
+@dataclass(frozen=True)
+class AIModelToolCall:
+    """One tool call returned by a model provider."""
+
+    tool_call_id: str
+    name: str
+    arguments: dict[str, Any]
+
+
+@dataclass(frozen=True)
 class AIProviderModelItem:
     """One provider-reported model item."""
 
@@ -23,6 +41,7 @@ class AIModelGenerateRequest:
     prompt: str
     temperature: float | None = None
     max_tokens: int | None = None
+    tools: tuple[AIModelToolDefinition, ...] = ()
     extra: dict[str, Any] | None = None
 
 
@@ -33,6 +52,7 @@ class AIModelGenerateResponse:
     provider_id: str
     model_name: str
     content: str
+    tool_calls: tuple[AIModelToolCall, ...] = ()
     raw: dict[str, Any] | None = None
 
 
