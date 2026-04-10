@@ -30,6 +30,10 @@ from apeiria.app.ai.runtime.relationship_steps import (
     load_relationship_context,
     update_relationship_state,
 )
+from apeiria.app.ai.runtime.routing import (
+    select_post_tool_reply_task_class,
+    select_pre_tool_reply_task_class,
+)
 from apeiria.app.ai.tools.policy import (
     AIToolPolicyBindingTarget,
     AIToolSceneContext,
@@ -114,7 +118,7 @@ async def _append_tool_observation_turns(
 class AIRuntimeService:
     """Minimal end-to-end runtime path for the AI plugin."""
 
-    async def handle_message(  # noqa: C901, PLR0911
+    async def handle_message(  # noqa: C901, PLR0911, PLR0915
         self,
         bot: "Bot",
         event: "Event",
@@ -192,9 +196,12 @@ class AIRuntimeService:
                     relationship_context=relationship_context,
                 ),
             )
+            pre_tool_task_class = select_pre_tool_reply_task_class(
+                has_tools=bool(skill_runtime.available_tools),
+            )
             selected = await ai_model_facade.select_model(
                 session,
-                query=AIModelRouteQuery(task_class="reply_default"),
+                query=AIModelRouteQuery(task_class=pre_tool_task_class),
                 target=model_target,
             )
             await session.commit()
@@ -239,6 +246,7 @@ class AIRuntimeService:
                 )
                 return None
 
+            post_tool_task_class = None
             if response.tool_calls:
                 skill_runtime = await ai_tool_runtime.execute_tool_calls(
                     session,
@@ -259,6 +267,7 @@ class AIRuntimeService:
                 )
                 await session.commit()
                 try:
+                    post_tool_task_class = select_post_tool_reply_task_class()
                     response = await ai_model_facade.generate_text(
                         selected,
                         prompt=compose_reply_prompt(
@@ -272,6 +281,7 @@ class AIRuntimeService:
                                 turns=turns,
                             )
                         ),
+                        tools=(),
                     )
                 except Exception as exc:  # noqa: BLE001
                     logger.opt(exception=exc).warning(
@@ -311,6 +321,11 @@ class AIRuntimeService:
                         "trace_id": trace_id,
                         "provider_id": response.provider_id,
                         "model_name": response.model_name,
+                        "task_class": (
+                            post_tool_task_class
+                            if skill_runtime.turns
+                            else pre_tool_task_class
+                        ),
                         "recalled_memory_count": len(recalled_memories),
                         "tool_observation_count": len(skill_runtime.turns),
                     },

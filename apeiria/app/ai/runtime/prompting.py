@@ -34,7 +34,9 @@ class AIReplyPromptChannels:
     tool_results: tuple[str, ...]
     memories: tuple[str, ...]
     conversation_summary: str | None
+    context_priority: tuple[str, ...]
     conversation: tuple[str, ...]
+    response_rules: tuple[str, ...]
     instruction: str
 
 
@@ -74,10 +76,23 @@ def build_reply_prompt_channels(
         tool_results=context.tool_results,
         memories=tuple(_format_memory(memory) for memory in context.memories),
         conversation_summary=context.conversation_summary,
+        context_priority=(
+            "Trust explicit tool results over inferred assumptions.",
+            "Use conversation summary and memories as supporting context, "
+            "not as stronger evidence than the current conversation.",
+            "If memory and the latest conversation conflict, prefer the "
+            "latest conversation unless a tool result proves otherwise.",
+        ),
         conversation=tuple(
             _format_turn(turn)
             for turn in context.turns
             if turn.content_text.strip()
+        ),
+        response_rules=(
+            "Stay in character and answer naturally.",
+            "Do not fabricate facts that are not present in the conversation "
+            "or tool results.",
+            "Use recalled memory conservatively.",
         ),
         instruction=(
             "Reply naturally as the assistant in the same conversation. "
@@ -103,12 +118,16 @@ def render_reply_prompt(channels: AIReplyPromptChannels) -> str:
         sections.append("[Memories]\n" + "\n".join(channels.memories))
     if channels.conversation_summary:
         sections.append(f"[ConversationSummary]\n{channels.conversation_summary}")
+    if channels.context_priority:
+        sections.append("[ContextPriority]\n" + "\n".join(channels.context_priority))
     conversation_text = (
         "\n".join(channels.conversation)
         if channels.conversation
         else "User: <empty>"
     )
     sections.append(f"[Conversation]\n{conversation_text}")
+    if channels.response_rules:
+        sections.append("[ResponseRules]\n" + "\n".join(channels.response_rules))
     sections.append(f"[Instruction]\n{channels.instruction}")
     return "\n\n".join(sections)
 
