@@ -79,6 +79,8 @@ const enUS = {
     personasTab: 'Personas',
     memoryTab: 'Memory',
     relationshipTab: 'Relationship',
+    setupTab: 'Setup',
+    stateTab: 'State',
     workbenchConversationLimit: 'Conversation Limit',
     workbenchTurnLimit: 'Turn Limit',
     loadWorkbench: 'Load Workbench',

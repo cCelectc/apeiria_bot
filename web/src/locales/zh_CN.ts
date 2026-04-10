@@ -79,6 +79,8 @@ const zhCN = {
     personasTab: '人格',
     memoryTab: '记忆',
     relationshipTab: '关系',
+    setupTab: '配置',
+    stateTab: '状态',
     workbenchConversationLimit: '会话数量',
     workbenchTurnLimit: '消息数量',
     loadWorkbench: '加载工作台',

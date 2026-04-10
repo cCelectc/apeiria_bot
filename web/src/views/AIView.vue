@@ -33,16 +33,13 @@
     </div>
 
     <v-card class="page-panel">
-      <v-tabs v-model="tab" color="primary">
+      <v-tabs v-model="topTab" color="primary">
         <v-tab value="workbench">{{ t('ai.workbenchTab') }}</v-tab>
-        <v-tab value="tools">{{ t('ai.toolsTab') }}</v-tab>
-        <v-tab value="personas">{{ t('ai.personasTab') }}</v-tab>
-        <v-tab value="memory">{{ t('ai.memoryTab') }}</v-tab>
-        <v-tab value="relationship">{{ t('ai.relationshipTab') }}</v-tab>
-        <v-tab value="models">{{ t('ai.modelsTab') }}</v-tab>
+        <v-tab value="setup">{{ t('ai.setupTab') }}</v-tab>
+        <v-tab value="state">{{ t('ai.stateTab') }}</v-tab>
       </v-tabs>
 
-      <v-window v-model="tab">
+      <v-window v-model="topTab">
         <v-window-item value="workbench">
           <v-card-text class="d-flex flex-column ga-5">
             <div class="ai-binding-form">
@@ -207,394 +204,415 @@
           </v-card-text>
         </v-window-item>
 
-        <v-window-item value="tools">
+        <v-window-item value="setup">
           <v-card-text class="d-flex flex-column ga-5">
-            <v-row>
-              <v-col cols="12" xl="7">
-                <div class="d-flex flex-column ga-4">
+            <v-tabs v-model="setupTab" color="primary" density="comfortable">
+              <v-tab value="tools">{{ t('ai.toolsTab') }}</v-tab>
+              <v-tab value="personas">{{ t('ai.personasTab') }}</v-tab>
+              <v-tab value="models">{{ t('ai.modelsTab') }}</v-tab>
+            </v-tabs>
+
+            <v-window v-model="setupTab">
+              <v-window-item value="tools">
+                <v-row>
+                  <v-col cols="12" xl="7">
+                    <div class="d-flex flex-column ga-4">
+                      <v-data-table
+                        class="page-table"
+                        density="compact"
+                        :headers="skillHeaders"
+                        :items="tools"
+                      >
+                        <template #item.read_only="{ value }">
+                          <v-chip :color="value ? 'success' : 'default'" size="x-small" variant="tonal">
+                            {{ value ? t('ai.enabled') : t('ai.disabled') }}
+                          </v-chip>
+                        </template>
+                        <template #item.risk_level="{ value }">
+                          <v-chip color="primary" size="x-small" variant="tonal">
+                            {{ value }}
+                          </v-chip>
+                        </template>
+                      </v-data-table>
+
+                      <v-sheet class="surface-gradient-card pa-4" rounded="lg">
+                        <div class="text-subtitle-2 mb-2">{{ t('ai.capabilityRegistry') }}</div>
+                        <div class="d-flex flex-wrap ga-2">
+                          <v-chip
+                            v-for="item in capabilities"
+                            :key="item.capability_name"
+                            color="primary"
+                            size="small"
+                            variant="tonal"
+                          >
+                            {{ item.capability_name }}
+                          </v-chip>
+                        </div>
+                      </v-sheet>
+                    </div>
+                  </v-col>
+
+                  <v-col cols="12" xl="5">
+                    <div class="d-flex flex-column ga-4">
+                      <v-expansion-panels variant="accordion">
+                        <v-expansion-panel>
+                          <v-expansion-panel-title>
+                            {{ t('ai.advancedDebugTitle') }}
+                          </v-expansion-panel-title>
+                          <v-expansion-panel-text>
+                            <div class="text-body-2 text-medium-emphasis mb-4">
+                              {{ t('ai.advancedDebugHint') }}
+                            </div>
+
+                            <div class="ai-binding-form mb-4">
+                              <v-select
+                                v-model="bindingForm.scope_type"
+                                density="comfortable"
+                                hide-details
+                                :items="scopeOptions"
+                                :label="t('ai.scopeType')"
+                              />
+                              <v-text-field
+                                v-model.trim="bindingForm.scope_id"
+                                density="comfortable"
+                                hide-details
+                                :label="t('ai.scopeId')"
+                              />
+                              <v-switch
+                                v-model="bindingForm.allow_read_only_tools"
+                                color="primary"
+                                density="comfortable"
+                                hide-details
+                                :label="t('ai.allowReadOnlyTools')"
+                              />
+                              <v-select
+                                v-model="bindingForm.capability_mode"
+                                density="comfortable"
+                                hide-details
+                                :items="capabilityModeOptions"
+                                :label="t('ai.capabilityMode')"
+                              />
+                            </div>
+
+                            <div class="d-flex ga-3 justify-end mb-4">
+                              <v-btn
+                                v-if="editingBindingId"
+                                :loading="saving"
+                                variant="text"
+                                @click="resetBindingForm"
+                              >
+                                {{ t('common.cancel') }}
+                              </v-btn>
+                              <v-btn color="primary" :loading="saving" @click="submitBinding(() => loadData())">
+                                {{ editingBindingId ? t('ai.updateBinding') : t('ai.createBinding') }}
+                              </v-btn>
+                            </div>
+
+                            <v-data-table
+                              class="page-table mb-4"
+                              density="compact"
+                              :headers="bindingHeaders"
+                              :items="bindings"
+                            >
+                              <template #item.allow_read_only_tools="{ value }">
+                                <v-chip :color="value ? 'success' : 'default'" size="x-small" variant="tonal">
+                                  {{ value ? t('ai.enabled') : t('ai.disabled') }}
+                                </v-chip>
+                              </template>
+                              <template #item.actions="{ item }">
+                                <div class="d-flex ga-2 justify-end">
+                                  <v-btn
+                                    color="primary"
+                                    icon="mdi-pencil-outline"
+                                    size="small"
+                                    variant="text"
+                                    @click="editBinding(item)"
+                                  />
+                                  <v-btn
+                                    color="error"
+                                    icon="mdi-delete-outline"
+                                    size="small"
+                                    variant="text"
+                                    @click="removeBinding(item.binding_id, () => loadData())"
+                                  />
+                                </div>
+                              </template>
+                            </v-data-table>
+
+                            <div class="ai-binding-form mb-4">
+                              <v-select
+                                v-model="previewForm.scope_type"
+                                density="comfortable"
+                                hide-details
+                                :items="scopeOptions"
+                                :label="t('ai.scopeType')"
+                              />
+                              <v-switch
+                                v-model="previewForm.is_tome"
+                                color="primary"
+                                density="comfortable"
+                                hide-details
+                                :label="t('ai.isTome')"
+                              />
+                              <v-switch
+                                v-model="previewForm.allow_read_only_tools"
+                                color="primary"
+                                density="comfortable"
+                                hide-details
+                                :label="t('ai.allowReadOnlyTools')"
+                              />
+                              <v-select
+                                v-model="previewForm.capability_mode"
+                                density="comfortable"
+                                hide-details
+                                :items="capabilityModeOptions"
+                                :label="t('ai.capabilityMode')"
+                              />
+                              <v-select
+                                v-model="capabilityPreviewName"
+                                density="comfortable"
+                                hide-details
+                                item-title="capability_name"
+                                item-value="capability_name"
+                                :items="capabilities"
+                                :label="t('ai.capabilityName')"
+                              />
+                              <v-text-field
+                                v-model.trim="intentPreviewForm.message_text"
+                                density="comfortable"
+                                hide-details
+                                :label="t('ai.intentPreviewMessage')"
+                              />
+                            </div>
+
+                            <div class="d-flex ga-3 justify-end mb-4">
+                              <v-btn :loading="previewingPolicy" variant="tonal" @click="runPolicyPreview">
+                                {{ t('ai.previewPolicy') }}
+                              </v-btn>
+                              <v-btn :loading="previewingIntents" variant="tonal" @click="runIntentPreview">
+                                {{ t('ai.previewIntents') }}
+                              </v-btn>
+                              <v-btn color="primary" :loading="previewingCapability" @click="runCapabilityPreview">
+                                {{ t('ai.previewCapability') }}
+                              </v-btn>
+                            </div>
+
+                            <v-sheet class="surface-gradient-card pa-4 mb-4" rounded="lg">
+                              <div class="text-subtitle-2 mb-2">{{ t('ai.policyPreviewResult') }}</div>
+                              <div v-if="policyPreview" class="d-flex flex-column ga-2 text-body-2">
+                                <div>{{ t('ai.executionEnabled') }}: {{ policyPreview.execution_enabled ? t('ai.enabled') : t('ai.disabled') }}</div>
+                                <div>{{ t('ai.allowCapabilityBridge') }}: {{ policyPreview.allow_capability_bridge ? t('ai.enabled') : t('ai.disabled') }}</div>
+                                <div>{{ t('ai.allowedTools') }}: {{ policyPreview.allowed_tool_names?.join(', ') || t('common.none') }}</div>
+                              </div>
+                              <div v-else class="text-body-2 text-medium-emphasis">
+                                {{ t('ai.noPreviewYet') }}
+                              </div>
+                            </v-sheet>
+
+                            <v-sheet class="surface-gradient-card pa-4" rounded="lg">
+                              <div class="text-subtitle-2 mb-2">{{ t('ai.capabilityPreviewResult') }}</div>
+                              <div v-if="capabilityPreview" class="d-flex flex-column ga-2 text-body-2">
+                                <div>{{ t('ai.capabilityName') }}: {{ capabilityPreview.capability_name }}</div>
+                                <div>{{ t('ai.registered') }}: {{ capabilityPreview.registered ? t('ai.enabled') : t('ai.disabled') }}</div>
+                                <div>{{ t('ai.allowed') }}: {{ capabilityPreview.allowed ? t('ai.enabled') : t('ai.disabled') }}</div>
+                                <div>{{ t('ai.reason') }}: {{ capabilityPreview.reason }}</div>
+                              </div>
+                              <div v-else class="text-body-2 text-medium-emphasis">
+                                {{ t('ai.noPreviewYet') }}
+                              </div>
+                            </v-sheet>
+
+                            <v-sheet class="surface-gradient-card pa-4 mt-4" rounded="lg">
+                              <div class="text-subtitle-2 mb-2">{{ t('ai.intentPreviewResult') }}</div>
+                              <v-data-table
+                                class="page-table"
+                                density="compact"
+                                :headers="intentPreviewHeaders"
+                                :items="intentPreview"
+                              />
+                            </v-sheet>
+                          </v-expansion-panel-text>
+                        </v-expansion-panel>
+                      </v-expansion-panels>
+                    </div>
+                  </v-col>
+                </v-row>
+              </v-window-item>
+
+              <v-window-item value="personas">
+                <v-card-text class="d-flex flex-column ga-4 px-0">
                   <v-data-table
                     class="page-table"
                     density="compact"
-                    :headers="skillHeaders"
-                    :items="tools"
+                    :headers="personaHeaders"
+                    :items="personas"
                   >
-                    <template #item.read_only="{ value }">
+                    <template #item.enabled="{ value }">
                       <v-chip :color="value ? 'success' : 'default'" size="x-small" variant="tonal">
                         {{ value ? t('ai.enabled') : t('ai.disabled') }}
                       </v-chip>
                     </template>
-                    <template #item.risk_level="{ value }">
-                      <v-chip color="primary" size="x-small" variant="tonal">
-                        {{ value }}
+                  </v-data-table>
+
+                  <v-data-table
+                    class="page-table"
+                    density="compact"
+                    :headers="personaBindingHeaders"
+                    :items="personaBindings"
+                  />
+                </v-card-text>
+              </v-window-item>
+
+              <v-window-item value="models">
+                <v-card-text class="d-flex flex-column ga-4 px-0">
+                  <v-data-table
+                    class="page-table"
+                    density="compact"
+                    :headers="providerHeaders"
+                    :items="providers"
+                  >
+                    <template #item.enabled="{ value }">
+                      <v-chip :color="value ? 'success' : 'default'" size="x-small" variant="tonal">
+                        {{ value ? t('ai.enabled') : t('ai.disabled') }}
                       </v-chip>
                     </template>
                   </v-data-table>
 
-                  <v-sheet class="surface-gradient-card pa-4" rounded="lg">
-                    <div class="text-subtitle-2 mb-2">{{ t('ai.capabilityRegistry') }}</div>
-                    <div class="d-flex flex-wrap ga-2">
-                      <v-chip
-                        v-for="item in capabilities"
-                        :key="item.capability_name"
-                        color="primary"
-                        size="small"
-                        variant="tonal"
-                      >
-                        {{ item.capability_name }}
+                  <v-data-table
+                    class="page-table"
+                    density="compact"
+                    :headers="modelProfileHeaders"
+                    :items="modelProfiles"
+                  >
+                    <template #item.enabled="{ value }">
+                      <v-chip :color="value ? 'success' : 'default'" size="x-small" variant="tonal">
+                        {{ value ? t('ai.enabled') : t('ai.disabled') }}
                       </v-chip>
+                    </template>
+                  </v-data-table>
+
+                  <v-data-table
+                    class="page-table"
+                    density="compact"
+                    :headers="modelBindingHeaders"
+                    :items="modelBindings"
+                  />
+                </v-card-text>
+              </v-window-item>
+            </v-window>
+          </v-card-text>
+        </v-window-item>
+
+        <v-window-item value="state">
+          <v-card-text class="d-flex flex-column ga-5">
+            <v-tabs v-model="stateTab" color="primary" density="comfortable">
+              <v-tab value="memory">{{ t('ai.memoryTab') }}</v-tab>
+              <v-tab value="relationship">{{ t('ai.relationshipTab') }}</v-tab>
+            </v-tabs>
+
+            <v-window v-model="stateTab">
+              <v-window-item value="memory">
+                <v-card-text class="d-flex flex-column ga-4 px-0">
+                  <div class="ai-binding-form">
+                    <v-select
+                      v-model="memoryForm.subject_type"
+                      density="comfortable"
+                      hide-details
+                      :items="memorySubjectOptions"
+                      :label="t('ai.memorySubjectType')"
+                    />
+                    <v-text-field
+                      v-model.trim="memoryForm.subject_id"
+                      density="comfortable"
+                      hide-details
+                      :label="t('ai.memorySubjectId')"
+                    />
+                    <v-text-field
+                      v-model.trim="memoryForm.query"
+                      density="comfortable"
+                      hide-details
+                      :label="t('ai.memoryQuery')"
+                    />
+                    <v-text-field
+                      v-model.number="memoryForm.limit"
+                      density="comfortable"
+                      hide-details
+                      :label="t('ai.memoryLimit')"
+                      type="number"
+                    />
+                  </div>
+
+                  <div class="d-flex justify-end">
+                    <v-btn color="primary" :loading="loadingMemories" @click="loadMemories">
+                      {{ t('ai.loadMemories') }}
+                    </v-btn>
+                  </div>
+
+                  <v-data-table
+                    class="page-table"
+                    density="compact"
+                    :headers="memoryHeaders"
+                    :items="memories"
+                  />
+                </v-card-text>
+              </v-window-item>
+
+              <v-window-item value="relationship">
+                <v-card-text class="d-flex flex-column ga-4 px-0">
+                  <div class="ai-binding-form">
+                    <v-text-field
+                      v-model.trim="relationshipForm.platform"
+                      density="comfortable"
+                      hide-details
+                      :label="t('ai.relationshipPlatform')"
+                    />
+                    <v-text-field
+                      v-model.trim="relationshipForm.user_id"
+                      density="comfortable"
+                      hide-details
+                      :label="t('ai.relationshipUserId')"
+                    />
+                    <v-text-field
+                      v-model.trim="relationshipForm.group_id"
+                      density="comfortable"
+                      hide-details
+                      :label="t('ai.relationshipGroupId')"
+                    />
+                    <v-text-field
+                      v-model.number="relationshipForm.score"
+                      density="comfortable"
+                      hide-details
+                      :label="t('ai.relationshipScore')"
+                      max="1"
+                      min="-1"
+                      step="0.1"
+                      type="number"
+                    />
+                  </div>
+
+                  <div class="d-flex ga-3 justify-end">
+                    <v-btn :loading="loadingRelationship" variant="tonal" @click="loadRelationship">
+                      {{ t('ai.loadRelationship') }}
+                    </v-btn>
+                    <v-btn color="primary" :loading="savingRelationship" @click="saveRelationship">
+                      {{ t('ai.saveRelationship') }}
+                    </v-btn>
+                  </div>
+
+                  <v-sheet class="surface-gradient-card pa-4" rounded="lg">
+                    <div class="text-subtitle-2 mb-2">{{ t('ai.relationshipStateTitle') }}</div>
+                    <div v-if="relationship" class="d-flex flex-column ga-2 text-body-2">
+                      <div>{{ t('ai.relationshipScore') }}: {{ relationship.score }}</div>
+                      <div>{{ t('ai.relationshipMoodTags') }}: {{ relationship.mood_tags.join(', ') || t('common.none') }}</div>
+                      <div>{{ t('ai.relationshipLastEventAt') }}: {{ relationship.last_event_at }}</div>
+                    </div>
+                    <div v-else class="text-body-2 text-medium-emphasis">
+                      {{ t('ai.noRelationshipLoaded') }}
                     </div>
                   </v-sheet>
-                </div>
-              </v-col>
-
-              <v-col cols="12" xl="5">
-                <div class="d-flex flex-column ga-4">
-                  <v-expansion-panels variant="accordion">
-                    <v-expansion-panel>
-                      <v-expansion-panel-title>
-                        {{ t('ai.advancedDebugTitle') }}
-                      </v-expansion-panel-title>
-                      <v-expansion-panel-text>
-                        <div class="text-body-2 text-medium-emphasis mb-4">
-                          {{ t('ai.advancedDebugHint') }}
-                        </div>
-
-                        <div class="ai-binding-form mb-4">
-                          <v-select
-                            v-model="bindingForm.scope_type"
-                            density="comfortable"
-                            hide-details
-                            :items="scopeOptions"
-                            :label="t('ai.scopeType')"
-                          />
-                          <v-text-field
-                            v-model.trim="bindingForm.scope_id"
-                            density="comfortable"
-                            hide-details
-                            :label="t('ai.scopeId')"
-                          />
-                          <v-switch
-                            v-model="bindingForm.allow_read_only_tools"
-                            color="primary"
-                            density="comfortable"
-                            hide-details
-                            :label="t('ai.allowReadOnlyTools')"
-                          />
-                          <v-select
-                            v-model="bindingForm.capability_mode"
-                            density="comfortable"
-                            hide-details
-                            :items="capabilityModeOptions"
-                            :label="t('ai.capabilityMode')"
-                          />
-                        </div>
-
-                        <div class="d-flex ga-3 justify-end mb-4">
-                          <v-btn
-                            v-if="editingBindingId"
-                            :loading="saving"
-                            variant="text"
-                            @click="resetBindingForm"
-                          >
-                            {{ t('common.cancel') }}
-                          </v-btn>
-                          <v-btn color="primary" :loading="saving" @click="submitBinding(() => loadData())">
-                            {{ editingBindingId ? t('ai.updateBinding') : t('ai.createBinding') }}
-                          </v-btn>
-                        </div>
-
-                        <v-data-table
-                          class="page-table mb-4"
-                          density="compact"
-                          :headers="bindingHeaders"
-                          :items="bindings"
-                        >
-                          <template #item.allow_read_only_tools="{ value }">
-                            <v-chip :color="value ? 'success' : 'default'" size="x-small" variant="tonal">
-                              {{ value ? t('ai.enabled') : t('ai.disabled') }}
-                            </v-chip>
-                          </template>
-                          <template #item.actions="{ item }">
-                            <div class="d-flex ga-2 justify-end">
-                              <v-btn
-                                color="primary"
-                                icon="mdi-pencil-outline"
-                                size="small"
-                                variant="text"
-                                @click="editBinding(item)"
-                              />
-                              <v-btn
-                                color="error"
-                                icon="mdi-delete-outline"
-                                size="small"
-                                variant="text"
-                                @click="removeBinding(item.binding_id, () => loadData())"
-                              />
-                            </div>
-                          </template>
-                        </v-data-table>
-
-                        <div class="ai-binding-form mb-4">
-                          <v-select
-                            v-model="previewForm.scope_type"
-                            density="comfortable"
-                            hide-details
-                            :items="scopeOptions"
-                            :label="t('ai.scopeType')"
-                          />
-                          <v-switch
-                            v-model="previewForm.is_tome"
-                            color="primary"
-                            density="comfortable"
-                            hide-details
-                            :label="t('ai.isTome')"
-                          />
-                          <v-switch
-                            v-model="previewForm.allow_read_only_tools"
-                            color="primary"
-                            density="comfortable"
-                            hide-details
-                            :label="t('ai.allowReadOnlyTools')"
-                          />
-                          <v-select
-                            v-model="previewForm.capability_mode"
-                            density="comfortable"
-                            hide-details
-                            :items="capabilityModeOptions"
-                            :label="t('ai.capabilityMode')"
-                          />
-                          <v-select
-                            v-model="capabilityPreviewName"
-                            density="comfortable"
-                            hide-details
-                            item-title="capability_name"
-                            item-value="capability_name"
-                            :items="capabilities"
-                            :label="t('ai.capabilityName')"
-                          />
-                          <v-text-field
-                            v-model.trim="intentPreviewForm.message_text"
-                            density="comfortable"
-                            hide-details
-                            :label="t('ai.intentPreviewMessage')"
-                          />
-                        </div>
-
-                        <div class="d-flex ga-3 justify-end mb-4">
-                          <v-btn :loading="previewingPolicy" variant="tonal" @click="runPolicyPreview">
-                            {{ t('ai.previewPolicy') }}
-                          </v-btn>
-                          <v-btn :loading="previewingIntents" variant="tonal" @click="runIntentPreview">
-                            {{ t('ai.previewIntents') }}
-                          </v-btn>
-                          <v-btn color="primary" :loading="previewingCapability" @click="runCapabilityPreview">
-                            {{ t('ai.previewCapability') }}
-                          </v-btn>
-                        </div>
-
-                        <v-sheet class="surface-gradient-card pa-4 mb-4" rounded="lg">
-                          <div class="text-subtitle-2 mb-2">{{ t('ai.policyPreviewResult') }}</div>
-                          <div v-if="policyPreview" class="d-flex flex-column ga-2 text-body-2">
-                            <div>{{ t('ai.executionEnabled') }}: {{ policyPreview.execution_enabled ? t('ai.enabled') : t('ai.disabled') }}</div>
-                            <div>{{ t('ai.allowCapabilityBridge') }}: {{ policyPreview.allow_capability_bridge ? t('ai.enabled') : t('ai.disabled') }}</div>
-                            <div>{{ t('ai.allowedTools') }}: {{ policyPreview.allowed_tool_names?.join(', ') || t('common.none') }}</div>
-                          </div>
-                          <div v-else class="text-body-2 text-medium-emphasis">
-                            {{ t('ai.noPreviewYet') }}
-                          </div>
-                        </v-sheet>
-
-                        <v-sheet class="surface-gradient-card pa-4" rounded="lg">
-                          <div class="text-subtitle-2 mb-2">{{ t('ai.capabilityPreviewResult') }}</div>
-                          <div v-if="capabilityPreview" class="d-flex flex-column ga-2 text-body-2">
-                            <div>{{ t('ai.capabilityName') }}: {{ capabilityPreview.capability_name }}</div>
-                            <div>{{ t('ai.registered') }}: {{ capabilityPreview.registered ? t('ai.enabled') : t('ai.disabled') }}</div>
-                            <div>{{ t('ai.allowed') }}: {{ capabilityPreview.allowed ? t('ai.enabled') : t('ai.disabled') }}</div>
-                            <div>{{ t('ai.reason') }}: {{ capabilityPreview.reason }}</div>
-                          </div>
-                          <div v-else class="text-body-2 text-medium-emphasis">
-                            {{ t('ai.noPreviewYet') }}
-                          </div>
-                        </v-sheet>
-
-                        <v-sheet class="surface-gradient-card pa-4 mt-4" rounded="lg">
-                          <div class="text-subtitle-2 mb-2">{{ t('ai.intentPreviewResult') }}</div>
-                          <v-data-table
-                            class="page-table"
-                            density="compact"
-                            :headers="intentPreviewHeaders"
-                            :items="intentPreview"
-                          />
-                        </v-sheet>
-                      </v-expansion-panel-text>
-                    </v-expansion-panel>
-                  </v-expansion-panels>
-                </div>
-              </v-col>
-            </v-row>
-          </v-card-text>
-        </v-window-item>
-
-        <v-window-item value="personas">
-          <v-card-text class="d-flex flex-column ga-4">
-            <v-data-table
-              class="page-table"
-              density="compact"
-              :headers="personaHeaders"
-              :items="personas"
-            >
-              <template #item.enabled="{ value }">
-                <v-chip :color="value ? 'success' : 'default'" size="x-small" variant="tonal">
-                  {{ value ? t('ai.enabled') : t('ai.disabled') }}
-                </v-chip>
-              </template>
-            </v-data-table>
-
-            <v-data-table
-              class="page-table"
-              density="compact"
-              :headers="personaBindingHeaders"
-              :items="personaBindings"
-            />
-          </v-card-text>
-        </v-window-item>
-
-        <v-window-item value="memory">
-          <v-card-text class="d-flex flex-column ga-4">
-            <div class="ai-binding-form">
-              <v-select
-                v-model="memoryForm.subject_type"
-                density="comfortable"
-                hide-details
-                :items="memorySubjectOptions"
-                :label="t('ai.memorySubjectType')"
-              />
-              <v-text-field
-                v-model.trim="memoryForm.subject_id"
-                density="comfortable"
-                hide-details
-                :label="t('ai.memorySubjectId')"
-              />
-              <v-text-field
-                v-model.trim="memoryForm.query"
-                density="comfortable"
-                hide-details
-                :label="t('ai.memoryQuery')"
-              />
-              <v-text-field
-                v-model.number="memoryForm.limit"
-                density="comfortable"
-                hide-details
-                :label="t('ai.memoryLimit')"
-                type="number"
-              />
-            </div>
-
-            <div class="d-flex justify-end">
-              <v-btn color="primary" :loading="loadingMemories" @click="loadMemories">
-                {{ t('ai.loadMemories') }}
-              </v-btn>
-            </div>
-
-            <v-data-table
-              class="page-table"
-              density="compact"
-              :headers="memoryHeaders"
-              :items="memories"
-            />
-          </v-card-text>
-        </v-window-item>
-
-        <v-window-item value="relationship">
-          <v-card-text class="d-flex flex-column ga-4">
-            <div class="ai-binding-form">
-              <v-text-field
-                v-model.trim="relationshipForm.platform"
-                density="comfortable"
-                hide-details
-                :label="t('ai.relationshipPlatform')"
-              />
-              <v-text-field
-                v-model.trim="relationshipForm.user_id"
-                density="comfortable"
-                hide-details
-                :label="t('ai.relationshipUserId')"
-              />
-              <v-text-field
-                v-model.trim="relationshipForm.group_id"
-                density="comfortable"
-                hide-details
-                :label="t('ai.relationshipGroupId')"
-              />
-              <v-text-field
-                v-model.number="relationshipForm.score"
-                density="comfortable"
-                hide-details
-                :label="t('ai.relationshipScore')"
-                max="1"
-                min="-1"
-                step="0.1"
-                type="number"
-              />
-            </div>
-
-            <div class="d-flex ga-3 justify-end">
-              <v-btn :loading="loadingRelationship" variant="tonal" @click="loadRelationship">
-                {{ t('ai.loadRelationship') }}
-              </v-btn>
-              <v-btn color="primary" :loading="savingRelationship" @click="saveRelationship">
-                {{ t('ai.saveRelationship') }}
-              </v-btn>
-            </div>
-
-            <v-sheet class="surface-gradient-card pa-4" rounded="lg">
-              <div class="text-subtitle-2 mb-2">{{ t('ai.relationshipStateTitle') }}</div>
-              <div v-if="relationship" class="d-flex flex-column ga-2 text-body-2">
-                <div>{{ t('ai.relationshipScore') }}: {{ relationship.score }}</div>
-                <div>{{ t('ai.relationshipMoodTags') }}: {{ relationship.mood_tags.join(', ') || t('common.none') }}</div>
-                <div>{{ t('ai.relationshipLastEventAt') }}: {{ relationship.last_event_at }}</div>
-              </div>
-              <div v-else class="text-body-2 text-medium-emphasis">
-                {{ t('ai.noRelationshipLoaded') }}
-              </div>
-            </v-sheet>
-          </v-card-text>
-        </v-window-item>
-
-        <v-window-item value="models">
-          <v-card-text class="d-flex flex-column ga-4">
-            <v-data-table
-              class="page-table"
-              density="compact"
-              :headers="providerHeaders"
-              :items="providers"
-            >
-              <template #item.enabled="{ value }">
-                <v-chip :color="value ? 'success' : 'default'" size="x-small" variant="tonal">
-                  {{ value ? t('ai.enabled') : t('ai.disabled') }}
-                </v-chip>
-              </template>
-            </v-data-table>
-
-            <v-data-table
-              class="page-table"
-              density="compact"
-              :headers="modelProfileHeaders"
-              :items="modelProfiles"
-            >
-              <template #item.enabled="{ value }">
-                <v-chip :color="value ? 'success' : 'default'" size="x-small" variant="tonal">
-                  {{ value ? t('ai.enabled') : t('ai.disabled') }}
-                </v-chip>
-              </template>
-            </v-data-table>
-
-            <v-data-table
-              class="page-table"
-              density="compact"
-              :headers="modelBindingHeaders"
-              :items="modelBindings"
-            />
+                </v-card-text>
+              </v-window-item>
+            </v-window>
           </v-card-text>
         </v-window-item>
       </v-window>
@@ -617,7 +635,9 @@
 
   const loading = ref(false)
   const errorMessage = ref('')
-  const tab = ref('workbench')
+  const topTab = ref('workbench')
+  const setupTab = ref('tools')
+  const stateTab = ref('memory')
 
   const {
     conversations,
