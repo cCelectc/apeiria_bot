@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 from apeiria.app.ai.skills.catalog import AISkillContract, AISkillDefinition
 
@@ -26,7 +26,9 @@ def build_skill_definition(tool: "AIToolSpec") -> AISkillDefinition:
     )
 
 
-def _map_side_effect_level(tool: "AIToolSpec") -> str:
+def _map_side_effect_level(
+    tool: "AIToolSpec",
+) -> Literal["read_only", "low_risk", "high_risk"]:
     if tool.read_only:
         return "read_only"
     if tool.risk_level == "high":

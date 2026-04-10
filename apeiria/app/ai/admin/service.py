@@ -37,7 +37,7 @@ if TYPE_CHECKING:
         AICapabilityDefinition,
         AICapabilityPreview,
     )
-    from apeiria.app.ai.skills.policy import (
+    from apeiria.app.ai.skills.models import (
         AIToolExecutionView,
         AIToolPolicy,
         AIToolSpec,

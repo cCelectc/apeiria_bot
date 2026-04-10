@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
+from uuid import uuid4
 
 from nonebot.log import logger
 from nonebot_plugin_orm import get_session
@@ -34,7 +35,7 @@ from apeiria.app.ai.skills.policy import (
     AIToolSceneContext,
     ai_tool_policy_binding_service,
 )
-from apeiria.app.ai.skills.service import AISkillRuntimeRequest, ai_skill_service
+from apeiria.app.ai.skills.runtime import AIToolRuntimeRequest, ai_tool_runtime
 
 if TYPE_CHECKING:
     from nonebot.adapters import Bot, Event
@@ -90,6 +91,7 @@ async def _append_tool_observation_turns(
     session: "AsyncSession",
     *,
     identity: "AIConversationIdentity",
+    trace_id: str,
     tool_turns: tuple["AIToolTurnCreateInput", ...],
 ) -> None:
     for index, turn in enumerate(tool_turns):
@@ -101,6 +103,7 @@ async def _append_tool_observation_turns(
                 sender_id=turn.sender_id,
                 content_text=turn.content_text,
                 raw_payload={
+                    "trace_id": trace_id,
                     "index": index,
                     **turn.raw_payload,
                 },
@@ -124,6 +127,7 @@ class AIRuntimeService:
         decision, message_text = decision_payload
         if not decision.should_reply:
             return None
+        trace_id = f"ai_trace_{uuid4().hex}"
         user_id = str(event.get_user_id())
 
         async with get_session() as session:
@@ -173,9 +177,9 @@ class AIRuntimeService:
                 session,
                 target=relationship_target,
             )
-            skill_runtime = await ai_skill_service.run_for_message(
+            skill_runtime = await ai_tool_runtime.run_for_message(
                 session,
-                AISkillRuntimeRequest(
+                AIToolRuntimeRequest(
                     conversation_id=identity.conversation_id,
                     message_text=message_text,
                     policy=tool_policy,
@@ -186,6 +190,7 @@ class AIRuntimeService:
             await _append_tool_observation_turns(
                 session,
                 identity=identity,
+                trace_id=trace_id,
                 tool_turns=skill_runtime.turns,
             )
             selected = await ai_model_facade.select_model(
@@ -195,6 +200,11 @@ class AIRuntimeService:
             )
             await session.commit()
             if selected is None:
+                logger.debug(
+                    "AI trace {} skipped reply: no model selected for conversation {}",
+                    trace_id,
+                    identity.conversation_id,
+                )
                 return None
 
             try:
@@ -213,12 +223,19 @@ class AIRuntimeService:
                 )
             except Exception as exc:  # noqa: BLE001
                 logger.opt(exception=exc).warning(
-                    "AI reply generation failed for conversation {}",
+                    "AI trace {} reply generation failed for conversation {}",
+                    trace_id,
                     identity.conversation_id,
                 )
                 return None
 
             if response is None or not response.content.strip():
+                logger.debug(
+                    "AI trace {} skipped reply: empty provider response for "
+                    "conversation {}",
+                    trace_id,
+                    identity.conversation_id,
+                )
                 return None
 
             await ai_conversation_service.append_turn(
@@ -229,12 +246,25 @@ class AIRuntimeService:
                     sender_id=str(bot.self_id),
                     content_text=response.content.strip(),
                     raw_payload={
+                        "trace_id": trace_id,
                         "provider_id": response.provider_id,
                         "model_name": response.model_name,
+                        "recalled_memory_count": len(recalled_memories),
+                        "tool_observation_count": len(skill_runtime.turns),
                     },
                 ),
             )
             await session.commit()
+            logger.info(
+                "AI trace {} generated reply for conversation {} with provider={} "
+                "model={} memories={} tool_observations={}",
+                trace_id,
+                identity.conversation_id,
+                response.provider_id,
+                response.model_name,
+                len(recalled_memories),
+                len(skill_runtime.turns),
+            )
             return response.content.strip()
 
 
