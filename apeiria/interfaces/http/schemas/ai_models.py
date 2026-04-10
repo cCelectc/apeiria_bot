@@ -62,6 +62,21 @@ class AIConversationTurnItem(BaseModel):
     tool_observation_count: int | None = None
 
 
+class AIConversationPromptPreviewItem(BaseModel):
+    conversation_id: str
+    latest_user_message: str | None = None
+    provider_id: str | None = None
+    profile_id: str | None = None
+    model_name: str | None = None
+    persona_id: str | None = None
+    conversation_summary: str | None = None
+    relationship_context: str | None = None
+    tool_policy: str | None = None
+    tool_results: list[str] = []
+    memories: list[AIMemoryItem] = []
+    rendered_prompt: str
+
+
 class AIRelationshipStateItem(BaseModel):
     affinity_id: str
     platform: str

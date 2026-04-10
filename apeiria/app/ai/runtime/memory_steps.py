@@ -123,6 +123,35 @@ async def recall_memories(
     return apply_memory_budget(recalled)
 
 
+async def retrieve_memories_for_preview(
+    session: "AsyncSession",
+    *,
+    identity: "AIConversationIdentity",
+    user_id: str,
+    query_text: str,
+) -> list["AIMemoryDefinition"]:
+    """Retrieve preview memories without mutating recall timestamps."""
+
+    recalled: list[AIMemoryDefinition] = []
+    seen_ids: set[str] = set()
+    for target in build_memory_targets(identity, user_id):
+        rows = await ai_memory_service.retrieve_memories(
+            session,
+            AIMemoryQuery(
+                subject_type=target.subject_type,
+                subject_id=target.subject_id,
+                query_text=query_text,
+                limit=3,
+            ),
+        )
+        for row in rows:
+            if row.memory_id in seen_ids:
+                continue
+            seen_ids.add(row.memory_id)
+            recalled.append(row)
+    return apply_memory_budget(recalled)
+
+
 async def store_extracted_memories(
     session: "AsyncSession",
     *,

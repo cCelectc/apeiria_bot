@@ -447,6 +447,21 @@ export interface AIConversationTurnItem {
   tool_observation_count: number | null
 }
 
+export interface AIConversationPromptPreviewItem {
+  conversation_id: string
+  latest_user_message: string | null
+  provider_id: string | null
+  profile_id: string | null
+  model_name: string | null
+  persona_id: string | null
+  conversation_summary: string | null
+  relationship_context: string | null
+  tool_policy: string | null
+  tool_results: string[]
+  memories: AIMemoryItem[]
+  rendered_prompt: string
+}
+
 export interface AIRelationshipStateItem {
   affinity_id: string
   platform: string
@@ -899,6 +914,13 @@ export function getAIConversationTurns (params: {
   limit?: number
 }) {
   return client.get<AIConversationTurnItem[]>('/ai/conversations/turns', { params })
+}
+
+export function getAIConversationPromptPreview (params: {
+  conversation_id: string
+  turn_limit?: number
+}) {
+  return client.get<AIConversationPromptPreviewItem | null>('/ai/conversations/prompt-preview', { params })
 }
 
 export function getAIRelationshipState (params: {

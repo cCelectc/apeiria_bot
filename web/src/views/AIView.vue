@@ -142,6 +142,30 @@
               </v-col>
             </v-row>
 
+            <v-sheet class="surface-gradient-card pa-4" rounded="lg">
+              <div class="text-subtitle-2 mb-2">{{ t('ai.promptPreviewTitle') }}</div>
+              <div v-if="promptPreview" class="d-flex flex-column ga-3 text-body-2">
+                <div>{{ t('ai.latestUserMessage') }}: {{ promptPreview.latest_user_message || t('common.none') }}</div>
+                <div>{{ t('ai.modelName') }}: {{ promptPreview.model_name || t('common.none') }}</div>
+                <div>{{ t('ai.personaId') }}: {{ promptPreview.persona_id || t('common.none') }}</div>
+                <div>{{ t('ai.relationshipStateTitle') }}: {{ promptPreview.relationship_context || t('common.none') }}</div>
+                <div>{{ t('ai.toolPolicyTitle') }}: {{ promptPreview.tool_policy || t('common.none') }}</div>
+                <div>{{ t('ai.memoryHits') }}: {{ promptPreview.memories.length }}</div>
+                <div>{{ t('ai.toolResultsTitle') }}: {{ promptPreview.tool_results.length }}</div>
+                <pre class="ai-prompt-preview">{{ promptPreview.rendered_prompt }}</pre>
+              </div>
+              <div v-else class="text-body-2 text-medium-emphasis">
+                {{ t('ai.noPromptPreview') }}
+              </div>
+            </v-sheet>
+
+            <v-data-table
+              class="page-table"
+              density="compact"
+              :headers="promptMemoryHeaders"
+              :items="promptPreview?.memories || []"
+            />
+
             <v-data-table
               class="page-table"
               density="compact"
@@ -601,6 +625,7 @@
     loadWorkbenchData,
     loadingTurns,
     loadingWorkbench,
+    promptPreview,
     selectedConversation,
     summarizeJsonText,
     summarizeRawPayload,
@@ -722,6 +747,13 @@
     { title: t('ai.toolInput'), key: 'input_json', sortable: false },
     { title: t('ai.toolOutput'), key: 'output_json', sortable: false },
     { title: t('ai.createdAt'), key: 'created_at', sortable: false },
+  ])
+
+  const promptMemoryHeaders = computed(() => [
+    { title: t('ai.memoryType'), key: 'memory_type', sortable: false },
+    { title: t('ai.memoryContent'), key: 'content', sortable: false },
+    { title: t('ai.memoryConfidence'), key: 'confidence', sortable: false },
+    { title: t('ai.memorySalience'), key: 'salience', sortable: false },
   ])
 
   const personaHeaders = computed(() => [

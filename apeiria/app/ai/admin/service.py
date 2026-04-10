@@ -6,19 +6,35 @@ from typing import TYPE_CHECKING
 
 from nonebot_plugin_orm import get_session
 
+from apeiria.app.ai.admin.models import AIConversationPromptPreview
+from apeiria.app.ai.admin.workbench import (
+    extract_tool_result_lines,
+    select_latest_user_message,
+    to_context_turns,
+)
 from apeiria.app.ai.conversation.service import ai_conversation_service
 from apeiria.app.ai.memory.service import AIMemoryQuery, ai_memory_service
+from apeiria.app.ai.model import AIModelBindingTarget, AIModelRouteQuery
 from apeiria.app.ai.model.service import ai_model_facade
+from apeiria.app.ai.persona.models import AIPersonaBindingTarget
 from apeiria.app.ai.persona.service import ai_persona_service
 from apeiria.app.ai.relationship.service import ai_relationship_service
+from apeiria.app.ai.runtime.composer import AIRuntimeComposeInput, compose_reply_prompt
+from apeiria.app.ai.runtime.memory_steps import retrieve_memories_for_preview
+from apeiria.app.ai.runtime.relationship_steps import (
+    build_relationship_target,
+    load_relationship_context,
+)
 from apeiria.app.ai.skills.service import ai_skill_service
 from apeiria.app.ai.tools.policy import (
     AIToolPolicyBindingCreateInput,
     AIToolPolicyBindingSpec,
+    AIToolPolicyBindingTarget,
     AIToolSceneContext,
     AIToolScenePolicyProfile,
     ai_tool_policy_binding_service,
     resolve_default_tool_policy,
+    summarize_tool_policy,
 )
 from apeiria.app.ai.tools.service import ai_tool_service
 
@@ -136,6 +152,119 @@ class AIAdminService:
                 session,
                 conversation_id=conversation_id,
                 limit=limit,
+            )
+
+    async def build_prompt_preview(
+        self,
+        *,
+        conversation_id: str,
+        turn_limit: int = 50,
+    ) -> AIConversationPromptPreview | None:
+        async with get_session() as session:
+            conversation = await ai_conversation_service.get_conversation_view(
+                session,
+                conversation_id=conversation_id,
+            )
+            if conversation is None:
+                return None
+            identity = await ai_conversation_service.get_conversation_identity(
+                session,
+                conversation_id=conversation_id,
+            )
+            if identity is None:
+                return None
+            turns = await ai_conversation_service.list_turns_for_conversation(
+                session,
+                conversation_id=conversation_id,
+                limit=turn_limit,
+            )
+            latest_user_message = select_latest_user_message(turns)
+            user_id = identity.subject_user_id or identity.scope_id
+            relationship_target = build_relationship_target(identity, user_id)
+            relationship_context = await load_relationship_context(
+                session,
+                target=relationship_target,
+            )
+            persona = await ai_persona_service.build_persona_prompt_bundle(
+                session,
+                target=AIPersonaBindingTarget(
+                    conversation_id=identity.conversation_id,
+                    group_id=(
+                        identity.scope_id if identity.scope_type == "group" else None
+                    ),
+                    user_id=identity.subject_user_id or user_id,
+                ),
+            )
+            tool_policy = await ai_tool_policy_binding_service.resolve_scene_policy(
+                session,
+                scene_context=AIToolSceneContext(
+                    scope_type=identity.scope_type,
+                    is_tome=identity.scope_type == "private",
+                ),
+                target=AIToolPolicyBindingTarget(
+                    conversation_id=identity.conversation_id,
+                    group_id=(
+                        identity.scope_id if identity.scope_type == "group" else None
+                    ),
+                    user_id=identity.subject_user_id,
+                ),
+            )
+            memories = (
+                await retrieve_memories_for_preview(
+                    session,
+                    identity=identity,
+                    user_id=user_id,
+                    query_text=latest_user_message or "",
+                )
+                if latest_user_message
+                else []
+            )
+            selected = await ai_model_facade.select_model(
+                session,
+                query=AIModelRouteQuery(task_class="reply_default"),
+                target=AIModelBindingTarget(
+                    conversation_id=identity.conversation_id,
+                    group_id=(
+                        identity.scope_id if identity.scope_type == "group" else None
+                    ),
+                    user_id=identity.subject_user_id or user_id,
+                ),
+            )
+            tool_results = extract_tool_result_lines(turns)
+            tool_policy_text = summarize_tool_policy(
+                ai_tool_service.registry.list_tools(),
+                tool_policy,
+            )
+            rendered_prompt = compose_reply_prompt(
+                AIRuntimeComposeInput(
+                    persona=persona,
+                    relationship=relationship_context,
+                    skill_policy=tool_policy_text,
+                    skill_results=tool_results,
+                    memories=memories,
+                    conversation_summary=conversation.short_summary,
+                    turns=to_context_turns(turns),
+                )
+            )
+            return AIConversationPromptPreview(
+                conversation_id=conversation_id,
+                latest_user_message=latest_user_message,
+                provider_id=(
+                    selected.provider.provider_id if selected is not None else None
+                ),
+                profile_id=(
+                    selected.profile.profile_id if selected is not None else None
+                ),
+                model_name=(
+                    selected.profile.model_name if selected is not None else None
+                ),
+                persona_id=persona.persona_id if persona is not None else None,
+                conversation_summary=conversation.short_summary,
+                relationship_context=relationship_context,
+                tool_policy=tool_policy_text,
+                tool_results=tool_results,
+                memories=tuple(memories),
+                rendered_prompt=rendered_prompt,
             )
 
     async def get_relationship_state(

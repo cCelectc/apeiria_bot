@@ -13,6 +13,7 @@ from apeiria.interfaces.http.routes.ai_route_support import (
     to_ai_capability_item,
     to_ai_capability_preview_item,
     to_ai_conversation_item,
+    to_ai_conversation_prompt_preview_item,
     to_ai_conversation_turn_item,
     to_ai_memory_item,
     to_ai_model_binding_item,
@@ -34,6 +35,7 @@ from apeiria.interfaces.http.schemas.ai_models import (
     AICapabilityPreviewItem,
     AICapabilityPreviewRequest,
     AIConversationItem,
+    AIConversationPromptPreviewItem,
     AIConversationTurnItem,
     AIMemoryItem,
     AIModelBindingItem,
@@ -149,6 +151,24 @@ async def list_ai_conversation_turns(
         limit=limit,
     )
     return [to_ai_conversation_turn_item(item) for item in turns]
+
+
+@router.get(
+    "/conversations/prompt-preview",
+    response_model=AIConversationPromptPreviewItem | None,
+)
+async def get_ai_conversation_prompt_preview(
+    _: Annotated[Any, Depends(require_control_panel)],
+    conversation_id: Annotated[str, Query(min_length=1)],
+    turn_limit: Annotated[int, Query(ge=1, le=200)] = 50,
+) -> AIConversationPromptPreviewItem | None:
+    preview = await ai_admin_service.build_prompt_preview(
+        conversation_id=conversation_id,
+        turn_limit=turn_limit,
+    )
+    if preview is None:
+        return None
+    return to_ai_conversation_prompt_preview_item(preview)
 
 
 @router.get("/relationships", response_model=AIRelationshipStateItem)

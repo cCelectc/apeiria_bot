@@ -219,6 +219,41 @@ class AIConversationService:
             for row in result.scalars().all()
         ]
 
+    async def get_conversation_view(
+        self,
+        session: "AsyncSession",
+        *,
+        conversation_id: str,
+    ) -> AIConversationAdminView | None:
+        """Load one admin conversation view by stable conversation id."""
+
+        result = await session.execute(
+            select(AIConversation).where(
+                AIConversation.conversation_id == conversation_id
+            )
+        )
+        row = result.scalar_one_or_none()
+        if row is None:
+            return None
+        return AIConversationAdminView(
+            conversation_id=row.conversation_id,
+            platform=row.platform,
+            bot_id=row.bot_id,
+            scope_type=cast("ScopeType", row.scope_type),
+            scope_id=row.scope_id,
+            subject_user_id=row.subject_user_id,
+            short_summary=row.short_summary,
+            created_at=row.created_at.replace(tzinfo=timezone.utc)
+            if row.created_at.tzinfo is None
+            else row.created_at,
+            updated_at=row.updated_at.replace(tzinfo=timezone.utc)
+            if row.updated_at.tzinfo is None
+            else row.updated_at,
+            last_active_at=row.last_active_at.replace(tzinfo=timezone.utc)
+            if row.last_active_at.tzinfo is None
+            else row.last_active_at,
+        )
+
     async def list_turns_for_conversation(
         self,
         session: "AsyncSession",
@@ -240,6 +275,31 @@ class AIConversationService:
         ]
         turns.reverse()
         return turns
+
+    async def get_conversation_identity(
+        self,
+        session: "AsyncSession",
+        *,
+        conversation_id: str,
+    ) -> AIConversationIdentity | None:
+        """Load the canonical identity for one stored conversation id."""
+
+        result = await session.execute(
+            select(AIConversation).where(
+                AIConversation.conversation_id == conversation_id
+            )
+        )
+        row = result.scalar_one_or_none()
+        if row is None:
+            return None
+        return AIConversationIdentity(
+            conversation_id=row.conversation_id,
+            platform=row.platform,
+            bot_id=row.bot_id,
+            scope_type=cast("ScopeType", row.scope_type),
+            scope_id=row.scope_id,
+            subject_user_id=row.subject_user_id,
+        )
 
     def _to_turn_detail_view(
         self,

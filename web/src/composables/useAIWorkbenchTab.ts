@@ -1,6 +1,16 @@
-import type { AIConversationItem, AIConversationTurnItem, AIToolExecutionItem } from '@/api'
+import type {
+  AIConversationItem,
+  AIConversationPromptPreviewItem,
+  AIConversationTurnItem,
+  AIToolExecutionItem,
+} from '@/api'
 import { computed, reactive, ref } from 'vue'
-import { getAIConversations, getAIConversationTurns, getAIToolExecutions } from '@/api'
+import {
+  getAIConversationPromptPreview,
+  getAIConversations,
+  getAIConversationTurns,
+  getAIToolExecutions,
+} from '@/api'
 import { getErrorMessage } from '@/api/client'
 import { useNoticeStore } from '@/stores/notice'
 
@@ -12,6 +22,7 @@ export function useAIWorkbenchTab (t: (key: string, params?: Record<string, unkn
   const conversations = ref<AIConversationItem[]>([])
   const turns = ref<AIConversationTurnItem[]>([])
   const toolExecutions = ref<AIToolExecutionItem[]>([])
+  const promptPreview = ref<AIConversationPromptPreviewItem | null>(null)
   const selectedConversationId = ref('')
   const workbenchForm = reactive({
     limit: 20,
@@ -60,15 +71,20 @@ export function useAIWorkbenchTab (t: (key: string, params?: Record<string, unkn
     selectedConversationId.value = conversationId
     loadingTurns.value = true
     try {
-      const [turnsResponse, executionsResponse] = await Promise.all([
+      const [turnsResponse, executionsResponse, promptPreviewResponse] = await Promise.all([
         getAIConversationTurns({
           conversation_id: conversationId,
           limit: workbenchForm.turnLimit,
         }),
         getAIToolExecutions({ conversation_id: conversationId }),
+        getAIConversationPromptPreview({
+          conversation_id: conversationId,
+          turn_limit: workbenchForm.turnLimit,
+        }),
       ])
       turns.value = turnsResponse.data
       toolExecutions.value = executionsResponse.data
+      promptPreview.value = promptPreviewResponse.data
     } catch (error) {
       noticeStore.show(getErrorMessage(error, t('ai.workbenchTurnsFailed')), 'error')
     } finally {
@@ -111,6 +127,7 @@ export function useAIWorkbenchTab (t: (key: string, params?: Record<string, unkn
     loadWorkbenchData,
     loadingTurns,
     loadingWorkbench,
+    promptPreview,
     selectedConversation,
     selectedConversationId,
     summarizeRawPayload,

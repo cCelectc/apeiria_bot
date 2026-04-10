@@ -8,6 +8,7 @@ from apeiria.interfaces.http.schemas.ai_models import (
     AICapabilityItem,
     AICapabilityPreviewItem,
     AIConversationItem,
+    AIConversationPromptPreviewItem,
     AIConversationTurnItem,
     AIMemoryItem,
     AIModelBindingItem,
@@ -26,6 +27,7 @@ from apeiria.interfaces.http.schemas.ai_models import (
 )
 
 if TYPE_CHECKING:
+    from apeiria.app.ai.admin.models import AIConversationPromptPreview
     from apeiria.app.ai.conversation.models import (
         AIConversationAdminView,
         AIConversationTurnDetailView,
@@ -128,6 +130,25 @@ def to_ai_conversation_turn_item(
         model_name=item.model_name,
         recalled_memory_count=item.recalled_memory_count,
         tool_observation_count=item.tool_observation_count,
+    )
+
+
+def to_ai_conversation_prompt_preview_item(
+    item: "AIConversationPromptPreview",
+) -> AIConversationPromptPreviewItem:
+    return AIConversationPromptPreviewItem(
+        conversation_id=item.conversation_id,
+        latest_user_message=item.latest_user_message,
+        provider_id=item.provider_id,
+        profile_id=item.profile_id,
+        model_name=item.model_name,
+        persona_id=item.persona_id,
+        conversation_summary=item.conversation_summary,
+        relationship_context=item.relationship_context,
+        tool_policy=item.tool_policy,
+        tool_results=list(item.tool_results),
+        memories=[to_ai_memory_item(memory) for memory in item.memories],
+        rendered_prompt=item.rendered_prompt,
     )
 
 
