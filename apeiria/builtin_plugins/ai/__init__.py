@@ -23,9 +23,9 @@ __plugin_meta__ = PluginMetadata(
     extra=PluginExtraData(
         author="apeiria",
         version="0.1.0",
-        plugin_type=PluginType.HIDDEN,
+        plugin_type=PluginType.NORMAL,
         admin_level=0,
-        ui=UiExtra(order=0, hidden=True),
+        ui=UiExtra(order=0),
         commands=["ai-status"],
         required_plugins=["nonebot_plugin_alconna", "nonebot_plugin_orm"],
     ).to_dict(),

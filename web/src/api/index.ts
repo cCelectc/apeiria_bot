@@ -332,6 +332,112 @@ export interface UserLevelItem {
   level: number
 }
 
+export interface AIToolItem {
+  name: string
+  description: string
+  read_only: boolean
+  concurrency_safe: boolean
+  risk_level: string
+  is_capability_bridge: boolean
+}
+
+export interface AIToolPolicyBindingItem {
+  binding_id: string
+  scope_type: string
+  scope_id: string
+  allow_read_only_tools: boolean
+  capability_mode: string
+}
+
+export interface AIToolPolicyPreviewItem {
+  execution_enabled: boolean
+  allowed_tool_names: string[] | null
+  denied_tool_names: string[]
+  allow_high_risk_tools: boolean
+  allow_capability_bridge: boolean
+}
+
+export interface AICapabilityItem {
+  capability_name: string
+  bound_tool_name: string
+}
+
+export interface AICapabilityPreviewItem {
+  capability_name: string
+  registered: boolean
+  allowed: boolean
+  reason: string
+  allow_capability_bridge: boolean
+  execution_enabled: boolean
+}
+
+export interface AIPersonaItem {
+  persona_id: string
+  name: string
+  description: string
+  system_prompt: string
+  style_prompt: string
+  enabled: boolean
+}
+
+export interface AIPersonaBindingItem {
+  binding_id: string
+  scope_type: string
+  scope_id: string
+  persona_id: string
+}
+
+export interface AIMemoryItem {
+  memory_id: string
+  memory_type: string
+  subject_type: string
+  subject_id: string
+  content: string
+  source_turn_id: string | null
+  salience: number
+  confidence: number
+  last_recalled_at: string | null
+  created_at: string
+}
+
+export interface AIRelationshipStateItem {
+  affinity_id: string
+  platform: string
+  group_id: string | null
+  user_id: string
+  score: number
+  mood_tags: string[]
+  last_event_at: string
+}
+
+export interface AIProviderItem {
+  provider_id: string
+  name: string
+  provider_type: string
+  api_base: string | null
+  api_key_env_name: string | null
+  enabled: boolean
+  default_model: string | null
+}
+
+export interface AIModelProfileItem {
+  profile_id: string
+  name: string
+  provider_id: string
+  model_name: string
+  task_class: string
+  priority: number
+  enabled: boolean
+  fallback_profile_id: string | null
+}
+
+export interface AIModelBindingItem {
+  binding_id: string
+  scope_type: string
+  scope_id: string
+  profile_id: string
+}
+
 export function login (payload: {
   username: string
   password: string
@@ -696,4 +802,104 @@ export function updateUserLevel (userId: string, groupId: string, level: number)
   return client.patch(`/permissions/users/${userId}`, { level }, {
     params: { group_id: groupId },
   })
+}
+
+export function getAITools () {
+  return client.get<AIToolItem[]>('/ai/tools')
+}
+
+export function getAIPersonas () {
+  return client.get<AIPersonaItem[]>('/ai/personas')
+}
+
+export function getAIPersonaBindings () {
+  return client.get<AIPersonaBindingItem[]>('/ai/persona-bindings')
+}
+
+export function getAIProviders () {
+  return client.get<AIProviderItem[]>('/ai/providers')
+}
+
+export function getAIModelProfiles () {
+  return client.get<AIModelProfileItem[]>('/ai/model-profiles')
+}
+
+export function getAIModelBindings () {
+  return client.get<AIModelBindingItem[]>('/ai/model-bindings')
+}
+
+export function getAIMemories (params: {
+  subject_type: string
+  subject_id: string
+  query?: string
+  limit?: number
+}) {
+  return client.get<AIMemoryItem[]>('/ai/memories', { params })
+}
+
+export function getAIRelationshipState (params: {
+  platform: string
+  user_id: string
+  group_id?: string
+}) {
+  return client.get<AIRelationshipStateItem>('/ai/relationships', { params })
+}
+
+export function updateAIRelationshipScore (payload: {
+  platform: string
+  user_id: string
+  group_id?: string | null
+  score: number
+}) {
+  return client.patch<AIRelationshipStateItem>('/ai/relationships', payload)
+}
+
+export function getAICapabilities () {
+  return client.get<AICapabilityItem[]>('/ai/tools/capabilities')
+}
+
+export function getAIToolPolicyBindings () {
+  return client.get<AIToolPolicyBindingItem[]>('/ai/tools/policy-bindings')
+}
+
+export function createAIToolPolicyBinding (payload: {
+  scope_type: string
+  scope_id: string
+  allow_read_only_tools: boolean
+  capability_mode: string
+}) {
+  return client.post<AIToolPolicyBindingItem>('/ai/tools/policy-bindings', payload)
+}
+
+export function updateAIToolPolicyBinding (payload: {
+  binding_id: string
+  allow_read_only_tools: boolean
+  capability_mode: string
+}) {
+  return client.patch<AIToolPolicyBindingItem | null>('/ai/tools/policy-bindings', payload)
+}
+
+export function deleteAIToolPolicyBinding (bindingId: string) {
+  return client.delete<{ deleted: boolean }>('/ai/tools/policy-bindings', {
+    params: { binding_id: bindingId },
+  })
+}
+
+export function previewAIToolPolicy (payload: {
+  scope_type: string
+  is_tome: boolean
+  allow_read_only_tools: boolean
+  capability_mode: string
+}) {
+  return client.post<AIToolPolicyPreviewItem>('/ai/tools/policy-preview', payload)
+}
+
+export function previewAICapability (payload: {
+  capability_name: string
+  scope_type: string
+  is_tome: boolean
+  allow_read_only_tools: boolean
+  capability_mode: string
+}) {
+  return client.post<AICapabilityPreviewItem>('/ai/tools/capability-preview', payload)
 }

@@ -29,10 +29,9 @@ from apeiria.app.ai.providers.service import ai_provider_service
 from apeiria.app.ai.relationship.scoring import project_emotion
 from apeiria.app.ai.relationship.service import ai_relationship_service
 from apeiria.app.ai.relationship.signals import derive_relationship_delta
-from apeiria.app.ai.tools.resolver import (
-    AIToolSceneContext,
-    resolve_default_tool_policy,
-)
+from apeiria.app.ai.tools.bindings import AIToolPolicyBindingTarget
+from apeiria.app.ai.tools.policy_binding_service import ai_tool_policy_binding_service
+from apeiria.app.ai.tools.resolver import AIToolSceneContext
 from apeiria.app.ai.tools.runtime import AIToolRuntimeRequest, ai_tool_runtime
 
 if TYPE_CHECKING:
@@ -206,16 +205,23 @@ def _format_relationship_context(
     )
 
 
-def _resolve_tool_policy(
+async def _resolve_tool_policy(
+    session: AsyncSession,
     identity: AIConversationIdentity,
     *,
     is_tome: bool,
 ) -> "AIToolPolicy":
-    return resolve_default_tool_policy(
-        AIToolSceneContext(
+    return await ai_tool_policy_binding_service.resolve_scene_policy(
+        session,
+        scene_context=AIToolSceneContext(
             scope_type=identity.scope_type,
             is_tome=is_tome,
-        )
+        ),
+        target=AIToolPolicyBindingTarget(
+            conversation_id=identity.conversation_id,
+            group_id=identity.scope_id if identity.scope_type == "group" else None,
+            user_id=identity.subject_user_id,
+        ),
     )
 
 
@@ -380,7 +386,11 @@ class AIOrchestrationService:
             relationship_target = _build_relationship_target(identity, user_id)
             persona_target = _to_persona_target(identity, user_id)
             model_target = _to_model_target(identity, user_id)
-            tool_policy = _resolve_tool_policy(identity, is_tome=is_tome)
+            tool_policy = await _resolve_tool_policy(
+                session,
+                identity,
+                is_tome=is_tome,
+            )
             persona = await ai_persona_service.build_persona_prompt_bundle(
                 session,
                 target=persona_target,

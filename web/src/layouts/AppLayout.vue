@@ -251,6 +251,7 @@
   const navItems = computed(() => [
     { key: 'dashboard', icon: 'mdi-view-dashboard', title: t('layout.dashboard'), to: '/dashboard' },
     { key: 'core', icon: 'mdi-cog-outline', title: t('layout.core'), to: '/core' },
+    { key: 'ai', icon: 'mdi-robot-outline', title: t('layout.ai'), to: '/ai' },
     {
       key: 'plugins-group',
       icon: 'mdi-puzzle',
