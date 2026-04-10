@@ -149,6 +149,11 @@ class AIRuntimeService:
                 identity,
                 max_turns=8,
             )
+            conversation_summary = await ai_conversation_service.update_short_summary(
+                session,
+                identity,
+                turns=turns,
+            )
             relationship_target = build_relationship_target(identity, user_id)
             persona_target = _to_persona_target(identity, user_id)
             model_target = _to_model_target(identity, user_id)
@@ -217,6 +222,7 @@ class AIRuntimeService:
                             skill_policy=skill_runtime.policy_text,
                             skill_results=skill_runtime.result_lines,
                             memories=recalled_memories,
+                            conversation_summary=conversation_summary,
                             turns=turns,
                         )
                     ),

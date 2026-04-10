@@ -11,17 +11,27 @@ if TYPE_CHECKING:
     )
 
 
-def resolve_model_profile(
+def list_model_profile_candidates(
     profiles: list["AIModelProfileDefinition"],
     query: "AIModelRouteQuery",
-) -> "AIModelProfileDefinition | None":
-    """Resolve the highest-priority enabled profile for a task class."""
+) -> list["AIModelProfileDefinition"]:
+    """Return enabled task-matched profiles in routing order."""
 
     candidates = [
         profile
         for profile in profiles
         if profile.enabled and profile.task_class == query.task_class
     ]
+    return sorted(candidates, key=lambda item: item.priority)
+
+
+def resolve_model_profile(
+    profiles: list["AIModelProfileDefinition"],
+    query: "AIModelRouteQuery",
+) -> "AIModelProfileDefinition | None":
+    """Resolve the highest-priority enabled profile for a task class."""
+
+    candidates = list_model_profile_candidates(profiles, query)
     if not candidates:
         return None
-    return sorted(candidates, key=lambda item: item.priority)[0]
+    return candidates[0]

@@ -27,6 +27,7 @@ class AIRuntimeComposeInput:
     skill_results: tuple[str, ...]
     memories: list["AIMemoryDefinition"]
     turns: list["AIContextTurnView"]
+    conversation_summary: str | None = None
 
 
 def compose_reply_prompt(inputs: AIRuntimeComposeInput) -> str:
@@ -40,6 +41,7 @@ def compose_reply_prompt(inputs: AIRuntimeComposeInput) -> str:
                 tool_policy=inputs.skill_policy,
                 tool_results=inputs.skill_results,
                 memories=inputs.memories,
+                conversation_summary=inputs.conversation_summary,
                 turns=inputs.turns,
             )
         )

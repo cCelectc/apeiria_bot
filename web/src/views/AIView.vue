@@ -99,6 +99,7 @@
                     <div>{{ t('ai.conversationId') }}: {{ selectedConversation.conversation_id }}</div>
                     <div>{{ t('ai.scopeType') }}: {{ selectedConversation.scope_type }}</div>
                     <div>{{ t('ai.scopeId') }}: {{ selectedConversation.scope_id }}</div>
+                    <div>{{ t('ai.conversationSummary') }}: {{ selectedConversation.short_summary || t('common.none') }}</div>
                     <div>{{ t('ai.lastActiveAt') }}: {{ selectedConversation.last_active_at }}</div>
                   </div>
                   <div v-else class="text-body-2 text-medium-emphasis">
@@ -641,6 +642,7 @@
     { title: t('ai.conversationId'), key: 'conversation_id', sortable: false },
     { title: t('ai.scopeType'), key: 'scope_type', sortable: false },
     { title: t('ai.scopeId'), key: 'scope_id', sortable: false },
+    { title: t('ai.conversationSummary'), key: 'short_summary', sortable: false },
     { title: t('ai.lastActiveAt'), key: 'last_active_at', sortable: false },
   ])
 

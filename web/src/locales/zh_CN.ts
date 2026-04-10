@@ -84,6 +84,7 @@ const zhCN = {
     workbenchSelectedConversation: '当前选中的会话',
     noConversationSelected: '尚未选择会话',
     conversationId: '会话标识',
+    conversationSummary: '摘要',
     lastActiveAt: '最近活跃时间',
     traceIds: 'Trace 标识',
     noTraceIds: '暂无 Trace 标识',

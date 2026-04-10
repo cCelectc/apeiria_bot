@@ -84,6 +84,7 @@ const enUS = {
     workbenchSelectedConversation: 'Selected Conversation',
     noConversationSelected: 'No conversation selected',
     conversationId: 'Conversation ID',
+    conversationSummary: 'Summary',
     lastActiveAt: 'Last Active',
     traceIds: 'Trace IDs',
     noTraceIds: 'No trace IDs yet',

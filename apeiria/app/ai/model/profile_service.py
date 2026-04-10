@@ -19,9 +19,13 @@ from apeiria.app.ai.model.models import (
     AIModelTaskClass,
 )
 from apeiria.app.ai.model.provider_service import ai_provider_service
-from apeiria.app.ai.model.routing import resolve_model_profile
+from apeiria.app.ai.model.routing import (
+    list_model_profile_candidates,
+    resolve_model_profile,
+)
 from apeiria.app.ai.model.selection import (
     AISelectedModel,
+    resolve_selected_model_with_fallback,
     select_provider_for_profile,
 )
 from apeiria.infra.db.models import AIModelBinding, AIModelProfile
@@ -137,20 +141,35 @@ class AIModelProfileService:
         *,
         target: AIModelBindingTarget | None = None,
     ) -> AISelectedModel | None:
-        profile = None
+        profiles = await self.list_profiles(session)
+        candidate_profiles: list[AIModelProfileDefinition] = []
         if target is not None:
-            profile = await self.resolve_profile_for_target(session, target=target)
-        if profile is None:
-            if query is None:
-                return None
-            profile = await self.resolve_profile(session, query)
-        if profile is None:
+            bound_profile = await self.resolve_profile_for_target(
+                session,
+                target=target,
+            )
+            if bound_profile is not None:
+                candidate_profiles.append(bound_profile)
+        if query is not None:
+            candidate_profiles.extend(list_model_profile_candidates(profiles, query))
+        deduped_candidates = list(
+            {profile.profile_id: profile for profile in candidate_profiles}.values()
+        )
+        if not deduped_candidates:
             return None
         providers = await ai_provider_service.list_providers(session)
-        provider = select_provider_for_profile(providers, profile)
+        selected = resolve_selected_model_with_fallback(
+            providers,
+            profiles,
+            deduped_candidates,
+        )
+        if selected is not None:
+            return selected
+        primary_profile = deduped_candidates[0]
+        provider = select_provider_for_profile(providers, primary_profile)
         if provider is None:
             return None
-        return AISelectedModel(provider=provider, profile=profile)
+        return AISelectedModel(provider=provider, profile=primary_profile)
 
 
 ai_model_profile_service = AIModelProfileService()

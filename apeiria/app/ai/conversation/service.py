@@ -21,6 +21,7 @@ from apeiria.app.ai.conversation.models import (
     AIConversationTurnDetailView,
     SenderType,
 )
+from apeiria.app.ai.conversation.summary import build_short_conversation_summary
 from apeiria.infra.db.models import AIConversation, AITurn
 
 if TYPE_CHECKING:
@@ -83,6 +84,21 @@ class AIConversationService:
 
         conversation.last_active_at = _utcnow_naive()
         return conversation
+
+    async def update_short_summary(
+        self,
+        session: "AsyncSession",
+        identity: AIConversationIdentity,
+        *,
+        turns: list[AIContextTurnView],
+    ) -> str | None:
+        """Refresh the compact stored summary for one conversation."""
+
+        conversation = await self.ensure_conversation(session, identity)
+        summary = build_short_conversation_summary(turns)
+        conversation.short_summary = summary
+        await session.flush()
+        return summary
 
     async def append_turn(
         self,

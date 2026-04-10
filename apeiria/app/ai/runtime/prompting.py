@@ -33,6 +33,7 @@ class AIReplyPromptChannels:
     tool_policy: str | None
     tool_results: tuple[str, ...]
     memories: tuple[str, ...]
+    conversation_summary: str | None
     conversation: tuple[str, ...]
     instruction: str
 
@@ -47,6 +48,7 @@ class AIReplyPromptContext:
     tool_results: tuple[str, ...]
     memories: list["AIMemoryDefinition"]
     turns: list["AIContextTurnView"]
+    conversation_summary: str | None = None
 
 
 def build_reply_prompt_channels(
@@ -71,6 +73,7 @@ def build_reply_prompt_channels(
         tool_policy=context.tool_policy,
         tool_results=context.tool_results,
         memories=tuple(_format_memory(memory) for memory in context.memories),
+        conversation_summary=context.conversation_summary,
         conversation=tuple(
             _format_turn(turn)
             for turn in context.turns
@@ -98,6 +101,8 @@ def render_reply_prompt(channels: AIReplyPromptChannels) -> str:
         sections.append("[ToolResults]\n" + "\n".join(channels.tool_results))
     if channels.memories:
         sections.append("[Memories]\n" + "\n".join(channels.memories))
+    if channels.conversation_summary:
+        sections.append(f"[ConversationSummary]\n{channels.conversation_summary}")
     conversation_text = (
         "\n".join(channels.conversation)
         if channels.conversation
