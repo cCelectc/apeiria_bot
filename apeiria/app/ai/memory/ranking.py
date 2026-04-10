@@ -13,12 +13,13 @@ BIGRAM_SIZE = 2
 def _score_memory_item(
     memory: AIMemoryDefinition,
     query_text: str,
-) -> tuple[float, float, float]:
+) -> tuple[float, float, float, float]:
     query_terms = _extract_terms(query_text)
     content_terms = _extract_terms(memory.content)
     overlap = len(query_terms & content_terms)
     return (
         float(overlap),
+        _memory_type_score(memory),
         float(memory.salience),
         float(memory.confidence),
     )
@@ -67,3 +68,15 @@ def rank_memory_items(
         reverse=True,
     )
     return ranked[: query.limit]
+
+
+def _memory_type_score(memory: AIMemoryDefinition) -> float:
+    scores = {
+        "preference": 0.4,
+        "relationship": 0.3,
+        "fact": 0.2,
+        "episode": 0.1,
+        "operator_note": 0.05,
+        "summary": -0.1,
+    }
+    return scores.get(memory.memory_type, 0.0)

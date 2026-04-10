@@ -16,6 +16,19 @@ AIMemoryType = Literal[
     "summary",
     "operator_note",
 ]
+AIMemoryExtractionAction = Literal["add", "update", "noop"]
+
+
+@dataclass(frozen=True)
+class AIMemoryExtractionCandidate:
+    """One structured memory candidate produced by extraction."""
+
+    memory_type: AIMemoryType
+    content: str
+    action: AIMemoryExtractionAction = "add"
+    target_memory_id: str | None = None
+    confidence: float = 0.7
+    salience: float = 0.6
 
 
 @dataclass(frozen=True)

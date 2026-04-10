@@ -5,9 +5,16 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from apeiria.app.ai.memory.extraction import extract_memory_candidates
+from nonebot.log import logger
+
+from apeiria.app.ai.memory.extraction import (
+    build_memory_extraction_prompt,
+    parse_memory_extraction_response,
+)
 from apeiria.app.ai.memory.models import AIMemoryQuery
 from apeiria.app.ai.memory.service import ai_memory_service
+from apeiria.app.ai.model.models import AIModelRouteQuery
+from apeiria.app.ai.model.service import ai_model_facade
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -124,10 +131,37 @@ async def store_extracted_memories(
     message_text: str,
     source_turn_id: str | None,
 ) -> None:
-    """Extract and store lightweight memory candidates from one user message."""
+    """Extract and store structured memory candidates from one user message."""
 
     subject_id = identity.subject_user_id or user_id
-    candidates = extract_memory_candidates(message_text)
+    existing_memories = await ai_memory_service.list_memories(
+        session,
+        subject_type="user",
+        subject_id=subject_id,
+    )
+    selected = await ai_model_facade.select_model(
+        session,
+        query=AIModelRouteQuery(task_class="memory_extraction"),
+    )
+    if selected is None:
+        return
+
+    try:
+        response = await ai_model_facade.generate_text(
+            selected,
+            prompt=build_memory_extraction_prompt(
+                message_text,
+                existing_memories=tuple(existing_memories),
+            ),
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.opt(exception=exc).warning("AI memory extraction failed")
+        return
+
+    if response is None:
+        return
+
+    candidates = parse_memory_extraction_response(response.content)
     if not candidates:
         return
 
@@ -137,4 +171,9 @@ async def store_extracted_memories(
         subject_id=subject_id,
         source_turn_id=source_turn_id,
         candidates=candidates,
+    )
+    await ai_memory_service.consolidate_subject_memories(
+        session,
+        subject_type="user",
+        subject_id=subject_id,
     )

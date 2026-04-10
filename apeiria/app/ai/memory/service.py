@@ -9,18 +9,19 @@ from uuid import uuid4
 
 from sqlalchemy import select, update
 
+from apeiria.app.ai.memory.actions import build_memory_write_plans
 from apeiria.app.ai.memory.models import (
     AIMemoryDefinition,
+    AIMemoryExtractionCandidate,
     AIMemoryQuery,
     AIMemoryType,
 )
 from apeiria.app.ai.memory.ranking import rank_memory_items
+from apeiria.app.ai.memory.summary import build_summary_memory_content
 from apeiria.infra.db.models import AIMemoryItem
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
-
-    from apeiria.app.ai.memory.extraction import AIMemoryExtractionCandidate
 
 
 @dataclass(frozen=True)
@@ -36,8 +37,20 @@ class AIMemoryCreateInput:
     confidence: float = 0.5
 
 
+@dataclass(frozen=True)
+class AIMemoryUpdateInput:
+    """Update payload for one existing memory item."""
+
+    content: str
+    salience: float
+    confidence: float
+    source_turn_id: str | None
+
+
 class AIMemoryService:
     """Long-term memory CRUD and retrieval service."""
+
+    SUMMARY_MEMORY_TYPE: AIMemoryType = "summary"
 
     async def create_memory(
         self,
@@ -80,6 +93,28 @@ class AIMemoryService:
             return None
         return await self.create_memory(session, create_input)
 
+    async def update_memory_content(
+        self,
+        session: AsyncSession,
+        *,
+        memory_id: str,
+        update_input: AIMemoryUpdateInput,
+    ) -> AIMemoryItem | None:
+        """Update one existing memory item in place."""
+
+        result = await session.execute(
+            select(AIMemoryItem).where(AIMemoryItem.memory_id == memory_id)
+        )
+        row = result.scalar_one_or_none()
+        if row is None:
+            return None
+        row.content = update_input.content
+        row.salience = update_input.salience
+        row.confidence = update_input.confidence
+        row.source_turn_id = update_input.source_turn_id
+        await session.flush()
+        return row
+
     async def remember_candidates(
         self,
         session: AsyncSession,
@@ -91,8 +126,29 @@ class AIMemoryService:
     ) -> list[AIMemoryItem]:
         """Persist extracted memory candidates while avoiding exact duplicates."""
 
+        existing_memories = await self.list_memories(
+            session,
+            subject_type=subject_type,
+            subject_id=subject_id,
+        )
+        plans = build_memory_write_plans(existing_memories, candidates)
         created: list[AIMemoryItem] = []
-        for candidate in candidates:
+        for plan in plans:
+            candidate = plan.candidate
+            if plan.action == "update" and plan.target_memory_id is not None:
+                row = await self.update_memory_content(
+                    session,
+                    memory_id=plan.target_memory_id,
+                    update_input=AIMemoryUpdateInput(
+                        content=candidate.content,
+                        salience=candidate.salience,
+                        confidence=candidate.confidence,
+                        source_turn_id=source_turn_id,
+                    ),
+                )
+                if row is not None:
+                    created.append(row)
+                continue
             row = await self.create_memory_if_absent(
                 session,
                 AIMemoryCreateInput(
@@ -101,8 +157,8 @@ class AIMemoryService:
                     subject_id=subject_id,
                     content=candidate.content,
                     source_turn_id=source_turn_id,
-                    salience=0.7 if candidate.memory_type == "preference" else 0.6,
-                    confidence=0.75,
+                    salience=candidate.salience,
+                    confidence=candidate.confidence,
                 ),
             )
             if row is not None:
@@ -199,16 +255,50 @@ class AIMemoryService:
         subject_type: str,
         subject_id: str,
     ) -> None:
-        """Stub for later background memory consolidation.
+        """Build or refresh one deterministic summary memory for the subject."""
 
-        Phase 4 only introduces the boundary and API surface. Actual extraction
-        and compaction policies land in later rounds.
-        """
-
-        _ = await self.list_memories(
+        memories = await self.list_memories(
             session,
             subject_type=subject_type,
             subject_id=subject_id,
+        )
+        summary_content = build_summary_memory_content(memories)
+        if summary_content is None:
+            return
+
+        existing_summary = next(
+            (
+                memory
+                for memory in memories
+                if memory.memory_type == self.SUMMARY_MEMORY_TYPE
+            ),
+            None,
+        )
+        if existing_summary is not None:
+            if existing_summary.content == summary_content:
+                return
+            await self.update_memory_content(
+                session,
+                memory_id=existing_summary.memory_id,
+                update_input=AIMemoryUpdateInput(
+                    content=summary_content,
+                    salience=0.8,
+                    confidence=0.85,
+                    source_turn_id=existing_summary.source_turn_id,
+                ),
+            )
+            return
+
+        await self.create_memory(
+            session,
+            AIMemoryCreateInput(
+                memory_type=self.SUMMARY_MEMORY_TYPE,
+                subject_type=subject_type,
+                subject_id=subject_id,
+                content=summary_content,
+                salience=0.8,
+                confidence=0.85,
+            ),
         )
 
     async def _mark_memories_recalled(
