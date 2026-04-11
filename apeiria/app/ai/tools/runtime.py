@@ -34,6 +34,7 @@ class AIToolRuntimeRequest:
     recalled_memories: tuple["AIMemoryDefinition", ...]
     relationship_context: str | None
     current_time: datetime
+    tool_mode: str = "allow"
 
 
 @dataclass(frozen=True)
@@ -55,6 +56,8 @@ class AIToolRuntime:
         request: AIToolRuntimeRequest,
     ) -> AIToolRuntimeResult:
         allowed_tools = ai_tool_service.list_allowed_tools(request.policy)
+        if request.tool_mode == "avoid":
+            allowed_tools = []
         return AIToolRuntimeResult(
             policy_text=summarize_tool_policy(
                 ai_tool_service.registry.list_tools(),

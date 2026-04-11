@@ -72,6 +72,11 @@ class AIConversationPromptPreviewItem(BaseModel):
     conversation_summary: str | None = None
     relationship_context: str | None = None
     tool_policy: str | None = None
+    social_action: str | None = None
+    social_tool_mode: str | None = None
+    social_reason_text: str | None = None
+    social_reason_codes: list[str] = []
+    social_policy_source: str | None = None
     tool_results: list[str] = []
     memories: list[AIMemoryItem] = []
     rendered_prompt: str

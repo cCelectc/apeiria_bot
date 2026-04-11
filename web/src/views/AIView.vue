@@ -147,6 +147,11 @@
                 <div>{{ t('ai.personaId') }}: {{ promptPreview.persona_id || t('common.none') }}</div>
                 <div>{{ t('ai.relationshipStateTitle') }}: {{ promptPreview.relationship_context || t('common.none') }}</div>
                 <div>{{ t('ai.toolPolicyTitle') }}: {{ promptPreview.tool_policy || t('common.none') }}</div>
+                <div>{{ t('ai.socialAction') }}: {{ promptPreview.social_action || t('common.none') }}</div>
+                <div>{{ t('ai.socialToolMode') }}: {{ promptPreview.social_tool_mode || t('common.none') }}</div>
+                <div>{{ t('ai.socialReason') }}: {{ promptPreview.social_reason_text || t('common.none') }}</div>
+                <div>{{ t('ai.socialReasonCodes') }}: {{ promptPreview.social_reason_codes.join(', ') || t('common.none') }}</div>
+                <div>{{ t('ai.socialPolicySource') }}: {{ promptPreview.social_policy_source || t('common.none') }}</div>
                 <div>{{ t('ai.memoryHits') }}: {{ promptPreview.memories.length }}</div>
                 <div>{{ t('ai.toolResultsTitle') }}: {{ promptPreview.tool_results.length }}</div>
                 <pre class="ai-prompt-preview">{{ promptPreview.rendered_prompt }}</pre>

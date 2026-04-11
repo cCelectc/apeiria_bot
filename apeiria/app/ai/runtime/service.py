@@ -34,12 +34,22 @@ from apeiria.app.ai.runtime.routing import (
     select_post_tool_reply_task_class,
     select_pre_tool_reply_task_class,
 )
+from apeiria.app.ai.social_policy import (
+    AISocialPolicyDecision,
+    AISocialPolicyInput,
+    ai_social_policy_service,
+    count_recent_bot_turns,
+    latest_bot_turn_at,
+    latest_user_turn_text,
+    summarize_social_policy_decision,
+)
 from apeiria.app.ai.tools.policy import (
     AIToolPolicyBindingTarget,
     AIToolSceneContext,
     ai_tool_policy_binding_service,
 )
 from apeiria.app.ai.tools.runtime import AIToolRuntimeRequest, ai_tool_runtime
+from apeiria.app.ai.tools.service import ai_tool_service
 from apeiria.app.message_delivery import (
     MessageDeliveryRequest,
     MessageDeliveryResult,
@@ -63,7 +73,11 @@ if TYPE_CHECKING:
     )
     from apeiria.app.ai.model.selection import AISelectedModel
     from apeiria.app.ai.runtime.prompting import AIPersonaPromptBundleLike
-    from apeiria.app.ai.tools.models import AIToolPolicy, AIToolTurnCreateInput
+    from apeiria.app.ai.tools.models import (
+        AIToolPolicy,
+        AIToolSpec,
+        AIToolTurnCreateInput,
+    )
     from apeiria.app.ai.tools.runtime import AIToolRuntimeResult
 
 
@@ -114,6 +128,7 @@ class AIRuntimeReplyState:
     persona: "AIPersonaPromptBundleLike | None"
     turns: list["AIContextTurnView"]
     tool_policy: "AIToolPolicy"
+    social_decision: AISocialPolicyDecision
     current_time: datetime
     trace_id: str
 
@@ -196,6 +211,42 @@ def _build_future_task_context(task: "AIFutureTaskDefinition | None") -> str | N
             f"status={task.status}",
         )
     )
+
+def _build_social_policy_input(  # noqa: PLR0913
+    *,
+    request: AIRuntimeReplyRequest,
+    current_time: datetime,
+    turns: list["AIContextTurnView"],
+    conversation_summary: str | None,
+    relationship_context: str | None,
+    persona_id: str | None,
+    allowed_tools: list["AIToolSpec"],
+) -> AISocialPolicyInput:
+    return AISocialPolicyInput(
+        conversation_id=request.identity.conversation_id,
+        scene_type=request.identity.scope_type,
+        message_text=request.message_text,
+        latest_user_turn_text=latest_user_turn_text(turns),
+        conversation_summary=conversation_summary,
+        relationship_context=relationship_context,
+        persona_id=persona_id,
+        available_tool_names=tuple(tool.name for tool in allowed_tools),
+        recent_turn_count=len(turns),
+        recent_bot_turn_count=count_recent_bot_turns(turns),
+        last_bot_turn_at=latest_bot_turn_at(turns),
+        current_time=current_time,
+        runtime_mode=request.runtime_mode,
+        is_direct_wake=(
+            request.runtime_mode == "future_task"
+            or request.identity.scope_type == "private"
+            or request.is_tome
+        ),
+    )
+
+
+def _should_skip_generation(decision: AISocialPolicyDecision) -> bool:
+    return decision.action in {"wait", "suppress"} or not decision.should_speak
+
 
 
 class AIRuntimeService:
@@ -326,6 +377,32 @@ class AIRuntimeService:
             session,
             target=relationship_target,
         )
+        allowed_tools = ai_tool_service.list_allowed_tools(tool_policy)
+        social_decision = await ai_social_policy_service.decide(
+            session,
+            _build_social_policy_input(
+                request=request,
+                current_time=current_time,
+                turns=turns,
+                conversation_summary=conversation_summary,
+                relationship_context=relationship_context,
+                persona_id=persona.persona_id if persona is not None else None,
+                allowed_tools=allowed_tools,
+            ),
+            target=model_target,
+        )
+        if _should_skip_generation(social_decision):
+            logger.info(
+                "AI trace {} suppressed {} reply for conversation {} "
+                "action={} reasons={}",
+                trace_id,
+                request.runtime_mode,
+                identity.conversation_id,
+                social_decision.action,
+                ",".join(social_decision.reason_codes),
+            )
+            await session.commit()
+            return None
         skill_runtime = await ai_tool_runtime.run_for_message(
             session,
             AIToolRuntimeRequest(
@@ -336,6 +413,7 @@ class AIRuntimeService:
                 recalled_memories=tuple(recalled_memories),
                 relationship_context=relationship_context,
                 current_time=current_time,
+                tool_mode=social_decision.tool_mode,
             ),
         )
         pre_tool_task_class = select_pre_tool_reply_task_class(
@@ -368,6 +446,7 @@ class AIRuntimeService:
                     persona=persona,
                     turns=turns,
                     tool_policy=tool_policy,
+                    social_decision=social_decision,
                     current_time=current_time,
                     trace_id=trace_id,
                 ),
@@ -400,6 +479,13 @@ class AIRuntimeService:
                     ),
                     "recalled_memory_count": len(recalled_memories),
                     "tool_observation_count": len(skill_runtime.turns),
+                    "social_action": social_decision.action,
+                    "social_tool_mode": social_decision.tool_mode,
+                    "social_reason_text": social_decision.reason_text,
+                    "social_reason_codes": list(social_decision.reason_codes),
+                    "social_policy_source": social_decision.evidence.get(
+                        "policy_source"
+                    ),
                     "runtime_mode": request.runtime_mode,
                     "future_task_id": (
                         request.future_task.task_id if request.future_task else None
@@ -471,6 +557,9 @@ class AIRuntimeService:
                         skill_results=skill_runtime.result_lines,
                         memories=state.recalled_memories,
                         conversation_summary=state.conversation_summary,
+                        social_policy_summary=summarize_social_policy_decision(
+                            state.social_decision
+                        ),
                         future_task_context=_build_future_task_context(
                             state.request.future_task
                         ),
@@ -498,6 +587,7 @@ class AIRuntimeService:
                     recalled_memories=tuple(state.recalled_memories),
                     relationship_context=state.relationship_context,
                     current_time=state.current_time,
+                    tool_mode=state.social_decision.tool_mode,
                 ),
                 tool_calls=response.tool_calls,
             )
@@ -520,6 +610,9 @@ class AIRuntimeService:
                             skill_results=skill_runtime.result_lines,
                             memories=state.recalled_memories,
                             conversation_summary=state.conversation_summary,
+                            social_policy_summary=summarize_social_policy_decision(
+                                state.social_decision
+                            ),
                             future_task_context=_build_future_task_context(
                                 state.request.future_task
                             ),

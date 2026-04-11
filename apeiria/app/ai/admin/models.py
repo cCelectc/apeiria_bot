@@ -22,6 +22,11 @@ class AIConversationPromptPreview:
     conversation_summary: str | None
     relationship_context: str | None
     tool_policy: str | None
+    social_action: str | None
+    social_tool_mode: str | None
+    social_reason_text: str | None
+    social_reason_codes: tuple[str, ...]
+    social_policy_source: str | None
     tool_results: tuple[str, ...]
     memories: tuple[AIMemoryDefinition, ...]
     rendered_prompt: str

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
 from nonebot_plugin_orm import get_session
@@ -27,6 +28,13 @@ from apeiria.app.ai.runtime.relationship_steps import (
     load_relationship_context,
 )
 from apeiria.app.ai.skills.service import ai_skill_service
+from apeiria.app.ai.social_policy import (
+    ai_social_policy_service,
+    count_recent_bot_turns,
+    latest_bot_turn_at,
+    latest_user_turn_text,
+    summarize_social_policy_decision,
+)
 from apeiria.app.ai.tools.policy import (
     AIToolPolicyBindingCreateInput,
     AIToolPolicyBindingSpec,
@@ -41,7 +49,9 @@ from apeiria.app.ai.tools.service import ai_tool_service
 
 if TYPE_CHECKING:
     from apeiria.app.ai.conversation.models import (
+        AIContextTurnView,
         AIConversationAdminView,
+        AIConversationIdentity,
         AIConversationTurnDetailView,
     )
     from apeiria.app.ai.future_task.models import AIFutureTaskDefinition
@@ -67,6 +77,43 @@ if TYPE_CHECKING:
         AIToolExecutionView,
         AIToolPolicy,
         AIToolSpec,
+    )
+
+
+def _build_prompt_preview_social_input(  # noqa: PLR0913
+    *,
+    conversation_id: str,
+    identity: "AIConversationIdentity",
+    latest_user_message: str,
+    conversation_summary: str | None,
+    relationship_context: str | None,
+    persona_id: str | None,
+    allowed_tool_names: tuple[str, ...],
+    context_turns: list["AIContextTurnView"],
+):
+    from apeiria.app.ai.social_policy import AISocialPolicyInput
+
+    decision_time = (
+        latest_bot_turn_at(context_turns)
+        or context_turns[-1].created_at
+        if context_turns
+        else datetime.now(timezone.utc)
+    )
+    return AISocialPolicyInput(
+        conversation_id=conversation_id,
+        scene_type=identity.scope_type,
+        message_text=latest_user_message,
+        latest_user_turn_text=latest_user_turn_text(context_turns),
+        conversation_summary=conversation_summary,
+        relationship_context=relationship_context,
+        persona_id=persona_id,
+        available_tool_names=allowed_tool_names,
+        recent_turn_count=len(context_turns),
+        recent_bot_turn_count=count_recent_bot_turns(context_turns),
+        last_bot_turn_at=latest_bot_turn_at(context_turns),
+        current_time=decision_time,
+        runtime_mode="message",
+        is_direct_wake=(identity.scope_type == "private"),
     )
 
 
@@ -256,16 +303,53 @@ class AIAdminService:
                 ai_tool_service.registry.list_tools(),
                 tool_policy,
             )
-            rendered_prompt = compose_reply_prompt(
-                AIRuntimeComposeInput(
-                    persona=persona,
-                    relationship=relationship_context,
-                    skill_policy=tool_policy_text,
-                    skill_results=tool_results,
-                    memories=memories,
-                    conversation_summary=conversation.short_summary,
-                    turns=to_context_turns(turns),
+            allowed_tools = ai_tool_service.list_allowed_tools(tool_policy)
+            context_turns = to_context_turns(turns)
+            social_decision = (
+                await ai_social_policy_service.decide(
+                    session,
+                    _build_prompt_preview_social_input(
+                        conversation_id=conversation_id,
+                        identity=identity,
+                        latest_user_message=latest_user_message,
+                        conversation_summary=conversation.short_summary,
+                        relationship_context=relationship_context,
+                        persona_id=persona.persona_id if persona is not None else None,
+                        allowed_tool_names=tuple(tool.name for tool in allowed_tools),
+                        context_turns=context_turns,
+                    ),
+                    target=AIModelBindingTarget(
+                        conversation_id=identity.conversation_id,
+                        group_id=(
+                            identity.scope_id
+                            if identity.scope_type == "group"
+                            else None
+                        ),
+                        user_id=identity.subject_user_id or user_id,
+                    ),
                 )
+                if latest_user_message
+                else None
+            )
+            rendered_prompt = (
+                compose_reply_prompt(
+                    AIRuntimeComposeInput(
+                        persona=persona,
+                        relationship=relationship_context,
+                        skill_policy=tool_policy_text,
+                        skill_results=tool_results,
+                        memories=memories,
+                        conversation_summary=conversation.short_summary,
+                        social_policy_summary=(
+                            summarize_social_policy_decision(social_decision)
+                            if social_decision is not None
+                            else None
+                        ),
+                        turns=context_turns,
+                    )
+                )
+                if social_decision is None or social_decision.should_speak
+                else "Suppressed by social policy before prompt generation."
             )
             return AIConversationPromptPreview(
                 conversation_id=conversation_id,
@@ -283,6 +367,26 @@ class AIAdminService:
                 conversation_summary=conversation.short_summary,
                 relationship_context=relationship_context,
                 tool_policy=tool_policy_text,
+                social_action=(
+                    social_decision.action if social_decision is not None else None
+                ),
+                social_tool_mode=(
+                    social_decision.tool_mode if social_decision is not None else None
+                ),
+                social_reason_text=(
+                    social_decision.reason_text
+                    if social_decision is not None
+                    else None
+                ),
+                social_reason_codes=(
+                    social_decision.reason_codes if social_decision is not None else ()
+                ),
+                social_policy_source=(
+                    str(social_decision.evidence.get("policy_source"))
+                    if social_decision is not None
+                    and social_decision.evidence.get("policy_source") is not None
+                    else None
+                ),
                 tool_results=tool_results,
                 memories=tuple(memories),
                 rendered_prompt=rendered_prompt,

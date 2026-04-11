@@ -457,6 +457,11 @@ export interface AIConversationPromptPreviewItem {
   conversation_summary: string | null
   relationship_context: string | null
   tool_policy: string | null
+  social_action: string | null
+  social_tool_mode: string | null
+  social_reason_text: string | null
+  social_reason_codes: string[]
+  social_policy_source: string | null
   tool_results: string[]
   memories: AIMemoryItem[]
   rendered_prompt: string

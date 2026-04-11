@@ -34,6 +34,7 @@ class AIReplyPromptChannels:
     tool_results: tuple[str, ...]
     memories: tuple[str, ...]
     conversation_summary: str | None
+    social_policy: str | None
     future_task: str | None
     context_priority: tuple[str, ...]
     conversation: tuple[str, ...]
@@ -52,6 +53,7 @@ class AIReplyPromptContext:
     memories: list["AIMemoryDefinition"]
     turns: list["AIContextTurnView"]
     conversation_summary: str | None = None
+    social_policy: str | None = None
     future_task: str | None = None
 
 
@@ -78,6 +80,7 @@ def build_reply_prompt_channels(
         tool_results=context.tool_results,
         memories=tuple(_format_memory(memory) for memory in context.memories),
         conversation_summary=context.conversation_summary,
+        social_policy=context.social_policy,
         future_task=context.future_task,
         context_priority=(
             "Trust explicit tool results over inferred assumptions.",
@@ -106,7 +109,7 @@ def build_reply_prompt_channels(
     )
 
 
-def render_reply_prompt(channels: AIReplyPromptChannels) -> str:
+def render_reply_prompt(channels: AIReplyPromptChannels) -> str:  # noqa: C901
     """Render one flat provider prompt from structured channels."""
 
     sections = [f"[Persona]\n{channels.persona}"]
@@ -122,6 +125,8 @@ def render_reply_prompt(channels: AIReplyPromptChannels) -> str:
         sections.append("[Memories]\n" + "\n".join(channels.memories))
     if channels.conversation_summary:
         sections.append(f"[ConversationSummary]\n{channels.conversation_summary}")
+    if channels.social_policy:
+        sections.append(f"[SocialPolicy]\n{channels.social_policy}")
     if channels.future_task:
         sections.append(f"[FutureTask]\n{channels.future_task}")
     if channels.context_priority:
