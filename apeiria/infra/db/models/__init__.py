@@ -3,6 +3,7 @@
 from .access_policy import AccessPolicyEntry
 from .ai_affinity import AIAffinity
 from .ai_conversation import AIConversation
+from .ai_future_task import AIFutureTask
 from .ai_memory_item import AIMemoryItem
 from .ai_model_binding import AIModelBinding
 from .ai_model_profile import AIModelProfile
@@ -23,6 +24,7 @@ from .user import UserConsole
 __all__ = [
     "AIAffinity",
     "AIConversation",
+    "AIFutureTask",
     "AIMemoryItem",
     "AIModelBinding",
     "AIModelProfile",

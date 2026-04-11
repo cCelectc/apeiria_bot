@@ -34,6 +34,7 @@ class AIReplyPromptChannels:
     tool_results: tuple[str, ...]
     memories: tuple[str, ...]
     conversation_summary: str | None
+    future_task: str | None
     context_priority: tuple[str, ...]
     conversation: tuple[str, ...]
     response_rules: tuple[str, ...]
@@ -51,6 +52,7 @@ class AIReplyPromptContext:
     memories: list["AIMemoryDefinition"]
     turns: list["AIContextTurnView"]
     conversation_summary: str | None = None
+    future_task: str | None = None
 
 
 def build_reply_prompt_channels(
@@ -76,6 +78,7 @@ def build_reply_prompt_channels(
         tool_results=context.tool_results,
         memories=tuple(_format_memory(memory) for memory in context.memories),
         conversation_summary=context.conversation_summary,
+        future_task=context.future_task,
         context_priority=(
             "Trust explicit tool results over inferred assumptions.",
             "Use conversation summary and memories as supporting context, "
@@ -93,12 +96,13 @@ def build_reply_prompt_channels(
             "Do not fabricate facts that are not present in the conversation "
             "or tool results.",
             "Use recalled memory conservatively.",
+            "If the user asks to create, inspect, or cancel a reminder and the "
+            "future-task tool is available, use the tool instead of pretending "
+            "the reminder was saved.",
+            "If this turn is triggered by a due future task, do not claim the "
+            "user just sent a new message.",
         ),
-        instruction=(
-            "Reply naturally as the assistant in the same conversation. "
-            "Stay in character, use recalled memory only as supporting context, "
-            "and do not fabricate unseen facts."
-        ),
+        instruction=_build_instruction(context),
     )
 
 
@@ -118,6 +122,8 @@ def render_reply_prompt(channels: AIReplyPromptChannels) -> str:
         sections.append("[Memories]\n" + "\n".join(channels.memories))
     if channels.conversation_summary:
         sections.append(f"[ConversationSummary]\n{channels.conversation_summary}")
+    if channels.future_task:
+        sections.append(f"[FutureTask]\n{channels.future_task}")
     if channels.context_priority:
         sections.append("[ContextPriority]\n" + "\n".join(channels.context_priority))
     conversation_text = (
@@ -146,4 +152,18 @@ def _format_memory(memory: "AIMemoryDefinition") -> str:
     return (
         f"- [{memory.memory_type}] {memory.content} "
         f"(salience={memory.salience:.2f}, confidence={memory.confidence:.2f})"
+    )
+
+
+def _build_instruction(context: AIReplyPromptContext) -> str:
+    if context.future_task:
+        return (
+            "You are responding because a scheduled future task is now due. "
+            "Reply naturally as the assistant in the same conversation, stay in "
+            "character, and do not claim the user just sent a new message."
+        )
+    return (
+        "Reply naturally as the assistant in the same conversation. "
+        "Stay in character, use recalled memory only as supporting context, "
+        "and do not fabricate unseen facts."
     )
