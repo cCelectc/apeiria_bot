@@ -9,7 +9,11 @@ if TYPE_CHECKING:
     from datetime import datetime
 
 AIToolRiskLevel = Literal["low", "medium", "high"]
-AIToolIntentKind = Literal["observe_read_only", "invoke_capability"]
+AIToolIntentKind = Literal[
+    "observe_read_only",
+    "invoke_capability",
+    "manage_future_task",
+]
 AIToolCapabilityMode = Literal["off", "private_only", "direct_only"]
 AIToolExecutionStatus = Literal["success", "error", "timeout"]
 
@@ -81,6 +85,7 @@ class AIToolObservationRequest:
     """Inputs for low-risk read-only tool observations."""
 
     conversation_id: str
+    source_turn_id: str | None
     message_text: str
     policy: AIToolPolicy
     recalled_memory_ids: tuple[str, ...]

@@ -462,6 +462,24 @@ export interface AIConversationPromptPreviewItem {
   rendered_prompt: string
 }
 
+export interface AIFutureTaskItem {
+  task_id: string
+  conversation_id: string
+  platform: string
+  scope_type: string
+  scope_id: string
+  user_id: string | null
+  title: string
+  description: string
+  trigger_at: string
+  status: string
+  source_turn_id: string | null
+  scheduler_job_id: string | null
+  last_error: string | null
+  created_at: string
+  updated_at: string
+}
+
 export interface AIRelationshipStateItem {
   affinity_id: string
   platform: string
@@ -921,6 +939,18 @@ export function getAIConversationPromptPreview (params: {
   turn_limit?: number
 }) {
   return client.get<AIConversationPromptPreviewItem | null>('/ai/conversations/prompt-preview', { params })
+}
+
+export function getAIFutureTasks (params?: {
+  limit?: number
+}) {
+  return client.get<AIFutureTaskItem[]>('/ai/future-tasks', { params })
+}
+
+export function cancelAIFutureTask (taskId: string) {
+  return client.delete<AIFutureTaskItem | null>('/ai/future-tasks', {
+    params: { task_id: taskId },
+  })
 }
 
 export function getAIRelationshipState (params: {

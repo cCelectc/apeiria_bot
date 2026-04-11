@@ -175,7 +175,13 @@ def resolve_default_tool_policy(
     if profile.allow_read_only_tools and (
         context.scope_type == "private" or context.is_tome
     ):
-        allowed_tool_names.update({"memory.query", "relationship.inspect"})
+        allowed_tool_names.update(
+            {
+                "future_task.manage",
+                "memory.query",
+                "relationship.inspect",
+            }
+        )
 
     allow_capability_bridge = _allow_capability_bridge(context, profile)
     if allow_capability_bridge:

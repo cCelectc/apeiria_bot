@@ -10,6 +10,7 @@ from apeiria.interfaces.http.schemas.ai_models import (
     AIConversationItem,
     AIConversationPromptPreviewItem,
     AIConversationTurnItem,
+    AIFutureTaskItem,
     AIMemoryItem,
     AIModelBindingItem,
     AIModelProfileItem,
@@ -32,6 +33,7 @@ if TYPE_CHECKING:
         AIConversationAdminView,
         AIConversationTurnDetailView,
     )
+    from apeiria.app.ai.future_task.models import AIFutureTaskDefinition
     from apeiria.app.ai.memory.models import AIMemoryDefinition
     from apeiria.app.ai.model import (
         AIModelBindingSpec,
@@ -149,6 +151,26 @@ def to_ai_conversation_prompt_preview_item(
         tool_results=list(item.tool_results),
         memories=[to_ai_memory_item(memory) for memory in item.memories],
         rendered_prompt=item.rendered_prompt,
+    )
+
+
+def to_ai_future_task_item(item: "AIFutureTaskDefinition") -> AIFutureTaskItem:
+    return AIFutureTaskItem(
+        task_id=item.task_id,
+        conversation_id=item.conversation_id,
+        platform=item.platform,
+        scope_type=item.scope_type,
+        scope_id=item.scope_id,
+        user_id=item.user_id,
+        title=item.title,
+        description=item.description,
+        trigger_at=item.trigger_at.isoformat(),
+        status=item.status,
+        source_turn_id=item.source_turn_id,
+        scheduler_job_id=item.scheduler_job_id,
+        last_error=item.last_error,
+        created_at=item.created_at.isoformat(),
+        updated_at=item.updated_at.isoformat(),
     )
 
 

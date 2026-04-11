@@ -506,11 +506,65 @@
         <v-window-item value="state">
           <v-card-text class="d-flex flex-column ga-5">
             <v-tabs v-model="stateTab" color="primary" density="comfortable">
+              <v-tab value="future-tasks">{{ t('ai.futureTaskTab') }}</v-tab>
               <v-tab value="memory">{{ t('ai.memoryTab') }}</v-tab>
               <v-tab value="relationship">{{ t('ai.relationshipTab') }}</v-tab>
             </v-tabs>
 
             <v-window v-model="stateTab">
+              <v-window-item value="future-tasks">
+                <v-card-text class="d-flex flex-column ga-4 px-0">
+                  <div class="ai-binding-form">
+                    <v-text-field
+                      v-model.number="futureTaskForm.limit"
+                      density="comfortable"
+                      hide-details
+                      :label="t('ai.futureTaskLimit')"
+                      min="1"
+                      type="number"
+                    />
+                  </div>
+
+                  <div class="d-flex justify-end">
+                    <v-btn color="primary" :loading="loadingFutureTasks" @click="loadFutureTasks">
+                      {{ t('ai.loadFutureTasks') }}
+                    </v-btn>
+                  </div>
+
+                  <v-data-table
+                    class="page-table"
+                    density="compact"
+                    :headers="futureTaskHeaders"
+                    :items="futureTasks"
+                    :loading="loadingFutureTasks"
+                  >
+                    <template #item.status="{ value }">
+                      <v-chip
+                        :color="value === 'pending' ? 'primary' : value === 'sent' ? 'success' : value === 'cancelled' ? 'default' : 'error'"
+                        size="x-small"
+                        variant="tonal"
+                      >
+                        {{ value }}
+                      </v-chip>
+                    </template>
+                    <template #item.actions="{ item }">
+                      <div class="d-flex justify-end">
+                        <v-btn
+                          v-if="item.status === 'pending'"
+                          color="error"
+                          :loading="cancellingTaskId === item.task_id"
+                          size="small"
+                          variant="text"
+                          @click="cancelFutureTask(item.task_id)"
+                        >
+                          {{ t('common.cancel') }}
+                        </v-btn>
+                      </div>
+                    </template>
+                  </v-data-table>
+                </v-card-text>
+              </v-window-item>
+
               <v-window-item value="memory">
                 <v-card-text class="d-flex flex-column ga-4 px-0">
                   <div class="ai-binding-form">
@@ -624,6 +678,7 @@
   import { computed, onMounted, ref } from 'vue'
   import { useI18n } from 'vue-i18n'
   import { getErrorMessage } from '@/api/client'
+  import { useAIFutureTasksTab } from '@/composables/useAIFutureTasksTab'
   import { useAIMemoryTab } from '@/composables/useAIMemoryTab'
   import { useAIModelsTab } from '@/composables/useAIModelsTab'
   import { useAIPersonasTab } from '@/composables/useAIPersonasTab'
@@ -694,6 +749,15 @@
     modelProfiles,
     providers,
   } = useAIModelsTab()
+
+  const {
+    cancelFutureTask,
+    cancellingTaskId,
+    futureTaskForm,
+    futureTasks,
+    loadFutureTasks,
+    loadingFutureTasks,
+  } = useAIFutureTasksTab(t)
 
   const {
     loadMemories,
@@ -776,6 +840,16 @@
     { title: t('ai.memorySalience'), key: 'salience', sortable: false },
   ])
 
+  const futureTaskHeaders = computed(() => [
+    { title: t('ai.futureTaskId'), key: 'task_id', sortable: false },
+    { title: t('ai.futureTaskTitle'), key: 'title', sortable: false },
+    { title: t('ai.futureTaskDescription'), key: 'description', sortable: false },
+    { title: t('ai.futureTaskTriggerAt'), key: 'trigger_at', sortable: false },
+    { title: t('ai.futureTaskStatus'), key: 'status', sortable: false },
+    { title: t('ai.createdAt'), key: 'created_at', sortable: false },
+    { title: 'Actions', key: 'actions', sortable: false, align: 'end' as const },
+  ])
+
   const personaHeaders = computed(() => [
     { title: t('ai.personaName'), key: 'name', sortable: false },
     { title: t('ai.personaDescription'), key: 'description', sortable: false },
@@ -829,6 +903,7 @@
         loadToolsData(),
         loadPersonasData(),
         loadModelsData(),
+        loadFutureTasks(),
       ])
     } catch (error) {
       errorMessage.value = getErrorMessage(error, t('ai.loadFailed'))

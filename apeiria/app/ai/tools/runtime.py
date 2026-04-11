@@ -14,6 +14,8 @@ from apeiria.app.ai.tools.policy import summarize_tool_policy
 from apeiria.app.ai.tools.service import ai_tool_service
 
 if TYPE_CHECKING:
+    from datetime import datetime
+
     from sqlalchemy.ext.asyncio import AsyncSession
 
     from apeiria.app.ai.memory.models import AIMemoryDefinition
@@ -26,10 +28,12 @@ class AIToolRuntimeRequest:
     """Inputs needed to run tools for a single reply turn."""
 
     conversation_id: str
+    source_turn_id: str | None
     message_text: str
     policy: AIToolPolicy
     recalled_memories: tuple["AIMemoryDefinition", ...]
     relationship_context: str | None
+    current_time: datetime
 
 
 @dataclass(frozen=True)
@@ -58,7 +62,10 @@ class AIToolRuntime:
             ),
             result_lines=(),
             turns=(),
-            available_tools=build_function_tools(allowed_tools),
+            available_tools=build_function_tools(
+                allowed_tools,
+                current_time=request.current_time,
+            ),
         )
 
     async def execute_tool_calls(
@@ -73,6 +80,7 @@ class AIToolRuntime:
             session,
             request=AIToolObservationRequest(
                 conversation_id=request.conversation_id,
+                source_turn_id=request.source_turn_id,
                 message_text=request.message_text,
                 policy=request.policy,
                 recalled_memory_ids=tuple(

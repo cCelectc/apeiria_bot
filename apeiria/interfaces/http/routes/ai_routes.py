@@ -15,6 +15,7 @@ from apeiria.interfaces.http.routes.ai_route_support import (
     to_ai_conversation_item,
     to_ai_conversation_prompt_preview_item,
     to_ai_conversation_turn_item,
+    to_ai_future_task_item,
     to_ai_memory_item,
     to_ai_model_binding_item,
     to_ai_model_profile_item,
@@ -37,6 +38,7 @@ from apeiria.interfaces.http.schemas.ai_models import (
     AIConversationItem,
     AIConversationPromptPreviewItem,
     AIConversationTurnItem,
+    AIFutureTaskItem,
     AIMemoryItem,
     AIModelBindingItem,
     AIModelProfileItem,
@@ -169,6 +171,26 @@ async def get_ai_conversation_prompt_preview(
     if preview is None:
         return None
     return to_ai_conversation_prompt_preview_item(preview)
+
+
+@router.get("/future-tasks", response_model=list[AIFutureTaskItem])
+async def list_ai_future_tasks(
+    _: Annotated[Any, Depends(require_control_panel)],
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
+) -> list[AIFutureTaskItem]:
+    tasks = await ai_admin_service.list_future_tasks(limit=limit)
+    return [to_ai_future_task_item(item) for item in tasks]
+
+
+@router.delete("/future-tasks", response_model=AIFutureTaskItem | None)
+async def cancel_ai_future_task(
+    _: Annotated[Any, Depends(require_control_panel)],
+    task_id: Annotated[str, Query(min_length=1)],
+) -> AIFutureTaskItem | None:
+    task = await ai_admin_service.cancel_future_task(task_id=task_id)
+    if task is None:
+        return None
+    return to_ai_future_task_item(task)
 
 
 @router.get("/relationships", response_model=AIRelationshipStateItem)

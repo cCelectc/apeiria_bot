@@ -13,6 +13,7 @@ from apeiria.app.ai.admin.workbench import (
     to_context_turns,
 )
 from apeiria.app.ai.conversation.service import ai_conversation_service
+from apeiria.app.ai.future_task import ai_future_task_service
 from apeiria.app.ai.memory.service import AIMemoryQuery, ai_memory_service
 from apeiria.app.ai.model import AIModelBindingTarget, AIModelRouteQuery
 from apeiria.app.ai.model.service import ai_model_facade
@@ -43,6 +44,7 @@ if TYPE_CHECKING:
         AIConversationAdminView,
         AIConversationTurnDetailView,
     )
+    from apeiria.app.ai.future_task.models import AIFutureTaskDefinition
     from apeiria.app.ai.memory.models import AIMemoryDefinition
     from apeiria.app.ai.model import (
         AIModelBindingSpec,
@@ -140,6 +142,25 @@ class AIAdminService:
                 session,
                 limit=limit,
             )
+
+    async def list_future_tasks(
+        self,
+        *,
+        limit: int = 20,
+    ) -> list["AIFutureTaskDefinition"]:
+        async with get_session() as session:
+            return await ai_future_task_service.list_tasks(session, limit=limit)
+
+    async def cancel_future_task(
+        self,
+        *,
+        task_id: str,
+    ) -> "AIFutureTaskDefinition | None":
+        async with get_session() as session:
+            task = await ai_future_task_service.cancel_task(session, task_id=task_id)
+            if task is not None:
+                await session.commit()
+            return task
 
     async def list_conversation_turns(
         self,

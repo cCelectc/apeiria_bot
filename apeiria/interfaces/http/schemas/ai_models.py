@@ -77,6 +77,24 @@ class AIConversationPromptPreviewItem(BaseModel):
     rendered_prompt: str
 
 
+class AIFutureTaskItem(BaseModel):
+    task_id: str
+    conversation_id: str
+    platform: str
+    scope_type: str
+    scope_id: str
+    user_id: str | None = None
+    title: str
+    description: str
+    trigger_at: str
+    status: str
+    source_turn_id: str | None = None
+    scheduler_job_id: str | None = None
+    last_error: str | None = None
+    created_at: str
+    updated_at: str
+
+
 class AIRelationshipStateItem(BaseModel):
     affinity_id: str
     platform: str
