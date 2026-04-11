@@ -23,6 +23,7 @@ from apeiria.interfaces.http.routes.ai_route_support import (
     to_ai_persona_item,
     to_ai_provider_item,
     to_ai_provider_model_item,
+    to_ai_recent_target_item,
     to_ai_relationship_state_item,
     to_ai_skill_item,
     to_ai_tool_execution_item,
@@ -44,9 +45,12 @@ from apeiria.interfaces.http.schemas.ai_models import (
     AIModelProfileItem,
     AIPersonaBindingItem,
     AIPersonaItem,
+    AIPersonaUpsertRequest,
     AIProviderItem,
     AIProviderModelItem,
     AIProviderModelListRequest,
+    AIProviderUpsertRequest,
+    AIRecentTargetItem,
     AIRelationshipScoreUpdateRequest,
     AIRelationshipStateItem,
     AISkillItem,
@@ -70,6 +74,41 @@ async def list_ai_providers(
 ) -> list[AIProviderItem]:
     providers = await ai_admin_service.list_providers()
     return [to_ai_provider_item(item) for item in providers]
+
+
+@router.get("/provider-types", response_model=list[str])
+async def list_ai_provider_types(
+    _: Annotated[Any, Depends(require_control_panel)],
+) -> list[str]:
+    return list(ai_admin_service.list_supported_provider_types())
+
+
+@router.put("/providers", response_model=AIProviderItem | None)
+async def upsert_ai_provider(
+    payload: AIProviderUpsertRequest,
+    _: Annotated[Any, Depends(require_control_panel)],
+) -> AIProviderItem | None:
+    provider = (
+        await ai_admin_service.update_provider(
+            provider_id=payload.provider_id,
+            name=payload.name,
+            provider_type=payload.provider_type,
+            api_base=payload.api_base,
+            api_key_env_name=payload.api_key_env_name,
+            enabled=payload.enabled,
+            default_model=payload.default_model,
+        )
+        if payload.provider_id
+        else await ai_admin_service.create_provider(
+            name=payload.name,
+            provider_type=payload.provider_type,
+            api_base=payload.api_base,
+            api_key_env_name=payload.api_key_env_name,
+            enabled=payload.enabled,
+            default_model=payload.default_model,
+        )
+    )
+    return to_ai_provider_item(provider) if provider is not None else None
 
 
 @router.post("/providers/models", response_model=list[AIProviderModelItem])
@@ -108,6 +147,32 @@ async def list_ai_personas(
     return [to_ai_persona_item(item) for item in personas]
 
 
+@router.put("/personas", response_model=AIPersonaItem | None)
+async def upsert_ai_persona(
+    payload: AIPersonaUpsertRequest,
+    _: Annotated[Any, Depends(require_control_panel)],
+) -> AIPersonaItem | None:
+    persona = (
+        await ai_admin_service.update_persona(
+            persona_id=payload.persona_id,
+            name=payload.name,
+            description=payload.description,
+            system_prompt=payload.system_prompt,
+            style_prompt=payload.style_prompt,
+            enabled=payload.enabled,
+        )
+        if payload.persona_id
+        else await ai_admin_service.create_persona(
+            name=payload.name,
+            description=payload.description,
+            system_prompt=payload.system_prompt,
+            style_prompt=payload.style_prompt,
+            enabled=payload.enabled,
+        )
+    )
+    return to_ai_persona_item(persona) if persona is not None else None
+
+
 @router.get("/persona-bindings", response_model=list[AIPersonaBindingItem])
 async def list_ai_persona_bindings(
     _: Annotated[Any, Depends(require_control_panel)],
@@ -131,6 +196,15 @@ async def list_ai_memories(
         limit=limit,
     )
     return [to_ai_memory_item(item) for item in memories]
+
+
+@router.get("/recent-targets", response_model=list[AIRecentTargetItem])
+async def list_ai_recent_targets(
+    _: Annotated[Any, Depends(require_control_panel)],
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
+) -> list[AIRecentTargetItem]:
+    targets = await ai_admin_service.list_recent_targets(limit=limit)
+    return [to_ai_recent_target_item(item) for item in targets]
 
 
 @router.get("/conversations", response_model=list[AIConversationItem])
@@ -191,6 +265,15 @@ async def cancel_ai_future_task(
     if task is None:
         return None
     return to_ai_future_task_item(task)
+
+
+@router.get("/relationships/list", response_model=list[AIRelationshipStateItem])
+async def list_ai_relationships(
+    _: Annotated[Any, Depends(require_control_panel)],
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
+) -> list[AIRelationshipStateItem]:
+    states = await ai_admin_service.list_relationships(limit=limit)
+    return [to_ai_relationship_state_item(state) for state in states]
 
 
 @router.get("/relationships", response_model=AIRelationshipStateItem)

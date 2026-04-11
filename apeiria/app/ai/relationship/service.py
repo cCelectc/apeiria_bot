@@ -133,6 +133,22 @@ class AIRelationshipService:
         await session.flush()
         return self._to_state(row)
 
+
+    async def list_states(
+        self,
+        session: AsyncSession,
+        *,
+        limit: int,
+    ) -> list[AIRelationshipState]:
+        """List recent relationship states for owner-facing management."""
+
+        result = await session.execute(
+            select(AIAffinity)
+            .order_by(AIAffinity.last_event_at.desc(), AIAffinity.id.desc())
+            .limit(limit)
+        )
+        return [self._to_state(row) for row in result.scalars().all()]
+
     async def project_state(
         self,
         session: AsyncSession,

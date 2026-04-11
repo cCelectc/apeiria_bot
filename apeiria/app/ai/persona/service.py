@@ -10,6 +10,7 @@ from sqlalchemy import select
 from apeiria.app.ai.persona.models import (
     AIPersonaBindingSpec,
     AIPersonaBindingTarget,
+    AIPersonaCreateInput,
     AIPersonaDefinition,
     PersonaBindingScope,
 )
@@ -32,12 +33,18 @@ class AIPersonaPromptBundle:
 class AIPersonaService:
     """Persona registry and binding lookup service."""
 
-    async def list_personas(self, session: AsyncSession) -> list[AIPersonaDefinition]:
-        """List enabled personas from storage."""
+    async def list_personas(
+        self,
+        session: AsyncSession,
+        *,
+        include_disabled: bool = True,
+    ) -> list[AIPersonaDefinition]:
+        """List personas from storage."""
 
-        result = await session.execute(
-            select(AIPersona).where(AIPersona.enabled.is_(True)).order_by(AIPersona.id.asc())
-        )
+        query = select(AIPersona)
+        if not include_disabled:
+            query = query.where(AIPersona.enabled.is_(True))
+        result = await session.execute(query.order_by(AIPersona.id.asc()))
         return [
             AIPersonaDefinition(
                 persona_id=row.persona_id,
@@ -74,13 +81,51 @@ class AIPersonaService:
     ) -> AIPersonaDefinition | None:
         """Resolve the effective persona definition for one AI scene."""
 
-        personas = await self.list_personas(session)
+        personas = await self.list_personas(session, include_disabled=False)
         persona_map = {persona.persona_id: persona for persona in personas}
         bindings = await self.list_bindings(session)
         binding = resolve_persona_binding(bindings, target)
         if binding is None:
             return None
         return persona_map.get(binding.persona_id)
+
+    async def create_persona(
+        self,
+        session: AsyncSession,
+        create_input: AIPersonaCreateInput,
+    ) -> AIPersona:
+        row = AIPersona(
+            persona_id=f"persona_{__import__('uuid').uuid4().hex}",
+            name=create_input.name,
+            description=create_input.description,
+            system_prompt=create_input.system_prompt,
+            style_prompt=create_input.style_prompt,
+            enabled=create_input.enabled,
+        )
+        session.add(row)
+        await session.flush()
+        return row
+
+    async def update_persona(
+        self,
+        session: AsyncSession,
+        *,
+        persona_id: str,
+        create_input: AIPersonaCreateInput,
+    ) -> AIPersona | None:
+        result = await session.execute(
+            select(AIPersona).where(AIPersona.persona_id == persona_id)
+        )
+        row = result.scalar_one_or_none()
+        if row is None:
+            return None
+        row.name = create_input.name
+        row.description = create_input.description
+        row.system_prompt = create_input.system_prompt
+        row.style_prompt = create_input.style_prompt
+        row.enabled = create_input.enabled
+        await session.flush()
+        return row
 
     async def build_persona_prompt_bundle(
         self,

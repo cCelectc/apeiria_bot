@@ -1,17 +1,21 @@
-"""Persona registry and binding resolution for the AI domain."""
+"""Persona registry package."""
 
 from .models import (
     AIPersonaBindingSpec,
     AIPersonaBindingTarget,
+    AIPersonaCreateInput,
     AIPersonaDefinition,
-    PersonaBindingScope,
 )
 from .resolver import resolve_persona_binding
+from .service import AIPersonaPromptBundle, AIPersonaService, ai_persona_service
 
 __all__ = [
     "AIPersonaBindingSpec",
     "AIPersonaBindingTarget",
+    "AIPersonaCreateInput",
     "AIPersonaDefinition",
-    "PersonaBindingScope",
+    "AIPersonaPromptBundle",
+    "AIPersonaService",
+    "ai_persona_service",
     "resolve_persona_binding",
 ]

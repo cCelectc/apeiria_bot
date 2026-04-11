@@ -1,7 +1,6 @@
 import type {
   AICapabilityItem,
   AICapabilityPreviewItem,
-  AISkillItem,
   AIToolIntentPreviewItem,
   AIToolPolicyBindingItem,
   AIToolPolicyPreviewItem,
@@ -11,7 +10,6 @@ import {
   createAIToolPolicyBinding,
   deleteAIToolPolicyBinding,
   getAICapabilities,
-  getAISkills,
   getAIToolPolicyBindings,
   previewAISkillCapabilityDebug,
   previewAISkillPolicyDebug,
@@ -21,7 +19,7 @@ import {
 import { getErrorMessage } from '@/api/client'
 import { useNoticeStore } from '@/stores/notice'
 
-export function useAIToolsTab (t: (key: string) => string) {
+export function useAIDebugToolsTab (t: (key: string) => string) {
   const noticeStore = useNoticeStore()
 
   const saving = ref(false)
@@ -29,7 +27,6 @@ export function useAIToolsTab (t: (key: string) => string) {
   const previewingCapability = ref(false)
   const previewingIntents = ref(false)
 
-  const tools = ref<AISkillItem[]>([])
   const capabilities = ref<AICapabilityItem[]>([])
   const bindings = ref<AIToolPolicyBindingItem[]>([])
   const policyPreview = ref<AIToolPolicyPreviewItem | null>(null)
@@ -57,13 +54,11 @@ export function useAIToolsTab (t: (key: string) => string) {
     message_text: '请帮我查看插件帮助',
   })
 
-  async function loadToolsData () {
-    const [toolsResponse, capabilitiesResponse, bindingsResponse] = await Promise.all([
-      getAISkills(),
+  async function loadDebugToolsData () {
+    const [capabilitiesResponse, bindingsResponse] = await Promise.all([
       getAICapabilities(),
       getAIToolPolicyBindings(),
     ])
-    tools.value = toolsResponse.data
     capabilities.value = capabilitiesResponse.data
     bindings.value = bindingsResponse.data
     if (!capabilityPreviewName.value && capabilities.value.length > 0) {
@@ -174,10 +169,11 @@ export function useAIToolsTab (t: (key: string) => string) {
     capabilities,
     capabilityPreview,
     capabilityPreviewName,
+    editBinding,
     editingBindingId,
     intentPreview,
     intentPreviewForm,
-    loadToolsData,
+    loadDebugToolsData,
     policyPreview,
     previewForm,
     previewingCapability,
@@ -190,7 +186,5 @@ export function useAIToolsTab (t: (key: string) => string) {
     runPolicyPreview,
     saving,
     submitBinding,
-    tools,
-    editBinding,
   }
 }

@@ -9,6 +9,17 @@ PersonaBindingScope = Literal["global", "group", "user", "conversation"]
 
 
 @dataclass(frozen=True)
+class AIPersonaCreateInput:
+    """Create or update payload for one persona."""
+
+    name: str
+    description: str
+    system_prompt: str
+    style_prompt: str
+    enabled: bool = True
+
+
+@dataclass(frozen=True)
 class AIPersonaDefinition:
     """Pure persona definition used by the AI domain."""
 

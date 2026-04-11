@@ -21,6 +21,15 @@ class AIPersonaBindingItem(BaseModel):
     persona_id: str
 
 
+class AIPersonaUpsertRequest(BaseModel):
+    persona_id: str | None = None
+    name: str = Field(min_length=1, max_length=128)
+    description: str = Field(min_length=1, max_length=2000)
+    system_prompt: str = Field(min_length=1, max_length=20000)
+    style_prompt: str = Field(default="", max_length=20000)
+    enabled: bool = True
+
+
 class AIMemoryItem(BaseModel):
     memory_id: str
     memory_type: str
@@ -33,6 +42,21 @@ class AIMemoryItem(BaseModel):
     last_recalled_at: str | None = None
     created_at: str
 
+
+
+
+class AIRecentTargetItem(BaseModel):
+    target_type: str
+    subject_type: str
+    subject_id: str
+    title: str
+    subtitle: str | None = None
+    conversation_id: str | None = None
+    platform: str | None = None
+    scope_type: str | None = None
+    scope_id: str | None = None
+    subject_user_id: str | None = None
+    last_active_at: str | None = None
 
 class AIConversationItem(BaseModel):
     conversation_id: str
@@ -129,9 +153,12 @@ class AIToolItem(BaseModel):
 class AISkillItem(BaseModel):
     name: str
     description: str
+    display_name: str
+    display_description: str
     read_only: bool
     concurrency_safe: bool
     risk_level: str
+    risk_label: str
     is_capability_bridge: bool = False
 
 
@@ -244,6 +271,16 @@ class AIProviderItem(BaseModel):
     api_key_env_name: str | None = None
     enabled: bool
     default_model: str | None = None
+
+
+class AIProviderUpsertRequest(BaseModel):
+    provider_id: str | None = None
+    name: str = Field(min_length=1, max_length=128)
+    provider_type: str = Field(min_length=1, max_length=64)
+    api_base: str | None = Field(default=None, max_length=2000)
+    api_key_env_name: str | None = Field(default=None, max_length=128)
+    enabled: bool = True
+    default_model: str | None = Field(default=None, max_length=128)
 
 
 class AIProviderModelListRequest(BaseModel):

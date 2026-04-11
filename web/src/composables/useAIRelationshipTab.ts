@@ -1,52 +1,88 @@
-import type { AIRelationshipStateItem } from '@/api'
-import { reactive, ref } from 'vue'
-import { getAIRelationshipState, updateAIRelationshipScore } from '@/api'
+import type { AIRecentTargetItem, AIRelationshipStateItem } from '@/api'
+import { computed, reactive, ref } from 'vue'
+import { getAIRelationshipState, getAIRelationshipStates, updateAIRelationshipScore } from '@/api'
 import { getErrorMessage } from '@/api/client'
 import { useNoticeStore } from '@/stores/notice'
 
 export function useAIRelationshipTab (t: (key: string) => string) {
   const noticeStore = useNoticeStore()
 
-  const loadingRelationship = ref(false)
+  const loadingRelationships = ref(false)
   const savingRelationship = ref(false)
-  const relationship = ref<AIRelationshipStateItem | null>(null)
+  const loadingSelectedRelationship = ref(false)
+  const relationships = ref<AIRelationshipStateItem[]>([])
+  const selectedAffinityId = ref('')
   const relationshipForm = reactive({
-    platform: 'onebot12',
-    user_id: '',
-    group_id: '',
+    limit: 50,
     score: 0,
   })
 
-  async function loadRelationship () {
-    loadingRelationship.value = true
+  const relationship = computed(() => (
+    relationships.value.find(item => item.affinity_id === selectedAffinityId.value) ?? null
+  ))
+
+  async function loadRelationships () {
+    loadingRelationships.value = true
     try {
-      const response = await getAIRelationshipState({
-        platform: relationshipForm.platform,
-        user_id: relationshipForm.user_id,
-        group_id: relationshipForm.group_id || undefined,
-      })
-      relationship.value = response.data
-      relationshipForm.score = response.data.score
+      const response = await getAIRelationshipStates({ limit: relationshipForm.limit })
+      relationships.value = response.data
+      if ((!selectedAffinityId.value || !relationship.value) && relationships.value.length > 0) {
+        selectRelationship(relationships.value[0])
+      }
     } catch (error) {
       noticeStore.show(
         getErrorMessage(error, t('ai.relationshipLoadFailed')),
         'error',
       )
     } finally {
-      loadingRelationship.value = false
+      loadingRelationships.value = false
+    }
+  }
+
+  function selectRelationship (item: AIRelationshipStateItem) {
+    selectedAffinityId.value = item.affinity_id
+    relationshipForm.score = item.score
+  }
+
+  async function loadRelationshipForTarget (target: AIRecentTargetItem) {
+    if (target.subject_type !== 'user' || !target.platform) {
+      return
+    }
+    loadingSelectedRelationship.value = true
+    try {
+      const response = await getAIRelationshipState({
+        platform: target.platform,
+        user_id: target.subject_id,
+        group_id: target.scope_type === 'group' ? target.scope_id ?? undefined : undefined,
+      })
+      const next = response.data
+      const exists = relationships.value.some(item => item.affinity_id === next.affinity_id)
+      relationships.value = exists
+        ? relationships.value.map(item => item.affinity_id === next.affinity_id ? next : item)
+        : [next, ...relationships.value]
+      selectRelationship(next)
+    } catch (error) {
+      noticeStore.show(getErrorMessage(error, t('ai.relationshipLoadFailed')), 'error')
+    } finally {
+      loadingSelectedRelationship.value = false
     }
   }
 
   async function saveRelationship () {
+    if (!relationship.value) {
+      noticeStore.show(t('ai.relationshipSaveFailed'), 'error')
+      return
+    }
     savingRelationship.value = true
     try {
       const response = await updateAIRelationshipScore({
-        platform: relationshipForm.platform,
-        user_id: relationshipForm.user_id,
-        group_id: relationshipForm.group_id || null,
+        platform: relationship.value.platform,
+        user_id: relationship.value.user_id,
+        group_id: relationship.value.group_id,
         score: relationshipForm.score,
       })
-      relationship.value = response.data
+      relationships.value = relationships.value.map(item => item.affinity_id === response.data.affinity_id ? response.data : item)
+      selectRelationship(response.data)
       noticeStore.show(t('ai.relationshipSaved'), 'success')
     } catch (error) {
       noticeStore.show(
@@ -59,11 +95,15 @@ export function useAIRelationshipTab (t: (key: string) => string) {
   }
 
   return {
-    loadRelationship,
-    loadingRelationship,
+    loadRelationshipForTarget,
+    loadRelationships,
+    loadingRelationships,
+    loadingSelectedRelationship,
     relationship,
     relationshipForm,
+    relationships,
     saveRelationship,
     savingRelationship,
+    selectRelationship,
   }
 }

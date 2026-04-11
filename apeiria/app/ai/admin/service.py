@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 
 from nonebot_plugin_orm import get_session
 
-from apeiria.app.ai.admin.models import AIConversationPromptPreview
+from apeiria.app.ai.admin.models import AIConversationPromptPreview, AIRecentTarget
 from apeiria.app.ai.admin.workbench import (
     extract_tool_result_lines,
     select_latest_user_message,
@@ -17,8 +17,13 @@ from apeiria.app.ai.conversation.service import ai_conversation_service
 from apeiria.app.ai.future_task import ai_future_task_service
 from apeiria.app.ai.memory.service import AIMemoryQuery, ai_memory_service
 from apeiria.app.ai.model import AIModelBindingTarget, AIModelRouteQuery
+from apeiria.app.ai.model.factory import SUPPORTED_PROVIDER_TYPES
+from apeiria.app.ai.model.provider_service import (
+    AIProviderCreateInput,
+    ai_provider_service,
+)
 from apeiria.app.ai.model.service import ai_model_facade
-from apeiria.app.ai.persona.models import AIPersonaBindingTarget
+from apeiria.app.ai.persona.models import AIPersonaBindingTarget, AIPersonaCreateInput
 from apeiria.app.ai.persona.service import ai_persona_service
 from apeiria.app.ai.relationship.service import ai_relationship_service
 from apeiria.app.ai.runtime.composer import AIRuntimeComposeInput, compose_reply_prompt
@@ -117,12 +122,51 @@ def _build_prompt_preview_social_input(  # noqa: PLR0913
     )
 
 
+def _build_provider_create_input(  # noqa: PLR0913
+    *,
+    name: str,
+    provider_type: str,
+    api_base: str | None,
+    api_key_env_name: str | None,
+    enabled: bool,
+    default_model: str | None,
+) -> AIProviderCreateInput:
+    return AIProviderCreateInput(
+        name=name,
+        provider_type=provider_type,  # type: ignore[arg-type]
+        api_base=api_base,
+        api_key_env_name=api_key_env_name,
+        enabled=enabled,
+        default_model=default_model,
+    )
+
+
+def _build_persona_create_input(
+    *,
+    name: str,
+    description: str,
+    system_prompt: str,
+    style_prompt: str,
+    enabled: bool,
+) -> AIPersonaCreateInput:
+    return AIPersonaCreateInput(
+        name=name,
+        description=description,
+        system_prompt=system_prompt,
+        style_prompt=style_prompt,
+        enabled=enabled,
+    )
+
+
 class AIAdminService:
     """Read and basic override operations for AI admin routes."""
 
     async def list_providers(self) -> list["AIProviderDefinition"]:
         async with get_session() as session:
             return await ai_model_facade.list_providers(session)
+
+    def list_supported_provider_types(self) -> tuple[str, ...]:
+        return SUPPORTED_PROVIDER_TYPES
 
     async def list_model_profiles(self) -> list["AIModelProfileDefinition"]:
         async with get_session() as session:
@@ -131,6 +175,64 @@ class AIAdminService:
     async def list_model_bindings(self) -> list["AIModelBindingSpec"]:
         async with get_session() as session:
             return await ai_model_facade.list_bindings(session)
+
+    async def create_provider(  # noqa: PLR0913
+        self,
+        *,
+        name: str,
+        provider_type: str,
+        api_base: str | None,
+        api_key_env_name: str | None,
+        enabled: bool,
+        default_model: str | None,
+    ) -> "AIProviderDefinition":
+        async with get_session() as session:
+            await ai_provider_service.create_provider(
+                session,
+                _build_provider_create_input(
+                    name=name,
+                    provider_type=provider_type,
+                    api_base=api_base,
+                    api_key_env_name=api_key_env_name,
+                    enabled=enabled,
+                    default_model=default_model,
+                ),
+            )
+            await session.commit()
+            return (await ai_model_facade.list_providers(session))[-1]
+
+    async def update_provider(  # noqa: PLR0913
+        self,
+        *,
+        provider_id: str,
+        name: str,
+        provider_type: str,
+        api_base: str | None,
+        api_key_env_name: str | None,
+        enabled: bool,
+        default_model: str | None,
+    ) -> "AIProviderDefinition | None":
+        async with get_session() as session:
+            row = await ai_provider_service.update_provider(
+                session,
+                provider_id=provider_id,
+                create_input=_build_provider_create_input(
+                    name=name,
+                    provider_type=provider_type,
+                    api_base=api_base,
+                    api_key_env_name=api_key_env_name,
+                    enabled=enabled,
+                    default_model=default_model,
+                ),
+            )
+            if row is None:
+                return None
+            await session.commit()
+            providers = await ai_model_facade.list_providers(session)
+            return next(
+                (item for item in providers if item.provider_id == provider_id),
+                None,
+            )
 
     async def list_provider_models(
         self,
@@ -152,6 +254,61 @@ class AIAdminService:
     async def list_persona_bindings(self) -> list["AIPersonaBindingSpec"]:
         async with get_session() as session:
             return await ai_persona_service.list_bindings(session)
+
+    async def create_persona(
+        self,
+        *,
+        name: str,
+        description: str,
+        system_prompt: str,
+        style_prompt: str,
+        enabled: bool,
+    ) -> "AIPersonaDefinition":
+        async with get_session() as session:
+            row = await ai_persona_service.create_persona(
+                session,
+                _build_persona_create_input(
+                    name=name,
+                    description=description,
+                    system_prompt=system_prompt,
+                    style_prompt=style_prompt,
+                    enabled=enabled,
+                ),
+            )
+            await session.commit()
+            personas = await ai_persona_service.list_personas(session)
+            return next(item for item in personas if item.persona_id == row.persona_id)
+
+    async def update_persona(  # noqa: PLR0913
+        self,
+        *,
+        persona_id: str,
+        name: str,
+        description: str,
+        system_prompt: str,
+        style_prompt: str,
+        enabled: bool,
+    ) -> "AIPersonaDefinition | None":
+        async with get_session() as session:
+            row = await ai_persona_service.update_persona(
+                session,
+                persona_id=persona_id,
+                create_input=_build_persona_create_input(
+                    name=name,
+                    description=description,
+                    system_prompt=system_prompt,
+                    style_prompt=style_prompt,
+                    enabled=enabled,
+                ),
+            )
+            if row is None:
+                return None
+            await session.commit()
+            personas = await ai_persona_service.list_personas(session)
+            return next(
+                (item for item in personas if item.persona_id == persona_id),
+                None,
+            )
 
     async def list_memories(
         self,
@@ -189,6 +346,62 @@ class AIAdminService:
                 session,
                 limit=limit,
             )
+
+    async def list_recent_targets(
+        self,
+        *,
+        limit: int = 20,
+    ) -> list[AIRecentTarget]:
+        conversations = await self.list_recent_conversations(limit=limit)
+        targets: list[AIRecentTarget] = []
+        seen_users: set[str] = set()
+
+        for item in conversations:
+            summary = (item.short_summary or "").strip()
+            conversation_title = summary or item.conversation_id[:12]
+            conversation_subtitle = (
+                f"{item.platform} · {item.scope_type} · {item.scope_id}"
+            )
+            targets.append(
+                AIRecentTarget(
+                    target_type="conversation",
+                    subject_type="conversation",
+                    subject_id=item.conversation_id,
+                    title=conversation_title,
+                    subtitle=conversation_subtitle,
+                    conversation_id=item.conversation_id,
+                    platform=item.platform,
+                    scope_type=item.scope_type,
+                    scope_id=item.scope_id,
+                    subject_user_id=item.subject_user_id,
+                    last_active_at=item.last_active_at.isoformat(),
+                )
+            )
+
+            user_id = item.subject_user_id or (
+                item.scope_id if item.scope_type == "private" else None
+            )
+            if user_id is None or user_id in seen_users:
+                continue
+            seen_users.add(user_id)
+            user_subtitle = f"{item.platform} · {item.scope_type}"
+            targets.append(
+                AIRecentTarget(
+                    target_type="user",
+                    subject_type="user",
+                    subject_id=user_id,
+                    title=user_id,
+                    subtitle=user_subtitle,
+                    conversation_id=item.conversation_id,
+                    platform=item.platform,
+                    scope_type=item.scope_type,
+                    scope_id=item.scope_id,
+                    subject_user_id=user_id,
+                    last_active_at=item.last_active_at.isoformat(),
+                )
+            )
+
+        return targets[: limit * 2]
 
     async def list_future_tasks(
         self,
@@ -391,6 +604,14 @@ class AIAdminService:
                 memories=tuple(memories),
                 rendered_prompt=rendered_prompt,
             )
+
+    async def list_relationships(
+        self,
+        *,
+        limit: int = 50,
+    ) -> list["AIRelationshipState"]:
+        async with get_session() as session:
+            return await ai_relationship_service.list_states(session, limit=limit)
 
     async def get_relationship_state(
         self,

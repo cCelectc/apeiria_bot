@@ -14,6 +14,14 @@ if TYPE_CHECKING:
     from apeiria.app.ai.model.providers import AIProviderDefinition
 
 
+SUPPORTED_PROVIDER_TYPES = (
+    "openai_compatible",
+    "litellm",
+    "anthropic",
+    "anthropic_compatible",
+)
+
+
 class UnsupportedAIProviderTypeError(RuntimeError):
     """Raised when no concrete adapter exists for a provider type."""
 

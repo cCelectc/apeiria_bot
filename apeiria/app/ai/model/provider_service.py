@@ -69,6 +69,28 @@ class AIProviderService:
         await session.flush()
         return row
 
+    async def update_provider(
+        self,
+        session: "AsyncSession",
+        *,
+        provider_id: str,
+        create_input: AIProviderCreateInput,
+    ) -> AIProvider | None:
+        result = await session.execute(
+            select(AIProvider).where(AIProvider.provider_id == provider_id)
+        )
+        row = result.scalar_one_or_none()
+        if row is None:
+            return None
+        row.name = create_input.name
+        row.provider_type = create_input.provider_type
+        row.api_base = create_input.api_base
+        row.api_key_env_name = create_input.api_key_env_name
+        row.enabled = create_input.enabled
+        row.default_model = create_input.default_model
+        await session.flush()
+        return row
+
     @staticmethod
     def get_provider_api_key(provider: AIProviderDefinition) -> str | None:
         if not provider.api_key_env_name:

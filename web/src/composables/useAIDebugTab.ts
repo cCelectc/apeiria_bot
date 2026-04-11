@@ -14,17 +14,17 @@ import {
 import { getErrorMessage } from '@/api/client'
 import { useNoticeStore } from '@/stores/notice'
 
-export function useAIWorkbenchTab (t: (key: string, params?: Record<string, unknown>) => string) {
+export function useAIDebugTab (t: (key: string, params?: Record<string, unknown>) => string) {
   const noticeStore = useNoticeStore()
 
-  const loadingWorkbench = ref(false)
+  const loadingDebug = ref(false)
   const loadingTurns = ref(false)
   const conversations = ref<AIConversationItem[]>([])
   const turns = ref<AIConversationTurnItem[]>([])
   const toolExecutions = ref<AIToolExecutionItem[]>([])
   const promptPreview = ref<AIConversationPromptPreviewItem | null>(null)
   const selectedConversationId = ref('')
-  const workbenchForm = reactive({
+  const debugForm = reactive({
     limit: 20,
     turnLimit: 50,
   })
@@ -46,10 +46,10 @@ export function useAIWorkbenchTab (t: (key: string, params?: Record<string, unkn
     timeout: toolExecutions.value.filter(item => item.status === 'timeout').length,
   }))
 
-  async function loadWorkbenchData () {
-    loadingWorkbench.value = true
+  async function loadDebugData () {
+    loadingDebug.value = true
     try {
-      const response = await getAIConversations({ limit: workbenchForm.limit })
+      const response = await getAIConversations({ limit: debugForm.limit })
       conversations.value = response.data
       if (!selectedConversationId.value && conversations.value.length > 0) {
         selectedConversationId.value = conversations.value[0].conversation_id
@@ -63,7 +63,7 @@ export function useAIWorkbenchTab (t: (key: string, params?: Record<string, unkn
     } catch (error) {
       noticeStore.show(getErrorMessage(error, t('ai.workbenchLoadFailed')), 'error')
     } finally {
-      loadingWorkbench.value = false
+      loadingDebug.value = false
     }
   }
 
@@ -74,12 +74,12 @@ export function useAIWorkbenchTab (t: (key: string, params?: Record<string, unkn
       const [turnsResponse, executionsResponse, promptPreviewResponse] = await Promise.all([
         getAIConversationTurns({
           conversation_id: conversationId,
-          limit: workbenchForm.turnLimit,
+          limit: debugForm.turnLimit,
         }),
         getAIToolExecutions({ conversation_id: conversationId }),
         getAIConversationPromptPreview({
           conversation_id: conversationId,
-          turn_limit: workbenchForm.turnLimit,
+          turn_limit: debugForm.turnLimit,
         }),
       ])
       turns.value = turnsResponse.data
@@ -123,19 +123,19 @@ export function useAIWorkbenchTab (t: (key: string, params?: Record<string, unkn
 
   return {
     conversations,
+    debugForm,
     loadConversationDetails,
-    loadWorkbenchData,
+    loadDebugData,
+    loadingDebug,
     loadingTurns,
-    loadingWorkbench,
     promptPreview,
     selectedConversation,
     selectedConversationId,
-    summarizeRawPayload,
     summarizeJsonText,
+    summarizeRawPayload,
     toolExecutions,
     toolExecutionStats,
     traceIds,
     turns,
-    workbenchForm,
   }
 }

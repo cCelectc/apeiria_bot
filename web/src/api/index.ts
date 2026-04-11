@@ -335,9 +335,12 @@ export interface UserLevelItem {
 export interface AIToolItem {
   name: string
   description: string
+  display_name?: string
+  display_description?: string
   read_only: boolean
   concurrency_safe: boolean
   risk_level: string
+  risk_label?: string
   is_capability_bridge: boolean
 }
 
@@ -417,6 +420,20 @@ export interface AIMemoryItem {
   confidence: number
   last_recalled_at: string | null
   created_at: string
+}
+
+export interface AIRecentTargetItem {
+  target_type: string
+  subject_type: string
+  subject_id: string
+  title: string
+  subtitle: string | null
+  conversation_id: string | null
+  platform: string | null
+  scope_type: string | null
+  scope_id: string | null
+  subject_user_id: string | null
+  last_active_at: string | null
 }
 
 export interface AIConversationItem {
@@ -905,8 +922,35 @@ export function getAIPersonaBindings () {
   return client.get<AIPersonaBindingItem[]>('/ai/persona-bindings')
 }
 
+export function upsertAIPersona (payload: {
+  persona_id?: string | null
+  name: string
+  description: string
+  system_prompt: string
+  style_prompt: string
+  enabled: boolean
+}) {
+  return client.put<AIPersonaItem | null>('/ai/personas', payload)
+}
+
 export function getAIProviders () {
   return client.get<AIProviderItem[]>('/ai/providers')
+}
+
+export function getAIProviderTypes () {
+  return client.get<string[]>('/ai/provider-types')
+}
+
+export function upsertAIProvider (payload: {
+  provider_id?: string | null
+  name: string
+  provider_type: string
+  api_base?: string | null
+  api_key_env_name?: string | null
+  enabled: boolean
+  default_model?: string | null
+}) {
+  return client.put<AIProviderItem | null>('/ai/providers', payload)
 }
 
 export function getAIModelProfiles () {
@@ -924,6 +968,12 @@ export function getAIMemories (params: {
   limit?: number
 }) {
   return client.get<AIMemoryItem[]>('/ai/memories', { params })
+}
+
+export function getAIRecentTargets (params?: {
+  limit?: number
+}) {
+  return client.get<AIRecentTargetItem[]>('/ai/recent-targets', { params })
 }
 
 export function getAIConversations (params?: {
@@ -956,6 +1006,12 @@ export function cancelAIFutureTask (taskId: string) {
   return client.delete<AIFutureTaskItem | null>('/ai/future-tasks', {
     params: { task_id: taskId },
   })
+}
+
+export function getAIRelationshipStates (params?: {
+  limit?: number
+}) {
+  return client.get<AIRelationshipStateItem[]>('/ai/relationships/list', { params })
 }
 
 export function getAIRelationshipState (params: {

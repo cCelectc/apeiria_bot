@@ -18,6 +18,7 @@ from apeiria.interfaces.http.schemas.ai_models import (
     AIPersonaItem,
     AIProviderItem,
     AIProviderModelItem,
+    AIRecentTargetItem,
     AIRelationshipStateItem,
     AISkillItem,
     AIToolExecutionItem,
@@ -28,7 +29,7 @@ from apeiria.interfaces.http.schemas.ai_models import (
 )
 
 if TYPE_CHECKING:
-    from apeiria.app.ai.admin.models import AIConversationPromptPreview
+    from apeiria.app.ai.admin.models import AIConversationPromptPreview, AIRecentTarget
     from apeiria.app.ai.conversation.models import (
         AIConversationAdminView,
         AIConversationTurnDetailView,
@@ -62,6 +63,34 @@ if TYPE_CHECKING:
     from apeiria.app.ai.tools.policy import (
         AIToolPolicyBindingSpec,
     )
+
+
+
+
+def _skill_display_name(skill_name: str) -> str:
+    return {
+        "future_task.manage": "提醒与任务",
+        "memory.query": "查询记忆",
+        "plugin.capability": "调用插件能力",
+        "relationship.inspect": "查看关系状态",
+    }.get(skill_name, skill_name)
+
+
+def _skill_display_description(skill_name: str, fallback: str) -> str:
+    return {
+        "future_task.manage": "创建、取消或查看机器人已安排的提醒任务。",
+        "memory.query": "查看机器人为当前用户或会话召回的长期记忆内容。",
+        "plugin.capability": "在允许范围内调用 NoneBot 插件能力。",
+        "relationship.inspect": "查看机器人对当前用户关系状态与情绪倾向的理解。",
+    }.get(skill_name, fallback)
+
+
+def _skill_risk_label(risk_level: str) -> str:
+    return {
+        "low": "低风险",
+        "medium": "中风险",
+        "high": "高风险",
+    }.get(risk_level, risk_level)
 
 
 def to_ai_persona_item(item: "AIPersonaDefinition") -> AIPersonaItem:
@@ -100,6 +129,23 @@ def to_ai_memory_item(item: "AIMemoryDefinition") -> AIMemoryItem:
         created_at=item.created_at.isoformat(),
     )
 
+
+
+
+def to_ai_recent_target_item(item: "AIRecentTarget") -> AIRecentTargetItem:
+    return AIRecentTargetItem(
+        target_type=item.target_type,
+        subject_type=item.subject_type,
+        subject_id=item.subject_id,
+        title=item.title,
+        subtitle=item.subtitle,
+        conversation_id=item.conversation_id,
+        platform=item.platform,
+        scope_type=item.scope_type,
+        scope_id=item.scope_id,
+        subject_user_id=item.subject_user_id,
+        last_active_at=item.last_active_at,
+    )
 
 def to_ai_conversation_item(item: "AIConversationAdminView") -> AIConversationItem:
     return AIConversationItem(
@@ -246,18 +292,25 @@ def to_ai_tool_item(item: "AIToolSpec") -> AIToolItem:
 
 
 def to_ai_skill_item(item: "AISkillDefinition") -> AISkillItem:
+    risk_level = (
+        "high"
+        if item.contract.side_effect_level == "high_risk"
+        else "low"
+        if item.contract.side_effect_level == "read_only"
+        else "medium"
+    )
     return AISkillItem(
         name=item.skill_name,
         description=item.description,
+        display_name=_skill_display_name(item.skill_name),
+        display_description=_skill_display_description(
+            item.skill_name,
+            item.description,
+        ),
         read_only=item.contract.side_effect_level == "read_only",
         concurrency_safe=item.contract.idempotency == "idempotent",
-        risk_level=(
-            "high"
-            if item.contract.side_effect_level == "high_risk"
-            else "low"
-            if item.contract.side_effect_level == "read_only"
-            else "medium"
-        ),
+        risk_level=risk_level,
+        risk_label=_skill_risk_label(risk_level),
         is_capability_bridge=item.skill_name == "plugin.capability",
     )
 
