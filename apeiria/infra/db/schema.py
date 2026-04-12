@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 
 from nonebot.log import logger
 
-CURRENT_SCHEMA_VERSION = 15
+CURRENT_SCHEMA_VERSION = 16
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncConnection, AsyncSession
@@ -20,13 +20,15 @@ MIGRATIONS: dict[int, MigrationFunc] = {}
 CORE_TABLE_NAMES = frozenset(
     {
         "ai_affinity",
-        "ai_model_binding",
+        "ai_chat_model",
         "ai_conversation",
+        "ai_future_task",
         "ai_memory_item",
+        "ai_model_binding",
         "ai_model_profile",
-        "ai_provider",
         "ai_persona",
         "ai_persona_binding",
+        "ai_source",
         "ai_tool_execution",
         "ai_tool_policy_binding",
         "ai_turn",
@@ -360,38 +362,10 @@ MIGRATIONS[10] = _migrate_v10_to_v11
 
 async def _migrate_v11_to_v12(session: AsyncSession) -> None:
     from nonebot_plugin_orm import Model
-    from sqlalchemy import inspect as sa_inspect
-    from sqlalchemy import text
 
     conn = await session.connection()
     await conn.run_sync(Model.metadata.create_all)
-
-    def _has_provider_id(sync_conn):  # noqa: ANN001
-        inspector = sa_inspect(sync_conn)
-        columns = inspector.get_columns("ai_model_profile")
-        return any(column["name"] == "provider_id" for column in columns)
-
-    try:
-        has_provider_id = await conn.run_sync(_has_provider_id)
-    except Exception:  # noqa: BLE001
-        has_provider_id = False
-
-    if not has_provider_id:
-        await session.execute(
-            text(
-                "ALTER TABLE ai_model_profile "
-                "ADD COLUMN provider_id VARCHAR(64) NOT NULL DEFAULT 'provider_default'"
-            )
-        )
-        await session.execute(
-            text(
-                "UPDATE ai_model_profile "
-                "SET provider_id = 'provider_default'"
-            )
-        )
-
     await session.commit()
-
 
 MIGRATIONS[11] = _migrate_v11_to_v12
 
@@ -408,32 +382,10 @@ MIGRATIONS[12] = _migrate_v12_to_v13
 
 async def _migrate_v13_to_v14(session: AsyncSession) -> None:
     from nonebot_plugin_orm import Model
-    from sqlalchemy import inspect as sa_inspect
-    from sqlalchemy import text
 
     conn = await session.connection()
     await conn.run_sync(Model.metadata.create_all)
-
-    def _has_api_key_env_name(sync_conn):  # noqa: ANN001
-        inspector = sa_inspect(sync_conn)
-        columns = inspector.get_columns("ai_provider")
-        return any(column["name"] == "api_key_env_name" for column in columns)
-
-    try:
-        has_api_key_env_name = await conn.run_sync(_has_api_key_env_name)
-    except Exception:  # noqa: BLE001
-        has_api_key_env_name = False
-
-    if not has_api_key_env_name:
-        await session.execute(
-            text(
-                "ALTER TABLE ai_provider "
-                "ADD COLUMN api_key_env_name VARCHAR(128)"
-            )
-        )
-
     await session.commit()
-
 
 MIGRATIONS[13] = _migrate_v13_to_v14
 
@@ -446,3 +398,14 @@ async def _migrate_v14_to_v15(session: AsyncSession) -> None:
 
 
 MIGRATIONS[14] = _migrate_v14_to_v15
+
+
+async def _migrate_v15_to_v16(session: AsyncSession) -> None:
+    from nonebot_plugin_orm import Model
+
+    conn = await session.connection()
+    await conn.run_sync(Model.metadata.create_all)
+    await session.commit()
+
+
+MIGRATIONS[15] = _migrate_v15_to_v16

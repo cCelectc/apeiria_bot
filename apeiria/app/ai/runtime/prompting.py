@@ -110,7 +110,7 @@ def build_reply_prompt_channels(
 
 
 def render_reply_prompt(channels: AIReplyPromptChannels) -> str:  # noqa: C901
-    """Render one flat provider prompt from structured channels."""
+    """Render one flat model prompt from structured channels."""
 
     sections = [f"[Persona]\n{channels.persona}"]
     if channels.style:

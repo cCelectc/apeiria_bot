@@ -1,4 +1,4 @@
-"""Provider client registry and dispatch facade."""
+"""Source adapter registry and dispatch facade."""
 
 from __future__ import annotations
 
@@ -6,59 +6,59 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from apeiria.app.ai.model.provider import (
+    from apeiria.app.ai.model.adapter import (
+        AIModelAdapter,
+        AIModelCatalogItem,
         AIModelGenerateRequest,
         AIModelGenerateResponse,
-        AIModelProvider,
-        AIProviderModelItem,
     )
 
 
-class UnknownAIProviderError(RuntimeError):
-    """Raised when a requested AI provider is not registered."""
+class UnknownAISourceError(RuntimeError):
+    """Raised when a requested AI source adapter is not registered."""
 
-    def __init__(self, provider_name: str) -> None:
-        super().__init__(f"provider '{provider_name}' is not registered")
+    def __init__(self, source_id: str) -> None:
+        super().__init__(f"source '{source_id}' is not registered")
 
 
 @dataclass
 class AIModelClientRegistry:
-    """In-memory provider registry for AI model execution."""
+    """In-memory source adapter registry for AI model execution."""
 
-    providers: dict[str, "AIModelProvider"]
+    adapters: dict[str, "AIModelAdapter"]
 
-    def register(self, provider_name: str, provider: "AIModelProvider") -> None:
-        self.providers[provider_name] = provider
+    def register(self, source_id: str, adapter: "AIModelAdapter") -> None:
+        self.adapters[source_id] = adapter
 
-    def get(self, provider_name: str) -> "AIModelProvider | None":
-        return self.providers.get(provider_name)
+    def get(self, source_id: str) -> "AIModelAdapter | None":
+        return self.adapters.get(source_id)
 
 
 class AIModelClient:
-    """Thin dispatch facade over registered provider adapters."""
+    """Thin dispatch facade over registered source adapters."""
 
     def __init__(self, registry: AIModelClientRegistry | None = None) -> None:
-        self.registry = registry or AIModelClientRegistry(providers={})
+        self.registry = registry or AIModelClientRegistry(adapters={})
 
     async def generate_text(
         self,
         request: "AIModelGenerateRequest",
     ) -> "AIModelGenerateResponse":
-        provider = self.registry.get(request.provider_id)
-        if provider is None:
-            raise UnknownAIProviderError(request.provider_id)
-        return await provider.generate_text(request)
+        adapter = self.registry.get(request.source_id)
+        if adapter is None:
+            raise UnknownAISourceError(request.source_id)
+        return await adapter.generate_text(request)
 
     async def list_models(
         self,
         *,
-        provider_id: str,
+        source_id: str,
         api_key: str | None = None,
-    ) -> list["AIProviderModelItem"]:
-        provider = self.registry.get(provider_id)
-        if provider is None:
-            raise UnknownAIProviderError(provider_id)
-        return await provider.list_models(api_key=api_key)
+    ) -> list["AIModelCatalogItem"]:
+        adapter = self.registry.get(source_id)
+        if adapter is None:
+            raise UnknownAISourceError(source_id)
+        return await adapter.list_models(api_key=api_key)
 
 
 ai_model_client = AIModelClient()

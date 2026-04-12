@@ -67,7 +67,7 @@ if TYPE_CHECKING:
     )
     from apeiria.app.ai.future_task.models import AIFutureTaskDefinition
     from apeiria.app.ai.memory.models import AIMemoryDefinition
-    from apeiria.app.ai.model.provider import (
+    from apeiria.app.ai.model.adapter import (
         AIModelGenerateResponse,
         AIModelToolDefinition,
     )
@@ -454,7 +454,7 @@ class AIRuntimeService:
         )
         if response is None or not response.content.strip():
             logger.debug(
-                "AI trace {} skipped reply: empty provider response "
+                "AI trace {} skipped reply: empty model response "
                 "for conversation {}",
                 trace_id,
                 identity.conversation_id,
@@ -470,7 +470,7 @@ class AIRuntimeService:
                 content_text=response.content.strip(),
                 raw_payload={
                     "trace_id": trace_id,
-                    "provider_id": response.provider_id,
+                    "source_id": response.source_id,
                     "model_name": response.model_name,
                     "task_class": (
                         post_tool_task_class
@@ -520,12 +520,12 @@ class AIRuntimeService:
         )
         await session.commit()
         logger.info(
-            "AI trace {} generated {} reply for conversation {} with provider={} "
+            "AI trace {} generated {} reply for conversation {} with source={} "
             "model={} memories={} tool_observations={}",
             trace_id,
             request.runtime_mode,
             identity.conversation_id,
-            response.provider_id,
+            response.source_id,
             response.model_name,
             len(recalled_memories),
             len(skill_runtime.turns),

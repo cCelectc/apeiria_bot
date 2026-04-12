@@ -33,7 +33,7 @@ class AIRuntimeComposeInput:
 
 
 def compose_reply_prompt(inputs: AIRuntimeComposeInput) -> str:
-    """Compose the provider prompt from separated runtime channels."""
+    """Compose the model prompt from separated runtime channels."""
 
     return render_reply_prompt(
         build_reply_prompt_channels(

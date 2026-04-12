@@ -1,4 +1,4 @@
-"""Pure helpers for provider function-calling integration."""
+"""Pure helpers for model function-calling integration."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Any
 from zoneinfo import ZoneInfo
 
 from apeiria.app.ai.future_task.models import AIFutureTaskToolInput
-from apeiria.app.ai.model.provider import AIModelToolCall, AIModelToolDefinition
+from apeiria.app.ai.model.adapter import AIModelToolCall, AIModelToolDefinition
 from apeiria.app.ai.tools.models import (
     AIMemoryQueryObservationInput,
     AINoneBotCapabilityRequest,

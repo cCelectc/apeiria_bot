@@ -1,4 +1,4 @@
-"""Provider abstraction for AI model execution."""
+"""Adapter contracts for AI model execution."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ from typing import Any, Protocol
 
 @dataclass(frozen=True)
 class AIModelToolDefinition:
-    """One function-calling tool definition exposed to a provider."""
+    """One function-calling tool definition exposed to a model source adapter."""
 
     name: str
     description: str
@@ -17,7 +17,7 @@ class AIModelToolDefinition:
 
 @dataclass(frozen=True)
 class AIModelToolCall:
-    """One tool call returned by a model provider."""
+    """One tool call returned by a model source adapter."""
 
     tool_call_id: str
     name: str
@@ -25,8 +25,8 @@ class AIModelToolCall:
 
 
 @dataclass(frozen=True)
-class AIProviderModelItem:
-    """One provider-reported model item."""
+class AIModelCatalogItem:
+    """One source-reported model catalog item."""
 
     id: str
     name: str
@@ -36,7 +36,7 @@ class AIProviderModelItem:
 class AIModelGenerateRequest:
     """Unified text generation request for Apeiria AI services."""
 
-    provider_id: str
+    source_id: str
     model_name: str
     prompt: str
     temperature: float | None = None
@@ -49,21 +49,21 @@ class AIModelGenerateRequest:
 class AIModelGenerateResponse:
     """Unified text generation response for Apeiria AI services."""
 
-    provider_id: str
+    source_id: str
     model_name: str
     content: str
     tool_calls: tuple[AIModelToolCall, ...] = ()
     raw: dict[str, Any] | None = None
 
 
-class AIModelProvider(Protocol):
-    """Provider adapter protocol for Apeiria model execution."""
+class AIModelAdapter(Protocol):
+    """Source adapter protocol for Apeiria model execution."""
 
     async def list_models(
         self,
         *,
         api_key: str | None = None,
-    ) -> list[AIProviderModelItem]:
+    ) -> list[AIModelCatalogItem]:
         ...
 
     async def generate_text(

@@ -319,7 +319,7 @@ class AIConversationService:
             else turn.created_at,
             raw_payload=raw_payload,
             trace_id=raw_payload.get("trace_id") if raw_payload else None,
-            provider_id=raw_payload.get("provider_id") if raw_payload else None,
+            source_id=raw_payload.get("source_id") if raw_payload else None,
             model_name=raw_payload.get("model_name") if raw_payload else None,
             recalled_memory_count=(
                 int(raw_payload["recalled_memory_count"])

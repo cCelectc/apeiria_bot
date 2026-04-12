@@ -33,7 +33,7 @@ class AIConversationPromptPreview:
 
     conversation_id: str
     latest_user_message: str | None
-    provider_id: str | None
+    source_id: str | None
     profile_id: str | None
     model_name: str | None
     persona_id: str | None

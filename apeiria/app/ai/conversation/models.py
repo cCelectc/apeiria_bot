@@ -63,7 +63,7 @@ class AIConversationTurnDetailView:
     created_at: datetime
     raw_payload: dict[str, Any] | None
     trace_id: str | None
-    provider_id: str | None
+    source_id: str | None
     model_name: str | None
     recalled_memory_count: int | None
     tool_observation_count: int | None

@@ -436,6 +436,39 @@ export interface AIRecentTargetItem {
   last_active_at: string | null
 }
 
+export interface AISourcePresetItem {
+  preset_type: string
+  display_name: string
+  capability_type: string
+  client_type: string
+  default_api_base: string | null
+  description: string
+}
+
+export interface AISourceItem {
+  source_id: string
+  name: string
+  capability_type: string
+  client_type: string
+  preset_type: string
+  api_base: string | null
+  api_key_env_name: string | null
+  enabled: boolean
+  timeout_seconds: number | null
+  custom_headers: Record<string, string>
+  extra_config: Record<string, unknown>
+}
+
+export interface AIChatModelItem {
+  model_id: string
+  source_id: string
+  model_identifier: string
+  display_name: string
+  enabled: boolean
+  is_default: boolean
+  extra_params: Record<string, unknown>
+}
+
 export interface AIConversationItem {
   conversation_id: string
   platform: string
@@ -458,7 +491,7 @@ export interface AIConversationTurnItem {
   created_at: string
   raw_payload: Record<string, unknown> | null
   trace_id: string | null
-  provider_id: string | null
+  source_id: string | null
   model_name: string | null
   recalled_memory_count: number | null
   tool_observation_count: number | null
@@ -467,7 +500,7 @@ export interface AIConversationTurnItem {
 export interface AIConversationPromptPreviewItem {
   conversation_id: string
   latest_user_message: string | null
-  provider_id: string | null
+  source_id: string | null
   profile_id: string | null
   model_name: string | null
   persona_id: string | null
@@ -512,21 +545,15 @@ export interface AIRelationshipStateItem {
   last_event_at: string
 }
 
-export interface AIProviderItem {
-  provider_id: string
+export interface AIModelCatalogItem {
+  id: string
   name: string
-  provider_type: string
-  api_base: string | null
-  api_key_env_name: string | null
-  enabled: boolean
-  default_model: string | null
 }
 
 export interface AIModelProfileItem {
   profile_id: string
   name: string
-  provider_id: string
-  model_name: string
+  model_id: string
   task_class: string
   priority: number
   enabled: boolean
@@ -933,28 +960,102 @@ export function upsertAIPersona (payload: {
   return client.put<AIPersonaItem | null>('/ai/personas', payload)
 }
 
-export function getAIProviders () {
-  return client.get<AIProviderItem[]>('/ai/providers')
+export function getAISourcePresets () {
+  return client.get<AISourcePresetItem[]>('/ai/source-presets')
 }
 
-export function getAIProviderTypes () {
-  return client.get<string[]>('/ai/provider-types')
+export function getAISources () {
+  return client.get<AISourceItem[]>('/ai/sources')
 }
 
-export function upsertAIProvider (payload: {
-  provider_id?: string | null
+export function createAISource (payload: {
   name: string
-  provider_type: string
+  capability_type: string
+  preset_type: string
   api_base?: string | null
   api_key_env_name?: string | null
   enabled: boolean
-  default_model?: string | null
+  timeout_seconds?: number | null
+  custom_headers?: Record<string, string>
+  extra_config?: Record<string, unknown>
 }) {
-  return client.put<AIProviderItem | null>('/ai/providers', payload)
+  return client.post<AISourceItem>('/ai/sources', payload)
+}
+
+export function updateAISource (payload: {
+  source_id: string
+  name: string
+  capability_type: string
+  preset_type: string
+  api_base?: string | null
+  api_key_env_name?: string | null
+  enabled: boolean
+  timeout_seconds?: number | null
+  custom_headers?: Record<string, string>
+  extra_config?: Record<string, unknown>
+}) {
+  return client.put<AISourceItem | null>('/ai/sources', payload)
+}
+
+export function deleteAISource (sourceId: string) {
+  return client.delete<boolean>('/ai/sources', { params: { source_id: sourceId } })
+}
+
+export function getAISourceModels (sourceId: string) {
+  return client.get<AIChatModelItem[]>('/ai/sources/models', { params: { source_id: sourceId } })
+}
+
+export function fetchAISourceModels (payload: {
+  source_id?: string | null
+  preset_type?: string | null
+  api_base?: string | null
+  api_key_env_name?: string | null
+  api_key?: string | null
+}) {
+  return client.post<AIModelCatalogItem[]>('/ai/sources/models/fetch', payload)
+}
+
+export function createAIChatModel (payload: {
+  source_id: string
+  model_identifier: string
+  display_name: string
+  enabled: boolean
+  is_default: boolean
+  extra_params?: Record<string, unknown>
+}) {
+  return client.post<AIChatModelItem>('/ai/sources/models', payload)
+}
+
+export function updateAIChatModel (payload: {
+  model_id: string
+  source_id: string
+  model_identifier: string
+  display_name: string
+  enabled: boolean
+  is_default: boolean
+  extra_params?: Record<string, unknown>
+}) {
+  return client.put<AIChatModelItem | null>('/ai/sources/models', payload)
+}
+
+export function deleteAIChatModel (modelId: string) {
+  return client.delete<boolean>('/ai/sources/models', { params: { model_id: modelId } })
 }
 
 export function getAIModelProfiles () {
   return client.get<AIModelProfileItem[]>('/ai/model-profiles')
+}
+
+export function upsertAIModelProfile (payload: {
+  profile_id?: string | null
+  name: string
+  model_id: string
+  task_class: string
+  priority: number
+  enabled: boolean
+  fallback_profile_id?: string | null
+}) {
+  return client.put<AIModelProfileItem | null>('/ai/model-profiles', payload)
 }
 
 export function getAIModelBindings () {

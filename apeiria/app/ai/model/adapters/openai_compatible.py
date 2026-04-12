@@ -1,14 +1,15 @@
-"""OpenAI-compatible provider adapter."""
+"""OpenAI-compatible source adapter."""
 
 from __future__ import annotations
 
+from urllib.parse import urlsplit, urlunsplit
 from typing import TYPE_CHECKING, Any
 
-from apeiria.app.ai.model.provider import (
+from apeiria.app.ai.model.adapter import (
+    AIModelCatalogItem,
     AIModelGenerateRequest,
     AIModelGenerateResponse,
     AIModelToolCall,
-    AIProviderModelItem,
 )
 
 if TYPE_CHECKING:
@@ -28,7 +29,7 @@ class OpenAICompatibleProviderConfigError(RuntimeError):
     """Raised when required OpenAI-compatible settings are missing."""
 
     def __init__(self, field_name: str) -> None:
-        super().__init__(f"openai-compatible provider requires {field_name}")
+        super().__init__(f"openai-compatible source requires {field_name}")
 
 
 class OpenAICompatibleProvider:
@@ -42,7 +43,7 @@ class OpenAICompatibleProvider:
         request_func: "OpenAIRequestFunc | None" = None,
         list_request_func: "OpenAIListRequestFunc | None" = None,
     ) -> None:
-        self.api_base = api_base
+        self.api_base = _normalize_openai_api_base(api_base)
         self.api_key = api_key
         self._request_func = request_func or self._request_json
         self._list_request_func = (
@@ -92,7 +93,7 @@ class OpenAICompatibleProvider:
             payload,
         )
         return AIModelGenerateResponse(
-            provider_id=request.provider_id,
+            source_id=request.source_id,
             model_name=request.model_name,
             content=_extract_openai_content(raw),
             tool_calls=tuple(_extract_openai_tool_calls(raw)),
@@ -103,7 +104,7 @@ class OpenAICompatibleProvider:
         self,
         *,
         api_key: str | None = None,
-    ) -> list[AIProviderModelItem]:
+    ) -> list[AIModelCatalogItem]:
         resolved_api_key = api_key or self.api_key
         if not self.api_base:
             raise OpenAICompatibleProviderConfigError("api_base")
@@ -132,7 +133,7 @@ class OpenAICompatibleProvider:
             session.post(url, json=payload) as response,
         ):
             response.raise_for_status()
-            return await response.json()
+            return await _decode_json_response(response)
 
     async def _request_json_get(
         self,
@@ -146,7 +147,7 @@ class OpenAICompatibleProvider:
             session.get(url) as response,
         ):
             response.raise_for_status()
-            return await response.json()
+            return await _decode_json_response(response)
 
 
 def _coerce_str(extra: dict[str, Any] | None, key: str) -> str | None:
@@ -154,6 +155,27 @@ def _coerce_str(extra: dict[str, Any] | None, key: str) -> str | None:
         return None
     value = extra.get(key)
     return value if isinstance(value, str) and value.strip() else None
+
+
+def _normalize_openai_api_base(api_base: str | None) -> str | None:
+    if not isinstance(api_base, str) or not api_base.strip():
+        return None
+    normalized = api_base.strip().rstrip("/")
+    parsed = urlsplit(normalized)
+    if parsed.path in {"", "/"}:
+        return urlunsplit((parsed.scheme, parsed.netloc, "/v1", parsed.query, parsed.fragment))
+    return normalized
+
+
+async def _decode_json_response(response: Any) -> dict[str, Any]:
+    content_type = str(response.headers.get("Content-Type") or "").lower()
+    if "json" not in content_type:
+        preview = (await response.text())[:160].strip()
+        msg = "模型接口返回了非 JSON 响应，请检查接口地址或接入方式。"
+        if preview:
+            msg = f"{msg} 响应片段: {preview}"
+        raise RuntimeError(msg)
+    return await response.json()
 
 
 def _wrap_list_request(
@@ -185,18 +207,18 @@ def _extract_openai_content(raw: dict[str, Any]) -> str:
     return content if isinstance(content, str) else ""
 
 
-def _extract_openai_models(raw: dict[str, Any]) -> list[AIProviderModelItem]:
+def _extract_openai_models(raw: dict[str, Any]) -> list[AIModelCatalogItem]:
     rows = raw.get("data")
     if not isinstance(rows, list):
         return []
-    models: list[AIProviderModelItem] = []
+    models: list[AIModelCatalogItem] = []
     for row in rows:
         if not isinstance(row, dict):
             continue
         model_id = row.get("id")
         if not isinstance(model_id, str):
             continue
-        models.append(AIProviderModelItem(id=model_id, name=model_id))
+        models.append(AIModelCatalogItem(id=model_id, name=model_id))
     return models
 
 

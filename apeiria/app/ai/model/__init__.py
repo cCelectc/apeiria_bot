@@ -6,40 +6,57 @@ from importlib import import_module
 from typing import TYPE_CHECKING, Any
 
 from .bindings import AIModelBindingSpec, AIModelBindingTarget
+from .chat_models import AIChatModelDefinition
 from .models import AIModelProfileDefinition, AIModelRouteQuery, AIModelTaskClass
-from .providers import AIProviderDefinition, AIProviderType
 from .routing import resolve_model_profile
-from .selection import AISelectedModel, select_provider_for_profile
+from .selection import AISelectedModel
+from .sources import (
+    AISourceCapabilityType,
+    AISourceClientType,
+    AISourceDefinition,
+    AISourcePresetDefinition,
+    AISourcePresetType,
+)
 
 if TYPE_CHECKING:
+    from .adapter import (
+        AIModelAdapter,
+        AIModelCatalogItem,
+        AIModelGenerateRequest,
+        AIModelGenerateResponse,
+    )
+    from .chat_model_service import (
+        AIChatModelCreateInput,
+        AIChatModelService,
+        ai_chat_model_service,
+    )
     from .client import (
         AIModelClient,
         AIModelClientRegistry,
-        UnknownAIProviderError,
+        UnknownAISourceError,
         ai_model_client,
     )
-    from .factory import UnsupportedAIProviderTypeError, build_provider_adapter
+    from .factory import UnsupportedAISourceClientTypeError, build_source_adapter
     from .profile_service import (
         AIModelProfileCreateInput,
         AIModelProfileService,
         ai_model_profile_service,
     )
-    from .provider import (
-        AIModelGenerateRequest,
-        AIModelGenerateResponse,
-        AIModelProvider,
-        AIProviderModelItem,
-    )
-    from .provider_service import (
-        AIProviderCreateInput,
-        AIProviderService,
-        ai_provider_service,
-    )
     from .service import AIModelFacade, ai_model_facade
+    from .source_service import (
+        AISourceCreateInput,
+        AISourceService,
+        ai_source_service,
+    )
 
 __all__ = [
+    "AIChatModelCreateInput",
+    "AIChatModelDefinition",
+    "AIChatModelService",
+    "AIModelAdapter",
     "AIModelBindingSpec",
     "AIModelBindingTarget",
+    "AIModelCatalogItem",
     "AIModelClient",
     "AIModelClientRegistry",
     "AIModelFacade",
@@ -48,45 +65,49 @@ __all__ = [
     "AIModelProfileCreateInput",
     "AIModelProfileDefinition",
     "AIModelProfileService",
-    "AIModelProvider",
     "AIModelRouteQuery",
     "AIModelTaskClass",
-    "AIProviderCreateInput",
-    "AIProviderDefinition",
-    "AIProviderModelItem",
-    "AIProviderService",
-    "AIProviderType",
     "AISelectedModel",
-    "UnknownAIProviderError",
-    "UnsupportedAIProviderTypeError",
+    "AISourceCapabilityType",
+    "AISourceClientType",
+    "AISourceCreateInput",
+    "AISourceDefinition",
+    "AISourcePresetDefinition",
+    "AISourcePresetType",
+    "AISourceService",
+    "UnknownAISourceError",
+    "UnsupportedAISourceClientTypeError",
+    "ai_chat_model_service",
     "ai_model_client",
     "ai_model_facade",
     "ai_model_profile_service",
-    "ai_provider_service",
-    "build_provider_adapter",
+    "ai_source_service",
+    "build_source_adapter",
     "resolve_model_profile",
-    "select_provider_for_profile",
 ]
 
 _LAZY_EXPORTS = {
+    "AIChatModelCreateInput": ".chat_model_service",
+    "AIChatModelService": ".chat_model_service",
     "AIModelClient": ".client",
     "AIModelClientRegistry": ".client",
-    "UnknownAIProviderError": ".client",
-    "ai_model_client": ".client",
-    "UnsupportedAIProviderTypeError": ".factory",
-    "build_provider_adapter": ".factory",
+    "AIModelFacade": ".service",
+    "AIModelGenerateRequest": ".adapter",
+    "AIModelGenerateResponse": ".adapter",
     "AIModelProfileCreateInput": ".profile_service",
     "AIModelProfileService": ".profile_service",
-    "ai_model_profile_service": ".profile_service",
-    "AIModelGenerateRequest": ".provider",
-    "AIModelGenerateResponse": ".provider",
-    "AIModelProvider": ".provider",
-    "AIProviderModelItem": ".provider",
-    "AIProviderCreateInput": ".provider_service",
-    "AIProviderService": ".provider_service",
-    "ai_provider_service": ".provider_service",
-    "AIModelFacade": ".service",
+    "AIModelAdapter": ".adapter",
+    "AIModelCatalogItem": ".adapter",
+    "AISourceCreateInput": ".source_service",
+    "AISourceService": ".source_service",
+    "UnknownAISourceError": ".client",
+    "UnsupportedAISourceClientTypeError": ".factory",
+    "ai_chat_model_service": ".chat_model_service",
+    "ai_model_client": ".client",
     "ai_model_facade": ".service",
+    "ai_model_profile_service": ".profile_service",
+    "ai_source_service": ".source_service",
+    "build_source_adapter": ".factory",
 }
 
 

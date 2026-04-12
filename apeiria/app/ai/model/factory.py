@@ -1,4 +1,4 @@
-"""Factory for building concrete provider adapters from provider definitions."""
+"""Factory for building concrete source adapters from source definitions."""
 
 from __future__ import annotations
 
@@ -10,43 +10,37 @@ from apeiria.app.ai.model.adapters import (
 )
 
 if TYPE_CHECKING:
-    from apeiria.app.ai.model.provider import AIModelProvider
-    from apeiria.app.ai.model.providers import AIProviderDefinition
+    from apeiria.app.ai.model.adapter import AIModelAdapter
+    from apeiria.app.ai.model.sources import AISourceDefinition
+
+SUPPORTED_SOURCE_CLIENT_TYPES = ("openai", "anthropic")
 
 
-SUPPORTED_PROVIDER_TYPES = (
-    "openai_compatible",
-    "litellm",
-    "anthropic",
-    "anthropic_compatible",
-)
+class UnsupportedAISourceClientTypeError(RuntimeError):
+    """Raised when no concrete adapter exists for a source client type."""
+
+    def __init__(self, client_type: str) -> None:
+        super().__init__(f"source client type '{client_type}' is not supported")
 
 
-class UnsupportedAIProviderTypeError(RuntimeError):
-    """Raised when no concrete adapter exists for a provider type."""
-
-    def __init__(self, provider_type: str) -> None:
-        super().__init__(f"provider type '{provider_type}' is not supported")
-
-
-def build_provider_adapter(
-    provider: "AIProviderDefinition",
+def build_source_adapter(
+    source: "AISourceDefinition",
     *,
     api_key: str | None = None,
     request_func: Any | None = None,
-) -> "AIModelProvider":
-    """Build a concrete provider adapter from a provider definition."""
+) -> "AIModelAdapter":
+    """Build a concrete source adapter from one source definition."""
 
-    if provider.provider_type in {"openai_compatible", "litellm"}:
+    if source.client_type == "openai":
         return OpenAICompatibleProvider(
-            api_base=provider.api_base,
+            api_base=source.api_base,
             api_key=api_key,
             request_func=request_func,
         )
-    if provider.provider_type in {"anthropic", "anthropic_compatible"}:
+    if source.client_type == "anthropic":
         return AnthropicCompatibleProvider(
-            api_base=provider.api_base,
+            api_base=source.api_base,
             api_key=api_key,
             request_func=request_func,
         )
-    raise UnsupportedAIProviderTypeError(provider.provider_type)
+    raise UnsupportedAISourceClientTypeError(source.client_type)

@@ -1,13 +1,14 @@
-"""Anthropic-compatible provider adapter."""
+"""Anthropic-compatible source adapter."""
 
 from __future__ import annotations
 
+from urllib.parse import urlsplit, urlunsplit
 from typing import TYPE_CHECKING, Any
 
-from apeiria.app.ai.model.provider import (
+from apeiria.app.ai.model.adapter import (
+    AIModelCatalogItem,
     AIModelGenerateRequest,
     AIModelGenerateResponse,
-    AIProviderModelItem,
 )
 
 if TYPE_CHECKING:
@@ -27,7 +28,7 @@ class AnthropicCompatibleProviderConfigError(RuntimeError):
     """Raised when required Anthropic-compatible settings are missing."""
 
     def __init__(self, field_name: str) -> None:
-        super().__init__(f"anthropic-compatible provider requires {field_name}")
+        super().__init__(f"anthropic-compatible source requires {field_name}")
 
 
 class AnthropicCompatibleProvider:
@@ -41,7 +42,7 @@ class AnthropicCompatibleProvider:
         request_func: "AnthropicRequestFunc | None" = None,
         list_request_func: "AnthropicListRequestFunc | None" = None,
     ) -> None:
-        self.api_base = api_base
+        self.api_base = _normalize_anthropic_api_base(api_base)
         self.api_key = api_key
         self._request_func = request_func or self._request_json
         self._list_request_func = (
@@ -79,7 +80,7 @@ class AnthropicCompatibleProvider:
             payload,
         )
         return AIModelGenerateResponse(
-            provider_id=request.provider_id,
+            source_id=request.source_id,
             model_name=request.model_name,
             content=_extract_anthropic_content(raw),
             raw=raw,
@@ -89,7 +90,7 @@ class AnthropicCompatibleProvider:
         self,
         *,
         api_key: str | None = None,
-    ) -> list[AIProviderModelItem]:
+    ) -> list[AIModelCatalogItem]:
         resolved_api_key = api_key or self.api_key
         if not self.api_base:
             raise AnthropicCompatibleProviderConfigError("api_base")
@@ -119,7 +120,7 @@ class AnthropicCompatibleProvider:
             session.post(url, json=payload) as response,
         ):
             response.raise_for_status()
-            return await response.json()
+            return await _decode_json_response(response)
 
     async def _request_json_get(
         self,
@@ -133,7 +134,7 @@ class AnthropicCompatibleProvider:
             session.get(url) as response,
         ):
             response.raise_for_status()
-            return await response.json()
+            return await _decode_json_response(response)
 
 
 def _coerce_str(extra: dict[str, Any] | None, key: str) -> str | None:
@@ -141,6 +142,27 @@ def _coerce_str(extra: dict[str, Any] | None, key: str) -> str | None:
         return None
     value = extra.get(key)
     return value if isinstance(value, str) and value.strip() else None
+
+
+def _normalize_anthropic_api_base(api_base: str | None) -> str | None:
+    if not isinstance(api_base, str) or not api_base.strip():
+        return None
+    normalized = api_base.strip().rstrip("/")
+    parsed = urlsplit(normalized)
+    if parsed.path in {"", "/"}:
+        return urlunsplit((parsed.scheme, parsed.netloc, "/v1", parsed.query, parsed.fragment))
+    return normalized
+
+
+async def _decode_json_response(response: Any) -> dict[str, Any]:
+    content_type = str(response.headers.get("Content-Type") or "").lower()
+    if "json" not in content_type:
+        preview = (await response.text())[:160].strip()
+        msg = "模型接口返回了非 JSON 响应，请检查接口地址或接入方式。"
+        if preview:
+            msg = f"{msg} 响应片段: {preview}"
+        raise RuntimeError(msg)
+    return await response.json()
 
 
 def _wrap_list_request(
@@ -172,11 +194,11 @@ def _extract_anthropic_content(raw: dict[str, Any]) -> str:
     return ""
 
 
-def _extract_anthropic_models(raw: dict[str, Any]) -> list[AIProviderModelItem]:
+def _extract_anthropic_models(raw: dict[str, Any]) -> list[AIModelCatalogItem]:
     rows = raw.get("data")
     if not isinstance(rows, list):
         return []
-    models: list[AIProviderModelItem] = []
+    models: list[AIModelCatalogItem] = []
     for row in rows:
         if not isinstance(row, dict):
             continue
@@ -185,7 +207,7 @@ def _extract_anthropic_models(raw: dict[str, Any]) -> list[AIProviderModelItem]:
             continue
         display_name = row.get("display_name")
         models.append(
-            AIProviderModelItem(
+            AIModelCatalogItem(
                 id=model_id,
                 name=display_name if isinstance(display_name, str) else model_id,
             )

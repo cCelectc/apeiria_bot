@@ -7,20 +7,22 @@ from typing import TYPE_CHECKING
 from apeiria.interfaces.http.schemas.ai_models import (
     AICapabilityItem,
     AICapabilityPreviewItem,
+    AIChatModelItem,
     AIConversationItem,
     AIConversationPromptPreviewItem,
     AIConversationTurnItem,
     AIFutureTaskItem,
     AIMemoryItem,
     AIModelBindingItem,
+    AIModelCatalogItem,
     AIModelProfileItem,
     AIPersonaBindingItem,
     AIPersonaItem,
-    AIProviderItem,
-    AIProviderModelItem,
     AIRecentTargetItem,
     AIRelationshipStateItem,
     AISkillItem,
+    AISourceItem,
+    AISourcePresetItem,
     AIToolExecutionItem,
     AIToolIntentPreviewItem,
     AIToolItem,
@@ -37,13 +39,13 @@ if TYPE_CHECKING:
     from apeiria.app.ai.future_task.models import AIFutureTaskDefinition
     from apeiria.app.ai.memory.models import AIMemoryDefinition
     from apeiria.app.ai.model import (
+        AIChatModelDefinition,
         AIModelBindingSpec,
         AIModelProfileDefinition,
-        AIProviderDefinition,
+        AISourceDefinition,
+        AISourcePresetDefinition,
     )
-    from apeiria.app.ai.model import (
-        AIProviderModelItem as DomainProviderModelItem,
-    )
+    from apeiria.app.ai.model import AIModelCatalogItem as DomainModelCatalogItem
     from apeiria.app.ai.persona.models import (
         AIPersonaBindingSpec,
         AIPersonaDefinition,
@@ -147,6 +149,47 @@ def to_ai_recent_target_item(item: "AIRecentTarget") -> AIRecentTargetItem:
         last_active_at=item.last_active_at,
     )
 
+
+def to_ai_source_preset_item(
+    item: "AISourcePresetDefinition",
+) -> AISourcePresetItem:
+    return AISourcePresetItem(
+        preset_type=item.preset_type,
+        display_name=item.display_name,
+        capability_type=item.capability_type,
+        client_type=item.client_type,
+        default_api_base=item.default_api_base,
+        description=item.description,
+    )
+
+
+def to_ai_source_item(item: "AISourceDefinition") -> AISourceItem:
+    return AISourceItem(
+        source_id=item.source_id,
+        name=item.name,
+        capability_type=item.capability_type,
+        client_type=item.client_type,
+        preset_type=item.preset_type,
+        api_base=item.api_base,
+        api_key_env_name=item.api_key_env_name,
+        enabled=item.enabled,
+        timeout_seconds=item.timeout_seconds,
+        custom_headers=item.custom_headers or {},
+        extra_config=item.extra_config or {},
+    )
+
+
+def to_ai_chat_model_item(item: "AIChatModelDefinition") -> AIChatModelItem:
+    return AIChatModelItem(
+        model_id=item.model_id,
+        source_id=item.source_id,
+        model_identifier=item.model_identifier,
+        display_name=item.display_name,
+        enabled=item.enabled,
+        is_default=item.is_default,
+        extra_params=item.extra_params or {},
+    )
+
 def to_ai_conversation_item(item: "AIConversationAdminView") -> AIConversationItem:
     return AIConversationItem(
         conversation_id=item.conversation_id,
@@ -174,7 +217,7 @@ def to_ai_conversation_turn_item(
         created_at=item.created_at.isoformat(),
         raw_payload=item.raw_payload,
         trace_id=item.trace_id,
-        provider_id=item.provider_id,
+        source_id=item.source_id,
         model_name=item.model_name,
         recalled_memory_count=item.recalled_memory_count,
         tool_observation_count=item.tool_observation_count,
@@ -187,7 +230,7 @@ def to_ai_conversation_prompt_preview_item(
     return AIConversationPromptPreviewItem(
         conversation_id=item.conversation_id,
         latest_user_message=item.latest_user_message,
-        provider_id=item.provider_id,
+        source_id=item.source_id,
         profile_id=item.profile_id,
         model_name=item.model_name,
         persona_id=item.persona_id,
@@ -229,8 +272,7 @@ def to_ai_model_profile_item(item: "AIModelProfileDefinition") -> AIModelProfile
     return AIModelProfileItem(
         profile_id=item.profile_id,
         name=item.name,
-        provider_id=item.provider_id,
-        model_name=item.model_name,
+        model_id=item.model_id or "",
         task_class=item.task_class,
         priority=item.priority,
         enabled=item.enabled,
@@ -247,20 +289,8 @@ def to_ai_model_binding_item(item: "AIModelBindingSpec") -> AIModelBindingItem:
     )
 
 
-def to_ai_provider_item(item: "AIProviderDefinition") -> AIProviderItem:
-    return AIProviderItem(
-        provider_id=item.provider_id,
-        name=item.name,
-        provider_type=item.provider_type,
-        api_base=item.api_base,
-        api_key_env_name=item.api_key_env_name,
-        enabled=item.enabled,
-        default_model=item.default_model,
-    )
-
-
-def to_ai_provider_model_item(item: "DomainProviderModelItem") -> AIProviderModelItem:
-    return AIProviderModelItem(
+def to_ai_model_catalog_item(item: "DomainModelCatalogItem") -> AIModelCatalogItem:
+    return AIModelCatalogItem(
         id=item.id,
         name=item.name,
     )

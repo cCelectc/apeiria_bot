@@ -1,40 +1,34 @@
-"""Phase-3 model facade over provider, profile, and adapter services."""
+"""Model facade over source, profile, and adapter services."""
 
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from apeiria.app.ai.model.adapter import AIModelGenerateRequest
 from apeiria.app.ai.model.client import ai_model_client
-from apeiria.app.ai.model.factory import build_provider_adapter
+from apeiria.app.ai.model.factory import build_source_adapter
 from apeiria.app.ai.model.profile_service import ai_model_profile_service
-from apeiria.app.ai.model.provider import AIModelGenerateRequest
-from apeiria.app.ai.model.provider_service import ai_provider_service
+from apeiria.app.ai.model.source_service import ai_source_service
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
+    from apeiria.app.ai.model.adapter import (
+        AIModelCatalogItem,
+        AIModelGenerateResponse,
+        AIModelToolDefinition,
+    )
     from apeiria.app.ai.model.bindings import AIModelBindingSpec, AIModelBindingTarget
     from apeiria.app.ai.model.models import (
         AIModelProfileDefinition,
         AIModelRouteQuery,
     )
-    from apeiria.app.ai.model.provider import (
-        AIModelGenerateResponse,
-        AIModelToolDefinition,
-        AIProviderModelItem,
-    )
-    from apeiria.app.ai.model.providers import AIProviderDefinition
     from apeiria.app.ai.model.selection import AISelectedModel
+    from apeiria.app.ai.model.sources import AISourceDefinition
 
 
 class AIModelFacade:
     """Unified model boundary used by runtime and admin surfaces."""
-
-    async def list_providers(
-        self,
-        session: "AsyncSession",
-    ) -> list["AIProviderDefinition"]:
-        return await ai_provider_service.list_providers(session)
 
     async def list_profiles(
         self,
@@ -48,23 +42,15 @@ class AIModelFacade:
     ) -> list["AIModelBindingSpec"]:
         return await ai_model_profile_service.list_bindings(session)
 
-    async def list_provider_models(
+    async def list_source_models(
         self,
-        session: "AsyncSession",
         *,
-        provider_id: str,
+        source: "AISourceDefinition",
         api_key: str,
-    ) -> list["AIProviderModelItem"]:
-        providers = await ai_provider_service.list_providers(session)
-        provider = next(
-            (item for item in providers if item.provider_id == provider_id),
-            None,
-        )
-        if provider is None:
-            return []
-        self._register_provider(provider, api_key=api_key)
+    ) -> list["AIModelCatalogItem"]:
+        self._register_source(source, api_key=api_key)
         return await ai_model_client.list_models(
-            provider_id=provider.provider_id,
+            source_id=source.source_id,
             api_key=api_key,
         )
 
@@ -88,15 +74,15 @@ class AIModelFacade:
         prompt: str,
         tools: tuple["AIModelToolDefinition", ...] = (),
     ) -> "AIModelGenerateResponse | None":
-        api_key = ai_provider_service.get_provider_api_key(selected.provider)
+        api_key = ai_source_service.get_source_api_key(selected.source)
         model_name = self.resolve_model_name(selected)
         if not api_key or not model_name:
             return None
 
-        self._register_provider(selected.provider, api_key=api_key)
+        self._register_source(selected.source, api_key=api_key)
         return await ai_model_client.generate_text(
             AIModelGenerateRequest(
-                provider_id=selected.provider.provider_id,
+                source_id=selected.source.source_id,
                 model_name=model_name,
                 prompt=prompt,
                 tools=tools,
@@ -105,23 +91,22 @@ class AIModelFacade:
 
     @staticmethod
     def resolve_model_name(selected: "AISelectedModel") -> str | None:
-        model_name = selected.profile.model_name.strip()
-        if model_name:
-            return model_name
-        default_model = selected.provider.default_model
-        if isinstance(default_model, str) and default_model.strip():
-            return default_model.strip()
+        if (
+            isinstance(selected.resolved_model_name, str)
+            and selected.resolved_model_name.strip()
+        ):
+            return selected.resolved_model_name.strip()
         return None
 
     @staticmethod
-    def _register_provider(
-        provider: "AIProviderDefinition",
+    def _register_source(
+        source: "AISourceDefinition",
         *,
         api_key: str,
     ) -> None:
         ai_model_client.registry.register(
-            provider.provider_id,
-            build_provider_adapter(provider, api_key=api_key),
+            source.source_id,
+            build_source_adapter(source, api_key=api_key),
         )
 
 

@@ -20,8 +20,7 @@ class AIModelProfileDefinition:
 
     profile_id: str
     name: str
-    provider_id: str
-    model_name: str
+    model_id: str
     task_class: AIModelTaskClass
     priority: int
     enabled: bool = True

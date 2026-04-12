@@ -15,7 +15,7 @@
 
     <v-card class="page-panel">
       <v-tabs v-model="topTab" color="primary">
-        <v-tab value="providers">{{ t('ai.providersTab') }}</v-tab>
+        <v-tab value="sources">{{ t('ai.providersTab') }}</v-tab>
         <v-tab value="personas">{{ t('ai.personasTab') }}</v-tab>
         <v-tab value="memories">{{ t('ai.memoryTab') }}</v-tab>
         <v-tab value="relationships">{{ t('ai.relationshipTab') }}</v-tab>
@@ -23,122 +23,338 @@
         <v-tab value="debug">{{ t('ai.debugTab') }}</v-tab>
       </v-tabs>
 
-      <template v-if="topTab === 'providers'">
+      <template v-if="topTab === 'sources'">
         <v-card-text>
-          <v-row>
-            <v-col cols="12" lg="4">
-              <div class="d-flex justify-end mb-3">
-                <v-btn color="primary" variant="tonal" @click="startCreateProvider">
-                  {{ t('ai.createProvider') }}
-                </v-btn>
-              </div>
-              <v-sheet class="surface-gradient-card pa-2" rounded="lg">
-                <template v-if="providers.length > 0">
-                  <v-list class="bg-transparent" density="comfortable" lines="two">
-                    <v-list-item
-                      v-for="item in providers"
-                      :key="item.provider_id"
-                      :active="item.provider_id === providerForm.provider_id"
-                      rounded="lg"
-                      @click="selectProvider(item)"
-                    >
-                      <v-list-item-title>{{ item.name }}</v-list-item-title>
-                      <v-list-item-subtitle>
-                        {{ providerTypeLabel(item.provider_type) }} · {{ item.default_model || t('common.none') }}
-                      </v-list-item-subtitle>
-                      <template #append>
-                        <v-chip :color="item.enabled ? 'success' : 'default'" size="small" variant="tonal">
-                          {{ item.enabled ? t('ai.enabled') : t('ai.disabled') }}
-                        </v-chip>
-                      </template>
-                    </v-list-item>
-                  </v-list>
-                </template>
-                <div v-else class="pa-4">
-                  <div class="empty-state-text">{{ t('ai.noProviders') }}</div>
-                  <div class="empty-state-hint mt-2">{{ t('ai.noProvidersHint') }}</div>
-                </div>
-              </v-sheet>
-            </v-col>
+          <v-tabs v-model="sourceCapabilityTab" class="mb-4" color="primary">
+            <v-tab value="chat">{{ t('ai.sourceCapabilityChat') }}</v-tab>
+            <v-tab value="embedding">{{ t('ai.sourceCapabilityEmbedding') }}</v-tab>
+            <v-tab value="stt">{{ t('ai.sourceCapabilityStt') }}</v-tab>
+            <v-tab value="tts">{{ t('ai.sourceCapabilityTts') }}</v-tab>
+            <v-tab value="rerank">{{ t('ai.sourceCapabilityRerank') }}</v-tab>
+          </v-tabs>
 
-            <v-col cols="12" lg="8">
-              <v-sheet class="surface-gradient-card pa-4" rounded="lg">
-                <div class="d-flex flex-wrap ga-2 mb-4">
-                  <v-chip color="primary" size="small" variant="tonal">
-                    {{ isCreatingProvider ? t('ai.creatingProvider') : t('ai.editingProvider') }}
-                  </v-chip>
-                  <v-chip color="primary" size="small" variant="tonal">
-                    {{ t('ai.providerDefaultModel') }}: {{ providerForm.default_model || t('common.none') }}
-                  </v-chip>
-                  <v-chip color="primary" size="small" variant="tonal">
-                    {{ t('ai.modelProfiles') }}: {{ selectedProviderProfileCount }}
-                  </v-chip>
-                  <v-chip color="primary" size="small" variant="tonal">
-                    {{ t('ai.scopeBindings') }}: {{ selectedProviderBindingCount }}
-                  </v-chip>
-                </div>
+          <template v-if="sourceCapabilityTab !== 'chat'">
+            <v-sheet class="surface-gradient-card pa-4" rounded="lg">
+              <div class="empty-state-text">{{ t('ai.sourceCapabilityComingSoon') }}</div>
+              <div class="empty-state-hint mt-2">{{ t('ai.sourceCapabilityComingSoonHint') }}</div>
+            </v-sheet>
+          </template>
 
-                <div class="ai-binding-form">
-                  <v-text-field
-                    v-model.trim="providerForm.name"
-                    density="comfortable"
-                    :disabled="savingProvider"
-                    :error-messages="displayedProviderErrors.name ? [displayedProviderErrors.name] : []"
-                    :label="t('ai.providerName')"
-                    @blur="touchProviderField('name')"
-                  />
-                  <v-select
-                    v-model="providerForm.provider_type"
-                    density="comfortable"
-                    :disabled="savingProvider"
-                    :error-messages="displayedProviderErrors.provider_type ? [displayedProviderErrors.provider_type] : []"
-                    :items="providerTypeOptions"
-                    :label="t('ai.providerType')"
-                    @blur="touchProviderField('provider_type')"
-                  />
-                  <v-text-field
-                    v-model.trim="providerForm.default_model"
-                    density="comfortable"
-                    :disabled="savingProvider"
-                    hide-details
-                    :label="t('ai.providerDefaultModel')"
-                  />
-                  <v-text-field
-                    v-model.trim="providerForm.api_key_env_name"
-                    density="comfortable"
-                    :disabled="savingProvider"
-                    hide-details
-                    :label="t('ai.providerApiKeyEnv')"
-                  />
-                </div>
-
-                <v-text-field
-                  v-model.trim="providerForm.api_base"
-                  class="mt-3"
-                  density="comfortable"
-                  :disabled="savingProvider"
-                  hide-details
-                  :label="t('ai.providerApiBase')"
-                />
-
-                <v-switch
-                  v-model="providerForm.enabled"
-                  class="mt-3"
-                  color="primary"
-                  density="comfortable"
-                  :disabled="savingProvider"
-                  hide-details
-                  :label="t('ai.providerEnabled')"
-                />
-
-                <div class="d-flex justify-end mt-4">
-                  <v-btn color="primary" :disabled="!canSaveProvider" :loading="savingProvider" @click="saveProvider">
-                    {{ t('common.save') }}
+          <template v-else>
+            <v-row>
+              <v-col cols="12" lg="4">
+                <div class="d-flex justify-space-between align-center mb-3">
+                  <div class="text-subtitle-1 font-weight-medium">
+                    {{ t('ai.sourcesTitle') }}
+                  </div>
+                  <v-btn color="primary" variant="tonal" @click="startCreateSource">
+                    {{ t('ai.createSource') }}
                   </v-btn>
                 </div>
-              </v-sheet>
-            </v-col>
-          </v-row>
+                <v-sheet class="surface-gradient-card pa-2 source-list-panel" rounded="lg">
+                  <template v-if="sources.length > 0">
+                    <v-list class="bg-transparent" density="comfortable" lines="two">
+                      <v-list-item
+                        v-for="item in sources"
+                        :key="item.source_id"
+                        :active="item.source_id === sourceForm.source_id"
+                        class="source-list-item"
+                        rounded="lg"
+                        @click="selectSource(item)"
+                      >
+                        <div class="source-list-item__body">
+                          <div class="source-list-item__header">
+                            <v-list-item-title>{{ item.name }}</v-list-item-title>
+                            <v-chip
+                              :color="item.enabled ? 'success' : 'default'"
+                              size="x-small"
+                              variant="tonal"
+                            >
+                              {{ item.enabled ? t('ai.enabled') : t('ai.disabled') }}
+                            </v-chip>
+                          </div>
+                          <v-list-item-subtitle class="source-list-item__subtitle">
+                            {{ item.api_base || t('common.none') }}
+                          </v-list-item-subtitle>
+                          <div class="source-list-item__meta">
+                            <v-chip color="primary" size="x-small" variant="tonal">
+                              {{ sourcePresetLabel(item.preset_type) }}
+                            </v-chip>
+                          </div>
+                        </div>
+                      </v-list-item>
+                    </v-list>
+                  </template>
+                  <div v-else class="pa-4">
+                    <div class="empty-state-text">{{ t('ai.noSources') }}</div>
+                    <div class="empty-state-hint mt-2">{{ t('ai.noSourcesHint') }}</div>
+                  </div>
+                </v-sheet>
+              </v-col>
+
+              <v-col cols="12" lg="8">
+                <v-sheet class="surface-gradient-card pa-4 mb-4 source-workspace" rounded="lg">
+                  <div class="d-flex flex-wrap justify-space-between align-start ga-3 mb-4">
+                    <div>
+                      <div class="text-h6 font-weight-medium">
+                        {{ sourceForm.name || t('ai.sourceConfigTitle') }}
+                      </div>
+                      <div class="text-body-2 text-medium-emphasis mt-1">
+                        {{ sourceForm.api_base || (isCreatingSource ? t('ai.sourceCreateHint') : t('ai.sourceConfigHint')) }}
+                      </div>
+                      <div class="source-summary-line mt-2">
+                        <span>{{ t('ai.sourcePreset') }}：</span>
+                        <strong>{{ sourcePresetLabel(sourceForm.preset_type) }}</strong>
+                      </div>
+                      <div class="d-flex flex-wrap ga-2 mt-3">
+                        <v-chip color="primary" size="small" variant="tonal">
+                          {{ sourcePresetLabel(sourceForm.preset_type) }}
+                        </v-chip>
+                        <v-chip
+                          :color="sourceForm.enabled ? 'success' : 'default'"
+                          size="small"
+                          variant="tonal"
+                        >
+                          {{ sourceForm.enabled ? t('ai.enabled') : t('ai.disabled') }}
+                        </v-chip>
+                      </div>
+                    </div>
+                    <div class="d-flex flex-wrap ga-2">
+                      <v-btn
+                        v-if="sourceForm.source_id"
+                        color="error"
+                        :loading="deletingSource"
+                        variant="tonal"
+                        @click="removeSource"
+                      >
+                        {{ t('common.delete') }}
+                      </v-btn>
+                      <v-btn color="primary" :disabled="!canSaveSource" :loading="savingSource" @click="saveSource">
+                        {{ t('common.save') }}
+                      </v-btn>
+                    </div>
+                  </div>
+
+                  <div class="ai-binding-form">
+                    <v-text-field
+                      v-model.trim="sourceForm.name"
+                      density="comfortable"
+                      :disabled="savingSource"
+                      :error-messages="displayedSourceErrors.name ? [displayedSourceErrors.name] : []"
+                      :label="t('ai.sourceName')"
+                      @blur="touchSourceField('name')"
+                    />
+                    <v-select
+                      v-model="sourceForm.preset_type"
+                      density="comfortable"
+                      :disabled="savingSource"
+                      :error-messages="displayedSourceErrors.preset_type ? [displayedSourceErrors.preset_type] : []"
+                      :items="sourcePresetOptions"
+                      :label="t('ai.sourcePreset')"
+                      @blur="touchSourceField('preset_type')"
+                    />
+                    <v-combobox
+                      v-model="sourceForm.api_keys"
+                      chips
+                      clearable
+                      closable-chips
+                      density="comfortable"
+                      hide-details
+                      :label="t('ai.sourceApiKey')"
+                      multiple
+                    />
+                  </div>
+
+                  <v-text-field
+                    v-model.trim="sourceForm.api_base"
+                    class="mt-3"
+                    density="comfortable"
+                    :disabled="savingSource"
+                    hide-details
+                    :label="t('ai.sourceApiBase')"
+                  />
+
+                  <v-expansion-panels class="mt-3" variant="accordion">
+                    <v-expansion-panel>
+                      <v-expansion-panel-title>{{ t('ai.sourceAdvancedConfig') }}</v-expansion-panel-title>
+                      <v-expansion-panel-text>
+                        <div class="ai-binding-form pt-2">
+                          <v-text-field
+                            v-model.number="sourceForm.timeout_seconds"
+                            density="comfortable"
+                            :disabled="savingSource"
+                            hide-details
+                            :label="t('ai.sourceTimeoutSeconds')"
+                            type="number"
+                          />
+                          <v-switch
+                            v-model="sourceForm.enabled"
+                            color="primary"
+                            density="comfortable"
+                            :disabled="savingSource"
+                            hide-details
+                            :label="t('ai.sourceEnabled')"
+                          />
+                        </div>
+                      </v-expansion-panel-text>
+                    </v-expansion-panel>
+                  </v-expansion-panels>
+                </v-sheet>
+
+                <v-sheet class="surface-gradient-card pa-4 source-models-panel" rounded="lg">
+                  <template v-if="!sourceForm.source_id">
+                    <div class="text-subtitle-1 font-weight-medium mb-3">{{ t('ai.sourceModelsTitle') }}</div>
+                    <div class="empty-state-text">{{ t('ai.selectSourceFirst') }}</div>
+                    <div class="empty-state-hint mt-2">{{ t('ai.selectSourceFirstHint') }}</div>
+                  </template>
+
+                  <template v-else>
+                    <div class="d-flex flex-wrap justify-space-between align-center ga-3 mb-4">
+                      <div class="text-subtitle-1 font-weight-medium">{{ t('ai.sourceModelsTitle') }}</div>
+                      <div class="d-flex flex-wrap ga-2">
+                        <v-btn
+                          :disabled="!canFetchSourceModels"
+                          :loading="fetchingSourceModels"
+                          variant="tonal"
+                          @click="pullSourceModels"
+                        >
+                          {{ t('ai.fetchModels') }}
+                        </v-btn>
+                        <v-btn
+                          color="primary"
+                          :disabled="!sourceForm.source_id"
+                          variant="tonal"
+                          @click="startCreateSourceModel"
+                        >
+                          {{ t('ai.createModel') }}
+                        </v-btn>
+                      </div>
+                    </div>
+
+                    <div v-if="fetchedSourceModels.length > 0" class="mb-4">
+                      <div class="text-body-2 text-medium-emphasis mb-2">{{ t('ai.fetchedModelsTitle') }}</div>
+                      <div class="d-flex flex-wrap ga-2">
+                        <v-chip
+                          v-for="item in fetchedSourceModels"
+                          :key="item.id"
+                          color="primary"
+                          size="small"
+                          variant="tonal"
+                          @click="adoptFetchedModel(item)"
+                        >
+                          {{ item.name }}
+                        </v-chip>
+                      </div>
+                    </div>
+
+                    <div class="d-flex flex-wrap justify-space-between align-center ga-3 mb-3">
+                      <v-text-field
+                        v-model.trim="sourceModelSearch"
+                        class="source-model-search"
+                        clearable
+                        density="comfortable"
+                        hide-details
+                        :label="t('ai.modelSearch')"
+                        prepend-inner-icon="mdi-magnify"
+                      />
+                      <div class="text-body-2 text-medium-emphasis">
+                        {{ t('ai.sourceModelsCount') }}：{{ filteredSourceModels.length }}
+                      </div>
+                    </div>
+
+                    <v-expansion-panels variant="accordion">
+                      <v-expansion-panel>
+                        <v-expansion-panel-title>{{ isCreatingModel ? t('ai.createModel') : t('ai.editModel') }}</v-expansion-panel-title>
+                        <v-expansion-panel-text>
+                          <div class="ai-binding-form pt-2">
+                            <v-text-field
+                              v-model.trim="modelForm.model_identifier"
+                              density="comfortable"
+                              :disabled="savingModel"
+                              :error-messages="displayedModelErrors.model_identifier ? [displayedModelErrors.model_identifier] : []"
+                              :label="t('ai.modelIdentifier')"
+                              @blur="touchModelField('model_identifier')"
+                            />
+                            <v-text-field
+                              v-model.trim="modelForm.display_name"
+                              density="comfortable"
+                              :disabled="savingModel"
+                              :error-messages="displayedModelErrors.display_name ? [displayedModelErrors.display_name] : []"
+                              :label="t('ai.modelDisplayName')"
+                              @blur="touchModelField('display_name')"
+                            />
+                          </div>
+
+                          <div class="d-flex flex-wrap ga-4 mt-3">
+                            <v-switch
+                              v-model="modelForm.enabled"
+                              color="primary"
+                              density="comfortable"
+                              :disabled="savingModel"
+                              hide-details
+                              :label="t('ai.modelEnabled')"
+                            />
+                            <v-switch
+                              v-model="modelForm.is_default"
+                              color="primary"
+                              density="comfortable"
+                              :disabled="savingModel"
+                              hide-details
+                              :label="t('ai.modelDefault')"
+                            />
+                          </div>
+
+                          <div class="d-flex justify-end mt-4">
+                            <v-btn color="primary" :disabled="!canSaveModel" :loading="savingModel" @click="saveSourceModel">
+                              {{ t('common.save') }}
+                            </v-btn>
+                          </div>
+                        </v-expansion-panel-text>
+                      </v-expansion-panel>
+                    </v-expansion-panels>
+
+                    <v-data-table
+                      class="page-table mt-4"
+                      density="compact"
+                      :headers="sourceModelHeaders"
+                      :items="filteredSourceModels"
+                      :items-per-page-text="t('common.itemsPerPage')"
+                      :loading="loadingSourceModels"
+                      :no-data-text="t('common.noData')"
+                    >
+                      <template #item.display_name="{ item }">
+                        <v-btn color="primary" size="small" variant="text" @click="selectSourceModel(item)">
+                          {{ item.display_name }}
+                        </v-btn>
+                      </template>
+                      <template #item.enabled="{ value }">
+                        <v-chip :color="value ? 'success' : 'default'" size="x-small" variant="tonal">
+                          {{ value ? t('ai.enabled') : t('ai.disabled') }}
+                        </v-chip>
+                      </template>
+                      <template #item.is_default="{ value }">
+                        <v-chip :color="value ? 'primary' : 'default'" size="x-small" variant="tonal">
+                          {{ value ? t('ai.enabled') : t('ai.disabled') }}
+                        </v-chip>
+                      </template>
+                      <template #item.actions="{ item }">
+                        <div class="d-flex justify-end">
+                          <v-btn
+                            color="error"
+                            icon="mdi-delete-outline"
+                            :loading="deletingModelId === item.model_id"
+                            size="small"
+                            variant="text"
+                            @click="removeSourceModel(item.model_id)"
+                          />
+                        </div>
+                      </template>
+                    </v-data-table>
+                  </template>
+                </v-sheet>
+              </v-col>
+            </v-row>
+          </template>
         </v-card-text>
       </template>
 
@@ -1030,8 +1246,9 @@
 
   const loading = ref(false)
   const errorMessage = ref('')
-  const topTab = ref('providers')
+  const topTab = ref('sources')
   const debugTab = ref('conversations')
+  const sourceCapabilityTab = ref('chat')
 
   const {
     conversations,
@@ -1098,21 +1315,38 @@
   } = useAIPersonasTab(t)
 
   const {
-    canSaveProvider,
-    displayedProviderErrors,
-    isCreatingProvider,
+    adoptFetchedModel,
+    canFetchSourceModels,
+    canSaveModel,
+    canSaveSource,
+    deletingModelId,
+    deletingSource,
+    displayedModelErrors,
+    displayedSourceErrors,
+    fetchedSourceModels,
+    fetchingSourceModels,
+    loadingSourceModels,
+    isCreatingModel,
+    isCreatingSource,
     loadModelsData,
-    modelBindings,
-    modelProfiles,
-    providerForm,
-    providerTypes,
-    providers,
-    saveProvider,
-    savingProvider,
-    selectProvider,
-    selectedProvider,
-    startCreateProvider,
-    touchProviderField,
+    modelForm,
+    pullSourceModels,
+    removeSource,
+    removeSourceModel,
+    saveSource,
+    saveSourceModel,
+    savingModel,
+    savingSource,
+    selectSource,
+    selectSourceModel,
+    sourceForm,
+    sourceModels,
+    sourcePresets,
+    sources,
+    startCreateSource,
+    startCreateSourceModel,
+    touchModelField,
+    touchSourceField,
   } = useAIModelsTab(t)
 
   const {
@@ -1159,18 +1393,26 @@
     { title: t('ai.capabilityModeDirectOnly'), value: 'direct_only' },
   ])
 
-  const providerTypeOptions = computed(() => providerTypes.value.map(value => ({
-    title: providerTypeLabel(value),
-    value,
+  const sourceModelSearch = ref('')
+
+  const filteredSourceModels = computed(() => {
+    const keyword = sourceModelSearch.value.trim().toLowerCase()
+    if (!keyword) {
+      return sourceModels.value
+    }
+    return sourceModels.value.filter(item => {
+      const haystack = `${item.display_name} ${item.model_identifier}`.toLowerCase()
+      return haystack.includes(keyword)
+    })
+  })
+
+  const sourcePresetOptions = computed(() => sourcePresets.value.map(item => ({
+    title: item.display_name,
+    value: item.preset_type,
   })))
 
-  function providerTypeLabel (value: string) {
-    return {
-      openai_compatible: t('ai.providerTypeOpenAICompatible'),
-      anthropic: t('ai.providerTypeAnthropic'),
-      anthropic_compatible: t('ai.providerTypeAnthropicCompatible'),
-      litellm: t('ai.providerTypeLiteLLM'),
-    }[value] ?? value
+  function sourcePresetLabel (value: string) {
+    return sourcePresets.value.find(item => item.preset_type === value)?.display_name ?? value
   }
 
   const bindingHeaders = computed(() => [
@@ -1178,7 +1420,7 @@
     { title: t('ai.scopeId'), key: 'scope_id', sortable: false },
     { title: t('ai.allowReadOnlyTools'), key: 'allow_read_only_tools', sortable: false },
     { title: t('ai.capabilityMode'), key: 'capability_mode', sortable: false },
-    { title: 'Actions', key: 'actions', sortable: false, align: 'end' as const },
+    { title: t('common.actions'), key: 'actions', sortable: false, align: 'end' as const },
   ])
 
   const intentPreviewHeaders = computed(() => [
@@ -1225,7 +1467,7 @@
     { title: t('ai.futureTaskTriggerAt'), key: 'trigger_at', sortable: false },
     { title: t('ai.futureTaskStatus'), key: 'status', sortable: false },
     { title: t('ai.createdAt'), key: 'created_at', sortable: false },
-    { title: 'Actions', key: 'actions', sortable: false, align: 'end' as const },
+    { title: t('common.actions'), key: 'actions', sortable: false, align: 'end' as const },
   ])
 
   const memorySubjectOptions = computed(() => [
@@ -1272,24 +1514,13 @@
     return map
   })
 
-  const selectedProviderProfileCount = computed(() => {
-    if (!selectedProvider.value) {
-      return 0
-    }
-    return modelProfiles.value.filter(item => item.provider_id === selectedProvider.value?.provider_id).length
-  })
-
-  const selectedProviderBindingCount = computed(() => {
-    if (!selectedProvider.value) {
-      return 0
-    }
-    const profileIds = new Set(
-      modelProfiles.value
-        .filter(item => item.provider_id === selectedProvider.value?.provider_id)
-        .map(item => item.profile_id),
-    )
-    return modelBindings.value.filter(item => profileIds.has(item.profile_id)).length
-  })
+  const sourceModelHeaders = computed(() => [
+    { title: t('ai.modelDisplayName'), key: 'display_name', sortable: false },
+    { title: t('ai.modelIdentifier'), key: 'model_identifier', sortable: false },
+    { title: t('ai.modelEnabled'), key: 'enabled', sortable: false },
+    { title: t('ai.modelDefault'), key: 'is_default', sortable: false },
+    { title: t('common.actions'), key: 'actions', sortable: false, align: 'end' as const },
+  ])
 
   const selectedPersonaBindingCount = computed(() => {
     if (!selectedPersona.value) {
@@ -1392,6 +1623,60 @@
 .memory-content-text {
   line-height: 1.7;
   white-space: pre-wrap;
+}
+
+.source-summary-line {
+  color: rgba(var(--v-theme-on-surface), 0.64);
+  font-size: 0.9rem;
+  line-height: 1.6;
+}
+
+.source-list-panel {
+  min-height: 100%;
+}
+
+.source-list-item {
+  margin-bottom: 6px;
+}
+
+.source-list-item__body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  width: 100%;
+}
+
+.source-list-item__header {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+}
+
+.source-list-item__subtitle {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-height: 1.5;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  word-break: break-all;
+}
+
+.source-list-item__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.source-workspace,
+.source-models-panel {
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.08);
+}
+
+:deep(.source-model-search) {
+  min-width: min(420px, 100%);
 }
 
 :deep(.page-table .v-data-table-footer__info) {

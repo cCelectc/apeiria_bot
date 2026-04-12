@@ -58,6 +58,70 @@ class AIRecentTargetItem(BaseModel):
     subject_user_id: str | None = None
     last_active_at: str | None = None
 
+
+class AISourcePresetItem(BaseModel):
+    preset_type: str
+    display_name: str
+    capability_type: str
+    client_type: str
+    default_api_base: str | None = None
+    description: str
+
+
+class AISourceItem(BaseModel):
+    source_id: str
+    name: str
+    capability_type: str
+    client_type: str
+    preset_type: str
+    api_base: str | None = None
+    api_key_env_name: str | None = None
+    enabled: bool
+    timeout_seconds: int | None = None
+    custom_headers: dict[str, str] = {}
+    extra_config: dict[str, object] = {}
+
+
+class AISourceUpsertRequest(BaseModel):
+    source_id: str | None = None
+    name: str = Field(min_length=1, max_length=128)
+    capability_type: str = Field(min_length=1, max_length=32)
+    preset_type: str = Field(min_length=1, max_length=64)
+    api_base: str | None = Field(default=None, max_length=2000)
+    api_key_env_name: str | None = Field(default=None, max_length=128)
+    enabled: bool = True
+    timeout_seconds: int | None = Field(default=None, ge=1, le=600)
+    custom_headers: dict[str, str] = {}
+    extra_config: dict[str, object] = {}
+
+
+class AISourceModelFetchRequest(BaseModel):
+    source_id: str | None = Field(default=None, max_length=64)
+    preset_type: str | None = Field(default=None, max_length=64)
+    api_base: str | None = Field(default=None, max_length=2000)
+    api_key_env_name: str | None = Field(default=None, max_length=128)
+    api_key: str | None = Field(default=None, max_length=512)
+
+
+class AIChatModelItem(BaseModel):
+    model_id: str
+    source_id: str
+    model_identifier: str
+    display_name: str
+    enabled: bool
+    is_default: bool
+    extra_params: dict[str, object] = {}
+
+
+class AIChatModelUpsertRequest(BaseModel):
+    model_id: str | None = None
+    source_id: str = Field(min_length=1, max_length=64)
+    model_identifier: str = Field(min_length=1, max_length=256)
+    display_name: str = Field(min_length=1, max_length=128)
+    enabled: bool = True
+    is_default: bool = False
+    extra_params: dict[str, object] = {}
+
 class AIConversationItem(BaseModel):
     conversation_id: str
     platform: str
@@ -80,7 +144,7 @@ class AIConversationTurnItem(BaseModel):
     created_at: str
     raw_payload: dict[str, object] | None = None
     trace_id: str | None = None
-    provider_id: str | None = None
+    source_id: str | None = None
     model_name: str | None = None
     recalled_memory_count: int | None = None
     tool_observation_count: int | None = None
@@ -89,7 +153,7 @@ class AIConversationTurnItem(BaseModel):
 class AIConversationPromptPreviewItem(BaseModel):
     conversation_id: str
     latest_user_message: str | None = None
-    provider_id: str | None = None
+    source_id: str | None = None
     profile_id: str | None = None
     model_name: str | None = None
     persona_id: str | None = None
@@ -248,12 +312,21 @@ class AICapabilityItem(BaseModel):
 class AIModelProfileItem(BaseModel):
     profile_id: str
     name: str
-    provider_id: str
-    model_name: str
+    model_id: str
     task_class: str
     priority: int
     enabled: bool
     fallback_profile_id: str | None = None
+
+
+class AIModelProfileUpsertRequest(BaseModel):
+    profile_id: str | None = None
+    name: str = Field(min_length=1, max_length=128)
+    model_id: str = Field(min_length=1, max_length=64)
+    task_class: str = Field(min_length=1, max_length=64)
+    priority: int = Field(default=100, ge=0, le=10000)
+    enabled: bool = True
+    fallback_profile_id: str | None = Field(default=None, max_length=64)
 
 
 class AIModelBindingItem(BaseModel):
@@ -263,31 +336,6 @@ class AIModelBindingItem(BaseModel):
     profile_id: str
 
 
-class AIProviderItem(BaseModel):
-    provider_id: str
-    name: str
-    provider_type: str
-    api_base: str | None = None
-    api_key_env_name: str | None = None
-    enabled: bool
-    default_model: str | None = None
-
-
-class AIProviderUpsertRequest(BaseModel):
-    provider_id: str | None = None
-    name: str = Field(min_length=1, max_length=128)
-    provider_type: str = Field(min_length=1, max_length=64)
-    api_base: str | None = Field(default=None, max_length=2000)
-    api_key_env_name: str | None = Field(default=None, max_length=128)
-    enabled: bool = True
-    default_model: str | None = Field(default=None, max_length=128)
-
-
-class AIProviderModelListRequest(BaseModel):
-    provider_id: str = Field(min_length=1, max_length=64)
-    api_key: str = Field(min_length=1, max_length=512)
-
-
-class AIProviderModelItem(BaseModel):
+class AIModelCatalogItem(BaseModel):
     id: str
     name: str

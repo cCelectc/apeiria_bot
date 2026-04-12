@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 from nonebot_plugin_orm import get_session
 
@@ -17,12 +17,20 @@ from apeiria.app.ai.conversation.service import ai_conversation_service
 from apeiria.app.ai.future_task import ai_future_task_service
 from apeiria.app.ai.memory.service import AIMemoryQuery, ai_memory_service
 from apeiria.app.ai.model import AIModelBindingTarget, AIModelRouteQuery
-from apeiria.app.ai.model.factory import SUPPORTED_PROVIDER_TYPES
-from apeiria.app.ai.model.provider_service import (
-    AIProviderCreateInput,
-    ai_provider_service,
+from apeiria.app.ai.model.chat_model_service import (
+    AIChatModelCreateInput,
+    ai_chat_model_service,
+)
+from apeiria.app.ai.model.profile_service import (
+    AIModelProfileCreateInput,
+    ai_model_profile_service,
 )
 from apeiria.app.ai.model.service import ai_model_facade
+from apeiria.app.ai.model.source_service import AISourceCreateInput, ai_source_service
+from apeiria.app.ai.model.sources import (
+    UnsupportedAISourcePresetError,
+    resolve_client_type_for_preset,
+)
 from apeiria.app.ai.persona.models import AIPersonaBindingTarget, AIPersonaCreateInput
 from apeiria.app.ai.persona.service import ai_persona_service
 from apeiria.app.ai.relationship.service import ai_relationship_service
@@ -53,6 +61,8 @@ from apeiria.app.ai.tools.policy import (
 from apeiria.app.ai.tools.service import ai_tool_service
 
 if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
+
     from apeiria.app.ai.conversation.models import (
         AIContextTurnView,
         AIConversationAdminView,
@@ -62,10 +72,12 @@ if TYPE_CHECKING:
     from apeiria.app.ai.future_task.models import AIFutureTaskDefinition
     from apeiria.app.ai.memory.models import AIMemoryDefinition
     from apeiria.app.ai.model import (
+        AIChatModelDefinition,
         AIModelBindingSpec,
+        AIModelCatalogItem,
         AIModelProfileDefinition,
-        AIProviderDefinition,
-        AIProviderModelItem,
+        AISourceDefinition,
+        AISourcePresetDefinition,
     )
     from apeiria.app.ai.persona.models import (
         AIPersonaBindingSpec,
@@ -122,24 +134,38 @@ def _build_prompt_preview_social_input(  # noqa: PLR0913
     )
 
 
-def _build_provider_create_input(  # noqa: PLR0913
-    *,
-    name: str,
-    provider_type: str,
-    api_base: str | None,
-    api_key_env_name: str | None,
-    enabled: bool,
-    default_model: str | None,
-) -> AIProviderCreateInput:
-    return AIProviderCreateInput(
-        name=name,
-        provider_type=provider_type,  # type: ignore[arg-type]
-        api_base=api_base,
-        api_key_env_name=api_key_env_name,
-        enabled=enabled,
-        default_model=default_model,
-    )
+class AIAdminModelNotFoundError(ValueError):
+    """Raised when one requested source-backed model cannot be found."""
 
+
+class AISourceModelFetchConfigError(ValueError):
+    """Raised when source model discovery lacks required runtime config."""
+
+    MISSING_PRESET = "请先选择接入方式。"
+    MISSING_API_BASE = "请先填写接口地址。"
+    MISSING_API_KEY = "未找到可用的 API 密钥。"
+
+    def __init__(self, detail: str = MISSING_API_KEY) -> None:
+        super().__init__(detail)
+
+
+class AISourceModelFetchUpstreamError(RuntimeError):
+    """Raised when upstream source discovery fails."""
+
+    def __init__(self, detail: str) -> None:
+        super().__init__(detail)
+
+
+
+
+def _coerce_source_preset_type(
+    preset_type: str,
+) -> Literal["openai_compatible", "anthropic_compatible"]:
+    if preset_type == "openai_compatible":
+        return "openai_compatible"
+    if preset_type == "anthropic_compatible":
+        return "anthropic_compatible"
+    raise UnsupportedAISourcePresetError
 
 def _build_persona_create_input(
     *,
@@ -161,91 +187,364 @@ def _build_persona_create_input(
 class AIAdminService:
     """Read and basic override operations for AI admin routes."""
 
-    async def list_providers(self) -> list["AIProviderDefinition"]:
+    def list_source_presets(self) -> tuple["AISourcePresetDefinition", ...]:
+        return ai_source_service.list_presets()
+
+    async def list_sources(self) -> list["AISourceDefinition"]:
         async with get_session() as session:
-            return await ai_model_facade.list_providers(session)
+            return await ai_source_service.list_sources(session)
 
-    def list_supported_provider_types(self) -> tuple[str, ...]:
-        return SUPPORTED_PROVIDER_TYPES
-
-    async def list_model_profiles(self) -> list["AIModelProfileDefinition"]:
-        async with get_session() as session:
-            return await ai_model_facade.list_profiles(session)
-
-    async def list_model_bindings(self) -> list["AIModelBindingSpec"]:
-        async with get_session() as session:
-            return await ai_model_facade.list_bindings(session)
-
-    async def create_provider(  # noqa: PLR0913
+    async def create_source(  # noqa: PLR0913
         self,
         *,
         name: str,
-        provider_type: str,
+        capability_type: str,
+        preset_type: str,
         api_base: str | None,
         api_key_env_name: str | None,
         enabled: bool,
-        default_model: str | None,
-    ) -> "AIProviderDefinition":
+        timeout_seconds: int | None,
+        custom_headers: dict[str, str],
+        extra_config: dict[str, object],
+    ) -> "AISourceDefinition":
         async with get_session() as session:
-            await ai_provider_service.create_provider(
+            await ai_source_service.create_source(
                 session,
-                _build_provider_create_input(
+                AISourceCreateInput(
                     name=name,
-                    provider_type=provider_type,
+                    capability_type=capability_type,  # type: ignore[arg-type]
+                    client_type=resolve_client_type_for_preset(
+                        _coerce_source_preset_type(preset_type)
+                    ),
+                    preset_type=_coerce_source_preset_type(preset_type),
                     api_base=api_base,
                     api_key_env_name=api_key_env_name,
                     enabled=enabled,
-                    default_model=default_model,
+                    timeout_seconds=timeout_seconds,
+                    custom_headers=custom_headers,
+                    extra_config=extra_config,
                 ),
             )
             await session.commit()
-            return (await ai_model_facade.list_providers(session))[-1]
+            return (await ai_source_service.list_sources(session))[-1]
 
-    async def update_provider(  # noqa: PLR0913
+    async def update_source(  # noqa: PLR0913
         self,
         *,
-        provider_id: str,
+        source_id: str,
         name: str,
-        provider_type: str,
+        capability_type: str,
+        preset_type: str,
         api_base: str | None,
         api_key_env_name: str | None,
         enabled: bool,
-        default_model: str | None,
-    ) -> "AIProviderDefinition | None":
+        timeout_seconds: int | None,
+        custom_headers: dict[str, str],
+        extra_config: dict[str, object],
+    ) -> "AISourceDefinition | None":
         async with get_session() as session:
-            row = await ai_provider_service.update_provider(
+            row = await ai_source_service.update_source(
                 session,
-                provider_id=provider_id,
-                create_input=_build_provider_create_input(
+                source_id=source_id,
+                create_input=AISourceCreateInput(
                     name=name,
-                    provider_type=provider_type,
+                    capability_type=capability_type,  # type: ignore[arg-type]
+                    client_type=resolve_client_type_for_preset(
+                        _coerce_source_preset_type(preset_type)
+                    ),
+                    preset_type=_coerce_source_preset_type(preset_type),
                     api_base=api_base,
                     api_key_env_name=api_key_env_name,
                     enabled=enabled,
-                    default_model=default_model,
+                    timeout_seconds=timeout_seconds,
+                    custom_headers=custom_headers,
+                    extra_config=extra_config,
                 ),
             )
             if row is None:
                 return None
             await session.commit()
-            providers = await ai_model_facade.list_providers(session)
+            sources = await ai_source_service.list_sources(session)
+            return next((item for item in sources if item.source_id == source_id), None)
+
+    async def delete_source(self, *, source_id: str) -> bool:
+        async with get_session() as session:
+            deleted = await ai_source_service.delete_source(
+                session,
+                source_id=source_id,
+            )
+            if deleted:
+                await session.commit()
+            return deleted
+
+    async def list_model_profiles(self) -> list["AIModelProfileDefinition"]:
+        async with get_session() as session:
+            return await ai_model_facade.list_profiles(session)
+
+    async def create_model_profile(  # noqa: PLR0913
+        self,
+        *,
+        name: str,
+        model_id: str,
+        task_class: str,
+        priority: int,
+        enabled: bool,
+        fallback_profile_id: str | None,
+    ) -> "AIModelProfileDefinition":
+        async with get_session() as session:
+            create_input = await self._build_profile_create_input(
+                session,
+                name=name,
+                model_id=model_id,
+                task_class=task_class,
+                priority=priority,
+                enabled=enabled,
+                fallback_profile_id=fallback_profile_id,
+            )
+            await ai_model_profile_service.create_profile(session, create_input)
+            await session.commit()
+            return (await ai_model_profile_service.list_profiles(session))[-1]
+
+    async def update_model_profile(  # noqa: PLR0913
+        self,
+        *,
+        profile_id: str,
+        name: str,
+        model_id: str,
+        task_class: str,
+        priority: int,
+        enabled: bool,
+        fallback_profile_id: str | None,
+    ) -> "AIModelProfileDefinition | None":
+        async with get_session() as session:
+            create_input = await self._build_profile_create_input(
+                session,
+                name=name,
+                model_id=model_id,
+                task_class=task_class,
+                priority=priority,
+                enabled=enabled,
+                fallback_profile_id=fallback_profile_id,
+            )
+            row = await ai_model_profile_service.update_profile(
+                session,
+                profile_id=profile_id,
+                create_input=create_input,
+            )
+            if row is None:
+                return None
+            await session.commit()
+            profiles = await ai_model_profile_service.list_profiles(session)
             return next(
-                (item for item in providers if item.provider_id == provider_id),
+                (item for item in profiles if item.profile_id == profile_id),
                 None,
             )
 
-    async def list_provider_models(
+    async def list_model_bindings(self) -> list["AIModelBindingSpec"]:
+        async with get_session() as session:
+            return await ai_model_facade.list_bindings(session)
+
+    async def list_source_models(
         self,
         *,
-        provider_id: str,
-        api_key: str,
-    ) -> list["AIProviderModelItem"]:
+        source_id: str,
+    ) -> list["AIChatModelDefinition"]:
         async with get_session() as session:
-            return await ai_model_facade.list_provider_models(
+            return await ai_chat_model_service.list_models(
                 session,
-                provider_id=provider_id,
-                api_key=api_key,
+                source_id=source_id,
             )
+
+    async def fetch_source_models(
+        self,
+        *,
+        source_id: str | None = None,
+        preset_type: str | None = None,
+        api_base: str | None = None,
+        api_key_env_name: str | None = None,
+        api_key: str | None = None,
+    ) -> list["AIModelCatalogItem"]:
+        async with get_session() as session:
+            stored_source = None
+            if source_id:
+                sources = await ai_source_service.list_sources(session)
+                stored_source = next(
+                    (item for item in sources if item.source_id == source_id),
+                    None,
+                )
+            source = self._resolve_source_for_model_fetch(
+                stored_source=stored_source,
+                preset_type=preset_type,
+                api_base=api_base,
+                api_key_env_name=api_key_env_name,
+            )
+            resolved_api_key = api_key or ai_source_service.get_source_api_key(source)
+            if not resolved_api_key:
+                raise AISourceModelFetchConfigError
+            try:
+                return await ai_model_facade.list_source_models(
+                    source=source,
+                    api_key=resolved_api_key,
+                )
+            except Exception as exc:  # noqa: BLE001
+                raise AISourceModelFetchUpstreamError(str(exc)) from exc
+
+    async def create_source_model(  # noqa: PLR0913
+        self,
+        *,
+        source_id: str,
+        model_identifier: str,
+        display_name: str,
+        enabled: bool,
+        is_default: bool,
+        extra_params: dict[str, object],
+    ) -> "AIChatModelDefinition":
+        async with get_session() as session:
+            await ai_chat_model_service.create_model(
+                session,
+                AIChatModelCreateInput(
+                    source_id=source_id,
+                    model_identifier=model_identifier,
+                    display_name=display_name,
+                    enabled=enabled,
+                    is_default=is_default,
+                    extra_params=extra_params,
+                ),
+            )
+            await session.commit()
+            models = await ai_chat_model_service.list_models(
+                session,
+                source_id=source_id,
+            )
+            return models[0]
+
+    async def update_source_model(  # noqa: PLR0913
+        self,
+        *,
+        model_id: str,
+        source_id: str,
+        model_identifier: str,
+        display_name: str,
+        enabled: bool,
+        is_default: bool,
+        extra_params: dict[str, object],
+    ) -> "AIChatModelDefinition | None":
+        async with get_session() as session:
+            row = await ai_chat_model_service.update_model(
+                session,
+                model_id=model_id,
+                create_input=AIChatModelCreateInput(
+                    source_id=source_id,
+                    model_identifier=model_identifier,
+                    display_name=display_name,
+                    enabled=enabled,
+                    is_default=is_default,
+                    extra_params=extra_params,
+                ),
+            )
+            if row is None:
+                return None
+            await session.commit()
+            models = await ai_chat_model_service.list_models(
+                session,
+                source_id=source_id,
+            )
+            return next((item for item in models if item.model_id == model_id), None)
+
+    async def delete_source_model(self, *, model_id: str) -> bool:
+        async with get_session() as session:
+            deleted = await ai_chat_model_service.delete_model(
+                session,
+                model_id=model_id,
+            )
+            if deleted:
+                await session.commit()
+            return deleted
+
+    async def _build_profile_create_input(  # noqa: PLR0913
+        self,
+        session: "AsyncSession",
+        *,
+        name: str,
+        model_id: str,
+        task_class: str,
+        priority: int,
+        enabled: bool,
+        fallback_profile_id: str | None,
+    ):
+        model = await ai_chat_model_service.get_model(session, model_id=model_id)
+        if model is None:
+            raise AIAdminModelNotFoundError
+        return AIModelProfileCreateInput(
+            name=name,
+            model_id=model_id,
+            task_class=task_class,  # type: ignore[arg-type]
+            priority=priority,
+            enabled=enabled,
+            fallback_profile_id=fallback_profile_id,
+        )
+
+    @staticmethod
+    def _resolve_source_for_model_fetch(
+        *,
+        stored_source: "AISourceDefinition | None",
+        preset_type: str | None,
+        api_base: str | None,
+        api_key_env_name: str | None,
+    ) -> "AISourceDefinition":
+        effective_preset_type = (
+            preset_type
+            or (stored_source.preset_type if stored_source is not None else None)
+        )
+        if not effective_preset_type:
+            raise AISourceModelFetchConfigError(
+                AISourceModelFetchConfigError.MISSING_PRESET
+            )
+
+        coerced_preset_type = _coerce_source_preset_type(effective_preset_type)
+        effective_api_base = (
+            api_base
+            if api_base is not None
+            else stored_source.api_base if stored_source else None
+        )
+        if not effective_api_base or not effective_api_base.strip():
+            raise AISourceModelFetchConfigError(
+                AISourceModelFetchConfigError.MISSING_API_BASE
+            )
+
+        effective_api_key_env_name = (
+            api_key_env_name
+            if api_key_env_name is not None
+            else stored_source.api_key_env_name if stored_source else None
+        )
+
+        return ai_source_service.build_ephemeral_source(
+            name=stored_source.name if stored_source is not None else "preview_source",
+            capability_type=(
+                stored_source.capability_type
+                if stored_source is not None
+                else "chat_completion"
+            ),
+            client_type=resolve_client_type_for_preset(coerced_preset_type),
+            preset_type=coerced_preset_type,
+            api_base=effective_api_base.strip(),
+            api_key_env_name=(
+                effective_api_key_env_name.strip()
+                if isinstance(effective_api_key_env_name, str)
+                and effective_api_key_env_name.strip()
+                else None
+            ),
+            enabled=stored_source.enabled if stored_source is not None else True,
+            timeout_seconds=(
+                stored_source.timeout_seconds if stored_source is not None else None
+            ),
+            custom_headers=(
+                stored_source.custom_headers if stored_source is not None else None
+            ),
+            extra_config=(
+                stored_source.extra_config if stored_source is not None else None
+            ),
+        )
 
     async def list_personas(self) -> list["AIPersonaDefinition"]:
         async with get_session() as session:
@@ -567,14 +866,14 @@ class AIAdminService:
             return AIConversationPromptPreview(
                 conversation_id=conversation_id,
                 latest_user_message=latest_user_message,
-                provider_id=(
-                    selected.provider.provider_id if selected is not None else None
+                source_id=(
+                    selected.source.source_id if selected is not None else None
                 ),
                 profile_id=(
                     selected.profile.profile_id if selected is not None else None
                 ),
                 model_name=(
-                    selected.profile.model_name if selected is not None else None
+                    selected.resolved_model_name if selected is not None else None
                 ),
                 persona_id=persona.persona_id if persona is not None else None,
                 conversation_summary=conversation.short_summary,

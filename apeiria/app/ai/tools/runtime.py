@@ -19,7 +19,7 @@ if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
     from apeiria.app.ai.memory.models import AIMemoryDefinition
-    from apeiria.app.ai.model.provider import AIModelToolCall, AIModelToolDefinition
+    from apeiria.app.ai.model.adapter import AIModelToolCall, AIModelToolDefinition
     from apeiria.app.ai.tools.models import AIToolTurnCreateInput
 
 
