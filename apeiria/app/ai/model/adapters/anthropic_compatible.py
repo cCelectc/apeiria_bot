@@ -2,26 +2,16 @@
 
 from __future__ import annotations
 
-from urllib.parse import urlsplit, urlunsplit
-from typing import TYPE_CHECKING, Any
+from typing import Any
+
+from anthropic import AsyncAnthropic
 
 from apeiria.app.ai.model.adapter import (
     AIModelCatalogItem,
     AIModelGenerateRequest,
     AIModelGenerateResponse,
+    AIModelToolCall,
 )
-
-if TYPE_CHECKING:
-    from collections.abc import Awaitable, Callable
-
-    AnthropicRequestFunc = Callable[
-        [str, dict[str, str], dict[str, Any]],
-        Awaitable[dict[str, Any]],
-    ]
-    AnthropicListRequestFunc = Callable[
-        [str, dict[str, str]],
-        Awaitable[dict[str, Any]],
-    ]
 
 
 class AnthropicCompatibleProviderConfigError(RuntimeError):
@@ -32,24 +22,20 @@ class AnthropicCompatibleProviderConfigError(RuntimeError):
 
 
 class AnthropicCompatibleProvider:
-    """Minimal Anthropic-compatible text generation adapter."""
+    """Anthropic-compatible text generation adapter backed by the official SDK."""
 
     def __init__(
         self,
         *,
         api_base: str | None,
         api_key: str | None = None,
-        request_func: "AnthropicRequestFunc | None" = None,
-        list_request_func: "AnthropicListRequestFunc | None" = None,
+        request_func: Any | None = None,
+        list_request_func: Any | None = None,
     ) -> None:
         self.api_base = _normalize_anthropic_api_base(api_base)
         self.api_key = api_key
-        self._request_func = request_func or self._request_json
-        self._list_request_func = (
-            list_request_func
-            or _wrap_list_request(request_func)
-            or self._request_json_get
-        )
+        self._request_func = request_func
+        self._list_request_func = list_request_func
 
     async def generate_text(
         self,
@@ -69,20 +55,27 @@ class AnthropicCompatibleProvider:
         }
         if request.temperature is not None:
             payload["temperature"] = request.temperature
+        if request.tools:
+            payload["tools"] = [
+                {
+                    "name": tool.name,
+                    "description": tool.description,
+                    "input_schema": tool.parameters,
+                }
+                for tool in request.tools
+            ]
 
-        raw = await self._request_func(
-            f"{api_base.rstrip('/')}/messages",
-            {
-                "x-api-key": api_key,
-                "anthropic-version": "2023-06-01",
-                "Content-Type": "application/json",
-            },
-            payload,
-        )
+        client = AsyncAnthropic(api_key=api_key, base_url=api_base)
+        try:
+            response = await client.messages.create(**payload)
+        finally:
+            await client.close()
+        raw = response.model_dump(mode="json")
         return AIModelGenerateResponse(
             source_id=request.source_id,
             model_name=request.model_name,
-            content=_extract_anthropic_content(raw),
+            content=_extract_anthropic_content(response),
+            tool_calls=tuple(_extract_anthropic_tool_calls(response)),
             raw=raw,
         )
 
@@ -97,44 +90,12 @@ class AnthropicCompatibleProvider:
         if not resolved_api_key:
             raise AnthropicCompatibleProviderConfigError("api_key")
 
-        raw = await self._list_request_func(
-            f"{self.api_base.rstrip('/')}/models",
-            {
-                "x-api-key": resolved_api_key,
-                "anthropic-version": "2023-06-01",
-                "Content-Type": "application/json",
-            },
-        )
-        return _extract_anthropic_models(raw)
-
-    async def _request_json(
-        self,
-        url: str,
-        headers: dict[str, str],
-        payload: dict[str, Any],
-    ) -> dict[str, Any]:
-        import aiohttp
-
-        async with (
-            aiohttp.ClientSession(headers=headers) as session,
-            session.post(url, json=payload) as response,
-        ):
-            response.raise_for_status()
-            return await _decode_json_response(response)
-
-    async def _request_json_get(
-        self,
-        url: str,
-        headers: dict[str, str],
-    ) -> dict[str, Any]:
-        import aiohttp
-
-        async with (
-            aiohttp.ClientSession(headers=headers) as session,
-            session.get(url) as response,
-        ):
-            response.raise_for_status()
-            return await _decode_json_response(response)
+        client = AsyncAnthropic(api_key=resolved_api_key, base_url=self.api_base)
+        try:
+            page = await client.models.list()
+        finally:
+            await client.close()
+        return _extract_anthropic_models(page)
 
 
 def _coerce_str(extra: dict[str, Any] | None, key: str) -> str | None:
@@ -147,65 +108,31 @@ def _coerce_str(extra: dict[str, Any] | None, key: str) -> str | None:
 def _normalize_anthropic_api_base(api_base: str | None) -> str | None:
     if not isinstance(api_base, str) or not api_base.strip():
         return None
-    normalized = api_base.strip().rstrip("/")
-    parsed = urlsplit(normalized)
-    if parsed.path in {"", "/"}:
-        return urlunsplit((parsed.scheme, parsed.netloc, "/v1", parsed.query, parsed.fragment))
-    return normalized
+    return api_base.strip().rstrip("/")
 
 
-async def _decode_json_response(response: Any) -> dict[str, Any]:
-    content_type = str(response.headers.get("Content-Type") or "").lower()
-    if "json" not in content_type:
-        preview = (await response.text())[:160].strip()
-        msg = "模型接口返回了非 JSON 响应，请检查接口地址或接入方式。"
-        if preview:
-            msg = f"{msg} 响应片段: {preview}"
-        raise RuntimeError(msg)
-    return await response.json()
-
-
-def _wrap_list_request(
-    request_func: "AnthropicRequestFunc | None",
-) -> "AnthropicListRequestFunc | None":
-    if request_func is None:
-        return None
-
-    async def _wrapped(
-        url: str,
-        headers: dict[str, str],
-    ) -> dict[str, Any]:
-        return await request_func(url, headers, {})
-
-    return _wrapped
-
-
-def _extract_anthropic_content(raw: dict[str, Any]) -> str:
-    content = raw.get("content")
+def _extract_anthropic_content(response: Any) -> str:
+    content = getattr(response, "content", None)
     if not isinstance(content, list):
         return ""
     for block in content:
-        if not isinstance(block, dict):
-            continue
-        if block.get("type") == "text":
-            text = block.get("text")
+        if getattr(block, "type", None) == "text":
+            text = getattr(block, "text", None)
             if isinstance(text, str):
                 return text
     return ""
 
 
-def _extract_anthropic_models(raw: dict[str, Any]) -> list[AIModelCatalogItem]:
-    rows = raw.get("data")
+def _extract_anthropic_models(page: Any) -> list[AIModelCatalogItem]:
+    rows = getattr(page, "data", None)
     if not isinstance(rows, list):
         return []
     models: list[AIModelCatalogItem] = []
     for row in rows:
-        if not isinstance(row, dict):
-            continue
-        model_id = row.get("id")
+        model_id = getattr(row, "id", None)
         if not isinstance(model_id, str):
             continue
-        display_name = row.get("display_name")
+        display_name = getattr(row, "display_name", None)
         models.append(
             AIModelCatalogItem(
                 id=model_id,
@@ -213,3 +140,26 @@ def _extract_anthropic_models(raw: dict[str, Any]) -> list[AIModelCatalogItem]:
             )
         )
     return models
+
+
+def _extract_anthropic_tool_calls(response: Any) -> list[AIModelToolCall]:
+    content = getattr(response, "content", None)
+    if not isinstance(content, list):
+        return []
+
+    extracted: list[AIModelToolCall] = []
+    for index, block in enumerate(content):
+        if getattr(block, "type", None) != "tool_use":
+            continue
+        name = getattr(block, "name", None)
+        if not isinstance(name, str) or not name.strip():
+            continue
+        input_payload = getattr(block, "input", None)
+        extracted.append(
+            AIModelToolCall(
+                tool_call_id=str(getattr(block, "id", None) or f"tool_call_{index}"),
+                name=name,
+                arguments=input_payload if isinstance(input_payload, dict) else {},
+            )
+        )
+    return extracted

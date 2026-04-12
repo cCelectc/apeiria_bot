@@ -386,7 +386,7 @@ class AIAdminService:
                     source=source,
                     api_key=resolved_api_key,
                 )
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 raise AISourceModelFetchUpstreamError(str(exc)) from exc
 
     async def create_source_model(  # noqa: PLR0913

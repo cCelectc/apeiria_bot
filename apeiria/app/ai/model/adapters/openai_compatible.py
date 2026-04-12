@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
-from urllib.parse import urlsplit, urlunsplit
-from typing import TYPE_CHECKING, Any
+import json
+from typing import Any
+
+from openai import AsyncOpenAI
 
 from apeiria.app.ai.model.adapter import (
     AIModelCatalogItem,
@@ -11,18 +13,6 @@ from apeiria.app.ai.model.adapter import (
     AIModelGenerateResponse,
     AIModelToolCall,
 )
-
-if TYPE_CHECKING:
-    from collections.abc import Awaitable, Callable
-
-    OpenAIRequestFunc = Callable[
-        [str, dict[str, str], dict[str, Any]],
-        Awaitable[dict[str, Any]],
-    ]
-    OpenAIListRequestFunc = Callable[
-        [str, dict[str, str]],
-        Awaitable[dict[str, Any]],
-    ]
 
 
 class OpenAICompatibleProviderConfigError(RuntimeError):
@@ -33,24 +23,20 @@ class OpenAICompatibleProviderConfigError(RuntimeError):
 
 
 class OpenAICompatibleProvider:
-    """Minimal OpenAI-compatible text generation adapter."""
+    """OpenAI-compatible text generation adapter backed by the official SDK."""
 
     def __init__(
         self,
         *,
         api_base: str | None,
         api_key: str | None = None,
-        request_func: "OpenAIRequestFunc | None" = None,
-        list_request_func: "OpenAIListRequestFunc | None" = None,
+        request_func: Any | None = None,
+        list_request_func: Any | None = None,
     ) -> None:
         self.api_base = _normalize_openai_api_base(api_base)
         self.api_key = api_key
-        self._request_func = request_func or self._request_json
-        self._list_request_func = (
-            list_request_func
-            or _wrap_list_request(request_func)
-            or self._request_json_get
-        )
+        self._request_func = request_func
+        self._list_request_func = list_request_func
 
     async def generate_text(
         self,
@@ -84,19 +70,17 @@ class OpenAICompatibleProvider:
         if request.max_tokens is not None:
             payload["max_tokens"] = request.max_tokens
 
-        raw = await self._request_func(
-            f"{api_base.rstrip('/')}/chat/completions",
-            {
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json",
-            },
-            payload,
-        )
+        client = AsyncOpenAI(api_key=api_key, base_url=api_base)
+        try:
+            response = await client.chat.completions.create(**payload)
+        finally:
+            await client.close()
+        raw = response.model_dump(mode="json")
         return AIModelGenerateResponse(
             source_id=request.source_id,
             model_name=request.model_name,
-            content=_extract_openai_content(raw),
-            tool_calls=tuple(_extract_openai_tool_calls(raw)),
+            content=_extract_openai_content(response),
+            tool_calls=tuple(_extract_openai_tool_calls(response)),
             raw=raw,
         )
 
@@ -111,43 +95,12 @@ class OpenAICompatibleProvider:
         if not resolved_api_key:
             raise OpenAICompatibleProviderConfigError("api_key")
 
-        raw = await self._list_request_func(
-            f"{self.api_base.rstrip('/')}/models",
-            {
-                "Authorization": f"Bearer {resolved_api_key}",
-                "Content-Type": "application/json",
-            },
-        )
-        return _extract_openai_models(raw)
-
-    async def _request_json(
-        self,
-        url: str,
-        headers: dict[str, str],
-        payload: dict[str, Any],
-    ) -> dict[str, Any]:
-        import aiohttp
-
-        async with (
-            aiohttp.ClientSession(headers=headers) as session,
-            session.post(url, json=payload) as response,
-        ):
-            response.raise_for_status()
-            return await _decode_json_response(response)
-
-    async def _request_json_get(
-        self,
-        url: str,
-        headers: dict[str, str],
-    ) -> dict[str, Any]:
-        import aiohttp
-
-        async with (
-            aiohttp.ClientSession(headers=headers) as session,
-            session.get(url) as response,
-        ):
-            response.raise_for_status()
-            return await _decode_json_response(response)
+        client = AsyncOpenAI(api_key=resolved_api_key, base_url=self.api_base)
+        try:
+            page = await client.models.list()
+        finally:
+            await client.close()
+        return _extract_openai_models(page)
 
 
 def _coerce_str(extra: dict[str, Any] | None, key: str) -> str | None:
@@ -160,96 +113,61 @@ def _coerce_str(extra: dict[str, Any] | None, key: str) -> str | None:
 def _normalize_openai_api_base(api_base: str | None) -> str | None:
     if not isinstance(api_base, str) or not api_base.strip():
         return None
-    normalized = api_base.strip().rstrip("/")
-    parsed = urlsplit(normalized)
-    if parsed.path in {"", "/"}:
-        return urlunsplit((parsed.scheme, parsed.netloc, "/v1", parsed.query, parsed.fragment))
-    return normalized
+    return api_base.strip().rstrip("/")
 
 
-async def _decode_json_response(response: Any) -> dict[str, Any]:
-    content_type = str(response.headers.get("Content-Type") or "").lower()
-    if "json" not in content_type:
-        preview = (await response.text())[:160].strip()
-        msg = "模型接口返回了非 JSON 响应，请检查接口地址或接入方式。"
-        if preview:
-            msg = f"{msg} 响应片段: {preview}"
-        raise RuntimeError(msg)
-    return await response.json()
-
-
-def _wrap_list_request(
-    request_func: "OpenAIRequestFunc | None",
-) -> "OpenAIListRequestFunc | None":
-    if request_func is None:
-        return None
-
-    async def _wrapped(
-        url: str,
-        headers: dict[str, str],
-    ) -> dict[str, Any]:
-        return await request_func(url, headers, {})
-
-    return _wrapped
-
-
-def _extract_openai_content(raw: dict[str, Any]) -> str:
-    choices = raw.get("choices")
+def _extract_openai_content(response: Any) -> str:
+    choices = getattr(response, "choices", None)
     if not isinstance(choices, list) or not choices:
         return ""
-    first_choice = choices[0]
-    if not isinstance(first_choice, dict):
-        return ""
-    message = first_choice.get("message")
-    if not isinstance(message, dict):
-        return ""
-    content = message.get("content")
-    return content if isinstance(content, str) else ""
+    message = getattr(choices[0], "message", None)
+    content = getattr(message, "content", None)
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts: list[str] = []
+        for item in content:
+            text = getattr(item, "text", None)
+            if isinstance(text, str):
+                parts.append(text)
+        return "\n".join(parts)
+    return ""
 
 
-def _extract_openai_models(raw: dict[str, Any]) -> list[AIModelCatalogItem]:
-    rows = raw.get("data")
+def _extract_openai_models(page: Any) -> list[AIModelCatalogItem]:
+    rows = getattr(page, "data", None)
     if not isinstance(rows, list):
         return []
     models: list[AIModelCatalogItem] = []
     for row in rows:
-        if not isinstance(row, dict):
-            continue
-        model_id = row.get("id")
+        model_id = getattr(row, "id", None)
         if not isinstance(model_id, str):
             continue
         models.append(AIModelCatalogItem(id=model_id, name=model_id))
     return models
 
 
-def _extract_openai_tool_calls(raw: dict[str, Any]) -> list[AIModelToolCall]:
-    choices = raw.get("choices")
+def _extract_openai_tool_calls(response: Any) -> list[AIModelToolCall]:
+    choices = getattr(response, "choices", None)
     if not isinstance(choices, list) or not choices:
         return []
-    first_choice = choices[0]
-    if not isinstance(first_choice, dict):
-        return []
-    message = first_choice.get("message")
-    if not isinstance(message, dict):
-        return []
-    tool_calls = message.get("tool_calls")
+    message = getattr(choices[0], "message", None)
+    tool_calls = getattr(message, "tool_calls", None)
     if not isinstance(tool_calls, list):
         return []
 
     extracted: list[AIModelToolCall] = []
     for index, tool_call in enumerate(tool_calls):
-        if not isinstance(tool_call, dict):
-            continue
-        function = tool_call.get("function")
-        if not isinstance(function, dict):
-            continue
-        name = function.get("name")
+        function = getattr(tool_call, "function", None)
+        name = getattr(function, "name", None)
         if not isinstance(name, str) or not name.strip():
             continue
-        arguments = _parse_tool_arguments(function.get("arguments"))
+        arguments = _parse_tool_arguments(getattr(function, "arguments", None))
         extracted.append(
             AIModelToolCall(
-                tool_call_id=str(tool_call.get("id") or f"tool_call_{index}"),
+                tool_call_id=str(
+                    getattr(tool_call, "id", None) or f"tool_call_{index}"
+                ),
                 name=name,
                 arguments=arguments,
             )
@@ -262,8 +180,6 @@ def _parse_tool_arguments(arguments: Any) -> dict[str, Any]:
         return arguments
     if not isinstance(arguments, str) or not arguments.strip():
         return {}
-    import json
-
     try:
         parsed = json.loads(arguments)
     except json.JSONDecodeError:
