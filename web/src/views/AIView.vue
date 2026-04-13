@@ -62,6 +62,11 @@
                         rounded="lg"
                         @click="selectSource(item)"
                       >
+                        <template #prepend>
+                          <v-avatar class="source-list-item__avatar" color="primary" size="36" variant="tonal">
+                            {{ sourcePresetInitial(item.preset_type) }}
+                          </v-avatar>
+                        </template>
                         <div class="source-list-item__body">
                           <div class="source-list-item__header">
                             <v-list-item-title>{{ item.name }}</v-list-item-title>
@@ -82,6 +87,15 @@
                             </v-chip>
                           </div>
                         </div>
+                        <template #append>
+                          <v-btn
+                            color="error"
+                            icon="mdi-delete-outline"
+                            size="small"
+                            variant="text"
+                            @click.stop="selectSource(item); removeSource()"
+                          />
+                        </template>
                       </v-list-item>
                     </v-list>
                   </template>
@@ -106,18 +120,6 @@
                         <span>{{ t('ai.sourcePreset') }}：</span>
                         <strong>{{ sourcePresetLabel(sourceForm.preset_type) }}</strong>
                       </div>
-                      <div class="d-flex flex-wrap ga-2 mt-3">
-                        <v-chip color="primary" size="small" variant="tonal">
-                          {{ sourcePresetLabel(sourceForm.preset_type) }}
-                        </v-chip>
-                        <v-chip
-                          :color="sourceForm.enabled ? 'success' : 'default'"
-                          size="small"
-                          variant="tonal"
-                        >
-                          {{ sourceForm.enabled ? t('ai.enabled') : t('ai.disabled') }}
-                        </v-chip>
-                      </div>
                     </div>
                     <div class="d-flex flex-wrap ga-2">
                       <v-btn
@@ -130,49 +132,140 @@
                         {{ t('common.delete') }}
                       </v-btn>
                       <v-btn color="primary" :disabled="!canSaveSource" :loading="savingSource" @click="saveSource">
-                        {{ t('common.save') }}
+                        {{ t('ai.saveSourceConfig') }}
                       </v-btn>
                     </div>
                   </div>
 
-                  <div class="ai-binding-form">
-                    <v-text-field
-                      v-model.trim="sourceForm.name"
-                      density="comfortable"
-                      :disabled="savingSource"
-                      :error-messages="displayedSourceErrors.name ? [displayedSourceErrors.name] : []"
-                      :label="t('ai.sourceName')"
-                      @blur="touchSourceField('name')"
-                    />
-                    <v-select
-                      v-model="sourceForm.preset_type"
-                      density="comfortable"
-                      :disabled="savingSource"
-                      :error-messages="displayedSourceErrors.preset_type ? [displayedSourceErrors.preset_type] : []"
-                      :items="sourcePresetOptions"
-                      :label="t('ai.sourcePreset')"
-                      @blur="touchSourceField('preset_type')"
-                    />
-                    <v-combobox
-                      v-model="sourceForm.api_keys"
-                      chips
-                      clearable
-                      closable-chips
-                      density="comfortable"
-                      hide-details
-                      :label="t('ai.sourceApiKey')"
-                      multiple
-                    />
+                  <div class="source-config-list">
+                    <div class="source-config-row">
+                      <div class="source-config-row__meta">
+                        <div class="source-config-row__label">{{ t('ai.sourceName') }}</div>
+                        <div class="source-config-row__hint">{{ t('ai.sourceConfigNameHint') }}</div>
+                      </div>
+                      <v-text-field
+                        v-model.trim="sourceForm.name"
+                        class="source-config-row__field"
+                        density="comfortable"
+                        :disabled="savingSource"
+                        :error-messages="displayedSourceErrors.name ? [displayedSourceErrors.name] : []"
+                        hide-details="auto"
+                        @blur="touchSourceField('name')"
+                      />
+                    </div>
+
+                    <div class="source-config-row">
+                      <div class="source-config-row__meta">
+                        <div class="source-config-row__label">{{ t('ai.sourcePreset') }}</div>
+                        <div class="source-config-row__hint">{{ t('ai.sourceConfigPresetHint') }}</div>
+                      </div>
+                      <v-select
+                        v-model="sourceForm.preset_type"
+                        class="source-config-row__field"
+                        density="comfortable"
+                        :disabled="savingSource"
+                        :error-messages="displayedSourceErrors.preset_type ? [displayedSourceErrors.preset_type] : []"
+                        hide-details="auto"
+                        :items="sourcePresetOptions"
+                        @blur="touchSourceField('preset_type')"
+                      />
+                    </div>
+
+                    <div class="source-config-row">
+                      <div class="source-config-row__meta">
+                        <div class="source-config-row__label">{{ t('ai.sourceApiKey') }}</div>
+                        <div class="source-config-row__hint">{{ t('ai.sourceConfigApiKeyHint') }}</div>
+                      </div>
+                      <div class="source-config-row__field source-api-key-field">
+                        <v-text-field
+                          density="comfortable"
+                          hide-details
+                          :model-value="sourcePrimaryApiKey"
+                          readonly
+                        />
+                        <v-btn
+                          class="source-api-key-field__action"
+                          color="primary"
+                          variant="tonal"
+                          @click="openSourceApiKeysEditor"
+                        >
+                          {{ t('ai.sourceApiKeyManage') }}
+                        </v-btn>
+                      </div>
+                    </div>
+
+                    <div class="source-config-row">
+                      <div class="source-config-row__meta">
+                        <div class="source-config-row__label">{{ t('ai.sourceApiBase') }}</div>
+                        <div class="source-config-row__hint">{{ t('ai.sourceConfigApiBaseHint') }}</div>
+                      </div>
+                      <v-text-field
+                        v-model.trim="sourceForm.api_base"
+                        class="source-config-row__field"
+                        density="comfortable"
+                        :disabled="savingSource"
+                        hide-details
+                      />
+                    </div>
                   </div>
 
-                  <v-text-field
-                    v-model.trim="sourceForm.api_base"
-                    class="mt-3"
-                    density="comfortable"
-                    :disabled="savingSource"
-                    hide-details
-                    :label="t('ai.sourceApiBase')"
-                  />
+                  <v-dialog
+                    v-model="sourceApiKeysDialog"
+                    max-width="760"
+                  >
+                    <v-card rounded="xl">
+                      <v-card-title class="text-h5 pt-6 px-6">
+                        {{ t('ai.sourceApiKeyManageTitle') }}
+                      </v-card-title>
+                      <v-card-text class="px-6">
+                        <div class="source-api-key-editor">
+                          <div class="source-api-key-editor__composer">
+                            <v-text-field
+                              v-model.trim="sourceApiKeyDraftInput"
+                              density="comfortable"
+                              hide-details
+                              :label="t('ai.sourceApiKeyNew')"
+                              @keydown.enter.prevent="appendSourceApiKeyDraft"
+                            />
+                            <v-btn
+                              color="primary"
+                              variant="tonal"
+                              @click="appendSourceApiKeyDraft"
+                            >
+                              {{ t('ai.sourceApiKeyAdd') }}
+                            </v-btn>
+                          </div>
+                          <div class="source-api-key-editor__list">
+                            <div
+                              v-for="(item, index) in sourceApiKeyDraft"
+                              :key="`${index}-${item}`"
+                              class="source-api-key-editor__item"
+                            >
+                              <div class="source-api-key-editor__value">
+                                {{ item }}
+                              </div>
+                              <v-btn
+                                color="error"
+                                icon="mdi-close"
+                                size="small"
+                                variant="text"
+                                @click="removeSourceApiKeyDraft(index)"
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      </v-card-text>
+                      <v-card-actions class="px-6 pb-6">
+                        <v-spacer />
+                        <v-btn variant="text" @click="sourceApiKeysDialog = false">
+                          {{ t('common.cancel') }}
+                        </v-btn>
+                        <v-btn color="primary" variant="text" @click="applySourceApiKeyDraft">
+                          {{ t('common.confirm') }}
+                        </v-btn>
+                      </v-card-actions>
+                    </v-card>
+                  </v-dialog>
 
                   <v-expansion-panels class="mt-3" variant="accordion">
                     <v-expansion-panel>
@@ -224,132 +317,202 @@
                           color="primary"
                           :disabled="!sourceForm.source_id"
                           variant="tonal"
-                          @click="startCreateSourceModel"
+                          @click="openCreateSourceModel"
                         >
-                          {{ t('ai.createModel') }}
+                          {{ t('ai.customModel') }}
                         </v-btn>
-                      </div>
-                    </div>
-
-                    <div v-if="fetchedSourceModels.length > 0" class="mb-4">
-                      <div class="text-body-2 text-medium-emphasis mb-2">{{ t('ai.fetchedModelsTitle') }}</div>
-                      <div class="d-flex flex-wrap ga-2">
-                        <v-chip
-                          v-for="item in fetchedSourceModels"
-                          :key="item.id"
-                          color="primary"
-                          size="small"
-                          variant="tonal"
-                          @click="adoptFetchedModel(item)"
-                        >
-                          {{ item.name }}
-                        </v-chip>
                       </div>
                     </div>
 
                     <div class="d-flex flex-wrap justify-space-between align-center ga-3 mb-3">
-                      <v-text-field
-                        v-model.trim="sourceModelSearch"
-                        class="source-model-search"
-                        clearable
-                        density="comfortable"
-                        hide-details
-                        :label="t('ai.modelSearch')"
-                        prepend-inner-icon="mdi-magnify"
-                      />
-                      <div class="text-body-2 text-medium-emphasis">
-                        {{ t('ai.sourceModelsCount') }}：{{ filteredSourceModels.length }}
+                      <div class="d-flex align-center ga-3 source-models-toolbar">
+                        <div class="text-subtitle-1 font-weight-medium">
+                          {{ t('ai.configuredModelsTitle') }}
+                        </div>
+                        <div class="text-body-2 text-medium-emphasis">
+                          {{ t('ai.availableModelsCount') }} {{ availableImportModelCount }}
+                        </div>
+                      </div>
+                      <div class="d-flex flex-wrap align-center ga-3">
+                        <v-text-field
+                          v-model.trim="sourceModelSearch"
+                          class="source-model-search"
+                          clearable
+                          density="comfortable"
+                          hide-details
+                          :label="t('ai.modelSearch')"
+                          prepend-inner-icon="mdi-magnify"
+                        />
+                        <div class="text-body-2 text-medium-emphasis">
+                          {{ t('ai.sourceModelsCount') }}：{{ unifiedSourceModels.length }}
+                        </div>
                       </div>
                     </div>
 
-                    <v-expansion-panels variant="accordion">
-                      <v-expansion-panel>
-                        <v-expansion-panel-title>{{ isCreatingModel ? t('ai.createModel') : t('ai.editModel') }}</v-expansion-panel-title>
-                        <v-expansion-panel-text>
-                          <div class="ai-binding-form pt-2">
-                            <v-text-field
-                              v-model.trim="modelForm.model_identifier"
-                              density="comfortable"
-                              :disabled="savingModel"
-                              :error-messages="displayedModelErrors.model_identifier ? [displayedModelErrors.model_identifier] : []"
-                              :label="t('ai.modelIdentifier')"
-                              @blur="touchModelField('model_identifier')"
-                            />
-                            <v-text-field
-                              v-model.trim="modelForm.display_name"
-                              density="comfortable"
-                              :disabled="savingModel"
-                              :error-messages="displayedModelErrors.display_name ? [displayedModelErrors.display_name] : []"
-                              :label="t('ai.modelDisplayName')"
-                              @blur="touchModelField('display_name')"
-                            />
-                          </div>
+                    <div v-if="loadingSourceModels" class="empty-state-hint py-6">
+                      {{ t('common.loading') }}
+                    </div>
+                    <div v-else class="source-model-list">
+                      <v-expansion-panels
+                        v-model="sourceModelEditorPanel"
+                        class="source-model-editor-inline"
+                        variant="accordion"
+                      >
+                        <v-expansion-panel rounded="xl">
+                          <v-expansion-panel-title>
+                            {{ isCreatingModel ? t('ai.createModel') : t('ai.editModel') }}
+                          </v-expansion-panel-title>
+                          <v-expansion-panel-text>
+                            <div class="ai-binding-form pt-2">
+                              <v-text-field
+                                v-model.trim="modelForm.model_identifier"
+                                density="comfortable"
+                                :disabled="savingModel"
+                                :error-messages="displayedModelErrors.model_identifier ? [displayedModelErrors.model_identifier] : []"
+                                :label="t('ai.modelIdentifier')"
+                                @blur="touchModelField('model_identifier')"
+                              />
+                              <v-text-field
+                                v-model.trim="modelForm.display_name"
+                                density="comfortable"
+                                :disabled="savingModel"
+                                :error-messages="displayedModelErrors.display_name ? [displayedModelErrors.display_name] : []"
+                                :label="t('ai.modelDisplayName')"
+                                @blur="touchModelField('display_name')"
+                              />
+                            </div>
 
-                          <div class="d-flex flex-wrap ga-4 mt-3">
-                            <v-switch
-                              v-model="modelForm.enabled"
-                              color="primary"
-                              density="comfortable"
-                              :disabled="savingModel"
-                              hide-details
-                              :label="t('ai.modelEnabled')"
-                            />
-                            <v-switch
-                              v-model="modelForm.is_default"
-                              color="primary"
-                              density="comfortable"
-                              :disabled="savingModel"
-                              hide-details
-                              :label="t('ai.modelDefault')"
-                            />
-                          </div>
+                            <div class="d-flex flex-wrap ga-4 mt-3">
+                              <v-switch
+                                v-model="modelForm.enabled"
+                                color="primary"
+                                density="comfortable"
+                                :disabled="savingModel"
+                                hide-details
+                                :label="t('ai.modelEnabled')"
+                              />
+                              <v-switch
+                                v-model="modelForm.is_default"
+                                color="primary"
+                                density="comfortable"
+                                :disabled="savingModel"
+                                hide-details
+                                :label="t('ai.modelDefault')"
+                              />
+                            </div>
 
-                          <div class="d-flex justify-end mt-4">
-                            <v-btn color="primary" :disabled="!canSaveModel" :loading="savingModel" @click="saveSourceModel">
-                              {{ t('common.save') }}
-                            </v-btn>
-                          </div>
-                        </v-expansion-panel-text>
-                      </v-expansion-panel>
-                    </v-expansion-panels>
+                            <div class="d-flex justify-end mt-4">
+                              <v-btn color="primary" :disabled="!canSaveModel" :loading="savingModel" @click="saveSourceModel">
+                                {{ t('common.save') }}
+                              </v-btn>
+                            </div>
+                          </v-expansion-panel-text>
+                        </v-expansion-panel>
+                      </v-expansion-panels>
 
-                    <v-data-table
-                      class="page-table mt-4"
-                      density="compact"
-                      :headers="sourceModelHeaders"
-                      :items="filteredSourceModels"
-                      :items-per-page-text="t('common.itemsPerPage')"
-                      :loading="loadingSourceModels"
-                      :no-data-text="t('common.noData')"
-                    >
-                      <template #item.display_name="{ item }">
-                        <v-btn color="primary" size="small" variant="text" @click="selectSourceModel(item)">
-                          {{ item.display_name }}
-                        </v-btn>
+                      <template v-if="unifiedSourceModels.length > 0">
+                        <v-sheet
+                          v-for="item in unifiedSourceModels"
+                          :key="item.key"
+                          class="source-model-row px-4 py-3"
+                          :class="{
+                            'source-model-row--active': item.kind === 'configured' && item.model_id === modelForm.model_id,
+                            'source-model-row--importable': item.kind === 'importable',
+                          }"
+                          rounded="xl"
+                          @click="item.kind === 'configured' ? openEditSourceModel(item) : undefined"
+                        >
+                          <div class="source-model-row__body">
+                            <div class="source-model-row__title">
+                              {{ item.display_name }}
+                            </div>
+                            <div class="source-model-row__subtitle">
+                              {{ item.model_identifier }}
+                            </div>
+                          </div>
+                          <div v-if="item.kind === 'configured'" class="source-model-row__meta">
+                            <span
+                              class="source-model-row__flag"
+                              :class="{ 'source-model-row__flag--success': item.enabled }"
+                            >
+                              {{ item.enabled ? t('ai.enabled') : t('ai.disabled') }}
+                            </span>
+                            <span
+                              v-if="item.is_default"
+                              class="source-model-row__flag source-model-row__flag--primary"
+                            >
+                              {{ t('ai.modelDefault') }}
+                            </span>
+                          </div>
+                          <div class="source-model-row__actions">
+                            <template v-if="item.kind === 'configured'">
+                              <v-btn
+                                color="primary"
+                                icon="mdi-pencil-outline"
+                                size="small"
+                                variant="text"
+                                @click.stop="openEditSourceModel(item)"
+                              />
+                              <v-btn
+                                color="primary"
+                                icon="mdi-flask-outline"
+                                :loading="testingModelIdentifier === item.model_identifier"
+                                size="small"
+                                :title="t('ai.testModel')"
+                                variant="text"
+                                @click.stop="testSourceModel(item.model_identifier)"
+                              />
+                              <v-btn
+                                color="error"
+                                icon="mdi-delete-outline"
+                                :loading="deletingModelId === item.model_id"
+                                size="small"
+                                variant="text"
+                                @click.stop="requestRemoveSourceModel(item)"
+                              />
+                            </template>
+                            <template v-else>
+                              <v-btn
+                                color="primary"
+                                :loading="importingModelIdentifier === item.model_identifier"
+                                prepend-icon="mdi-plus"
+                                size="small"
+                                variant="tonal"
+                                @click.stop="importSourceModelCatalogItem({
+                                  id: item.model_identifier,
+                                  name: item.display_name,
+                                })"
+                              >
+                                {{ t('ai.importModel') }}
+                              </v-btn>
+                            </template>
+                          </div>
+                        </v-sheet>
                       </template>
-                      <template #item.enabled="{ value }">
-                        <v-chip :color="value ? 'success' : 'default'" size="x-small" variant="tonal">
-                          {{ value ? t('ai.enabled') : t('ai.disabled') }}
-                        </v-chip>
-                      </template>
-                      <template #item.is_default="{ value }">
-                        <v-chip :color="value ? 'primary' : 'default'" size="x-small" variant="tonal">
-                          {{ value ? t('ai.enabled') : t('ai.disabled') }}
-                        </v-chip>
-                      </template>
-                      <template #item.actions="{ item }">
-                        <div class="d-flex justify-end">
-                          <v-btn
-                            color="error"
-                            icon="mdi-delete-outline"
-                            :loading="deletingModelId === item.model_id"
-                            size="small"
-                            variant="text"
-                            @click="removeSourceModel(item.model_id)"
-                          />
-                        </div>
-                      </template>
-                    </v-data-table>
+                      <div v-else class="source-model-empty-state py-6">
+                        <div class="empty-state-text">{{ t('common.noData') }}</div>
+                      </div>
+                    </div>
+
+                    <v-dialog v-model="modelDeleteDialog" max-width="420">
+                      <v-card rounded="xl">
+                        <v-card-title class="text-h6 pt-6 px-6">
+                          {{ t('ai.deleteModelConfirmTitle') }}
+                        </v-card-title>
+                        <v-card-text class="px-6">
+                          {{ t('ai.deleteModelConfirmText', { name: pendingDeleteModel?.label || t('common.none') }) }}
+                        </v-card-text>
+                        <v-card-actions class="px-6 pb-6">
+                          <v-spacer />
+                          <v-btn variant="text" @click="modelDeleteDialog = false">
+                            {{ t('common.cancel') }}
+                          </v-btn>
+                          <v-btn color="error" variant="text" @click="confirmRemoveSourceModel">
+                            {{ t('common.confirm') }}
+                          </v-btn>
+                        </v-card-actions>
+                      </v-card>
+                    </v-dialog>
                   </template>
                 </v-sheet>
               </v-col>
@@ -1249,6 +1412,12 @@
   const topTab = ref('sources')
   const debugTab = ref('conversations')
   const sourceCapabilityTab = ref('chat')
+  const sourceModelEditorPanel = ref<number | null>(null)
+  const sourceApiKeysDialog = ref(false)
+  const sourceApiKeyDraft = ref<string[]>([])
+  const sourceApiKeyDraftInput = ref('')
+  const modelDeleteDialog = ref(false)
+  const pendingDeleteModel = ref<{ modelId: string, label: string } | null>(null)
 
   const {
     conversations,
@@ -1315,7 +1484,6 @@
   } = useAIPersonasTab(t)
 
   const {
-    adoptFetchedModel,
     canFetchSourceModels,
     canSaveModel,
     canSaveSource,
@@ -1325,6 +1493,9 @@
     displayedSourceErrors,
     fetchedSourceModels,
     fetchingSourceModels,
+    importingModelIdentifier,
+    testingModelIdentifier,
+    importSourceModelCatalogItem,
     loadingSourceModels,
     isCreatingModel,
     isCreatingSource,
@@ -1345,6 +1516,7 @@
     sources,
     startCreateSource,
     startCreateSourceModel,
+    testSourceModel,
     touchModelField,
     touchSourceField,
   } = useAIModelsTab(t)
@@ -1406,13 +1578,115 @@
     })
   })
 
+  const configuredModelIdentifiers = computed(() => new Set(
+    sourceModels.value.map(item => item.model_identifier),
+  ))
+
+  const importableSourceModels = computed(() => fetchedSourceModels.value
+    .filter(item => !configuredModelIdentifiers.value.has(item.id))
+    .filter(item => {
+      const keyword = sourceModelSearch.value.trim().toLowerCase()
+      if (!keyword) {
+        return true
+      }
+      const haystack = `${item.name} ${item.id}`.toLowerCase()
+      return haystack.includes(keyword)
+    })
+    .map(item => ({
+      key: `importable-${item.id}`,
+      kind: 'importable' as const,
+      display_name: item.name,
+      model_identifier: item.id,
+    })))
+
+  const unifiedSourceModels = computed(() => [
+    ...filteredSourceModels.value.map(item => ({
+      key: `configured-${item.model_id}`,
+      kind: 'configured' as const,
+      ...item,
+    })),
+    ...importableSourceModels.value,
+  ])
+
+  const availableImportModelCount = computed(() => importableSourceModels.value.length)
+
   const sourcePresetOptions = computed(() => sourcePresets.value.map(item => ({
     title: item.display_name,
     value: item.preset_type,
   })))
 
+  const sourcePrimaryApiKey = computed(() => sourceForm.api_keys[0] ?? '')
+
   function sourcePresetLabel (value: string) {
     return sourcePresets.value.find(item => item.preset_type === value)?.display_name ?? value
+  }
+
+  function sourcePresetInitial (value: string) {
+    return sourcePresetLabel(value).slice(0, 1).toUpperCase()
+  }
+
+  function openSourceApiKeysEditor () {
+    sourceApiKeyDraft.value = [...sourceForm.api_keys]
+    sourceApiKeyDraftInput.value = ''
+    sourceApiKeysDialog.value = true
+  }
+
+  function appendSourceApiKeyDraft () {
+    const nextValue = sourceApiKeyDraftInput.value.trim()
+    if (!nextValue) {
+      return
+    }
+    sourceApiKeyDraft.value = [...sourceApiKeyDraft.value, nextValue]
+    sourceApiKeyDraftInput.value = ''
+  }
+
+  function removeSourceApiKeyDraft (index: number) {
+    sourceApiKeyDraft.value = sourceApiKeyDraft.value.filter((_, itemIndex) => itemIndex !== index)
+  }
+
+  function applySourceApiKeyDraft () {
+    sourceForm.api_keys = [...sourceApiKeyDraft.value]
+    sourceApiKeysDialog.value = false
+  }
+
+  function openCreateSourceModel () {
+    startCreateSourceModel()
+    sourceModelEditorPanel.value = 0
+  }
+
+  function openEditSourceModel (item: {
+    model_id: string
+    source_id: string
+    model_identifier: string
+    display_name: string
+    enabled: boolean
+    is_default: boolean
+    extra_params: Record<string, unknown>
+  }) {
+    selectSourceModel(item)
+    sourceModelEditorPanel.value = 0
+  }
+
+  function requestRemoveSourceModel (item: {
+    model_id: string
+    display_name: string
+    model_identifier: string
+  }) {
+    pendingDeleteModel.value = {
+      modelId: item.model_id,
+      label: item.display_name || item.model_identifier,
+    }
+    modelDeleteDialog.value = true
+  }
+
+  async function confirmRemoveSourceModel () {
+    if (!pendingDeleteModel.value) {
+      return
+    }
+    const target = pendingDeleteModel.value
+    modelDeleteDialog.value = false
+    pendingDeleteModel.value = null
+    await removeSourceModel(target.modelId)
   }
 
   const bindingHeaders = computed(() => [
@@ -1513,14 +1787,6 @@
     }
     return map
   })
-
-  const sourceModelHeaders = computed(() => [
-    { title: t('ai.modelDisplayName'), key: 'display_name', sortable: false },
-    { title: t('ai.modelIdentifier'), key: 'model_identifier', sortable: false },
-    { title: t('ai.modelEnabled'), key: 'enabled', sortable: false },
-    { title: t('ai.modelDefault'), key: 'is_default', sortable: false },
-    { title: t('common.actions'), key: 'actions', sortable: false, align: 'end' as const },
-  ])
 
   const selectedPersonaBindingCount = computed(() => {
     if (!selectedPersona.value) {
@@ -1639,6 +1905,10 @@
   margin-bottom: 6px;
 }
 
+.source-list-item__avatar {
+  flex-shrink: 0;
+}
+
 .source-list-item__body {
   display: flex;
   flex-direction: column;
@@ -1675,6 +1945,181 @@
   border: 1px solid rgba(var(--v-theme-on-surface), 0.08);
 }
 
+.source-config-list {
+  display: grid;
+  gap: 14px;
+}
+
+.source-config-row {
+  align-items: center;
+  display: grid;
+  gap: 20px;
+  grid-template-columns: minmax(0, 220px) minmax(0, 1fr);
+}
+
+.source-config-row__meta {
+  min-width: 0;
+}
+
+.source-config-row__label {
+  font-size: 1rem;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+.source-config-row__hint {
+  color: rgba(var(--v-theme-on-surface), 0.54);
+  font-size: 0.85rem;
+  line-height: 1.5;
+  margin-top: 4px;
+}
+
+.source-config-row__field {
+  min-width: 0;
+}
+
+.source-model-list {
+  display: grid;
+  gap: 12px;
+}
+
+.source-model-editor-inline {
+  margin-bottom: 4px;
+}
+
+.source-model-row {
+  align-items: center;
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.08);
+  cursor: pointer;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  transition: border-color 0.18s ease, background-color 0.18s ease;
+}
+
+.source-model-row:hover {
+  border-color: rgba(var(--v-theme-primary), 0.28);
+}
+
+.source-model-row--active {
+  border-color: rgba(var(--v-theme-primary), 0.42);
+  background: rgba(var(--v-theme-primary), 0.06);
+}
+
+.source-model-row--importable {
+  background: rgba(var(--v-theme-primary), 0.03);
+}
+
+.source-model-row__body {
+  min-width: 0;
+}
+
+.source-model-row__title {
+  font-size: 1rem;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+.source-model-row__subtitle {
+  color: rgba(var(--v-theme-on-surface), 0.58);
+  font-size: 0.9rem;
+  line-height: 1.5;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.source-model-row__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.source-model-row__flag {
+  align-items: center;
+  background: rgba(var(--v-theme-on-surface), 0.06);
+  border-radius: 999px;
+  color: rgba(var(--v-theme-on-surface), 0.72);
+  display: inline-flex;
+  font-size: 0.76rem;
+  font-weight: 600;
+  line-height: 1;
+  min-height: 24px;
+  padding: 0 10px;
+}
+
+.source-model-row__flag--success {
+  background: rgba(var(--v-theme-success), 0.14);
+  color: rgb(var(--v-theme-success));
+}
+
+.source-model-row__flag--primary {
+  background: rgba(var(--v-theme-primary), 0.12);
+  color: rgb(var(--v-theme-primary));
+}
+
+.source-model-row__actions {
+  display: flex;
+  gap: 4px;
+  justify-content: flex-end;
+}
+
+.source-models-toolbar {
+  min-width: 240px;
+}
+
+.source-model-empty-state {
+  align-items: center;
+  display: flex;
+  min-height: 72px;
+}
+
+.source-api-key-field {
+  align-items: center;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.source-api-key-field__action {
+  min-width: 112px;
+}
+
+.source-api-key-editor {
+  display: grid;
+  gap: 20px;
+}
+
+.source-api-key-editor__composer {
+  align-items: center;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.source-api-key-editor__list {
+  display: grid;
+  gap: 12px;
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.source-api-key-editor__item {
+  align-items: center;
+  border-bottom: 1px solid rgba(var(--v-theme-on-surface), 0.08);
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  padding: 0 4px 12px;
+}
+
+.source-api-key-editor__value {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 :deep(.source-model-search) {
   min-width: min(420px, 100%);
 }
@@ -1693,6 +2138,24 @@
   .ai-binding-form,
   .relationship-meta-grid,
   .skill-card-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .source-model-row {
+    grid-template-columns: 1fr;
+  }
+
+  .source-config-row {
+    grid-template-columns: 1fr;
+  }
+
+  .source-model-row__meta,
+  .source-model-row__actions {
+    justify-content: flex-start;
+  }
+
+  .source-api-key-field,
+  .source-api-key-editor__composer {
     grid-template-columns: 1fr;
   }
 }

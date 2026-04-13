@@ -14,6 +14,7 @@ import {
   getAISourceModels,
   getAISourcePresets,
   getAISources,
+  testAISourceModel,
   updateAIChatModel,
   updateAISource,
 } from '@/api'
@@ -66,7 +67,9 @@ function buildModelSnapshot (form: ModelFormState) {
   })
 }
 
-export function useAIModelsTab (t: (key: string) => string) {
+export function useAIModelsTab (
+  t: (key: string, params?: Record<string, unknown>) => string,
+) {
   const noticeStore = useNoticeStore()
 
   const sourcePresets = ref<AISourcePresetItem[]>([])
@@ -79,6 +82,8 @@ export function useAIModelsTab (t: (key: string) => string) {
   const fetchingSourceModels = ref(false)
   const savingSource = ref(false)
   const savingModel = ref(false)
+  const importingModelIdentifier = ref('')
+  const testingModelIdentifier = ref('')
   const deletingSource = ref(false)
   const deletingModelId = ref('')
 
@@ -414,6 +419,34 @@ export function useAIModelsTab (t: (key: string) => string) {
     }
   }
 
+  async function importSourceModelCatalogItem (item: AIModelCatalogItem) {
+    if (!sourceForm.source_id || importingModelIdentifier.value) {
+      return
+    }
+    importingModelIdentifier.value = item.id
+    try {
+      const response = await createAIChatModel({
+        source_id: sourceForm.source_id,
+        model_identifier: item.id,
+        display_name: item.name,
+        enabled: true,
+        is_default: sourceModels.value.length === 0,
+        extra_params: {},
+      })
+      if (response.data) {
+        await loadSourceModelsFor(sourceForm.source_id)
+        fetchedSourceModels.value = fetchedSourceModels.value.filter(
+          current => current.id !== item.id,
+        )
+      }
+      noticeStore.show(t('ai.modelSaved'), 'success')
+    } catch (error) {
+      noticeStore.show(getErrorMessage(error, t('ai.modelSaveFailed')), 'error')
+    } finally {
+      importingModelIdentifier.value = ''
+    }
+  }
+
   async function pullSourceModels () {
     if (!canFetchSourceModels.value) {
       return
@@ -439,15 +472,36 @@ export function useAIModelsTab (t: (key: string) => string) {
     }
   }
 
-  function adoptFetchedModel (item: AIModelCatalogItem) {
-    modelForm.model_identifier = item.id
-    modelForm.display_name = item.name
-    modelTouched.model_identifier = true
-    modelTouched.display_name = true
+  async function testSourceModel (modelIdentifier: string) {
+    const resolvedModelIdentifier = modelIdentifier.trim()
+    if (!resolvedModelIdentifier || testingModelIdentifier.value) {
+      return
+    }
+    testingModelIdentifier.value = resolvedModelIdentifier
+    try {
+      const response = await testAISourceModel({
+        source_id: sourceForm.source_id || null,
+        preset_type: sourceForm.preset_type,
+        api_base: sourceForm.api_base.trim(),
+        api_key: normalizedSourceApiKeys.value[0] || null,
+        api_key_env_name: sourceForm.api_key_env_name.trim() || null,
+        model_identifier: resolvedModelIdentifier,
+      })
+      const output = response.data.content.trim()
+      noticeStore.show(
+        output
+          ? t('ai.modelTestSucceededWithOutput', { output })
+          : t('ai.modelTestSucceeded'),
+        'success',
+      )
+    } catch (error) {
+      noticeStore.show(getErrorMessage(error, t('ai.modelTestFailed')), 'error')
+    } finally {
+      testingModelIdentifier.value = ''
+    }
   }
 
   return {
-    adoptFetchedModel,
     canSaveModel,
     canSaveSource,
     canFetchSourceModels,
@@ -458,8 +512,10 @@ export function useAIModelsTab (t: (key: string) => string) {
     displayedSourceErrors,
     fetchedSourceModels,
     fetchingSourceModels,
+    importingModelIdentifier,
     isCreatingModel,
     isCreatingSource,
+    importSourceModelCatalogItem,
     loadingSourceModels,
     loadModelsData,
     modelForm,
@@ -479,6 +535,8 @@ export function useAIModelsTab (t: (key: string) => string) {
     sources,
     startCreateSource,
     startCreateSourceModel,
+    testSourceModel,
+    testingModelIdentifier,
     touchModelField,
     touchSourceField,
   }

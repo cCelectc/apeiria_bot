@@ -25,6 +25,7 @@ from apeiria.app.ai.model.routing import (
 )
 from apeiria.app.ai.model.selection import (
     AISelectedModel,
+    resolve_implicit_selected_model,
     resolve_source_selected_model_with_fallback,
 )
 from apeiria.app.ai.model.source_service import ai_source_service
@@ -171,18 +172,24 @@ class AIModelProfileService:
                 candidate_profiles.append(bound_profile)
         if query is not None:
             candidate_profiles.extend(list_model_profile_candidates(profiles, query))
+        sources = await ai_source_service.list_sources(session)
+        source_models = await ai_chat_model_service.list_all_models(session)
         deduped_candidates = list(
             {profile.profile_id: profile for profile in candidate_profiles}.values()
         )
-        if not deduped_candidates:
-            return None
-        sources = await ai_source_service.list_sources(session)
-        source_models = await ai_chat_model_service.list_all_models(session)
-        return resolve_source_selected_model_with_fallback(
+        if deduped_candidates:
+            selected = resolve_source_selected_model_with_fallback(
+                sources,
+                source_models,
+                profiles,
+                deduped_candidates,
+            )
+            if selected is not None:
+                return selected
+        return resolve_implicit_selected_model(
             sources,
             source_models,
-            profiles,
-            deduped_candidates,
+            query=query,
         )
 
 

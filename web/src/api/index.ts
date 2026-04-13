@@ -469,6 +469,12 @@ export interface AIChatModelItem {
   extra_params: Record<string, unknown>
 }
 
+export interface AISourceModelTestResult {
+  model_identifier: string
+  content: string
+  tool_call_count: number
+}
+
 export interface AIConversationItem {
   conversation_id: string
   platform: string
@@ -1013,6 +1019,17 @@ export function fetchAISourceModels (payload: {
   api_key?: string | null
 }) {
   return client.post<AIModelCatalogItem[]>('/ai/sources/models/fetch', payload)
+}
+
+export function testAISourceModel (payload: {
+  source_id?: string | null
+  preset_type?: string | null
+  api_base?: string | null
+  api_key_env_name?: string | null
+  api_key?: string | null
+  model_identifier: string
+}) {
+  return client.post<AISourceModelTestResult>('/ai/sources/models/test', payload)
 }
 
 export function createAIChatModel (payload: {

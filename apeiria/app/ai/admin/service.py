@@ -156,6 +156,25 @@ class AISourceModelFetchUpstreamError(RuntimeError):
         super().__init__(detail)
 
 
+class AISourceModelTestConfigError(ValueError):
+    """Raised when source model test lacks required runtime config."""
+
+    MISSING_MODEL_IDENTIFIER = "请先选择需要测试的模型。"
+
+    def __init__(self, detail: str) -> None:
+        super().__init__(detail)
+
+
+class AISourceModelTestUpstreamError(RuntimeError):
+    """Raised when upstream source model test fails."""
+
+    def __init__(self, detail: str) -> None:
+        super().__init__(detail)
+
+
+MODEL_TEST_PROMPT = "Reply with exactly OK."
+
+
 
 
 def _coerce_source_preset_type(
@@ -460,6 +479,57 @@ class AIAdminService:
             if deleted:
                 await session.commit()
             return deleted
+
+    async def test_source_model(  # noqa: PLR0913
+        self,
+        *,
+        source_id: str | None = None,
+        preset_type: str | None = None,
+        api_base: str | None = None,
+        api_key_env_name: str | None = None,
+        api_key: str | None = None,
+        model_identifier: str,
+    ) -> tuple[str, str, int]:
+        resolved_model_identifier = model_identifier.strip()
+        if not resolved_model_identifier:
+            raise AISourceModelTestConfigError(
+                AISourceModelTestConfigError.MISSING_MODEL_IDENTIFIER
+            )
+
+        async with get_session() as session:
+            stored_source = None
+            if source_id:
+                sources = await ai_source_service.list_sources(session)
+                stored_source = next(
+                    (item for item in sources if item.source_id == source_id),
+                    None,
+                )
+            source = self._resolve_source_for_model_fetch(
+                stored_source=stored_source,
+                preset_type=preset_type,
+                api_base=api_base,
+                api_key_env_name=api_key_env_name,
+            )
+            resolved_api_key = api_key or ai_source_service.get_source_api_key(source)
+            if not resolved_api_key:
+                raise AISourceModelTestConfigError(
+                    AISourceModelFetchConfigError.MISSING_API_KEY
+                )
+            try:
+                response = await ai_model_facade.generate_text_for_source(
+                    source=source,
+                    api_key=resolved_api_key,
+                    model_name=resolved_model_identifier,
+                    prompt=MODEL_TEST_PROMPT,
+                    max_tokens=32,
+                )
+            except Exception as exc:
+                raise AISourceModelTestUpstreamError(str(exc)) from exc
+            return (
+                resolved_model_identifier,
+                response.content.strip(),
+                len(response.tool_calls),
+            )
 
     async def _build_profile_create_input(  # noqa: PLR0913
         self,

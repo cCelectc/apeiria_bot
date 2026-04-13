@@ -89,6 +89,25 @@ class AIModelFacade:
             )
         )
 
+    async def generate_text_for_source(
+        self,
+        *,
+        source: "AISourceDefinition",
+        api_key: str,
+        model_name: str,
+        prompt: str,
+        max_tokens: int | None = None,
+    ) -> "AIModelGenerateResponse":
+        self._register_source(source, api_key=api_key)
+        return await ai_model_client.generate_text(
+            AIModelGenerateRequest(
+                source_id=source.source_id,
+                model_name=model_name,
+                prompt=prompt,
+                max_tokens=max_tokens,
+            )
+        )
+
     @staticmethod
     def resolve_model_name(selected: "AISelectedModel") -> str | None:
         if (

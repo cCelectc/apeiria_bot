@@ -9,6 +9,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from apeiria.app.ai.admin.service import (
     AISourceModelFetchConfigError,
     AISourceModelFetchUpstreamError,
+    AISourceModelTestConfigError,
+    AISourceModelTestUpstreamError,
     ai_admin_service,
 )
 from apeiria.app.ai.tools.models import AIToolPolicy
@@ -62,6 +64,8 @@ from apeiria.interfaces.http.schemas.ai_models import (
     AISkillItem,
     AISourceItem,
     AISourceModelFetchRequest,
+    AISourceModelTestRequest,
+    AISourceModelTestResult,
     AISourcePresetItem,
     AISourceUpsertRequest,
     AIToolExecutionItem,
@@ -178,6 +182,39 @@ async def fetch_ai_source_models(
             detail=str(exc),
         ) from exc
     return [to_ai_model_catalog_item(item) for item in items]
+
+
+@router.post("/sources/models/test", response_model=AISourceModelTestResult)
+async def test_ai_source_model(
+    payload: AISourceModelTestRequest,
+    _: Annotated[Any, Depends(require_control_panel)],
+) -> AISourceModelTestResult:
+    try:
+        model_identifier, content, tool_call_count = (
+            await ai_admin_service.test_source_model(
+                source_id=payload.source_id,
+                preset_type=payload.preset_type,
+                api_base=payload.api_base,
+                api_key_env_name=payload.api_key_env_name,
+                api_key=payload.api_key,
+                model_identifier=payload.model_identifier,
+            )
+        )
+    except AISourceModelTestConfigError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
+    except AISourceModelTestUpstreamError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=str(exc),
+        ) from exc
+    return AISourceModelTestResult(
+        model_identifier=model_identifier,
+        content=content,
+        tool_call_count=tool_call_count,
+    )
 
 
 @router.post("/sources/models", response_model=AIChatModelItem)

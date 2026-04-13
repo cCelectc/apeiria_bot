@@ -5,9 +5,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from apeiria.app.ai.model.models import AIModelProfileDefinition
+
 if TYPE_CHECKING:
     from apeiria.app.ai.model.chat_models import AIChatModelDefinition
-    from apeiria.app.ai.model.models import AIModelProfileDefinition
+    from apeiria.app.ai.model.models import AIModelRouteQuery
     from apeiria.app.ai.model.sources import AISourceDefinition
 
 
@@ -65,6 +67,45 @@ def resolve_source_selected_model_with_fallback(
                 break
             current = fallback_profile
     return None
+
+
+def resolve_implicit_selected_model(
+    sources: list["AISourceDefinition"],
+    source_models: list["AIChatModelDefinition"],
+    *,
+    query: "AIModelRouteQuery | None" = None,
+) -> AISelectedModel | None:
+    """Resolve an implicit default model when no profile routing is configured."""
+
+    enabled_source_map = {
+        source.source_id: source for source in sources if source.enabled
+    }
+    enabled_models = [
+        model
+        for model in source_models
+        if model.enabled and model.source_id in enabled_source_map
+    ]
+    if not enabled_models:
+        return None
+
+    selected_model = next(
+        (model for model in enabled_models if model.is_default),
+        enabled_models[0],
+    )
+    task_class = query.task_class if query is not None else "reply_default"
+    implicit_profile = AIModelProfileDefinition(
+        profile_id=f"implicit_{task_class}",
+        name=f"Implicit {task_class}",
+        model_id=selected_model.model_id,
+        task_class=task_class,
+        priority=9999,
+        enabled=True,
+    )
+    return AISelectedModel(
+        source=enabled_source_map[selected_model.source_id],
+        profile=implicit_profile,
+        resolved_model_name=selected_model.model_identifier,
+    )
 
 
 def _resolve_source_selected_model(

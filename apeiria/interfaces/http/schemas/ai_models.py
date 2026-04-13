@@ -103,6 +103,21 @@ class AISourceModelFetchRequest(BaseModel):
     api_key: str | None = Field(default=None, max_length=512)
 
 
+class AISourceModelTestRequest(BaseModel):
+    source_id: str | None = Field(default=None, max_length=64)
+    preset_type: str | None = Field(default=None, max_length=64)
+    api_base: str | None = Field(default=None, max_length=2000)
+    api_key_env_name: str | None = Field(default=None, max_length=128)
+    api_key: str | None = Field(default=None, max_length=512)
+    model_identifier: str = Field(min_length=1, max_length=256)
+
+
+class AISourceModelTestResult(BaseModel):
+    model_identifier: str
+    content: str
+    tool_call_count: int
+
+
 class AIChatModelItem(BaseModel):
     model_id: str
     source_id: str
