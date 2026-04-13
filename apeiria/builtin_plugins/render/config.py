@@ -30,6 +30,28 @@ def _validate_config(model: type[ModelT], data: dict[str, object]) -> ModelT:
     return model.model_validate(data)
 
 
+def _coerce_positive_int(value: object, fallback: int) -> int:
+    if isinstance(value, bool):
+        return fallback
+    if not isinstance(value, (int, float, str)):
+        return fallback
+    try:
+        return max(int(value), 1)
+    except (TypeError, ValueError):
+        return fallback
+
+
+def _coerce_min_float(value: object, fallback: float, minimum: float) -> float:
+    if isinstance(value, bool):
+        return fallback
+    if not isinstance(value, (int, float, str)):
+        return fallback
+    try:
+        return max(float(value), minimum)
+    except (TypeError, ValueError):
+        return fallback
+
+
 def _normalize_render_config(data: dict[str, object]) -> dict[str, object]:
     """Normalize raw plugin config to a safe runtime shape."""
     normalized = dict(data)
@@ -60,17 +82,13 @@ def _normalize_render_config(data: dict[str, object]) -> dict[str, object]:
         ("default_timeout_ms", 15_000),
         ("max_concurrency", 2),
     ):
-        value = normalized.get(key, fallback)
-        try:
-            normalized[key] = max(int(value), 1)
-        except (TypeError, ValueError):
-            normalized[key] = fallback
+        normalized[key] = _coerce_positive_int(normalized.get(key, fallback), fallback)
 
-    scale = normalized.get("default_device_scale_factor", 2.0)
-    try:
-        normalized["default_device_scale_factor"] = max(float(scale), 1.0)
-    except (TypeError, ValueError):
-        normalized["default_device_scale_factor"] = 2.0
+    normalized["default_device_scale_factor"] = _coerce_min_float(
+        normalized.get("default_device_scale_factor", 2.0),
+        2.0,
+        1.0,
+    )
 
     return normalized
 

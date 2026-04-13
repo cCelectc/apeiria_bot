@@ -246,11 +246,13 @@ def env_repair() -> None:
     help=_("Sync the main project environment without development dependencies."),
 )
 def init(*, no_dev: bool) -> None:
+    assert env_init.callback is not None
     env_init.callback(no_dev=no_dev)
 
 
 @click.command(help=_("Repair Apeiria user environment with uv."), hidden=True)
 def repair() -> None:
+    assert env_repair.callback is not None
     env_repair.callback()
 
 

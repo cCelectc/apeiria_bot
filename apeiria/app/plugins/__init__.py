@@ -7,7 +7,36 @@ plugin management stack into memory during unrelated startup paths.
 from __future__ import annotations
 
 from importlib import import_module
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from apeiria.app.plugins.config_cleanup_service import OrphanPluginConfigItem
+    from apeiria.app.plugins.config_service import (
+        PluginConfigConflictError,
+        PluginConfigViewService,
+        PluginRawSettingsState,
+        PluginRawValidationState,
+        PluginSettingsNotConfigurableError,
+        PluginSettingsState,
+        plugin_config_view_service,
+    )
+    from apeiria.app.plugins.models import PluginUninstallResult
+    from apeiria.app.plugins.policy_service import (
+        PluginPolicyService,
+        plugin_policy_service,
+    )
+    from apeiria.app.plugins.readme_service import PluginReadme
+    from apeiria.app.plugins.registration_service import (
+        AdapterConfigState,
+        DriverConfigState,
+        PluginConfigState,
+    )
+    from apeiria.app.plugins.service import (
+        PluginCatalogItem,
+        PluginCatalogService,
+        plugin_catalog_service,
+    )
+    from apeiria.app.plugins.settings_support import UnknownPluginSettingFieldError
 
 __all__ = [
     "AdapterConfigState",

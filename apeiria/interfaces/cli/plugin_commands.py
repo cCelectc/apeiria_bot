@@ -261,6 +261,7 @@ def plugin_add(  # noqa: PLR0913
     source_id: str,
     requirement: str | None,
 ) -> None:
+    assert plugin_install.callback is not None
     plugin_install.callback(
         package_name,
         pip_args,
@@ -330,6 +331,7 @@ def plugin_remove(
     pip_args: tuple[str, ...],
     module_name: str | None,
 ) -> None:
+    assert plugin_uninstall.callback is not None
     plugin_uninstall.callback(package_name, pip_args, module_name)
 
 

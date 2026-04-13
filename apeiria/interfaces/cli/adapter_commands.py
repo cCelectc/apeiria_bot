@@ -254,6 +254,7 @@ def adapter_add(  # noqa: PLR0913
     source_id: str,
     requirement: str | None,
 ) -> None:
+    assert adapter_install.callback is not None
     adapter_install.callback(
         package_name,
         pip_args,
@@ -323,4 +324,5 @@ def adapter_remove(
     pip_args: tuple[str, ...],
     module_name: str | None,
 ) -> None:
+    assert adapter_uninstall.callback is not None
     adapter_uninstall.callback(package_name, pip_args, module_name)

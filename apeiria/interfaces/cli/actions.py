@@ -211,7 +211,7 @@ def run_install(
             result = spec.install_with_auto_binding(target, pip_args)
     except StoreInstallError as exc:
         raise click.ClickException(str(exc)) from exc
-    return str(result.requirement)
+    return str(getattr(result, "requirement", target))
 
 
 def resolve_uninstall_bindings(

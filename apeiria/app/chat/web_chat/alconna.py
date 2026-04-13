@@ -2,6 +2,7 @@
 
 import base64
 from collections.abc import Sequence
+from importlib import import_module
 from typing import TYPE_CHECKING, Any
 
 from nonebot.adapters import Bot, Event, Message
@@ -151,29 +152,34 @@ def register_webchat_uniseg() -> None:
 
 def _build_webchat_uninfo_fetcher() -> Any | None:  # noqa: C901
     try:
-        from nonebot_plugin_uninfo.constraint import SupportScope
-        from nonebot_plugin_uninfo.fetch import InfoFetcher as BaseInfoFetcher
-        from nonebot_plugin_uninfo.model import Scene, SceneType, User
+        support_scope = import_module("nonebot_plugin_uninfo.constraint").SupportScope
+        base_info_fetcher = import_module("nonebot_plugin_uninfo.fetch").InfoFetcher
+        model_module = import_module("nonebot_plugin_uninfo.model")
     except ModuleNotFoundError:
         return None
+    support_scope_cls = support_scope
+    base_info_fetcher_cls = base_info_fetcher
+    scene_cls = model_module.Scene
+    scene_type_cls = model_module.SceneType
+    user_cls = model_module.User
 
-    class WebChatInfoFetcher(BaseInfoFetcher):
-        def extract_user(self, data: dict[str, Any]) -> User:
+    class WebChatInfoFetcher(base_info_fetcher_cls):
+        def extract_user(self, data: dict[str, Any]) -> Any:
             user_id = str(data["user_id"])
             name = data.get("name")
-            return User(
+            return user_cls(
                 id=user_id,
                 name=str(name) if name else user_id,
                 nick=str(data.get("nickname") or name or user_id),
                 avatar=str(data.get("avatar")) if data.get("avatar") else None,
             )
 
-        def extract_scene(self, data: dict[str, Any]) -> Scene:
+        def extract_scene(self, data: dict[str, Any]) -> Any:
             scene_id = str(data.get("scene_id") or data["user_id"])
             scene_name = data.get("scene_name") or data.get("name") or scene_id
-            return Scene(
+            return scene_cls(
                 id=scene_id,
-                type=SceneType.PRIVATE,
+                type=scene_type_cls.PRIVATE,
                 name=str(scene_name),
                 avatar=str(data.get("avatar")) if data.get("avatar") else None,
             )
@@ -181,7 +187,7 @@ def _build_webchat_uninfo_fetcher() -> Any | None:  # noqa: C901
         def extract_member(
             self,
             data: dict[str, Any],  # noqa: ARG002
-            user: User | None,  # noqa: ARG002
+            user: Any | None,  # noqa: ARG002
         ) -> None:
             return None
 
@@ -189,11 +195,11 @@ def _build_webchat_uninfo_fetcher() -> Any | None:  # noqa: C901
             return {
                 "self_id": str(bot.self_id),
                 "adapter": "WebChat",
-                "scope": SupportScope.unknown,
+                "scope": support_scope_cls.unknown,
             }
 
-        async def query_user(self, bot: Bot, user_id: str) -> User | None:  # noqa: ARG002
-            return User(id=user_id, name=user_id, nick=user_id)
+        async def query_user(self, bot: Bot, user_id: str) -> Any | None:  # noqa: ARG002
+            return user_cls(id=user_id, name=user_id, nick=user_id)
 
         async def query_scene(
             self,
@@ -202,10 +208,10 @@ def _build_webchat_uninfo_fetcher() -> Any | None:  # noqa: C901
             scene_id: str,
             *,
             parent_scene_id: str | None = None,  # noqa: ARG002
-        ) -> Scene | None:
-            if scene_type != SceneType.PRIVATE:
+        ) -> Any | None:
+            if scene_type != scene_type_cls.PRIVATE:
                 return None
-            return Scene(id=scene_id, type=SceneType.PRIVATE, name=scene_id)
+            return scene_cls(id=scene_id, type=scene_type_cls.PRIVATE, name=scene_id)
 
         async def query_member(
             self,
@@ -218,7 +224,7 @@ def _build_webchat_uninfo_fetcher() -> Any | None:  # noqa: C901
 
         async def query_users(self, bot: Bot):  # noqa: ARG002
             if False:
-                yield User(id="")
+                yield user_cls(id="")
 
         async def query_scenes(
             self,
@@ -228,7 +234,7 @@ def _build_webchat_uninfo_fetcher() -> Any | None:  # noqa: C901
             parent_scene_id: str | None = None,  # noqa: ARG002
         ):
             if False:
-                yield Scene(id="", type=SceneType.PRIVATE)
+                yield scene_cls(id="", type=scene_type_cls.PRIVATE)
 
         async def query_members(
             self,
@@ -266,10 +272,10 @@ def register_webchat_uninfo() -> None:
     """
 
     try:
-        from nonebot_plugin_uninfo.adapters import INFO_FETCHER_MAPPING
+        info_fetcher_mapping = import_module("nonebot_plugin_uninfo.adapters")
     except ModuleNotFoundError:
         return
 
     fetcher = _build_webchat_uninfo_fetcher()
     if fetcher is not None:
-        INFO_FETCHER_MAPPING["WebChat"] = fetcher
+        info_fetcher_mapping.INFO_FETCHER_MAPPING["WebChat"] = fetcher

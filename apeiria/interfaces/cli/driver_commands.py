@@ -234,6 +234,7 @@ def driver_add(  # noqa: PLR0913
     source_id: str,
     requirement: str | None,
 ) -> None:
+    assert driver_install.callback is not None
     driver_install.callback(
         package_name,
         pip_args,
@@ -303,6 +304,7 @@ def driver_remove(
     pip_args: tuple[str, ...],
     builtin_name: str | None,
 ) -> None:
+    assert driver_uninstall.callback is not None
     driver_uninstall.callback(package_name, pip_args, builtin_name)
 
 

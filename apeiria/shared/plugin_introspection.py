@@ -29,6 +29,8 @@ from apeiria.shared.i18n import t
 from apeiria.shared.plugin_metadata import PluginExtraData
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
+
     from nonebot.plugin import Plugin
 
 
@@ -314,7 +316,7 @@ def _iter_required_plugins_in_tree(tree: ast.AST) -> list[str]:
 
 def _get_plugin_distribution_name(
     plugin: Plugin,
-    top_level_packages: dict[str, list[str]],
+    top_level_packages: Mapping[str, list[str]],
     package_bindings: dict[str, list[str]] | None = None,
 ) -> str | None:
     package_bindings = (

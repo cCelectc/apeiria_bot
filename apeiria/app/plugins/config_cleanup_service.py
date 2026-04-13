@@ -80,7 +80,7 @@ class PluginConfigCleanupService:
         if not orphaned:
             return []
 
-        mapping_updates: dict[str, None] = {}
+        mapping_updates: dict[str, str | None] = {}
         for item in orphaned:
             if item.has_section:
                 project_config_service.remove_project_plugin_section(item.section)

@@ -28,7 +28,8 @@ def normalize_disabled_plugins(values: Iterable[object]) -> list[str]:
 
 def decode_disabled_plugins(raw: object | None) -> list[str]:
     """Decode persisted disabled plugin state from JSON text."""
-    values = safe_json_loads(raw, default=[])
+    text = raw if isinstance(raw, str) else None
+    values = safe_json_loads(text, default=[])
     if not isinstance(values, list):
         return []
     return normalize_disabled_plugins(values)

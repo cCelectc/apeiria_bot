@@ -124,7 +124,7 @@ def to_plugin_settings_response(state: PluginSettingsState) -> PluginSettingsRes
                 schema=item.schema,
                 default=item.default,
                 help=item.help,
-                choices=item.choices,
+                choices=list(item.choices),
                 base_value=item.base_value,
                 current_value=item.current_value,
                 local_value=item.local_value,

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Final, Protocol
 
 from .nb import (
     MODULE_TYPE,
@@ -16,9 +16,14 @@ DEFAULT_STORE_SOURCE_LABEL = "NoneBot2"
 
 
 class CliStoreSource(Protocol):
-    source_id: str
-    aliases: tuple[str, ...]
-    label: str
+    @property
+    def source_id(self) -> str: ...
+
+    @property
+    def aliases(self) -> tuple[str, ...]: ...
+
+    @property
+    def label(self) -> str: ...
 
     def search(
         self,
@@ -26,9 +31,11 @@ class CliStoreSource(Protocol):
         query: str | None = None,
     ) -> list[object]:
         """Search source items."""
+        ...
 
     def find_exact(self, module_type: MODULE_TYPE, value: str) -> object | None:
         """Find one exact source item."""
+        ...
 
     def prompt_select(
         self,
@@ -37,16 +44,18 @@ class CliStoreSource(Protocol):
         query: str | None = None,
     ) -> object:
         """Prompt user to select one source item."""
+        ...
 
     def format_items(self, items: list[object]) -> str:
         """Render source items for CLI output."""
+        ...
 
 
 @dataclass(frozen=True)
 class NoneBotCliStoreSource:
-    source_id: str = DEFAULT_STORE_SOURCE_ID
-    aliases: tuple[str, ...] = ("nonebot2", "nonebot", "official-nonebot")
-    label: str = DEFAULT_STORE_SOURCE_LABEL
+    source_id: Final[str] = DEFAULT_STORE_SOURCE_ID
+    aliases: Final[tuple[str, ...]] = ("nonebot2", "nonebot", "official-nonebot")
+    label: Final[str] = DEFAULT_STORE_SOURCE_LABEL
 
     def search(
         self,

@@ -451,7 +451,11 @@ def _installed_distributions_by_name() -> dict[str, Distribution]:
     if not paths:
         return installed
     for dist in distributions(path=paths):
-        name = normalize_package_id(dist.metadata.get("Name", ""))
+        try:
+            raw_name = dist.metadata["Name"]
+        except KeyError:
+            raw_name = ""
+        name = normalize_package_id(raw_name)
         if name:
             installed[name] = dist
     return installed
