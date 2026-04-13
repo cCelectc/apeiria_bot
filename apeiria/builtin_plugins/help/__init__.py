@@ -168,9 +168,13 @@ __plugin_meta__ = PluginMetadata(
                     fields=[
                         _config_meta(
                             key="show_builtin_plugins",
-                            label=t("help.config.visibility.show_builtin_plugins.label"),
+                            label=t(
+                                "help.config.visibility.show_builtin_plugins.label"
+                            ),
                             order=10,
-                            help_text=t("help.config.visibility.show_builtin_plugins.help"),
+                            help_text=t(
+                                "help.config.visibility.show_builtin_plugins.help"
+                            ),
                         ),
                         _config_meta(
                             key="hidden_plugins",
@@ -291,7 +295,9 @@ __plugin_meta__ = PluginMetadata(
                             key="prefer_custom_templates",
                             label=t("help.config.render.prefer_custom_templates.label"),
                             order=10,
-                            help_text=t("help.config.render.prefer_custom_templates.help"),
+                            help_text=t(
+                                "help.config.render.prefer_custom_templates.help"
+                            ),
                         ),
                         _config_meta(
                             key="disk_cache",
@@ -319,39 +325,63 @@ __plugin_meta__ = PluginMetadata(
                         fields=[
                             _config_meta(
                                 key="plugin_name",
-                                label=t("help.config.plugin_overrides.override.plugin_name.label"),
+                                label=t(
+                                    "help.config.plugin_overrides.override.plugin_name.label"
+                                ),
                                 order=10,
-                                help_text=t("help.config.plugin_overrides.override.plugin_name.help"),
+                                help_text=t(
+                                    "help.config.plugin_overrides.override.plugin_name.help"
+                                ),
                             ),
                             _config_meta(
                                 key="display_name",
-                                label=t("help.config.plugin_overrides.override.display_name.label"),
+                                label=t(
+                                    "help.config.plugin_overrides.override.display_name.label"
+                                ),
                                 order=20,
-                                help_text=t("help.config.plugin_overrides.override.display_name.help"),
+                                help_text=t(
+                                    "help.config.plugin_overrides.override.display_name.help"
+                                ),
                             ),
                             _config_meta(
                                 key="description",
-                                label=t("help.config.plugin_overrides.override.description.label"),
+                                label=t(
+                                    "help.config.plugin_overrides.override.description.label"
+                                ),
                                 order=30,
-                                help_text=t("help.config.plugin_overrides.override.description.help"),
+                                help_text=t(
+                                    "help.config.plugin_overrides.override.description.help"
+                                ),
                             ),
                             _config_meta(
                                 key="category",
-                                label=t("help.config.plugin_overrides.override.category.label"),
+                                label=t(
+                                    "help.config.plugin_overrides.override.category.label"
+                                ),
                                 order=40,
-                                help_text=t("help.config.plugin_overrides.override.category.help"),
+                                help_text=t(
+                                    "help.config.plugin_overrides.override.category.help"
+                                ),
                             ),
                             _config_meta(
                                 key="order",
-                                label=t("help.config.plugin_overrides.override.order.label"),
+                                label=t(
+                                    "help.config.plugin_overrides.override.order.label"
+                                ),
                                 order=50,
-                                help_text=t("help.config.plugin_overrides.override.order.help"),
+                                help_text=t(
+                                    "help.config.plugin_overrides.override.order.help"
+                                ),
                             ),
                             _config_meta(
                                 key="extra_commands",
-                                label=t("help.config.plugin_overrides.override.extra_commands.label"),
+                                label=t(
+                                    "help.config.plugin_overrides.override.extra_commands.label"
+                                ),
                                 order=60,
-                                help_text=t("help.config.plugin_overrides.override.extra_commands.help"),
+                                help_text=t(
+                                    "help.config.plugin_overrides.override.extra_commands.help"
+                                ),
                             ),
                         ],
                     ),

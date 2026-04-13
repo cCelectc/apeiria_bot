@@ -164,6 +164,7 @@ def find_plugin_by_name(
             return plugin
     return None
 
+
 def _discover_plugins(
     config: HelpConfig,
     *,
@@ -457,6 +458,8 @@ def _apply_overrides(
                 item for item in target.commands if item.name != command.name
             ]
             target.commands.append(command)
+
+
 def _plugin_visible_in_role(
     plugin_type: PluginType,
     admin_level: int,

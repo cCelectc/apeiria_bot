@@ -14,7 +14,6 @@ class UnsupportedAISourcePresetError(ValueError):
     """Raised when no known source preset can be resolved."""
 
 
-
 @dataclass(frozen=True)
 class AISourcePresetDefinition:
     """One source preset exposed to the owner-facing admin UI."""

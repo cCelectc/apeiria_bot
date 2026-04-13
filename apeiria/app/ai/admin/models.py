@@ -9,8 +9,6 @@ if TYPE_CHECKING:
     from apeiria.app.ai.memory.models import AIMemoryDefinition
 
 
-
-
 @dataclass(frozen=True)
 class AIRecentTarget:
     """Owner-facing recent target for browsing AI state."""
@@ -26,6 +24,7 @@ class AIRecentTarget:
     scope_id: str | None
     subject_user_id: str | None
     last_active_at: str | None
+
 
 @dataclass(frozen=True)
 class AIConversationPromptPreview:

@@ -487,9 +487,7 @@ class PluginCatalogService:
             kind=plugin_policy_service.get_kind(plugin.module_name),
             access_mode=access_mode,
             name=(
-                extra.ui.label
-                if extra and extra.ui.label
-                else get_plugin_name(plugin)
+                extra.ui.label if extra and extra.ui.label else get_plugin_name(plugin)
             ),
             description=meta.description if meta else None,
             homepage=meta.homepage if meta else None,

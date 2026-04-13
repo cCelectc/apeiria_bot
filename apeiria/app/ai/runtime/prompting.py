@@ -90,9 +90,7 @@ def build_reply_prompt_channels(
             "latest conversation unless a tool result proves otherwise.",
         ),
         conversation=tuple(
-            _format_turn(turn)
-            for turn in context.turns
-            if turn.content_text.strip()
+            _format_turn(turn) for turn in context.turns if turn.content_text.strip()
         ),
         response_rules=(
             "Stay in character and answer naturally.",
@@ -132,9 +130,7 @@ def render_reply_prompt(channels: AIReplyPromptChannels) -> str:  # noqa: C901
     if channels.context_priority:
         sections.append("[ContextPriority]\n" + "\n".join(channels.context_priority))
     conversation_text = (
-        "\n".join(channels.conversation)
-        if channels.conversation
-        else "User: <empty>"
+        "\n".join(channels.conversation) if channels.conversation else "User: <empty>"
     )
     sections.append(f"[Conversation]\n{conversation_text}")
     if channels.response_rules:

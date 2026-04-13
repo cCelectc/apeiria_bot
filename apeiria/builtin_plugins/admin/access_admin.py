@@ -158,7 +158,7 @@ async def _render_plugin_access(plugin_query: str) -> str:
         footer=t(
             "admin.access.plugin_footer",
             module=item.module_name,
-                    ),
+        ),
     )
 
 

@@ -111,8 +111,7 @@ def _build_prompt_preview_social_input(  # noqa: PLR0913
     from apeiria.app.ai.social_policy import AISocialPolicyInput
 
     decision_time = (
-        latest_bot_turn_at(context_turns)
-        or context_turns[-1].created_at
+        latest_bot_turn_at(context_turns) or context_turns[-1].created_at
         if context_turns
         else datetime.now(timezone.utc)
     )
@@ -175,8 +174,6 @@ class AISourceModelTestUpstreamError(RuntimeError):
 MODEL_TEST_PROMPT = "Reply with exactly OK."
 
 
-
-
 def _coerce_source_preset_type(
     preset_type: str,
 ) -> Literal["openai_compatible", "anthropic_compatible"]:
@@ -185,6 +182,7 @@ def _coerce_source_preset_type(
     if preset_type == "anthropic_compatible":
         return "anthropic_compatible"
     raise UnsupportedAISourcePresetError
+
 
 def _build_persona_create_input(
     *,
@@ -562,9 +560,8 @@ class AIAdminService:
         api_base: str | None,
         api_key_env_name: str | None,
     ) -> "AISourceDefinition":
-        effective_preset_type = (
-            preset_type
-            or (stored_source.preset_type if stored_source is not None else None)
+        effective_preset_type = preset_type or (
+            stored_source.preset_type if stored_source is not None else None
         )
         if not effective_preset_type:
             raise AISourceModelFetchConfigError(
@@ -575,7 +572,9 @@ class AIAdminService:
         effective_api_base = (
             api_base
             if api_base is not None
-            else stored_source.api_base if stored_source else None
+            else stored_source.api_base
+            if stored_source
+            else None
         )
         if not effective_api_base or not effective_api_base.strip():
             raise AISourceModelFetchConfigError(
@@ -585,7 +584,9 @@ class AIAdminService:
         effective_api_key_env_name = (
             api_key_env_name
             if api_key_env_name is not None
-            else stored_source.api_key_env_name if stored_source else None
+            else stored_source.api_key_env_name
+            if stored_source
+            else None
         )
 
         return ai_source_service.build_ephemeral_source(
@@ -936,9 +937,7 @@ class AIAdminService:
             return AIConversationPromptPreview(
                 conversation_id=conversation_id,
                 latest_user_message=latest_user_message,
-                source_id=(
-                    selected.source.source_id if selected is not None else None
-                ),
+                source_id=(selected.source.source_id if selected is not None else None),
                 profile_id=(
                     selected.profile.profile_id if selected is not None else None
                 ),
@@ -956,9 +955,7 @@ class AIAdminService:
                     social_decision.tool_mode if social_decision is not None else None
                 ),
                 social_reason_text=(
-                    social_decision.reason_text
-                    if social_decision is not None
-                    else None
+                    social_decision.reason_text if social_decision is not None else None
                 ),
                 social_reason_codes=(
                     social_decision.reason_codes if social_decision is not None else ()

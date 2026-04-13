@@ -50,12 +50,10 @@ class AISocialPolicyDecision:
     evidence: dict[str, object]
 
 
-
 def resolve_social_policy_task_class() -> "AIModelTaskClass":
     """Return the model task class used for social-policy judgment."""
 
     return "planner_light"
-
 
 
 def build_fallback_social_policy_decision(

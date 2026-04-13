@@ -33,10 +33,7 @@ def build_summary_memory_content(
             item.memory_id,
         ),
     )
-    lines = [
-        f"- [{memory.memory_type}] {memory.content}"
-        for memory in ordered[:4]
-    ]
+    lines = [f"- [{memory.memory_type}] {memory.content}" for memory in ordered[:4]]
     return "Known stable context:\n" + "\n".join(lines)
 
 

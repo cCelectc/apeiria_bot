@@ -212,6 +212,7 @@ def _build_future_task_context(task: "AIFutureTaskDefinition | None") -> str | N
         )
     )
 
+
 def _build_social_policy_input(  # noqa: PLR0913
     *,
     request: AIRuntimeReplyRequest,
@@ -246,7 +247,6 @@ def _build_social_policy_input(  # noqa: PLR0913
 
 def _should_skip_generation(decision: AISocialPolicyDecision) -> bool:
     return decision.action in {"wait", "suppress"} or not decision.should_speak
-
 
 
 class AIRuntimeService:
@@ -433,29 +433,31 @@ class AIRuntimeService:
             )
             return None
 
-        response, skill_runtime, post_tool_task_class, delivery_result = (
-            await self._generate_reply_with_tools(
-                session,
-                AIRuntimeReplyState(
-                    request=request,
-                    selected=selected,
-                    skill_runtime=skill_runtime,
-                    recalled_memories=recalled_memories,
-                    relationship_context=relationship_context,
-                    conversation_summary=conversation_summary,
-                    persona=persona,
-                    turns=turns,
-                    tool_policy=tool_policy,
-                    social_decision=social_decision,
-                    current_time=current_time,
-                    trace_id=trace_id,
-                ),
-            )
+        (
+            response,
+            skill_runtime,
+            post_tool_task_class,
+            delivery_result,
+        ) = await self._generate_reply_with_tools(
+            session,
+            AIRuntimeReplyState(
+                request=request,
+                selected=selected,
+                skill_runtime=skill_runtime,
+                recalled_memories=recalled_memories,
+                relationship_context=relationship_context,
+                conversation_summary=conversation_summary,
+                persona=persona,
+                turns=turns,
+                tool_policy=tool_policy,
+                social_decision=social_decision,
+                current_time=current_time,
+                trace_id=trace_id,
+            ),
         )
         if response is None or not response.content.strip():
             logger.debug(
-                "AI trace {} skipped reply: empty model response "
-                "for conversation {}",
+                "AI trace {} skipped reply: empty model response for conversation {}",
                 trace_id,
                 identity.conversation_id,
             )

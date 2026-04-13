@@ -133,7 +133,6 @@ class AIRelationshipService:
         await session.flush()
         return self._to_state(row)
 
-
     async def list_states(
         self,
         session: AsyncSession,

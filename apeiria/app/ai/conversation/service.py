@@ -30,6 +30,7 @@ if TYPE_CHECKING:
 
     from apeiria.app.ai.conversation.models import ScopeType
 
+
 def _utcnow_naive() -> datetime:
     return datetime.now(timezone.utc).replace(tzinfo=None)
 
@@ -323,14 +324,12 @@ class AIConversationService:
             model_name=raw_payload.get("model_name") if raw_payload else None,
             recalled_memory_count=(
                 int(raw_payload["recalled_memory_count"])
-                if raw_payload
-                and raw_payload.get("recalled_memory_count") is not None
+                if raw_payload and raw_payload.get("recalled_memory_count") is not None
                 else None
             ),
             tool_observation_count=(
                 int(raw_payload["tool_observation_count"])
-                if raw_payload
-                and raw_payload.get("tool_observation_count") is not None
+                if raw_payload and raw_payload.get("tool_observation_count") is not None
                 else None
             ),
         )

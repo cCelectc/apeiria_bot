@@ -367,6 +367,7 @@ async def _migrate_v11_to_v12(session: AsyncSession) -> None:
     await conn.run_sync(Model.metadata.create_all)
     await session.commit()
 
+
 MIGRATIONS[11] = _migrate_v11_to_v12
 
 
@@ -386,6 +387,7 @@ async def _migrate_v13_to_v14(session: AsyncSession) -> None:
     conn = await session.connection()
     await conn.run_sync(Model.metadata.create_all)
     await session.commit()
+
 
 MIGRATIONS[13] = _migrate_v13_to_v14
 

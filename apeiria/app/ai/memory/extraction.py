@@ -145,7 +145,7 @@ def _format_existing_memories(
         return "Existing memories: []"
     lines = [
         (
-            f'- id={memory.memory_id}; type={memory.memory_type}; '
+            f"- id={memory.memory_id}; type={memory.memory_type}; "
             f'content="{memory.content}"'
         )
         for memory in existing_memories[:8]

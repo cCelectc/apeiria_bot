@@ -43,8 +43,6 @@ class AIMemoryItem(BaseModel):
     created_at: str
 
 
-
-
 class AIRecentTargetItem(BaseModel):
     target_type: str
     subject_type: str
@@ -136,6 +134,7 @@ class AIChatModelUpsertRequest(BaseModel):
     enabled: bool = True
     is_default: bool = False
     extra_params: dict[str, object] = {}
+
 
 class AIConversationItem(BaseModel):
     conversation_id: str

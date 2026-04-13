@@ -30,11 +30,7 @@ def _extract_terms(text: str) -> set[str]:
     if not normalized:
         return set()
 
-    terms = {
-        token.strip()
-        for token in normalized.split()
-        if token.strip()
-    }
+    terms = {token.strip() for token in normalized.split() if token.strip()}
     if not terms:
         terms.add(normalized)
     if len(normalized) >= BIGRAM_SIZE:

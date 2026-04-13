@@ -43,14 +43,10 @@ async def handle_config(
         await _config.finish(_render_core_settings())
 
     if selected_scope != "plugin":
-        await _config.finish(
-            t("admin.config.invalid_scope")
-        )
+        await _config.finish(t("admin.config.invalid_scope"))
 
     if not target.available:
-        await _config.finish(
-            t("admin.config.plugin_usage")
-        )
+        await _config.finish(t("admin.config.plugin_usage"))
 
     plugin, candidates = await resolve_plugin_catalog_query(
         target.result,

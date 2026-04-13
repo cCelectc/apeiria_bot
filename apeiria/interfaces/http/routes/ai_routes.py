@@ -190,15 +190,17 @@ async def test_ai_source_model(
     _: Annotated[Any, Depends(require_control_panel)],
 ) -> AISourceModelTestResult:
     try:
-        model_identifier, content, tool_call_count = (
-            await ai_admin_service.test_source_model(
-                source_id=payload.source_id,
-                preset_type=payload.preset_type,
-                api_base=payload.api_base,
-                api_key_env_name=payload.api_key_env_name,
-                api_key=payload.api_key,
-                model_identifier=payload.model_identifier,
-            )
+        (
+            model_identifier,
+            content,
+            tool_call_count,
+        ) = await ai_admin_service.test_source_model(
+            source_id=payload.source_id,
+            preset_type=payload.preset_type,
+            api_base=payload.api_base,
+            api_key_env_name=payload.api_key_env_name,
+            api_key=payload.api_key,
+            model_identifier=payload.model_identifier,
         )
     except AISourceModelTestConfigError as exc:
         raise HTTPException(
@@ -258,6 +260,7 @@ async def delete_ai_source_model(
     model_id: Annotated[str, Query(min_length=1)],
 ) -> bool:
     return await ai_admin_service.delete_source_model(model_id=model_id)
+
 
 @router.get("/model-profiles", response_model=list[AIModelProfileItem])
 async def list_ai_model_profiles(

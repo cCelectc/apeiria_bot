@@ -35,7 +35,9 @@ async def sync_plugins() -> None:
             name = (
                 extra.ui.label
                 if extra is not None and extra.ui.label
-                else meta.name if meta else plugin.name
+                else meta.name
+                if meta
+                else plugin.name
             )
             description = meta.description if meta else None
             usage = meta.usage if meta else None

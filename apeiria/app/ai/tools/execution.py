@@ -69,10 +69,7 @@ def _format_capability_observation(
     result: Any,
 ) -> str:
     if isinstance(result, dict):
-        summary = ", ".join(
-            f"{key}={value}"
-            for key, value in sorted(result.items())
-        )
+        summary = ", ".join(f"{key}={value}" for key, value in sorted(result.items()))
         return f"- [plugin.capability] {capability_name}: {summary}"
     return f"- [plugin.capability] {capability_name}: {result}"
 

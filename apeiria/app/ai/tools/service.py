@@ -57,7 +57,6 @@ if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
 
-
 @dataclass(frozen=True)
 class AIToolExecutionRequest:
     """Inputs needed to run tools for a single reply turn."""
@@ -203,9 +202,8 @@ class AIToolService:
         observations: list[AIToolObservationResult] = []
 
         for intent in intents:
-            if (
-                intent.tool_name == "future_task.manage"
-                and isinstance(intent.input_payload, AIFutureTaskToolInput)
+            if intent.tool_name == "future_task.manage" and isinstance(
+                intent.input_payload, AIFutureTaskToolInput
             ):
                 observations.append(
                     await self._execute_future_task_intent(
@@ -241,8 +239,7 @@ class AIToolService:
                     AIToolObservationResult(
                         tool_name=intent.tool_name,
                         summary=(
-                            "- [relationship.inspect] "
-                            f"{request.relationship_context}"
+                            f"- [relationship.inspect] {request.relationship_context}"
                         ),
                         input_payload=intent.input_payload,
                         output_payload=AIRelationshipInspectObservationOutput(
@@ -251,9 +248,8 @@ class AIToolService:
                     )
                 )
                 continue
-            if (
-                intent.tool_name == "plugin.capability"
-                and isinstance(intent.input_payload, AINoneBotCapabilityRequest)
+            if intent.tool_name == "plugin.capability" and isinstance(
+                intent.input_payload, AINoneBotCapabilityRequest
             ):
                 observation = await self._execute_capability_intent(
                     request=request,

@@ -58,7 +58,9 @@ class AIFutureTaskService:
             user_id=create_input.user_id,
             title=create_input.title,
             description=create_input.description,
-            trigger_at=create_input.trigger_at.astimezone(timezone.utc).replace(tzinfo=None),
+            trigger_at=create_input.trigger_at.astimezone(timezone.utc).replace(
+                tzinfo=None
+            ),
             status="pending",
             source_turn_id=create_input.source_turn_id,
         )
@@ -205,11 +207,7 @@ class AIFutureTaskService:
     @staticmethod
     def build_confirmation_message(task: AIFutureTaskDefinition) -> str:
         trigger_at = task.trigger_at.astimezone(_DISPLAY_TIMEZONE)
-        return (
-            "好的，我会在 "
-            f"{trigger_at:%Y-%m-%d %H:%M} "
-            f"提醒你：{task.description}"
-        )
+        return f"好的，我会在 {trigger_at:%Y-%m-%d %H:%M} 提醒你：{task.description}"
 
     @staticmethod
     def build_schedule_failed_message(task: AIFutureTaskDefinition) -> str:

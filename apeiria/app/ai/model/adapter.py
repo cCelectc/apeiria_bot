@@ -63,11 +63,9 @@ class AIModelAdapter(Protocol):
         self,
         *,
         api_key: str | None = None,
-    ) -> list[AIModelCatalogItem]:
-        ...
+    ) -> list[AIModelCatalogItem]: ...
 
     async def generate_text(
         self,
         request: AIModelGenerateRequest,
-    ) -> AIModelGenerateResponse:
-        ...
+    ) -> AIModelGenerateResponse: ...

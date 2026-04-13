@@ -179,8 +179,10 @@ async def handle_help(
         force_admin=show_admin_flag.available,
         force_owner=show_all_flag.available,
     )
-    show_all = role == "owner" and _is_superuser(event) and (
-        config.admin_show_all or show_all_flag.available
+    show_all = (
+        role == "owner"
+        and _is_superuser(event)
+        and (config.admin_show_all or show_all_flag.available)
     )
     target_name = _merge_plugin_name(plugin_name)
 

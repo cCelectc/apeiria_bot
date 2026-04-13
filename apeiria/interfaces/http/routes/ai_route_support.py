@@ -67,8 +67,6 @@ if TYPE_CHECKING:
     )
 
 
-
-
 def _skill_display_name(skill_name: str) -> str:
     return {
         "future_task.manage": "提醒与任务",
@@ -132,8 +130,6 @@ def to_ai_memory_item(item: "AIMemoryDefinition") -> AIMemoryItem:
     )
 
 
-
-
 def to_ai_recent_target_item(item: "AIRecentTarget") -> AIRecentTargetItem:
     return AIRecentTargetItem(
         target_type=item.target_type,
@@ -189,6 +185,7 @@ def to_ai_chat_model_item(item: "AIChatModelDefinition") -> AIChatModelItem:
         is_default=item.is_default,
         extra_params=item.extra_params or {},
     )
+
 
 def to_ai_conversation_item(item: "AIConversationAdminView") -> AIConversationItem:
     return AIConversationItem(

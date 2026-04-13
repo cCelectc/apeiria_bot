@@ -96,9 +96,7 @@ def parse_social_policy_response(
     if not isinstance(reason_codes, list):
         return fallback
     cleaned_codes = tuple(
-        item.strip()
-        for item in reason_codes
-        if isinstance(item, str) and item.strip()
+        item.strip() for item in reason_codes if isinstance(item, str) and item.strip()
     )
     if not cleaned_codes:
         return fallback

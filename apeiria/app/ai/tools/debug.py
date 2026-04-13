@@ -38,5 +38,5 @@ class AIToolIntentPreview:
 __all__ = [
     "AICapabilityDefinition",
     "AICapabilityPreview",
-        "AIToolIntentPreview",
+    "AIToolIntentPreview",
 ]

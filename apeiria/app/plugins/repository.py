@@ -85,7 +85,9 @@ class PluginCatalogRepository:
         name = (
             extra.ui.label
             if extra is not None and extra.ui.label
-            else meta.name if meta else plugin.name
+            else meta.name
+            if meta
+            else plugin.name
         )
 
         async with get_session() as session:

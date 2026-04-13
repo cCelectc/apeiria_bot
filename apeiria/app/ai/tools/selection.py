@@ -27,8 +27,7 @@ def select_tools_for_message(
             )
         elif tool.name == "relationship.inspect":
             matched = any(
-                token in lowered
-                for token in ("affinity", "mood", "关系", "好感")
+                token in lowered for token in ("affinity", "mood", "关系", "好感")
             )
         elif tool.name == "plugin.capability":
             matched = any(
@@ -74,16 +73,18 @@ def plan_tool_intents_for_message(
     for tool in selected_tools:
         if tool.name == "memory.query":
             intents.append(
-                    AIToolIntent(
+                AIToolIntent(
+                    tool_name=tool.name,
+                    kind="observe_read_only",
+                    input_payload=AIMemoryQueryObservationInput(
+                        query_text=message_text
+                    ),
+                    reason=explain_tool_match(
                         tool_name=tool.name,
-                        kind="observe_read_only",
-                        input_payload=AIMemoryQueryObservationInput(query_text=message_text),
-                        reason=explain_tool_match(
-                            tool_name=tool.name,
-                            message_text=message_text,
-                        ),
-                    )
+                        message_text=message_text,
+                    ),
                 )
+            )
         elif tool.name == "relationship.inspect":
             intents.append(
                 AIToolIntent(

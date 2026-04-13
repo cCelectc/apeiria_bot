@@ -124,8 +124,7 @@ def summarize_tool_policy(
     preauthorized_tools = [
         tool
         for tool in tools
-        if policy.allowed_tool_names is None
-        or tool.name in policy.allowed_tool_names
+        if policy.allowed_tool_names is None or tool.name in policy.allowed_tool_names
     ]
     if not policy.execution_enabled:
         if not preauthorized_tools:
@@ -147,9 +146,7 @@ def summarize_tool_policy(
         )
 
     allowed_tools = [
-        tool
-        for tool in tools
-        if evaluate_tool_policy(tool, policy).allowed
+        tool for tool in tools if evaluate_tool_policy(tool, policy).allowed
     ]
     if not allowed_tools:
         return "No tools are currently allowed for this scene."
