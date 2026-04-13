@@ -42,6 +42,27 @@ def _build_conversation_hash(
     return f"conv_{hashlib.sha256(payload.encode('utf-8')).hexdigest()}"
 
 
+def build_participant_subject_id(
+    *,
+    scope_type: ScopeType,
+    scope_id: str,
+    user_id: str,
+) -> str:
+    """Build a stable scene-local participant id for group-scoped AI state."""
+
+    payload = json.dumps(
+        {
+            "scope_type": scope_type,
+            "scope_id": scope_id,
+            "user_id": user_id,
+        },
+        ensure_ascii=True,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    return f"participant_{hashlib.sha256(payload.encode('utf-8')).hexdigest()}"
+
+
 def build_conversation_identity(
     *,
     platform: str,

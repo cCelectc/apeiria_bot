@@ -8,13 +8,12 @@ from typing import TYPE_CHECKING, Literal
 if TYPE_CHECKING:
     from datetime import datetime
 
+AIMemoryDomain = Literal["social", "knowledge"]
 AIMemoryType = Literal[
     "fact",
     "preference",
     "relationship",
-    "episode",
-    "summary",
-    "operator_note",
+    "note",
 ]
 AIMemoryExtractionAction = Literal["add", "update", "noop"]
 
@@ -36,6 +35,7 @@ class AIMemoryDefinition:
     """Pure memory item representation used by the AI domain."""
 
     memory_id: str
+    memory_domain: AIMemoryDomain
     memory_type: AIMemoryType
     subject_type: str
     subject_id: str
@@ -55,3 +55,4 @@ class AIMemoryQuery:
     subject_id: str
     query_text: str
     limit: int
+    memory_domain: AIMemoryDomain | None = None

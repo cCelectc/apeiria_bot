@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, cast
@@ -10,15 +11,24 @@ from uuid import uuid4
 from sqlalchemy import select, update
 
 from apeiria.app.ai.memory.actions import build_memory_write_plans
+from apeiria.app.ai.memory.embeddings import (
+    EMBEDDING_MODEL_NAME,
+    cosine_similarity,
+    embed_text,
+)
 from apeiria.app.ai.memory.models import (
     AIMemoryDefinition,
+    AIMemoryDomain,
     AIMemoryExtractionCandidate,
     AIMemoryQuery,
     AIMemoryType,
 )
 from apeiria.app.ai.memory.ranking import rank_memory_items
-from apeiria.app.ai.memory.summary import build_summary_memory_content
-from apeiria.infra.db.models import AIMemoryItem
+from apeiria.app.ai.memory.summary import (
+    SUMMARY_NOTE_PREFIX,
+    build_summary_memory_content,
+)
+from apeiria.infra.db.models import AIMemoryEmbedding, AIMemoryItem
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -32,6 +42,7 @@ class AIMemoryCreateInput:
     subject_type: str
     subject_id: str
     content: str
+    memory_domain: AIMemoryDomain = "social"
     source_turn_id: str | None = None
     salience: float = 0.5
     confidence: float = 0.5
@@ -50,7 +61,7 @@ class AIMemoryUpdateInput:
 class AIMemoryService:
     """Long-term memory CRUD and retrieval service."""
 
-    SUMMARY_MEMORY_TYPE: AIMemoryType = "summary"
+    SUMMARY_MEMORY_TYPE: AIMemoryType = "note"
 
     async def create_memory(
         self,
@@ -61,6 +72,7 @@ class AIMemoryService:
 
         memory = AIMemoryItem(
             memory_id=f"mem_{uuid4().hex}",
+            memory_domain=create_input.memory_domain,
             memory_type=create_input.memory_type,
             subject_type=create_input.subject_type,
             subject_id=create_input.subject_id,
@@ -83,6 +95,7 @@ class AIMemoryService:
         result = await session.execute(
             select(AIMemoryItem).where(
                 AIMemoryItem.memory_type == create_input.memory_type,
+                AIMemoryItem.memory_domain == create_input.memory_domain,
                 AIMemoryItem.subject_type == create_input.subject_type,
                 AIMemoryItem.subject_id == create_input.subject_id,
                 AIMemoryItem.content == create_input.content,
@@ -92,6 +105,24 @@ class AIMemoryService:
         if existing is not None:
             return None
         return await self.create_memory(session, create_input)
+
+    async def get_memory_by_identity(
+        self,
+        session: AsyncSession,
+        create_input: AIMemoryCreateInput,
+    ) -> AIMemoryItem | None:
+        """Load one exact memory row for the given identity tuple."""
+
+        result = await session.execute(
+            select(AIMemoryItem).where(
+                AIMemoryItem.memory_type == create_input.memory_type,
+                AIMemoryItem.memory_domain == create_input.memory_domain,
+                AIMemoryItem.subject_type == create_input.subject_type,
+                AIMemoryItem.subject_id == create_input.subject_id,
+                AIMemoryItem.content == create_input.content,
+            )
+        )
+        return result.scalar_one_or_none()
 
     async def update_memory_content(
         self,
@@ -153,6 +184,7 @@ class AIMemoryService:
                 session,
                 AIMemoryCreateInput(
                     memory_type=candidate.memory_type,
+                    memory_domain="social",
                     subject_type=subject_type,
                     subject_id=subject_id,
                     content=candidate.content,
@@ -171,16 +203,18 @@ class AIMemoryService:
         *,
         subject_type: str,
         subject_id: str,
+        memory_domain: AIMemoryDomain | None = None,
     ) -> list[AIMemoryDefinition]:
         """List all memories for one subject boundary."""
 
+        query = select(AIMemoryItem).where(
+            AIMemoryItem.subject_type == subject_type,
+            AIMemoryItem.subject_id == subject_id,
+        )
+        if memory_domain is not None:
+            query = query.where(AIMemoryItem.memory_domain == memory_domain)
         result = await session.execute(
-            select(AIMemoryItem)
-            .where(
-                AIMemoryItem.subject_type == subject_type,
-                AIMemoryItem.subject_id == subject_id,
-            )
-            .order_by(AIMemoryItem.created_at.asc(), AIMemoryItem.id.asc())
+            query.order_by(AIMemoryItem.created_at.asc(), AIMemoryItem.id.asc())
         )
         return [self._to_definition(row) for row in result.scalars().all()]
 
@@ -195,8 +229,113 @@ class AIMemoryService:
             session,
             subject_type=query.subject_type,
             subject_id=query.subject_id,
+            memory_domain=query.memory_domain,
         )
         return rank_memory_items(memories, query)
+
+    async def create_knowledge_memory(
+        self,
+        session: AsyncSession,
+        create_input: AIMemoryCreateInput,
+    ) -> AIMemoryItem:
+        """Create one knowledge memory and persist its embedding."""
+
+        memory = await self.create_memory_if_absent(session, create_input)
+        if memory is None:
+            existing = await self.get_memory_by_identity(session, create_input)
+            assert existing is not None
+            memory = existing
+        await self.upsert_memory_embedding(
+            session,
+            memory_id=memory.memory_id,
+            content=memory.content,
+        )
+        return memory
+
+    async def upsert_memory_embedding(
+        self,
+        session: AsyncSession,
+        *,
+        memory_id: str,
+        content: str,
+    ) -> AIMemoryEmbedding:
+        """Create or update one stored memory embedding."""
+
+        result = await session.execute(
+            select(AIMemoryEmbedding).where(AIMemoryEmbedding.memory_id == memory_id)
+        )
+        row = result.scalar_one_or_none()
+        vector_json = json.dumps(embed_text(content))
+        if row is None:
+            row = AIMemoryEmbedding(
+                memory_id=memory_id,
+                embedding_model=EMBEDDING_MODEL_NAME,
+                vector_json=vector_json,
+            )
+            session.add(row)
+        else:
+            row.embedding_model = EMBEDDING_MODEL_NAME
+            row.vector_json = vector_json
+        await session.flush()
+        return row
+
+    async def retrieve_knowledge_memories(
+        self,
+        session: AsyncSession,
+        *,
+        targets: list[tuple[str, str]],
+        query_text: str,
+        limit: int,
+    ) -> list[AIMemoryDefinition]:
+        """Retrieve top-k knowledge memories through local embedding similarity."""
+
+        if limit <= 0 or not query_text.strip():
+            return []
+
+        query_vector = embed_text(query_text)
+        scored: list[tuple[float, AIMemoryDefinition]] = []
+        seen_memory_ids: set[str] = set()
+
+        for subject_type, subject_id in targets:
+            memories = await self.list_memories(
+                session,
+                subject_type=subject_type,
+                subject_id=subject_id,
+                memory_domain="knowledge",
+            )
+            for memory in memories:
+                if memory.memory_id in seen_memory_ids:
+                    continue
+                seen_memory_ids.add(memory.memory_id)
+                result = await session.execute(
+                    select(AIMemoryEmbedding).where(
+                        AIMemoryEmbedding.memory_id == memory.memory_id
+                    )
+                )
+                embedding_row = result.scalar_one_or_none()
+                if embedding_row is None:
+                    embedding_row = await self.upsert_memory_embedding(
+                        session,
+                        memory_id=memory.memory_id,
+                        content=memory.content,
+                    )
+                try:
+                    memory_vector = json.loads(embedding_row.vector_json)
+                except json.JSONDecodeError:
+                    continue
+                if not isinstance(memory_vector, list):
+                    continue
+                numeric_vector = [
+                    float(value)
+                    for value in memory_vector
+                    if isinstance(value, (int, float))
+                ]
+                if not numeric_vector:
+                    continue
+                scored.append((cosine_similarity(query_vector, numeric_vector), memory))
+
+        scored.sort(key=lambda item: item[0], reverse=True)
+        return [memory for _, memory in scored[:limit]]
 
     async def recall_memories(
         self,
@@ -218,6 +357,7 @@ class AIMemoryService:
         return [
             AIMemoryDefinition(
                 memory_id=memory.memory_id,
+                memory_domain=memory.memory_domain,
                 memory_type=memory.memory_type,
                 subject_type=memory.subject_type,
                 subject_id=memory.subject_id,
@@ -245,6 +385,12 @@ class AIMemoryService:
         memory = result.scalar_one_or_none()
         if memory is None:
             return False
+        result = await session.execute(
+            select(AIMemoryEmbedding).where(AIMemoryEmbedding.memory_id == memory_id)
+        )
+        embedding = result.scalar_one_or_none()
+        if embedding is not None:
+            await session.delete(embedding)
         await session.delete(memory)
         return True
 
@@ -271,6 +417,7 @@ class AIMemoryService:
                 memory
                 for memory in memories
                 if memory.memory_type == self.SUMMARY_MEMORY_TYPE
+                and memory.content.startswith(SUMMARY_NOTE_PREFIX)
             ),
             None,
         )
@@ -293,6 +440,7 @@ class AIMemoryService:
             session,
             AIMemoryCreateInput(
                 memory_type=self.SUMMARY_MEMORY_TYPE,
+                memory_domain="social",
                 subject_type=subject_type,
                 subject_id=subject_id,
                 content=summary_content,
@@ -334,6 +482,7 @@ class AIMemoryService:
             )
         return AIMemoryDefinition(
             memory_id=row.memory_id,
+            memory_domain=cast("AIMemoryDomain", row.memory_domain),
             memory_type=cast("AIMemoryType", row.memory_type),
             subject_type=row.subject_type,
             subject_id=row.subject_id,

@@ -46,4 +46,6 @@ class AIConversationPromptPreview:
     social_policy_source: str | None
     tool_results: tuple[str, ...]
     memories: tuple[AIMemoryDefinition, ...]
+    social_memory_count: int
+    knowledge_memory_count: int
     rendered_prompt: str

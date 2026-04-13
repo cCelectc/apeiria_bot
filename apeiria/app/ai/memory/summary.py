@@ -8,6 +8,7 @@ if TYPE_CHECKING:
     from apeiria.app.ai.memory.models import AIMemoryDefinition, AIMemoryType
 
 _MIN_MEMORIES_FOR_SUMMARY = 2
+SUMMARY_NOTE_PREFIX = "Known stable context:\n"
 
 
 def build_summary_memory_content(
@@ -18,7 +19,7 @@ def build_summary_memory_content(
     detail_memories = [
         memory
         for memory in memories
-        if memory.memory_type != "summary" and memory.content.strip()
+        if memory.content.strip() and not _is_summary_note(memory)
     ]
     if len(detail_memories) < _MIN_MEMORIES_FOR_SUMMARY:
         return None
@@ -34,7 +35,7 @@ def build_summary_memory_content(
         ),
     )
     lines = [f"- [{memory.memory_type}] {memory.content}" for memory in ordered[:4]]
-    return "Known stable context:\n" + "\n".join(lines)
+    return SUMMARY_NOTE_PREFIX + "\n".join(lines)
 
 
 def _summary_priority(memory_type: AIMemoryType) -> int:
@@ -42,8 +43,13 @@ def _summary_priority(memory_type: AIMemoryType) -> int:
         "preference": 0,
         "relationship": 1,
         "fact": 2,
-        "episode": 3,
-        "operator_note": 4,
-        "summary": 5,
+        "note": 3,
     }
     return priorities.get(memory_type, 9)
+
+
+def _is_summary_note(memory: AIMemoryDefinition) -> bool:
+    return (
+        memory.memory_type == "note"
+        and memory.content.startswith(SUMMARY_NOTE_PREFIX)
+    )

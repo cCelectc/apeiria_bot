@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Literal, cast
 
 from nonebot_plugin_orm import get_session
 
@@ -13,9 +13,14 @@ from apeiria.app.ai.admin.workbench import (
     select_latest_user_message,
     to_context_turns,
 )
+from apeiria.app.ai.conversation.identity import build_participant_subject_id
 from apeiria.app.ai.conversation.service import ai_conversation_service
 from apeiria.app.ai.future_task import ai_future_task_service
-from apeiria.app.ai.memory.service import AIMemoryQuery, ai_memory_service
+from apeiria.app.ai.memory.service import (
+    AIMemoryCreateInput,
+    AIMemoryQuery,
+    ai_memory_service,
+)
 from apeiria.app.ai.model import AIModelBindingTarget, AIModelRouteQuery
 from apeiria.app.ai.model.chat_model_service import (
     AIChatModelCreateInput,
@@ -70,7 +75,11 @@ if TYPE_CHECKING:
         AIConversationTurnDetailView,
     )
     from apeiria.app.ai.future_task.models import AIFutureTaskDefinition
-    from apeiria.app.ai.memory.models import AIMemoryDefinition
+    from apeiria.app.ai.memory.models import (
+        AIMemoryDefinition,
+        AIMemoryDomain,
+        AIMemoryType,
+    )
     from apeiria.app.ai.model import (
         AIChatModelDefinition,
         AIModelBindingSpec,
@@ -687,7 +696,12 @@ class AIAdminService:
         subject_id: str,
         query_text: str = "",
         limit: int = 20,
+        memory_domain: str | None = None,
     ) -> list["AIMemoryDefinition"]:
+        normalized_domain = cast(
+            "Literal['social', 'knowledge'] | None",
+            memory_domain if memory_domain in {"social", "knowledge"} else None,
+        )
         async with get_session() as session:
             if query_text.strip():
                 return await ai_memory_service.retrieve_memories(
@@ -697,14 +711,84 @@ class AIAdminService:
                         subject_id=subject_id,
                         query_text=query_text,
                         limit=limit,
+                        memory_domain=normalized_domain,
                     ),
                 )
             memories = await ai_memory_service.list_memories(
                 session,
                 subject_type=subject_type,
                 subject_id=subject_id,
+                memory_domain=normalized_domain,
             )
             return memories[:limit]
+
+    async def create_memory(  # noqa: PLR0913
+        self,
+        *,
+        memory_domain: str,
+        memory_type: str,
+        subject_type: str,
+        subject_id: str,
+        content: str,
+        salience: float,
+        confidence: float,
+    ) -> "AIMemoryDefinition":
+        normalized_domain = cast(
+            "AIMemoryDomain",
+            memory_domain,
+        )
+        normalized_type = cast(
+            "AIMemoryType",
+            memory_type,
+        )
+        async with get_session() as session:
+            create_input = AIMemoryCreateInput(
+                memory_domain=normalized_domain,
+                memory_type=normalized_type,
+                subject_type=subject_type,
+                subject_id=subject_id,
+                content=content,
+                salience=salience,
+                confidence=confidence,
+            )
+            if normalized_domain == "knowledge":
+                row = await ai_memory_service.create_knowledge_memory(
+                    session,
+                    create_input,
+                )
+            else:
+                row = await ai_memory_service.create_memory_if_absent(
+                    session,
+                    create_input,
+                )
+                if row is None:
+                    existing = await ai_memory_service.get_memory_by_identity(
+                        session,
+                        create_input,
+                    )
+                    assert existing is not None
+                    row = existing
+            await session.commit()
+            memories = await ai_memory_service.list_memories(
+                session,
+                subject_type=subject_type,
+                subject_id=subject_id,
+                memory_domain=normalized_domain,
+            )
+            return next(item for item in memories if item.memory_id == row.memory_id)
+
+    async def delete_memory(
+        self,
+        *,
+        memory_id: str,
+    ) -> bool:
+        async with get_session() as session:
+            deleted = await ai_memory_service.delete_memory(
+                session,
+                memory_id=memory_id,
+            )
+            await session.commit()
+            return deleted
 
     async def list_recent_conversations(
         self,
@@ -725,51 +809,87 @@ class AIAdminService:
         conversations = await self.list_recent_conversations(limit=limit)
         targets: list[AIRecentTarget] = []
         seen_users: set[str] = set()
+        seen_participants: set[str] = set()
 
-        for item in conversations:
-            summary = (item.short_summary or "").strip()
-            conversation_title = summary or item.conversation_id[:12]
-            conversation_subtitle = (
-                f"{item.platform} · {item.scope_type} · {item.scope_id}"
-            )
-            targets.append(
-                AIRecentTarget(
-                    target_type="conversation",
-                    subject_type="conversation",
-                    subject_id=item.conversation_id,
-                    title=conversation_title,
-                    subtitle=conversation_subtitle,
-                    conversation_id=item.conversation_id,
-                    platform=item.platform,
-                    scope_type=item.scope_type,
-                    scope_id=item.scope_id,
-                    subject_user_id=item.subject_user_id,
-                    last_active_at=item.last_active_at.isoformat(),
+        async with get_session() as session:
+            for item in conversations:
+                summary = (item.short_summary or "").strip()
+                conversation_title = summary or item.conversation_id[:12]
+                conversation_subtitle = (
+                    f"{item.platform} · {item.scope_type} · {item.scope_id}"
                 )
-            )
+                targets.append(
+                    AIRecentTarget(
+                        target_type="conversation",
+                        subject_type="conversation",
+                        subject_id=item.conversation_id,
+                        title=conversation_title,
+                        subtitle=conversation_subtitle,
+                        conversation_id=item.conversation_id,
+                        platform=item.platform,
+                        scope_type=item.scope_type,
+                        scope_id=item.scope_id,
+                        subject_user_id=item.subject_user_id,
+                        last_active_at=item.last_active_at.isoformat(),
+                    )
+                )
 
-            user_id = item.subject_user_id or (
-                item.scope_id if item.scope_type == "private" else None
-            )
-            if user_id is None or user_id in seen_users:
-                continue
-            seen_users.add(user_id)
-            user_subtitle = f"{item.platform} · {item.scope_type}"
-            targets.append(
-                AIRecentTarget(
-                    target_type="user",
-                    subject_type="user",
-                    subject_id=user_id,
-                    title=user_id,
-                    subtitle=user_subtitle,
-                    conversation_id=item.conversation_id,
-                    platform=item.platform,
-                    scope_type=item.scope_type,
-                    scope_id=item.scope_id,
-                    subject_user_id=user_id,
-                    last_active_at=item.last_active_at.isoformat(),
-                )
-            )
+                if item.scope_type == "group":
+                    participant_user_ids = await (
+                        ai_conversation_service.list_recent_user_ids_for_conversation(
+                            session,
+                            conversation_id=item.conversation_id,
+                            limit=3,
+                        )
+                    )
+                else:
+                    participant_user_ids = [item.subject_user_id or item.scope_id]
+
+                for user_id in participant_user_ids:
+                    if not user_id:
+                        continue
+                    if item.scope_type == "group":
+                        participant_id = build_participant_subject_id(
+                            scope_type=item.scope_type,
+                            scope_id=item.scope_id,
+                            user_id=user_id,
+                        )
+                        if participant_id not in seen_participants:
+                            seen_participants.add(participant_id)
+                            targets.append(
+                                AIRecentTarget(
+                                    target_type="participant",
+                                    subject_type="participant",
+                                    subject_id=participant_id,
+                                    title=user_id,
+                                    subtitle=f"{item.platform} · group participant",
+                                    conversation_id=item.conversation_id,
+                                    platform=item.platform,
+                                    scope_type=item.scope_type,
+                                    scope_id=item.scope_id,
+                                    subject_user_id=user_id,
+                                    last_active_at=item.last_active_at.isoformat(),
+                                )
+                            )
+                    if user_id in seen_users:
+                        continue
+                    seen_users.add(user_id)
+                    user_subtitle = f"{item.platform} · {item.scope_type}"
+                    targets.append(
+                        AIRecentTarget(
+                            target_type="user",
+                            subject_type="user",
+                            subject_id=user_id,
+                            title=user_id,
+                            subtitle=user_subtitle,
+                            conversation_id=item.conversation_id,
+                            platform=item.platform,
+                            scope_type=item.scope_type,
+                            scope_id=item.scope_id,
+                            subject_user_id=user_id,
+                            last_active_at=item.last_active_at.isoformat(),
+                        )
+                    )
 
         return targets[: limit * 2]
 
@@ -934,6 +1054,12 @@ class AIAdminService:
                 if social_decision is None or social_decision.should_speak
                 else "Suppressed by social policy before prompt generation."
             )
+            social_memory_count = sum(
+                1 for memory in memories if memory.memory_domain == "social"
+            )
+            knowledge_memory_count = sum(
+                1 for memory in memories if memory.memory_domain == "knowledge"
+            )
             return AIConversationPromptPreview(
                 conversation_id=conversation_id,
                 latest_user_message=latest_user_message,
@@ -968,6 +1094,8 @@ class AIAdminService:
                 ),
                 tool_results=tool_results,
                 memories=tuple(memories),
+                social_memory_count=social_memory_count,
+                knowledge_memory_count=knowledge_memory_count,
                 rendered_prompt=rendered_prompt,
             )
 

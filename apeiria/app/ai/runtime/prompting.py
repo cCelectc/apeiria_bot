@@ -32,7 +32,8 @@ class AIReplyPromptChannels:
     relationship: str | None
     tool_policy: str | None
     tool_results: tuple[str, ...]
-    memories: tuple[str, ...]
+    social_memories: tuple[str, ...]
+    knowledge_memories: tuple[str, ...]
     conversation_summary: str | None
     social_policy: str | None
     future_task: str | None
@@ -78,7 +79,16 @@ def build_reply_prompt_channels(
         relationship=context.relationship,
         tool_policy=context.tool_policy,
         tool_results=context.tool_results,
-        memories=tuple(_format_memory(memory) for memory in context.memories),
+        social_memories=tuple(
+            _format_memory(memory)
+            for memory in context.memories
+            if memory.memory_domain == "social"
+        ),
+        knowledge_memories=tuple(
+            _format_memory(memory)
+            for memory in context.memories
+            if memory.memory_domain == "knowledge"
+        ),
         conversation_summary=context.conversation_summary,
         social_policy=context.social_policy,
         future_task=context.future_task,
@@ -119,8 +129,12 @@ def render_reply_prompt(channels: AIReplyPromptChannels) -> str:  # noqa: C901
         sections.append(f"[ToolPolicy]\n{channels.tool_policy}")
     if channels.tool_results:
         sections.append("[ToolResults]\n" + "\n".join(channels.tool_results))
-    if channels.memories:
-        sections.append("[Memories]\n" + "\n".join(channels.memories))
+    if channels.social_memories:
+        sections.append("[SocialMemories]\n" + "\n".join(channels.social_memories))
+    if channels.knowledge_memories:
+        sections.append(
+            "[KnowledgeMemories]\n" + "\n".join(channels.knowledge_memories)
+        )
     if channels.conversation_summary:
         sections.append(f"[ConversationSummary]\n{channels.conversation_summary}")
     if channels.social_policy:
@@ -151,7 +165,7 @@ def _format_turn(turn: "AIContextTurnView") -> str:
 
 def _format_memory(memory: "AIMemoryDefinition") -> str:
     return (
-        f"- [{memory.memory_type}] {memory.content} "
+        f"- [{memory.memory_domain}/{memory.memory_type}] {memory.content} "
         f"(salience={memory.salience:.2f}, confidence={memory.confidence:.2f})"
     )
 

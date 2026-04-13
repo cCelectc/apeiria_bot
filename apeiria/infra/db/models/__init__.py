@@ -5,6 +5,7 @@ from .ai_affinity import AIAffinity
 from .ai_chat_model import AIChatModel
 from .ai_conversation import AIConversation
 from .ai_future_task import AIFutureTask
+from .ai_memory_embedding import AIMemoryEmbedding
 from .ai_memory_item import AIMemoryItem
 from .ai_model_binding import AIModelBinding
 from .ai_model_profile import AIModelProfile
@@ -27,6 +28,7 @@ __all__ = [
     "AIChatModel",
     "AIConversation",
     "AIFutureTask",
+    "AIMemoryEmbedding",
     "AIMemoryItem",
     "AIModelBinding",
     "AIModelProfile",

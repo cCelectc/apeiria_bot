@@ -71,8 +71,6 @@ def _memory_type_score(memory: AIMemoryDefinition) -> float:
         "preference": 0.4,
         "relationship": 0.3,
         "fact": 0.2,
-        "episode": 0.1,
-        "operator_note": 0.05,
-        "summary": -0.1,
+        "note": 0.05,
     }
     return scores.get(memory.memory_type, 0.0)

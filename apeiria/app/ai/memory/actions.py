@@ -31,7 +31,7 @@ def build_memory_write_plans(
 
     plans: list[AIMemoryWritePlan] = []
     for candidate in candidates:
-        if candidate.action == "noop" or candidate.memory_type == "summary":
+        if candidate.action == "noop":
             continue
         if candidate.action == "update":
             target_memory_id = resolve_update_target_memory_id(
@@ -66,6 +66,10 @@ def resolve_update_target_memory_id(
         memory
         for memory in existing_memories
         if memory.memory_type == candidate.memory_type
+        and not (
+            candidate.memory_type == "note"
+            and memory.content.startswith("Known stable context:\n")
+        )
     ]
     if not same_type_memories:
         return None

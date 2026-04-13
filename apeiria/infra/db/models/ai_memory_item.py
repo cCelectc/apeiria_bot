@@ -16,6 +16,7 @@ class AIMemoryItem(Model):
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     memory_id: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    memory_domain: Mapped[str] = mapped_column(String(32), index=True, default="social")
     memory_type: Mapped[str] = mapped_column(String(32), index=True)
     subject_type: Mapped[str] = mapped_column(String(32), index=True)
     subject_id: Mapped[str] = mapped_column(String(128), index=True)

@@ -654,7 +654,13 @@
                       <v-list-item-subtitle>{{ item.subtitle || item.subject_id }}</v-list-item-subtitle>
                       <template #append>
                         <v-chip color="primary" size="small" variant="tonal">
-                          {{ item.subject_type === 'conversation' ? t('ai.scopeConversation') : t('ai.scopeUser') }}
+                          {{
+                            item.subject_type === 'conversation'
+                              ? t('ai.scopeConversation')
+                              : item.subject_type === 'participant'
+                                ? t('ai.scopeParticipant')
+                                : t('ai.scopeUser')
+                          }}
                         </v-chip>
                       </template>
                     </v-list-item>
@@ -680,6 +686,13 @@
                         :items="memorySubjectOptions"
                         :label="t('ai.memorySubjectType')"
                       />
+                      <v-select
+                        v-model="memoryForm.memory_domain"
+                        density="comfortable"
+                        hide-details
+                        :items="memoryDomainOptions"
+                        :label="t('ai.memoryDomain')"
+                      />
                       <v-text-field
                         v-model.trim="memoryForm.subject_id"
                         density="comfortable"
@@ -691,6 +704,13 @@
                         density="comfortable"
                         hide-details
                         :label="t('ai.memoryQuery')"
+                      />
+                      <v-select
+                        v-model="memoryForm.memory_type"
+                        density="comfortable"
+                        hide-details
+                        :items="memoryTypeFilterOptions"
+                        :label="t('ai.memoryType')"
                       />
                       <v-select
                         v-model="memoryForm.limit"
@@ -733,6 +753,41 @@
                 </v-btn>
               </div>
 
+              <v-sheet class="surface-gradient-card pa-4" rounded="lg">
+                <div class="ai-binding-form ai-memory-toolbar">
+                  <v-select
+                    v-model="memoryDraft.memory_domain"
+                    density="comfortable"
+                    hide-details
+                    :items="memoryDomainOptions.filter(item => item.value)"
+                    :label="t('ai.memoryDomain')"
+                  />
+                  <v-select
+                    v-model="memoryDraft.memory_type"
+                    density="comfortable"
+                    hide-details
+                    :items="memoryTypeOptions"
+                    :label="t('ai.memoryType')"
+                  />
+                  <v-textarea
+                    v-model.trim="memoryDraft.content"
+                    auto-grow
+                    density="comfortable"
+                    hide-details
+                    :label="t('ai.memoryContent')"
+                    rows="2"
+                  />
+                  <v-btn
+                    color="primary"
+                    :disabled="!canSaveMemory"
+                    :loading="savingMemory"
+                    @click="saveMemory"
+                  >
+                    {{ t('ai.saveMemory') }}
+                  </v-btn>
+                </div>
+              </v-sheet>
+
               <div v-if="memories.length > 0" class="memory-card-list">
                 <v-sheet
                   v-for="item in memories"
@@ -744,6 +799,9 @@
                     <div class="d-flex flex-wrap ga-2">
                       <v-chip color="primary" size="small" variant="tonal">
                         {{ item.memory_type }}
+                      </v-chip>
+                      <v-chip color="primary" size="small" variant="tonal">
+                        {{ item.memory_domain }}
                       </v-chip>
                       <v-chip color="primary" size="small" variant="tonal">
                         {{ t('ai.memoryConfidence') }}: {{ formatMemoryScore(item.confidence) }}
@@ -762,6 +820,18 @@
                   <div class="d-flex flex-wrap ga-4 mt-3 text-caption text-medium-emphasis">
                     <span>{{ t('ai.memoryLastRecalledAt') }}: {{ item.last_recalled_at || t('common.none') }}</span>
                     <span>{{ t('ai.memorySourceTurn') }}: {{ formatMemorySourceTurn(item.source_turn_id) }}</span>
+                  </div>
+
+                  <div class="d-flex justify-end mt-3">
+                    <v-btn
+                      color="error"
+                      :loading="deletingMemoryId === item.memory_id"
+                      size="small"
+                      variant="text"
+                      @click="removeMemory(item.memory_id)"
+                    >
+                      {{ t('common.delete') }}
+                    </v-btn>
                   </div>
                 </v-sheet>
               </div>
@@ -799,10 +869,10 @@
                     @click="loadRecentTargets"
                   />
                 </div>
-                <template v-if="recentUserTargets.length > 0">
+                <template v-if="recentRelationshipTargets.length > 0">
                   <v-list class="bg-transparent" density="comfortable" lines="two">
                     <v-list-item
-                      v-for="item in recentUserTargets"
+                      v-for="item in recentRelationshipTargets"
                       :key="`${item.subject_type}:${item.subject_id}`"
                       rounded="lg"
                       @click="loadRelationshipForTarget(item)"
@@ -1101,6 +1171,8 @@
                     <div>{{ t('ai.socialReasonCodes') }}: {{ promptPreview.social_reason_codes.join(', ') || t('common.none') }}</div>
                     <div>{{ t('ai.socialPolicySource') }}: {{ promptPreview.social_policy_source || t('common.none') }}</div>
                     <div>{{ t('ai.memoryHits') }}: {{ promptPreview.memories.length }}</div>
+                    <div>{{ t('ai.memoryDomainSocial') }}: {{ promptPreview.social_memory_count }}</div>
+                    <div>{{ t('ai.memoryDomainKnowledge') }}: {{ promptPreview.knowledge_memory_count }}</div>
                     <div>{{ t('ai.toolResultsTitle') }}: {{ promptPreview.tool_results.length }}</div>
                     <pre class="ai-prompt-preview">{{ promptPreview.rendered_prompt }}</pre>
                   </div>
@@ -1109,14 +1181,33 @@
                   </div>
                 </v-sheet>
 
-                <v-data-table
-                  class="page-table"
-                  density="compact"
-                  :headers="promptMemoryHeaders"
-                  :items="promptPreview?.memories || []"
-                  :items-per-page-text="t('common.itemsPerPage')"
-                  :no-data-text="t('common.noData')"
-                />
+                <v-sheet class="surface-gradient-card pa-4" rounded="lg">
+                  <div class="text-subtitle-2 font-weight-medium mb-3">
+                    {{ t('ai.memoryDomainSocial') }} · {{ promptPreviewSocialMemories.length }}
+                  </div>
+                  <v-data-table
+                    class="page-table"
+                    density="compact"
+                    :headers="promptMemoryHeaders"
+                    :items="promptPreviewSocialMemories"
+                    :items-per-page-text="t('common.itemsPerPage')"
+                    :no-data-text="t('common.noData')"
+                  />
+                </v-sheet>
+
+                <v-sheet class="surface-gradient-card pa-4" rounded="lg">
+                  <div class="text-subtitle-2 font-weight-medium mb-3">
+                    {{ t('ai.memoryDomainKnowledge') }} · {{ promptPreviewKnowledgeMemories.length }}
+                  </div>
+                  <v-data-table
+                    class="page-table"
+                    density="compact"
+                    :headers="promptMemoryHeaders"
+                    :items="promptPreviewKnowledgeMemories"
+                    :items-per-page-text="t('common.itemsPerPage')"
+                    :no-data-text="t('common.noData')"
+                  />
+                </v-sheet>
 
                 <v-data-table
                   class="page-table"
@@ -1426,6 +1517,8 @@
     loadingTurns,
     loadingDebug,
     promptPreview,
+    promptPreviewKnowledgeMemories,
+    promptPreviewSocialMemories,
     selectedConversation,
     summarizeJsonText,
     summarizeRawPayload,
@@ -1531,13 +1624,19 @@
 
   const {
     canLoadMemories,
+    canSaveMemory,
+    deletingMemoryId,
     loadMemories,
     loadRecentTargets,
     loadingMemories,
     loadingRecentTargets,
     memories,
+    memoryDraft,
     memoryForm,
     recentTargets,
+    removeMemory,
+    saveMemory,
+    savingMemory,
     selectRecentTarget,
     selectedRecentTargetId,
   } = useAIMemoryTab(t)
@@ -1728,6 +1827,7 @@
   ])
 
   const promptMemoryHeaders = computed(() => [
+    { title: t('ai.memoryDomain'), key: 'memory_domain', sortable: false },
     { title: t('ai.memoryType'), key: 'memory_type', sortable: false },
     { title: t('ai.memoryContent'), key: 'content', sortable: false },
     { title: t('ai.memoryConfidence'), key: 'confidence', sortable: false },
@@ -1746,7 +1846,24 @@
 
   const memorySubjectOptions = computed(() => [
     { title: t('ai.scopeUser'), value: 'user' },
+    { title: t('ai.scopeParticipant'), value: 'participant' },
     { title: t('ai.scopeConversation'), value: 'conversation' },
+  ])
+
+  const memoryDomainOptions = computed(() => [
+    { title: t('common.all'), value: '' },
+    { title: t('ai.memoryDomainSocial'), value: 'social' },
+    { title: t('ai.memoryDomainKnowledge'), value: 'knowledge' },
+  ])
+  const memoryTypeOptions = computed(() => [
+    { title: 'fact', value: 'fact' },
+    { title: 'preference', value: 'preference' },
+    { title: 'relationship', value: 'relationship' },
+    { title: 'note', value: 'note' },
+  ])
+  const memoryTypeFilterOptions = computed(() => [
+    { title: t('common.all'), value: '' },
+    ...memoryTypeOptions.value,
   ])
 
   const memoryLimitOptions = [10, 20, 50, 100]
@@ -1769,7 +1886,13 @@
 
   const readonlySkillCount = computed(() => skills.value.filter(item => item.read_only).length)
 
-  const recentUserTargets = computed(() => recentTargets.value.filter(item => item.subject_type === 'user'))
+  const recentRelationshipTargets = computed(() => (
+    recentTargets.value.filter(item => (
+      (item.subject_type === 'user' || item.subject_type === 'participant')
+      && !!item.platform
+      && !!item.subject_user_id
+    ))
+  ))
 
   const relationshipSelectionLabel = computed(() => {
     if (!relationship.value) {

@@ -50,6 +50,8 @@ from apeiria.interfaces.http.schemas.ai_models import (
     AIConversationPromptPreviewItem,
     AIConversationTurnItem,
     AIFutureTaskItem,
+    AIMemoryCreateRequest,
+    AIMemoryDeleteResult,
     AIMemoryItem,
     AIModelBindingItem,
     AIModelCatalogItem,
@@ -354,15 +356,44 @@ async def list_ai_memories(
     subject_type: Annotated[str, Query(min_length=1)],
     subject_id: Annotated[str, Query(min_length=1)],
     query: str = "",
+    memory_domain: Annotated[str | None, Query(max_length=32)] = None,
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
 ) -> list[AIMemoryItem]:
     memories = await ai_admin_service.list_memories(
         subject_type=subject_type,
         subject_id=subject_id,
         query_text=query,
+        memory_domain=memory_domain,
         limit=limit,
     )
     return [to_ai_memory_item(item) for item in memories]
+
+
+@router.post("/memories", response_model=AIMemoryItem)
+async def create_ai_memory(
+    payload: AIMemoryCreateRequest,
+    _: Annotated[Any, Depends(require_control_panel)],
+) -> AIMemoryItem:
+    memory = await ai_admin_service.create_memory(
+        memory_domain=payload.memory_domain,
+        memory_type=payload.memory_type,
+        subject_type=payload.subject_type,
+        subject_id=payload.subject_id,
+        content=payload.content,
+        salience=payload.salience,
+        confidence=payload.confidence,
+    )
+    return to_ai_memory_item(memory)
+
+
+@router.delete("/memories", response_model=AIMemoryDeleteResult)
+async def delete_ai_memory(
+    _: Annotated[Any, Depends(require_control_panel)],
+    memory_id: Annotated[str, Query(min_length=1)],
+) -> AIMemoryDeleteResult:
+    return AIMemoryDeleteResult(
+        deleted=await ai_admin_service.delete_memory(memory_id=memory_id)
+    )
 
 
 @router.get("/recent-targets", response_model=list[AIRecentTargetItem])

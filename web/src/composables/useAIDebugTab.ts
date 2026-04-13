@@ -45,6 +45,12 @@ export function useAIDebugTab (t: (key: string, params?: Record<string, unknown>
     error: toolExecutions.value.filter(item => item.status === 'error').length,
     timeout: toolExecutions.value.filter(item => item.status === 'timeout').length,
   }))
+  const promptPreviewSocialMemories = computed(() => (
+    (promptPreview.value?.memories ?? []).filter(item => item.memory_domain === 'social')
+  ))
+  const promptPreviewKnowledgeMemories = computed(() => (
+    (promptPreview.value?.memories ?? []).filter(item => item.memory_domain === 'knowledge')
+  ))
 
   async function loadDebugData () {
     loadingDebug.value = true
@@ -129,6 +135,8 @@ export function useAIDebugTab (t: (key: string, params?: Record<string, unknown>
     loadingDebug,
     loadingTurns,
     promptPreview,
+    promptPreviewKnowledgeMemories,
+    promptPreviewSocialMemories,
     selectedConversation,
     selectedConversationId,
     summarizeJsonText,

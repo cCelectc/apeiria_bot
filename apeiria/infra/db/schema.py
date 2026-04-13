@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 
 from nonebot.log import logger
 
-CURRENT_SCHEMA_VERSION = 16
+CURRENT_SCHEMA_VERSION = 18
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncConnection, AsyncSession
@@ -23,6 +23,7 @@ CORE_TABLE_NAMES = frozenset(
         "ai_chat_model",
         "ai_conversation",
         "ai_future_task",
+        "ai_memory_embedding",
         "ai_memory_item",
         "ai_model_binding",
         "ai_model_profile",
@@ -131,6 +132,7 @@ async def ensure_database_ready() -> None:
         schema_version = status.schema_version
         if schema_version is None:
             if status.apeiria_tables == CORE_TABLE_NAMES:
+                await _normalize_memory_types_to_note(session)
                 session.add(SchemaMeta(id=1, schema_version=CURRENT_SCHEMA_VERSION))
                 await session.commit()
                 logger.info(
@@ -411,3 +413,56 @@ async def _migrate_v15_to_v16(session: AsyncSession) -> None:
 
 
 MIGRATIONS[15] = _migrate_v15_to_v16
+
+
+async def _migrate_v16_to_v17(session: AsyncSession) -> None:
+    from nonebot_plugin_orm import Model
+    from sqlalchemy import inspect as sa_inspect
+    from sqlalchemy import text
+
+    conn = await session.connection()
+
+    def _has_memory_domain(sync_conn):  # noqa: ANN001
+        inspector = sa_inspect(sync_conn)
+        columns = inspector.get_columns("ai_memory_item")
+        return any(column["name"] == "memory_domain" for column in columns)
+
+    has_memory_domain = await conn.run_sync(_has_memory_domain)
+    if not has_memory_domain:
+        await session.execute(
+            text(
+                "ALTER TABLE ai_memory_item "
+                "ADD COLUMN memory_domain VARCHAR(32) NOT NULL DEFAULT 'social'"
+            )
+        )
+        await session.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS ix_ai_memory_item_memory_domain "
+                "ON ai_memory_item (memory_domain)"
+            )
+        )
+    await conn.run_sync(Model.metadata.create_all)
+    await session.commit()
+
+
+MIGRATIONS[16] = _migrate_v16_to_v17
+
+
+async def _migrate_v17_to_v18(session: AsyncSession) -> None:
+    await _normalize_memory_types_to_note(session)
+    await session.commit()
+
+
+MIGRATIONS[17] = _migrate_v17_to_v18
+
+
+async def _normalize_memory_types_to_note(session: AsyncSession) -> None:
+    from sqlalchemy import text
+
+    await session.execute(
+        text(
+            "UPDATE ai_memory_item "
+            "SET memory_type = 'note' "
+            "WHERE memory_type IN ('episode', 'summary', 'operator_note')"
+        )
+    )

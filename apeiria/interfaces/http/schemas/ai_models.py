@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 
@@ -32,6 +34,7 @@ class AIPersonaUpsertRequest(BaseModel):
 
 class AIMemoryItem(BaseModel):
     memory_id: str
+    memory_domain: str
     memory_type: str
     subject_type: str
     subject_id: str
@@ -55,6 +58,20 @@ class AIRecentTargetItem(BaseModel):
     scope_id: str | None = None
     subject_user_id: str | None = None
     last_active_at: str | None = None
+
+
+class AIMemoryCreateRequest(BaseModel):
+    memory_domain: Literal["social", "knowledge"]
+    memory_type: Literal["fact", "preference", "relationship", "note"]
+    subject_type: str = Field(min_length=1, max_length=32)
+    subject_id: str = Field(min_length=1, max_length=128)
+    content: str = Field(min_length=1, max_length=10000)
+    salience: float = Field(default=0.6, ge=0.0, le=1.0)
+    confidence: float = Field(default=0.8, ge=0.0, le=1.0)
+
+
+class AIMemoryDeleteResult(BaseModel):
+    deleted: bool
 
 
 class AISourcePresetItem(BaseModel):
@@ -181,6 +198,8 @@ class AIConversationPromptPreviewItem(BaseModel):
     social_policy_source: str | None = None
     tool_results: list[str] = []
     memories: list[AIMemoryItem] = []
+    social_memory_count: int = 0
+    knowledge_memory_count: int = 0
     rendered_prompt: str
 
 

@@ -116,6 +116,7 @@ def to_ai_persona_binding_item(item: "AIPersonaBindingSpec") -> AIPersonaBinding
 def to_ai_memory_item(item: "AIMemoryDefinition") -> AIMemoryItem:
     return AIMemoryItem(
         memory_id=item.memory_id,
+        memory_domain=item.memory_domain,
         memory_type=item.memory_type,
         subject_type=item.subject_type,
         subject_id=item.subject_id,
@@ -241,6 +242,8 @@ def to_ai_conversation_prompt_preview_item(
         social_policy_source=item.social_policy_source,
         tool_results=list(item.tool_results),
         memories=[to_ai_memory_item(memory) for memory in item.memories],
+        social_memory_count=item.social_memory_count,
+        knowledge_memory_count=item.knowledge_memory_count,
         rendered_prompt=item.rendered_prompt,
     )
 

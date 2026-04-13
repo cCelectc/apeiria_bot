@@ -277,6 +277,36 @@ class AIConversationService:
         turns.reverse()
         return turns
 
+    async def list_recent_user_ids_for_conversation(
+        self,
+        session: "AsyncSession",
+        *,
+        conversation_id: str,
+        limit: int = 5,
+    ) -> list[str]:
+        """List distinct recent user sender ids for one conversation."""
+
+        result = await session.execute(
+            select(AITurn.sender_id)
+            .join(AIConversation, AITurn.conversation_pk == AIConversation.id)
+            .where(
+                AIConversation.conversation_id == conversation_id,
+                AITurn.sender_type == "user",
+            )
+            .order_by(AITurn.created_at.desc(), AITurn.id.desc())
+            .limit(max(limit * 4, limit))
+        )
+        sender_ids: list[str] = []
+        seen: set[str] = set()
+        for sender_id in result.scalars().all():
+            if sender_id in seen:
+                continue
+            seen.add(sender_id)
+            sender_ids.append(sender_id)
+            if len(sender_ids) >= limit:
+                break
+        return sender_ids
+
     async def get_conversation_identity(
         self,
         session: "AsyncSession",

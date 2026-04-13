@@ -411,6 +411,7 @@ export interface AIPersonaBindingItem {
 
 export interface AIMemoryItem {
   memory_id: string
+  memory_domain: string
   memory_type: string
   subject_type: string
   subject_id: string
@@ -434,6 +435,16 @@ export interface AIRecentTargetItem {
   scope_id: string | null
   subject_user_id: string | null
   last_active_at: string | null
+}
+
+export interface AIMemoryCreateRequest {
+  memory_domain: string
+  memory_type: string
+  subject_type: string
+  subject_id: string
+  content: string
+  salience?: number
+  confidence?: number
 }
 
 export interface AISourcePresetItem {
@@ -520,6 +531,8 @@ export interface AIConversationPromptPreviewItem {
   social_policy_source: string | null
   tool_results: string[]
   memories: AIMemoryItem[]
+  social_memory_count: number
+  knowledge_memory_count: number
   rendered_prompt: string
 }
 
@@ -1082,10 +1095,21 @@ export function getAIModelBindings () {
 export function getAIMemories (params: {
   subject_type: string
   subject_id: string
+  memory_domain?: string
   query?: string
   limit?: number
 }) {
   return client.get<AIMemoryItem[]>('/ai/memories', { params })
+}
+
+export function createAIMemory (payload: AIMemoryCreateRequest) {
+  return client.post<AIMemoryItem>('/ai/memories', payload)
+}
+
+export function deleteAIMemory (memoryId: string) {
+  return client.delete<{ deleted: boolean }>('/ai/memories', {
+    params: { memory_id: memoryId },
+  })
 }
 
 export function getAIRecentTargets (params?: {

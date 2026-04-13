@@ -45,14 +45,18 @@ export function useAIRelationshipTab (t: (key: string) => string) {
   }
 
   async function loadRelationshipForTarget (target: AIRecentTargetItem) {
-    if (target.subject_type !== 'user' || !target.platform) {
+    if (!target.platform) {
+      return
+    }
+    const userId = target.subject_user_id ?? (target.subject_type === 'user' ? target.subject_id : '')
+    if (!userId) {
       return
     }
     loadingSelectedRelationship.value = true
     try {
       const response = await getAIRelationshipState({
         platform: target.platform,
-        user_id: target.subject_id,
+        user_id: userId,
         group_id: target.scope_type === 'group' ? target.scope_id ?? undefined : undefined,
       })
       const next = response.data
