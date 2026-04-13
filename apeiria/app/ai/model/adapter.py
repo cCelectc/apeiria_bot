@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Protocol
+from typing import Any, Literal, Protocol
 
 
 @dataclass(frozen=True)
@@ -56,6 +56,103 @@ class AIModelGenerateResponse:
     raw: dict[str, Any] | None = None
 
 
+@dataclass(frozen=True)
+class AIModelEmbeddingRequest:
+    """Unified embedding request for Apeiria AI services."""
+
+    source_id: str
+    model_name: str
+    texts: tuple[str, ...]
+    extra: dict[str, Any] | None = None
+
+
+@dataclass(frozen=True)
+class AIModelEmbeddingResponse:
+    """Unified embedding response for Apeiria AI services."""
+
+    source_id: str
+    model_name: str
+    vectors: tuple[tuple[float, ...], ...]
+    raw: dict[str, Any] | None = None
+
+
+@dataclass(frozen=True)
+class AIModelTranscriptionRequest:
+    """Unified speech-to-text request for Apeiria AI services."""
+
+    source_id: str
+    model_name: str
+    audio_bytes: bytes
+    file_name: str = "sample.wav"
+    mime_type: str = "audio/wav"
+    language: str | None = None
+    extra: dict[str, Any] | None = None
+
+
+@dataclass(frozen=True)
+class AIModelTranscriptionResponse:
+    """Unified speech-to-text response for Apeiria AI services."""
+
+    source_id: str
+    model_name: str
+    text: str
+    raw: dict[str, Any] | None = None
+
+
+@dataclass(frozen=True)
+class AIModelSpeechRequest:
+    """Unified text-to-speech request for Apeiria AI services."""
+
+    source_id: str
+    model_name: str
+    text: str
+    voice: str = "alloy"
+    response_format: Literal["mp3", "opus", "aac", "flac", "wav", "pcm"] = "wav"
+    extra: dict[str, Any] | None = None
+
+
+@dataclass(frozen=True)
+class AIModelSpeechResponse:
+    """Unified text-to-speech response for Apeiria AI services."""
+
+    source_id: str
+    model_name: str
+    audio_bytes: bytes
+    response_format: str
+    raw: dict[str, Any] | None = None
+
+
+@dataclass(frozen=True)
+class AIModelRerankResultItem:
+    """One rerank-scored document result."""
+
+    index: int
+    relevance_score: float
+    document: str | None = None
+
+
+@dataclass(frozen=True)
+class AIModelRerankRequest:
+    """Unified rerank request for Apeiria AI services."""
+
+    source_id: str
+    model_name: str
+    query: str
+    documents: tuple[str, ...]
+    top_n: int = 3
+    extra: dict[str, Any] | None = None
+
+
+@dataclass(frozen=True)
+class AIModelRerankResponse:
+    """Unified rerank response for Apeiria AI services."""
+
+    source_id: str
+    model_name: str
+    results: tuple[AIModelRerankResultItem, ...]
+    raw: dict[str, Any] | None = None
+
+
 class AIModelAdapter(Protocol):
     """Source adapter protocol for Apeiria model execution."""
 
@@ -69,3 +166,23 @@ class AIModelAdapter(Protocol):
         self,
         request: AIModelGenerateRequest,
     ) -> AIModelGenerateResponse: ...
+
+    async def embed_texts(
+        self,
+        request: AIModelEmbeddingRequest,
+    ) -> AIModelEmbeddingResponse: ...
+
+    async def transcribe_audio(
+        self,
+        request: AIModelTranscriptionRequest,
+    ) -> AIModelTranscriptionResponse: ...
+
+    async def synthesize_speech(
+        self,
+        request: AIModelSpeechRequest,
+    ) -> AIModelSpeechResponse: ...
+
+    async def rerank_documents(
+        self,
+        request: AIModelRerankRequest,
+    ) -> AIModelRerankResponse: ...

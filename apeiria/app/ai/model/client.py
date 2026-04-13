@@ -9,8 +9,16 @@ if TYPE_CHECKING:
     from apeiria.app.ai.model.adapter import (
         AIModelAdapter,
         AIModelCatalogItem,
+        AIModelEmbeddingRequest,
+        AIModelEmbeddingResponse,
         AIModelGenerateRequest,
         AIModelGenerateResponse,
+        AIModelRerankRequest,
+        AIModelRerankResponse,
+        AIModelSpeechRequest,
+        AIModelSpeechResponse,
+        AIModelTranscriptionRequest,
+        AIModelTranscriptionResponse,
     )
 
 
@@ -59,6 +67,42 @@ class AIModelClient:
         if adapter is None:
             raise UnknownAISourceError(source_id)
         return await adapter.list_models(api_key=api_key)
+
+    async def embed_texts(
+        self,
+        request: "AIModelEmbeddingRequest",
+    ) -> "AIModelEmbeddingResponse":
+        adapter = self.registry.get(request.source_id)
+        if adapter is None:
+            raise UnknownAISourceError(request.source_id)
+        return await adapter.embed_texts(request)
+
+    async def transcribe_audio(
+        self,
+        request: "AIModelTranscriptionRequest",
+    ) -> "AIModelTranscriptionResponse":
+        adapter = self.registry.get(request.source_id)
+        if adapter is None:
+            raise UnknownAISourceError(request.source_id)
+        return await adapter.transcribe_audio(request)
+
+    async def synthesize_speech(
+        self,
+        request: "AIModelSpeechRequest",
+    ) -> "AIModelSpeechResponse":
+        adapter = self.registry.get(request.source_id)
+        if adapter is None:
+            raise UnknownAISourceError(request.source_id)
+        return await adapter.synthesize_speech(request)
+
+    async def rerank_documents(
+        self,
+        request: "AIModelRerankRequest",
+    ) -> "AIModelRerankResponse":
+        adapter = self.registry.get(request.source_id)
+        if adapter is None:
+            raise UnknownAISourceError(request.source_id)
+        return await adapter.rerank_documents(request)
 
 
 ai_model_client = AIModelClient()

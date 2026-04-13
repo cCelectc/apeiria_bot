@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import io
+import wave
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Literal, cast
 
@@ -22,8 +24,11 @@ from apeiria.app.ai.memory.service import (
     ai_memory_service,
 )
 from apeiria.app.ai.model import AIModelBindingTarget, AIModelRouteQuery
+from apeiria.app.ai.model.capability_registry import (
+    SOURCE_MODEL_CAPABILITY_FALLBACK_ORDER,
+    SOURCE_MODEL_CAPABILITY_REGISTRY,
+)
 from apeiria.app.ai.model.chat_model_service import (
-    AIChatModelCreateInput,
     ai_chat_model_service,
 )
 from apeiria.app.ai.model.profile_service import (
@@ -33,6 +38,8 @@ from apeiria.app.ai.model.profile_service import (
 from apeiria.app.ai.model.service import ai_model_facade
 from apeiria.app.ai.model.source_service import AISourceCreateInput, ai_source_service
 from apeiria.app.ai.model.sources import (
+    AISourceCapabilityType,
+    AISourcePresetType,
     UnsupportedAISourcePresetError,
     resolve_client_type_for_preset,
 )
@@ -81,12 +88,15 @@ if TYPE_CHECKING:
         AIMemoryType,
     )
     from apeiria.app.ai.model import (
-        AIChatModelDefinition,
         AIModelBindingSpec,
         AIModelCatalogItem,
         AIModelProfileDefinition,
         AISourceDefinition,
+        AISourceModelDefinition,
         AISourcePresetDefinition,
+    )
+    from apeiria.app.ai.model.capability_registry import (
+        AICapabilityModelRegistryEntry,
     )
     from apeiria.app.ai.persona.models import (
         AIPersonaBindingSpec,
@@ -181,15 +191,24 @@ class AISourceModelTestUpstreamError(RuntimeError):
 
 
 MODEL_TEST_PROMPT = "Reply with exactly OK."
+EMBEDDING_TEST_TEXT = "Apeiria embedding connectivity check"
+TTS_TEST_TEXT = "Apeiria text to speech connectivity check"
+RERANK_TEST_QUERY = "Which sentence is about connectivity?"
+RERANK_TEST_DOCUMENTS = (
+    "This document is unrelated to the task.",
+    "This sentence is about connectivity verification.",
+    "Another unrelated document.",
+)
 
 
 def _coerce_source_preset_type(
     preset_type: str,
-) -> Literal["openai_compatible", "anthropic_compatible"]:
-    if preset_type == "openai_compatible":
-        return "openai_compatible"
-    if preset_type == "anthropic_compatible":
-        return "anthropic_compatible"
+) -> "AISourcePresetType":
+    known_preset_types = {
+        item.preset_type for item in ai_source_service.list_presets()
+    }
+    if preset_type in known_preset_types:
+        return cast("AISourcePresetType", preset_type)
     raise UnsupportedAISourcePresetError
 
 
@@ -208,6 +227,53 @@ def _build_persona_create_input(
         style_prompt=style_prompt,
         enabled=enabled,
     )
+
+
+def _build_test_wav_bytes() -> bytes:
+    buffer = io.BytesIO()
+    with wave.open(buffer, "wb") as wav_file:
+        wav_file.setnchannels(1)
+        wav_file.setsampwidth(2)
+        wav_file.setframerate(16000)
+        wav_file.writeframes(b"\x00\x00" * 16000)
+    return buffer.getvalue()
+
+
+def _coerce_optional_string(
+    extra_config: dict[str, object] | None,
+    key: str,
+) -> str | None:
+    if not extra_config:
+        return None
+    value = extra_config.get(key)
+    return value.strip() if isinstance(value, str) and value.strip() else None
+
+
+def _coerce_optional_int(
+    extra_config: dict[str, object] | None,
+    key: str,
+) -> int | None:
+    if not extra_config:
+        return None
+    value = extra_config.get(key)
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str) and value.strip():
+        try:
+            return int(value.strip())
+        except ValueError:
+            return None
+    return None
+
+
+def _coerce_response_format(
+    extra_config: dict[str, object] | None,
+    key: str,
+) -> Literal["mp3", "opus", "aac", "flac", "wav", "pcm"]:
+    value = _coerce_optional_string(extra_config, key)
+    if value in {"mp3", "opus", "aac", "flac", "wav", "pcm"}:
+        return cast("Literal['mp3', 'opus', 'aac', 'flac', 'wav', 'pcm']", value)
+    return "wav"
 
 
 class AIAdminService:
@@ -374,14 +440,18 @@ class AIAdminService:
         self,
         *,
         source_id: str,
-    ) -> list["AIChatModelDefinition"]:
+    ) -> list["AISourceModelDefinition"]:
         async with get_session() as session:
-            return await ai_chat_model_service.list_models(
+            source = await ai_source_service.get_source(session, source_id=source_id)
+            if source is None:
+                return []
+            return await self._list_managed_models(
                 session,
+                source=source,
                 source_id=source_id,
             )
 
-    async def fetch_source_models(
+    async def fetch_source_models(  # noqa: PLR0913
         self,
         *,
         source_id: str | None = None,
@@ -389,6 +459,7 @@ class AIAdminService:
         api_base: str | None = None,
         api_key_env_name: str | None = None,
         api_key: str | None = None,
+        extra_config: dict[str, object] | None = None,
     ) -> list["AIModelCatalogItem"]:
         async with get_session() as session:
             stored_source = None
@@ -403,6 +474,7 @@ class AIAdminService:
                 preset_type=preset_type,
                 api_base=api_base,
                 api_key_env_name=api_key_env_name,
+                extra_config=extra_config,
             )
             resolved_api_key = api_key or ai_source_service.get_source_api_key(source)
             if not resolved_api_key:
@@ -424,24 +496,23 @@ class AIAdminService:
         enabled: bool,
         is_default: bool,
         extra_params: dict[str, object],
-    ) -> "AIChatModelDefinition":
+    ) -> "AISourceModelDefinition":
         async with get_session() as session:
-            await ai_chat_model_service.create_model(
+            source = await ai_source_service.get_source(session, source_id=source_id)
+            if source is None:
+                raise AIAdminModelNotFoundError
+            await self._create_managed_model(
                 session,
-                AIChatModelCreateInput(
-                    source_id=source_id,
-                    model_identifier=model_identifier,
-                    display_name=display_name,
-                    enabled=enabled,
-                    is_default=is_default,
-                    extra_params=extra_params,
-                ),
+                source=source,
+                source_id=source_id,
+                model_identifier=model_identifier,
+                display_name=display_name,
+                enabled=enabled,
+                is_default=is_default,
+                extra_params=extra_params,
             )
             await session.commit()
-            models = await ai_chat_model_service.list_models(
-                session,
-                source_id=source_id,
-            )
+            models = await self.list_source_models(source_id=source_id)
             return models[0]
 
     async def update_source_model(  # noqa: PLR0913
@@ -454,35 +525,61 @@ class AIAdminService:
         enabled: bool,
         is_default: bool,
         extra_params: dict[str, object],
-    ) -> "AIChatModelDefinition | None":
+    ) -> "AISourceModelDefinition | None":
         async with get_session() as session:
-            row = await ai_chat_model_service.update_model(
+            source = await ai_source_service.get_source(session, source_id=source_id)
+            if source is None:
+                return None
+            row = await self._update_managed_model(
                 session,
+                source=source,
                 model_id=model_id,
-                create_input=AIChatModelCreateInput(
-                    source_id=source_id,
-                    model_identifier=model_identifier,
-                    display_name=display_name,
-                    enabled=enabled,
-                    is_default=is_default,
-                    extra_params=extra_params,
-                ),
+                source_id=source_id,
+                model_identifier=model_identifier,
+                display_name=display_name,
+                enabled=enabled,
+                is_default=is_default,
+                extra_params=extra_params,
             )
             if row is None:
                 return None
             await session.commit()
-            models = await ai_chat_model_service.list_models(
-                session,
-                source_id=source_id,
-            )
+            models = await self.list_source_models(source_id=source_id)
             return next((item for item in models if item.model_id == model_id), None)
 
-    async def delete_source_model(self, *, model_id: str) -> bool:
+    async def delete_source_model(
+        self,
+        *,
+        model_id: str,
+        source_id: str | None = None,
+    ) -> bool:
         async with get_session() as session:
-            deleted = await ai_chat_model_service.delete_model(
-                session,
-                model_id=model_id,
-            )
+            deleted = False
+            if source_id:
+                source = await ai_source_service.get_source(
+                    session, source_id=source_id
+                )
+                if source is not None:
+                    deleted = await self._delete_managed_model(
+                        session,
+                        capability_type=source.capability_type,
+                        model_id=model_id,
+                    )
+                else:
+                    deleted = await self._delete_managed_model(
+                        session,
+                        capability_type="chat_completion",
+                        model_id=model_id,
+                    )
+            if not deleted:
+                for capability_type in SOURCE_MODEL_CAPABILITY_FALLBACK_ORDER:
+                    deleted = await self._delete_managed_model(
+                        session,
+                        capability_type=capability_type,
+                        model_id=model_id,
+                    )
+                    if deleted:
+                        break
             if deleted:
                 await session.commit()
             return deleted
@@ -495,6 +592,7 @@ class AIAdminService:
         api_base: str | None = None,
         api_key_env_name: str | None = None,
         api_key: str | None = None,
+        extra_config: dict[str, object] | None = None,
         model_identifier: str,
     ) -> tuple[str, str, int]:
         resolved_model_identifier = model_identifier.strip()
@@ -516,6 +614,7 @@ class AIAdminService:
                 preset_type=preset_type,
                 api_base=api_base,
                 api_key_env_name=api_key_env_name,
+                extra_config=extra_config,
             )
             resolved_api_key = api_key or ai_source_service.get_source_api_key(source)
             if not resolved_api_key:
@@ -523,6 +622,99 @@ class AIAdminService:
                     AISourceModelFetchConfigError.MISSING_API_KEY
                 )
             try:
+                if source.capability_type == "embedding":
+                    embedding_response = await ai_model_facade.embed_texts_for_source(
+                        source=source,
+                        api_key=resolved_api_key,
+                        model_name=resolved_model_identifier,
+                        texts=(EMBEDDING_TEST_TEXT,),
+                    )
+                    dimensions = (
+                        len(embedding_response.vectors[0])
+                        if embedding_response.vectors
+                        else 0
+                    )
+                    embedding_summary = (
+                        f"{len(embedding_response.vectors)} vector, {dimensions} dims"
+                    )
+                    return (
+                        resolved_model_identifier,
+                        f"embedding ok ({embedding_summary})",
+                        0,
+                    )
+                if source.capability_type == "speech_to_text":
+                    stt_language = _coerce_optional_string(
+                        source.extra_config,
+                        "stt_language",
+                    )
+                    transcription_response = (
+                        await ai_model_facade.transcribe_audio_for_source(
+                            source=source,
+                            api_key=resolved_api_key,
+                            model_name=resolved_model_identifier,
+                            audio_bytes=_build_test_wav_bytes(),
+                            language=stt_language,
+                        )
+                    )
+                    transcription_summary = transcription_response.text.strip()
+                    return (
+                        resolved_model_identifier,
+                        (
+                            f"stt ok: {transcription_summary}"
+                            if transcription_summary
+                            else "stt ok (empty transcript)"
+                        ),
+                        0,
+                    )
+                if source.capability_type == "text_to_speech":
+                    tts_voice = (
+                        _coerce_optional_string(source.extra_config, "tts_voice")
+                        or "alloy"
+                    )
+                    tts_response_format = _coerce_response_format(
+                        source.extra_config,
+                        "tts_response_format",
+                    )
+                    speech_response = (
+                        await ai_model_facade.synthesize_speech_for_source(
+                            source=source,
+                            api_key=resolved_api_key,
+                            model_name=resolved_model_identifier,
+                            text=TTS_TEST_TEXT,
+                            voice=tts_voice,
+                            response_format=tts_response_format,
+                        )
+                    )
+                    return (
+                        resolved_model_identifier,
+                        f"tts ok ({len(speech_response.audio_bytes)} bytes)",
+                        0,
+                    )
+                if source.capability_type == "rerank":
+                    rerank_top_n = (
+                        _coerce_optional_int(source.extra_config, "rerank_top_n") or 2
+                    )
+                    rerank_response = await ai_model_facade.rerank_documents_for_source(
+                        source=source,
+                        api_key=resolved_api_key,
+                        model_name=resolved_model_identifier,
+                        query=RERANK_TEST_QUERY,
+                        documents=RERANK_TEST_DOCUMENTS,
+                        top_n=rerank_top_n,
+                    )
+                    top_score = (
+                        rerank_response.results[0].relevance_score
+                        if rerank_response.results
+                        else 0.0
+                    )
+                    rerank_summary = (
+                        f"{len(rerank_response.results)} results, top={top_score:.3f}"
+                    )
+                    return (
+                        resolved_model_identifier,
+                        f"rerank ok ({rerank_summary})",
+                        0,
+                    )
                 response = await ai_model_facade.generate_text_for_source(
                     source=source,
                     api_key=resolved_api_key,
@@ -568,6 +760,7 @@ class AIAdminService:
         preset_type: str | None,
         api_base: str | None,
         api_key_env_name: str | None,
+        extra_config: dict[str, object] | None = None,
     ) -> "AISourceDefinition":
         effective_preset_type = preset_type or (
             stored_source.preset_type if stored_source is not None else None
@@ -600,10 +793,17 @@ class AIAdminService:
 
         return ai_source_service.build_ephemeral_source(
             name=stored_source.name if stored_source is not None else "preview_source",
-            capability_type=(
+            capability_type=(  # type: ignore[arg-type]
                 stored_source.capability_type
                 if stored_source is not None
-                else "chat_completion"
+                else next(
+                    (
+                        item.capability_type
+                        for item in ai_source_service.list_presets()
+                        if item.preset_type == coerced_preset_type
+                    ),
+                    "chat_completion",
+                )
             ),
             client_type=resolve_client_type_for_preset(coerced_preset_type),
             preset_type=coerced_preset_type,
@@ -622,9 +822,90 @@ class AIAdminService:
                 stored_source.custom_headers if stored_source is not None else None
             ),
             extra_config=(
-                stored_source.extra_config if stored_source is not None else None
+                extra_config
+                if extra_config is not None
+                else stored_source.extra_config
+                if stored_source is not None
+                else None
             ),
         )
+
+    async def _create_managed_model(  # noqa: PLR0913
+        self,
+        session: "AsyncSession",
+        *,
+        source: "AISourceDefinition",
+        source_id: str,
+        model_identifier: str,
+        display_name: str,
+        enabled: bool,
+        is_default: bool,
+        extra_params: dict[str, object],
+    ) -> None:
+        entry = self._get_model_capability_entry(source.capability_type)
+        await entry.create_model(
+            session,
+            source_id,
+            model_identifier,
+            display_name,
+            enabled,
+            is_default,
+            extra_params,
+        )
+
+    async def _update_managed_model(  # noqa: PLR0913
+        self,
+        session: "AsyncSession",
+        *,
+        source: "AISourceDefinition",
+        model_id: str,
+        source_id: str,
+        model_identifier: str,
+        display_name: str,
+        enabled: bool,
+        is_default: bool,
+        extra_params: dict[str, object],
+    ) -> object | None:
+        entry = self._get_model_capability_entry(source.capability_type)
+        return await entry.update_model(
+            session,
+            model_id,
+            source_id,
+            model_identifier,
+            display_name,
+            enabled,
+            is_default,
+            extra_params,
+        )
+
+    async def _list_managed_models(
+        self,
+        session: "AsyncSession",
+        *,
+        source: "AISourceDefinition",
+        source_id: str,
+    ) -> list["AISourceModelDefinition"]:
+        entry = self._get_model_capability_entry(source.capability_type)
+        return await entry.list_models(
+            session,
+            source_id,
+        )
+
+    async def _delete_managed_model(
+        self,
+        session: "AsyncSession",
+        *,
+        capability_type: "AISourceCapabilityType",
+        model_id: str,
+    ) -> bool:
+        entry = self._get_model_capability_entry(capability_type)
+        return await entry.delete_model(session, model_id)
+
+    @staticmethod
+    def _get_model_capability_entry(
+        capability_type: "AISourceCapabilityType",
+    ) -> "AICapabilityModelRegistryEntry":
+        return SOURCE_MODEL_CAPABILITY_REGISTRY[capability_type]
 
     async def list_personas(self) -> list["AIPersonaDefinition"]:
         async with get_session() as session:

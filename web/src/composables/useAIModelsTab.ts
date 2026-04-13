@@ -1,22 +1,22 @@
 import type {
-  AIChatModelItem,
   AIModelCatalogItem,
   AISourceItem,
+  AISourceModelItem,
   AISourcePresetItem,
 } from '@/api'
-import { computed, reactive, ref, watch } from 'vue'
+import { computed, reactive, ref, type Ref, watch } from 'vue'
 import {
-  createAIChatModel,
   createAISource,
-  deleteAIChatModel,
+  createAISourceModel,
   deleteAISource,
+  deleteAISourceModel,
   fetchAISourceModels,
   getAISourceModels,
   getAISourcePresets,
   getAISources,
   testAISourceModel,
-  updateAIChatModel,
   updateAISource,
+  updateAISourceModel,
 } from '@/api'
 import { getErrorMessage } from '@/api/client'
 import { useNoticeStore } from '@/stores/notice'
@@ -29,8 +29,15 @@ interface SourceFormState {
   api_base: string
   api_keys: string[]
   api_key_env_name: string
+  proxy: string
   enabled: boolean
   timeout_seconds: number | null
+  embedding_dimensions: number | null
+  stt_language: string
+  tts_voice: string
+  tts_response_format: string
+  rerank_api_suffix: string
+  rerank_top_n: number | null
 }
 
 interface ModelFormState {
@@ -51,8 +58,15 @@ function buildSourceSnapshot (form: SourceFormState) {
     api_base: form.api_base.trim(),
     api_keys: normalizeApiKeys(form.api_keys),
     api_key_env_name: form.api_key_env_name.trim(),
+    proxy: form.proxy.trim(),
     enabled: form.enabled,
     timeout_seconds: form.timeout_seconds,
+    embedding_dimensions: form.embedding_dimensions,
+    stt_language: form.stt_language.trim(),
+    tts_voice: form.tts_voice.trim(),
+    tts_response_format: form.tts_response_format.trim(),
+    rerank_api_suffix: form.rerank_api_suffix.trim(),
+    rerank_top_n: form.rerank_top_n,
   })
 }
 
@@ -68,13 +82,14 @@ function buildModelSnapshot (form: ModelFormState) {
 }
 
 export function useAIModelsTab (
+  sourceCapabilityTab: Readonly<Ref<string>>,
   t: (key: string, params?: Record<string, unknown>) => string,
 ) {
   const noticeStore = useNoticeStore()
 
-  const sourcePresets = ref<AISourcePresetItem[]>([])
-  const sources = ref<AISourceItem[]>([])
-  const sourceModels = ref<AIChatModelItem[]>([])
+  const allSourcePresets = ref<AISourcePresetItem[]>([])
+  const allSources = ref<AISourceItem[]>([])
+  const sourceModels = ref<AISourceModelItem[]>([])
   const fetchedSourceModels = ref<AIModelCatalogItem[]>([])
 
   const loadingSources = ref(false)
@@ -104,13 +119,20 @@ export function useAIModelsTab (
   const sourceForm = reactive<SourceFormState>({
     source_id: '',
     name: '',
-    preset_type: 'openai_compatible',
-    capability_type: 'chat_completion',
+    preset_type: '',
+    capability_type: resolveSourceCapabilityType(sourceCapabilityTab.value),
     api_base: '',
     api_keys: [],
     api_key_env_name: '',
+    proxy: '',
     enabled: true,
     timeout_seconds: 120,
+    embedding_dimensions: null,
+    stt_language: '',
+    tts_voice: 'alloy',
+    tts_response_format: 'wav',
+    rerank_api_suffix: '/rerank',
+    rerank_top_n: 2,
   })
 
   const modelForm = reactive<ModelFormState>({
@@ -121,6 +143,14 @@ export function useAIModelsTab (
     enabled: true,
     is_default: false,
   })
+
+  const currentSourceCapability = computed(() => resolveSourceCapabilityType(sourceCapabilityTab.value))
+  const sourcePresets = computed(() => allSourcePresets.value.filter(
+    item => item.capability_type === currentSourceCapability.value,
+  ))
+  const sources = computed(() => allSources.value.filter(
+    item => item.capability_type === currentSourceCapability.value,
+  ))
 
   const selectedSource = computed(() => (
     sources.value.find(item => item.source_id === sourceForm.source_id) ?? null
@@ -176,7 +206,7 @@ export function useAIModelsTab (
   ))
 
   const normalizedSourceApiKeys = computed(() => normalizeApiKeys(sourceForm.api_keys))
-
+  const normalizedSourceExtraConfig = computed(() => buildSourceExtraConfig(sourceForm))
   const defaultSourceModel = computed(() => sourceModels.value.find(item => item.is_default) ?? null)
 
   watch(selectedSourcePreset, preset => {
@@ -187,6 +217,14 @@ export function useAIModelsTab (
     if (!sourceForm.api_base.trim() && preset.default_api_base) {
       sourceForm.api_base = preset.default_api_base
     }
+  })
+
+  watch(currentSourceCapability, async capability => {
+    sourceForm.capability_type = capability
+    if (loadingSources.value) {
+      return
+    }
+    await syncActiveCapabilitySelection()
   })
 
   function resetSourceValidation () {
@@ -245,14 +283,9 @@ export function useAIModelsTab (
         getAISourcePresets(),
         getAISources(),
       ])
-      sourcePresets.value = presetsResponse.data
-      sources.value = sourcesResponse.data
-      if (!sourceForm.source_id && sources.value.length > 0) {
-        await selectSource(sources.value[0])
-      } else if (sources.value.length === 0) {
-        startCreateSource()
-        sourceModels.value = []
-      }
+      allSourcePresets.value = presetsResponse.data
+      allSources.value = sourcesResponse.data
+      await syncActiveCapabilitySelection()
     } catch (error) {
       noticeStore.show(getErrorMessage(error, t('ai.sourceLoadFailed')), 'error')
     } finally {
@@ -268,8 +301,15 @@ export function useAIModelsTab (
     sourceForm.api_base = item.api_base ?? ''
     sourceForm.api_keys = extractSourceApiKeys(item)
     sourceForm.api_key_env_name = item.api_key_env_name ?? ''
+    sourceForm.proxy = extractOptionalString(item.extra_config?.proxy)
     sourceForm.enabled = item.enabled
     sourceForm.timeout_seconds = item.timeout_seconds
+    sourceForm.embedding_dimensions = extractOptionalInt(item.extra_config?.embedding_dimensions)
+    sourceForm.stt_language = extractOptionalString(item.extra_config?.stt_language)
+    sourceForm.tts_voice = extractOptionalString(item.extra_config?.tts_voice) || 'alloy'
+    sourceForm.tts_response_format = extractOptionalString(item.extra_config?.tts_response_format) || 'wav'
+    sourceForm.rerank_api_suffix = extractOptionalString(item.extra_config?.rerank_api_suffix) || '/rerank'
+    sourceForm.rerank_top_n = extractOptionalInt(item.extra_config?.rerank_top_n) ?? 2
     syncSourceBaseline()
     resetSourceValidation()
     fetchedSourceModels.value = []
@@ -277,15 +317,23 @@ export function useAIModelsTab (
   }
 
   function startCreateSource () {
+    const defaultPreset = sourcePresets.value[0]
     sourceForm.source_id = ''
     sourceForm.name = ''
-    sourceForm.preset_type = sourcePresets.value[0]?.preset_type ?? 'openai_compatible'
-    sourceForm.capability_type = sourcePresets.value[0]?.capability_type ?? 'chat_completion'
-    sourceForm.api_base = sourcePresets.value[0]?.default_api_base ?? ''
+    sourceForm.preset_type = defaultPreset?.preset_type ?? defaultPresetTypeFor(sourceCapabilityTab.value)
+    sourceForm.capability_type = currentSourceCapability.value
+    sourceForm.api_base = defaultPreset?.default_api_base ?? ''
     sourceForm.api_keys = []
     sourceForm.api_key_env_name = ''
+    sourceForm.proxy = ''
     sourceForm.enabled = true
     sourceForm.timeout_seconds = 120
+    sourceForm.embedding_dimensions = null
+    sourceForm.stt_language = ''
+    sourceForm.tts_voice = 'alloy'
+    sourceForm.tts_response_format = 'wav'
+    sourceForm.rerank_api_suffix = '/rerank'
+    sourceForm.rerank_top_n = 2
     syncSourceBaseline()
     resetSourceValidation()
     sourceModels.value = []
@@ -314,9 +362,7 @@ export function useAIModelsTab (
         enabled: sourceForm.enabled,
         timeout_seconds: sourceForm.timeout_seconds,
         custom_headers: {},
-        extra_config: {
-          api_keys: normalizedSourceApiKeys.value,
-        },
+        extra_config: normalizedSourceExtraConfig.value,
       }
       const response = sourceForm.source_id
         ? await updateAISource({ ...payload, source_id: sourceForm.source_id })
@@ -349,7 +395,7 @@ export function useAIModelsTab (
     }
   }
 
-  function selectSourceModel (item: AIChatModelItem) {
+  function selectSourceModel (item: AISourceModelItem) {
     modelForm.model_id = item.model_id
     modelForm.source_id = item.source_id
     modelForm.model_identifier = item.model_identifier
@@ -392,8 +438,8 @@ export function useAIModelsTab (
         extra_params: {},
       }
       const response = modelForm.model_id
-        ? await updateAIChatModel({ ...payload, model_id: modelForm.model_id })
-        : await createAIChatModel(payload)
+        ? await updateAISourceModel({ ...payload, model_id: modelForm.model_id })
+        : await createAISourceModel(payload)
       if (response.data) {
         await loadSourceModelsFor(sourceForm.source_id)
         selectSourceModel(response.data)
@@ -409,7 +455,7 @@ export function useAIModelsTab (
   async function removeSourceModel (modelId: string) {
     deletingModelId.value = modelId
     try {
-      await deleteAIChatModel(modelId)
+      await deleteAISourceModel(modelId, sourceForm.source_id || undefined)
       await loadSourceModelsFor(sourceForm.source_id)
       noticeStore.show(t('ai.modelDeleted'), 'success')
     } catch (error) {
@@ -425,7 +471,7 @@ export function useAIModelsTab (
     }
     importingModelIdentifier.value = item.id
     try {
-      const response = await createAIChatModel({
+      const response = await createAISourceModel({
         source_id: sourceForm.source_id,
         model_identifier: item.id,
         display_name: item.name,
@@ -459,6 +505,7 @@ export function useAIModelsTab (
         api_base: sourceForm.api_base.trim(),
         api_key: normalizedSourceApiKeys.value[0] || null,
         api_key_env_name: sourceForm.api_key_env_name.trim() || null,
+        extra_config: normalizedSourceExtraConfig.value,
       })
       fetchedSourceModels.value = response.data
       noticeStore.show(
@@ -485,6 +532,7 @@ export function useAIModelsTab (
         api_base: sourceForm.api_base.trim(),
         api_key: normalizedSourceApiKeys.value[0] || null,
         api_key_env_name: sourceForm.api_key_env_name.trim() || null,
+        extra_config: normalizedSourceExtraConfig.value,
         model_identifier: resolvedModelIdentifier,
       })
       const output = response.data.content.trim()
@@ -501,10 +549,24 @@ export function useAIModelsTab (
     }
   }
 
+  async function syncActiveCapabilitySelection () {
+    const current = sources.value.find(item => item.source_id === sourceForm.source_id)
+    if (current) {
+      await selectSource(current)
+      return
+    }
+    if (sources.value.length > 0) {
+      await selectSource(sources.value[0])
+      return
+    }
+    startCreateSource()
+    sourceModels.value = []
+  }
+
   return {
+    canFetchSourceModels,
     canSaveModel,
     canSaveSource,
-    canFetchSourceModels,
     defaultSourceModel,
     deletingModelId,
     deletingSource,
@@ -542,10 +604,89 @@ export function useAIModelsTab (
   }
 }
 
+function resolveSourceCapabilityType (tab: string) {
+  if (tab === 'embedding') {
+    return 'embedding'
+  }
+  if (tab === 'stt') {
+    return 'speech_to_text'
+  }
+  if (tab === 'tts') {
+    return 'text_to_speech'
+  }
+  if (tab === 'rerank') {
+    return 'rerank'
+  }
+  return 'chat_completion'
+}
+
+function defaultPresetTypeFor (tab: string) {
+  if (tab === 'embedding') {
+    return 'openai_compatible_embedding'
+  }
+  if (tab === 'stt') {
+    return 'openai_compatible_stt'
+  }
+  if (tab === 'tts') {
+    return 'openai_compatible_tts'
+  }
+  if (tab === 'rerank') {
+    return 'generic_rerank_api'
+  }
+  return 'openai_compatible'
+}
+
 function normalizeApiKeys (values: string[]) {
   return values
     .map(value => value.trim())
     .filter(Boolean)
+}
+
+function buildSourceExtraConfig (form: SourceFormState) {
+  const extraConfig: Record<string, unknown> = {
+    api_keys: normalizeApiKeys(form.api_keys),
+  }
+  if (form.capability_type === 'embedding' && form.embedding_dimensions) {
+    extraConfig.embedding_dimensions = form.embedding_dimensions
+  }
+  if (form.proxy.trim()) {
+    extraConfig.proxy = form.proxy.trim()
+  }
+  if (form.capability_type === 'speech_to_text' && form.stt_language.trim()) {
+    extraConfig.stt_language = form.stt_language.trim()
+  }
+  if (form.capability_type === 'text_to_speech') {
+    if (form.tts_voice.trim()) {
+      extraConfig.tts_voice = form.tts_voice.trim()
+    }
+    if (form.tts_response_format.trim()) {
+      extraConfig.tts_response_format = form.tts_response_format.trim()
+    }
+  }
+  if (form.capability_type === 'rerank') {
+    if (form.rerank_api_suffix.trim()) {
+      extraConfig.rerank_api_suffix = form.rerank_api_suffix.trim()
+    }
+    if (typeof form.rerank_top_n === 'number' && form.rerank_top_n > 0) {
+      extraConfig.rerank_top_n = form.rerank_top_n
+    }
+  }
+  return extraConfig
+}
+
+function extractOptionalString (value: unknown) {
+  return typeof value === 'string' ? value.trim() : ''
+}
+
+function extractOptionalInt (value: unknown) {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value
+  }
+  if (typeof value === 'string' && value.trim()) {
+    const parsed = Number.parseInt(value.trim(), 10)
+    return Number.isNaN(parsed) ? null : parsed
+  }
+  return null
 }
 
 function extractSourceApiKeys (item: AISourceItem) {
@@ -553,5 +694,8 @@ function extractSourceApiKeys (item: AISourceItem) {
   if (!Array.isArray(raw)) {
     return []
   }
-  return raw.filter((value): value is string => typeof value === 'string').map(value => value.trim()).filter(Boolean)
+  return raw
+    .filter((value): value is string => typeof value === 'string')
+    .map(value => value.trim())
+    .filter(Boolean)
 }

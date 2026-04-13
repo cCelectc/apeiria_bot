@@ -18,7 +18,6 @@ from apeiria.interfaces.http.auth import require_control_panel
 from apeiria.interfaces.http.routes.ai_route_support import (
     to_ai_capability_item,
     to_ai_capability_preview_item,
-    to_ai_chat_model_item,
     to_ai_conversation_item,
     to_ai_conversation_prompt_preview_item,
     to_ai_conversation_turn_item,
@@ -33,6 +32,7 @@ from apeiria.interfaces.http.routes.ai_route_support import (
     to_ai_relationship_state_item,
     to_ai_skill_item,
     to_ai_source_item,
+    to_ai_source_model_item,
     to_ai_source_preset_item,
     to_ai_tool_execution_item,
     to_ai_tool_intent_preview_item,
@@ -44,8 +44,6 @@ from apeiria.interfaces.http.schemas.ai_models import (
     AICapabilityItem,
     AICapabilityPreviewItem,
     AICapabilityPreviewRequest,
-    AIChatModelItem,
-    AIChatModelUpsertRequest,
     AIConversationItem,
     AIConversationPromptPreviewItem,
     AIConversationTurnItem,
@@ -66,8 +64,10 @@ from apeiria.interfaces.http.schemas.ai_models import (
     AISkillItem,
     AISourceItem,
     AISourceModelFetchRequest,
+    AISourceModelItem,
     AISourceModelTestRequest,
     AISourceModelTestResult,
+    AISourceModelUpsertRequest,
     AISourcePresetItem,
     AISourceUpsertRequest,
     AIToolExecutionItem,
@@ -151,13 +151,13 @@ async def delete_ai_source(
     return await ai_admin_service.delete_source(source_id=source_id)
 
 
-@router.get("/sources/models", response_model=list[AIChatModelItem])
+@router.get("/sources/models", response_model=list[AISourceModelItem])
 async def list_ai_source_models(
     _: Annotated[Any, Depends(require_control_panel)],
     source_id: Annotated[str, Query(min_length=1)],
-) -> list[AIChatModelItem]:
+) -> list[AISourceModelItem]:
     items = await ai_admin_service.list_source_models(source_id=source_id)
-    return [to_ai_chat_model_item(item) for item in items]
+    return [to_ai_source_model_item(item) for item in items]
 
 
 @router.post("/sources/models/fetch", response_model=list[AIModelCatalogItem])
@@ -172,6 +172,7 @@ async def fetch_ai_source_models(
             api_base=payload.api_base,
             api_key_env_name=payload.api_key_env_name,
             api_key=payload.api_key,
+            extra_config=payload.extra_config,
         )
     except AISourceModelFetchConfigError as exc:
         raise HTTPException(
@@ -202,6 +203,7 @@ async def test_ai_source_model(
             api_base=payload.api_base,
             api_key_env_name=payload.api_key_env_name,
             api_key=payload.api_key,
+            extra_config=payload.extra_config,
             model_identifier=payload.model_identifier,
         )
     except AISourceModelTestConfigError as exc:
@@ -221,11 +223,11 @@ async def test_ai_source_model(
     )
 
 
-@router.post("/sources/models", response_model=AIChatModelItem)
+@router.post("/sources/models", response_model=AISourceModelItem)
 async def create_ai_source_model(
-    payload: AIChatModelUpsertRequest,
+    payload: AISourceModelUpsertRequest,
     _: Annotated[Any, Depends(require_control_panel)],
-) -> AIChatModelItem:
+) -> AISourceModelItem:
     item = await ai_admin_service.create_source_model(
         source_id=payload.source_id,
         model_identifier=payload.model_identifier,
@@ -234,14 +236,14 @@ async def create_ai_source_model(
         is_default=payload.is_default,
         extra_params=payload.extra_params,
     )
-    return to_ai_chat_model_item(item)
+    return to_ai_source_model_item(item)
 
 
-@router.put("/sources/models", response_model=AIChatModelItem | None)
+@router.put("/sources/models", response_model=AISourceModelItem | None)
 async def update_ai_source_model(
-    payload: AIChatModelUpsertRequest,
+    payload: AISourceModelUpsertRequest,
     _: Annotated[Any, Depends(require_control_panel)],
-) -> AIChatModelItem | None:
+) -> AISourceModelItem | None:
     if not payload.model_id:
         return None
     item = await ai_admin_service.update_source_model(
@@ -253,15 +255,19 @@ async def update_ai_source_model(
         is_default=payload.is_default,
         extra_params=payload.extra_params,
     )
-    return to_ai_chat_model_item(item) if item is not None else None
+    return to_ai_source_model_item(item) if item is not None else None
 
 
 @router.delete("/sources/models", response_model=bool)
 async def delete_ai_source_model(
     _: Annotated[Any, Depends(require_control_panel)],
     model_id: Annotated[str, Query(min_length=1)],
+    source_id: Annotated[str | None, Query(max_length=64)] = None,
 ) -> bool:
-    return await ai_admin_service.delete_source_model(model_id=model_id)
+    return await ai_admin_service.delete_source_model(
+        model_id=model_id,
+        source_id=source_id,
+    )
 
 
 @router.get("/model-profiles", response_model=list[AIModelProfileItem])

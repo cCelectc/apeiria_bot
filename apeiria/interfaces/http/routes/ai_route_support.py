@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING
 from apeiria.interfaces.http.schemas.ai_models import (
     AICapabilityItem,
     AICapabilityPreviewItem,
-    AIChatModelItem,
     AIConversationItem,
     AIConversationPromptPreviewItem,
     AIConversationTurnItem,
@@ -22,6 +21,7 @@ from apeiria.interfaces.http.schemas.ai_models import (
     AIRelationshipStateItem,
     AISkillItem,
     AISourceItem,
+    AISourceModelItem,
     AISourcePresetItem,
     AIToolExecutionItem,
     AIToolIntentPreviewItem,
@@ -39,10 +39,10 @@ if TYPE_CHECKING:
     from apeiria.app.ai.future_task.models import AIFutureTaskDefinition
     from apeiria.app.ai.memory.models import AIMemoryDefinition
     from apeiria.app.ai.model import (
-        AIChatModelDefinition,
         AIModelBindingSpec,
         AIModelProfileDefinition,
         AISourceDefinition,
+        AISourceModelDefinition,
         AISourcePresetDefinition,
     )
     from apeiria.app.ai.model import AIModelCatalogItem as DomainModelCatalogItem
@@ -176,8 +176,8 @@ def to_ai_source_item(item: "AISourceDefinition") -> AISourceItem:
     )
 
 
-def to_ai_chat_model_item(item: "AIChatModelDefinition") -> AIChatModelItem:
-    return AIChatModelItem(
+def to_ai_source_model_item(item: "AISourceModelDefinition") -> AISourceModelItem:
+    return AISourceModelItem(
         model_id=item.model_id,
         source_id=item.source_id,
         model_identifier=item.model_identifier,

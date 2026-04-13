@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 
 from nonebot.log import logger
 
-CURRENT_SCHEMA_VERSION = 18
+CURRENT_SCHEMA_VERSION = 20
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncConnection, AsyncSession
@@ -22,6 +22,7 @@ CORE_TABLE_NAMES = frozenset(
         "ai_affinity",
         "ai_chat_model",
         "ai_conversation",
+        "ai_embedding_model",
         "ai_future_task",
         "ai_memory_embedding",
         "ai_memory_item",
@@ -29,9 +30,12 @@ CORE_TABLE_NAMES = frozenset(
         "ai_model_profile",
         "ai_persona",
         "ai_persona_binding",
+        "ai_rerank_model",
         "ai_source",
+        "ai_stt_model",
         "ai_tool_execution",
         "ai_tool_policy_binding",
+        "ai_tts_model",
         "ai_turn",
         "apeiria_schema_meta",
         "access_policy_entry",
@@ -454,6 +458,28 @@ async def _migrate_v17_to_v18(session: AsyncSession) -> None:
 
 
 MIGRATIONS[17] = _migrate_v17_to_v18
+
+
+async def _migrate_v18_to_v19(session: AsyncSession) -> None:
+    from nonebot_plugin_orm import Model
+
+    conn = await session.connection()
+    await conn.run_sync(Model.metadata.create_all)
+    await session.commit()
+
+
+MIGRATIONS[18] = _migrate_v18_to_v19
+
+
+async def _migrate_v19_to_v20(session: AsyncSession) -> None:
+    from nonebot_plugin_orm import Model
+
+    conn = await session.connection()
+    await conn.run_sync(Model.metadata.create_all)
+    await session.commit()
+
+
+MIGRATIONS[19] = _migrate_v19_to_v20
 
 
 async def _normalize_memory_types_to_note(session: AsyncSession) -> None:

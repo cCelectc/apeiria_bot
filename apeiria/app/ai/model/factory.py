@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Any
 
 from apeiria.app.ai.model.adapters import (
     AnthropicCompatibleProvider,
+    GenericRerankProvider,
     OpenAICompatibleProvider,
 )
 
@@ -13,7 +14,7 @@ if TYPE_CHECKING:
     from apeiria.app.ai.model.adapter import AIModelAdapter
     from apeiria.app.ai.model.sources import AISourceDefinition
 
-SUPPORTED_SOURCE_CLIENT_TYPES = ("openai", "anthropic")
+SUPPORTED_SOURCE_CLIENT_TYPES = ("openai", "anthropic", "generic_rerank")
 
 
 class UnsupportedAISourceClientTypeError(RuntimeError):
@@ -35,12 +36,22 @@ def build_source_adapter(
         return OpenAICompatibleProvider(
             api_base=source.api_base,
             api_key=api_key,
+            timeout_seconds=source.timeout_seconds,
+            extra_config=source.extra_config,
             request_func=request_func,
         )
     if source.client_type == "anthropic":
         return AnthropicCompatibleProvider(
             api_base=source.api_base,
             api_key=api_key,
+            request_func=request_func,
+        )
+    if source.client_type == "generic_rerank":
+        return GenericRerankProvider(
+            api_base=source.api_base,
+            api_key=api_key,
+            timeout_seconds=source.timeout_seconds,
+            extra_config=source.extra_config,
             request_func=request_func,
         )
     raise UnsupportedAISourceClientTypeError(source.client_type)

@@ -470,7 +470,7 @@ export interface AISourceItem {
   extra_config: Record<string, unknown>
 }
 
-export interface AIChatModelItem {
+export interface AISourceModelItem {
   model_id: string
   source_id: string
   model_identifier: string
@@ -1021,7 +1021,7 @@ export function deleteAISource (sourceId: string) {
 }
 
 export function getAISourceModels (sourceId: string) {
-  return client.get<AIChatModelItem[]>('/ai/sources/models', { params: { source_id: sourceId } })
+  return client.get<AISourceModelItem[]>('/ai/sources/models', { params: { source_id: sourceId } })
 }
 
 export function fetchAISourceModels (payload: {
@@ -1030,6 +1030,7 @@ export function fetchAISourceModels (payload: {
   api_base?: string | null
   api_key_env_name?: string | null
   api_key?: string | null
+  extra_config?: Record<string, unknown>
 }) {
   return client.post<AIModelCatalogItem[]>('/ai/sources/models/fetch', payload)
 }
@@ -1040,12 +1041,13 @@ export function testAISourceModel (payload: {
   api_base?: string | null
   api_key_env_name?: string | null
   api_key?: string | null
+  extra_config?: Record<string, unknown>
   model_identifier: string
 }) {
   return client.post<AISourceModelTestResult>('/ai/sources/models/test', payload)
 }
 
-export function createAIChatModel (payload: {
+export function createAISourceModel (payload: {
   source_id: string
   model_identifier: string
   display_name: string
@@ -1053,10 +1055,10 @@ export function createAIChatModel (payload: {
   is_default: boolean
   extra_params?: Record<string, unknown>
 }) {
-  return client.post<AIChatModelItem>('/ai/sources/models', payload)
+  return client.post<AISourceModelItem>('/ai/sources/models', payload)
 }
 
-export function updateAIChatModel (payload: {
+export function updateAISourceModel (payload: {
   model_id: string
   source_id: string
   model_identifier: string
@@ -1065,11 +1067,16 @@ export function updateAIChatModel (payload: {
   is_default: boolean
   extra_params?: Record<string, unknown>
 }) {
-  return client.put<AIChatModelItem | null>('/ai/sources/models', payload)
+  return client.put<AISourceModelItem | null>('/ai/sources/models', payload)
 }
 
-export function deleteAIChatModel (modelId: string) {
-  return client.delete<boolean>('/ai/sources/models', { params: { model_id: modelId } })
+export function deleteAISourceModel (modelId: string, sourceId?: string) {
+  return client.delete<boolean>('/ai/sources/models', {
+    params: {
+      model_id: modelId,
+      source_id: sourceId,
+    },
+  })
 }
 
 export function getAIModelProfiles () {

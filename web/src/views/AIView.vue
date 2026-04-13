@@ -33,7 +33,7 @@
             <v-tab value="rerank">{{ t('ai.sourceCapabilityRerank') }}</v-tab>
           </v-tabs>
 
-          <template v-if="sourceCapabilityTab !== 'chat'">
+          <template v-if="!sourceCapabilityReady">
             <v-sheet class="surface-gradient-card pa-4" rounded="lg">
               <div class="empty-state-text">{{ t('ai.sourceCapabilityComingSoon') }}</div>
               <div class="empty-state-hint mt-2">{{ t('ai.sourceCapabilityComingSoonHint') }}</div>
@@ -287,6 +287,64 @@
                             :disabled="savingSource"
                             hide-details
                             :label="t('ai.sourceEnabled')"
+                          />
+                          <v-text-field
+                            v-model.trim="sourceForm.proxy"
+                            density="comfortable"
+                            :disabled="savingSource"
+                            hide-details
+                            :label="t('ai.sourceProxy')"
+                          />
+                          <v-text-field
+                            v-if="sourceForm.capability_type === 'embedding'"
+                            v-model.number="sourceForm.embedding_dimensions"
+                            density="comfortable"
+                            :disabled="savingSource"
+                            hide-details
+                            :label="t('ai.sourceEmbeddingDimensions')"
+                            type="number"
+                          />
+                          <v-text-field
+                            v-if="sourceForm.capability_type === 'speech_to_text'"
+                            v-model.trim="sourceForm.stt_language"
+                            density="comfortable"
+                            :disabled="savingSource"
+                            hide-details
+                            :label="t('ai.sourceSttLanguage')"
+                          />
+                          <v-text-field
+                            v-if="sourceForm.capability_type === 'text_to_speech'"
+                            v-model.trim="sourceForm.tts_voice"
+                            density="comfortable"
+                            :disabled="savingSource"
+                            hide-details
+                            :label="t('ai.sourceTtsVoice')"
+                          />
+                          <v-select
+                            v-if="sourceForm.capability_type === 'text_to_speech'"
+                            v-model="sourceForm.tts_response_format"
+                            density="comfortable"
+                            :disabled="savingSource"
+                            hide-details
+                            :items="ttsResponseFormatOptions"
+                            :label="t('ai.sourceTtsFormat')"
+                          />
+                          <v-text-field
+                            v-if="sourceForm.capability_type === 'rerank'"
+                            v-model.trim="sourceForm.rerank_api_suffix"
+                            density="comfortable"
+                            :disabled="savingSource"
+                            hide-details
+                            :label="t('ai.sourceRerankApiSuffix')"
+                          />
+                          <v-text-field
+                            v-if="sourceForm.capability_type === 'rerank'"
+                            v-model.number="sourceForm.rerank_top_n"
+                            density="comfortable"
+                            :disabled="savingSource"
+                            hide-details
+                            :label="t('ai.sourceRerankTopN')"
+                            type="number"
                           />
                         </div>
                       </v-expansion-panel-text>
@@ -1612,7 +1670,24 @@
     testSourceModel,
     touchModelField,
     touchSourceField,
-  } = useAIModelsTab(t)
+  } = useAIModelsTab(sourceCapabilityTab, t)
+
+  const sourceCapabilityReady = computed(() => (
+    sourceCapabilityTab.value === 'chat'
+    || sourceCapabilityTab.value === 'embedding'
+    || sourceCapabilityTab.value === 'stt'
+    || sourceCapabilityTab.value === 'tts'
+    || sourceCapabilityTab.value === 'rerank'
+  ))
+
+  const ttsResponseFormatOptions = [
+    { title: 'wav', value: 'wav' },
+    { title: 'mp3', value: 'mp3' },
+    { title: 'opus', value: 'opus' },
+    { title: 'aac', value: 'aac' },
+    { title: 'flac', value: 'flac' },
+    { title: 'pcm', value: 'pcm' },
+  ]
 
   const {
     cancelFutureTask,

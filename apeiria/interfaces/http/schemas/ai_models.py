@@ -116,6 +116,7 @@ class AISourceModelFetchRequest(BaseModel):
     api_base: str | None = Field(default=None, max_length=2000)
     api_key_env_name: str | None = Field(default=None, max_length=128)
     api_key: str | None = Field(default=None, max_length=512)
+    extra_config: dict[str, object] = {}
 
 
 class AISourceModelTestRequest(BaseModel):
@@ -124,6 +125,7 @@ class AISourceModelTestRequest(BaseModel):
     api_base: str | None = Field(default=None, max_length=2000)
     api_key_env_name: str | None = Field(default=None, max_length=128)
     api_key: str | None = Field(default=None, max_length=512)
+    extra_config: dict[str, object] = {}
     model_identifier: str = Field(min_length=1, max_length=256)
 
 
@@ -133,7 +135,7 @@ class AISourceModelTestResult(BaseModel):
     tool_call_count: int
 
 
-class AIChatModelItem(BaseModel):
+class AISourceModelItem(BaseModel):
     model_id: str
     source_id: str
     model_identifier: str
@@ -143,7 +145,7 @@ class AIChatModelItem(BaseModel):
     extra_params: dict[str, object] = {}
 
 
-class AIChatModelUpsertRequest(BaseModel):
+class AISourceModelUpsertRequest(BaseModel):
     model_id: str | None = None
     source_id: str = Field(min_length=1, max_length=64)
     model_identifier: str = Field(min_length=1, max_length=256)

@@ -8,9 +8,17 @@ from anthropic import AsyncAnthropic
 
 from apeiria.app.ai.model.adapter import (
     AIModelCatalogItem,
+    AIModelEmbeddingRequest,
+    AIModelEmbeddingResponse,
     AIModelGenerateRequest,
     AIModelGenerateResponse,
+    AIModelRerankRequest,
+    AIModelRerankResponse,
+    AIModelSpeechRequest,
+    AIModelSpeechResponse,
     AIModelToolCall,
+    AIModelTranscriptionRequest,
+    AIModelTranscriptionResponse,
 )
 
 
@@ -19,6 +27,20 @@ class AnthropicCompatibleProviderConfigError(RuntimeError):
 
     def __init__(self, field_name: str) -> None:
         super().__init__(f"anthropic-compatible source requires {field_name}")
+
+
+class AnthropicCompatibleProviderCapabilityError(RuntimeError):
+    """Raised when Anthropic-compatible sources lack a requested capability."""
+
+    def __init__(self) -> None:
+        super().__init__("anthropic-compatible source does not support embeddings")
+
+
+class AnthropicCompatibleProviderCapabilityActionError(RuntimeError):
+    """Raised when Anthropic-compatible sources lack a requested capability."""
+
+    def __init__(self, capability: str) -> None:
+        super().__init__(f"anthropic-compatible source does not support {capability}")
 
 
 class AnthropicCompatibleProvider:
@@ -96,6 +118,34 @@ class AnthropicCompatibleProvider:
         finally:
             await client.close()
         return _extract_anthropic_models(page)
+
+    async def embed_texts(
+        self,
+        request: AIModelEmbeddingRequest,
+    ) -> AIModelEmbeddingResponse:
+        _ = request
+        raise AnthropicCompatibleProviderCapabilityError
+
+    async def transcribe_audio(
+        self,
+        request: AIModelTranscriptionRequest,
+    ) -> AIModelTranscriptionResponse:
+        _ = request
+        raise AnthropicCompatibleProviderCapabilityActionError("speech_to_text")
+
+    async def synthesize_speech(
+        self,
+        request: AIModelSpeechRequest,
+    ) -> AIModelSpeechResponse:
+        _ = request
+        raise AnthropicCompatibleProviderCapabilityActionError("text_to_speech")
+
+    async def rerank_documents(
+        self,
+        request: AIModelRerankRequest,
+    ) -> AIModelRerankResponse:
+        _ = request
+        raise AnthropicCompatibleProviderCapabilityActionError("rerank")
 
 
 def _coerce_str(extra: dict[str, Any] | None, key: str) -> str | None:

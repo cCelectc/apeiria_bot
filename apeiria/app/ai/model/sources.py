@@ -5,9 +5,22 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Literal
 
-AISourceCapabilityType = Literal["chat_completion"]
-AISourceClientType = Literal["openai", "anthropic"]
-AISourcePresetType = Literal["openai_compatible", "anthropic_compatible"]
+AISourceCapabilityType = Literal[
+    "chat_completion",
+    "embedding",
+    "speech_to_text",
+    "text_to_speech",
+    "rerank",
+]
+AISourceClientType = Literal["openai", "anthropic", "generic_rerank"]
+AISourcePresetType = Literal[
+    "openai_compatible",
+    "openai_compatible_embedding",
+    "openai_compatible_stt",
+    "openai_compatible_tts",
+    "generic_rerank_api",
+    "anthropic_compatible",
+]
 
 
 class UnsupportedAISourcePresetError(ValueError):
@@ -49,8 +62,40 @@ SOURCE_PRESETS: tuple[AISourcePresetDefinition, ...] = (
         display_name="OpenAI Compatible",
         capability_type="chat_completion",
         client_type="openai",
-        default_api_base=None,
+        default_api_base="https://api.openai.com/v1",
         description="适用于 OpenAI 风格的聊天补全接口。",
+    ),
+    AISourcePresetDefinition(
+        preset_type="openai_compatible_embedding",
+        display_name="OpenAI Compatible",
+        capability_type="embedding",
+        client_type="openai",
+        default_api_base="https://api.openai.com/v1",
+        description="适用于 OpenAI 风格的嵌入接口。",
+    ),
+    AISourcePresetDefinition(
+        preset_type="openai_compatible_stt",
+        display_name="OpenAI Compatible",
+        capability_type="speech_to_text",
+        client_type="openai",
+        default_api_base="https://api.openai.com/v1",
+        description="适用于 OpenAI 风格的语音转文字接口。",
+    ),
+    AISourcePresetDefinition(
+        preset_type="openai_compatible_tts",
+        display_name="OpenAI Compatible",
+        capability_type="text_to_speech",
+        client_type="openai",
+        default_api_base="https://api.openai.com/v1",
+        description="适用于 OpenAI 风格的文字转语音接口。",
+    ),
+    AISourcePresetDefinition(
+        preset_type="generic_rerank_api",
+        display_name="Generic Rerank API",
+        capability_type="rerank",
+        client_type="generic_rerank",
+        default_api_base="http://127.0.0.1:8000",
+        description="适用于常见 `/rerank` 风格的重排序接口。",
     ),
     AISourcePresetDefinition(
         preset_type="anthropic_compatible",

@@ -2,9 +2,18 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
-from apeiria.app.ai.model.adapter import AIModelGenerateRequest
+from apeiria.app.ai.model.adapter import (
+    AIModelEmbeddingRequest,
+    AIModelGenerateRequest,
+    AIModelRerankRequest,
+    AIModelSpeechRequest,
+    AIModelTranscriptionRequest,
+)
+from apeiria.app.ai.model.capability_selection_service import (
+    ai_model_capability_selection_service,
+)
 from apeiria.app.ai.model.client import ai_model_client
 from apeiria.app.ai.model.factory import build_source_adapter
 from apeiria.app.ai.model.profile_service import ai_model_profile_service
@@ -15,16 +24,23 @@ if TYPE_CHECKING:
 
     from apeiria.app.ai.model.adapter import (
         AIModelCatalogItem,
+        AIModelEmbeddingResponse,
         AIModelGenerateResponse,
+        AIModelRerankResponse,
+        AIModelSpeechResponse,
         AIModelToolDefinition,
+        AIModelTranscriptionResponse,
     )
     from apeiria.app.ai.model.bindings import AIModelBindingSpec, AIModelBindingTarget
     from apeiria.app.ai.model.models import (
         AIModelProfileDefinition,
         AIModelRouteQuery,
     )
-    from apeiria.app.ai.model.selection import AISelectedModel
-    from apeiria.app.ai.model.sources import AISourceDefinition
+    from apeiria.app.ai.model.selection import (
+        AISelectedCapabilityModel,
+        AISelectedModel,
+    )
+    from apeiria.app.ai.model.sources import AISourceCapabilityType, AISourceDefinition
 
 
 class AIModelFacade:
@@ -67,6 +83,19 @@ class AIModelFacade:
             target=target,
         )
 
+    async def select_capability_model(
+        self,
+        session: "AsyncSession",
+        *,
+        capability_type: "AISourceCapabilityType",
+        preferred_source_id: str | None = None,
+    ) -> "AISelectedCapabilityModel | None":
+        return await ai_model_capability_selection_service.select_default_model(
+            session,
+            capability_type=capability_type,
+            preferred_source_id=preferred_source_id,
+        )
+
     async def generate_text(
         self,
         selected: "AISelectedModel",
@@ -105,6 +134,88 @@ class AIModelFacade:
                 model_name=model_name,
                 prompt=prompt,
                 max_tokens=max_tokens,
+            )
+        )
+
+    async def embed_texts_for_source(
+        self,
+        *,
+        source: "AISourceDefinition",
+        api_key: str,
+        model_name: str,
+        texts: tuple[str, ...],
+    ) -> "AIModelEmbeddingResponse":
+        self._register_source(source, api_key=api_key)
+        return await ai_model_client.embed_texts(
+            AIModelEmbeddingRequest(
+                source_id=source.source_id,
+                model_name=model_name,
+                texts=texts,
+            )
+        )
+
+    async def transcribe_audio_for_source(  # noqa: PLR0913
+        self,
+        *,
+        source: "AISourceDefinition",
+        api_key: str,
+        model_name: str,
+        audio_bytes: bytes,
+        file_name: str = "sample.wav",
+        mime_type: str = "audio/wav",
+        language: str | None = None,
+    ) -> "AIModelTranscriptionResponse":
+        self._register_source(source, api_key=api_key)
+        return await ai_model_client.transcribe_audio(
+            AIModelTranscriptionRequest(
+                source_id=source.source_id,
+                model_name=model_name,
+                audio_bytes=audio_bytes,
+                file_name=file_name,
+                mime_type=mime_type,
+                language=language,
+            )
+        )
+
+    async def synthesize_speech_for_source(  # noqa: PLR0913
+        self,
+        *,
+        source: "AISourceDefinition",
+        api_key: str,
+        model_name: str,
+        text: str,
+        voice: str = "alloy",
+        response_format: Literal["mp3", "opus", "aac", "flac", "wav", "pcm"] = "wav",
+    ) -> "AIModelSpeechResponse":
+        self._register_source(source, api_key=api_key)
+        return await ai_model_client.synthesize_speech(
+            AIModelSpeechRequest(
+                source_id=source.source_id,
+                model_name=model_name,
+                text=text,
+                voice=voice,
+                response_format=response_format,
+            )
+        )
+
+    async def rerank_documents_for_source(  # noqa: PLR0913
+        self,
+        *,
+        source: "AISourceDefinition",
+        api_key: str,
+        model_name: str,
+        query: str,
+        documents: tuple[str, ...],
+        top_n: int = 3,
+    ) -> "AIModelRerankResponse":
+        self._register_source(source, api_key=api_key)
+        return await ai_model_client.rerank_documents(
+            AIModelRerankRequest(
+                source_id=source.source_id,
+                model_name=model_name,
+                query=query,
+                documents=documents,
+                top_n=top_n,
             )
         )
 
