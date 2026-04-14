@@ -32,6 +32,14 @@ class AIConversationPromptPreview:
 
     conversation_id: str
     latest_user_message: str | None
+    planning_source_id: str | None
+    planning_profile_id: str | None
+    planning_model_name: str | None
+    planning_task_class: str | None
+    roleplay_source_id: str | None
+    roleplay_profile_id: str | None
+    roleplay_model_name: str | None
+    roleplay_task_class: str | None
     source_id: str | None
     profile_id: str | None
     model_name: str | None
@@ -48,4 +56,5 @@ class AIConversationPromptPreview:
     memories: tuple[AIMemoryDefinition, ...]
     social_memory_count: int
     knowledge_memory_count: int
+    rendered_roleplay_prompt: str | None
     rendered_prompt: str

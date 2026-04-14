@@ -20,6 +20,7 @@ from apeiria.app.ai.persona.service import ai_persona_service
 from apeiria.app.ai.runtime.composer import (
     AIRuntimeComposeInput,
     compose_reply_prompt,
+    compose_roleplay_reply_prompt,
 )
 from apeiria.app.ai.runtime.memory_steps import (
     recall_memories,
@@ -604,7 +605,7 @@ class AIRuntimeService:
             response = await self._safe_generate(
                 AIRuntimeGenerationRequest(
                     selected=state.selected,
-                    prompt=compose_reply_prompt(
+                    prompt=compose_roleplay_reply_prompt(
                         AIRuntimeComposeInput(
                             persona=state.persona,
                             relationship=state.relationship_context,

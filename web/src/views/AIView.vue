@@ -571,6 +571,122 @@
                         </v-card-actions>
                       </v-card>
                     </v-dialog>
+
+                    <v-sheet
+                      v-if="isChatCapability"
+                      class="surface-gradient-card pa-4 mt-4"
+                      rounded="lg"
+                    >
+                      <div class="d-flex flex-wrap justify-space-between align-center ga-3 mb-4">
+                        <div class="d-flex flex-wrap ga-2">
+                          <v-chip color="primary" size="small" variant="tonal">
+                            {{ t('ai.modelProfiles') }}: {{ modelProfileCount }}
+                          </v-chip>
+                          <v-chip color="primary" size="small" variant="tonal">
+                            {{ isCreatingProfile ? t('ai.createModelProfile') : t('ai.editModel') }}
+                          </v-chip>
+                          <v-chip color="primary" size="small" variant="tonal">
+                            {{ t('ai.scopeBindings') }}: {{ selectedModelBindingCount }}
+                          </v-chip>
+                        </div>
+                        <v-btn color="primary" variant="tonal" @click="startCreateModelProfile">
+                          {{ t('ai.createModelProfile') }}
+                        </v-btn>
+                      </div>
+
+                      <div v-if="!sourceForm.source_id" class="empty-state-text">
+                        {{ t('ai.selectSourceFirst') }}
+                      </div>
+                      <div v-else-if="sourceModels.length === 0" class="empty-state-text">
+                        {{ t('ai.modelProfileRequiresModel') }}
+                      </div>
+                      <template v-else>
+                        <div v-if="filteredModelProfiles.length > 0" class="d-flex flex-column ga-3 mb-4">
+                          <v-sheet
+                            v-for="item in filteredModelProfiles"
+                            :key="item.profile_id"
+                            class="source-model-row px-4 py-3"
+                            :class="{ 'source-model-row--active': item.profile_id === profileForm.profile_id }"
+                            rounded="xl"
+                            @click="selectModelProfile(item)"
+                          >
+                            <div class="source-model-row__body">
+                              <div class="source-model-row__title">{{ item.name }}</div>
+                              <div class="source-model-row__subtitle">
+                                {{ item.task_class }} · {{ item.priority }}
+                              </div>
+                            </div>
+                            <div class="source-model-row__meta">
+                              <span
+                                class="source-model-row__flag"
+                                :class="{ 'source-model-row__flag--success': item.enabled }"
+                              >
+                                {{ item.enabled ? t('ai.enabled') : t('ai.disabled') }}
+                              </span>
+                            </div>
+                          </v-sheet>
+                        </div>
+                        <div v-else class="empty-state-text mb-4">
+                          {{ t('ai.noModelProfiles') }}
+                        </div>
+
+                        <div class="ai-binding-form">
+                          <v-text-field
+                            v-model.trim="profileForm.name"
+                            density="comfortable"
+                            :disabled="savingProfile"
+                            :error-messages="displayedProfileErrors.name ? [displayedProfileErrors.name] : []"
+                            :label="t('ai.modelProfileName')"
+                            @blur="touchProfileField('name')"
+                          />
+                          <v-select
+                            v-model="profileForm.model_id"
+                            density="comfortable"
+                            :disabled="savingProfile"
+                            :error-messages="displayedProfileErrors.model_id ? [displayedProfileErrors.model_id] : []"
+                            :items="profileModelOptions"
+                            :label="t('ai.modelName')"
+                            @blur="touchProfileField('model_id')"
+                          />
+                          <v-select
+                            v-model="profileForm.task_class"
+                            density="comfortable"
+                            :disabled="savingProfile"
+                            :items="taskClassOptions"
+                            :label="t('ai.modelTaskClass')"
+                          />
+                          <v-text-field
+                            v-model.number="profileForm.priority"
+                            density="comfortable"
+                            :disabled="savingProfile"
+                            :label="t('ai.modelProfilePriority')"
+                            type="number"
+                          />
+                          <v-select
+                            v-model="profileForm.fallback_profile_id"
+                            clearable
+                            density="comfortable"
+                            :disabled="savingProfile"
+                            :items="fallbackProfileOptions"
+                            :label="t('ai.modelProfileFallback')"
+                          />
+                          <v-switch
+                            v-model="profileForm.enabled"
+                            color="primary"
+                            density="comfortable"
+                            :disabled="savingProfile"
+                            hide-details
+                            :label="t('ai.modelProfileEnabled')"
+                          />
+                        </div>
+
+                        <div class="d-flex justify-end mt-4">
+                          <v-btn color="primary" :disabled="!canSaveProfile" :loading="savingProfile" @click="saveModelProfile">
+                            {{ t('common.save') }}
+                          </v-btn>
+                        </div>
+                      </template>
+                    </v-sheet>
                   </template>
                 </v-sheet>
               </v-col>
@@ -1219,7 +1335,10 @@
                 <v-sheet class="surface-gradient-card pa-4" rounded="lg">
                   <div v-if="promptPreview" class="d-flex flex-column ga-3 text-body-2">
                     <div>{{ t('ai.latestUserMessage') }}: {{ promptPreview.latest_user_message || t('common.none') }}</div>
-                    <div>{{ t('ai.modelName') }}: {{ promptPreview.model_name || t('common.none') }}</div>
+                    <div>{{ t('ai.planningModel') }}: {{ promptPreview.planning_model_name || promptPreview.model_name || t('common.none') }}</div>
+                    <div>{{ t('ai.modelTaskClass') }}: {{ promptPreview.planning_task_class || t('common.none') }}</div>
+                    <div>{{ t('ai.roleplayModel') }}: {{ promptPreview.roleplay_model_name || t('common.none') }}</div>
+                    <div>{{ t('ai.modelTaskClass') }}: {{ promptPreview.roleplay_task_class || t('common.none') }}</div>
                     <div>{{ t('ai.personaId') }}: {{ promptPreview.persona_id || t('common.none') }}</div>
                     <div>{{ t('ai.relationshipStateTitle') }}: {{ promptPreview.relationship_context || t('common.none') }}</div>
                     <div>{{ t('ai.toolPolicyTitle') }}: {{ promptPreview.tool_policy || t('common.none') }}</div>
@@ -1232,7 +1351,10 @@
                     <div>{{ t('ai.memoryDomainSocial') }}: {{ promptPreview.social_memory_count }}</div>
                     <div>{{ t('ai.memoryDomainKnowledge') }}: {{ promptPreview.knowledge_memory_count }}</div>
                     <div>{{ t('ai.toolResultsTitle') }}: {{ promptPreview.tool_results.length }}</div>
+                    <div class="text-subtitle-2 font-weight-medium mt-2">{{ t('ai.promptPreviewPlanning') }}</div>
                     <pre class="ai-prompt-preview">{{ promptPreview.rendered_prompt }}</pre>
+                    <div class="text-subtitle-2 font-weight-medium mt-2">{{ t('ai.promptPreviewRoleplay') }}</div>
+                    <pre class="ai-prompt-preview">{{ promptPreview.rendered_roleplay_prompt || t('common.none') }}</pre>
                   </div>
                   <div v-else class="empty-state-text">
                     {{ t('ai.noPromptPreview') }}
@@ -1637,37 +1759,53 @@
   const {
     canFetchSourceModels,
     canSaveModel,
+    canSaveProfile,
     canSaveSource,
     deletingModelId,
     deletingSource,
     displayedModelErrors,
+    displayedProfileErrors,
     displayedSourceErrors,
+    fallbackProfileOptions,
     fetchedSourceModels,
     fetchingSourceModels,
+    filteredModelProfiles,
     importingModelIdentifier,
+    isChatCapability,
     testingModelIdentifier,
     importSourceModelCatalogItem,
     loadingSourceModels,
     isCreatingModel,
+    isCreatingProfile,
     isCreatingSource,
     loadModelsData,
     modelForm,
+    modelProfileCount,
     pullSourceModels,
+    profileForm,
+    profileModelOptions,
     removeSource,
     removeSourceModel,
     saveSource,
+    saveModelProfile,
     saveSourceModel,
     savingModel,
+    savingProfile,
     savingSource,
+    selectModelProfile,
     selectSource,
     selectSourceModel,
+    selectedModelBindingCount,
     sourceForm,
     sourceModels,
     sourcePresets,
     sources,
     startCreateSource,
+    startCreateModelProfile,
     startCreateSourceModel,
+    taskClassOptions,
     testSourceModel,
+    touchProfileField,
     touchModelField,
     touchSourceField,
   } = useAIModelsTab(sourceCapabilityTab, t)

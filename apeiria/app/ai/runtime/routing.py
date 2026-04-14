@@ -17,4 +17,4 @@ def select_pre_tool_reply_task_class(*, has_tools: bool) -> AIModelTaskClass:
 def select_post_tool_reply_task_class() -> AIModelTaskClass:
     """Choose the task class for the final answer after tool execution."""
 
-    return "reply_default"
+    return "reply_roleplay"

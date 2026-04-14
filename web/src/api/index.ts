@@ -517,6 +517,14 @@ export interface AIConversationTurnItem {
 export interface AIConversationPromptPreviewItem {
   conversation_id: string
   latest_user_message: string | null
+  planning_source_id: string | null
+  planning_profile_id: string | null
+  planning_model_name: string | null
+  planning_task_class: string | null
+  roleplay_source_id: string | null
+  roleplay_profile_id: string | null
+  roleplay_model_name: string | null
+  roleplay_task_class: string | null
   source_id: string | null
   profile_id: string | null
   model_name: string | null
@@ -533,6 +541,7 @@ export interface AIConversationPromptPreviewItem {
   memories: AIMemoryItem[]
   social_memory_count: number
   knowledge_memory_count: number
+  rendered_roleplay_prompt: string | null
   rendered_prompt: string
 }
 

@@ -8,6 +8,7 @@ from typing import Literal
 AIModelTaskClass = Literal[
     "planner_light",
     "reply_default",
+    "reply_roleplay",
     "reasoning_heavy",
     "memory_extraction",
     "tool_orchestration",

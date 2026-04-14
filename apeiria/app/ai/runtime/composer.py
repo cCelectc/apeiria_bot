@@ -33,7 +33,7 @@ class AIRuntimeComposeInput:
 
 
 def compose_reply_prompt(inputs: AIRuntimeComposeInput) -> str:
-    """Compose the model prompt from separated runtime channels."""
+    """Compose the tool-planning prompt from separated runtime channels."""
 
     return render_reply_prompt(
         build_reply_prompt_channels(
@@ -41,6 +41,31 @@ def compose_reply_prompt(inputs: AIRuntimeComposeInput) -> str:
                 persona=inputs.persona,
                 relationship=inputs.relationship,
                 tool_policy=inputs.skill_policy,
+                tool_results=inputs.skill_results,
+                memories=inputs.memories,
+                conversation_summary=inputs.conversation_summary,
+                social_policy=inputs.social_policy_summary,
+                future_task=inputs.future_task_context,
+                turns=inputs.turns,
+            )
+        )
+    )
+
+
+def compose_roleplay_reply_prompt(inputs: AIRuntimeComposeInput) -> str:
+    """Compose the final roleplay reply prompt after tool execution.
+
+    This stage intentionally omits tool-policy instructions so the final model
+    sees persona, relationship, memories, conversation, and distilled tool
+    results without the full structural policy layer.
+    """
+
+    return render_reply_prompt(
+        build_reply_prompt_channels(
+            AIReplyPromptContext(
+                persona=inputs.persona,
+                relationship=inputs.relationship,
+                tool_policy=None,
                 tool_results=inputs.skill_results,
                 memories=inputs.memories,
                 conversation_summary=inputs.conversation_summary,

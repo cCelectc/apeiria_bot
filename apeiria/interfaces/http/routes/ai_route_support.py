@@ -228,6 +228,14 @@ def to_ai_conversation_prompt_preview_item(
     return AIConversationPromptPreviewItem(
         conversation_id=item.conversation_id,
         latest_user_message=item.latest_user_message,
+        planning_source_id=item.planning_source_id,
+        planning_profile_id=item.planning_profile_id,
+        planning_model_name=item.planning_model_name,
+        planning_task_class=item.planning_task_class,
+        roleplay_source_id=item.roleplay_source_id,
+        roleplay_profile_id=item.roleplay_profile_id,
+        roleplay_model_name=item.roleplay_model_name,
+        roleplay_task_class=item.roleplay_task_class,
         source_id=item.source_id,
         profile_id=item.profile_id,
         model_name=item.model_name,
@@ -244,6 +252,7 @@ def to_ai_conversation_prompt_preview_item(
         memories=[to_ai_memory_item(memory) for memory in item.memories],
         social_memory_count=item.social_memory_count,
         knowledge_memory_count=item.knowledge_memory_count,
+        rendered_roleplay_prompt=item.rendered_roleplay_prompt,
         rendered_prompt=item.rendered_prompt,
     )
 

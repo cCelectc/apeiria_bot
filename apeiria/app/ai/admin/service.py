@@ -46,11 +46,19 @@ from apeiria.app.ai.model.sources import (
 from apeiria.app.ai.persona.models import AIPersonaBindingTarget, AIPersonaCreateInput
 from apeiria.app.ai.persona.service import ai_persona_service
 from apeiria.app.ai.relationship.service import ai_relationship_service
-from apeiria.app.ai.runtime.composer import AIRuntimeComposeInput, compose_reply_prompt
+from apeiria.app.ai.runtime.composer import (
+    AIRuntimeComposeInput,
+    compose_reply_prompt,
+    compose_roleplay_reply_prompt,
+)
 from apeiria.app.ai.runtime.memory_steps import retrieve_memories_for_preview
 from apeiria.app.ai.runtime.relationship_steps import (
     build_relationship_target,
     load_relationship_context,
+)
+from apeiria.app.ai.runtime.routing import (
+    select_post_tool_reply_task_class,
+    select_pre_tool_reply_task_class,
 )
 from apeiria.app.ai.skills.service import ai_skill_service
 from apeiria.app.ai.social_policy import (
@@ -1271,9 +1279,18 @@ class AIAdminService:
                 if latest_user_message
                 else []
             )
+            tool_results = extract_tool_result_lines(turns)
+            tool_policy_text = summarize_tool_policy(
+                ai_tool_service.registry.list_tools(),
+                tool_policy,
+            )
+            allowed_tools = ai_tool_service.list_allowed_tools(tool_policy)
+            pre_tool_task_class = select_pre_tool_reply_task_class(
+                has_tools=bool(allowed_tools)
+            )
             selected = await ai_model_facade.select_model(
                 session,
-                query=AIModelRouteQuery(task_class="reply_default"),
+                query=AIModelRouteQuery(task_class=pre_tool_task_class),
                 target=AIModelBindingTarget(
                     conversation_id=identity.conversation_id,
                     group_id=(
@@ -1282,12 +1299,19 @@ class AIAdminService:
                     user_id=identity.subject_user_id or user_id,
                 ),
             )
-            tool_results = extract_tool_result_lines(turns)
-            tool_policy_text = summarize_tool_policy(
-                ai_tool_service.registry.list_tools(),
-                tool_policy,
+            roleplay_selected = await ai_model_facade.select_model(
+                session,
+                query=AIModelRouteQuery(
+                    task_class=select_post_tool_reply_task_class()
+                ),
+                target=AIModelBindingTarget(
+                    conversation_id=identity.conversation_id,
+                    group_id=(
+                        identity.scope_id if identity.scope_type == "group" else None
+                    ),
+                    user_id=identity.subject_user_id or user_id,
+                ),
             )
-            allowed_tools = ai_tool_service.list_allowed_tools(tool_policy)
             context_turns = to_context_turns(turns)
             social_decision = (
                 await ai_social_policy_service.decide(
@@ -1335,6 +1359,26 @@ class AIAdminService:
                 if social_decision is None or social_decision.should_speak
                 else "Suppressed by social policy before prompt generation."
             )
+            rendered_roleplay_prompt = (
+                compose_roleplay_reply_prompt(
+                    AIRuntimeComposeInput(
+                        persona=persona,
+                        relationship=relationship_context,
+                        skill_policy=tool_policy_text,
+                        skill_results=tool_results,
+                        memories=memories,
+                        conversation_summary=conversation.short_summary,
+                        social_policy_summary=(
+                            summarize_social_policy_decision(social_decision)
+                            if social_decision is not None
+                            else None
+                        ),
+                        turns=context_turns,
+                    )
+                )
+                if social_decision is None or social_decision.should_speak
+                else "Suppressed by social policy before prompt generation."
+            )
             social_memory_count = sum(
                 1 for memory in memories if memory.memory_domain == "social"
             )
@@ -1344,6 +1388,32 @@ class AIAdminService:
             return AIConversationPromptPreview(
                 conversation_id=conversation_id,
                 latest_user_message=latest_user_message,
+                planning_source_id=(
+                    selected.source.source_id if selected is not None else None
+                ),
+                planning_profile_id=(
+                    selected.profile.profile_id if selected is not None else None
+                ),
+                planning_model_name=(
+                    selected.resolved_model_name if selected is not None else None
+                ),
+                planning_task_class=pre_tool_task_class,
+                roleplay_source_id=(
+                    roleplay_selected.source.source_id
+                    if roleplay_selected is not None
+                    else None
+                ),
+                roleplay_profile_id=(
+                    roleplay_selected.profile.profile_id
+                    if roleplay_selected is not None
+                    else None
+                ),
+                roleplay_model_name=(
+                    roleplay_selected.resolved_model_name
+                    if roleplay_selected is not None
+                    else None
+                ),
+                roleplay_task_class=select_post_tool_reply_task_class(),
                 source_id=(selected.source.source_id if selected is not None else None),
                 profile_id=(
                     selected.profile.profile_id if selected is not None else None
@@ -1377,6 +1447,7 @@ class AIAdminService:
                 memories=tuple(memories),
                 social_memory_count=social_memory_count,
                 knowledge_memory_count=knowledge_memory_count,
+                rendered_roleplay_prompt=rendered_roleplay_prompt,
                 rendered_prompt=rendered_prompt,
             )
 

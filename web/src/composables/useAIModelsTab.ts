@@ -1,5 +1,7 @@
 import type {
   AIModelCatalogItem,
+  AIModelBindingItem,
+  AIModelProfileItem,
   AISourceItem,
   AISourceModelItem,
   AISourcePresetItem,
@@ -11,10 +13,13 @@ import {
   deleteAISource,
   deleteAISourceModel,
   fetchAISourceModels,
+  getAIModelBindings,
+  getAIModelProfiles,
   getAISourceModels,
   getAISourcePresets,
   getAISources,
   testAISourceModel,
+  upsertAIModelProfile,
   updateAISource,
   updateAISourceModel,
 } from '@/api'
@@ -49,6 +54,16 @@ interface ModelFormState {
   is_default: boolean
 }
 
+interface ProfileFormState {
+  profile_id: string
+  name: string
+  model_id: string
+  task_class: string
+  priority: number
+  enabled: boolean
+  fallback_profile_id: string
+}
+
 function buildSourceSnapshot (form: SourceFormState) {
   return JSON.stringify({
     source_id: form.source_id,
@@ -81,6 +96,18 @@ function buildModelSnapshot (form: ModelFormState) {
   })
 }
 
+function buildProfileSnapshot (form: ProfileFormState) {
+  return JSON.stringify({
+    profile_id: form.profile_id,
+    name: form.name.trim(),
+    model_id: form.model_id,
+    task_class: form.task_class,
+    priority: form.priority,
+    enabled: form.enabled,
+    fallback_profile_id: form.fallback_profile_id,
+  })
+}
+
 export function useAIModelsTab (
   sourceCapabilityTab: Readonly<Ref<string>>,
   t: (key: string, params?: Record<string, unknown>) => string,
@@ -91,12 +118,15 @@ export function useAIModelsTab (
   const allSources = ref<AISourceItem[]>([])
   const sourceModels = ref<AISourceModelItem[]>([])
   const fetchedSourceModels = ref<AIModelCatalogItem[]>([])
+  const modelProfiles = ref<AIModelProfileItem[]>([])
+  const modelBindings = ref<AIModelBindingItem[]>([])
 
   const loadingSources = ref(false)
   const loadingSourceModels = ref(false)
   const fetchingSourceModels = ref(false)
   const savingSource = ref(false)
   const savingModel = ref(false)
+  const savingProfile = ref(false)
   const importingModelIdentifier = ref('')
   const testingModelIdentifier = ref('')
   const deletingSource = ref(false)
@@ -114,6 +144,12 @@ export function useAIModelsTab (
   const modelTouched = reactive({
     model_identifier: false,
     display_name: false,
+  })
+  const profileBaseline = ref('')
+  const profileSubmitAttempted = ref(false)
+  const profileTouched = reactive({
+    name: false,
+    model_id: false,
   })
 
   const sourceForm = reactive<SourceFormState>({
@@ -143,6 +179,15 @@ export function useAIModelsTab (
     enabled: true,
     is_default: false,
   })
+  const profileForm = reactive<ProfileFormState>({
+    profile_id: '',
+    name: '',
+    model_id: '',
+    task_class: 'reply_default',
+    priority: 100,
+    enabled: true,
+    fallback_profile_id: '',
+  })
 
   const currentSourceCapability = computed(() => resolveSourceCapabilityType(sourceCapabilityTab.value))
   const sourcePresets = computed(() => allSourcePresets.value.filter(
@@ -159,6 +204,16 @@ export function useAIModelsTab (
   const selectedSourcePreset = computed(() => (
     sourcePresets.value.find(item => item.preset_type === sourceForm.preset_type) ?? null
   ))
+  const isChatCapability = computed(() => currentSourceCapability.value === 'chat_completion')
+  const configuredSourceModelIds = computed(() => new Set(sourceModels.value.map(item => item.model_id)))
+  const filteredModelProfiles = computed(() => modelProfiles.value.filter(
+    item => configuredSourceModelIds.value.has(item.model_id),
+  ))
+  const modelProfileCount = computed(() => filteredModelProfiles.value.length)
+  const selectedModelProfile = computed(() => (
+    filteredModelProfiles.value.find(item => item.profile_id === profileForm.profile_id) ?? null
+  ))
+  const selectedModelBindingCount = computed(() => modelBindings.value.length)
 
   const sourceErrors = computed(() => ({
     name: sourceForm.name.trim().length === 0 ? t('ai.sourceNameRequired') : '',
@@ -194,6 +249,41 @@ export function useAIModelsTab (
     && sourceForm.source_id.length > 0
     && !savingModel.value
   ))
+  const profileErrors = computed(() => ({
+    name: profileForm.name.trim().length === 0 ? t('ai.modelProfileNameRequired') : '',
+    model_id: profileForm.model_id.trim().length === 0 ? t('ai.modelProfileModelRequired') : '',
+  }))
+  const displayedProfileErrors = computed(() => ({
+    name: profileTouched.name || profileSubmitAttempted.value ? profileErrors.value.name : '',
+    model_id: profileTouched.model_id || profileSubmitAttempted.value ? profileErrors.value.model_id : '',
+  }))
+  const profileValid = computed(() => !profileErrors.value.name && !profileErrors.value.model_id)
+  const profileDirty = computed(() => buildProfileSnapshot(profileForm) !== profileBaseline.value)
+  const isCreatingProfile = computed(() => profileForm.profile_id.length === 0)
+  const canSaveProfile = computed(() => (
+    isChatCapability.value
+    && profileValid.value
+    && profileDirty.value
+    && !savingProfile.value
+  ))
+  const taskClassOptions = computed(() => [
+    { title: t('ai.modelTaskClassReplyDefault'), value: 'reply_default' },
+    { title: t('ai.modelTaskClassReplyRoleplay'), value: 'reply_roleplay' },
+    { title: t('ai.modelTaskClassToolOrchestration'), value: 'tool_orchestration' },
+    { title: t('ai.modelTaskClassMemoryExtraction'), value: 'memory_extraction' },
+    { title: t('ai.modelTaskClassPlannerLight'), value: 'planner_light' },
+    { title: t('ai.modelTaskClassReasoningHeavy'), value: 'reasoning_heavy' },
+  ])
+  const profileModelOptions = computed(() => sourceModels.value.map(item => ({
+    title: item.display_name,
+    value: item.model_id,
+  })))
+  const fallbackProfileOptions = computed(() => filteredModelProfiles.value
+    .filter(item => item.profile_id !== profileForm.profile_id)
+    .map(item => ({
+      title: item.name,
+      value: item.profile_id,
+    })))
 
   const canFetchSourceModels = computed(() => (
     sourceForm.preset_type.trim().length > 0
@@ -239,6 +329,12 @@ export function useAIModelsTab (
     modelTouched.display_name = false
   }
 
+  function resetProfileValidation () {
+    profileSubmitAttempted.value = false
+    profileTouched.name = false
+    profileTouched.model_id = false
+  }
+
   function syncSourceBaseline () {
     sourceBaseline.value = buildSourceSnapshot(sourceForm)
   }
@@ -247,12 +343,61 @@ export function useAIModelsTab (
     modelBaseline.value = buildModelSnapshot(modelForm)
   }
 
+  function syncProfileBaseline () {
+    profileBaseline.value = buildProfileSnapshot(profileForm)
+  }
+
   function touchSourceField (field: keyof typeof sourceTouched) {
     sourceTouched[field] = true
   }
 
   function touchModelField (field: keyof typeof modelTouched) {
     modelTouched[field] = true
+  }
+
+  function touchProfileField (field: keyof typeof profileTouched) {
+    profileTouched[field] = true
+  }
+
+  function selectModelProfile (item: AIModelProfileItem) {
+    profileForm.profile_id = item.profile_id
+    profileForm.name = item.name
+    profileForm.model_id = item.model_id
+    profileForm.task_class = item.task_class
+    profileForm.priority = item.priority
+    profileForm.enabled = item.enabled
+    profileForm.fallback_profile_id = item.fallback_profile_id ?? ''
+    syncProfileBaseline()
+    resetProfileValidation()
+  }
+
+  function startCreateModelProfile () {
+    profileForm.profile_id = ''
+    profileForm.name = ''
+    profileForm.model_id = sourceModels.value[0]?.model_id ?? ''
+    profileForm.task_class = 'reply_default'
+    profileForm.priority = 100
+    profileForm.enabled = true
+    profileForm.fallback_profile_id = ''
+    syncProfileBaseline()
+    resetProfileValidation()
+  }
+
+  function syncActiveProfileSelection () {
+    if (!isChatCapability.value) {
+      startCreateModelProfile()
+      return
+    }
+    const current = filteredModelProfiles.value.find(item => item.profile_id === profileForm.profile_id)
+    if (current) {
+      selectModelProfile(current)
+      return
+    }
+    if (filteredModelProfiles.value.length > 0) {
+      selectModelProfile(filteredModelProfiles.value[0])
+      return
+    }
+    startCreateModelProfile()
   }
 
   async function loadSourceModelsFor (sourceId: string) {
@@ -264,6 +409,7 @@ export function useAIModelsTab (
     try {
       const response = await getAISourceModels(sourceId)
       sourceModels.value = response.data
+      syncActiveProfileSelection()
       if (!modelForm.model_id && sourceModels.value.length > 0) {
         selectSourceModel(sourceModels.value[0])
       } else if (sourceModels.value.length === 0) {
@@ -279,12 +425,16 @@ export function useAIModelsTab (
   async function loadModelsData () {
     loadingSources.value = true
     try {
-      const [presetsResponse, sourcesResponse] = await Promise.all([
+      const [presetsResponse, sourcesResponse, profilesResponse, bindingsResponse] = await Promise.all([
         getAISourcePresets(),
         getAISources(),
+        getAIModelProfiles(),
+        getAIModelBindings(),
       ])
       allSourcePresets.value = presetsResponse.data
       allSources.value = sourcesResponse.data
+      modelProfiles.value = profilesResponse.data
+      modelBindings.value = bindingsResponse.data
       await syncActiveCapabilitySelection()
     } catch (error) {
       noticeStore.show(getErrorMessage(error, t('ai.sourceLoadFailed')), 'error')
@@ -339,6 +489,7 @@ export function useAIModelsTab (
     sourceModels.value = []
     fetchedSourceModels.value = []
     startCreateSourceModel()
+    startCreateModelProfile()
   }
 
   async function saveSource () {
@@ -549,6 +700,39 @@ export function useAIModelsTab (
     }
   }
 
+  async function saveModelProfile () {
+    profileSubmitAttempted.value = true
+    if (!profileValid.value) {
+      noticeStore.show(profileErrors.value.name || profileErrors.value.model_id || t('ai.modelProfileSaveFailed'), 'error')
+      return
+    }
+    if (!profileDirty.value) {
+      return
+    }
+    savingProfile.value = true
+    try {
+      const response = await upsertAIModelProfile({
+        profile_id: profileForm.profile_id || null,
+        name: profileForm.name.trim(),
+        model_id: profileForm.model_id,
+        task_class: profileForm.task_class,
+        priority: profileForm.priority,
+        enabled: profileForm.enabled,
+        fallback_profile_id: profileForm.fallback_profile_id || null,
+      })
+      if (response.data) {
+        const profilesResponse = await getAIModelProfiles()
+        modelProfiles.value = profilesResponse.data
+        selectModelProfile(response.data)
+      }
+      noticeStore.show(t('ai.modelProfileSaved'), 'success')
+    } catch (error) {
+      noticeStore.show(getErrorMessage(error, t('ai.modelProfileSaveFailed')), 'error')
+    } finally {
+      savingProfile.value = false
+    }
+  }
+
   async function syncActiveCapabilitySelection () {
     const current = sources.value.find(item => item.source_id === sourceForm.source_id)
     if (current) {
@@ -566,41 +750,60 @@ export function useAIModelsTab (
   return {
     canFetchSourceModels,
     canSaveModel,
+    canSaveProfile,
     canSaveSource,
     defaultSourceModel,
     deletingModelId,
     deletingSource,
     displayedModelErrors,
+    displayedProfileErrors,
     displayedSourceErrors,
     fetchedSourceModels,
     fetchingSourceModels,
     importingModelIdentifier,
     isCreatingModel,
+    isCreatingProfile,
     isCreatingSource,
     importSourceModelCatalogItem,
+    isChatCapability,
     loadingSourceModels,
     loadModelsData,
+    modelBindings,
     modelForm,
+    modelProfileCount,
+    modelProfiles,
     pullSourceModels,
+    profileForm,
+    profileModelOptions,
     removeSource,
     removeSourceModel,
     saveSource,
+    saveModelProfile,
     saveSourceModel,
     savingModel,
+    savingProfile,
     savingSource,
+    selectModelProfile,
     selectSource,
     selectSourceModel,
+    selectedModelBindingCount,
+    selectedModelProfile,
     selectedSource,
     sourceForm,
     sourceModels,
     sourcePresets,
     sources,
     startCreateSource,
+    startCreateModelProfile,
     startCreateSourceModel,
+    taskClassOptions,
     testSourceModel,
     testingModelIdentifier,
     touchModelField,
+    touchProfileField,
     touchSourceField,
+    fallbackProfileOptions,
+    filteredModelProfiles,
   }
 }
 

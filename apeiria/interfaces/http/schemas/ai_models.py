@@ -186,6 +186,14 @@ class AIConversationTurnItem(BaseModel):
 class AIConversationPromptPreviewItem(BaseModel):
     conversation_id: str
     latest_user_message: str | None = None
+    planning_source_id: str | None = None
+    planning_profile_id: str | None = None
+    planning_model_name: str | None = None
+    planning_task_class: str | None = None
+    roleplay_source_id: str | None = None
+    roleplay_profile_id: str | None = None
+    roleplay_model_name: str | None = None
+    roleplay_task_class: str | None = None
     source_id: str | None = None
     profile_id: str | None = None
     model_name: str | None = None
@@ -202,6 +210,7 @@ class AIConversationPromptPreviewItem(BaseModel):
     memories: list[AIMemoryItem] = []
     social_memory_count: int = 0
     knowledge_memory_count: int = 0
+    rendered_roleplay_prompt: str | None = None
     rendered_prompt: str
 
 
