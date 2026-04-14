@@ -176,6 +176,7 @@ def resolve_default_tool_policy(
             {
                 "future_task.manage",
                 "memory.query",
+                "memory.update",
                 "relationship.inspect",
             }
         )

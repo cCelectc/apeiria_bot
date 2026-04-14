@@ -10,6 +10,7 @@ from apeiria.app.ai.future_task.models import AIFutureTaskToolInput
 from apeiria.app.ai.model.adapter import AIModelToolCall, AIModelToolDefinition
 from apeiria.app.ai.tools.models import (
     AIMemoryQueryObservationInput,
+    AIMemoryUpdateInput,
     AINoneBotCapabilityRequest,
     AIToolIntent,
 )
@@ -20,6 +21,7 @@ if TYPE_CHECKING:
 _TOOL_NAME_MAP = {
     "future_task.manage": "future_task_manage",
     "memory.query": "memory_query",
+    "memory.update": "memory_update",
     "relationship.inspect": "relationship_inspect",
     "plugin.capability": "plugin_capability",
 }
@@ -61,60 +63,103 @@ def build_intents_from_tool_calls(
 
     intents: list[AIToolIntent] = []
     for tool_call in tool_calls:
-        tool_name = _FUNCTION_NAME_MAP.get(tool_call.name)
-        if tool_name is None:
-            continue
-        if tool_name == "future_task.manage":
-            tool_input = _parse_future_task_input(tool_call.arguments)
-            if tool_input is None:
-                continue
-            intents.append(
-                AIToolIntent(
-                    tool_name=tool_name,
-                    kind="manage_future_task",
-                    input_payload=tool_input,
-                    reason="model-selected function call",
-                )
-            )
-        elif tool_name == "memory.query":
-            intents.append(
-                AIToolIntent(
-                    tool_name=tool_name,
-                    kind="observe_read_only",
-                    input_payload=AIMemoryQueryObservationInput(
-                        query_text=str(tool_call.arguments.get("query_text", "")),
-                    ),
-                    reason="model-selected function call",
-                )
-            )
-        elif tool_name == "relationship.inspect":
-            intents.append(
-                AIToolIntent(
-                    tool_name=tool_name,
-                    kind="observe_read_only",
-                    input_payload=None,
-                    reason="model-selected function call",
-                )
-            )
-        elif tool_name == "plugin.capability":
-            capability_name = tool_call.arguments.get("capability_name")
-            if not isinstance(capability_name, str) or not capability_name.strip():
-                continue
-            arguments = tool_call.arguments.get("arguments", {})
-            if not isinstance(arguments, dict):
-                arguments = {}
-            intents.append(
-                AIToolIntent(
-                    tool_name=tool_name,
-                    kind="invoke_capability",
-                    input_payload=AINoneBotCapabilityRequest(
-                        capability_name=capability_name,
-                        arguments=arguments,
-                    ),
-                    reason="model-selected function call",
-                )
-            )
+        intent = _build_intent_from_tool_call(tool_call)
+        if intent is not None:
+            intents.append(intent)
     return intents
+
+
+def _build_intent_from_tool_call(
+    tool_call: AIModelToolCall,
+) -> AIToolIntent | None:
+    tool_name = _FUNCTION_NAME_MAP.get(tool_call.name)
+    if tool_name is None:
+        return None
+    handler = _INTENT_BUILDERS.get(tool_name)
+    if handler is None:
+        return None
+    return handler(tool_call.arguments)
+
+
+def _build_memory_update_intent(
+    arguments: dict[str, Any],
+) -> AIToolIntent | None:
+    memory_id = _coerce_optional_string(arguments.get("memory_id"))
+    updated_content = _coerce_optional_string(arguments.get("updated_content"))
+    if memory_id is None or updated_content is None:
+        return None
+    salience = _coerce_optional_float(arguments.get("salience"))
+    confidence = _coerce_optional_float(arguments.get("confidence"))
+    return AIToolIntent(
+        tool_name="memory.update",
+        kind="update_memory",
+        input_payload=AIMemoryUpdateInput(
+            memory_id=memory_id,
+            updated_content=updated_content,
+            salience=salience,
+            confidence=confidence,
+        ),
+        reason="model-selected function call",
+    )
+
+
+def _build_future_task_intent(arguments: dict[str, Any]) -> AIToolIntent | None:
+    tool_input = _parse_future_task_input(arguments)
+    if tool_input is None:
+        return None
+    return AIToolIntent(
+        tool_name="future_task.manage",
+        kind="manage_future_task",
+        input_payload=tool_input,
+        reason="model-selected function call",
+    )
+
+
+def _build_memory_query_intent(arguments: dict[str, Any]) -> AIToolIntent:
+    return AIToolIntent(
+        tool_name="memory.query",
+        kind="observe_read_only",
+        input_payload=AIMemoryQueryObservationInput(
+            query_text=str(arguments.get("query_text", "")),
+        ),
+        reason="model-selected function call",
+    )
+
+
+def _build_relationship_inspect_intent(_arguments: dict[str, Any]) -> AIToolIntent:
+    return AIToolIntent(
+        tool_name="relationship.inspect",
+        kind="observe_read_only",
+        input_payload=None,
+        reason="model-selected function call",
+    )
+
+
+def _build_capability_intent(arguments: dict[str, Any]) -> AIToolIntent | None:
+    capability_name = arguments.get("capability_name")
+    if not isinstance(capability_name, str) or not capability_name.strip():
+        return None
+    capability_arguments = arguments.get("arguments", {})
+    if not isinstance(capability_arguments, dict):
+        capability_arguments = {}
+    return AIToolIntent(
+        tool_name="plugin.capability",
+        kind="invoke_capability",
+        input_payload=AINoneBotCapabilityRequest(
+            capability_name=capability_name,
+            arguments=capability_arguments,
+        ),
+        reason="model-selected function call",
+    )
+
+
+_INTENT_BUILDERS: dict[str, Any] = {
+    "future_task.manage": _build_future_task_intent,
+    "memory.query": _build_memory_query_intent,
+    "memory.update": _build_memory_update_intent,
+    "relationship.inspect": _build_relationship_inspect_intent,
+    "plugin.capability": _build_capability_intent,
+}
 
 
 def _build_tool_description(
@@ -184,6 +229,33 @@ def _build_tool_parameters(tool_name: str) -> dict[str, Any]:
             "required": ["query_text"],
             "additionalProperties": False,
         }
+    if tool_name == "memory.update":
+        return {
+            "type": "object",
+            "properties": {
+                "memory_id": {
+                    "type": "string",
+                    "description": (
+                        "One recalled memory_id from memory.query or prior tool "
+                        "results in the current conversation."
+                    ),
+                },
+                "updated_content": {
+                    "type": "string",
+                    "description": "Replacement memory content.",
+                },
+                "salience": {
+                    "type": "number",
+                    "description": "Optional revised salience between 0 and 1.",
+                },
+                "confidence": {
+                    "type": "number",
+                    "description": "Optional revised confidence between 0 and 1.",
+                },
+            },
+            "required": ["memory_id", "updated_content"],
+            "additionalProperties": False,
+        }
     if tool_name == "relationship.inspect":
         return {
             "type": "object",
@@ -230,6 +302,12 @@ def _coerce_optional_string(value: Any) -> str | None:
         return None
     stripped = value.strip()
     return stripped or None
+
+
+def _coerce_optional_float(value: Any) -> float | None:
+    if isinstance(value, (int, float)):
+        return float(value)
+    return None
 
 
 def _parse_iso_datetime(value: Any) -> datetime | None:

@@ -581,7 +581,7 @@ async def preview_ai_tool_intents(
     payload: AIToolIntentPreviewRequest,
     _: Annotated[Any, Depends(require_control_panel)],
 ) -> list[AIToolIntentPreviewItem]:
-    intents = ai_admin_service.preview_tool_intents(
+    intents = await ai_admin_service.preview_tool_intents(
         message_text=payload.message_text,
         scope_type=payload.scope_type,
         is_tome=payload.is_tome,

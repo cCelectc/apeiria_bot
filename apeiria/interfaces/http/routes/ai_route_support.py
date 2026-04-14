@@ -71,6 +71,7 @@ def _skill_display_name(skill_name: str) -> str:
     return {
         "future_task.manage": "提醒与任务",
         "memory.query": "查询记忆",
+        "memory.update": "修正记忆",
         "plugin.capability": "调用插件能力",
         "relationship.inspect": "查看关系状态",
     }.get(skill_name, skill_name)
@@ -80,6 +81,7 @@ def _skill_display_description(skill_name: str, fallback: str) -> str:
     return {
         "future_task.manage": "创建、取消或查看机器人已安排的提醒任务。",
         "memory.query": "查看机器人为当前用户或会话召回的长期记忆内容。",
+        "memory.update": "修正当前会话中已召回的长期记忆内容。",
         "plugin.capability": "在允许范围内调用 NoneBot 插件能力。",
         "relationship.inspect": "查看机器人对当前用户关系状态与情绪倾向的理解。",
     }.get(skill_name, fallback)

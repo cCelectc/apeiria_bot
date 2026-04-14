@@ -13,6 +13,7 @@ AIToolIntentKind = Literal[
     "observe_read_only",
     "invoke_capability",
     "manage_future_task",
+    "update_memory",
 ]
 AIToolCapabilityMode = Literal["off", "private_only", "direct_only"]
 AIToolExecutionStatus = Literal["success", "error", "timeout"]
@@ -106,6 +107,26 @@ class AIMemoryQueryObservationOutput:
     """Structured output payload for memory.query observations."""
 
     memory_ids: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class AIMemoryUpdateInput:
+    """Structured input payload for memory.update operations."""
+
+    memory_id: str
+    updated_content: str
+    salience: float | None = None
+    confidence: float | None = None
+
+
+@dataclass(frozen=True)
+class AIMemoryUpdateObservationOutput:
+    """Structured output payload for memory.update operations."""
+
+    memory_id: str
+    content: str
+    salience: float
+    confidence: float
 
 
 @dataclass(frozen=True)

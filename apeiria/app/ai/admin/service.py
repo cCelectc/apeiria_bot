@@ -1545,7 +1545,7 @@ class AIAdminService:
     ) -> list["AISkillDefinition"]:
         return ai_skill_service.list_skills(policy)
 
-    def preview_tool_intents(
+    async def preview_tool_intents(
         self,
         *,
         message_text: str,
@@ -1560,10 +1560,12 @@ class AIAdminService:
             allow_read_only_tools=allow_read_only_tools,
             capability_mode=capability_mode,
         )
-        return ai_tool_service.preview_tool_intents(
-            message_text=message_text,
-            policy=policy,
-        )
+        async with get_session() as session:
+            return await ai_tool_service.preview_tool_intents(
+                session=session,
+                message_text=message_text,
+                policy=policy,
+            )
 
     async def list_tool_policy_bindings(self) -> list[AIToolPolicyBindingSpec]:
         async with get_session() as session:

@@ -20,6 +20,14 @@ from apeiria.app.ai.future_task.models import (
     AIFutureTaskToolItem,
     AIFutureTaskToolOutput,
 )
+from apeiria.app.ai.memory.service import (
+    AIMemoryUpdateInput as AIMemoryUpdateWriteInput,
+)
+from apeiria.app.ai.memory.service import (
+    ai_memory_service,
+)
+from apeiria.app.ai.model.models import AIModelRouteQuery
+from apeiria.app.ai.model.service import ai_model_facade
 from apeiria.app.ai.tools.bridge import (
     AINoneBotSkillBridge,
     invoke_skill_with_policy,
@@ -35,9 +43,15 @@ from apeiria.app.ai.tools.execution import (
     build_capability_success_result,
     build_capability_timeout_result,
 )
+from apeiria.app.ai.tools.function_calling import (
+    build_function_tools,
+    build_intents_from_tool_calls,
+)
 from apeiria.app.ai.tools.models import (
     AIMemoryQueryObservationInput,
     AIMemoryQueryObservationOutput,
+    AIMemoryUpdateInput,
+    AIMemoryUpdateObservationOutput,
     AINoneBotCapabilityRequest,
     AIRelationshipInspectObservationOutput,
     AIToolExecutionView,
@@ -50,7 +64,7 @@ from apeiria.app.ai.tools.models import (
 )
 from apeiria.app.ai.tools.policy import evaluate_tool_policy
 from apeiria.app.ai.tools.registry import AIToolRegistry
-from apeiria.app.ai.tools.selection import plan_tool_intents_for_message
+from apeiria.app.ai.tools.selection import build_tool_planning_prompt
 from apeiria.infra.db.models import AIToolExecution
 
 if TYPE_CHECKING:
@@ -115,6 +129,13 @@ class AIToolService:
                 concurrency_safe=True,
             ),
             AIToolSpec(
+                name="memory.update",
+                description="revise one recalled memory when it is inaccurate",
+                read_only=False,
+                concurrency_safe=False,
+                risk_level="low",
+            ),
+            AIToolSpec(
                 name="relationship.inspect",
                 description="inspect current affinity and mood projection",
                 read_only=True,
@@ -160,10 +181,13 @@ class AIToolService:
         session: "AsyncSession",
         request: AIToolObservationRequest,
     ) -> list[AIToolObservationResult]:
-        allowed_tools = self.list_allowed_tools(request.policy)
-        intents = plan_tool_intents_for_message(
+        intents = await self._plan_tool_intents_with_model(
+            session=session,
             message_text=request.message_text,
-            available_tools=allowed_tools,
+            policy=request.policy,
+            recalled_memory_ids=request.recalled_memory_ids,
+            recalled_memory_contents=request.recalled_memory_contents,
+            relationship_context=request.relationship_context,
         )
         return await self.execute_tool_intents(
             session,
@@ -171,16 +195,23 @@ class AIToolService:
             intents=intents,
         )
 
-    def preview_tool_intents(
+    async def preview_tool_intents(  # noqa: PLR0913
         self,
         *,
+        session: "AsyncSession",
         message_text: str,
         policy: AIToolPolicy,
+        recalled_memory_ids: tuple[str, ...] = (),
+        recalled_memory_contents: tuple[str, ...] = (),
+        relationship_context: str | None = None,
     ) -> list[AIToolIntentPreview]:
-        allowed_tools = self.list_allowed_tools(policy)
-        intents = plan_tool_intents_for_message(
+        intents = await self._plan_tool_intents_with_model(
+            session=session,
             message_text=message_text,
-            available_tools=allowed_tools,
+            policy=policy,
+            recalled_memory_ids=recalled_memory_ids,
+            recalled_memory_contents=recalled_memory_contents,
+            relationship_context=relationship_context,
         )
         return [
             AIToolIntentPreview(
@@ -190,6 +221,47 @@ class AIToolService:
                 input_payload=_to_jsonable_payload(intent.input_payload),
             )
             for intent in intents
+        ]
+
+    async def _plan_tool_intents_with_model(  # noqa: PLR0913
+        self,
+        *,
+        session: "AsyncSession",
+        message_text: str,
+        policy: AIToolPolicy,
+        recalled_memory_ids: tuple[str, ...],
+        recalled_memory_contents: tuple[str, ...],
+        relationship_context: str | None,
+    ) -> list[AIToolIntent]:
+        allowed_tools = self.list_allowed_tools(policy)
+        if not allowed_tools:
+            return []
+
+        selected = await ai_model_facade.select_model(
+            session,
+            query=AIModelRouteQuery(task_class="tool_orchestration"),
+        )
+        if selected is None:
+            return []
+
+        response = await ai_model_facade.generate_text(
+            selected,
+            prompt=build_tool_planning_prompt(
+                message_text=message_text,
+                recalled_memory_ids=recalled_memory_ids,
+                recalled_memory_contents=recalled_memory_contents,
+                relationship_context=relationship_context,
+            ),
+            tools=build_function_tools(allowed_tools),
+        )
+        if response is None:
+            return []
+
+        return [
+            intent
+            for intent in build_intents_from_tool_calls(response.tool_calls)
+            if intent.tool_name != "memory.update"
+            or _memory_update_is_recalled(intent, recalled_memory_ids)
         ]
 
     async def execute_tool_intents(
@@ -222,12 +294,25 @@ class AIToolService:
                     AIToolObservationResult(
                         tool_name=intent.tool_name,
                         summary=_format_memory_observation(
+                            request.recalled_memory_ids,
                             request.recalled_memory_contents,
                         ),
                         input_payload=intent.input_payload,
                         output_payload=AIMemoryQueryObservationOutput(
                             memory_ids=request.recalled_memory_ids,
                         ),
+                    )
+                )
+                continue
+            if (
+                intent.tool_name == "memory.update"
+                and isinstance(intent.input_payload, AIMemoryUpdateInput)
+            ):
+                observations.append(
+                    await self._execute_memory_update_intent(
+                        session=session,
+                        request=request,
+                        intent=intent,
                     )
                 )
                 continue
@@ -557,6 +642,73 @@ class AIToolService:
             policy=policy,
         )
 
+    async def _execute_memory_update_intent(
+        self,
+        *,
+        session: "AsyncSession",
+        request: AIToolObservationRequest,
+        intent: AIToolIntent,
+    ) -> AIToolObservationResult:
+        tool_input = intent.input_payload
+        assert isinstance(tool_input, AIMemoryUpdateInput)
+
+        if tool_input.memory_id not in request.recalled_memory_ids:
+            return AIToolObservationResult(
+                tool_name="memory.update",
+                summary=(
+                    "- [memory.update] failed: memory_id is not available in the "
+                    "current recalled memory set"
+                ),
+                input_payload=tool_input,
+                output_payload={"ok": False, "message": "memory_id not recalled"},
+                status="error",
+            )
+
+        row = await ai_memory_service.update_memory_content(
+            session,
+            memory_id=tool_input.memory_id,
+            update_input=AIMemoryUpdateWriteInput(
+                content=tool_input.updated_content,
+                salience=tool_input.salience
+                if tool_input.salience is not None
+                else 0.8,
+                confidence=tool_input.confidence
+                if tool_input.confidence is not None
+                else 0.85,
+                source_turn_id=request.source_turn_id,
+            ),
+        )
+        if row is None:
+            return AIToolObservationResult(
+                tool_name="memory.update",
+                summary=(
+                    "- [memory.update] failed: "
+                    f"memory {tool_input.memory_id} was not found"
+                ),
+                input_payload=tool_input,
+                output_payload={"ok": False, "message": "memory not found"},
+                status="error",
+            )
+        if row.memory_domain == "knowledge":
+            await ai_memory_service.upsert_memory_embedding(
+                session,
+                memory_id=row.memory_id,
+                content=row.content,
+            )
+        return AIToolObservationResult(
+            tool_name="memory.update",
+            summary=(
+                f"- [memory.update] Updated {row.memory_id}: {row.content}"
+            ),
+            input_payload=tool_input,
+            output_payload=AIMemoryUpdateObservationOutput(
+                memory_id=row.memory_id,
+                content=row.content,
+                salience=row.salience,
+                confidence=row.confidence,
+            ),
+        )
+
     async def record_execution(
         self,
         session: "AsyncSession",
@@ -672,10 +824,29 @@ ai_tool_service = AIToolService()
 
 
 def _format_memory_observation(
+    recalled_memory_ids: tuple[str, ...],
     recalled_memory_contents: tuple[str, ...],
 ) -> str:
-    memory_text = "; ".join(recalled_memory_contents[:3])
+    memory_text = "; ".join(
+        f"{memory_id}={content}"
+        for memory_id, content in zip(
+            recalled_memory_ids[:3],
+            recalled_memory_contents[:3],
+            strict=False,
+        )
+    )
     return f"- [memory.query] Retrieved relevant memories: {memory_text}"
+
+
+def _memory_update_is_recalled(
+    intent: AIToolIntent,
+    recalled_memory_ids: tuple[str, ...],
+) -> bool:
+    tool_input = intent.input_payload
+    memory_id = getattr(tool_input, "memory_id", None)
+    if not isinstance(memory_id, str):
+        return True
+    return memory_id in recalled_memory_ids
 
 
 def _format_future_task_summary(output: AIFutureTaskToolOutput) -> str:
