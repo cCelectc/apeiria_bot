@@ -28,6 +28,8 @@ from apeiria.app.ai.memory.summary import (
     SUMMARY_NOTE_PREFIX,
     build_summary_memory_content,
 )
+from apeiria.app.ai.model.service import ai_model_facade
+from apeiria.app.ai.model.source_service import ai_source_service
 from apeiria.infra.db.models import AIMemoryEmbedding, AIMemoryItem
 
 if TYPE_CHECKING:
@@ -62,6 +64,8 @@ class AIMemoryService:
     """Long-term memory CRUD and retrieval service."""
 
     SUMMARY_MEMORY_TYPE: AIMemoryType = "note"
+    KNOWLEDGE_RERANK_CANDIDATE_MULTIPLIER = 4
+    KNOWLEDGE_RERANK_MIN_CANDIDATES = 8
 
     async def create_memory(
         self,
@@ -265,16 +269,20 @@ class AIMemoryService:
             select(AIMemoryEmbedding).where(AIMemoryEmbedding.memory_id == memory_id)
         )
         row = result.scalar_one_or_none()
-        vector_json = json.dumps(embed_text(content))
+        embedding_model, vector = await self._build_knowledge_embedding_vector(
+            session,
+            content=content,
+        )
+        vector_json = json.dumps(vector)
         if row is None:
             row = AIMemoryEmbedding(
                 memory_id=memory_id,
-                embedding_model=EMBEDDING_MODEL_NAME,
+                embedding_model=embedding_model,
                 vector_json=vector_json,
             )
             session.add(row)
         else:
-            row.embedding_model = EMBEDDING_MODEL_NAME
+            row.embedding_model = embedding_model
             row.vector_json = vector_json
         await session.flush()
         return row
@@ -292,7 +300,12 @@ class AIMemoryService:
         if limit <= 0 or not query_text.strip():
             return []
 
-        query_vector = embed_text(query_text)
+        query_embedding_model, query_vector = (
+            await self._build_knowledge_embedding_vector(
+                session,
+                content=query_text,
+            )
+        )
         scored: list[tuple[float, AIMemoryDefinition]] = []
         seen_memory_ids: set[str] = set()
 
@@ -313,7 +326,10 @@ class AIMemoryService:
                     )
                 )
                 embedding_row = result.scalar_one_or_none()
-                if embedding_row is None:
+                if (
+                    embedding_row is None
+                    or embedding_row.embedding_model != query_embedding_model
+                ):
                     embedding_row = await self.upsert_memory_embedding(
                         session,
                         memory_id=memory.memory_id,
@@ -335,7 +351,108 @@ class AIMemoryService:
                 scored.append((cosine_similarity(query_vector, numeric_vector), memory))
 
         scored.sort(key=lambda item: item[0], reverse=True)
-        return [memory for _, memory in scored[:limit]]
+        dense_ranked = [memory for _, memory in scored]
+        return await self._rerank_knowledge_memories(
+            session,
+            query_text=query_text,
+            memories=dense_ranked,
+            limit=limit,
+        )
+
+    async def _build_knowledge_embedding_vector(
+        self,
+        session: "AsyncSession",
+        *,
+        content: str,
+    ) -> tuple[str, list[float]]:
+        selected = await ai_model_facade.select_capability_model(
+            session,
+            capability_type="embedding",
+        )
+        if selected is None:
+            return EMBEDDING_MODEL_NAME, embed_text(content)
+
+        try:
+            api_key = ai_source_service.get_source_api_key(selected.source)
+            if not api_key:
+                return EMBEDDING_MODEL_NAME, embed_text(content)
+            response = await ai_model_facade.embed_texts_for_source(
+                source=selected.source,
+                api_key=api_key,
+                model_name=selected.model.model_identifier,
+                texts=(content,),
+            )
+        except Exception:  # noqa: BLE001
+            return EMBEDDING_MODEL_NAME, embed_text(content)
+
+        if not response.vectors:
+            return EMBEDDING_MODEL_NAME, embed_text(content)
+
+        return selected.model.model_id, list(response.vectors[0])
+
+    async def _rerank_knowledge_memories(  # noqa: PLR0911
+        self,
+        session: "AsyncSession",
+        *,
+        query_text: str,
+        memories: list[AIMemoryDefinition],
+        limit: int,
+    ) -> list[AIMemoryDefinition]:
+        if limit <= 0 or not memories:
+            return []
+
+        selected = await ai_model_facade.select_capability_model(
+            session,
+            capability_type="rerank",
+        )
+        if selected is None:
+            return memories[:limit]
+
+        api_key = ai_source_service.get_source_api_key(selected.source)
+        if not api_key:
+            return memories[:limit]
+
+        candidate_limit = min(
+            len(memories),
+            max(
+                limit * self.KNOWLEDGE_RERANK_CANDIDATE_MULTIPLIER,
+                self.KNOWLEDGE_RERANK_MIN_CANDIDATES,
+            ),
+        )
+        candidates = memories[:candidate_limit]
+        try:
+            response = await ai_model_facade.rerank_documents_for_source(
+                source=selected.source,
+                api_key=api_key,
+                model_name=selected.model.model_identifier,
+                query=query_text,
+                documents=tuple(memory.content for memory in candidates),
+                top_n=min(limit, len(candidates)),
+            )
+        except Exception:  # noqa: BLE001
+            return memories[:limit]
+
+        reranked: list[AIMemoryDefinition] = []
+        seen_indexes: set[int] = set()
+        for item in response.results:
+            if item.index < 0 or item.index >= len(candidates):
+                continue
+            if item.index in seen_indexes:
+                continue
+            seen_indexes.add(item.index)
+            reranked.append(candidates[item.index])
+            if len(reranked) >= limit:
+                return reranked
+
+        if reranked:
+            dense_fallback = [
+                memory
+                for index, memory in enumerate(candidates)
+                if index not in seen_indexes
+            ]
+            return (reranked + dense_fallback)[:limit]
+
+        return memories[:limit]
 
     async def recall_memories(
         self,
