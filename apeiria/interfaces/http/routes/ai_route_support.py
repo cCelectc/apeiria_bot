@@ -194,7 +194,7 @@ def to_ai_source_model_item(item: "AISourceModelDefinition") -> AISourceModelIte
 
 def to_ai_conversation_item(item: "AIConversationAdminView") -> AIConversationItem:
     return AIConversationItem(
-        conversation_id=item.conversation_id,
+        scene_id=item.conversation_id,
         platform=item.platform,
         bot_id=item.bot_id,
         scope_type=item.scope_type,
@@ -212,7 +212,7 @@ def to_ai_conversation_turn_item(
 ) -> AIConversationTurnItem:
     return AIConversationTurnItem(
         turn_id=item.turn_id,
-        conversation_id=item.conversation_id,
+        scene_id=item.conversation_id,
         sender_type=item.sender_type,
         sender_id=item.sender_id,
         content_text=item.content_text,
@@ -230,7 +230,7 @@ def to_ai_conversation_prompt_preview_item(
     item: "AIConversationPromptPreview",
 ) -> AIConversationPromptPreviewItem:
     return AIConversationPromptPreviewItem(
-        conversation_id=item.conversation_id,
+        scene_id=item.conversation_id,
         latest_user_message=item.latest_user_message,
         planning_source_id=item.planning_source_id,
         planning_profile_id=item.planning_profile_id,
@@ -244,7 +244,7 @@ def to_ai_conversation_prompt_preview_item(
         profile_id=item.profile_id,
         model_name=item.model_name,
         persona_id=item.persona_id,
-        conversation_summary=item.conversation_summary,
+        scene_summary=item.conversation_summary,
         relationship_context=item.relationship_context,
         tool_policy=item.tool_policy,
         social_action=item.social_action,
@@ -363,7 +363,7 @@ def to_ai_skill_item(item: "AISkillDefinition") -> AISkillItem:
 def to_ai_tool_execution_item(item: "AIToolExecutionView") -> AIToolExecutionItem:
     return AIToolExecutionItem(
         execution_id=item.execution_id,
-        conversation_id=item.conversation_id,
+        scene_id=item.conversation_id,
         tool_name=item.tool_name,
         status=item.status,
         input_json=item.input_json,

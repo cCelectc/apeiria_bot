@@ -1339,9 +1339,10 @@
 
               <v-sheet v-if="conversations.length > 0" class="surface-gradient-card pa-4" rounded="lg">
                 <div v-if="selectedConversation" class="d-flex flex-column ga-2 text-body-2">
-                  <div>{{ t('ai.conversationId') }}: {{ selectedConversation.conversation_id }}</div>
+                  <div>{{ t('ai.conversationId') }}: {{ selectedConversation.scene_id }}</div>
                   <div>{{ t('ai.scopeType') }}: {{ selectedConversation.scope_type }}</div>
                   <div>{{ t('ai.scopeId') }}: {{ selectedConversation.scope_id }}</div>
+                  <div>{{ t('ai.scopeUser') }}: {{ selectedConversation.subject_user_id || t('common.none') }}</div>
                   <div>{{ t('ai.conversationSummary') }}: {{ selectedConversation.short_summary || t('common.none') }}</div>
                   <div>{{ t('ai.lastActiveAt') }}: {{ selectedConversation.last_active_at }}</div>
                 </div>
@@ -1374,14 +1375,14 @@
                       :loading="loadingDebug"
                       :no-data-text="t('common.noData')"
                     >
-                      <template #item.conversation_id="{ item }">
+                      <template #item.scene_id="{ item }">
                         <v-btn
                           color="primary"
                           size="small"
                           variant="text"
-                          @click="loadConversationDetails(item.conversation_id)"
+                          @click="loadConversationDetails(item.scene_id)"
                         >
-                          {{ item.conversation_id.slice(0, 16) }}...
+                          {{ item.scene_id.slice(0, 16) }}...
                         </v-btn>
                       </template>
                     </v-data-table>
@@ -1439,6 +1440,7 @@
                 <v-sheet class="surface-gradient-card pa-4" rounded="lg">
                   <div v-if="promptPreview" class="d-flex flex-column ga-3 text-body-2">
                     <div>{{ t('ai.latestUserMessage') }}: {{ promptPreview.latest_user_message || t('common.none') }}</div>
+                    <div>{{ t('ai.conversationId') }}: {{ promptPreview.scene_id }}</div>
                     <div>{{ t('ai.planningModel') }}: {{ promptPreview.planning_model_name || promptPreview.model_name || t('common.none') }}</div>
                     <div>{{ t('ai.planningSource') }}: {{ promptPreview.planning_source_id || t('common.none') }}</div>
                     <div>{{ t('ai.planningProfile') }}: {{ promptPreview.planning_profile_id || t('common.none') }}</div>
@@ -1455,6 +1457,7 @@
                     <div>{{ t('ai.socialReason') }}: {{ promptPreview.social_reason_text || t('common.none') }}</div>
                     <div>{{ t('ai.socialReasonCodes') }}: {{ promptPreview.social_reason_codes.join(', ') || t('common.none') }}</div>
                     <div>{{ t('ai.socialPolicySource') }}: {{ promptPreview.social_policy_source || t('common.none') }}</div>
+                    <div>{{ t('ai.conversationSummary') }}: {{ promptPreview.scene_summary || t('common.none') }}</div>
                     <div>{{ t('ai.memoryHits') }}: {{ promptPreview.memories.length }}</div>
                     <div>{{ t('ai.memoryLayerOperator') }}: {{ promptPreview.operator_memory_count }}</div>
                     <div>{{ t('ai.memoryLayerSummary') }}: {{ promptPreview.summary_memory_count }}</div>
@@ -2164,9 +2167,10 @@
   ])
 
   const conversationHeaders = computed(() => [
-    { title: t('ai.conversationId'), key: 'conversation_id', sortable: false },
+    { title: t('ai.conversationId'), key: 'scene_id', sortable: false },
     { title: t('ai.scopeType'), key: 'scope_type', sortable: false },
     { title: t('ai.scopeId'), key: 'scope_id', sortable: false },
+    { title: t('ai.scopeUser'), key: 'subject_user_id', sortable: false },
     { title: t('ai.conversationSummary'), key: 'short_summary', sortable: false },
     { title: t('ai.lastActiveAt'), key: 'last_active_at', sortable: false },
   ])

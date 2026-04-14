@@ -165,7 +165,7 @@ class AISourceModelUpsertRequest(BaseModel):
 
 
 class AIConversationItem(BaseModel):
-    conversation_id: str
+    scene_id: str
     platform: str
     bot_id: str
     scope_type: str
@@ -179,7 +179,7 @@ class AIConversationItem(BaseModel):
 
 class AIConversationTurnItem(BaseModel):
     turn_id: str
-    conversation_id: str
+    scene_id: str
     sender_type: str
     sender_id: str
     content_text: str
@@ -193,7 +193,7 @@ class AIConversationTurnItem(BaseModel):
 
 
 class AIConversationPromptPreviewItem(BaseModel):
-    conversation_id: str
+    scene_id: str
     latest_user_message: str | None = None
     planning_source_id: str | None = None
     planning_profile_id: str | None = None
@@ -207,7 +207,7 @@ class AIConversationPromptPreviewItem(BaseModel):
     profile_id: str | None = None
     model_name: str | None = None
     persona_id: str | None = None
-    conversation_summary: str | None = None
+    scene_summary: str | None = None
     relationship_context: str | None = None
     tool_policy: str | None = None
     social_action: str | None = None
@@ -283,7 +283,7 @@ class AISkillItem(BaseModel):
 
 class AIToolExecutionItem(BaseModel):
     execution_id: str
-    conversation_id: str
+    scene_id: str
     tool_name: str
     status: str
     input_json: str | None = None

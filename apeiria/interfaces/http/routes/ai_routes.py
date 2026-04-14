@@ -431,8 +431,8 @@ async def list_ai_recent_targets(
     return [to_ai_recent_target_item(item) for item in targets]
 
 
-@router.get("/conversations", response_model=list[AIConversationItem])
-async def list_ai_conversations(
+@router.get("/scenes", response_model=list[AIConversationItem])
+async def list_ai_scenes(
     _: Annotated[Any, Depends(require_control_panel)],
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
 ) -> list[AIConversationItem]:
@@ -440,30 +440,30 @@ async def list_ai_conversations(
     return [to_ai_conversation_item(item) for item in conversations]
 
 
-@router.get("/conversations/turns", response_model=list[AIConversationTurnItem])
-async def list_ai_conversation_turns(
+@router.get("/scenes/turns", response_model=list[AIConversationTurnItem])
+async def list_ai_scene_turns(
     _: Annotated[Any, Depends(require_control_panel)],
-    conversation_id: Annotated[str, Query(min_length=1)],
+    scene_id: Annotated[str, Query(min_length=1)],
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
 ) -> list[AIConversationTurnItem]:
-    turns = await ai_admin_service.list_conversation_turns(
-        conversation_id=conversation_id,
+    turns = await ai_admin_service.list_scene_turns(
+        scene_id=scene_id,
         limit=limit,
     )
     return [to_ai_conversation_turn_item(item) for item in turns]
 
 
 @router.get(
-    "/conversations/prompt-preview",
+    "/scenes/prompt-preview",
     response_model=AIConversationPromptPreviewItem | None,
 )
-async def get_ai_conversation_prompt_preview(
+async def get_ai_scene_prompt_preview(
     _: Annotated[Any, Depends(require_control_panel)],
-    conversation_id: Annotated[str, Query(min_length=1)],
+    scene_id: Annotated[str, Query(min_length=1)],
     turn_limit: Annotated[int, Query(ge=1, le=200)] = 50,
 ) -> AIConversationPromptPreviewItem | None:
-    preview = await ai_admin_service.build_prompt_preview(
-        conversation_id=conversation_id,
+    preview = await ai_admin_service.build_scene_prompt_preview(
+        scene_id=scene_id,
         turn_limit=turn_limit,
     )
     if preview is None:
@@ -703,10 +703,10 @@ async def list_ai_capabilities(
 @router.get("/tools/executions", response_model=list[AIToolExecutionItem])
 async def list_ai_tool_executions(
     _: Annotated[Any, Depends(require_control_panel)],
-    conversation_id: Annotated[str, Query(min_length=1)],
+    scene_id: Annotated[str, Query(min_length=1)],
 ) -> list[AIToolExecutionItem]:
     rows = await ai_admin_service.list_tool_executions(
-        conversation_id=conversation_id,
+        conversation_id=scene_id,
     )
     return [to_ai_tool_execution_item(item) for item in rows]
 
@@ -714,11 +714,11 @@ async def list_ai_tool_executions(
 @router.get("/debug/skills/executions", response_model=list[AIToolExecutionItem])
 async def list_ai_skill_executions_debug(
     _: Annotated[Any, Depends(require_control_panel)],
-    conversation_id: Annotated[str, Query(min_length=1)],
+    scene_id: Annotated[str, Query(min_length=1)],
 ) -> list[AIToolExecutionItem]:
     """Advanced debug alias retained during the boundary-freeze phase."""
 
     rows = await ai_admin_service.list_tool_executions(
-        conversation_id=conversation_id,
+        conversation_id=scene_id,
     )
     return [to_ai_tool_execution_item(item) for item in rows]

@@ -356,7 +356,7 @@ export interface AIToolPolicyBindingItem {
 
 export interface AIToolExecutionItem {
   execution_id: string
-  conversation_id: string
+  scene_id: string
   tool_name: string
   status: string
   input_json: string | null
@@ -489,7 +489,7 @@ export interface AISourceModelTestResult {
 }
 
 export interface AIConversationItem {
-  conversation_id: string
+  scene_id: string
   platform: string
   bot_id: string
   scope_type: string
@@ -503,7 +503,7 @@ export interface AIConversationItem {
 
 export interface AIConversationTurnItem {
   turn_id: string
-  conversation_id: string
+  scene_id: string
   sender_type: string
   sender_id: string
   content_text: string
@@ -517,7 +517,7 @@ export interface AIConversationTurnItem {
 }
 
 export interface AIConversationPromptPreviewItem {
-  conversation_id: string
+  scene_id: string
   latest_user_message: string | null
   planning_source_id: string | null
   planning_profile_id: string | null
@@ -531,7 +531,7 @@ export interface AIConversationPromptPreviewItem {
   profile_id: string | null
   model_name: string | null
   persona_id: string | null
-  conversation_summary: string | null
+  scene_summary: string | null
   relationship_context: string | null
   tool_policy: string | null
   social_action: string | null
@@ -1148,24 +1148,24 @@ export function getAIRecentTargets (params?: {
   return client.get<AIRecentTargetItem[]>('/ai/recent-targets', { params })
 }
 
-export function getAIConversations (params?: {
+export function getAIScenes (params?: {
   limit?: number
 }) {
-  return client.get<AIConversationItem[]>('/ai/conversations', { params })
+  return client.get<AIConversationItem[]>('/ai/scenes', { params })
 }
 
-export function getAIConversationTurns (params: {
-  conversation_id: string
+export function getAISceneTurns (params: {
+  scene_id: string
   limit?: number
 }) {
-  return client.get<AIConversationTurnItem[]>('/ai/conversations/turns', { params })
+  return client.get<AIConversationTurnItem[]>('/ai/scenes/turns', { params })
 }
 
-export function getAIConversationPromptPreview (params: {
-  conversation_id: string
+export function getAIScenePromptPreview (params: {
+  scene_id: string
   turn_limit?: number
 }) {
-  return client.get<AIConversationPromptPreviewItem | null>('/ai/conversations/prompt-preview', { params })
+  return client.get<AIConversationPromptPreviewItem | null>('/ai/scenes/prompt-preview', { params })
 }
 
 export function getAIFutureTasks (params?: {
@@ -1208,7 +1208,7 @@ export function getAICapabilities () {
 }
 
 export function getAIToolExecutions (params: {
-  conversation_id: string
+  scene_id: string
 }) {
   return client.get<AIToolExecutionItem[]>('/ai/tools/executions', { params })
 }

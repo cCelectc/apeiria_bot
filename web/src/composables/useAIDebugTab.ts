@@ -6,9 +6,9 @@ import type {
 } from '@/api'
 import { computed, reactive, ref } from 'vue'
 import {
-  getAIConversationPromptPreview,
-  getAIConversations,
-  getAIConversationTurns,
+  getAIScenePromptPreview,
+  getAIScenes,
+  getAISceneTurns,
   getAIToolExecutions,
 } from '@/api'
 import { getErrorMessage } from '@/api/client'
@@ -23,13 +23,13 @@ export function useAIDebugTab (t: (key: string, params?: Record<string, unknown>
   const turns = ref<AIConversationTurnItem[]>([])
   const toolExecutions = ref<AIToolExecutionItem[]>([])
   const promptPreview = ref<AIConversationPromptPreviewItem | null>(null)
-  const selectedConversationId = ref('')
+  const selectedSceneId = ref('')
   const debugForm = reactive({
     limit: 20,
     turnLimit: 50,
   })
 
-  const selectedConversation = computed(() => conversations.value.find(item => item.conversation_id === selectedConversationId.value) ?? null)
+  const selectedConversation = computed(() => conversations.value.find(item => item.scene_id === selectedSceneId.value) ?? null)
   const latestAssistantTurn = computed(() => {
     for (let index = turns.value.length - 1; index >= 0; index -= 1) {
       const turn = turns.value[index]
@@ -70,13 +70,13 @@ export function useAIDebugTab (t: (key: string, params?: Record<string, unknown>
   async function loadDebugData () {
     loadingDebug.value = true
     try {
-      const response = await getAIConversations({ limit: debugForm.limit })
+      const response = await getAIScenes({ limit: debugForm.limit })
       conversations.value = response.data
-      if (!selectedConversationId.value && conversations.value.length > 0) {
-        selectedConversationId.value = conversations.value[0].conversation_id
+      if (!selectedSceneId.value && conversations.value.length > 0) {
+        selectedSceneId.value = conversations.value[0].scene_id
       }
-      if (selectedConversationId.value) {
-        await loadConversationDetails(selectedConversationId.value)
+      if (selectedSceneId.value) {
+        await loadConversationDetails(selectedSceneId.value)
       } else {
         turns.value = []
         toolExecutions.value = []
@@ -88,18 +88,18 @@ export function useAIDebugTab (t: (key: string, params?: Record<string, unknown>
     }
   }
 
-  async function loadConversationDetails (conversationId: string) {
-    selectedConversationId.value = conversationId
+  async function loadConversationDetails (sceneId: string) {
+    selectedSceneId.value = sceneId
     loadingTurns.value = true
     try {
       const [turnsResponse, executionsResponse, promptPreviewResponse] = await Promise.all([
-        getAIConversationTurns({
-          conversation_id: conversationId,
+        getAISceneTurns({
+          scene_id: sceneId,
           limit: debugForm.turnLimit,
         }),
-        getAIToolExecutions({ conversation_id: conversationId }),
-        getAIConversationPromptPreview({
-          conversation_id: conversationId,
+        getAIToolExecutions({ scene_id: sceneId }),
+        getAIScenePromptPreview({
+          scene_id: sceneId,
           turn_limit: debugForm.turnLimit,
         }),
       ])
@@ -156,7 +156,7 @@ export function useAIDebugTab (t: (key: string, params?: Record<string, unknown>
     promptPreviewLongTermMemories,
     promptPreviewSummaryMemories,
     selectedConversation,
-    selectedConversationId,
+    selectedConversationId: selectedSceneId,
     summarizeJsonText,
     summarizeRawPayload,
     toolExecutions,

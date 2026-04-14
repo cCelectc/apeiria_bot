@@ -1311,41 +1311,41 @@ class AIAdminService:
                 await session.commit()
             return task
 
-    async def list_conversation_turns(
+    async def list_scene_turns(
         self,
         *,
-        conversation_id: str,
+        scene_id: str,
         limit: int = 50,
     ) -> list["AIConversationTurnDetailView"]:
         async with get_session() as session:
             return await ai_conversation_service.list_turns_for_conversation(
                 session,
-                conversation_id=conversation_id,
+                conversation_id=scene_id,
                 limit=limit,
             )
 
-    async def build_prompt_preview(
+    async def build_scene_prompt_preview(
         self,
         *,
-        conversation_id: str,
+        scene_id: str,
         turn_limit: int = 50,
     ) -> AIConversationPromptPreview | None:
         async with get_session() as session:
             conversation = await ai_conversation_service.get_conversation_view(
                 session,
-                conversation_id=conversation_id,
+                conversation_id=scene_id,
             )
             if conversation is None:
                 return None
             identity = await ai_conversation_service.get_conversation_identity(
                 session,
-                conversation_id=conversation_id,
+                conversation_id=scene_id,
             )
             if identity is None:
                 return None
             turns = await ai_conversation_service.list_turns_for_conversation(
                 session,
-                conversation_id=conversation_id,
+                conversation_id=scene_id,
                 limit=turn_limit,
             )
             latest_user_message = select_latest_user_message(turns)
@@ -1419,7 +1419,9 @@ class AIAdminService:
                     target=AIModelBindingTarget(
                         conversation_id=identity.conversation_id,
                         group_id=(
-                            identity.scope_id if identity.scope_type == "group" else None
+                            identity.scope_id
+                            if identity.scope_type == "group"
+                            else None
                         ),
                         user_id=identity.subject_user_id or user_id,
                     ),
@@ -1432,7 +1434,7 @@ class AIAdminService:
                 await ai_social_policy_service.decide(
                     session,
                     _build_prompt_preview_social_input(
-                        conversation_id=conversation_id,
+                        conversation_id=scene_id,
                         identity=identity,
                         latest_user_message=latest_user_message,
                         conversation_summary=conversation.short_summary,
@@ -1492,8 +1494,9 @@ class AIAdminService:
                         turns=context_turns,
                     )
                 )
-                if has_tools and (social_decision is None or social_decision.should_speak)
-                else "Suppressed by social policy before prompt generation."
+                if has_tools
+                and (social_decision is None or social_decision.should_speak)
+                else None
             )
             operator_memory_count = sum(
                 1 for memory in memories if memory.memory_layer == "operator"
@@ -1508,7 +1511,7 @@ class AIAdminService:
                 1 for memory in memories if memory.memory_layer == "knowledge"
             )
             return AIConversationPromptPreview(
-                conversation_id=conversation_id,
+                conversation_id=scene_id,
                 latest_user_message=latest_user_message,
                 planning_source_id=(
                     selected.source.source_id if selected is not None else None
