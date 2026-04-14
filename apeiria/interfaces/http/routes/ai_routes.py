@@ -51,6 +51,7 @@ from apeiria.interfaces.http.schemas.ai_models import (
     AIMemoryCreateRequest,
     AIMemoryDeleteResult,
     AIMemoryItem,
+    AIMemoryUpdateRequest,
     AIModelBindingItem,
     AIModelCatalogItem,
     AIModelProfileItem,
@@ -390,6 +391,20 @@ async def create_ai_memory(
         confidence=payload.confidence,
     )
     return to_ai_memory_item(memory)
+
+
+@router.patch("/memories", response_model=AIMemoryItem | None)
+async def update_ai_memory(
+    payload: AIMemoryUpdateRequest,
+    _: Annotated[Any, Depends(require_control_panel)],
+) -> AIMemoryItem | None:
+    memory = await ai_admin_service.update_memory(
+        memory_id=payload.memory_id,
+        content=payload.content,
+        salience=payload.salience,
+        confidence=payload.confidence,
+    )
+    return to_ai_memory_item(memory) if memory is not None else None
 
 
 @router.delete("/memories", response_model=AIMemoryDeleteResult)

@@ -1,6 +1,6 @@
 import type { AIMemoryItem, AIRecentTargetItem } from '@/api'
 import { computed, reactive, ref } from 'vue'
-import { createAIMemory, deleteAIMemory, getAIMemories, getAIRecentTargets } from '@/api'
+import { createAIMemory, deleteAIMemory, getAIMemories, getAIRecentTargets, updateAIMemory } from '@/api'
 import { getErrorMessage } from '@/api/client'
 import { useNoticeStore } from '@/stores/notice'
 
@@ -10,7 +10,9 @@ export function useAIMemoryTab (t: (key: string) => string) {
   const loadingMemories = ref(false)
   const loadingRecentTargets = ref(false)
   const savingMemory = ref(false)
+  const savingEditedMemoryId = ref('')
   const deletingMemoryId = ref('')
+  const editingMemoryId = ref('')
   const memories = ref<AIMemoryItem[]>([])
   const recentTargets = ref<AIRecentTargetItem[]>([])
   const selectedRecentTargetId = ref('')
@@ -27,12 +29,22 @@ export function useAIMemoryTab (t: (key: string) => string) {
     memory_type: 'fact',
     content: '',
   })
+  const memoryEditDraft = reactive({
+    content: '',
+    salience: 0.6,
+    confidence: 0.8,
+  })
 
   const canLoadMemories = computed(() => memoryForm.subject_id.trim().length > 0)
   const canSaveMemory = computed(() => (
     canLoadMemories.value
     && memoryDraft.content.trim().length > 0
     && !savingMemory.value
+  ))
+  const canSaveEditedMemory = computed(() => (
+    editingMemoryId.value.trim().length > 0
+    && memoryEditDraft.content.trim().length > 0
+    && !savingEditedMemoryId.value
   ))
 
   async function loadRecentTargets () {
@@ -113,22 +125,69 @@ export function useAIMemoryTab (t: (key: string) => string) {
     }
   }
 
+  function startEditMemory (item: AIMemoryItem) {
+    editingMemoryId.value = item.memory_id
+    memoryEditDraft.content = item.content
+    memoryEditDraft.salience = item.salience
+    memoryEditDraft.confidence = item.confidence
+  }
+
+  function cancelEditMemory () {
+    editingMemoryId.value = ''
+    memoryEditDraft.content = ''
+    memoryEditDraft.salience = 0.6
+    memoryEditDraft.confidence = 0.8
+  }
+
+  async function saveEditedMemory () {
+    if (!canSaveEditedMemory.value) {
+      return
+    }
+    savingEditedMemoryId.value = editingMemoryId.value
+    try {
+      const response = await updateAIMemory({
+        memory_id: editingMemoryId.value,
+        content: memoryEditDraft.content.trim(),
+        salience: memoryEditDraft.salience,
+        confidence: memoryEditDraft.confidence,
+      })
+      if (response.data) {
+        memories.value = memories.value.map(item => (
+          item.memory_id === response.data?.memory_id ? response.data : item
+        ))
+      }
+      noticeStore.show(t('ai.memoryUpdated'), 'success')
+      cancelEditMemory()
+    } catch (error) {
+      noticeStore.show(getErrorMessage(error, t('ai.memoryUpdateFailed')), 'error')
+    } finally {
+      savingEditedMemoryId.value = ''
+    }
+  }
+
   return {
+    cancelEditMemory,
     canLoadMemories,
     canSaveMemory,
+    canSaveEditedMemory,
     deletingMemoryId,
+    editingMemoryId,
     loadMemories,
     loadRecentTargets,
     loadingMemories,
     loadingRecentTargets,
+    memoryEditDraft,
     memories,
     memoryDraft,
     memoryForm,
     recentTargets,
     removeMemory,
     saveMemory,
+    saveEditedMemory,
+    savingEditedMemoryId,
     savingMemory,
     selectRecentTarget,
     selectedRecentTargetId,
+    startEditMemory,
   }
 }

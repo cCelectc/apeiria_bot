@@ -21,6 +21,7 @@ from apeiria.app.ai.future_task import ai_future_task_service
 from apeiria.app.ai.memory.service import (
     AIMemoryCreateInput,
     AIMemoryQuery,
+    AIMemoryUpdateInput,
     ai_memory_service,
 )
 from apeiria.app.ai.model import AIModelBindingTarget, AIModelRouteQuery
@@ -1078,6 +1079,45 @@ class AIAdminService:
             )
             await session.commit()
             return deleted
+
+    async def update_memory(
+        self,
+        *,
+        memory_id: str,
+        content: str,
+        salience: float,
+        confidence: float,
+    ) -> "AIMemoryDefinition | None":
+        async with get_session() as session:
+            row = await ai_memory_service.update_memory_content(
+                session,
+                memory_id=memory_id,
+                update_input=AIMemoryUpdateInput(
+                    content=content,
+                    salience=salience,
+                    confidence=confidence,
+                    source_turn_id=None,
+                ),
+            )
+            if row is None:
+                return None
+            if row.memory_domain == "knowledge":
+                await ai_memory_service.upsert_memory_embedding(
+                    session,
+                    memory_id=row.memory_id,
+                    content=row.content,
+                )
+            await session.commit()
+            memories = await ai_memory_service.list_memories(
+                session,
+                subject_type=row.subject_type,
+                subject_id=row.subject_id,
+                memory_domain=cast("AIMemoryDomain", row.memory_domain),
+            )
+            return next(
+                (item for item in memories if item.memory_id == row.memory_id),
+                None,
+            )
 
     async def list_recent_conversations(
         self,

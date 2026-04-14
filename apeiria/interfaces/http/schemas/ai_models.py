@@ -70,6 +70,13 @@ class AIMemoryCreateRequest(BaseModel):
     confidence: float = Field(default=0.8, ge=0.0, le=1.0)
 
 
+class AIMemoryUpdateRequest(BaseModel):
+    memory_id: str = Field(min_length=1, max_length=64)
+    content: str = Field(min_length=1, max_length=10000)
+    salience: float = Field(ge=0.0, le=1.0)
+    confidence: float = Field(ge=0.0, le=1.0)
+
+
 class AIMemoryDeleteResult(BaseModel):
     deleted: bool
 

@@ -990,6 +990,38 @@
                   </div>
 
                   <div class="text-body-1 mt-3 memory-content-text">{{ item.content }}</div>
+                  <div v-if="editingMemoryId === item.memory_id" class="d-flex flex-column ga-3 mt-3">
+                    <v-textarea
+                      v-model.trim="memoryEditDraft.content"
+                      auto-grow
+                      density="comfortable"
+                      hide-details
+                      :label="t('ai.memoryContent')"
+                      rows="3"
+                    />
+                    <div class="ai-binding-form">
+                      <v-text-field
+                        v-model.number="memoryEditDraft.salience"
+                        density="comfortable"
+                        hide-details
+                        :label="t('ai.memorySalience')"
+                        max="1"
+                        min="0"
+                        step="0.1"
+                        type="number"
+                      />
+                      <v-text-field
+                        v-model.number="memoryEditDraft.confidence"
+                        density="comfortable"
+                        hide-details
+                        :label="t('ai.memoryConfidence')"
+                        max="1"
+                        min="0"
+                        step="0.1"
+                        type="number"
+                      />
+                    </div>
+                  </div>
 
                   <div class="d-flex flex-wrap ga-4 mt-3 text-caption text-medium-emphasis">
                     <span>{{ t('ai.memoryLastRecalledAt') }}: {{ item.last_recalled_at || t('common.none') }}</span>
@@ -997,6 +1029,33 @@
                   </div>
 
                   <div class="d-flex justify-end mt-3">
+                    <v-btn
+                      v-if="editingMemoryId === item.memory_id"
+                      variant="text"
+                      @click="cancelEditMemory"
+                    >
+                      {{ t('common.cancel') }}
+                    </v-btn>
+                    <v-btn
+                      v-if="editingMemoryId === item.memory_id"
+                      color="primary"
+                      :disabled="!canSaveEditedMemory"
+                      :loading="savingEditedMemoryId === item.memory_id"
+                      size="small"
+                      variant="text"
+                      @click="saveEditedMemory"
+                    >
+                      {{ t('ai.updateMemory') }}
+                    </v-btn>
+                    <v-btn
+                      v-else
+                      color="primary"
+                      size="small"
+                      variant="text"
+                      @click="startEditMemory(item)"
+                    >
+                      {{ t('common.edit') }}
+                    </v-btn>
                     <v-btn
                       color="error"
                       :loading="deletingMemoryId === item.memory_id"
@@ -1838,20 +1897,27 @@
   const {
     canLoadMemories,
     canSaveMemory,
+    canSaveEditedMemory,
+    cancelEditMemory,
     deletingMemoryId,
+    editingMemoryId,
     loadMemories,
     loadRecentTargets,
     loadingMemories,
     loadingRecentTargets,
+    memoryEditDraft,
     memories,
     memoryDraft,
     memoryForm,
     recentTargets,
     removeMemory,
     saveMemory,
+    saveEditedMemory,
+    savingEditedMemoryId,
     savingMemory,
     selectRecentTarget,
     selectedRecentTargetId,
+    startEditMemory,
   } = useAIMemoryTab(t)
 
   const {

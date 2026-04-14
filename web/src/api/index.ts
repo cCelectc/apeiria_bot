@@ -1122,6 +1122,15 @@ export function createAIMemory (payload: AIMemoryCreateRequest) {
   return client.post<AIMemoryItem>('/ai/memories', payload)
 }
 
+export function updateAIMemory (payload: {
+  memory_id: string
+  content: string
+  salience: number
+  confidence: number
+}) {
+  return client.patch<AIMemoryItem | null>('/ai/memories', payload)
+}
+
 export function deleteAIMemory (memoryId: string) {
   return client.delete<{ deleted: boolean }>('/ai/memories', {
     params: { memory_id: memoryId },
