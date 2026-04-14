@@ -30,6 +30,15 @@ export function useAIDebugTab (t: (key: string, params?: Record<string, unknown>
   })
 
   const selectedConversation = computed(() => conversations.value.find(item => item.conversation_id === selectedConversationId.value) ?? null)
+  const latestAssistantTurn = computed(() => {
+    for (let index = turns.value.length - 1; index >= 0; index -= 1) {
+      const turn = turns.value[index]
+      if (turn.sender_type === 'bot' && turn.content_text.trim()) {
+        return turn
+      }
+    }
+    return null
+  })
 
   const traceIds = computed(() => {
     const values = new Set(
@@ -140,6 +149,7 @@ export function useAIDebugTab (t: (key: string, params?: Record<string, unknown>
     loadDebugData,
     loadingDebug,
     loadingTurns,
+    latestAssistantTurn,
     promptPreviewOperatorMemories,
     promptPreview,
     promptPreviewKnowledgeMemories,

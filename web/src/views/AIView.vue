@@ -1418,6 +1418,21 @@
                         </v-chip>
                       </div>
                     </v-sheet>
+
+                    <v-sheet class="surface-gradient-card pa-4 mt-4" rounded="lg">
+                      <div class="text-subtitle-2 font-weight-medium mb-3">
+                        {{ t('ai.finalReplyTitle') }}
+                      </div>
+                      <div v-if="latestAssistantTurn" class="d-flex flex-column ga-3 text-body-2">
+                        <div>{{ latestAssistantTurn.content_text }}</div>
+                        <div>{{ t('ai.finalReplyModel') }}: {{ latestAssistantTurn.model_name || t('common.none') }}</div>
+                        <div>{{ t('ai.finalReplySource') }}: {{ latestAssistantTurn.source_id || t('common.none') }}</div>
+                        <div>{{ t('ai.finalReplyTraceId') }}: {{ latestAssistantTurn.trace_id || t('common.none') }}</div>
+                      </div>
+                      <div v-else class="empty-state-text">
+                        {{ t('common.noData') }}
+                      </div>
+                    </v-sheet>
                   </v-col>
                 </v-row>
 
@@ -1425,8 +1440,12 @@
                   <div v-if="promptPreview" class="d-flex flex-column ga-3 text-body-2">
                     <div>{{ t('ai.latestUserMessage') }}: {{ promptPreview.latest_user_message || t('common.none') }}</div>
                     <div>{{ t('ai.planningModel') }}: {{ promptPreview.planning_model_name || promptPreview.model_name || t('common.none') }}</div>
+                    <div>{{ t('ai.planningSource') }}: {{ promptPreview.planning_source_id || t('common.none') }}</div>
+                    <div>{{ t('ai.planningProfile') }}: {{ promptPreview.planning_profile_id || t('common.none') }}</div>
                     <div>{{ t('ai.modelTaskClass') }}: {{ promptPreview.planning_task_class || t('common.none') }}</div>
                     <div>{{ t('ai.roleplayModel') }}: {{ promptPreview.roleplay_model_name || t('common.none') }}</div>
+                    <div>{{ t('ai.roleplaySource') }}: {{ promptPreview.roleplay_source_id || t('common.none') }}</div>
+                    <div>{{ t('ai.roleplayProfile') }}: {{ promptPreview.roleplay_profile_id || t('common.none') }}</div>
                     <div>{{ t('ai.modelTaskClass') }}: {{ promptPreview.roleplay_task_class || t('common.none') }}</div>
                     <div>{{ t('ai.personaId') }}: {{ promptPreview.persona_id || t('common.none') }}</div>
                     <div>{{ t('ai.relationshipStateTitle') }}: {{ promptPreview.relationship_context || t('common.none') }}</div>
@@ -1811,10 +1830,12 @@
 
   const {
     conversations,
+    debugForm,
+    latestAssistantTurn,
     loadConversationDetails,
     loadDebugData,
-    loadingTurns,
     loadingDebug,
+    loadingTurns,
     promptPreview,
     promptPreviewKnowledgeMemories,
     promptPreviewLongTermMemories,
@@ -1827,7 +1848,6 @@
     toolExecutionStats,
     traceIds,
     turns,
-    debugForm,
   } = useAIDebugTab(t)
 
   const {
