@@ -8,8 +8,9 @@ from typing import TYPE_CHECKING, Literal
 if TYPE_CHECKING:
     from datetime import datetime
 
-AIMemoryDomain = Literal["social", "knowledge"]
-AIMemoryType = Literal[
+AIMemoryAnchorType = Literal["scene", "participant", "user"]
+AIMemoryLayer = Literal["summary", "long_term", "knowledge", "operator"]
+AIMemoryKind = Literal[
     "fact",
     "preference",
     "relationship",
@@ -22,7 +23,7 @@ AIMemoryExtractionAction = Literal["add", "update", "noop"]
 class AIMemoryExtractionCandidate:
     """One structured memory candidate produced by extraction."""
 
-    memory_type: AIMemoryType
+    memory_kind: AIMemoryKind
     content: str
     action: AIMemoryExtractionAction = "add"
     target_memory_id: str | None = None
@@ -35,11 +36,13 @@ class AIMemoryDefinition:
     """Pure memory item representation used by the AI domain."""
 
     memory_id: str
-    memory_domain: AIMemoryDomain
-    memory_type: AIMemoryType
-    subject_type: str
-    subject_id: str
+    anchor_type: AIMemoryAnchorType
+    anchor_id: str
+    memory_layer: AIMemoryLayer
+    memory_kind: AIMemoryKind
     content: str
+    is_editable: bool
+    is_ignored: bool
     source_turn_id: str | None
     salience: float
     confidence: float
@@ -51,8 +54,9 @@ class AIMemoryDefinition:
 class AIMemoryQuery:
     """Query payload for relevance-ranked memory retrieval."""
 
-    subject_type: str
-    subject_id: str
+    anchor_type: AIMemoryAnchorType
+    anchor_id: str
     query_text: str
     limit: int
-    memory_domain: AIMemoryDomain | None = None
+    memory_layer: AIMemoryLayer | None = None
+    memory_kind: AIMemoryKind | None = None

@@ -92,9 +92,10 @@ if TYPE_CHECKING:
     )
     from apeiria.app.ai.future_task.models import AIFutureTaskDefinition
     from apeiria.app.ai.memory.models import (
+        AIMemoryAnchorType,
         AIMemoryDefinition,
-        AIMemoryDomain,
-        AIMemoryType,
+        AIMemoryKind,
+        AIMemoryLayer,
     )
     from apeiria.app.ai.model import (
         AIModelBindingSpec,
@@ -283,6 +284,57 @@ def _coerce_response_format(
     if value in {"mp3", "opus", "aac", "flac", "wav", "pcm"}:
         return cast("Literal['mp3', 'opus', 'aac', 'flac', 'wav', 'pcm']", value)
     return "wav"
+
+
+def _normalize_memory_anchor_type(
+    anchor_type: str,
+) -> Literal["scene", "participant", "user"]:
+    if anchor_type in {"scene", "participant", "user"}:
+        return cast("Literal['scene', 'participant', 'user']", anchor_type)
+    msg = f"Unsupported memory anchor_type: {anchor_type}"
+    raise ValueError(msg)
+
+
+def _normalize_optional_memory_layer(
+    memory_layer: str | None,
+) -> Literal["summary", "long_term", "knowledge", "operator"] | None:
+    if memory_layer in {"summary", "long_term", "knowledge", "operator"}:
+        return cast(
+            "Literal['summary', 'long_term', 'knowledge', 'operator']",
+            memory_layer,
+        )
+    return None
+
+
+def _normalize_optional_memory_kind(
+    memory_kind: str | None,
+) -> Literal["fact", "preference", "relationship", "note"] | None:
+    if memory_kind in {"fact", "preference", "relationship", "note"}:
+        return cast(
+            "Literal['fact', 'preference', 'relationship', 'note']",
+            memory_kind,
+        )
+    return None
+
+
+def _normalize_required_memory_layer(
+    memory_layer: str,
+) -> Literal["summary", "long_term", "knowledge", "operator"]:
+    normalized_layer = _normalize_optional_memory_layer(memory_layer)
+    if normalized_layer is not None:
+        return normalized_layer
+    msg = f"Unsupported memory layer: {memory_layer}"
+    raise ValueError(msg)
+
+
+def _normalize_required_memory_kind(
+    memory_kind: str,
+) -> Literal["fact", "preference", "relationship", "note"]:
+    normalized_kind = _normalize_optional_memory_kind(memory_kind)
+    if normalized_kind is not None:
+        return normalized_kind
+    msg = f"Unsupported memory kind: {memory_kind}"
+    raise ValueError(msg)
 
 
 class AIAdminService:
@@ -979,69 +1031,80 @@ class AIAdminService:
                 None,
             )
 
-    async def list_memories(
+    async def list_memories(  # noqa: PLR0913
         self,
         *,
-        subject_type: str,
-        subject_id: str,
+        anchor_type: str,
+        anchor_id: str,
         query_text: str = "",
         limit: int = 20,
-        memory_domain: str | None = None,
+        memory_layer: str | None = None,
+        memory_kind: str | None = None,
     ) -> list["AIMemoryDefinition"]:
-        normalized_domain = cast(
-            "Literal['social', 'knowledge'] | None",
-            memory_domain if memory_domain in {"social", "knowledge"} else None,
-        )
+        normalized_layer = _normalize_optional_memory_layer(memory_layer)
+        normalized_kind = _normalize_optional_memory_kind(memory_kind)
+        normalized_anchor_type = _normalize_memory_anchor_type(anchor_type)
         async with get_session() as session:
             if query_text.strip():
                 return await ai_memory_service.retrieve_memories(
                     session,
                     AIMemoryQuery(
-                        subject_type=subject_type,
-                        subject_id=subject_id,
+                        anchor_type=normalized_anchor_type,
+                        anchor_id=anchor_id,
                         query_text=query_text,
                         limit=limit,
-                        memory_domain=normalized_domain,
+                        memory_layer=normalized_layer,
+                        memory_kind=normalized_kind,
                     ),
                 )
             memories = await ai_memory_service.list_memories(
                 session,
-                subject_type=subject_type,
-                subject_id=subject_id,
-                memory_domain=normalized_domain,
+                anchor_type=normalized_anchor_type,
+                anchor_id=anchor_id,
+                memory_layer=normalized_layer,
+                memory_kind=normalized_kind,
+                include_ignored=True,
             )
             return memories[:limit]
 
     async def create_memory(  # noqa: PLR0913
         self,
         *,
-        memory_domain: str,
-        memory_type: str,
-        subject_type: str,
-        subject_id: str,
+        memory_layer: str,
+        memory_kind: str,
+        anchor_type: str,
+        anchor_id: str,
         content: str,
         salience: float,
         confidence: float,
     ) -> "AIMemoryDefinition":
-        normalized_domain = cast(
-            "AIMemoryDomain",
-            memory_domain,
+        normalized_layer = cast(
+            "AIMemoryLayer",
+            _normalize_required_memory_layer(memory_layer),
         )
-        normalized_type = cast(
-            "AIMemoryType",
-            memory_type,
+        normalized_kind = cast(
+            "AIMemoryKind",
+            _normalize_required_memory_kind(memory_kind),
         )
+        normalized_anchor_type = _normalize_memory_anchor_type(anchor_type)
         async with get_session() as session:
             create_input = AIMemoryCreateInput(
-                memory_domain=normalized_domain,
-                memory_type=normalized_type,
-                subject_type=subject_type,
-                subject_id=subject_id,
+                anchor_type=normalized_anchor_type,
+                anchor_id=anchor_id,
+                memory_layer=normalized_layer,
+                memory_kind=normalized_kind,
                 content=content,
+                is_editable=(normalized_layer != "summary"),
                 salience=salience,
                 confidence=confidence,
             )
-            if normalized_domain == "knowledge":
+            if normalized_layer == "summary":
+                msg = (
+                    "summary memories are system-managed "
+                    "and cannot be created manually"
+                )
+                raise ValueError(msg)
+            if normalized_layer == "knowledge":
                 row = await ai_memory_service.create_knowledge_memory(
                     session,
                     create_input,
@@ -1061,9 +1124,10 @@ class AIAdminService:
             await session.commit()
             memories = await ai_memory_service.list_memories(
                 session,
-                subject_type=subject_type,
-                subject_id=subject_id,
-                memory_domain=normalized_domain,
+                anchor_type=normalized_anchor_type,
+                anchor_id=anchor_id,
+                memory_layer=normalized_layer,
+                include_ignored=True,
             )
             return next(item for item in memories if item.memory_id == row.memory_id)
 
@@ -1089,6 +1153,11 @@ class AIAdminService:
         confidence: float,
     ) -> "AIMemoryDefinition | None":
         async with get_session() as session:
+            existing = await ai_memory_service.get_memory(session, memory_id=memory_id)
+            if existing is None:
+                return None
+            if not existing.is_editable or existing.memory_layer == "summary":
+                return None
             row = await ai_memory_service.update_memory_content(
                 session,
                 memory_id=memory_id,
@@ -1101,7 +1170,7 @@ class AIAdminService:
             )
             if row is None:
                 return None
-            if row.memory_domain == "knowledge":
+            if row.memory_layer == "knowledge":
                 await ai_memory_service.upsert_memory_embedding(
                     session,
                     memory_id=row.memory_id,
@@ -1110,9 +1179,10 @@ class AIAdminService:
             await session.commit()
             memories = await ai_memory_service.list_memories(
                 session,
-                subject_type=row.subject_type,
-                subject_id=row.subject_id,
-                memory_domain=cast("AIMemoryDomain", row.memory_domain),
+                anchor_type=cast("AIMemoryAnchorType", row.anchor_type),
+                anchor_id=row.anchor_id,
+                memory_layer=cast("AIMemoryLayer", row.memory_layer),
+                include_ignored=True,
             )
             return next(
                 (item for item in memories if item.memory_id == row.memory_id),
@@ -1149,16 +1219,16 @@ class AIAdminService:
                 )
                 targets.append(
                     AIRecentTarget(
-                        target_type="conversation",
-                        subject_type="conversation",
-                        subject_id=item.conversation_id,
+                        target_type="scene",
+                        anchor_type="scene",
+                        anchor_id=item.conversation_id,
                         title=conversation_title,
                         subtitle=conversation_subtitle,
-                        conversation_id=item.conversation_id,
+                        scene_id=item.conversation_id,
                         platform=item.platform,
                         scope_type=item.scope_type,
                         scope_id=item.scope_id,
-                        subject_user_id=item.subject_user_id,
+                        user_id=item.subject_user_id,
                         last_active_at=item.last_active_at.isoformat(),
                     )
                 )
@@ -1188,15 +1258,15 @@ class AIAdminService:
                             targets.append(
                                 AIRecentTarget(
                                     target_type="participant",
-                                    subject_type="participant",
-                                    subject_id=participant_id,
+                                    anchor_type="participant",
+                                    anchor_id=participant_id,
                                     title=user_id,
                                     subtitle=f"{item.platform} · group participant",
-                                    conversation_id=item.conversation_id,
+                                    scene_id=item.conversation_id,
                                     platform=item.platform,
                                     scope_type=item.scope_type,
                                     scope_id=item.scope_id,
-                                    subject_user_id=user_id,
+                                    user_id=user_id,
                                     last_active_at=item.last_active_at.isoformat(),
                                 )
                             )
@@ -1207,15 +1277,15 @@ class AIAdminService:
                     targets.append(
                         AIRecentTarget(
                             target_type="user",
-                            subject_type="user",
-                            subject_id=user_id,
+                            anchor_type="user",
+                            anchor_id=user_id,
                             title=user_id,
                             subtitle=user_subtitle,
-                            conversation_id=item.conversation_id,
+                            scene_id=item.conversation_id,
                             platform=item.platform,
                             scope_type=item.scope_type,
                             scope_id=item.scope_id,
-                            subject_user_id=user_id,
+                            user_id=user_id,
                             last_active_at=item.last_active_at.isoformat(),
                         )
                     )
@@ -1419,11 +1489,17 @@ class AIAdminService:
                 if social_decision is None or social_decision.should_speak
                 else "Suppressed by social policy before prompt generation."
             )
-            social_memory_count = sum(
-                1 for memory in memories if memory.memory_domain == "social"
+            operator_memory_count = sum(
+                1 for memory in memories if memory.memory_layer == "operator"
+            )
+            summary_memory_count = sum(
+                1 for memory in memories if memory.memory_layer == "summary"
+            )
+            long_term_memory_count = sum(
+                1 for memory in memories if memory.memory_layer == "long_term"
             )
             knowledge_memory_count = sum(
-                1 for memory in memories if memory.memory_domain == "knowledge"
+                1 for memory in memories if memory.memory_layer == "knowledge"
             )
             return AIConversationPromptPreview(
                 conversation_id=conversation_id,
@@ -1485,7 +1561,9 @@ class AIAdminService:
                 ),
                 tool_results=tool_results,
                 memories=tuple(memories),
-                social_memory_count=social_memory_count,
+                operator_memory_count=operator_memory_count,
+                summary_memory_count=summary_memory_count,
+                long_term_memory_count=long_term_memory_count,
                 knowledge_memory_count=knowledge_memory_count,
                 rendered_roleplay_prompt=rendered_roleplay_prompt,
                 rendered_prompt=rendered_prompt,

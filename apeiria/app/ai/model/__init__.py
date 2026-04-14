@@ -40,6 +40,10 @@ if TYPE_CHECKING:
         AIModelTranscriptionRequest,
         AIModelTranscriptionResponse,
     )
+    from .capability_selection_service import (
+        AIModelCapabilitySelectionService,
+        ai_model_capability_selection_service,
+    )
     from .chat_model_service import (
         AIChatModelCreateInput,
         AIChatModelService,
@@ -50,10 +54,6 @@ if TYPE_CHECKING:
         AIModelClientRegistry,
         UnknownAISourceError,
         ai_model_client,
-    )
-    from .capability_selection_service import (
-        AIModelCapabilitySelectionService,
-        ai_model_capability_selection_service,
     )
     from .embedding_model_service import (
         AIEmbeddingModelCreateInput,

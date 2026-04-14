@@ -5,10 +5,9 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from apeiria.app.ai.memory.models import AIMemoryDefinition, AIMemoryType
+    from apeiria.app.ai.memory.models import AIMemoryDefinition, AIMemoryKind
 
 _MIN_MEMORIES_FOR_SUMMARY = 2
-SUMMARY_NOTE_PREFIX = "Known stable context:\n"
 
 
 def build_summary_memory_content(
@@ -19,7 +18,11 @@ def build_summary_memory_content(
     detail_memories = [
         memory
         for memory in memories
-        if memory.content.strip() and not _is_summary_note(memory)
+        if (
+            memory.memory_layer == "long_term"
+            and not memory.is_ignored
+            and memory.content.strip()
+        )
     ]
     if len(detail_memories) < _MIN_MEMORIES_FOR_SUMMARY:
         return None
@@ -27,29 +30,22 @@ def build_summary_memory_content(
     ordered = sorted(
         detail_memories,
         key=lambda item: (
-            _summary_priority(item.memory_type),
+            _summary_priority(item.memory_kind),
             -item.salience,
             -item.confidence,
             item.created_at,
             item.memory_id,
         ),
     )
-    lines = [f"- [{memory.memory_type}] {memory.content}" for memory in ordered[:4]]
-    return SUMMARY_NOTE_PREFIX + "\n".join(lines)
+    lines = [f"- [{memory.memory_kind}] {memory.content}" for memory in ordered[:4]]
+    return "Stable memory context:\n" + "\n".join(lines)
 
 
-def _summary_priority(memory_type: AIMemoryType) -> int:
-    priorities: dict[AIMemoryType, int] = {
+def _summary_priority(memory_kind: AIMemoryKind) -> int:
+    priorities: dict[AIMemoryKind, int] = {
         "preference": 0,
         "relationship": 1,
         "fact": 2,
         "note": 3,
     }
-    return priorities.get(memory_type, 9)
-
-
-def _is_summary_note(memory: AIMemoryDefinition) -> bool:
-    return (
-        memory.memory_type == "note"
-        and memory.content.startswith(SUMMARY_NOTE_PREFIX)
-    )
+    return priorities.get(memory_kind, 9)

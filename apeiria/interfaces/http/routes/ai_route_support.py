@@ -118,11 +118,13 @@ def to_ai_persona_binding_item(item: "AIPersonaBindingSpec") -> AIPersonaBinding
 def to_ai_memory_item(item: "AIMemoryDefinition") -> AIMemoryItem:
     return AIMemoryItem(
         memory_id=item.memory_id,
-        memory_domain=item.memory_domain,
-        memory_type=item.memory_type,
-        subject_type=item.subject_type,
-        subject_id=item.subject_id,
+        anchor_type=item.anchor_type,
+        anchor_id=item.anchor_id,
+        memory_layer=item.memory_layer,
+        memory_kind=item.memory_kind,
         content=item.content,
+        is_editable=item.is_editable,
+        is_ignored=item.is_ignored,
         source_turn_id=item.source_turn_id,
         salience=item.salience,
         confidence=item.confidence,
@@ -136,15 +138,15 @@ def to_ai_memory_item(item: "AIMemoryDefinition") -> AIMemoryItem:
 def to_ai_recent_target_item(item: "AIRecentTarget") -> AIRecentTargetItem:
     return AIRecentTargetItem(
         target_type=item.target_type,
-        subject_type=item.subject_type,
-        subject_id=item.subject_id,
+        anchor_type=item.anchor_type,
+        anchor_id=item.anchor_id,
         title=item.title,
         subtitle=item.subtitle,
-        conversation_id=item.conversation_id,
+        scene_id=item.scene_id,
         platform=item.platform,
         scope_type=item.scope_type,
         scope_id=item.scope_id,
-        subject_user_id=item.subject_user_id,
+        user_id=item.user_id,
         last_active_at=item.last_active_at,
     )
 
@@ -252,7 +254,9 @@ def to_ai_conversation_prompt_preview_item(
         social_policy_source=item.social_policy_source,
         tool_results=list(item.tool_results),
         memories=[to_ai_memory_item(memory) for memory in item.memories],
-        social_memory_count=item.social_memory_count,
+        operator_memory_count=item.operator_memory_count,
+        summary_memory_count=item.summary_memory_count,
+        long_term_memory_count=item.long_term_memory_count,
         knowledge_memory_count=item.knowledge_memory_count,
         rendered_roleplay_prompt=item.rendered_roleplay_prompt,
         rendered_prompt=item.rendered_prompt,

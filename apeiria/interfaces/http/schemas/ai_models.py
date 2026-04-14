@@ -34,11 +34,13 @@ class AIPersonaUpsertRequest(BaseModel):
 
 class AIMemoryItem(BaseModel):
     memory_id: str
-    memory_domain: str
-    memory_type: str
-    subject_type: str
-    subject_id: str
+    anchor_type: str
+    anchor_id: str
+    memory_layer: str
+    memory_kind: str
     content: str
+    is_editable: bool
+    is_ignored: bool
     source_turn_id: str | None = None
     salience: float
     confidence: float
@@ -48,23 +50,23 @@ class AIMemoryItem(BaseModel):
 
 class AIRecentTargetItem(BaseModel):
     target_type: str
-    subject_type: str
-    subject_id: str
+    anchor_type: str
+    anchor_id: str
     title: str
     subtitle: str | None = None
-    conversation_id: str | None = None
+    scene_id: str | None = None
     platform: str | None = None
     scope_type: str | None = None
     scope_id: str | None = None
-    subject_user_id: str | None = None
+    user_id: str | None = None
     last_active_at: str | None = None
 
 
 class AIMemoryCreateRequest(BaseModel):
-    memory_domain: Literal["social", "knowledge"]
-    memory_type: Literal["fact", "preference", "relationship", "note"]
-    subject_type: str = Field(min_length=1, max_length=32)
-    subject_id: str = Field(min_length=1, max_length=128)
+    memory_layer: Literal["long_term", "knowledge", "operator"]
+    memory_kind: Literal["fact", "preference", "relationship", "note"]
+    anchor_type: Literal["scene", "participant", "user"]
+    anchor_id: str = Field(min_length=1, max_length=128)
     content: str = Field(min_length=1, max_length=10000)
     salience: float = Field(default=0.6, ge=0.0, le=1.0)
     confidence: float = Field(default=0.8, ge=0.0, le=1.0)
@@ -215,7 +217,9 @@ class AIConversationPromptPreviewItem(BaseModel):
     social_policy_source: str | None = None
     tool_results: list[str] = []
     memories: list[AIMemoryItem] = []
-    social_memory_count: int = 0
+    operator_memory_count: int = 0
+    summary_memory_count: int = 0
+    long_term_memory_count: int = 0
     knowledge_memory_count: int = 0
     rendered_roleplay_prompt: str | None = None
     rendered_prompt: str

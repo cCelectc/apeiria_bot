@@ -17,16 +17,16 @@ export function useAIMemoryTab (t: (key: string) => string) {
   const recentTargets = ref<AIRecentTargetItem[]>([])
   const selectedRecentTargetId = ref('')
   const memoryForm = reactive({
-    subject_type: 'user',
-    subject_id: '',
-    memory_domain: '',
-    memory_type: '',
+    anchor_type: 'scene',
+    anchor_id: '',
+    memory_layer: '',
+    memory_kind: '',
     query: '',
     limit: 20,
   })
   const memoryDraft = reactive({
-    memory_domain: 'knowledge',
-    memory_type: 'fact',
+    memory_layer: 'long_term',
+    memory_kind: 'fact',
     content: '',
   })
   const memoryEditDraft = reactive({
@@ -35,7 +35,7 @@ export function useAIMemoryTab (t: (key: string) => string) {
     confidence: 0.8,
   })
 
-  const canLoadMemories = computed(() => memoryForm.subject_id.trim().length > 0)
+  const canLoadMemories = computed(() => memoryForm.anchor_id.trim().length > 0)
   const canSaveMemory = computed(() => (
     canLoadMemories.value
     && memoryDraft.content.trim().length > 0
@@ -71,8 +71,8 @@ export function useAIMemoryTab (t: (key: string) => string) {
     loadingMemories.value = true
     try {
       const response = await getAIMemories(memoryForm)
-      memories.value = memoryForm.memory_type
-        ? response.data.filter(item => item.memory_type === memoryForm.memory_type)
+      memories.value = memoryForm.memory_kind
+        ? response.data.filter(item => item.memory_kind === memoryForm.memory_kind)
         : response.data
     } catch (error) {
       noticeStore.show(getErrorMessage(error, t('ai.memoryLoadFailed')), 'error')
@@ -82,9 +82,9 @@ export function useAIMemoryTab (t: (key: string) => string) {
   }
 
   async function selectRecentTarget (item: AIRecentTargetItem) {
-    selectedRecentTargetId.value = `${item.subject_type}:${item.subject_id}`
-    memoryForm.subject_type = item.subject_type
-    memoryForm.subject_id = item.subject_id
+    selectedRecentTargetId.value = `${item.anchor_type}:${item.anchor_id}`
+    memoryForm.anchor_type = item.anchor_type
+    memoryForm.anchor_id = item.anchor_id
     await loadMemories()
   }
 
@@ -95,13 +95,13 @@ export function useAIMemoryTab (t: (key: string) => string) {
     savingMemory.value = true
     try {
       await createAIMemory({
-        memory_domain: memoryDraft.memory_domain,
-        memory_type: memoryDraft.memory_type,
-        subject_type: memoryForm.subject_type,
-        subject_id: memoryForm.subject_id.trim(),
+        memory_layer: memoryDraft.memory_layer,
+        memory_kind: memoryDraft.memory_kind,
+        anchor_type: memoryForm.anchor_type,
+        anchor_id: memoryForm.anchor_id.trim(),
         content: memoryDraft.content.trim(),
       })
-      memoryForm.memory_domain = memoryDraft.memory_domain
+      memoryForm.memory_layer = memoryDraft.memory_layer
       memoryDraft.content = ''
       noticeStore.show(t('ai.memorySaved'), 'success')
       await loadMemories()
@@ -126,6 +126,9 @@ export function useAIMemoryTab (t: (key: string) => string) {
   }
 
   function startEditMemory (item: AIMemoryItem) {
+    if (!item.is_editable) {
+      return
+    }
     editingMemoryId.value = item.memory_id
     memoryEditDraft.content = item.content
     memoryEditDraft.salience = item.salience

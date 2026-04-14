@@ -819,19 +819,19 @@
                   <v-list class="bg-transparent" density="comfortable" lines="two">
                     <v-list-item
                       v-for="item in recentTargets"
-                      :key="`${item.subject_type}:${item.subject_id}`"
-                      :active="selectedRecentTargetId === `${item.subject_type}:${item.subject_id}`"
+                      :key="`${item.anchor_type}:${item.anchor_id}`"
+                      :active="selectedRecentTargetId === `${item.anchor_type}:${item.anchor_id}`"
                       rounded="lg"
                       @click="selectRecentTarget(item)"
                     >
                       <v-list-item-title>{{ item.title }}</v-list-item-title>
-                      <v-list-item-subtitle>{{ item.subtitle || item.subject_id }}</v-list-item-subtitle>
+                      <v-list-item-subtitle>{{ item.subtitle || item.anchor_id }}</v-list-item-subtitle>
                       <template #append>
                         <v-chip color="primary" size="small" variant="tonal">
                           {{
-                            item.subject_type === 'conversation'
-                              ? t('ai.scopeConversation')
-                              : item.subject_type === 'participant'
+                            item.anchor_type === 'scene'
+                              ? t('ai.memoryAnchorScene')
+                              : item.anchor_type === 'participant'
                                 ? t('ai.scopeParticipant')
                                 : t('ai.scopeUser')
                           }}
@@ -854,24 +854,24 @@
                   <v-expansion-panel-text>
                     <div class="ai-binding-form ai-memory-toolbar pt-2">
                       <v-select
-                        v-model="memoryForm.subject_type"
+                        v-model="memoryForm.anchor_type"
                         density="comfortable"
                         hide-details
                         :items="memorySubjectOptions"
-                        :label="t('ai.memorySubjectType')"
+                        :label="t('ai.memoryAnchorType')"
                       />
                       <v-select
-                        v-model="memoryForm.memory_domain"
+                        v-model="memoryForm.memory_layer"
                         density="comfortable"
                         hide-details
                         :items="memoryDomainOptions"
-                        :label="t('ai.memoryDomain')"
+                        :label="t('ai.memoryLayer')"
                       />
                       <v-text-field
-                        v-model.trim="memoryForm.subject_id"
+                        v-model.trim="memoryForm.anchor_id"
                         density="comfortable"
                         hide-details
-                        :label="t('ai.memorySubjectId')"
+                        :label="t('ai.memoryAnchorId')"
                       />
                       <v-text-field
                         v-model.trim="memoryForm.query"
@@ -880,11 +880,11 @@
                         :label="t('ai.memoryQuery')"
                       />
                       <v-select
-                        v-model="memoryForm.memory_type"
+                        v-model="memoryForm.memory_kind"
                         density="comfortable"
                         hide-details
                         :items="memoryTypeFilterOptions"
-                        :label="t('ai.memoryType')"
+                        :label="t('ai.memoryKind')"
                       />
                       <v-select
                         v-model="memoryForm.limit"
@@ -930,18 +930,18 @@
               <v-sheet class="surface-gradient-card pa-4" rounded="lg">
                 <div class="ai-binding-form ai-memory-toolbar">
                   <v-select
-                    v-model="memoryDraft.memory_domain"
+                    v-model="memoryDraft.memory_layer"
                     density="comfortable"
                     hide-details
-                    :items="memoryDomainOptions.filter(item => item.value)"
-                    :label="t('ai.memoryDomain')"
+                    :items="memoryDraftLayerOptions"
+                    :label="t('ai.memoryLayer')"
                   />
                   <v-select
-                    v-model="memoryDraft.memory_type"
+                    v-model="memoryDraft.memory_kind"
                     density="comfortable"
                     hide-details
                     :items="memoryTypeOptions"
-                    :label="t('ai.memoryType')"
+                    :label="t('ai.memoryKind')"
                   />
                   <v-textarea
                     v-model.trim="memoryDraft.content"
@@ -962,109 +962,139 @@
                 </div>
               </v-sheet>
 
-              <div v-if="memories.length > 0" class="memory-card-list">
+              <v-sheet class="surface-gradient-card pa-4" rounded="lg">
+                <div class="text-subtitle-2 font-weight-medium">
+                  {{ t('ai.memoryLayerWorking') }}
+                </div>
+                <div class="empty-state-hint mt-2">
+                  {{ t('ai.memoryWorkingHint') }}
+                </div>
+              </v-sheet>
+
+              <div v-if="memories.length > 0" class="d-flex flex-column ga-4">
                 <v-sheet
-                  v-for="item in memories"
-                  :key="item.memory_id"
+                  v-for="section in memoryLayerSections"
+                  :key="section.layer"
                   class="surface-gradient-card pa-4"
                   rounded="lg"
                 >
-                  <div class="d-flex flex-wrap justify-space-between ga-3">
-                    <div class="d-flex flex-wrap ga-2">
-                      <v-chip color="primary" size="small" variant="tonal">
-                        {{ item.memory_type }}
-                      </v-chip>
-                      <v-chip color="primary" size="small" variant="tonal">
-                        {{ item.memory_domain }}
-                      </v-chip>
-                      <v-chip color="primary" size="small" variant="tonal">
-                        {{ t('ai.memoryConfidence') }}: {{ formatMemoryScore(item.confidence) }}
-                      </v-chip>
-                      <v-chip color="primary" size="small" variant="tonal">
-                        {{ t('ai.memorySalience') }}: {{ formatMemoryScore(item.salience) }}
-                      </v-chip>
-                    </div>
-                    <div class="text-caption text-medium-emphasis">
-                      {{ t('ai.memoryCreatedAt') }}: {{ item.created_at }}
-                    </div>
+                  <div class="text-subtitle-2 font-weight-medium mb-3">
+                    {{ section.title }} · {{ section.items.length }}
                   </div>
 
-                  <div class="text-body-1 mt-3 memory-content-text">{{ item.content }}</div>
-                  <div v-if="editingMemoryId === item.memory_id" class="d-flex flex-column ga-3 mt-3">
-                    <v-textarea
-                      v-model.trim="memoryEditDraft.content"
-                      auto-grow
-                      density="comfortable"
-                      hide-details
-                      :label="t('ai.memoryContent')"
-                      rows="3"
-                    />
-                    <div class="ai-binding-form">
-                      <v-text-field
-                        v-model.number="memoryEditDraft.salience"
-                        density="comfortable"
-                        hide-details
-                        :label="t('ai.memorySalience')"
-                        max="1"
-                        min="0"
-                        step="0.1"
-                        type="number"
-                      />
-                      <v-text-field
-                        v-model.number="memoryEditDraft.confidence"
-                        density="comfortable"
-                        hide-details
-                        :label="t('ai.memoryConfidence')"
-                        max="1"
-                        min="0"
-                        step="0.1"
-                        type="number"
-                      />
-                    </div>
+                  <div v-if="section.items.length === 0" class="empty-state-hint">
+                    {{ t('ai.noMemories') }}
                   </div>
 
-                  <div class="d-flex flex-wrap ga-4 mt-3 text-caption text-medium-emphasis">
-                    <span>{{ t('ai.memoryLastRecalledAt') }}: {{ item.last_recalled_at || t('common.none') }}</span>
-                    <span>{{ t('ai.memorySourceTurn') }}: {{ formatMemorySourceTurn(item.source_turn_id) }}</span>
-                  </div>
+                  <div v-else class="memory-card-list">
+                    <v-sheet
+                      v-for="item in section.items"
+                      :key="item.memory_id"
+                      class="surface-gradient-card pa-4"
+                      rounded="lg"
+                    >
+                      <div class="d-flex flex-wrap justify-space-between ga-3">
+                        <div class="d-flex flex-wrap ga-2">
+                          <v-chip color="primary" size="small" variant="tonal">
+                            {{ item.memory_kind }}
+                          </v-chip>
+                          <v-chip color="primary" size="small" variant="tonal">
+                            {{ item.memory_layer }}
+                          </v-chip>
+                          <v-chip v-if="!item.is_editable" color="warning" size="small" variant="tonal">
+                            {{ t('ai.memoryReadOnly') }}
+                          </v-chip>
+                          <v-chip color="primary" size="small" variant="tonal">
+                            {{ t('ai.memoryConfidence') }}: {{ formatMemoryScore(item.confidence) }}
+                          </v-chip>
+                          <v-chip color="primary" size="small" variant="tonal">
+                            {{ t('ai.memorySalience') }}: {{ formatMemoryScore(item.salience) }}
+                          </v-chip>
+                        </div>
+                        <div class="text-caption text-medium-emphasis">
+                          {{ t('ai.memoryCreatedAt') }}: {{ item.created_at }}
+                        </div>
+                      </div>
 
-                  <div class="d-flex justify-end mt-3">
-                    <v-btn
-                      v-if="editingMemoryId === item.memory_id"
-                      variant="text"
-                      @click="cancelEditMemory"
-                    >
-                      {{ t('common.cancel') }}
-                    </v-btn>
-                    <v-btn
-                      v-if="editingMemoryId === item.memory_id"
-                      color="primary"
-                      :disabled="!canSaveEditedMemory"
-                      :loading="savingEditedMemoryId === item.memory_id"
-                      size="small"
-                      variant="text"
-                      @click="saveEditedMemory"
-                    >
-                      {{ t('ai.updateMemory') }}
-                    </v-btn>
-                    <v-btn
-                      v-else
-                      color="primary"
-                      size="small"
-                      variant="text"
-                      @click="startEditMemory(item)"
-                    >
-                      {{ t('common.edit') }}
-                    </v-btn>
-                    <v-btn
-                      color="error"
-                      :loading="deletingMemoryId === item.memory_id"
-                      size="small"
-                      variant="text"
-                      @click="removeMemory(item.memory_id)"
-                    >
-                      {{ t('common.delete') }}
-                    </v-btn>
+                      <div class="text-body-1 mt-3 memory-content-text">{{ item.content }}</div>
+                      <div v-if="editingMemoryId === item.memory_id" class="d-flex flex-column ga-3 mt-3">
+                        <v-textarea
+                          v-model.trim="memoryEditDraft.content"
+                          auto-grow
+                          density="comfortable"
+                          hide-details
+                          :label="t('ai.memoryContent')"
+                          rows="3"
+                        />
+                        <div class="ai-binding-form">
+                          <v-text-field
+                            v-model.number="memoryEditDraft.salience"
+                            density="comfortable"
+                            hide-details
+                            :label="t('ai.memorySalience')"
+                            max="1"
+                            min="0"
+                            step="0.1"
+                            type="number"
+                          />
+                          <v-text-field
+                            v-model.number="memoryEditDraft.confidence"
+                            density="comfortable"
+                            hide-details
+                            :label="t('ai.memoryConfidence')"
+                            max="1"
+                            min="0"
+                            step="0.1"
+                            type="number"
+                          />
+                        </div>
+                      </div>
+
+                      <div class="d-flex flex-wrap ga-4 mt-3 text-caption text-medium-emphasis">
+                        <span>{{ t('ai.memoryLastRecalledAt') }}: {{ item.last_recalled_at || t('common.none') }}</span>
+                        <span>{{ t('ai.memorySourceTurn') }}: {{ formatMemorySourceTurn(item.source_turn_id) }}</span>
+                      </div>
+
+                      <div class="d-flex justify-end mt-3">
+                        <v-btn
+                          v-if="editingMemoryId === item.memory_id"
+                          variant="text"
+                          @click="cancelEditMemory"
+                        >
+                          {{ t('common.cancel') }}
+                        </v-btn>
+                        <v-btn
+                          v-if="editingMemoryId === item.memory_id"
+                          color="primary"
+                          :disabled="!canSaveEditedMemory"
+                          :loading="savingEditedMemoryId === item.memory_id"
+                          size="small"
+                          variant="text"
+                          @click="saveEditedMemory"
+                        >
+                          {{ t('ai.updateMemory') }}
+                        </v-btn>
+                        <v-btn
+                          v-else
+                          color="primary"
+                          :disabled="!item.is_editable"
+                          size="small"
+                          variant="text"
+                          @click="startEditMemory(item)"
+                        >
+                          {{ t('common.edit') }}
+                        </v-btn>
+                        <v-btn
+                          color="error"
+                          :loading="deletingMemoryId === item.memory_id"
+                          size="small"
+                          variant="text"
+                          @click="removeMemory(item.memory_id)"
+                        >
+                          {{ t('common.delete') }}
+                        </v-btn>
+                      </div>
+                    </v-sheet>
                   </div>
                 </v-sheet>
               </div>
@@ -1106,12 +1136,12 @@
                   <v-list class="bg-transparent" density="comfortable" lines="two">
                     <v-list-item
                       v-for="item in recentRelationshipTargets"
-                      :key="`${item.subject_type}:${item.subject_id}`"
+                      :key="`${item.anchor_type}:${item.anchor_id}`"
                       rounded="lg"
                       @click="loadRelationshipForTarget(item)"
                     >
                       <v-list-item-title>{{ item.title }}</v-list-item-title>
-                      <v-list-item-subtitle>{{ item.subtitle || item.subject_id }}</v-list-item-subtitle>
+                      <v-list-item-subtitle>{{ item.subtitle || item.anchor_id }}</v-list-item-subtitle>
                     </v-list-item>
                   </v-list>
                 </template>
@@ -1407,8 +1437,10 @@
                     <div>{{ t('ai.socialReasonCodes') }}: {{ promptPreview.social_reason_codes.join(', ') || t('common.none') }}</div>
                     <div>{{ t('ai.socialPolicySource') }}: {{ promptPreview.social_policy_source || t('common.none') }}</div>
                     <div>{{ t('ai.memoryHits') }}: {{ promptPreview.memories.length }}</div>
-                    <div>{{ t('ai.memoryDomainSocial') }}: {{ promptPreview.social_memory_count }}</div>
-                    <div>{{ t('ai.memoryDomainKnowledge') }}: {{ promptPreview.knowledge_memory_count }}</div>
+                    <div>{{ t('ai.memoryLayerOperator') }}: {{ promptPreview.operator_memory_count }}</div>
+                    <div>{{ t('ai.memoryLayerSummary') }}: {{ promptPreview.summary_memory_count }}</div>
+                    <div>{{ t('ai.memoryLayerLongTerm') }}: {{ promptPreview.long_term_memory_count }}</div>
+                    <div>{{ t('ai.memoryLayerKnowledge') }}: {{ promptPreview.knowledge_memory_count }}</div>
                     <div>{{ t('ai.toolResultsTitle') }}: {{ promptPreview.tool_results.length }}</div>
                     <div class="text-subtitle-2 font-weight-medium mt-2">{{ t('ai.promptPreviewPlanning') }}</div>
                     <pre class="ai-prompt-preview">{{ promptPreview.rendered_prompt }}</pre>
@@ -1422,13 +1454,13 @@
 
                 <v-sheet class="surface-gradient-card pa-4" rounded="lg">
                   <div class="text-subtitle-2 font-weight-medium mb-3">
-                    {{ t('ai.memoryDomainSocial') }} · {{ promptPreviewSocialMemories.length }}
+                    {{ t('ai.memoryLayerOperator') }} · {{ promptPreviewOperatorMemories.length }}
                   </div>
                   <v-data-table
                     class="page-table"
                     density="compact"
                     :headers="promptMemoryHeaders"
-                    :items="promptPreviewSocialMemories"
+                    :items="promptPreviewOperatorMemories"
                     :items-per-page-text="t('common.itemsPerPage')"
                     :no-data-text="t('common.noData')"
                   />
@@ -1436,7 +1468,35 @@
 
                 <v-sheet class="surface-gradient-card pa-4" rounded="lg">
                   <div class="text-subtitle-2 font-weight-medium mb-3">
-                    {{ t('ai.memoryDomainKnowledge') }} · {{ promptPreviewKnowledgeMemories.length }}
+                    {{ t('ai.memoryLayerSummary') }} · {{ promptPreviewSummaryMemories.length }}
+                  </div>
+                  <v-data-table
+                    class="page-table"
+                    density="compact"
+                    :headers="promptMemoryHeaders"
+                    :items="promptPreviewSummaryMemories"
+                    :items-per-page-text="t('common.itemsPerPage')"
+                    :no-data-text="t('common.noData')"
+                  />
+                </v-sheet>
+
+                <v-sheet class="surface-gradient-card pa-4" rounded="lg">
+                  <div class="text-subtitle-2 font-weight-medium mb-3">
+                    {{ t('ai.memoryLayerLongTerm') }} · {{ promptPreviewLongTermMemories.length }}
+                  </div>
+                  <v-data-table
+                    class="page-table"
+                    density="compact"
+                    :headers="promptMemoryHeaders"
+                    :items="promptPreviewLongTermMemories"
+                    :items-per-page-text="t('common.itemsPerPage')"
+                    :no-data-text="t('common.noData')"
+                  />
+                </v-sheet>
+
+                <v-sheet class="surface-gradient-card pa-4" rounded="lg">
+                  <div class="text-subtitle-2 font-weight-medium mb-3">
+                    {{ t('ai.memoryLayerKnowledge') }} · {{ promptPreviewKnowledgeMemories.length }}
                   </div>
                   <v-data-table
                     class="page-table"
@@ -1757,7 +1817,9 @@
     loadingDebug,
     promptPreview,
     promptPreviewKnowledgeMemories,
-    promptPreviewSocialMemories,
+    promptPreviewLongTermMemories,
+    promptPreviewOperatorMemories,
+    promptPreviewSummaryMemories,
     selectedConversation,
     summarizeJsonText,
     summarizeRawPayload,
@@ -2106,8 +2168,8 @@
   ])
 
   const promptMemoryHeaders = computed(() => [
-    { title: t('ai.memoryDomain'), key: 'memory_domain', sortable: false },
-    { title: t('ai.memoryType'), key: 'memory_type', sortable: false },
+    { title: t('ai.memoryLayer'), key: 'memory_layer', sortable: false },
+    { title: t('ai.memoryKind'), key: 'memory_kind', sortable: false },
     { title: t('ai.memoryContent'), key: 'content', sortable: false },
     { title: t('ai.memoryConfidence'), key: 'confidence', sortable: false },
     { title: t('ai.memorySalience'), key: 'salience', sortable: false },
@@ -2124,15 +2186,22 @@
   ])
 
   const memorySubjectOptions = computed(() => [
+    { title: t('ai.memoryAnchorScene'), value: 'scene' },
     { title: t('ai.scopeUser'), value: 'user' },
     { title: t('ai.scopeParticipant'), value: 'participant' },
-    { title: t('ai.scopeConversation'), value: 'conversation' },
   ])
 
   const memoryDomainOptions = computed(() => [
     { title: t('common.all'), value: '' },
-    { title: t('ai.memoryDomainSocial'), value: 'social' },
-    { title: t('ai.memoryDomainKnowledge'), value: 'knowledge' },
+    { title: t('ai.memoryLayerOperator'), value: 'operator' },
+    { title: t('ai.memoryLayerSummary'), value: 'summary' },
+    { title: t('ai.memoryLayerLongTerm'), value: 'long_term' },
+    { title: t('ai.memoryLayerKnowledge'), value: 'knowledge' },
+  ])
+  const memoryDraftLayerOptions = computed(() => [
+    { title: t('ai.memoryLayerLongTerm'), value: 'long_term' },
+    { title: t('ai.memoryLayerKnowledge'), value: 'knowledge' },
+    { title: t('ai.memoryLayerOperator'), value: 'operator' },
   ])
   const memoryTypeOptions = computed(() => [
     { title: 'fact', value: 'fact' },
@@ -2148,28 +2217,51 @@
   const memoryLimitOptions = [10, 20, 50, 100]
 
   const memoryTargetLabel = computed(() => {
-    if (!memoryForm.subject_id.trim()) {
+    if (!memoryForm.anchor_id.trim()) {
       return t('ai.selectMemoryTarget')
     }
-    const subjectLabel = memorySubjectOptions.value.find(item => item.value === memoryForm.subject_type)?.title ?? memoryForm.subject_type
-    return `${subjectLabel} · ${memoryForm.subject_id}`
+    const subjectLabel = memorySubjectOptions.value.find(item => item.value === memoryForm.anchor_type)?.title ?? memoryForm.anchor_type
+    return `${subjectLabel} · ${memoryForm.anchor_id}`
   })
 
   const memoryTypeBreakdown = computed(() => {
     const counts = new Map<string, number>()
     for (const item of memories.value) {
-      counts.set(item.memory_type, (counts.get(item.memory_type) ?? 0) + 1)
+      counts.set(item.memory_kind, (counts.get(item.memory_kind) ?? 0) + 1)
     }
     return Array.from(counts.entries()).map(([memoryType, count]) => ({ memoryType, count }))
   })
+
+  const memoryLayerSections = computed(() => [
+    {
+      layer: 'summary',
+      title: t('ai.memoryLayerSummary'),
+      items: memories.value.filter(item => item.memory_layer === 'summary'),
+    },
+    {
+      layer: 'long_term',
+      title: t('ai.memoryLayerLongTerm'),
+      items: memories.value.filter(item => item.memory_layer === 'long_term'),
+    },
+    {
+      layer: 'knowledge',
+      title: t('ai.memoryLayerKnowledge'),
+      items: memories.value.filter(item => item.memory_layer === 'knowledge'),
+    },
+    {
+      layer: 'operator',
+      title: t('ai.memoryLayerOperator'),
+      items: memories.value.filter(item => item.memory_layer === 'operator'),
+    },
+  ])
 
   const readonlySkillCount = computed(() => skills.value.filter(item => item.read_only).length)
 
   const recentRelationshipTargets = computed(() => (
     recentTargets.value.filter(item => (
-      (item.subject_type === 'user' || item.subject_type === 'participant')
+      (item.anchor_type === 'user' || item.anchor_type === 'participant')
       && !!item.platform
-      && !!item.subject_user_id
+      && !!item.user_id
     ))
   ))
 

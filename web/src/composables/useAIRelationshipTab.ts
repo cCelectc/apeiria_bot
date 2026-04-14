@@ -48,7 +48,7 @@ export function useAIRelationshipTab (t: (key: string) => string) {
     if (!target.platform) {
       return
     }
-    const userId = target.subject_user_id ?? (target.subject_type === 'user' ? target.subject_id : '')
+    const userId = target.user_id ?? (target.anchor_type === 'user' ? target.anchor_id : '')
     if (!userId) {
       return
     }

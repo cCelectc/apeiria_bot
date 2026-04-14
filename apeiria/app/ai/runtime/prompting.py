@@ -32,7 +32,9 @@ class AIReplyPromptChannels:
     relationship: str | None
     tool_policy: str | None
     tool_results: tuple[str, ...]
-    social_memories: tuple[str, ...]
+    operator_memories: tuple[str, ...]
+    summary_memories: tuple[str, ...]
+    long_term_memories: tuple[str, ...]
     knowledge_memories: tuple[str, ...]
     conversation_summary: str | None
     social_policy: str | None
@@ -79,15 +81,25 @@ def build_reply_prompt_channels(
         relationship=context.relationship,
         tool_policy=context.tool_policy,
         tool_results=context.tool_results,
-        social_memories=tuple(
+        operator_memories=tuple(
             _format_memory(memory)
             for memory in context.memories
-            if memory.memory_domain == "social"
+            if memory.memory_layer == "operator"
+        ),
+        summary_memories=tuple(
+            _format_memory(memory)
+            for memory in context.memories
+            if memory.memory_layer == "summary"
+        ),
+        long_term_memories=tuple(
+            _format_memory(memory)
+            for memory in context.memories
+            if memory.memory_layer == "long_term"
         ),
         knowledge_memories=tuple(
             _format_memory(memory)
             for memory in context.memories
-            if memory.memory_domain == "knowledge"
+            if memory.memory_layer == "knowledge"
         ),
         conversation_summary=context.conversation_summary,
         social_policy=context.social_policy,
@@ -117,7 +129,7 @@ def build_reply_prompt_channels(
     )
 
 
-def render_reply_prompt(channels: AIReplyPromptChannels) -> str:  # noqa: C901
+def render_reply_prompt(channels: AIReplyPromptChannels) -> str:  # noqa: C901, PLR0912
     """Render one flat model prompt from structured channels."""
 
     sections = [f"[Persona]\n{channels.persona}"]
@@ -129,8 +141,16 @@ def render_reply_prompt(channels: AIReplyPromptChannels) -> str:  # noqa: C901
         sections.append(f"[ToolPolicy]\n{channels.tool_policy}")
     if channels.tool_results:
         sections.append("[ToolResults]\n" + "\n".join(channels.tool_results))
-    if channels.social_memories:
-        sections.append("[SocialMemories]\n" + "\n".join(channels.social_memories))
+    if channels.operator_memories:
+        sections.append(
+            "[OperatorMemories]\n" + "\n".join(channels.operator_memories)
+        )
+    if channels.summary_memories:
+        sections.append("[SummaryMemories]\n" + "\n".join(channels.summary_memories))
+    if channels.long_term_memories:
+        sections.append(
+            "[LongTermMemories]\n" + "\n".join(channels.long_term_memories)
+        )
     if channels.knowledge_memories:
         sections.append(
             "[KnowledgeMemories]\n" + "\n".join(channels.knowledge_memories)
@@ -165,7 +185,7 @@ def _format_turn(turn: "AIContextTurnView") -> str:
 
 def _format_memory(memory: "AIMemoryDefinition") -> str:
     return (
-        f"- [{memory.memory_domain}/{memory.memory_type}] {memory.content} "
+        f"- [{memory.memory_layer}/{memory.memory_kind}] {memory.content} "
         f"(salience={memory.salience:.2f}, confidence={memory.confidence:.2f})"
     )
 

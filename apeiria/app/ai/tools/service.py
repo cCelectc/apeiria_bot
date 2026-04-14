@@ -664,6 +664,37 @@ class AIToolService:
                 status="error",
             )
 
+        existing = await ai_memory_service.get_memory(
+            session,
+            memory_id=tool_input.memory_id,
+        )
+        if existing is None:
+            return AIToolObservationResult(
+                tool_name="memory.update",
+                summary=(
+                    "- [memory.update] failed: "
+                    f"memory {tool_input.memory_id} was not found"
+                ),
+                input_payload=tool_input,
+                output_payload={"ok": False, "message": "memory not found"},
+                status="error",
+            )
+        if (
+            not existing.is_editable
+            or existing.is_ignored
+            or existing.memory_layer not in {"long_term", "knowledge", "operator"}
+        ):
+            return AIToolObservationResult(
+                tool_name="memory.update",
+                summary=(
+                    "- [memory.update] failed: "
+                    f"memory {tool_input.memory_id} is not editable in this layer"
+                ),
+                input_payload=tool_input,
+                output_payload={"ok": False, "message": "memory not editable"},
+                status="error",
+            )
+
         row = await ai_memory_service.update_memory_content(
             session,
             memory_id=tool_input.memory_id,
@@ -681,15 +712,12 @@ class AIToolService:
         if row is None:
             return AIToolObservationResult(
                 tool_name="memory.update",
-                summary=(
-                    "- [memory.update] failed: "
-                    f"memory {tool_input.memory_id} was not found"
-                ),
+                summary="- [memory.update] failed: update returned no row",
                 input_payload=tool_input,
                 output_payload={"ok": False, "message": "memory not found"},
                 status="error",
             )
-        if row.memory_domain == "knowledge":
+        if row.memory_layer == "knowledge":
             await ai_memory_service.upsert_memory_embedding(
                 session,
                 memory_id=row.memory_id,

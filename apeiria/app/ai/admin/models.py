@@ -14,15 +14,15 @@ class AIRecentTarget:
     """Owner-facing recent target for browsing AI state."""
 
     target_type: str
-    subject_type: str
-    subject_id: str
+    anchor_type: str
+    anchor_id: str
     title: str
     subtitle: str | None
-    conversation_id: str | None
+    scene_id: str | None
     platform: str | None
     scope_type: str | None
     scope_id: str | None
-    subject_user_id: str | None
+    user_id: str | None
     last_active_at: str | None
 
 
@@ -54,7 +54,9 @@ class AIConversationPromptPreview:
     social_policy_source: str | None
     tool_results: tuple[str, ...]
     memories: tuple[AIMemoryDefinition, ...]
-    social_memory_count: int
+    operator_memory_count: int
+    summary_memory_count: int
+    long_term_memory_count: int
     knowledge_memory_count: int
     rendered_roleplay_prompt: str | None
     rendered_prompt: str

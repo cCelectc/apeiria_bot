@@ -223,7 +223,9 @@ def _build_tool_parameters(tool_name: str) -> dict[str, Any]:
             "properties": {
                 "query_text": {
                     "type": "string",
-                    "description": "The memory lookup query for recalled context.",
+                    "description": (
+                        "The lookup query for recalled persistent memory context."
+                    ),
                 }
             },
             "required": ["query_text"],
@@ -237,7 +239,7 @@ def _build_tool_parameters(tool_name: str) -> dict[str, Any]:
                     "type": "string",
                     "description": (
                         "One recalled memory_id from memory.query or prior tool "
-                        "results in the current conversation."
+                        "results in the current scene."
                     ),
                 },
                 "updated_content": {

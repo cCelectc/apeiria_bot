@@ -1,6 +1,6 @@
 import type {
-  AIModelCatalogItem,
   AIModelBindingItem,
+  AIModelCatalogItem,
   AIModelProfileItem,
   AISourceItem,
   AISourceModelItem,
@@ -19,9 +19,9 @@ import {
   getAISourcePresets,
   getAISources,
   testAISourceModel,
-  upsertAIModelProfile,
   updateAISource,
   updateAISourceModel,
+  upsertAIModelProfile,
 } from '@/api'
 import { getErrorMessage } from '@/api/client'
 import { useNoticeStore } from '@/stores/notice'

@@ -65,11 +65,7 @@ def resolve_update_target_memory_id(
     same_type_memories = [
         memory
         for memory in existing_memories
-        if memory.memory_type == candidate.memory_type
-        and not (
-            candidate.memory_type == "note"
-            and memory.content.startswith("Known stable context:\n")
-        )
+        if memory.memory_kind == candidate.memory_kind
     ]
     if not same_type_memories:
         return None

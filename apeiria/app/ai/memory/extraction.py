@@ -8,13 +8,13 @@ from typing import TYPE_CHECKING, Any
 from apeiria.app.ai.memory.models import (
     AIMemoryExtractionAction,
     AIMemoryExtractionCandidate,
-    AIMemoryType,
+    AIMemoryKind,
 )
 
 if TYPE_CHECKING:
     from apeiria.app.ai.memory.models import AIMemoryDefinition
 
-_ALLOWED_MEMORY_TYPES: set[AIMemoryType] = {
+_ALLOWED_MEMORY_KINDS: set[AIMemoryKind] = {
     "fact",
     "preference",
     "relationship",
@@ -34,7 +34,7 @@ def build_memory_extraction_prompt(
         (
             "Extract durable long-term memory candidates from the user message.",
             "Return strict JSON only, with this shape:",
-            '{"memories":[{"memory_type":"preference|fact|relationship|note","content":"...","action":"add|update|noop","target_memory_id":"optional-existing-id","confidence":0.0,"salience":0.0}]}',
+            '{"memories":[{"memory_kind":"preference|fact|relationship|note","content":"...","action":"add|update|noop","target_memory_id":"optional-existing-id","confidence":0.0,"salience":0.0}]}',
             "Only include information that is useful in future conversations.",
             "Do not include transient requests, jokes, or uncertain guesses.",
             "Use the same language as the source message for content.",
@@ -66,7 +66,7 @@ def parse_memory_extraction_response(
         candidate = _parse_candidate(row)
         if candidate is None:
             continue
-        key = (candidate.memory_type, candidate.content)
+        key = (candidate.memory_kind, candidate.content)
         if key in seen:
             continue
         seen.add(key)
@@ -99,15 +99,15 @@ def _strip_code_fence(content: str) -> str:
 
 
 def _parse_candidate(row: dict[str, Any]) -> AIMemoryExtractionCandidate | None:
-    raw_memory_type = row.get("memory_type")
+    raw_memory_kind = row.get("memory_kind")
     content = row.get("content")
-    if raw_memory_type not in _ALLOWED_MEMORY_TYPES:
+    if raw_memory_kind not in _ALLOWED_MEMORY_KINDS:
         return None
     if not isinstance(content, str) or not content.strip():
         return None
     action = _coerce_action(row.get("action"))
     return AIMemoryExtractionCandidate(
-        memory_type=raw_memory_type,
+        memory_kind=raw_memory_kind,
         content=content.strip(),
         action=action,
         target_memory_id=_coerce_optional_id(row.get("target_memory_id")),
@@ -143,7 +143,7 @@ def _format_existing_memories(
         return "Existing memories: []"
     lines = [
         (
-            f"- id={memory.memory_id}; type={memory.memory_type}; "
+            f"- id={memory.memory_id}; kind={memory.memory_kind}; "
             f'content="{memory.content}"'
         )
         for memory in existing_memories[:8]

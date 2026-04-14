@@ -45,11 +45,17 @@ export function useAIDebugTab (t: (key: string, params?: Record<string, unknown>
     error: toolExecutions.value.filter(item => item.status === 'error').length,
     timeout: toolExecutions.value.filter(item => item.status === 'timeout').length,
   }))
-  const promptPreviewSocialMemories = computed(() => (
-    (promptPreview.value?.memories ?? []).filter(item => item.memory_domain === 'social')
+  const promptPreviewOperatorMemories = computed(() => (
+    (promptPreview.value?.memories ?? []).filter(item => item.memory_layer === 'operator')
+  ))
+  const promptPreviewSummaryMemories = computed(() => (
+    (promptPreview.value?.memories ?? []).filter(item => item.memory_layer === 'summary')
+  ))
+  const promptPreviewLongTermMemories = computed(() => (
+    (promptPreview.value?.memories ?? []).filter(item => item.memory_layer === 'long_term')
   ))
   const promptPreviewKnowledgeMemories = computed(() => (
-    (promptPreview.value?.memories ?? []).filter(item => item.memory_domain === 'knowledge')
+    (promptPreview.value?.memories ?? []).filter(item => item.memory_layer === 'knowledge')
   ))
 
   async function loadDebugData () {
@@ -134,9 +140,11 @@ export function useAIDebugTab (t: (key: string, params?: Record<string, unknown>
     loadDebugData,
     loadingDebug,
     loadingTurns,
+    promptPreviewOperatorMemories,
     promptPreview,
     promptPreviewKnowledgeMemories,
-    promptPreviewSocialMemories,
+    promptPreviewLongTermMemories,
+    promptPreviewSummaryMemories,
     selectedConversation,
     selectedConversationId,
     summarizeJsonText,

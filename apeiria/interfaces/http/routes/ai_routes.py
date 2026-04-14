@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
@@ -358,19 +358,24 @@ async def list_ai_persona_bindings(
 
 
 @router.get("/memories", response_model=list[AIMemoryItem])
-async def list_ai_memories(
+async def list_ai_memories(  # noqa: PLR0913
     _: Annotated[Any, Depends(require_control_panel)],
-    subject_type: Annotated[str, Query(min_length=1)],
-    subject_id: Annotated[str, Query(min_length=1)],
+    anchor_type: Annotated[
+        Literal["scene", "participant", "user"],
+        Query(),
+    ],
+    anchor_id: Annotated[str, Query(min_length=1)],
     query: str = "",
-    memory_domain: Annotated[str | None, Query(max_length=32)] = None,
+    memory_layer: Annotated[str | None, Query(max_length=32)] = None,
+    memory_kind: Annotated[str | None, Query(max_length=32)] = None,
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
 ) -> list[AIMemoryItem]:
     memories = await ai_admin_service.list_memories(
-        subject_type=subject_type,
-        subject_id=subject_id,
+        anchor_type=anchor_type,
+        anchor_id=anchor_id,
         query_text=query,
-        memory_domain=memory_domain,
+        memory_layer=memory_layer,
+        memory_kind=memory_kind,
         limit=limit,
     )
     return [to_ai_memory_item(item) for item in memories]
@@ -382,10 +387,10 @@ async def create_ai_memory(
     _: Annotated[Any, Depends(require_control_panel)],
 ) -> AIMemoryItem:
     memory = await ai_admin_service.create_memory(
-        memory_domain=payload.memory_domain,
-        memory_type=payload.memory_type,
-        subject_type=payload.subject_type,
-        subject_id=payload.subject_id,
+        memory_layer=payload.memory_layer,
+        memory_kind=payload.memory_kind,
+        anchor_type=payload.anchor_type,
+        anchor_id=payload.anchor_id,
         content=payload.content,
         salience=payload.salience,
         confidence=payload.confidence,

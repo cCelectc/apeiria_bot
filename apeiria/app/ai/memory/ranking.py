@@ -54,9 +54,16 @@ def rank_memory_items(
     filtered = [
         item
         for item in items
-        if item.subject_type == query.subject_type
-        and item.subject_id == query.subject_id
+        if item.anchor_type == query.anchor_type
+        and item.anchor_id == query.anchor_id
+        and not item.is_ignored
     ]
+    if query.memory_layer is not None:
+        filtered = [
+            item for item in filtered if item.memory_layer == query.memory_layer
+        ]
+    if query.memory_kind is not None:
+        filtered = [item for item in filtered if item.memory_kind == query.memory_kind]
 
     ranked = sorted(
         filtered,
@@ -73,4 +80,4 @@ def _memory_type_score(memory: AIMemoryDefinition) -> float:
         "fact": 0.2,
         "note": 0.05,
     }
-    return scores.get(memory.memory_type, 0.0)
+    return scores.get(memory.memory_kind, 0.0)

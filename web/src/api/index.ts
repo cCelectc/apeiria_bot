@@ -411,11 +411,13 @@ export interface AIPersonaBindingItem {
 
 export interface AIMemoryItem {
   memory_id: string
-  memory_domain: string
-  memory_type: string
-  subject_type: string
-  subject_id: string
+  anchor_type: string
+  anchor_id: string
+  memory_layer: string
+  memory_kind: string
   content: string
+  is_editable: boolean
+  is_ignored: boolean
   source_turn_id: string | null
   salience: number
   confidence: number
@@ -425,23 +427,23 @@ export interface AIMemoryItem {
 
 export interface AIRecentTargetItem {
   target_type: string
-  subject_type: string
-  subject_id: string
+  anchor_type: string
+  anchor_id: string
   title: string
   subtitle: string | null
-  conversation_id: string | null
+  scene_id: string | null
   platform: string | null
   scope_type: string | null
   scope_id: string | null
-  subject_user_id: string | null
+  user_id: string | null
   last_active_at: string | null
 }
 
 export interface AIMemoryCreateRequest {
-  memory_domain: string
-  memory_type: string
-  subject_type: string
-  subject_id: string
+  memory_layer: string
+  memory_kind: string
+  anchor_type: string
+  anchor_id: string
   content: string
   salience?: number
   confidence?: number
@@ -539,7 +541,9 @@ export interface AIConversationPromptPreviewItem {
   social_policy_source: string | null
   tool_results: string[]
   memories: AIMemoryItem[]
-  social_memory_count: number
+  operator_memory_count: number
+  summary_memory_count: number
+  long_term_memory_count: number
   knowledge_memory_count: number
   rendered_roleplay_prompt: string | null
   rendered_prompt: string
@@ -1109,9 +1113,10 @@ export function getAIModelBindings () {
 }
 
 export function getAIMemories (params: {
-  subject_type: string
-  subject_id: string
-  memory_domain?: string
+  anchor_type: string
+  anchor_id: string
+  memory_layer?: string
+  memory_kind?: string
   query?: string
   limit?: number
 }) {

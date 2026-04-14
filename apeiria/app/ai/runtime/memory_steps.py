@@ -12,7 +12,7 @@ from apeiria.app.ai.memory.extraction import (
     build_memory_extraction_prompt,
     parse_memory_extraction_response,
 )
-from apeiria.app.ai.memory.models import AIMemoryQuery
+from apeiria.app.ai.memory.models import AIMemoryLayer, AIMemoryQuery
 from apeiria.app.ai.memory.service import ai_memory_service
 from apeiria.app.ai.model.models import AIModelRouteQuery
 from apeiria.app.ai.model.service import ai_model_facade
@@ -21,53 +21,63 @@ if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
     from apeiria.app.ai.conversation.models import AIConversationIdentity
-    from apeiria.app.ai.memory.models import AIMemoryDefinition
+    from apeiria.app.ai.memory.models import AIMemoryAnchorType, AIMemoryDefinition
 
 
 @dataclass(frozen=True)
-class AIMemoryRecallTarget:
-    """One memory retrieval boundary for reply runtime."""
+class AIMemoryRecallAnchor:
+    """One memory retrieval anchor for reply runtime."""
 
-    subject_type: str
-    subject_id: str
+    anchor_type: "AIMemoryAnchorType"
+    anchor_id: str
 
 
 @dataclass(frozen=True)
-class AIMemoryWriteTarget:
-    """One memory storage boundary for one runtime turn."""
+class AIMemoryWriteAnchor:
+    """One persistent memory write anchor for one runtime turn."""
 
-    subject_type: str
-    subject_id: str
+    anchor_type: "AIMemoryAnchorType"
+    anchor_id: str
 
 
-_MEMORY_TYPE_LIMITS: dict[str, int] = {
+_MEMORY_KIND_LIMITS: dict[str, int] = {
     "preference": 2,
     "relationship": 1,
     "fact": 1,
     "note": 1,
 }
-_MAX_RECALLED_SOCIAL_MEMORIES = 4
-_MAX_RECALLED_KNOWLEDGE_MEMORIES = 3
+_LAYER_RECALL_LIMITS: dict[AIMemoryLayer, int] = {
+    "operator": 2,
+    "summary": 2,
+    "long_term": 4,
+    "knowledge": 3,
+}
+_RECALL_LAYER_ORDER: tuple[AIMemoryLayer, ...] = (
+    "operator",
+    "summary",
+    "long_term",
+    "knowledge",
+)
 
 
-def build_memory_targets(
+def build_memory_anchors(
     identity: "AIConversationIdentity",
     user_id: str,
-) -> list[AIMemoryRecallTarget]:
-    """Build memory lookup targets for the current runtime turn."""
+) -> list[AIMemoryRecallAnchor]:
+    """Build anchor lookup order for the current runtime turn."""
 
-    targets = [
-        AIMemoryRecallTarget(
-            subject_type="conversation",
-            subject_id=identity.conversation_id,
+    anchors = [
+        AIMemoryRecallAnchor(
+            anchor_type="scene",
+            anchor_id=identity.conversation_id,
         )
     ]
     effective_user_id = identity.subject_user_id or user_id
     if identity.scope_type == "group" and identity.scope_id and effective_user_id:
-        targets.append(
-            AIMemoryRecallTarget(
-                subject_type="participant",
-                subject_id=build_participant_subject_id(
+        anchors.append(
+            AIMemoryRecallAnchor(
+                anchor_type="participant",
+                anchor_id=build_participant_subject_id(
                     scope_type=identity.scope_type,
                     scope_id=identity.scope_id,
                     user_id=effective_user_id,
@@ -75,46 +85,24 @@ def build_memory_targets(
             )
         )
     if effective_user_id:
-        targets.append(
-            AIMemoryRecallTarget(
-                subject_type="user",
-                subject_id=effective_user_id,
+        anchors.append(
+            AIMemoryRecallAnchor(
+                anchor_type="user",
+                anchor_id=effective_user_id,
             )
         )
-    return targets
+    return anchors
 
 
-def build_memory_write_targets(
+def build_memory_write_anchors(
     identity: "AIConversationIdentity",
     user_id: str,
-) -> list[AIMemoryWriteTarget]:
-    """Build storage targets for durable memory extraction."""
+) -> list[AIMemoryWriteAnchor]:
+    """Build persistent storage anchors for extracted long-term memory."""
 
-    effective_user_id = identity.subject_user_id or user_id
-    if identity.scope_type == "group" and identity.scope_id and effective_user_id:
-        return [
-            AIMemoryWriteTarget(
-                subject_type="conversation",
-                subject_id=identity.conversation_id,
-            ),
-            AIMemoryWriteTarget(
-                subject_type="participant",
-                subject_id=build_participant_subject_id(
-                    scope_type=identity.scope_type,
-                    scope_id=identity.scope_id,
-                    user_id=effective_user_id,
-                ),
-            ),
-            AIMemoryWriteTarget(
-                subject_type="user",
-                subject_id=effective_user_id,
-            ),
-        ]
     return [
-        AIMemoryWriteTarget(
-            subject_type="user",
-            subject_id=effective_user_id,
-        )
+        AIMemoryWriteAnchor(anchor_type=anchor.anchor_type, anchor_id=anchor.anchor_id)
+        for anchor in build_memory_anchors(identity, user_id)
     ]
 
 
@@ -123,19 +111,19 @@ def apply_memory_budget(
     *,
     max_memories: int,
 ) -> list["AIMemoryDefinition"]:
-    """Apply a simple per-type recall budget for the prompt window."""
+    """Apply a simple per-kind recall budget for the prompt window."""
 
     selected: list[AIMemoryDefinition] = []
     selected_ids: set[str] = set()
-    type_counts: dict[str, int] = {}
+    kind_counts: dict[str, int] = {}
 
     for memory in memories:
-        type_limit = _MEMORY_TYPE_LIMITS.get(memory.memory_type, 1)
-        if type_counts.get(memory.memory_type, 0) >= type_limit:
+        kind_limit = _MEMORY_KIND_LIMITS.get(memory.memory_kind, 1)
+        if kind_counts.get(memory.memory_kind, 0) >= kind_limit:
             continue
         selected.append(memory)
         selected_ids.add(memory.memory_id)
-        type_counts[memory.memory_type] = type_counts.get(memory.memory_type, 0) + 1
+        kind_counts[memory.memory_kind] = kind_counts.get(memory.memory_kind, 0) + 1
         if len(selected) >= max_memories:
             return selected
 
@@ -158,58 +146,34 @@ async def recall_memories(
 ) -> list["AIMemoryDefinition"]:
     """Recall memories for the current runtime turn."""
 
-    social_memories: list[AIMemoryDefinition] = []
+    recalled: list[AIMemoryDefinition] = []
     seen_ids: set[str] = set()
-    for target in build_memory_targets(identity, user_id):
-        rows = await ai_memory_service.recall_memories(
-            session,
-            AIMemoryQuery(
-                subject_type=target.subject_type,
-                subject_id=target.subject_id,
+
+    for memory_layer in _RECALL_LAYER_ORDER:
+        if memory_layer == "knowledge":
+            layer_rows = await ai_memory_service.retrieve_knowledge_memories(
+                session,
+                targets=_build_knowledge_targets(identity, user_id),
                 query_text=query_text,
-                limit=3,
-                memory_domain="social",
-            ),
-        )
-        for row in rows:
-            if row.memory_id in seen_ids:
-                continue
-            seen_ids.add(row.memory_id)
-            social_memories.append(row)
-    knowledge_targets: list[tuple[str, str]] = [
-        ("conversation", identity.conversation_id),
-    ]
-    effective_user_id = identity.subject_user_id or user_id
-    if identity.scope_type == "group" and identity.scope_id and effective_user_id:
-        knowledge_targets.append(
-            (
-                "participant",
-                build_participant_subject_id(
-                    scope_type=identity.scope_type,
-                    scope_id=identity.scope_id,
-                    user_id=effective_user_id,
-                ),
+                limit=_LAYER_RECALL_LIMITS[memory_layer],
             )
-        )
-    if effective_user_id:
-        knowledge_targets.append(("user", effective_user_id))
-    knowledge_rows = await ai_memory_service.retrieve_knowledge_memories(
-        session,
-        targets=knowledge_targets,
-        query_text=query_text,
-        limit=3,
-    )
-    for row in knowledge_rows:
-        if row.memory_id in seen_ids:
-            continue
-        seen_ids.add(row.memory_id)
-    return apply_memory_budget(
-        social_memories,
-        max_memories=_MAX_RECALLED_SOCIAL_MEMORIES,
-    ) + apply_memory_budget(
-        knowledge_rows,
-        max_memories=_MAX_RECALLED_KNOWLEDGE_MEMORIES,
-    )
+        else:
+            layer_rows = await _collect_layer_memories(
+                session,
+                identity=identity,
+                user_id=user_id,
+                query_text=query_text,
+                memory_layer=memory_layer,
+                mutate_recall=True,
+            )
+        for memory in apply_memory_budget(
+            [item for item in layer_rows if item.memory_id not in seen_ids],
+            max_memories=_LAYER_RECALL_LIMITS[memory_layer],
+        ):
+            seen_ids.add(memory.memory_id)
+            recalled.append(memory)
+
+    return recalled
 
 
 async def retrieve_memories_for_preview(
@@ -221,58 +185,76 @@ async def retrieve_memories_for_preview(
 ) -> list["AIMemoryDefinition"]:
     """Retrieve preview memories without mutating recall timestamps."""
 
-    social_memories: list[AIMemoryDefinition] = []
+    recalled: list[AIMemoryDefinition] = []
     seen_ids: set[str] = set()
-    for target in build_memory_targets(identity, user_id):
-        rows = await ai_memory_service.retrieve_memories(
-            session,
-            AIMemoryQuery(
-                subject_type=target.subject_type,
-                subject_id=target.subject_id,
+
+    for memory_layer in _RECALL_LAYER_ORDER:
+        if memory_layer == "knowledge":
+            layer_rows = await ai_memory_service.retrieve_knowledge_memories(
+                session,
+                targets=_build_knowledge_targets(identity, user_id),
                 query_text=query_text,
-                limit=3,
-                memory_domain="social",
-            ),
+                limit=_LAYER_RECALL_LIMITS[memory_layer],
+            )
+        else:
+            layer_rows = await _collect_layer_memories(
+                session,
+                identity=identity,
+                user_id=user_id,
+                query_text=query_text,
+                memory_layer=memory_layer,
+                mutate_recall=False,
+            )
+        for memory in apply_memory_budget(
+            [item for item in layer_rows if item.memory_id not in seen_ids],
+            max_memories=_LAYER_RECALL_LIMITS[memory_layer],
+        ):
+            seen_ids.add(memory.memory_id)
+            recalled.append(memory)
+
+    return recalled
+
+
+async def _collect_layer_memories(  # noqa: PLR0913
+    session: "AsyncSession",
+    *,
+    identity: "AIConversationIdentity",
+    user_id: str,
+    query_text: str,
+    memory_layer: AIMemoryLayer,
+    mutate_recall: bool,
+) -> list["AIMemoryDefinition"]:
+    rows_for_layer: list[AIMemoryDefinition] = []
+    seen_ids: set[str] = set()
+    for anchor in build_memory_anchors(identity, user_id):
+        query = AIMemoryQuery(
+            anchor_type=anchor.anchor_type,
+            anchor_id=anchor.anchor_id,
+            query_text=query_text,
+            limit=3,
+            memory_layer=memory_layer,
+        )
+        rows = (
+            await ai_memory_service.recall_memories(session, query)
+            if mutate_recall
+            else await ai_memory_service.retrieve_memories(session, query)
         )
         for row in rows:
             if row.memory_id in seen_ids:
                 continue
             seen_ids.add(row.memory_id)
-            social_memories.append(row)
-    knowledge_targets: list[tuple[str, str]] = [
-        ("conversation", identity.conversation_id),
+            rows_for_layer.append(row)
+    return rows_for_layer
+
+
+def _build_knowledge_targets(
+    identity: "AIConversationIdentity",
+    user_id: str,
+) -> list[tuple["AIMemoryAnchorType", str]]:
+    return [
+        (anchor.anchor_type, anchor.anchor_id)
+        for anchor in build_memory_anchors(identity, user_id)
     ]
-    effective_user_id = identity.subject_user_id or user_id
-    if identity.scope_type == "group" and identity.scope_id and effective_user_id:
-        knowledge_targets.append(
-            (
-                "participant",
-                build_participant_subject_id(
-                    scope_type=identity.scope_type,
-                    scope_id=identity.scope_id,
-                    user_id=effective_user_id,
-                ),
-            )
-        )
-    if effective_user_id:
-        knowledge_targets.append(("user", effective_user_id))
-    knowledge_rows = await ai_memory_service.retrieve_knowledge_memories(
-        session,
-        targets=knowledge_targets,
-        query_text=query_text,
-        limit=3,
-    )
-    for row in knowledge_rows:
-        if row.memory_id in seen_ids:
-            continue
-        seen_ids.add(row.memory_id)
-    return apply_memory_budget(
-        social_memories,
-        max_memories=_MAX_RECALLED_SOCIAL_MEMORIES,
-    ) + apply_memory_budget(
-        knowledge_rows,
-        max_memories=_MAX_RECALLED_KNOWLEDGE_MEMORIES,
-    )
 
 
 async def store_extracted_memories(
@@ -283,16 +265,17 @@ async def store_extracted_memories(
     message_text: str,
     source_turn_id: str | None,
 ) -> None:
-    """Extract and store structured memory candidates from one user message."""
+    """Extract and store structured long-term memory candidates."""
 
-    write_targets = build_memory_write_targets(identity, user_id)
+    write_anchors = build_memory_write_anchors(identity, user_id)
     existing_memories: list[AIMemoryDefinition] = []
     seen_memory_ids: set[str] = set()
-    for target in write_targets:
+    for anchor in write_anchors:
         rows = await ai_memory_service.list_memories(
             session,
-            subject_type=target.subject_type,
-            subject_id=target.subject_id,
+            anchor_type=anchor.anchor_type,
+            anchor_id=anchor.anchor_id,
+            memory_layer="long_term",
         )
         for row in rows:
             if row.memory_id in seen_memory_ids:
@@ -325,16 +308,16 @@ async def store_extracted_memories(
     if not candidates:
         return
 
-    for target in write_targets:
+    for anchor in write_anchors:
         await ai_memory_service.remember_candidates(
             session,
-            subject_type=target.subject_type,
-            subject_id=target.subject_id,
+            anchor_type=anchor.anchor_type,
+            anchor_id=anchor.anchor_id,
             source_turn_id=source_turn_id,
             candidates=candidates,
         )
-        await ai_memory_service.consolidate_subject_memories(
+        await ai_memory_service.consolidate_anchor_summary(
             session,
-            subject_type=target.subject_type,
-            subject_id=target.subject_id,
+            anchor_type=anchor.anchor_type,
+            anchor_id=anchor.anchor_id,
         )

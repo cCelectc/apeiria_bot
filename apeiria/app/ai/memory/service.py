@@ -17,17 +17,15 @@ from apeiria.app.ai.memory.embeddings import (
     embed_text,
 )
 from apeiria.app.ai.memory.models import (
+    AIMemoryAnchorType,
     AIMemoryDefinition,
-    AIMemoryDomain,
     AIMemoryExtractionCandidate,
+    AIMemoryKind,
+    AIMemoryLayer,
     AIMemoryQuery,
-    AIMemoryType,
 )
 from apeiria.app.ai.memory.ranking import rank_memory_items
-from apeiria.app.ai.memory.summary import (
-    SUMMARY_NOTE_PREFIX,
-    build_summary_memory_content,
-)
+from apeiria.app.ai.memory.summary import build_summary_memory_content
 from apeiria.app.ai.model.service import ai_model_facade
 from apeiria.app.ai.model.source_service import ai_source_service
 from apeiria.infra.db.models import AIMemoryEmbedding, AIMemoryItem
@@ -40,11 +38,13 @@ if TYPE_CHECKING:
 class AIMemoryCreateInput:
     """Create payload for one structured memory item."""
 
-    memory_type: AIMemoryType
-    subject_type: str
-    subject_id: str
+    anchor_type: AIMemoryAnchorType
+    anchor_id: str
+    memory_layer: AIMemoryLayer
+    memory_kind: AIMemoryKind
     content: str
-    memory_domain: AIMemoryDomain = "social"
+    is_editable: bool = True
+    is_ignored: bool = False
     source_turn_id: str | None = None
     salience: float = 0.5
     confidence: float = 0.5
@@ -63,7 +63,8 @@ class AIMemoryUpdateInput:
 class AIMemoryService:
     """Long-term memory CRUD and retrieval service."""
 
-    SUMMARY_MEMORY_TYPE: AIMemoryType = "note"
+    SUMMARY_MEMORY_LAYER: AIMemoryLayer = "summary"
+    SUMMARY_MEMORY_KIND: AIMemoryKind = "note"
     KNOWLEDGE_RERANK_CANDIDATE_MULTIPLIER = 4
     KNOWLEDGE_RERANK_MIN_CANDIDATES = 8
 
@@ -76,11 +77,13 @@ class AIMemoryService:
 
         memory = AIMemoryItem(
             memory_id=f"mem_{uuid4().hex}",
-            memory_domain=create_input.memory_domain,
-            memory_type=create_input.memory_type,
-            subject_type=create_input.subject_type,
-            subject_id=create_input.subject_id,
+            anchor_type=create_input.anchor_type,
+            anchor_id=create_input.anchor_id,
+            memory_layer=create_input.memory_layer,
+            memory_kind=create_input.memory_kind,
             content=create_input.content,
+            is_editable=create_input.is_editable,
+            is_ignored=create_input.is_ignored,
             source_turn_id=create_input.source_turn_id,
             salience=create_input.salience,
             confidence=create_input.confidence,
@@ -98,10 +101,10 @@ class AIMemoryService:
 
         result = await session.execute(
             select(AIMemoryItem).where(
-                AIMemoryItem.memory_type == create_input.memory_type,
-                AIMemoryItem.memory_domain == create_input.memory_domain,
-                AIMemoryItem.subject_type == create_input.subject_type,
-                AIMemoryItem.subject_id == create_input.subject_id,
+                AIMemoryItem.anchor_type == create_input.anchor_type,
+                AIMemoryItem.anchor_id == create_input.anchor_id,
+                AIMemoryItem.memory_layer == create_input.memory_layer,
+                AIMemoryItem.memory_kind == create_input.memory_kind,
                 AIMemoryItem.content == create_input.content,
             )
         )
@@ -119,12 +122,25 @@ class AIMemoryService:
 
         result = await session.execute(
             select(AIMemoryItem).where(
-                AIMemoryItem.memory_type == create_input.memory_type,
-                AIMemoryItem.memory_domain == create_input.memory_domain,
-                AIMemoryItem.subject_type == create_input.subject_type,
-                AIMemoryItem.subject_id == create_input.subject_id,
+                AIMemoryItem.anchor_type == create_input.anchor_type,
+                AIMemoryItem.anchor_id == create_input.anchor_id,
+                AIMemoryItem.memory_layer == create_input.memory_layer,
+                AIMemoryItem.memory_kind == create_input.memory_kind,
                 AIMemoryItem.content == create_input.content,
             )
+        )
+        return result.scalar_one_or_none()
+
+    async def get_memory(
+        self,
+        session: AsyncSession,
+        *,
+        memory_id: str,
+    ) -> AIMemoryItem | None:
+        """Load one memory row by stable id."""
+
+        result = await session.execute(
+            select(AIMemoryItem).where(AIMemoryItem.memory_id == memory_id)
         )
         return result.scalar_one_or_none()
 
@@ -137,10 +153,7 @@ class AIMemoryService:
     ) -> AIMemoryItem | None:
         """Update one existing memory item in place."""
 
-        result = await session.execute(
-            select(AIMemoryItem).where(AIMemoryItem.memory_id == memory_id)
-        )
-        row = result.scalar_one_or_none()
+        row = await self.get_memory(session, memory_id=memory_id)
         if row is None:
             return None
         row.content = update_input.content
@@ -154,17 +167,18 @@ class AIMemoryService:
         self,
         session: AsyncSession,
         *,
-        subject_type: str,
-        subject_id: str,
+        anchor_type: AIMemoryAnchorType,
+        anchor_id: str,
         source_turn_id: str | None,
         candidates: list[AIMemoryExtractionCandidate],
     ) -> list[AIMemoryItem]:
-        """Persist extracted memory candidates while avoiding exact duplicates."""
+        """Persist extracted long-term memory candidates while avoiding duplicates."""
 
         existing_memories = await self.list_memories(
             session,
-            subject_type=subject_type,
-            subject_id=subject_id,
+            anchor_type=anchor_type,
+            anchor_id=anchor_id,
+            memory_layer="long_term",
         )
         plans = build_memory_write_plans(existing_memories, candidates)
         created: list[AIMemoryItem] = []
@@ -187,11 +201,12 @@ class AIMemoryService:
             row = await self.create_memory_if_absent(
                 session,
                 AIMemoryCreateInput(
-                    memory_type=candidate.memory_type,
-                    memory_domain="social",
-                    subject_type=subject_type,
-                    subject_id=subject_id,
+                    anchor_type=anchor_type,
+                    anchor_id=anchor_id,
+                    memory_layer="long_term",
+                    memory_kind=candidate.memory_kind,
                     content=candidate.content,
+                    is_editable=True,
                     source_turn_id=source_turn_id,
                     salience=candidate.salience,
                     confidence=candidate.confidence,
@@ -201,22 +216,28 @@ class AIMemoryService:
                 created.append(row)
         return created
 
-    async def list_memories(
+    async def list_memories(  # noqa: PLR0913
         self,
         session: AsyncSession,
         *,
-        subject_type: str,
-        subject_id: str,
-        memory_domain: AIMemoryDomain | None = None,
+        anchor_type: AIMemoryAnchorType,
+        anchor_id: str,
+        memory_layer: AIMemoryLayer | None = None,
+        memory_kind: AIMemoryKind | None = None,
+        include_ignored: bool = False,
     ) -> list[AIMemoryDefinition]:
-        """List all memories for one subject boundary."""
+        """List all memories for one anchor boundary."""
 
         query = select(AIMemoryItem).where(
-            AIMemoryItem.subject_type == subject_type,
-            AIMemoryItem.subject_id == subject_id,
+            AIMemoryItem.anchor_type == anchor_type,
+            AIMemoryItem.anchor_id == anchor_id,
         )
-        if memory_domain is not None:
-            query = query.where(AIMemoryItem.memory_domain == memory_domain)
+        if memory_layer is not None:
+            query = query.where(AIMemoryItem.memory_layer == memory_layer)
+        if memory_kind is not None:
+            query = query.where(AIMemoryItem.memory_kind == memory_kind)
+        if not include_ignored:
+            query = query.where(AIMemoryItem.is_ignored.is_(False))
         result = await session.execute(
             query.order_by(AIMemoryItem.created_at.asc(), AIMemoryItem.id.asc())
         )
@@ -231,9 +252,10 @@ class AIMemoryService:
 
         memories = await self.list_memories(
             session,
-            subject_type=query.subject_type,
-            subject_id=query.subject_id,
-            memory_domain=query.memory_domain,
+            anchor_type=query.anchor_type,
+            anchor_id=query.anchor_id,
+            memory_layer=query.memory_layer,
+            memory_kind=query.memory_kind,
         )
         return rank_memory_items(memories, query)
 
@@ -291,7 +313,7 @@ class AIMemoryService:
         self,
         session: AsyncSession,
         *,
-        targets: list[tuple[str, str]],
+        targets: list[tuple[AIMemoryAnchorType, str]],
         query_text: str,
         limit: int,
     ) -> list[AIMemoryDefinition]:
@@ -309,12 +331,12 @@ class AIMemoryService:
         scored: list[tuple[float, AIMemoryDefinition]] = []
         seen_memory_ids: set[str] = set()
 
-        for subject_type, subject_id in targets:
+        for anchor_type, anchor_id in targets:
             memories = await self.list_memories(
                 session,
-                subject_type=subject_type,
-                subject_id=subject_id,
-                memory_domain="knowledge",
+                anchor_type=anchor_type,
+                anchor_id=anchor_id,
+                memory_layer="knowledge",
             )
             for memory in memories:
                 if memory.memory_id in seen_memory_ids:
@@ -474,11 +496,13 @@ class AIMemoryService:
         return [
             AIMemoryDefinition(
                 memory_id=memory.memory_id,
-                memory_domain=memory.memory_domain,
-                memory_type=memory.memory_type,
-                subject_type=memory.subject_type,
-                subject_id=memory.subject_id,
+                anchor_type=memory.anchor_type,
+                anchor_id=memory.anchor_id,
+                memory_layer=memory.memory_layer,
+                memory_kind=memory.memory_kind,
                 content=memory.content,
+                is_editable=memory.is_editable,
+                is_ignored=memory.is_ignored,
                 source_turn_id=memory.source_turn_id,
                 salience=memory.salience,
                 confidence=memory.confidence,
@@ -496,10 +520,7 @@ class AIMemoryService:
     ) -> bool:
         """Delete one memory item by stable id."""
 
-        result = await session.execute(
-            select(AIMemoryItem).where(AIMemoryItem.memory_id == memory_id)
-        )
-        memory = result.scalar_one_or_none()
+        memory = await self.get_memory(session, memory_id=memory_id)
         if memory is None:
             return False
         result = await session.execute(
@@ -511,33 +532,36 @@ class AIMemoryService:
         await session.delete(memory)
         return True
 
-    async def consolidate_subject_memories(
+    async def consolidate_anchor_summary(
         self,
         session: AsyncSession,
         *,
-        subject_type: str,
-        subject_id: str,
+        anchor_type: AIMemoryAnchorType,
+        anchor_id: str,
     ) -> None:
-        """Build or refresh one deterministic summary memory for the subject."""
+        """Build or refresh one deterministic summary memory for the anchor."""
 
         memories = await self.list_memories(
             session,
-            subject_type=subject_type,
-            subject_id=subject_id,
+            anchor_type=anchor_type,
+            anchor_id=anchor_id,
+            include_ignored=True,
         )
         summary_content = build_summary_memory_content(memories)
-        if summary_content is None:
-            return
-
         existing_summary = next(
             (
                 memory
                 for memory in memories
-                if memory.memory_type == self.SUMMARY_MEMORY_TYPE
-                and memory.content.startswith(SUMMARY_NOTE_PREFIX)
+                if memory.memory_layer == self.SUMMARY_MEMORY_LAYER
             ),
             None,
         )
+
+        if summary_content is None:
+            if existing_summary is not None:
+                await self.delete_memory(session, memory_id=existing_summary.memory_id)
+            return
+
         if existing_summary is not None:
             if existing_summary.content == summary_content:
                 return
@@ -556,11 +580,12 @@ class AIMemoryService:
         await self.create_memory(
             session,
             AIMemoryCreateInput(
-                memory_type=self.SUMMARY_MEMORY_TYPE,
-                memory_domain="social",
-                subject_type=subject_type,
-                subject_id=subject_id,
+                anchor_type=anchor_type,
+                anchor_id=anchor_id,
+                memory_layer=self.SUMMARY_MEMORY_LAYER,
+                memory_kind=self.SUMMARY_MEMORY_KIND,
                 content=summary_content,
+                is_editable=False,
                 salience=0.8,
                 confidence=0.85,
             ),
@@ -599,11 +624,13 @@ class AIMemoryService:
             )
         return AIMemoryDefinition(
             memory_id=row.memory_id,
-            memory_domain=cast("AIMemoryDomain", row.memory_domain),
-            memory_type=cast("AIMemoryType", row.memory_type),
-            subject_type=row.subject_type,
-            subject_id=row.subject_id,
+            anchor_type=cast("AIMemoryAnchorType", row.anchor_type),
+            anchor_id=row.anchor_id,
+            memory_layer=cast("AIMemoryLayer", row.memory_layer),
+            memory_kind=cast("AIMemoryKind", row.memory_kind),
             content=row.content,
+            is_editable=row.is_editable,
+            is_ignored=row.is_ignored,
             source_turn_id=row.source_turn_id,
             salience=row.salience,
             confidence=row.confidence,
