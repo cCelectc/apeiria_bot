@@ -94,6 +94,10 @@ def build_memory_write_targets(
     if identity.scope_type == "group" and identity.scope_id and effective_user_id:
         return [
             AIMemoryWriteTarget(
+                subject_type="conversation",
+                subject_id=identity.conversation_id,
+            ),
+            AIMemoryWriteTarget(
                 subject_type="participant",
                 subject_id=build_participant_subject_id(
                     scope_type=identity.scope_type,
