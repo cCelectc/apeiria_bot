@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any
 
 from .composer import (
     AIRuntimeComposeInput,
+    compose_pre_tool_reply_prompt,
     compose_reply_prompt,
     compose_roleplay_reply_prompt,
 )
@@ -25,6 +26,7 @@ __all__ = [
     "AIRuntimeService",
     "ai_runtime_service",
     "build_relationship_target",
+    "compose_pre_tool_reply_prompt",
     "compose_reply_prompt",
     "compose_roleplay_reply_prompt",
     "load_relationship_context",

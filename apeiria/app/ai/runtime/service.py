@@ -19,7 +19,7 @@ from apeiria.app.ai.persona.models import AIPersonaBindingTarget
 from apeiria.app.ai.persona.service import ai_persona_service
 from apeiria.app.ai.runtime.composer import (
     AIRuntimeComposeInput,
-    compose_reply_prompt,
+    compose_pre_tool_reply_prompt,
     compose_roleplay_reply_prompt,
 )
 from apeiria.app.ai.runtime.memory_steps import (
@@ -549,10 +549,11 @@ class AIRuntimeService:
         MessageDeliveryResult | None,
     ]:
         skill_runtime = state.skill_runtime
+        has_tools = bool(skill_runtime.available_tools)
         response = await self._safe_generate(
             AIRuntimeGenerationRequest(
                 selected=state.selected,
-                prompt=compose_reply_prompt(
+                prompt=compose_pre_tool_reply_prompt(
                     AIRuntimeComposeInput(
                         persona=state.persona,
                         relationship=state.relationship_context,
@@ -567,7 +568,8 @@ class AIRuntimeService:
                             state.request.future_task
                         ),
                         turns=state.turns,
-                    )
+                    ),
+                    has_tools=has_tools,
                 ),
                 trace_id=state.trace_id,
                 conversation_id=state.request.identity.conversation_id,
@@ -602,9 +604,17 @@ class AIRuntimeService:
             )
             await session.commit()
             post_tool_task_class = select_post_tool_reply_task_class()
+            roleplay_selected = await ai_model_facade.select_model(
+                session,
+                query=AIModelRouteQuery(task_class=post_tool_task_class),
+                target=_to_model_target(
+                    state.request.identity,
+                    state.request.user_id,
+                ),
+            )
             response = await self._safe_generate(
                 AIRuntimeGenerationRequest(
-                    selected=state.selected,
+                    selected=roleplay_selected or state.selected,
                     prompt=compose_roleplay_reply_prompt(
                         AIRuntimeComposeInput(
                             persona=state.persona,

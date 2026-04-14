@@ -52,6 +52,23 @@ def compose_reply_prompt(inputs: AIRuntimeComposeInput) -> str:
     )
 
 
+def compose_pre_tool_reply_prompt(
+    inputs: AIRuntimeComposeInput,
+    *,
+    has_tools: bool,
+) -> str:
+    """Compose the first runtime prompt.
+
+    When tools are available this stays in the planning/orchestration lane.
+    When no tools are available, skip the extra tool-policy layer and use the
+    cleaner roleplay prompt directly.
+    """
+
+    if has_tools:
+        return compose_reply_prompt(inputs)
+    return compose_roleplay_reply_prompt(inputs)
+
+
 def compose_roleplay_reply_prompt(inputs: AIRuntimeComposeInput) -> str:
     """Compose the final roleplay reply prompt after tool execution.
 

@@ -49,7 +49,7 @@ from apeiria.app.ai.persona.service import ai_persona_service
 from apeiria.app.ai.relationship.service import ai_relationship_service
 from apeiria.app.ai.runtime.composer import (
     AIRuntimeComposeInput,
-    compose_reply_prompt,
+    compose_pre_tool_reply_prompt,
     compose_roleplay_reply_prompt,
 )
 from apeiria.app.ai.runtime.memory_steps import retrieve_memories_for_preview
@@ -1395,8 +1395,9 @@ class AIAdminService:
                 tool_policy,
             )
             allowed_tools = ai_tool_service.list_allowed_tools(tool_policy)
+            has_tools = bool(allowed_tools)
             pre_tool_task_class = select_pre_tool_reply_task_class(
-                has_tools=bool(allowed_tools)
+                has_tools=has_tools
             )
             selected = await ai_model_facade.select_model(
                 session,
@@ -1409,18 +1410,22 @@ class AIAdminService:
                     user_id=identity.subject_user_id or user_id,
                 ),
             )
-            roleplay_selected = await ai_model_facade.select_model(
-                session,
-                query=AIModelRouteQuery(
-                    task_class=select_post_tool_reply_task_class()
-                ),
-                target=AIModelBindingTarget(
-                    conversation_id=identity.conversation_id,
-                    group_id=(
-                        identity.scope_id if identity.scope_type == "group" else None
+            roleplay_selected = (
+                await ai_model_facade.select_model(
+                    session,
+                    query=AIModelRouteQuery(
+                        task_class=select_post_tool_reply_task_class()
                     ),
-                    user_id=identity.subject_user_id or user_id,
-                ),
+                    target=AIModelBindingTarget(
+                        conversation_id=identity.conversation_id,
+                        group_id=(
+                            identity.scope_id if identity.scope_type == "group" else None
+                        ),
+                        user_id=identity.subject_user_id or user_id,
+                    ),
+                )
+                if has_tools
+                else None
             )
             context_turns = to_context_turns(turns)
             social_decision = (
@@ -1450,7 +1455,7 @@ class AIAdminService:
                 else None
             )
             rendered_prompt = (
-                compose_reply_prompt(
+                compose_pre_tool_reply_prompt(
                     AIRuntimeComposeInput(
                         persona=persona,
                         relationship=relationship_context,
@@ -1464,7 +1469,8 @@ class AIAdminService:
                             else None
                         ),
                         turns=context_turns,
-                    )
+                    ),
+                    has_tools=has_tools,
                 )
                 if social_decision is None or social_decision.should_speak
                 else "Suppressed by social policy before prompt generation."
@@ -1486,7 +1492,7 @@ class AIAdminService:
                         turns=context_turns,
                     )
                 )
-                if social_decision is None or social_decision.should_speak
+                if has_tools and (social_decision is None or social_decision.should_speak)
                 else "Suppressed by social policy before prompt generation."
             )
             operator_memory_count = sum(
@@ -1529,7 +1535,9 @@ class AIAdminService:
                     if roleplay_selected is not None
                     else None
                 ),
-                roleplay_task_class=select_post_tool_reply_task_class(),
+                roleplay_task_class=(
+                    select_post_tool_reply_task_class() if has_tools else None
+                ),
                 source_id=(selected.source.source_id if selected is not None else None),
                 profile_id=(
                     selected.profile.profile_id if selected is not None else None
@@ -1565,7 +1573,9 @@ class AIAdminService:
                 summary_memory_count=summary_memory_count,
                 long_term_memory_count=long_term_memory_count,
                 knowledge_memory_count=knowledge_memory_count,
-                rendered_roleplay_prompt=rendered_roleplay_prompt,
+                rendered_roleplay_prompt=(
+                    rendered_roleplay_prompt if has_tools else None
+                ),
                 rendered_prompt=rendered_prompt,
             )
 
