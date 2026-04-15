@@ -12,7 +12,7 @@ from apeiria.app.ai.runtime.prompting import (
 )
 
 if TYPE_CHECKING:
-    from apeiria.app.ai.conversation.models import AIContextTurnView
+    from apeiria.app.ai.conversation.models import ChatContextMessageView
     from apeiria.app.ai.memory.models import AIMemoryDefinition
     from apeiria.app.ai.runtime.prompting import AIPersonaPromptBundleLike
 
@@ -26,7 +26,7 @@ class AIRuntimeComposeInput:
     skill_policy: str | None
     skill_results: tuple[str, ...]
     memories: list["AIMemoryDefinition"]
-    turns: list["AIContextTurnView"]
+    turns: list["ChatContextMessageView"]
     conversation_summary: str | None = None
     social_policy_summary: str | None = None
     future_task_context: str | None = None

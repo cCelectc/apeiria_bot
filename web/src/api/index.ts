@@ -356,7 +356,7 @@ export interface AIToolPolicyBindingItem {
 
 export interface AIToolExecutionItem {
   execution_id: string
-  scene_id: string
+  session_id: string
   tool_name: string
   status: string
   input_json: string | null
@@ -418,7 +418,7 @@ export interface AIMemoryItem {
   content: string
   is_editable: boolean
   is_ignored: boolean
-  source_turn_id: string | null
+  source_message_id: string | null
   salience: number
   confidence: number
   last_recalled_at: string | null
@@ -488,27 +488,30 @@ export interface AISourceModelTestResult {
   tool_call_count: number
 }
 
-export interface AIConversationItem {
-  scene_id: string
+export interface AISessionItem {
+  session_id: string
   platform: string
   bot_id: string
-  scope_type: string
-  scope_id: string
-  subject_user_id: string | null
-  short_summary: string | null
+  scene_type: string
+  scene_id: string
+  subject_id: string | null
+  summary_text: string | null
   created_at: string
   updated_at: string
-  last_active_at: string
+  last_message_at: string
 }
 
-export interface AIConversationTurnItem {
-  turn_id: string
-  scene_id: string
-  sender_type: string
-  sender_id: string
-  content_text: string
+export interface AIChatMessageItem {
+  message_id: string
+  session_id: string
+  author_role: string
+  author_id: string
+  author_name: string | null
+  text_content: string
+  content: Record<string, unknown> | null
+  meta: Record<string, unknown> | null
+  raw_data: Record<string, unknown> | null
   created_at: string
-  raw_payload: Record<string, unknown> | null
   trace_id: string | null
   source_id: string | null
   model_name: string | null
@@ -516,8 +519,8 @@ export interface AIConversationTurnItem {
   tool_observation_count: number | null
 }
 
-export interface AIConversationPromptPreviewItem {
-  scene_id: string
+export interface AISessionPromptPreviewItem {
+  session_id: string
   latest_user_message: string | null
   planning_source_id: string | null
   planning_profile_id: string | null
@@ -531,7 +534,7 @@ export interface AIConversationPromptPreviewItem {
   profile_id: string | null
   model_name: string | null
   persona_id: string | null
-  scene_summary: string | null
+  conversation_summary: string | null
   relationship_context: string | null
   tool_policy: string | null
   social_action: string | null
@@ -551,16 +554,16 @@ export interface AIConversationPromptPreviewItem {
 
 export interface AIFutureTaskItem {
   task_id: string
-  conversation_id: string
+  session_id: string
   platform: string
-  scope_type: string
-  scope_id: string
+  scene_type: string
+  scene_id: string
   user_id: string | null
   title: string
   description: string
   trigger_at: string
   status: string
-  source_turn_id: string | null
+  source_message_id: string | null
   scheduler_job_id: string | null
   last_error: string | null
   created_at: string
@@ -1151,21 +1154,21 @@ export function getAIRecentTargets (params?: {
 export function getAIScenes (params?: {
   limit?: number
 }) {
-  return client.get<AIConversationItem[]>('/ai/scenes', { params })
+  return client.get<AISessionItem[]>('/ai/scenes', { params })
 }
 
 export function getAISceneTurns (params: {
   scene_id: string
   limit?: number
 }) {
-  return client.get<AIConversationTurnItem[]>('/ai/scenes/turns', { params })
+  return client.get<AIChatMessageItem[]>('/ai/scenes/turns', { params })
 }
 
 export function getAIScenePromptPreview (params: {
   scene_id: string
   turn_limit?: number
 }) {
-  return client.get<AIConversationPromptPreviewItem | null>('/ai/scenes/prompt-preview', { params })
+  return client.get<AISessionPromptPreviewItem | null>('/ai/scenes/prompt-preview', { params })
 }
 
 export function getAIFutureTasks (params?: {

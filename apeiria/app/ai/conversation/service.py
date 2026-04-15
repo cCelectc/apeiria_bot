@@ -1,4 +1,4 @@
-"""Conversation service for AI identity and turn ingestion."""
+"""Conversation service for normalized chat session and message persistence."""
 
 from __future__ import annotations
 
@@ -11,24 +11,28 @@ from uuid import uuid4
 from sqlalchemy import select
 
 from apeiria.app.ai.conversation.identity import (
-    build_conversation_identity_from_event,
-    trim_turn_window,
+    build_chat_session_identity_from_event,
+    trim_message_window,
 )
 from apeiria.app.ai.conversation.models import (
-    AIContextTurnView,
-    AIConversationAdminView,
-    AIConversationIdentity,
-    AIConversationTurnDetailView,
-    SenderType,
+    AuthorRole,
+    ChatContextMessageView,
+    ChatMessageDetailView,
+    ChatSessionAdminView,
+    ChatSessionIdentity,
+    MessageKind,
 )
 from apeiria.app.ai.conversation.summary import build_short_conversation_summary
-from apeiria.infra.db.models import AIConversation, AITurn
+from apeiria.infra.db.models import ChatMessage, ChatSession
 
 if TYPE_CHECKING:
     from nonebot.adapters import Bot, Event
     from sqlalchemy.ext.asyncio import AsyncSession
 
-    from apeiria.app.ai.conversation.models import ScopeType
+    from apeiria.app.ai.conversation.models import SceneType
+
+
+_MEDIA_TYPES = {"image", "img", "audio", "record", "video", "file"}
 
 
 def _utcnow_naive() -> datetime:
@@ -36,333 +40,486 @@ def _utcnow_naive() -> datetime:
 
 
 @dataclass(frozen=True)
-class AITurnCreate:
-    """Input payload for creating one persisted AI turn."""
+class ChatMessageCreate:
+    """Input payload for creating one persisted chat message."""
 
-    sender_type: SenderType
-    sender_id: str
-    content_text: str
-    raw_payload: Any | None = None
+    author_role: AuthorRole
+    author_id: str
+    text_content: str
+    author_name: str | None = None
+    message_kind: MessageKind = "text"
+    directed_to_bot: bool = False
+    mentions_bot: bool = False
+    has_media: bool = False
+    platform_message_id: str | None = None
+    reply_to_message_id: str | None = None
+    platform_reply_id: str | None = None
+    content: dict[str, Any] | None = None
+    meta: dict[str, Any] | None = None
+    raw_data: dict[str, Any] | None = None
 
 
-class AIConversationService:
-    """Conversation service for conversation upsert and turn append."""
+class ChatSessionService:
+    """Conversation service for session upsert and normalized message append."""
 
     @staticmethod
-    def _deserialize_raw_payload(raw_payload_json: str | None) -> dict[str, Any] | None:
-        if not raw_payload_json:
+    def _deserialize_json_payload(raw_json: str | None) -> dict[str, Any] | None:
+        if not raw_json:
             return None
         try:
-            payload = json.loads(raw_payload_json)
+            payload = json.loads(raw_json)
         except json.JSONDecodeError:
             return None
         return payload if isinstance(payload, dict) else None
 
-    async def ensure_conversation(
+    @staticmethod
+    def _serialize_json_payload(payload: Any | None) -> str | None:
+        if payload is None:
+            return None
+        return json.dumps(
+            payload,
+            ensure_ascii=False,
+            sort_keys=True,
+            default=str,
+        )
+
+    async def ensure_session(
         self,
         session: "AsyncSession",
-        identity: AIConversationIdentity,
-    ) -> AIConversation:
-        """Create or update the canonical AI conversation row for one scene."""
+        identity: ChatSessionIdentity,
+    ) -> ChatSession:
+        """Create or update the canonical chat session row for one scene."""
 
         result = await session.execute(
-            select(AIConversation).where(
-                AIConversation.conversation_id == identity.conversation_id
-            )
+            select(ChatSession).where(ChatSession.session_id == identity.session_id)
         )
-        conversation = result.scalar_one_or_none()
-        if conversation is None:
-            conversation = AIConversation(
-                conversation_id=identity.conversation_id,
+        chat_session = result.scalar_one_or_none()
+        if chat_session is None:
+            chat_session = ChatSession(
+                session_id=identity.session_id,
                 platform=identity.platform,
                 bot_id=identity.bot_id,
-                scope_type=identity.scope_type,
-                scope_id=identity.scope_id,
-                subject_user_id=identity.subject_user_id,
+                scene_type=identity.scene_type,
+                scene_id=identity.scene_id,
+                subject_id=identity.subject_id,
             )
-            session.add(conversation)
+            session.add(chat_session)
             await session.flush()
 
-        conversation.last_active_at = _utcnow_naive()
-        return conversation
+        chat_session.last_message_at = _utcnow_naive()
+        return chat_session
 
-    async def update_short_summary(
+    async def update_summary_text(
         self,
         session: "AsyncSession",
-        identity: AIConversationIdentity,
+        identity: ChatSessionIdentity,
         *,
-        turns: list[AIContextTurnView],
+        messages: list[ChatContextMessageView],
     ) -> str | None:
-        """Refresh the compact stored summary for one conversation."""
+        """Refresh the compact stored summary for one session."""
 
-        conversation = await self.ensure_conversation(session, identity)
-        summary = build_short_conversation_summary(turns)
-        conversation.short_summary = summary
+        chat_session = await self.ensure_session(session, identity)
+        summary = build_short_conversation_summary(messages)
+        chat_session.summary_text = summary
         await session.flush()
         return summary
 
-    async def append_turn(
+    async def append_message(
         self,
         session: "AsyncSession",
-        identity: AIConversationIdentity,
-        turn_data: AITurnCreate,
-    ) -> AITurn:
-        """Append one turn to the AI conversation history."""
+        identity: ChatSessionIdentity,
+        message_data: ChatMessageCreate,
+    ) -> ChatMessage:
+        """Append one normalized message to the chat session history."""
 
-        conversation = await self.ensure_conversation(session, identity)
-        turn = AITurn(
-            turn_id=f"turn_{uuid4().hex}",
-            conversation_pk=conversation.id,
-            sender_type=turn_data.sender_type,
-            sender_id=turn_data.sender_id,
-            content_text=turn_data.content_text,
-            raw_payload_json=(
-                json.dumps(
-                    turn_data.raw_payload,
-                    ensure_ascii=False,
-                    sort_keys=True,
-                    default=str,
-                )
-                if turn_data.raw_payload is not None
-                else None
-            ),
+        chat_session = await self.ensure_session(session, identity)
+        message = ChatMessage(
+            message_id=f"msg_{uuid4().hex}",
+            session_pk=chat_session.id,
+            platform_message_id=message_data.platform_message_id,
+            reply_to_message_id=message_data.reply_to_message_id,
+            platform_reply_id=message_data.platform_reply_id,
+            author_role=message_data.author_role,
+            author_id=message_data.author_id,
+            author_name=message_data.author_name,
+            message_kind=message_data.message_kind,
+            directed_to_bot=message_data.directed_to_bot,
+            mentions_bot=message_data.mentions_bot,
+            has_media=message_data.has_media,
+            text_content=message_data.text_content,
+            content_json=self._serialize_json_payload(message_data.content),
+            meta_json=self._serialize_json_payload(message_data.meta),
+            raw_data_json=self._serialize_json_payload(message_data.raw_data),
         )
-        session.add(turn)
+        session.add(message)
         await session.flush()
-        return turn
+        return message
 
     async def ingest_event(
         self,
         session: "AsyncSession",
         bot: "Bot",
         event: "Event",
-    ) -> tuple[AIConversationIdentity, AITurn] | None:
-        """Convert one runtime event into a canonical AI turn."""
+    ) -> tuple[ChatSessionIdentity, ChatMessage] | None:
+        """Convert one runtime event into a canonical chat message."""
 
-        identity = build_conversation_identity_from_event(bot, event)
+        identity = build_chat_session_identity_from_event(bot, event)
         if identity is None:
             return None
 
-        raw_payload = (
+        raw_data = (
             event.model_dump(mode="json") if hasattr(event, "model_dump") else None
         )
-        turn = await self.append_turn(
+        text_content = event.get_plaintext()
+        mentions_bot = bool(hasattr(event, "is_tome") and event.is_tome())
+        author_id = str(event.get_user_id())
+        author_name = _extract_author_name(raw_data) or author_id
+        platform_message_id = _extract_platform_message_id(event, raw_data)
+        platform_reply_id = _extract_platform_reply_id(raw_data)
+        has_media = _detect_has_media(raw_data)
+        content = _build_normalized_content(
+            raw_data=raw_data, text_content=text_content
+        )
+        message_kind = _resolve_message_kind(
+            text_content=text_content, has_media=has_media
+        )
+        message = await self.append_message(
             session,
             identity,
-            AITurnCreate(
-                sender_type="user",
-                sender_id=str(event.get_user_id()),
-                content_text=event.get_plaintext(),
-                raw_payload=raw_payload,
+            ChatMessageCreate(
+                author_role="user",
+                author_id=author_id,
+                author_name=author_name,
+                text_content=text_content,
+                message_kind=message_kind,
+                directed_to_bot=(identity.scene_type == "private" or mentions_bot),
+                mentions_bot=mentions_bot,
+                has_media=has_media,
+                platform_message_id=platform_message_id,
+                platform_reply_id=platform_reply_id,
+                content=content,
+                raw_data=raw_data,
             ),
         )
-        return identity, turn
+        return identity, message
 
-    async def list_recent_turns(
+    async def list_recent_messages(
         self,
         session: "AsyncSession",
-        identity: AIConversationIdentity,
+        identity: ChatSessionIdentity,
         *,
-        max_turns: int,
-    ) -> list[AIContextTurnView]:
-        """List recent turns for one conversation identity."""
+        max_messages: int,
+    ) -> list[ChatContextMessageView]:
+        """List recent messages for one chat session identity."""
 
         result = await session.execute(
-            select(AITurn)
-            .join(AIConversation, AITurn.conversation_pk == AIConversation.id)
-            .where(AIConversation.conversation_id == identity.conversation_id)
-            .order_by(AITurn.created_at.asc(), AITurn.id.asc())
+            select(ChatMessage)
+            .join(ChatSession, ChatMessage.session_pk == ChatSession.id)
+            .where(ChatSession.session_id == identity.session_id)
+            .order_by(ChatMessage.created_at.asc(), ChatMessage.id.asc())
         )
-        turns = [
-            AIContextTurnView(
-                turn_id=turn.turn_id,
-                sender_type=cast("SenderType", turn.sender_type),
-                sender_id=turn.sender_id,
-                content_text=turn.content_text,
-                created_at=turn.created_at.replace(tzinfo=timezone.utc)
-                if turn.created_at.tzinfo is None
-                else turn.created_at,
-            )
-            for turn in result.scalars().all()
+        messages = [
+            self._to_context_message_view(row) for row in result.scalars().all()
         ]
-        return trim_turn_window(turns, max_turns=max_turns)
+        return trim_message_window(messages, max_messages=max_messages)
 
-    async def list_recent_conversations(
+    async def list_recent_sessions(
         self,
         session: "AsyncSession",
         *,
         limit: int,
-    ) -> list[AIConversationAdminView]:
+    ) -> list[ChatSessionAdminView]:
         result = await session.execute(
-            select(AIConversation)
-            .order_by(AIConversation.last_active_at.desc(), AIConversation.id.desc())
+            select(ChatSession)
+            .order_by(ChatSession.last_message_at.desc(), ChatSession.id.desc())
             .limit(limit)
         )
-        return [
-            AIConversationAdminView(
-                conversation_id=row.conversation_id,
-                platform=row.platform,
-                bot_id=row.bot_id,
-                scope_type=cast("ScopeType", row.scope_type),
-                scope_id=row.scope_id,
-                subject_user_id=row.subject_user_id,
-                short_summary=row.short_summary,
-                created_at=row.created_at.replace(tzinfo=timezone.utc)
-                if row.created_at.tzinfo is None
-                else row.created_at,
-                updated_at=row.updated_at.replace(tzinfo=timezone.utc)
-                if row.updated_at.tzinfo is None
-                else row.updated_at,
-                last_active_at=row.last_active_at.replace(tzinfo=timezone.utc)
-                if row.last_active_at.tzinfo is None
-                else row.last_active_at,
-            )
-            for row in result.scalars().all()
-        ]
+        return [self._to_session_admin_view(row) for row in result.scalars().all()]
 
-    async def get_conversation_view(
+    async def get_session_view(
         self,
         session: "AsyncSession",
         *,
-        conversation_id: str,
-    ) -> AIConversationAdminView | None:
-        """Load one admin conversation view by stable conversation id."""
-
+        session_id: str,
+    ) -> ChatSessionAdminView | None:
         result = await session.execute(
-            select(AIConversation).where(
-                AIConversation.conversation_id == conversation_id
-            )
+            select(ChatSession).where(ChatSession.session_id == session_id)
         )
         row = result.scalar_one_or_none()
         if row is None:
             return None
-        return AIConversationAdminView(
-            conversation_id=row.conversation_id,
-            platform=row.platform,
-            bot_id=row.bot_id,
-            scope_type=cast("ScopeType", row.scope_type),
-            scope_id=row.scope_id,
-            subject_user_id=row.subject_user_id,
-            short_summary=row.short_summary,
-            created_at=row.created_at.replace(tzinfo=timezone.utc)
-            if row.created_at.tzinfo is None
-            else row.created_at,
-            updated_at=row.updated_at.replace(tzinfo=timezone.utc)
-            if row.updated_at.tzinfo is None
-            else row.updated_at,
-            last_active_at=row.last_active_at.replace(tzinfo=timezone.utc)
-            if row.last_active_at.tzinfo is None
-            else row.last_active_at,
-        )
+        return self._to_session_admin_view(row)
 
-    async def list_turns_for_conversation(
+    async def list_messages_for_session(
         self,
         session: "AsyncSession",
         *,
-        conversation_id: str,
+        session_id: str,
         limit: int,
-    ) -> list[AIConversationTurnDetailView]:
+    ) -> list[ChatMessageDetailView]:
         result = await session.execute(
-            select(AITurn, AIConversation.conversation_id)
-            .join(AIConversation, AITurn.conversation_pk == AIConversation.id)
-            .where(AIConversation.conversation_id == conversation_id)
-            .order_by(AITurn.created_at.desc(), AITurn.id.desc())
+            select(ChatMessage, ChatSession.session_id)
+            .join(ChatSession, ChatMessage.session_pk == ChatSession.id)
+            .where(ChatSession.session_id == session_id)
+            .order_by(ChatMessage.created_at.desc(), ChatMessage.id.desc())
             .limit(limit)
         )
         rows = result.all()
-        turns = [
-            self._to_turn_detail_view(turn=turn, conversation_id=conversation_id_value)
-            for turn, conversation_id_value in rows
+        messages = [
+            self._to_message_detail_view(message=row, session_id=session_id_value)
+            for row, session_id_value in rows
         ]
-        turns.reverse()
-        return turns
+        messages.reverse()
+        return messages
 
-    async def list_recent_user_ids_for_conversation(
+    async def list_recent_user_ids_for_session(
         self,
         session: "AsyncSession",
         *,
-        conversation_id: str,
+        session_id: str,
         limit: int = 5,
     ) -> list[str]:
-        """List distinct recent user sender ids for one conversation."""
+        """List distinct recent user author ids for one session."""
 
         result = await session.execute(
-            select(AITurn.sender_id)
-            .join(AIConversation, AITurn.conversation_pk == AIConversation.id)
+            select(ChatMessage.author_id)
+            .join(ChatSession, ChatMessage.session_pk == ChatSession.id)
             .where(
-                AIConversation.conversation_id == conversation_id,
-                AITurn.sender_type == "user",
+                ChatSession.session_id == session_id,
+                ChatMessage.author_role == "user",
             )
-            .order_by(AITurn.created_at.desc(), AITurn.id.desc())
+            .order_by(ChatMessage.created_at.desc(), ChatMessage.id.desc())
             .limit(max(limit * 4, limit))
         )
-        sender_ids: list[str] = []
+        author_ids: list[str] = []
         seen: set[str] = set()
-        for sender_id in result.scalars().all():
-            if sender_id in seen:
+        for author_id in result.scalars().all():
+            if author_id in seen:
                 continue
-            seen.add(sender_id)
-            sender_ids.append(sender_id)
-            if len(sender_ids) >= limit:
+            seen.add(author_id)
+            author_ids.append(author_id)
+            if len(author_ids) >= limit:
                 break
-        return sender_ids
+        return author_ids
 
-    async def get_conversation_identity(
+    async def get_session_identity(
         self,
         session: "AsyncSession",
         *,
-        conversation_id: str,
-    ) -> AIConversationIdentity | None:
-        """Load the canonical identity for one stored conversation id."""
+        session_id: str,
+    ) -> ChatSessionIdentity | None:
+        """Load the canonical identity for one stored session id."""
 
         result = await session.execute(
-            select(AIConversation).where(
-                AIConversation.conversation_id == conversation_id
-            )
+            select(ChatSession).where(ChatSession.session_id == session_id)
         )
         row = result.scalar_one_or_none()
         if row is None:
             return None
-        return AIConversationIdentity(
-            conversation_id=row.conversation_id,
+        return ChatSessionIdentity(
+            session_id=row.session_id,
             platform=row.platform,
             bot_id=row.bot_id,
-            scope_type=cast("ScopeType", row.scope_type),
-            scope_id=row.scope_id,
-            subject_user_id=row.subject_user_id,
+            scene_type=cast("SceneType", row.scene_type),
+            scene_id=row.scene_id,
+            subject_id=row.subject_id,
         )
 
-    def _to_turn_detail_view(
+    def _to_context_message_view(self, row: ChatMessage) -> ChatContextMessageView:
+        content = self._deserialize_json_payload(row.content_json)
+        created_at = (
+            row.created_at.replace(tzinfo=timezone.utc)
+            if row.created_at.tzinfo is None
+            else row.created_at
+        )
+        return ChatContextMessageView(
+            message_id=row.message_id,
+            author_role=cast("AuthorRole", row.author_role),
+            author_id=row.author_id,
+            author_name=row.author_name,
+            text_content=row.text_content,
+            content=content,
+            created_at=created_at,
+        )
+
+    def _to_session_admin_view(self, row: ChatSession) -> ChatSessionAdminView:
+        created_at = (
+            row.created_at.replace(tzinfo=timezone.utc)
+            if row.created_at.tzinfo is None
+            else row.created_at
+        )
+        updated_at = (
+            row.updated_at.replace(tzinfo=timezone.utc)
+            if row.updated_at.tzinfo is None
+            else row.updated_at
+        )
+        last_message_at = (
+            row.last_message_at.replace(tzinfo=timezone.utc)
+            if row.last_message_at.tzinfo is None
+            else row.last_message_at
+        )
+        return ChatSessionAdminView(
+            session_id=row.session_id,
+            platform=row.platform,
+            bot_id=row.bot_id,
+            scene_type=cast("SceneType", row.scene_type),
+            scene_id=row.scene_id,
+            subject_id=row.subject_id,
+            title=row.title,
+            summary_text=row.summary_text,
+            created_at=created_at,
+            updated_at=updated_at,
+            last_message_at=last_message_at,
+        )
+
+    def _to_message_detail_view(
         self,
         *,
-        turn: AITurn,
-        conversation_id: str,
-    ) -> AIConversationTurnDetailView:
-        raw_payload = self._deserialize_raw_payload(turn.raw_payload_json)
-        return AIConversationTurnDetailView(
-            turn_id=turn.turn_id,
-            conversation_id=conversation_id,
-            sender_type=cast("SenderType", turn.sender_type),
-            sender_id=turn.sender_id,
-            content_text=turn.content_text,
-            created_at=turn.created_at.replace(tzinfo=timezone.utc)
-            if turn.created_at.tzinfo is None
-            else turn.created_at,
-            raw_payload=raw_payload,
-            trace_id=raw_payload.get("trace_id") if raw_payload else None,
-            source_id=raw_payload.get("source_id") if raw_payload else None,
-            model_name=raw_payload.get("model_name") if raw_payload else None,
-            recalled_memory_count=(
-                int(raw_payload["recalled_memory_count"])
-                if raw_payload and raw_payload.get("recalled_memory_count") is not None
-                else None
-            ),
-            tool_observation_count=(
-                int(raw_payload["tool_observation_count"])
-                if raw_payload and raw_payload.get("tool_observation_count") is not None
-                else None
-            ),
+        message: ChatMessage,
+        session_id: str,
+    ) -> ChatMessageDetailView:
+        content = self._deserialize_json_payload(message.content_json)
+        meta = self._deserialize_json_payload(message.meta_json)
+        raw_data = self._deserialize_json_payload(message.raw_data_json)
+        created_at = (
+            message.created_at.replace(tzinfo=timezone.utc)
+            if message.created_at.tzinfo is None
+            else message.created_at
+        )
+        return ChatMessageDetailView(
+            message_id=message.message_id,
+            session_id=session_id,
+            platform_message_id=message.platform_message_id,
+            reply_to_message_id=message.reply_to_message_id,
+            platform_reply_id=message.platform_reply_id,
+            author_role=cast("AuthorRole", message.author_role),
+            author_id=message.author_id,
+            author_name=message.author_name,
+            message_kind=cast("MessageKind", message.message_kind),
+            directed_to_bot=message.directed_to_bot,
+            mentions_bot=message.mentions_bot,
+            has_media=message.has_media,
+            text_content=message.text_content,
+            content=content,
+            meta=meta,
+            raw_data=raw_data,
+            created_at=created_at,
         )
 
 
-ai_conversation_service = AIConversationService()
+chat_session_service = ChatSessionService()
+
+
+def _extract_platform_message_id(
+    event: "Event", raw_data: dict[str, Any] | None
+) -> str | None:
+    getter = getattr(event, "get_message_id", None)
+    if callable(getter):
+        try:
+            value = getter()
+            if value is not None:
+                return str(value)
+        except Exception:  # noqa: BLE001
+            pass
+    if not raw_data:
+        return None
+    for key in ("message_id", "id"):
+        value = raw_data.get(key)
+        if value is not None:
+            return str(value)
+    return None
+
+
+def _extract_platform_reply_id(raw_data: dict[str, Any] | None) -> str | None:
+    if not raw_data:
+        return None
+    reply = raw_data.get("reply")
+    if isinstance(reply, dict):
+        for key in ("message_id", "id"):
+            value = reply.get(key)
+            if value is not None:
+                return str(value)
+    return None
+
+
+def _extract_author_name(raw_data: dict[str, Any] | None) -> str | None:
+    if not raw_data:
+        return None
+    sender = raw_data.get("sender")
+    if isinstance(sender, dict):
+        for key in ("card", "nickname", "name"):
+            value = sender.get(key)
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+    for key in ("user_name", "nickname", "name"):
+        value = raw_data.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return None
+
+
+def _detect_has_media(raw_data: dict[str, Any] | None) -> bool:
+    if not raw_data:
+        return False
+    message = raw_data.get("message")
+    if isinstance(message, list):
+        for segment in message:
+            if isinstance(segment, dict):
+                seg_type = segment.get("type")
+                if isinstance(seg_type, str) and seg_type in _MEDIA_TYPES:
+                    return True
+    return False
+
+
+def _resolve_message_kind(*, text_content: str, has_media: bool) -> MessageKind:
+    has_text = bool(text_content.strip())
+    if has_text and has_media:
+        return "mixed"
+    if has_media:
+        return "media"
+    return "text"
+
+
+def _build_normalized_content(  # noqa: C901, PLR0912
+    *,
+    raw_data: dict[str, Any] | None,
+    text_content: str,
+) -> dict[str, Any]:
+    segments: list[dict[str, Any]] = []
+    if text_content.strip():
+        segments.append({"type": "text", "text": text_content.strip()})
+
+    mentioned_user_ids: list[str] = []
+    quoted_text: str | None = None
+    if raw_data:
+        reply = raw_data.get("reply")
+        if isinstance(reply, dict):
+            for key in ("text", "message", "content"):
+                value = reply.get(key)
+                if isinstance(value, str) and value.strip():
+                    quoted_text = value.strip()
+                    break
+        message = raw_data.get("message")
+        if isinstance(message, list):
+            for segment in message:
+                if not isinstance(segment, dict):
+                    continue
+                seg_type = segment.get("type")
+                data = segment.get("data")
+                if not isinstance(seg_type, str):
+                    continue
+                if seg_type == "at" and isinstance(data, dict):
+                    qq = data.get("qq")
+                    if qq is not None:
+                        mentioned_user_ids.append(str(qq))
+                elif seg_type in _MEDIA_TYPES:
+                    segments.append({"type": seg_type})
+
+    payload: dict[str, Any] = {
+        "segments": segments,
+        "plain_text": text_content,
+        "mentioned_user_ids": mentioned_user_ids,
+    }
+    if quoted_text:
+        payload["quoted_text"] = quoted_text
+    return payload

@@ -43,7 +43,7 @@ class AIMemoryDefinition:
     content: str
     is_editable: bool
     is_ignored: bool
-    source_turn_id: str | None
+    source_message_id: str | None
     salience: float
     confidence: float
     last_recalled_at: datetime | None

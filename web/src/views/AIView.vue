@@ -1052,7 +1052,7 @@
 
                       <div class="d-flex flex-wrap ga-4 mt-3 text-caption text-medium-emphasis">
                         <span>{{ t('ai.memoryLastRecalledAt') }}: {{ item.last_recalled_at || t('common.none') }}</span>
-                        <span>{{ t('ai.memorySourceTurn') }}: {{ formatMemorySourceTurn(item.source_turn_id) }}</span>
+                        <span>{{ t('ai.memorySourceTurn') }}: {{ formatMemorySourceTurn(item.source_message_id) }}</span>
                       </div>
 
                       <div class="d-flex justify-end mt-3">
@@ -1339,12 +1339,12 @@
 
               <v-sheet v-if="conversations.length > 0" class="surface-gradient-card pa-4" rounded="lg">
                 <div v-if="selectedConversation" class="d-flex flex-column ga-2 text-body-2">
-                  <div>{{ t('ai.conversationId') }}: {{ selectedConversation.scene_id }}</div>
-                  <div>{{ t('ai.scopeType') }}: {{ selectedConversation.scope_type }}</div>
-                  <div>{{ t('ai.scopeId') }}: {{ selectedConversation.scope_id }}</div>
-                  <div>{{ t('ai.scopeUser') }}: {{ selectedConversation.subject_user_id || t('common.none') }}</div>
-                  <div>{{ t('ai.conversationSummary') }}: {{ selectedConversation.short_summary || t('common.none') }}</div>
-                  <div>{{ t('ai.lastActiveAt') }}: {{ selectedConversation.last_active_at }}</div>
+                  <div>{{ t('ai.conversationId') }}: {{ selectedConversation.session_id }}</div>
+                  <div>{{ t('ai.scopeType') }}: {{ selectedConversation.scene_type }}</div>
+                  <div>{{ t('ai.scopeId') }}: {{ selectedConversation.scene_id }}</div>
+                  <div>{{ t('ai.scopeUser') }}: {{ selectedConversation.subject_id || t('common.none') }}</div>
+                  <div>{{ t('ai.conversationSummary') }}: {{ selectedConversation.summary_text || t('common.none') }}</div>
+                  <div>{{ t('ai.lastActiveAt') }}: {{ selectedConversation.last_message_at }}</div>
                 </div>
                 <div v-else class="empty-state-text">
                   {{ t('ai.noConversationSelected') }}
@@ -1375,14 +1375,14 @@
                       :loading="loadingDebug"
                       :no-data-text="t('common.noData')"
                     >
-                      <template #item.scene_id="{ item }">
+                      <template #item.session_id="{ item }">
                         <v-btn
                           color="primary"
                           size="small"
                           variant="text"
-                          @click="loadConversationDetails(item.scene_id)"
+                          @click="loadConversationDetails(item.session_id)"
                         >
-                          {{ item.scene_id.slice(0, 16) }}...
+                          {{ item.session_id.slice(0, 16) }}...
                         </v-btn>
                       </template>
                     </v-data-table>
@@ -1425,7 +1425,7 @@
                         {{ t('ai.finalReplyTitle') }}
                       </div>
                       <div v-if="latestAssistantTurn" class="d-flex flex-column ga-3 text-body-2">
-                        <div>{{ latestAssistantTurn.content_text }}</div>
+                        <div>{{ latestAssistantTurn.text_content }}</div>
                         <div>{{ t('ai.finalReplyModel') }}: {{ latestAssistantTurn.model_name || t('common.none') }}</div>
                         <div>{{ t('ai.finalReplySource') }}: {{ latestAssistantTurn.source_id || t('common.none') }}</div>
                         <div>{{ t('ai.finalReplyTraceId') }}: {{ latestAssistantTurn.trace_id || t('common.none') }}</div>
@@ -1440,7 +1440,7 @@
                 <v-sheet class="surface-gradient-card pa-4" rounded="lg">
                   <div v-if="promptPreview" class="d-flex flex-column ga-3 text-body-2">
                     <div>{{ t('ai.latestUserMessage') }}: {{ promptPreview.latest_user_message || t('common.none') }}</div>
-                    <div>{{ t('ai.conversationId') }}: {{ promptPreview.scene_id }}</div>
+                    <div>{{ t('ai.conversationId') }}: {{ promptPreview.session_id }}</div>
                     <div>{{ t('ai.planningModel') }}: {{ promptPreview.planning_model_name || promptPreview.model_name || t('common.none') }}</div>
                     <div>{{ t('ai.planningSource') }}: {{ promptPreview.planning_source_id || t('common.none') }}</div>
                     <div>{{ t('ai.planningProfile') }}: {{ promptPreview.planning_profile_id || t('common.none') }}</div>
@@ -1457,7 +1457,7 @@
                     <div>{{ t('ai.socialReason') }}: {{ promptPreview.social_reason_text || t('common.none') }}</div>
                     <div>{{ t('ai.socialReasonCodes') }}: {{ promptPreview.social_reason_codes.join(', ') || t('common.none') }}</div>
                     <div>{{ t('ai.socialPolicySource') }}: {{ promptPreview.social_policy_source || t('common.none') }}</div>
-                    <div>{{ t('ai.conversationSummary') }}: {{ promptPreview.scene_summary || t('common.none') }}</div>
+                    <div>{{ t('ai.conversationSummary') }}: {{ promptPreview.conversation_summary || t('common.none') }}</div>
                     <div>{{ t('ai.memoryHits') }}: {{ promptPreview.memories.length }}</div>
                     <div>{{ t('ai.memoryLayerOperator') }}: {{ promptPreview.operator_memory_count }}</div>
                     <div>{{ t('ai.memoryLayerSummary') }}: {{ promptPreview.summary_memory_count }}</div>
@@ -1539,11 +1539,11 @@
                   :loading="loadingTurns"
                   :no-data-text="t('common.noData')"
                 >
-                  <template #item.content_text="{ value }">
+                  <template #item.text_content="{ value }">
                     <span class="ai-turn-content">{{ value }}</span>
                   </template>
-                  <template #item.raw_payload="{ item }">
-                    <span class="text-medium-emphasis">{{ summarizeRawPayload(item.raw_payload) }}</span>
+                  <template #item.meta="{ item }">
+                    <span class="text-medium-emphasis">{{ summarizeRawPayload(item.meta || item.raw_data) }}</span>
                   </template>
                 </v-data-table>
 
@@ -2167,20 +2167,20 @@
   ])
 
   const conversationHeaders = computed(() => [
-    { title: t('ai.conversationId'), key: 'scene_id', sortable: false },
-    { title: t('ai.scopeType'), key: 'scope_type', sortable: false },
-    { title: t('ai.scopeId'), key: 'scope_id', sortable: false },
-    { title: t('ai.scopeUser'), key: 'subject_user_id', sortable: false },
-    { title: t('ai.conversationSummary'), key: 'short_summary', sortable: false },
-    { title: t('ai.lastActiveAt'), key: 'last_active_at', sortable: false },
+    { title: t('ai.conversationId'), key: 'session_id', sortable: false },
+    { title: t('ai.scopeType'), key: 'scene_type', sortable: false },
+    { title: t('ai.scopeId'), key: 'scene_id', sortable: false },
+    { title: t('ai.scopeUser'), key: 'subject_id', sortable: false },
+    { title: t('ai.conversationSummary'), key: 'summary_text', sortable: false },
+    { title: t('ai.lastActiveAt'), key: 'last_message_at', sortable: false },
   ])
 
   const turnHeaders = computed(() => [
-    { title: t('ai.turnSender'), key: 'sender_type', sortable: false },
-    { title: t('ai.turnContent'), key: 'content_text', sortable: false },
+    { title: t('ai.turnSender'), key: 'author_role', sortable: false },
+    { title: t('ai.turnContent'), key: 'text_content', sortable: false },
     { title: t('ai.traceId'), key: 'trace_id', sortable: false },
     { title: t('ai.modelName'), key: 'model_name', sortable: false },
-    { title: t('ai.turnRawPayload'), key: 'raw_payload', sortable: false },
+    { title: t('ai.turnRawPayload'), key: 'meta', sortable: false },
   ])
 
   const toolExecutionHeaders = computed(() => [
@@ -2325,11 +2325,11 @@
     return value.toFixed(2)
   }
 
-  function formatMemorySourceTurn (sourceTurnId: string | null) {
-    if (!sourceTurnId) {
+  function formatMemorySourceTurn (sourceMessageId: string | null) {
+    if (!sourceMessageId) {
       return t('common.none')
     }
-    return `${sourceTurnId.slice(0, 12)}...`
+    return `${sourceMessageId.slice(0, 12)}...`
   }
 
   function openDebugConversations () {

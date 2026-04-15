@@ -7,9 +7,7 @@ from typing import TYPE_CHECKING
 from apeiria.interfaces.http.schemas.ai_models import (
     AICapabilityItem,
     AICapabilityPreviewItem,
-    AIConversationItem,
-    AIConversationPromptPreviewItem,
-    AIConversationTurnItem,
+    AIChatMessageItem,
     AIFutureTaskItem,
     AIMemoryItem,
     AIModelBindingItem,
@@ -19,6 +17,8 @@ from apeiria.interfaces.http.schemas.ai_models import (
     AIPersonaItem,
     AIRecentTargetItem,
     AIRelationshipStateItem,
+    AISessionItem,
+    AISessionPromptPreviewItem,
     AISkillItem,
     AISourceItem,
     AISourceModelItem,
@@ -31,10 +31,10 @@ from apeiria.interfaces.http.schemas.ai_models import (
 )
 
 if TYPE_CHECKING:
-    from apeiria.app.ai.admin.models import AIConversationPromptPreview, AIRecentTarget
+    from apeiria.app.ai.admin.models import AIRecentTarget, AISessionPromptPreview
     from apeiria.app.ai.conversation.models import (
-        AIConversationAdminView,
-        AIConversationTurnDetailView,
+        ChatMessageDetailView,
+        ChatSessionAdminView,
     )
     from apeiria.app.ai.future_task.models import AIFutureTaskDefinition
     from apeiria.app.ai.memory.models import AIMemoryDefinition
@@ -125,7 +125,7 @@ def to_ai_memory_item(item: "AIMemoryDefinition") -> AIMemoryItem:
         content=item.content,
         is_editable=item.is_editable,
         is_ignored=item.is_ignored,
-        source_turn_id=item.source_turn_id,
+        source_message_id=item.source_message_id,
         salience=item.salience,
         confidence=item.confidence,
         last_recalled_at=(
@@ -192,32 +192,35 @@ def to_ai_source_model_item(item: "AISourceModelDefinition") -> AISourceModelIte
     )
 
 
-def to_ai_conversation_item(item: "AIConversationAdminView") -> AIConversationItem:
-    return AIConversationItem(
-        scene_id=item.conversation_id,
+def to_ai_session_item(item: "ChatSessionAdminView") -> AISessionItem:
+    return AISessionItem(
+        session_id=item.session_id,
         platform=item.platform,
         bot_id=item.bot_id,
-        scope_type=item.scope_type,
-        scope_id=item.scope_id,
-        subject_user_id=item.subject_user_id,
-        short_summary=item.short_summary,
+        scene_type=item.scene_type,
+        scene_id=item.scene_id,
+        subject_id=item.subject_id,
+        summary_text=item.summary_text,
         created_at=item.created_at.isoformat(),
         updated_at=item.updated_at.isoformat(),
-        last_active_at=item.last_active_at.isoformat(),
+        last_message_at=item.last_message_at.isoformat(),
     )
 
 
-def to_ai_conversation_turn_item(
-    item: "AIConversationTurnDetailView",
-) -> AIConversationTurnItem:
-    return AIConversationTurnItem(
-        turn_id=item.turn_id,
-        scene_id=item.conversation_id,
-        sender_type=item.sender_type,
-        sender_id=item.sender_id,
-        content_text=item.content_text,
+def to_ai_chat_message_item(
+    item: "ChatMessageDetailView",
+) -> AIChatMessageItem:
+    return AIChatMessageItem(
+        message_id=item.message_id,
+        session_id=item.session_id,
+        author_role=item.author_role,
+        author_id=item.author_id,
+        author_name=item.author_name,
+        text_content=item.text_content,
+        content=item.content,
+        meta=item.meta,
+        raw_data=item.raw_data,
         created_at=item.created_at.isoformat(),
-        raw_payload=item.raw_payload,
         trace_id=item.trace_id,
         source_id=item.source_id,
         model_name=item.model_name,
@@ -226,11 +229,11 @@ def to_ai_conversation_turn_item(
     )
 
 
-def to_ai_conversation_prompt_preview_item(
-    item: "AIConversationPromptPreview",
-) -> AIConversationPromptPreviewItem:
-    return AIConversationPromptPreviewItem(
-        scene_id=item.conversation_id,
+def to_ai_session_prompt_preview_item(
+    item: "AISessionPromptPreview",
+) -> AISessionPromptPreviewItem:
+    return AISessionPromptPreviewItem(
+        session_id=item.session_id,
         latest_user_message=item.latest_user_message,
         planning_source_id=item.planning_source_id,
         planning_profile_id=item.planning_profile_id,
@@ -244,7 +247,7 @@ def to_ai_conversation_prompt_preview_item(
         profile_id=item.profile_id,
         model_name=item.model_name,
         persona_id=item.persona_id,
-        scene_summary=item.conversation_summary,
+        conversation_summary=item.conversation_summary,
         relationship_context=item.relationship_context,
         tool_policy=item.tool_policy,
         social_action=item.social_action,
@@ -266,16 +269,16 @@ def to_ai_conversation_prompt_preview_item(
 def to_ai_future_task_item(item: "AIFutureTaskDefinition") -> AIFutureTaskItem:
     return AIFutureTaskItem(
         task_id=item.task_id,
-        conversation_id=item.conversation_id,
+        session_id=item.session_id,
         platform=item.platform,
-        scope_type=item.scope_type,
-        scope_id=item.scope_id,
+        scene_type=item.scene_type,
+        scene_id=item.scene_id,
         user_id=item.user_id,
         title=item.title,
         description=item.description,
         trigger_at=item.trigger_at.isoformat(),
         status=item.status,
-        source_turn_id=item.source_turn_id,
+        source_message_id=item.source_message_id,
         scheduler_job_id=item.scheduler_job_id,
         last_error=item.last_error,
         created_at=item.created_at.isoformat(),
@@ -363,7 +366,7 @@ def to_ai_skill_item(item: "AISkillDefinition") -> AISkillItem:
 def to_ai_tool_execution_item(item: "AIToolExecutionView") -> AIToolExecutionItem:
     return AIToolExecutionItem(
         execution_id=item.execution_id,
-        scene_id=item.conversation_id,
+        session_id=item.session_id,
         tool_name=item.tool_name,
         status=item.status,
         input_json=item.input_json,

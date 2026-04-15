@@ -45,7 +45,7 @@ class AIMemoryCreateInput:
     content: str
     is_editable: bool = True
     is_ignored: bool = False
-    source_turn_id: str | None = None
+    source_message_id: str | None = None
     salience: float = 0.5
     confidence: float = 0.5
 
@@ -57,7 +57,7 @@ class AIMemoryUpdateInput:
     content: str
     salience: float
     confidence: float
-    source_turn_id: str | None
+    source_message_id: str | None
 
 
 class AIMemoryService:
@@ -84,7 +84,7 @@ class AIMemoryService:
             content=create_input.content,
             is_editable=create_input.is_editable,
             is_ignored=create_input.is_ignored,
-            source_turn_id=create_input.source_turn_id,
+            source_message_id=create_input.source_message_id,
             salience=create_input.salience,
             confidence=create_input.confidence,
         )
@@ -159,7 +159,7 @@ class AIMemoryService:
         row.content = update_input.content
         row.salience = update_input.salience
         row.confidence = update_input.confidence
-        row.source_turn_id = update_input.source_turn_id
+        row.source_message_id = update_input.source_message_id
         await session.flush()
         return row
 
@@ -169,7 +169,7 @@ class AIMemoryService:
         *,
         anchor_type: AIMemoryAnchorType,
         anchor_id: str,
-        source_turn_id: str | None,
+        source_message_id: str | None,
         candidates: list[AIMemoryExtractionCandidate],
     ) -> list[AIMemoryItem]:
         """Persist extracted long-term memory candidates while avoiding duplicates."""
@@ -192,7 +192,7 @@ class AIMemoryService:
                         content=candidate.content,
                         salience=candidate.salience,
                         confidence=candidate.confidence,
-                        source_turn_id=source_turn_id,
+                        source_message_id=source_message_id,
                     ),
                 )
                 if row is not None:
@@ -207,7 +207,7 @@ class AIMemoryService:
                     memory_kind=candidate.memory_kind,
                     content=candidate.content,
                     is_editable=True,
-                    source_turn_id=source_turn_id,
+                    source_message_id=source_message_id,
                     salience=candidate.salience,
                     confidence=candidate.confidence,
                 ),
@@ -503,7 +503,7 @@ class AIMemoryService:
                 content=memory.content,
                 is_editable=memory.is_editable,
                 is_ignored=memory.is_ignored,
-                source_turn_id=memory.source_turn_id,
+                source_message_id=memory.source_message_id,
                 salience=memory.salience,
                 confidence=memory.confidence,
                 last_recalled_at=recalled_at,
@@ -572,7 +572,7 @@ class AIMemoryService:
                     content=summary_content,
                     salience=0.8,
                     confidence=0.85,
-                    source_turn_id=existing_summary.source_turn_id,
+                    source_message_id=existing_summary.source_message_id,
                 ),
             )
             return
@@ -631,7 +631,7 @@ class AIMemoryService:
             content=row.content,
             is_editable=row.is_editable,
             is_ignored=row.is_ignored,
-            source_turn_id=row.source_turn_id,
+            source_message_id=row.source_message_id,
             salience=row.salience,
             confidence=row.confidence,
             last_recalled_at=last_recalled_at,

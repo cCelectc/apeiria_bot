@@ -6,32 +6,45 @@ from importlib import import_module
 from typing import TYPE_CHECKING, Any
 
 from .identity import (
-    ScopeType,
-    build_conversation_identity,
-    build_conversation_identity_from_event,
-    trim_turn_window,
+    SceneType,
+    build_chat_session_identity,
+    build_chat_session_identity_from_event,
+    build_participant_subject_id,
+    trim_message_window,
 )
-from .models import AIContextTurnView, AIConversationIdentity
+from .models import (
+    ChatContextMessageView,
+    ChatMessageDetailView,
+    ChatSessionAdminView,
+    ChatSessionIdentity,
+)
 
 if TYPE_CHECKING:
-    from .service import AIConversationService, AITurnCreate, ai_conversation_service
+    from .service import (
+        ChatMessageCreate,
+        ChatSessionService,
+        chat_session_service,
+    )
 
 __all__ = [
-    "AIContextTurnView",
-    "AIConversationIdentity",
-    "AIConversationService",
-    "AITurnCreate",
-    "ScopeType",
-    "ai_conversation_service",
-    "build_conversation_identity",
-    "build_conversation_identity_from_event",
-    "trim_turn_window",
+    "ChatContextMessageView",
+    "ChatMessageCreate",
+    "ChatMessageDetailView",
+    "ChatSessionAdminView",
+    "ChatSessionIdentity",
+    "ChatSessionService",
+    "SceneType",
+    "build_chat_session_identity",
+    "build_chat_session_identity_from_event",
+    "build_participant_subject_id",
+    "chat_session_service",
+    "trim_message_window",
 ]
 
 _LAZY_EXPORTS = {
-    "AIConversationService": ".service",
-    "AITurnCreate": ".service",
-    "ai_conversation_service": ".service",
+    "ChatMessageCreate": ".service",
+    "ChatSessionService": ".service",
+    "chat_session_service": ".service",
 }
 
 

@@ -16,7 +16,7 @@ class AIToolExecution(Model):
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     execution_id: Mapped[str] = mapped_column(String(64), unique=True, index=True)
-    conversation_id: Mapped[str] = mapped_column(String(80), index=True)
+    session_id: Mapped[str] = mapped_column(String(80), index=True)
     tool_name: Mapped[str] = mapped_column(String(128), index=True)
     status: Mapped[str] = mapped_column(String(32), index=True)
     input_json: Mapped[str | None] = mapped_column(Text, nullable=True)

@@ -18,9 +18,7 @@ from apeiria.interfaces.http.auth import require_control_panel
 from apeiria.interfaces.http.routes.ai_route_support import (
     to_ai_capability_item,
     to_ai_capability_preview_item,
-    to_ai_conversation_item,
-    to_ai_conversation_prompt_preview_item,
-    to_ai_conversation_turn_item,
+    to_ai_chat_message_item,
     to_ai_future_task_item,
     to_ai_memory_item,
     to_ai_model_binding_item,
@@ -30,6 +28,8 @@ from apeiria.interfaces.http.routes.ai_route_support import (
     to_ai_persona_item,
     to_ai_recent_target_item,
     to_ai_relationship_state_item,
+    to_ai_session_item,
+    to_ai_session_prompt_preview_item,
     to_ai_skill_item,
     to_ai_source_item,
     to_ai_source_model_item,
@@ -44,9 +44,7 @@ from apeiria.interfaces.http.schemas.ai_models import (
     AICapabilityItem,
     AICapabilityPreviewItem,
     AICapabilityPreviewRequest,
-    AIConversationItem,
-    AIConversationPromptPreviewItem,
-    AIConversationTurnItem,
+    AIChatMessageItem,
     AIFutureTaskItem,
     AIMemoryCreateRequest,
     AIMemoryDeleteResult,
@@ -62,6 +60,8 @@ from apeiria.interfaces.http.schemas.ai_models import (
     AIRecentTargetItem,
     AIRelationshipScoreUpdateRequest,
     AIRelationshipStateItem,
+    AISessionItem,
+    AISessionPromptPreviewItem,
     AISkillItem,
     AISourceItem,
     AISourceModelFetchRequest,
@@ -431,44 +431,44 @@ async def list_ai_recent_targets(
     return [to_ai_recent_target_item(item) for item in targets]
 
 
-@router.get("/scenes", response_model=list[AIConversationItem])
+@router.get("/scenes", response_model=list[AISessionItem])
 async def list_ai_scenes(
     _: Annotated[Any, Depends(require_control_panel)],
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
-) -> list[AIConversationItem]:
-    conversations = await ai_admin_service.list_recent_conversations(limit=limit)
-    return [to_ai_conversation_item(item) for item in conversations]
+) -> list[AISessionItem]:
+    conversations = await ai_admin_service.list_recent_sessions(limit=limit)
+    return [to_ai_session_item(item) for item in conversations]
 
 
-@router.get("/scenes/turns", response_model=list[AIConversationTurnItem])
+@router.get("/scenes/turns", response_model=list[AIChatMessageItem])
 async def list_ai_scene_turns(
     _: Annotated[Any, Depends(require_control_panel)],
     scene_id: Annotated[str, Query(min_length=1)],
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
-) -> list[AIConversationTurnItem]:
+) -> list[AIChatMessageItem]:
     turns = await ai_admin_service.list_scene_turns(
         scene_id=scene_id,
         limit=limit,
     )
-    return [to_ai_conversation_turn_item(item) for item in turns]
+    return [to_ai_chat_message_item(item) for item in turns]
 
 
 @router.get(
     "/scenes/prompt-preview",
-    response_model=AIConversationPromptPreviewItem | None,
+    response_model=AISessionPromptPreviewItem | None,
 )
 async def get_ai_scene_prompt_preview(
     _: Annotated[Any, Depends(require_control_panel)],
     scene_id: Annotated[str, Query(min_length=1)],
     turn_limit: Annotated[int, Query(ge=1, le=200)] = 50,
-) -> AIConversationPromptPreviewItem | None:
+) -> AISessionPromptPreviewItem | None:
     preview = await ai_admin_service.build_scene_prompt_preview(
         scene_id=scene_id,
         turn_limit=turn_limit,
     )
     if preview is None:
         return None
-    return to_ai_conversation_prompt_preview_item(preview)
+    return to_ai_session_prompt_preview_item(preview)
 
 
 @router.get("/future-tasks", response_model=list[AIFutureTaskItem])
@@ -706,7 +706,7 @@ async def list_ai_tool_executions(
     scene_id: Annotated[str, Query(min_length=1)],
 ) -> list[AIToolExecutionItem]:
     rows = await ai_admin_service.list_tool_executions(
-        conversation_id=scene_id,
+        session_id=scene_id,
     )
     return [to_ai_tool_execution_item(item) for item in rows]
 
@@ -719,6 +719,6 @@ async def list_ai_skill_executions_debug(
     """Advanced debug alias retained during the boundary-freeze phase."""
 
     rows = await ai_admin_service.list_tool_executions(
-        conversation_id=scene_id,
+        session_id=scene_id,
     )
     return [to_ai_tool_execution_item(item) for item in rows]

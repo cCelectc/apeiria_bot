@@ -3,46 +3,48 @@
 from __future__ import annotations
 
 from apeiria.app.ai.conversation.models import (
-    AIContextTurnView,
-    AIConversationTurnDetailView,
+    ChatContextMessageView,
+    ChatMessageDetailView,
 )
 
 
 def select_latest_user_message(
-    turns: list[AIConversationTurnDetailView],
+    turns: list[ChatMessageDetailView],
 ) -> str | None:
     """Return the latest non-empty user message in the conversation."""
 
     for turn in reversed(turns):
-        if turn.sender_type == "user" and turn.content_text.strip():
-            return turn.content_text.strip()
+        if turn.author_role == "user" and turn.text_content.strip():
+            return turn.text_content.strip()
     return None
 
 
 def extract_tool_result_lines(
-    turns: list[AIConversationTurnDetailView],
+    turns: list[ChatMessageDetailView],
 ) -> tuple[str, ...]:
     """Return recent tool-result lines from conversation turns."""
 
     lines = [
-        turn.content_text
+        turn.text_content
         for turn in turns
-        if turn.sender_type == "tool" and turn.content_text.strip()
+        if turn.author_role == "tool" and turn.text_content.strip()
     ]
     return tuple(lines[-4:])
 
 
 def to_context_turns(
-    turns: list[AIConversationTurnDetailView],
-) -> list[AIContextTurnView]:
+    turns: list[ChatMessageDetailView],
+) -> list[ChatContextMessageView]:
     """Drop workbench-only metadata and return prompt-ready turns."""
 
     return [
-        AIContextTurnView(
-            turn_id=turn.turn_id,
-            sender_type=turn.sender_type,
-            sender_id=turn.sender_id,
-            content_text=turn.content_text,
+        ChatContextMessageView(
+            message_id=turn.message_id,
+            author_role=turn.author_role,
+            author_id=turn.author_id,
+            author_name=turn.author_name,
+            text_content=turn.text_content,
+            content=turn.content,
             created_at=turn.created_at,
         )
         for turn in turns

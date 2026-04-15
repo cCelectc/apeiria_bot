@@ -9,14 +9,14 @@ from typing import TYPE_CHECKING, Literal, cast
 
 from nonebot_plugin_orm import get_session
 
-from apeiria.app.ai.admin.models import AIConversationPromptPreview, AIRecentTarget
+from apeiria.app.ai.admin.models import AIRecentTarget, AISessionPromptPreview
 from apeiria.app.ai.admin.workbench import (
     extract_tool_result_lines,
     select_latest_user_message,
     to_context_turns,
 )
 from apeiria.app.ai.conversation.identity import build_participant_subject_id
-from apeiria.app.ai.conversation.service import ai_conversation_service
+from apeiria.app.ai.conversation.service import chat_session_service
 from apeiria.app.ai.future_task import ai_future_task_service
 from apeiria.app.ai.memory.service import (
     AIMemoryCreateInput,
@@ -85,10 +85,10 @@ if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
     from apeiria.app.ai.conversation.models import (
-        AIContextTurnView,
-        AIConversationAdminView,
-        AIConversationIdentity,
-        AIConversationTurnDetailView,
+        ChatContextMessageView,
+        ChatMessageDetailView,
+        ChatSessionAdminView,
+        ChatSessionIdentity,
     )
     from apeiria.app.ai.future_task.models import AIFutureTaskDefinition
     from apeiria.app.ai.memory.models import (
@@ -128,14 +128,14 @@ if TYPE_CHECKING:
 
 def _build_prompt_preview_social_input(  # noqa: PLR0913
     *,
-    conversation_id: str,
-    identity: "AIConversationIdentity",
+    session_id: str,
+    identity: "ChatSessionIdentity",
     latest_user_message: str,
     conversation_summary: str | None,
     relationship_context: str | None,
     persona_id: str | None,
     allowed_tool_names: tuple[str, ...],
-    context_turns: list["AIContextTurnView"],
+    context_turns: list["ChatContextMessageView"],
 ):
     from apeiria.app.ai.social_policy import AISocialPolicyInput
 
@@ -145,8 +145,8 @@ def _build_prompt_preview_social_input(  # noqa: PLR0913
         else datetime.now(timezone.utc)
     )
     return AISocialPolicyInput(
-        conversation_id=conversation_id,
-        scene_type=identity.scope_type,
+        session_id=session_id,
+        scene_type=identity.scene_type,
         message_text=latest_user_message,
         latest_user_turn_text=latest_user_turn_text(context_turns),
         conversation_summary=conversation_summary,
@@ -158,7 +158,7 @@ def _build_prompt_preview_social_input(  # noqa: PLR0913
         last_bot_turn_at=latest_bot_turn_at(context_turns),
         current_time=decision_time,
         runtime_mode="message",
-        is_direct_wake=(identity.scope_type == "private"),
+        is_direct_wake=(identity.scene_type == "private"),
     )
 
 
@@ -1165,7 +1165,7 @@ class AIAdminService:
                     content=content,
                     salience=salience,
                     confidence=confidence,
-                    source_turn_id=None,
+                    source_message_id=None,
                 ),
             )
             if row is None:
@@ -1189,13 +1189,13 @@ class AIAdminService:
                 None,
             )
 
-    async def list_recent_conversations(
+    async def list_recent_sessions(
         self,
         *,
         limit: int = 20,
-    ) -> list["AIConversationAdminView"]:
+    ) -> list["ChatSessionAdminView"]:
         async with get_session() as session:
-            return await ai_conversation_service.list_recent_conversations(
+            return await chat_session_service.list_recent_sessions(
                 session,
                 limit=limit,
             )
@@ -1205,52 +1205,52 @@ class AIAdminService:
         *,
         limit: int = 20,
     ) -> list[AIRecentTarget]:
-        conversations = await self.list_recent_conversations(limit=limit)
+        sessions = await self.list_recent_sessions(limit=limit)
         targets: list[AIRecentTarget] = []
         seen_users: set[str] = set()
         seen_participants: set[str] = set()
 
         async with get_session() as session:
-            for item in conversations:
-                summary = (item.short_summary or "").strip()
-                conversation_title = summary or item.conversation_id[:12]
+            for item in sessions:
+                summary = (item.summary_text or "").strip()
+                conversation_title = summary or item.session_id[:12]
                 conversation_subtitle = (
-                    f"{item.platform} · {item.scope_type} · {item.scope_id}"
+                    f"{item.platform} · {item.scene_type} · {item.scene_id}"
                 )
                 targets.append(
                     AIRecentTarget(
                         target_type="scene",
                         anchor_type="scene",
-                        anchor_id=item.conversation_id,
+                        anchor_id=item.session_id,
                         title=conversation_title,
                         subtitle=conversation_subtitle,
-                        scene_id=item.conversation_id,
+                        scene_id=item.session_id,
                         platform=item.platform,
-                        scope_type=item.scope_type,
-                        scope_id=item.scope_id,
-                        user_id=item.subject_user_id,
-                        last_active_at=item.last_active_at.isoformat(),
+                        scope_type=item.scene_type,
+                        scope_id=item.scene_id,
+                        user_id=item.subject_id,
+                        last_active_at=item.last_message_at.isoformat(),
                     )
                 )
 
-                if item.scope_type == "group":
+                if item.scene_type == "group":
                     participant_user_ids = await (
-                        ai_conversation_service.list_recent_user_ids_for_conversation(
+                        chat_session_service.list_recent_user_ids_for_session(
                             session,
-                            conversation_id=item.conversation_id,
+                            session_id=item.session_id,
                             limit=3,
                         )
                     )
                 else:
-                    participant_user_ids = [item.subject_user_id or item.scope_id]
+                    participant_user_ids = [item.subject_id or item.scene_id]
 
                 for user_id in participant_user_ids:
                     if not user_id:
                         continue
-                    if item.scope_type == "group":
+                    if item.scene_type == "group":
                         participant_id = build_participant_subject_id(
-                            scope_type=item.scope_type,
-                            scope_id=item.scope_id,
+                            scene_type=item.scene_type,
+                            scene_id=item.scene_id,
                             user_id=user_id,
                         )
                         if participant_id not in seen_participants:
@@ -1262,18 +1262,18 @@ class AIAdminService:
                                     anchor_id=participant_id,
                                     title=user_id,
                                     subtitle=f"{item.platform} · group participant",
-                                    scene_id=item.conversation_id,
+                                    scene_id=item.session_id,
                                     platform=item.platform,
-                                    scope_type=item.scope_type,
-                                    scope_id=item.scope_id,
+                                    scope_type=item.scene_type,
+                                    scope_id=item.scene_id,
                                     user_id=user_id,
-                                    last_active_at=item.last_active_at.isoformat(),
+                                    last_active_at=item.last_message_at.isoformat(),
                                 )
                             )
                     if user_id in seen_users:
                         continue
                     seen_users.add(user_id)
-                    user_subtitle = f"{item.platform} · {item.scope_type}"
+                    user_subtitle = f"{item.platform} · {item.scene_type}"
                     targets.append(
                         AIRecentTarget(
                             target_type="user",
@@ -1281,12 +1281,12 @@ class AIAdminService:
                             anchor_id=user_id,
                             title=user_id,
                             subtitle=user_subtitle,
-                            scene_id=item.conversation_id,
+                            scene_id=item.session_id,
                             platform=item.platform,
-                            scope_type=item.scope_type,
-                            scope_id=item.scope_id,
+                            scope_type=item.scene_type,
+                            scope_id=item.scene_id,
                             user_id=user_id,
-                            last_active_at=item.last_active_at.isoformat(),
+                            last_active_at=item.last_message_at.isoformat(),
                         )
                     )
 
@@ -1316,11 +1316,11 @@ class AIAdminService:
         *,
         scene_id: str,
         limit: int = 50,
-    ) -> list["AIConversationTurnDetailView"]:
+    ) -> list["ChatMessageDetailView"]:
         async with get_session() as session:
-            return await ai_conversation_service.list_turns_for_conversation(
+            return await chat_session_service.list_messages_for_session(
                 session,
-                conversation_id=scene_id,
+                session_id=scene_id,
                 limit=limit,
             )
 
@@ -1329,27 +1329,27 @@ class AIAdminService:
         *,
         scene_id: str,
         turn_limit: int = 50,
-    ) -> AIConversationPromptPreview | None:
+    ) -> AISessionPromptPreview | None:
         async with get_session() as session:
-            conversation = await ai_conversation_service.get_conversation_view(
+            conversation = await chat_session_service.get_session_view(
                 session,
-                conversation_id=scene_id,
+                session_id=scene_id,
             )
             if conversation is None:
                 return None
-            identity = await ai_conversation_service.get_conversation_identity(
+            identity = await chat_session_service.get_session_identity(
                 session,
-                conversation_id=scene_id,
+                session_id=scene_id,
             )
             if identity is None:
                 return None
-            turns = await ai_conversation_service.list_turns_for_conversation(
+            turns = await chat_session_service.list_messages_for_session(
                 session,
-                conversation_id=scene_id,
+                session_id=scene_id,
                 limit=turn_limit,
             )
             latest_user_message = select_latest_user_message(turns)
-            user_id = identity.subject_user_id or identity.scope_id
+            user_id = identity.subject_id or identity.scene_id
             relationship_target = build_relationship_target(identity, user_id)
             relationship_context = await load_relationship_context(
                 session,
@@ -1358,25 +1358,25 @@ class AIAdminService:
             persona = await ai_persona_service.build_persona_prompt_bundle(
                 session,
                 target=AIPersonaBindingTarget(
-                    conversation_id=identity.conversation_id,
+                    conversation_id=identity.session_id,
                     group_id=(
-                        identity.scope_id if identity.scope_type == "group" else None
+                        identity.scene_id if identity.scene_type == "group" else None
                     ),
-                    user_id=identity.subject_user_id or user_id,
+                    user_id=identity.subject_id or user_id,
                 ),
             )
             tool_policy = await ai_tool_policy_binding_service.resolve_scene_policy(
                 session,
                 scene_context=AIToolSceneContext(
-                    scope_type=identity.scope_type,
-                    is_tome=identity.scope_type == "private",
+                    scope_type=identity.scene_type,
+                    is_tome=identity.scene_type == "private",
                 ),
                 target=AIToolPolicyBindingTarget(
-                    conversation_id=identity.conversation_id,
+                    conversation_id=identity.session_id,
                     group_id=(
-                        identity.scope_id if identity.scope_type == "group" else None
+                        identity.scene_id if identity.scene_type == "group" else None
                     ),
-                    user_id=identity.subject_user_id,
+                    user_id=identity.subject_id,
                 ),
             )
             memories = (
@@ -1403,11 +1403,11 @@ class AIAdminService:
                 session,
                 query=AIModelRouteQuery(task_class=pre_tool_task_class),
                 target=AIModelBindingTarget(
-                    conversation_id=identity.conversation_id,
+                    conversation_id=identity.session_id,
                     group_id=(
-                        identity.scope_id if identity.scope_type == "group" else None
+                        identity.scene_id if identity.scene_type == "group" else None
                     ),
-                    user_id=identity.subject_user_id or user_id,
+                    user_id=identity.subject_id or user_id,
                 ),
             )
             roleplay_selected = (
@@ -1417,13 +1417,13 @@ class AIAdminService:
                         task_class=select_post_tool_reply_task_class()
                     ),
                     target=AIModelBindingTarget(
-                        conversation_id=identity.conversation_id,
+                        conversation_id=identity.session_id,
                         group_id=(
-                            identity.scope_id
-                            if identity.scope_type == "group"
+                            identity.scene_id
+                            if identity.scene_type == "group"
                             else None
                         ),
-                        user_id=identity.subject_user_id or user_id,
+                        user_id=identity.subject_id or user_id,
                     ),
                 )
                 if has_tools
@@ -1434,23 +1434,23 @@ class AIAdminService:
                 await ai_social_policy_service.decide(
                     session,
                     _build_prompt_preview_social_input(
-                        conversation_id=scene_id,
+                        session_id=scene_id,
                         identity=identity,
                         latest_user_message=latest_user_message,
-                        conversation_summary=conversation.short_summary,
+                        conversation_summary=conversation.summary_text,
                         relationship_context=relationship_context,
                         persona_id=persona.persona_id if persona is not None else None,
                         allowed_tool_names=tuple(tool.name for tool in allowed_tools),
                         context_turns=context_turns,
                     ),
                     target=AIModelBindingTarget(
-                        conversation_id=identity.conversation_id,
+                        conversation_id=identity.session_id,
                         group_id=(
-                            identity.scope_id
-                            if identity.scope_type == "group"
+                            identity.scene_id
+                            if identity.scene_type == "group"
                             else None
                         ),
-                        user_id=identity.subject_user_id or user_id,
+                        user_id=identity.subject_id or user_id,
                     ),
                 )
                 if latest_user_message
@@ -1464,7 +1464,7 @@ class AIAdminService:
                         skill_policy=tool_policy_text,
                         skill_results=tool_results,
                         memories=memories,
-                        conversation_summary=conversation.short_summary,
+                        conversation_summary=conversation.summary_text,
                         social_policy_summary=(
                             summarize_social_policy_decision(social_decision)
                             if social_decision is not None
@@ -1485,7 +1485,7 @@ class AIAdminService:
                         skill_policy=tool_policy_text,
                         skill_results=tool_results,
                         memories=memories,
-                        conversation_summary=conversation.short_summary,
+                        conversation_summary=conversation.summary_text,
                         social_policy_summary=(
                             summarize_social_policy_decision(social_decision)
                             if social_decision is not None
@@ -1510,8 +1510,8 @@ class AIAdminService:
             knowledge_memory_count = sum(
                 1 for memory in memories if memory.memory_layer == "knowledge"
             )
-            return AIConversationPromptPreview(
-                conversation_id=scene_id,
+            return AISessionPromptPreview(
+                session_id=scene_id,
                 latest_user_message=latest_user_message,
                 planning_source_id=(
                     selected.source.source_id if selected is not None else None
@@ -1549,7 +1549,7 @@ class AIAdminService:
                     selected.resolved_model_name if selected is not None else None
                 ),
                 persona_id=persona.persona_id if persona is not None else None,
-                conversation_summary=conversation.short_summary,
+                conversation_summary=conversation.summary_text,
                 relationship_context=relationship_context,
                 tool_policy=tool_policy_text,
                 social_action=(
@@ -1770,12 +1770,12 @@ class AIAdminService:
     async def list_tool_executions(
         self,
         *,
-        conversation_id: str,
+        session_id: str,
     ) -> list["AIToolExecutionView"]:
         async with get_session() as session:
             return await ai_tool_service.list_executions(
                 session,
-                conversation_id=conversation_id,
+                session_id=session_id,
             )
 
 

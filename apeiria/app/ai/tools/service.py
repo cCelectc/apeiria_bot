@@ -11,7 +11,7 @@ from uuid import uuid4
 
 from sqlalchemy import select
 
-from apeiria.app.ai.conversation.service import ai_conversation_service
+from apeiria.app.ai.conversation.service import chat_session_service
 from apeiria.app.ai.future_task import ai_future_task_service
 from apeiria.app.ai.future_task.models import (
     AIFutureTaskCreateInput,
@@ -70,12 +70,14 @@ from apeiria.infra.db.models import AIToolExecution
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
+    from apeiria.app.ai.conversation.models import ChatSessionIdentity
+
 
 @dataclass(frozen=True)
 class AIToolExecutionRequest:
     """Inputs needed to run tools for a single reply turn."""
 
-    conversation_id: str
+    session_id: str
     message_text: str
     policy: AIToolPolicy
     recalled_memories: tuple[object, ...]
@@ -95,7 +97,7 @@ class AIToolExecutionResult:
 class AIToolExecutionCreateInput:
     """Create payload for one persisted tool execution record."""
 
-    conversation_id: str
+    session_id: str
     tool_name: str
     status: str
     input_payload: Any | None = None
@@ -304,9 +306,8 @@ class AIToolService:
                     )
                 )
                 continue
-            if (
-                intent.tool_name == "memory.update"
-                and isinstance(intent.input_payload, AIMemoryUpdateInput)
+            if intent.tool_name == "memory.update" and isinstance(
+                intent.input_payload, AIMemoryUpdateInput
             ):
                 observations.append(
                     await self._execute_memory_update_intent(
@@ -346,7 +347,7 @@ class AIToolService:
             await self.record_execution(
                 session,
                 AIToolExecutionCreateInput(
-                    conversation_id=request.conversation_id,
+                    session_id=request.session_id,
                     tool_name=observation.tool_name,
                     status=observation.status,
                     input_payload=observation.input_payload,
@@ -361,9 +362,9 @@ class AIToolService:
     ) -> list[AIToolTurnCreateInput]:
         return [
             AIToolTurnCreateInput(
-                sender_id="ai_tool_observation",
-                content_text=observation.summary,
-                raw_payload={
+                author_id="ai_tool_observation",
+                text_content=observation.summary,
+                meta={
                     "source": "tool_observation",
                     "tool_name": observation.tool_name,
                     "status": observation.status,
@@ -421,22 +422,21 @@ class AIToolService:
         assert isinstance(tool_input, AIFutureTaskToolInput)
 
         try:
-            identity = await ai_conversation_service.get_conversation_identity(
+            identity = await chat_session_service.get_session_identity(
                 session,
-                conversation_id=request.conversation_id,
+                session_id=request.session_id,
             )
             if identity is None:
                 return AIToolObservationResult(
                     tool_name="future_task.manage",
                     summary=(
-                        "- [future_task.manage] failed: "
-                        "conversation identity is missing"
+                        "- [future_task.manage] failed: session identity is missing"
                     ),
                     input_payload=tool_input,
                     output_payload=AIFutureTaskToolOutput(
                         action=tool_input.action,
                         ok=False,
-                        message="conversation identity is missing",
+                        message="session identity is missing",
                     ),
                     status="error",
                 )
@@ -472,12 +472,9 @@ class AIToolService:
         *,
         session: "AsyncSession",
         request: AIToolObservationRequest,
-        identity: object,
+        identity: "ChatSessionIdentity",
         tool_input: AIFutureTaskToolInput,
     ) -> AIFutureTaskToolOutput:
-        from apeiria.app.ai.conversation.models import AIConversationIdentity
-
-        assert isinstance(identity, AIConversationIdentity)
         if tool_input.action == "create":
             return await self._create_future_task_action(
                 session=session,
@@ -504,12 +501,9 @@ class AIToolService:
         *,
         session: "AsyncSession",
         request: AIToolObservationRequest,
-        identity: object,
+        identity: "ChatSessionIdentity",
         tool_input: AIFutureTaskToolInput,
     ) -> AIFutureTaskToolOutput:
-        from apeiria.app.ai.conversation.models import AIConversationIdentity
-
-        assert isinstance(identity, AIConversationIdentity)
         description = tool_input.description
         trigger_at = tool_input.trigger_at
         if description is None:
@@ -527,15 +521,15 @@ class AIToolService:
         result = await ai_future_task_service.create_task(
             session,
             AIFutureTaskCreateInput(
-                conversation_id=identity.conversation_id,
+                session_id=identity.session_id,
                 platform=identity.platform,
-                scope_type=identity.scope_type,
-                scope_id=identity.scope_id,
-                user_id=identity.subject_user_id,
+                scene_type=identity.scene_type,
+                scene_id=identity.scene_id,
+                user_id=identity.subject_id,
                 title=tool_input.title or description[:32],
                 description=description,
                 trigger_at=trigger_at,
-                source_turn_id=request.source_turn_id,
+                source_message_id=request.source_message_id,
             ),
         )
         message = (
@@ -571,11 +565,11 @@ class AIToolService:
                 ok=False,
                 message=f"task {task_id} was not found",
             )
-        if existing.conversation_id != request.conversation_id:
+        if existing.session_id != request.session_id:
             return AIFutureTaskToolOutput(
                 action="cancel",
                 ok=False,
-                message="task does not belong to the current conversation",
+                message="task does not belong to the current session",
             )
         cancelled = await ai_future_task_service.cancel_task(
             session,
@@ -604,13 +598,13 @@ class AIToolService:
         tasks = await ai_future_task_service.list_tasks(
             session,
             limit=max(1, min(tool_input.limit or 5, 10)),
-            conversation_id=request.conversation_id,
+            session_id=request.session_id,
         )
         if not tasks:
             return AIFutureTaskToolOutput(
                 action="list",
                 ok=True,
-                message="no future tasks in this conversation",
+                message="no future tasks in this session",
             )
         return AIFutureTaskToolOutput(
             action="list",
@@ -706,7 +700,7 @@ class AIToolService:
                 confidence=tool_input.confidence
                 if tool_input.confidence is not None
                 else 0.85,
-                source_turn_id=request.source_turn_id,
+                source_message_id=request.source_message_id,
             ),
         )
         if row is None:
@@ -725,9 +719,7 @@ class AIToolService:
             )
         return AIToolObservationResult(
             tool_name="memory.update",
-            summary=(
-                f"- [memory.update] Updated {row.memory_id}: {row.content}"
-            ),
+            summary=(f"- [memory.update] Updated {row.memory_id}: {row.content}"),
             input_payload=tool_input,
             output_payload=AIMemoryUpdateObservationOutput(
                 memory_id=row.memory_id,
@@ -744,7 +736,7 @@ class AIToolService:
     ) -> AIToolExecution:
         row = AIToolExecution(
             execution_id=f"tool_exec_{uuid4().hex}",
-            conversation_id=create_input.conversation_id,
+            session_id=create_input.session_id,
             tool_name=create_input.tool_name,
             status=create_input.status,
             input_json=(
@@ -776,18 +768,18 @@ class AIToolService:
         self,
         session: "AsyncSession",
         *,
-        conversation_id: str,
+        session_id: str,
     ) -> list[AIToolExecutionView]:
         result = await session.execute(
             select(AIToolExecution)
-            .where(AIToolExecution.conversation_id == conversation_id)
+            .where(AIToolExecution.session_id == session_id)
             .order_by(AIToolExecution.created_at.asc(), AIToolExecution.id.asc())
         )
         rows = result.scalars().all()
         return [
             AIToolExecutionView(
                 execution_id=row.execution_id,
-                conversation_id=row.conversation_id,
+                session_id=row.session_id,
                 tool_name=row.tool_name,
                 status=row.status,
                 input_json=row.input_json,

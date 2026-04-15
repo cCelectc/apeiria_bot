@@ -1,7 +1,7 @@
 import type {
-  AIConversationItem,
-  AIConversationPromptPreviewItem,
-  AIConversationTurnItem,
+  AIChatMessageItem,
+  AISessionItem,
+  AISessionPromptPreviewItem,
   AIToolExecutionItem,
 } from '@/api'
 import { computed, reactive, ref } from 'vue'
@@ -19,21 +19,21 @@ export function useAIDebugTab (t: (key: string, params?: Record<string, unknown>
 
   const loadingDebug = ref(false)
   const loadingTurns = ref(false)
-  const conversations = ref<AIConversationItem[]>([])
-  const turns = ref<AIConversationTurnItem[]>([])
+  const conversations = ref<AISessionItem[]>([])
+  const turns = ref<AIChatMessageItem[]>([])
   const toolExecutions = ref<AIToolExecutionItem[]>([])
-  const promptPreview = ref<AIConversationPromptPreviewItem | null>(null)
+  const promptPreview = ref<AISessionPromptPreviewItem | null>(null)
   const selectedSceneId = ref('')
   const debugForm = reactive({
     limit: 20,
     turnLimit: 50,
   })
 
-  const selectedConversation = computed(() => conversations.value.find(item => item.scene_id === selectedSceneId.value) ?? null)
+  const selectedConversation = computed(() => conversations.value.find(item => item.session_id === selectedSceneId.value) ?? null)
   const latestAssistantTurn = computed(() => {
     for (let index = turns.value.length - 1; index >= 0; index -= 1) {
       const turn = turns.value[index]
-      if (turn.sender_type === 'bot' && turn.content_text.trim()) {
+      if (turn.author_role === 'assistant' && turn.text_content.trim()) {
         return turn
       }
     }
@@ -73,7 +73,7 @@ export function useAIDebugTab (t: (key: string, params?: Record<string, unknown>
       const response = await getAIScenes({ limit: debugForm.limit })
       conversations.value = response.data
       if (!selectedSceneId.value && conversations.value.length > 0) {
-        selectedSceneId.value = conversations.value[0].scene_id
+        selectedSceneId.value = conversations.value[0].session_id
       }
       if (selectedSceneId.value) {
         await loadConversationDetails(selectedSceneId.value)

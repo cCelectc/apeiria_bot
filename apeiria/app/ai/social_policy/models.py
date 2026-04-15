@@ -20,7 +20,7 @@ AISocialPolicyRuntimeMode = Literal["message", "future_task"]
 class AISocialPolicyInput:
     """Normalized facts used by the social-policy layer."""
 
-    conversation_id: str
+    session_id: str
     scene_type: AISocialPolicySceneType
     message_text: str
     latest_user_turn_text: str | None

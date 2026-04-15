@@ -10,7 +10,7 @@ from uuid import uuid4
 from nonebot.log import logger
 from nonebot_plugin_orm import get_session
 
-from apeiria.app.ai.conversation.service import AITurnCreate, ai_conversation_service
+from apeiria.app.ai.conversation.service import ChatMessageCreate, chat_session_service
 from apeiria.app.ai.decision.service import ai_decision_service
 from apeiria.app.ai.future_task import ai_future_task_service
 from apeiria.app.ai.model import AIModelBindingTarget, AIModelRouteQuery
@@ -63,8 +63,8 @@ if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
     from apeiria.app.ai.conversation.models import (
-        AIContextTurnView,
-        AIConversationIdentity,
+        ChatContextMessageView,
+        ChatSessionIdentity,
     )
     from apeiria.app.ai.future_task.models import AIFutureTaskDefinition
     from apeiria.app.ai.memory.models import AIMemoryDefinition
@@ -86,9 +86,9 @@ if TYPE_CHECKING:
 class AIRuntimeReplyRequest:
     """Normalized runtime request shared by message and future-task entrypoints."""
 
-    identity: "AIConversationIdentity"
+    identity: "ChatSessionIdentity"
     message_text: str
-    source_turn_id: str | None
+    source_message_id: str | None
     user_id: str
     sender_id: str
     runtime_mode: Literal["message", "future_task"]
@@ -111,7 +111,7 @@ class AIRuntimeGenerationRequest:
     selected: "AISelectedModel"
     prompt: str
     trace_id: str
-    conversation_id: str
+    session_id: str
     tools: tuple["AIModelToolDefinition", ...]
     failure_stage: str
 
@@ -127,7 +127,7 @@ class AIRuntimeReplyState:
     relationship_context: str | None
     conversation_summary: str | None
     persona: "AIPersonaPromptBundleLike | None"
-    turns: list["AIContextTurnView"]
+    turns: list["ChatContextMessageView"]
     tool_policy: "AIToolPolicy"
     social_decision: AISocialPolicyDecision
     current_time: datetime
@@ -135,43 +135,43 @@ class AIRuntimeReplyState:
 
 
 def _to_persona_target(
-    identity: "AIConversationIdentity",
+    identity: "ChatSessionIdentity",
     user_id: str,
 ) -> AIPersonaBindingTarget:
     return AIPersonaBindingTarget(
-        conversation_id=identity.conversation_id,
-        group_id=identity.scope_id if identity.scope_type == "group" else None,
-        user_id=identity.subject_user_id or user_id,
+        conversation_id=identity.session_id,
+        group_id=identity.scene_id if identity.scene_type == "group" else None,
+        user_id=identity.subject_id or user_id,
     )
 
 
 def _to_model_target(
-    identity: "AIConversationIdentity",
+    identity: "ChatSessionIdentity",
     user_id: str,
 ) -> AIModelBindingTarget:
     return AIModelBindingTarget(
-        conversation_id=identity.conversation_id,
-        group_id=identity.scope_id if identity.scope_type == "group" else None,
-        user_id=identity.subject_user_id or user_id,
+        conversation_id=identity.session_id,
+        group_id=identity.scene_id if identity.scene_type == "group" else None,
+        user_id=identity.subject_id or user_id,
     )
 
 
 async def _resolve_tool_policy(
     session: "AsyncSession",
-    identity: "AIConversationIdentity",
+    identity: "ChatSessionIdentity",
     *,
     is_tome: bool,
 ) -> "AIToolPolicy":
     return await ai_tool_policy_binding_service.resolve_scene_policy(
         session,
         scene_context=AIToolSceneContext(
-            scope_type=identity.scope_type,
+            scope_type=identity.scene_type,
             is_tome=is_tome,
         ),
         target=AIToolPolicyBindingTarget(
-            conversation_id=identity.conversation_id,
-            group_id=identity.scope_id if identity.scope_type == "group" else None,
-            user_id=identity.subject_user_id,
+            conversation_id=identity.session_id,
+            group_id=identity.scene_id if identity.scene_type == "group" else None,
+            user_id=identity.subject_id,
         ),
     )
 
@@ -179,22 +179,23 @@ async def _resolve_tool_policy(
 async def _append_tool_observation_turns(
     session: "AsyncSession",
     *,
-    identity: "AIConversationIdentity",
+    identity: "ChatSessionIdentity",
     trace_id: str,
     tool_turns: tuple["AIToolTurnCreateInput", ...],
 ) -> None:
     for index, turn in enumerate(tool_turns):
-        await ai_conversation_service.append_turn(
+        await chat_session_service.append_message(
             session,
             identity,
-            AITurnCreate(
-                sender_type="tool",
-                sender_id=turn.sender_id,
-                content_text=turn.content_text,
-                raw_payload={
+            ChatMessageCreate(
+                author_role="tool",
+                author_id=turn.author_id,
+                text_content=turn.text_content,
+                message_kind="tool",
+                meta={
                     "trace_id": trace_id,
                     "index": index,
-                    **turn.raw_payload,
+                    **turn.meta,
                 },
             ),
         )
@@ -218,15 +219,15 @@ def _build_social_policy_input(  # noqa: PLR0913
     *,
     request: AIRuntimeReplyRequest,
     current_time: datetime,
-    turns: list["AIContextTurnView"],
+    turns: list["ChatContextMessageView"],
     conversation_summary: str | None,
     relationship_context: str | None,
     persona_id: str | None,
     allowed_tools: list["AIToolSpec"],
 ) -> AISocialPolicyInput:
     return AISocialPolicyInput(
-        conversation_id=request.identity.conversation_id,
-        scene_type=request.identity.scope_type,
+        session_id=request.identity.session_id,
+        scene_type=request.identity.scene_type,
         message_text=request.message_text,
         latest_user_turn_text=latest_user_turn_text(turns),
         conversation_summary=conversation_summary,
@@ -240,7 +241,7 @@ def _build_social_policy_input(  # noqa: PLR0913
         runtime_mode=request.runtime_mode,
         is_direct_wake=(
             request.runtime_mode == "future_task"
-            or request.identity.scope_type == "private"
+            or request.identity.scene_type == "private"
             or request.is_tome
         ),
     )
@@ -268,7 +269,7 @@ class AIRuntimeService:
             return None
 
         async with get_session() as session:
-            ingested = await ai_conversation_service.ingest_event(session, bot, event)
+            ingested = await chat_session_service.ingest_event(session, bot, event)
             if ingested is None:
                 return None
 
@@ -280,7 +281,7 @@ class AIRuntimeService:
                 identity=identity,
                 user_id=user_id,
                 message_text=message_text,
-                source_turn_id=turn.turn_id,
+                source_message_id=turn.message_id,
             )
             result = await self._run_reply_pipeline(
                 session,
@@ -288,7 +289,7 @@ class AIRuntimeService:
                 request=AIRuntimeReplyRequest(
                     identity=identity,
                     message_text=message_text,
-                    source_turn_id=turn.turn_id,
+                    source_message_id=turn.message_id,
                     user_id=user_id,
                     sender_id=str(bot.self_id),
                     runtime_mode="message",
@@ -308,21 +309,21 @@ class AIRuntimeService:
             if task is None or task.status != "running":
                 return None
 
-            identity = await ai_conversation_service.get_conversation_identity(
+            identity = await chat_session_service.get_session_identity(
                 session,
-                conversation_id=task.conversation_id,
+                session_id=task.session_id,
             )
             if identity is None:
                 return None
 
-            user_id = identity.subject_user_id or task.user_id or identity.scope_id
+            user_id = identity.subject_id or task.user_id or identity.scene_id
             return await self._run_reply_pipeline(
                 session,
                 trace_id=f"ai_trace_{uuid4().hex}",
                 request=AIRuntimeReplyRequest(
                     identity=identity,
                     message_text=task.description,
-                    source_turn_id=task.source_turn_id,
+                    source_message_id=task.source_message_id,
                     user_id=user_id,
                     sender_id=identity.bot_id,
                     runtime_mode="future_task",
@@ -339,15 +340,15 @@ class AIRuntimeService:
     ) -> AIRuntimeReplyResult | None:
         current_time = datetime.now(timezone.utc)
         identity = request.identity
-        turns = await ai_conversation_service.list_recent_turns(
+        turns = await chat_session_service.list_recent_messages(
             session,
             identity,
-            max_turns=8,
+            max_messages=8,
         )
-        conversation_summary = await ai_conversation_service.update_short_summary(
+        conversation_summary = await chat_session_service.update_summary_text(
             session,
             identity,
-            turns=turns,
+            messages=turns,
         )
         relationship_target = build_relationship_target(identity, request.user_id)
         persona_target = _to_persona_target(identity, request.user_id)
@@ -394,11 +395,11 @@ class AIRuntimeService:
         )
         if _should_skip_generation(social_decision):
             logger.info(
-                "AI trace {} suppressed {} reply for conversation {} "
+                "AI trace {} suppressed {} reply for session {} "
                 "action={} reasons={}",
                 trace_id,
                 request.runtime_mode,
-                identity.conversation_id,
+                identity.session_id,
                 social_decision.action,
                 ",".join(social_decision.reason_codes),
             )
@@ -407,8 +408,8 @@ class AIRuntimeService:
         skill_runtime = await ai_tool_runtime.run_for_message(
             session,
             AIToolRuntimeRequest(
-                conversation_id=identity.conversation_id,
-                source_turn_id=request.source_turn_id,
+                session_id=identity.session_id,
+                source_message_id=request.source_message_id,
                 message_text=request.message_text,
                 policy=tool_policy,
                 recalled_memories=tuple(recalled_memories),
@@ -428,9 +429,9 @@ class AIRuntimeService:
         await session.commit()
         if selected is None:
             logger.debug(
-                "AI trace {} skipped reply: no model selected for conversation {}",
+                "AI trace {} skipped reply: no model selected for session {}",
                 trace_id,
-                identity.conversation_id,
+                identity.session_id,
             )
             return None
 
@@ -458,20 +459,20 @@ class AIRuntimeService:
         )
         if response is None or not response.content.strip():
             logger.debug(
-                "AI trace {} skipped reply: empty model response for conversation {}",
+                "AI trace {} skipped reply: empty model response for session {}",
                 trace_id,
-                identity.conversation_id,
+                identity.session_id,
             )
             return None
 
-        await ai_conversation_service.append_turn(
+        await chat_session_service.append_message(
             session,
             identity,
-            AITurnCreate(
-                sender_type="bot",
-                sender_id=request.sender_id,
-                content_text=response.content.strip(),
-                raw_payload={
+            ChatMessageCreate(
+                author_role="assistant",
+                author_id=request.sender_id,
+                text_content=response.content.strip(),
+                meta={
                     "trace_id": trace_id,
                     "source_id": response.source_id,
                     "model_name": response.model_name,
@@ -511,23 +512,23 @@ class AIRuntimeService:
                 },
             ),
         )
-        turns_after = await ai_conversation_service.list_recent_turns(
+        turns_after = await chat_session_service.list_recent_messages(
             session,
             identity,
-            max_turns=8,
+            max_messages=8,
         )
-        await ai_conversation_service.update_short_summary(
+        await chat_session_service.update_summary_text(
             session,
             identity,
-            turns=turns_after,
+            messages=turns_after,
         )
         await session.commit()
         logger.info(
-            "AI trace {} generated {} reply for conversation {} with source={} "
+            "AI trace {} generated {} reply for session {} with source={} "
             "model={} memories={} tool_observations={}",
             trace_id,
             request.runtime_mode,
-            identity.conversation_id,
+            identity.session_id,
             response.source_id,
             response.model_name,
             len(recalled_memories),
@@ -572,7 +573,7 @@ class AIRuntimeService:
                     has_tools=has_tools,
                 ),
                 trace_id=state.trace_id,
-                conversation_id=state.request.identity.conversation_id,
+                session_id=state.request.identity.session_id,
                 tools=skill_runtime.available_tools,
                 failure_stage="reply generation failed",
             )
@@ -585,8 +586,8 @@ class AIRuntimeService:
             skill_runtime = await ai_tool_runtime.execute_tool_calls(
                 session,
                 AIToolRuntimeRequest(
-                    conversation_id=state.request.identity.conversation_id,
-                    source_turn_id=state.request.source_turn_id,
+                    session_id=state.request.identity.session_id,
+                    source_message_id=state.request.source_message_id,
                     message_text=state.request.message_text,
                     policy=state.tool_policy,
                     recalled_memories=tuple(state.recalled_memories),
@@ -633,7 +634,7 @@ class AIRuntimeService:
                         )
                     ),
                     trace_id=state.trace_id,
-                    conversation_id=state.request.identity.conversation_id,
+                    session_id=state.request.identity.session_id,
                     tools=(),
                     failure_stage="reply generation failed after tool calls",
                 )
@@ -658,9 +659,9 @@ class AIRuntimeService:
                 target=MessageDeliveryTarget(
                     platform=request.identity.platform,
                     bot_id=request.identity.bot_id,
-                    scope_type=request.identity.scope_type,
-                    scope_id=request.identity.scope_id,
-                    user_id=request.identity.subject_user_id or request.user_id,
+                    scope_type=request.identity.scene_type,
+                    scope_id=request.identity.scene_id,
+                    user_id=request.identity.subject_id or request.user_id,
                 ),
                 content_text=reply_text,
             )
@@ -678,10 +679,10 @@ class AIRuntimeService:
             )
         except Exception as exc:  # noqa: BLE001
             logger.opt(exception=exc).warning(
-                "AI trace {} {} for conversation {}",
+                "AI trace {} {} for session {}",
                 request.trace_id,
                 request.failure_stage,
-                request.conversation_id,
+                request.session_id,
             )
             return None
 

@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Protocol
 
 if TYPE_CHECKING:
-    from apeiria.app.ai.conversation.models import AIContextTurnView
+    from apeiria.app.ai.conversation.models import ChatContextMessageView
     from apeiria.app.ai.memory.models import AIMemoryDefinition
 
 
@@ -54,7 +54,7 @@ class AIReplyPromptContext:
     tool_policy: str | None
     tool_results: tuple[str, ...]
     memories: list["AIMemoryDefinition"]
-    turns: list["AIContextTurnView"]
+    turns: list["ChatContextMessageView"]
     conversation_summary: str | None = None
     social_policy: str | None = None
     future_task: str | None = None
@@ -112,7 +112,7 @@ def build_reply_prompt_channels(
             "latest conversation unless a tool result proves otherwise.",
         ),
         conversation=tuple(
-            _format_turn(turn) for turn in context.turns if turn.content_text.strip()
+            _format_turn(turn) for turn in context.turns if turn.text_content.strip()
         ),
         response_rules=(
             "Stay in character and answer naturally.",
@@ -173,14 +173,15 @@ def render_reply_prompt(channels: AIReplyPromptChannels) -> str:  # noqa: C901, 
     return "\n\n".join(sections)
 
 
-def _format_turn(turn: "AIContextTurnView") -> str:
+def _format_turn(turn: "ChatContextMessageView") -> str:
     speaker_map = {
-        "user": "User",
-        "bot": "Assistant",
+        "user": turn.author_name or "User",
+        "assistant": "Assistant",
         "system": "System",
         "tool": "Tool",
     }
-    return f"{speaker_map.get(turn.sender_type, 'Message')}: {turn.content_text}"
+    speaker = speaker_map.get(turn.author_role, "Message")
+    return f"{speaker}: {turn.text_content}"
 
 
 def _format_memory(memory: "AIMemoryDefinition") -> str:

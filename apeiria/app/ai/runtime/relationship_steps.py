@@ -12,7 +12,7 @@ from apeiria.app.ai.relationship.signals import derive_relationship_delta
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
-    from apeiria.app.ai.conversation.models import AIConversationIdentity
+    from apeiria.app.ai.conversation.models import ChatSessionIdentity
     from apeiria.app.ai.relationship.models import AIRelationshipState
 
 
@@ -27,16 +27,16 @@ class AIRelationshipTarget:
 
 
 def build_relationship_target(
-    identity: "AIConversationIdentity",
+    identity: "ChatSessionIdentity",
     user_id: str,
 ) -> AIRelationshipTarget:
     """Build one relationship target from the current conversation identity."""
 
     return AIRelationshipTarget(
         platform=identity.platform,
-        group_id=identity.scope_id if identity.scope_type == "group" else None,
-        user_id=identity.subject_user_id or user_id,
-        is_private=identity.scope_type == "private",
+        group_id=identity.scene_id if identity.scene_type == "group" else None,
+        user_id=identity.subject_id or user_id,
+        is_private=identity.scene_type == "private",
     )
 
 

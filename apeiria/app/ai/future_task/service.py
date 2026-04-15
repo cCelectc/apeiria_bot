@@ -23,7 +23,7 @@ from apeiria.infra.scheduler.service import scheduler_service
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
-    from apeiria.app.ai.conversation.models import ScopeType
+    from apeiria.app.ai.conversation.models import SceneType
 
 _DISPLAY_TIMEZONE = ZoneInfo("Asia/Shanghai")
 
@@ -51,10 +51,10 @@ class AIFutureTaskService:
         task_id = f"future_task_{uuid4().hex}"
         row = AIFutureTask(
             task_id=task_id,
-            conversation_id=create_input.conversation_id,
+            session_id=create_input.session_id,
             platform=create_input.platform,
-            scope_type=create_input.scope_type,
-            scope_id=create_input.scope_id,
+            scene_type=create_input.scene_type,
+            scene_id=create_input.scene_id,
             user_id=create_input.user_id,
             title=create_input.title,
             description=create_input.description,
@@ -62,7 +62,7 @@ class AIFutureTaskService:
                 tzinfo=None
             ),
             status="pending",
-            source_turn_id=create_input.source_turn_id,
+            source_message_id=create_input.source_message_id,
         )
         session.add(row)
         await session.flush()
@@ -104,11 +104,11 @@ class AIFutureTaskService:
         session: "AsyncSession",
         *,
         limit: int,
-        conversation_id: str | None = None,
+        session_id: str | None = None,
     ) -> list[AIFutureTaskDefinition]:
         query = select(AIFutureTask)
-        if conversation_id is not None:
-            query = query.where(AIFutureTask.conversation_id == conversation_id)
+        if session_id is not None:
+            query = query.where(AIFutureTask.session_id == session_id)
         query = query.order_by(AIFutureTask.created_at.desc(), AIFutureTask.id.desc())
         result = await session.execute(query.limit(limit))
         return [self._to_definition(row) for row in result.scalars().all()]
@@ -232,16 +232,16 @@ class AIFutureTaskService:
         )
         return AIFutureTaskDefinition(
             task_id=row.task_id,
-            conversation_id=row.conversation_id,
+            session_id=row.session_id,
             platform=row.platform,
-            scope_type=cast("ScopeType", row.scope_type),
-            scope_id=row.scope_id,
+            scene_type=cast("SceneType", row.scene_type),
+            scene_id=row.scene_id,
             user_id=row.user_id,
             title=row.title,
             description=row.description,
             trigger_at=trigger_at,
             status=cast("AIFutureTaskStatus", row.status),
-            source_turn_id=row.source_turn_id,
+            source_message_id=row.source_message_id,
             scheduler_job_id=row.scheduler_job_id,
             last_error=row.last_error,
             created_at=created_at,

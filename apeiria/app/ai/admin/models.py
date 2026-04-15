@@ -27,10 +27,10 @@ class AIRecentTarget:
 
 
 @dataclass(frozen=True)
-class AIConversationPromptPreview:
+class AISessionPromptPreview:
     """Workbench prompt/context preview for one conversation."""
 
-    conversation_id: str
+    session_id: str
     latest_user_message: str | None
     planning_source_id: str | None
     planning_profile_id: str | None

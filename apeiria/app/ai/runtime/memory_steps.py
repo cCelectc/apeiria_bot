@@ -20,7 +20,7 @@ from apeiria.app.ai.model.service import ai_model_facade
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
-    from apeiria.app.ai.conversation.models import AIConversationIdentity
+    from apeiria.app.ai.conversation.models import ChatSessionIdentity
     from apeiria.app.ai.memory.models import AIMemoryAnchorType, AIMemoryDefinition
 
 
@@ -61,7 +61,7 @@ _RECALL_LAYER_ORDER: tuple[AIMemoryLayer, ...] = (
 
 
 def build_memory_anchors(
-    identity: "AIConversationIdentity",
+    identity: "ChatSessionIdentity",
     user_id: str,
 ) -> list[AIMemoryRecallAnchor]:
     """Build anchor lookup order for the current runtime turn."""
@@ -69,17 +69,17 @@ def build_memory_anchors(
     anchors = [
         AIMemoryRecallAnchor(
             anchor_type="scene",
-            anchor_id=identity.conversation_id,
+            anchor_id=identity.session_id,
         )
     ]
-    effective_user_id = identity.subject_user_id or user_id
-    if identity.scope_type == "group" and identity.scope_id and effective_user_id:
+    effective_user_id = identity.subject_id or user_id
+    if identity.scene_type == "group" and identity.scene_id and effective_user_id:
         anchors.append(
             AIMemoryRecallAnchor(
                 anchor_type="participant",
                 anchor_id=build_participant_subject_id(
-                    scope_type=identity.scope_type,
-                    scope_id=identity.scope_id,
+                    scene_type=identity.scene_type,
+                    scene_id=identity.scene_id,
                     user_id=effective_user_id,
                 ),
             )
@@ -95,7 +95,7 @@ def build_memory_anchors(
 
 
 def build_memory_write_anchors(
-    identity: "AIConversationIdentity",
+    identity: "ChatSessionIdentity",
     user_id: str,
 ) -> list[AIMemoryWriteAnchor]:
     """Build persistent storage anchors for extracted long-term memory."""
@@ -140,7 +140,7 @@ def apply_memory_budget(
 async def recall_memories(
     session: "AsyncSession",
     *,
-    identity: "AIConversationIdentity",
+    identity: "ChatSessionIdentity",
     user_id: str,
     query_text: str,
 ) -> list["AIMemoryDefinition"]:
@@ -179,7 +179,7 @@ async def recall_memories(
 async def retrieve_memories_for_preview(
     session: "AsyncSession",
     *,
-    identity: "AIConversationIdentity",
+    identity: "ChatSessionIdentity",
     user_id: str,
     query_text: str,
 ) -> list["AIMemoryDefinition"]:
@@ -218,7 +218,7 @@ async def retrieve_memories_for_preview(
 async def _collect_layer_memories(  # noqa: PLR0913
     session: "AsyncSession",
     *,
-    identity: "AIConversationIdentity",
+    identity: "ChatSessionIdentity",
     user_id: str,
     query_text: str,
     memory_layer: AIMemoryLayer,
@@ -248,7 +248,7 @@ async def _collect_layer_memories(  # noqa: PLR0913
 
 
 def _build_knowledge_targets(
-    identity: "AIConversationIdentity",
+    identity: "ChatSessionIdentity",
     user_id: str,
 ) -> list[tuple["AIMemoryAnchorType", str]]:
     return [
@@ -260,10 +260,10 @@ def _build_knowledge_targets(
 async def store_extracted_memories(
     session: "AsyncSession",
     *,
-    identity: "AIConversationIdentity",
+    identity: "ChatSessionIdentity",
     user_id: str,
     message_text: str,
-    source_turn_id: str | None,
+    source_message_id: str | None,
 ) -> None:
     """Extract and store structured long-term memory candidates."""
 
@@ -313,7 +313,7 @@ async def store_extracted_memories(
             session,
             anchor_type=anchor.anchor_type,
             anchor_id=anchor.anchor_id,
-            source_turn_id=source_turn_id,
+            source_message_id=source_message_id,
             candidates=candidates,
         )
         await ai_memory_service.consolidate_anchor_summary(

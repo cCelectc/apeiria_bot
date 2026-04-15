@@ -32,7 +32,7 @@ class AIMemoryItem(Model):
     content: Mapped[str] = mapped_column(Text)
     is_editable: Mapped[bool] = mapped_column(Boolean, default=True)
     is_ignored: Mapped[bool] = mapped_column(Boolean, default=False)
-    source_turn_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    source_message_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     salience: Mapped[float] = mapped_column(Float, default=0.5)
     confidence: Mapped[float] = mapped_column(Float, default=0.5)
     last_recalled_at: Mapped[datetime | None] = mapped_column(nullable=True)

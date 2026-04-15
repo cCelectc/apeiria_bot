@@ -41,7 +41,7 @@ class AIMemoryItem(BaseModel):
     content: str
     is_editable: bool
     is_ignored: bool
-    source_turn_id: str | None = None
+    source_message_id: str | None = None
     salience: float
     confidence: float
     last_recalled_at: str | None = None
@@ -164,27 +164,30 @@ class AISourceModelUpsertRequest(BaseModel):
     extra_params: dict[str, object] = {}
 
 
-class AIConversationItem(BaseModel):
-    scene_id: str
+class AISessionItem(BaseModel):
+    session_id: str
     platform: str
     bot_id: str
-    scope_type: str
-    scope_id: str
-    subject_user_id: str | None = None
-    short_summary: str | None = None
+    scene_type: str
+    scene_id: str
+    subject_id: str | None = None
+    summary_text: str | None = None
     created_at: str
     updated_at: str
-    last_active_at: str
+    last_message_at: str
 
 
-class AIConversationTurnItem(BaseModel):
-    turn_id: str
-    scene_id: str
-    sender_type: str
-    sender_id: str
-    content_text: str
+class AIChatMessageItem(BaseModel):
+    message_id: str
+    session_id: str
+    author_role: str
+    author_id: str
+    author_name: str | None = None
+    text_content: str
+    content: dict[str, object] | None = None
+    meta: dict[str, object] | None = None
+    raw_data: dict[str, object] | None = None
     created_at: str
-    raw_payload: dict[str, object] | None = None
     trace_id: str | None = None
     source_id: str | None = None
     model_name: str | None = None
@@ -192,8 +195,8 @@ class AIConversationTurnItem(BaseModel):
     tool_observation_count: int | None = None
 
 
-class AIConversationPromptPreviewItem(BaseModel):
-    scene_id: str
+class AISessionPromptPreviewItem(BaseModel):
+    session_id: str
     latest_user_message: str | None = None
     planning_source_id: str | None = None
     planning_profile_id: str | None = None
@@ -207,7 +210,7 @@ class AIConversationPromptPreviewItem(BaseModel):
     profile_id: str | None = None
     model_name: str | None = None
     persona_id: str | None = None
-    scene_summary: str | None = None
+    conversation_summary: str | None = None
     relationship_context: str | None = None
     tool_policy: str | None = None
     social_action: str | None = None
@@ -227,16 +230,16 @@ class AIConversationPromptPreviewItem(BaseModel):
 
 class AIFutureTaskItem(BaseModel):
     task_id: str
-    conversation_id: str
+    session_id: str
     platform: str
-    scope_type: str
-    scope_id: str
+    scene_type: str
+    scene_id: str
     user_id: str | None = None
     title: str
     description: str
     trigger_at: str
     status: str
-    source_turn_id: str | None = None
+    source_message_id: str | None = None
     scheduler_job_id: str | None = None
     last_error: str | None = None
     created_at: str
@@ -283,7 +286,7 @@ class AISkillItem(BaseModel):
 
 class AIToolExecutionItem(BaseModel):
     execution_id: str
-    scene_id: str
+    session_id: str
     tool_name: str
     status: str
     input_json: str | None = None

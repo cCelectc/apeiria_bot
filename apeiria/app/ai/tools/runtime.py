@@ -27,15 +27,14 @@ if TYPE_CHECKING:
 class AIToolRuntimeRequest:
     """Inputs needed to run tools for a single reply turn."""
 
-    conversation_id: str
-    source_turn_id: str | None
+    session_id: str
+    source_message_id: str | None
     message_text: str
     policy: AIToolPolicy
     recalled_memories: tuple["AIMemoryDefinition", ...]
     relationship_context: str | None
     current_time: datetime
     tool_mode: str = "allow"
-
 
 @dataclass(frozen=True)
 class AIToolRuntimeResult:
@@ -82,8 +81,8 @@ class AIToolRuntime:
         observations = await ai_tool_service.execute_tool_intents(
             session,
             request=AIToolObservationRequest(
-                conversation_id=request.conversation_id,
-                source_turn_id=request.source_turn_id,
+                session_id=request.session_id,
+                source_message_id=request.source_message_id,
                 message_text=request.message_text,
                 policy=request.policy,
                 recalled_memory_ids=tuple(

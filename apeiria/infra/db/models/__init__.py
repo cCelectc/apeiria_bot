@@ -3,7 +3,6 @@
 from .access_policy import AccessPolicyEntry
 from .ai_affinity import AIAffinity
 from .ai_chat_model import AIChatModel
-from .ai_conversation import AIConversation
 from .ai_embedding_model import AIEmbeddingModel
 from .ai_future_task import AIFutureTask
 from .ai_memory_embedding import AIMemoryEmbedding
@@ -18,7 +17,8 @@ from .ai_stt_model import AISTTModel
 from .ai_tool_execution import AIToolExecution
 from .ai_tool_policy_binding import AIToolPolicyBinding
 from .ai_tts_model import AITTSModel
-from .ai_turn import AITurn
+from .chat_message import ChatMessage
+from .chat_session import ChatSession
 from .group import GroupConsole
 from .level import LevelUser
 from .plugin_info import PluginInfo
@@ -30,7 +30,6 @@ from .user import UserConsole
 __all__ = [
     "AIAffinity",
     "AIChatModel",
-    "AIConversation",
     "AIEmbeddingModel",
     "AIFutureTask",
     "AIMemoryEmbedding",
@@ -45,8 +44,9 @@ __all__ = [
     "AITTSModel",
     "AIToolExecution",
     "AIToolPolicyBinding",
-    "AITurn",
     "AccessPolicyEntry",
+    "ChatMessage",
+    "ChatSession",
     "CommandStatistics",
     "GroupConsole",
     "LevelUser",

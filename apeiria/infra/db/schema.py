@@ -9,7 +9,8 @@ from typing import TYPE_CHECKING
 
 from nonebot.log import logger
 
-CURRENT_SCHEMA_VERSION = 21
+CURRENT_SCHEMA_VERSION = 22
+MIN_SUPPORTED_SCHEMA_VERSION = 22
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncConnection, AsyncSession
@@ -21,7 +22,6 @@ CORE_TABLE_NAMES = frozenset(
     {
         "ai_affinity",
         "ai_chat_model",
-        "ai_conversation",
         "ai_embedding_model",
         "ai_future_task",
         "ai_memory_embedding",
@@ -36,7 +36,8 @@ CORE_TABLE_NAMES = frozenset(
         "ai_tool_execution",
         "ai_tool_policy_binding",
         "ai_tts_model",
-        "ai_turn",
+        "chat_message",
+        "chat_session",
         "apeiria_schema_meta",
         "access_policy_entry",
         "command_statistics",
@@ -135,16 +136,11 @@ async def ensure_database_ready() -> None:
 
         schema_version = status.schema_version
         if schema_version is None:
-            if status.apeiria_tables == CORE_TABLE_NAMES:
-                memory_schema_layout = await _inspect_memory_schema_layout(conn)
-                if memory_schema_layout == "legacy_v20":
-                    await _migrate_v20_to_v21(session)
-                elif memory_schema_layout != "current_v21":
-                    msg = (
-                        "Apeiria schema metadata is missing, and the memory schema "
-                        "layout is not recognized as v20 or v21."
-                    )
-                    raise SchemaBootstrapError(msg)
+            if (
+                status.apeiria_tables == CORE_TABLE_NAMES
+                or status.can_adopt_legacy_schema
+            ):
+                await conn.run_sync(Model.metadata.create_all)
                 session.add(SchemaMeta(id=1, schema_version=CURRENT_SCHEMA_VERSION))
                 await session.commit()
                 logger.info(
@@ -159,6 +155,12 @@ async def ensure_database_ready() -> None:
             msg = (
                 "Database schema version is newer than this Apeiria build "
                 f"({schema_version} > {CURRENT_SCHEMA_VERSION})."
+            )
+            raise SchemaBootstrapError(msg)
+        if schema_version < MIN_SUPPORTED_SCHEMA_VERSION:
+            msg = (
+                "Rebuild the database before running this Apeiria build "
+                f"(schema version {schema_version} < {MIN_SUPPORTED_SCHEMA_VERSION})."
             )
             raise SchemaBootstrapError(msg)
         if schema_version < CURRENT_SCHEMA_VERSION:
@@ -544,7 +546,7 @@ async def _migrate_v20_to_v21(session: AsyncSession) -> None:
                 content TEXT NOT NULL,
                 is_editable BOOLEAN NOT NULL DEFAULT 1,
                 is_ignored BOOLEAN NOT NULL DEFAULT 0,
-                source_turn_id VARCHAR(64),
+                source_message_id VARCHAR(64),
                 salience FLOAT NOT NULL DEFAULT 0.5,
                 confidence FLOAT NOT NULL DEFAULT 0.5,
                 last_recalled_at DATETIME,
@@ -621,8 +623,6 @@ async def _migrate_v20_to_v21(session: AsyncSession) -> None:
 
 
 MIGRATIONS[20] = _migrate_v20_to_v21
-
-
 async def _normalize_memory_types_to_note(session: AsyncSession) -> None:
     from sqlalchemy import text
 

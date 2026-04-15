@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Literal
 if TYPE_CHECKING:
     from datetime import datetime
 
-    from apeiria.app.ai.conversation.models import ScopeType
+    from apeiria.app.ai.conversation.models import SceneType
 
 AIFutureTaskStatus = Literal["pending", "running", "sent", "cancelled", "failed"]
 AIFutureTaskToolAction = Literal["create", "cancel", "list"]
@@ -18,15 +18,15 @@ AIFutureTaskToolAction = Literal["create", "cancel", "list"]
 class AIFutureTaskCreateInput:
     """Create payload for one persisted AI future task."""
 
-    conversation_id: str
+    session_id: str
     platform: str
-    scope_type: ScopeType
-    scope_id: str
+    scene_type: SceneType
+    scene_id: str
     user_id: str | None
     title: str
     description: str
     trigger_at: datetime
-    source_turn_id: str | None = None
+    source_message_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -34,21 +34,20 @@ class AIFutureTaskDefinition:
     """Read model for one future task."""
 
     task_id: str
-    conversation_id: str
+    session_id: str
     platform: str
-    scope_type: ScopeType
-    scope_id: str
+    scene_type: SceneType
+    scene_id: str
     user_id: str | None
     title: str
     description: str
     trigger_at: datetime
     status: AIFutureTaskStatus
-    source_turn_id: str | None
+    source_message_id: str | None
     scheduler_job_id: str | None
     last_error: str | None
     created_at: datetime
     updated_at: datetime
-
 
 @dataclass(frozen=True)
 class AIFutureTaskToolInput:

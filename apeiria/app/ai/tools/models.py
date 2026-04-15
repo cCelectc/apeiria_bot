@@ -63,13 +63,12 @@ class AIToolExecutionView:
     """Pure execution record view."""
 
     execution_id: str
-    conversation_id: str
+    session_id: str
     tool_name: str
     status: str
     input_json: str | None
     output_json: str | None
     created_at: datetime
-
 
 @dataclass(frozen=True)
 class AIToolIntent:
@@ -85,15 +84,14 @@ class AIToolIntent:
 class AIToolObservationRequest:
     """Inputs for low-risk read-only tool observations."""
 
-    conversation_id: str
-    source_turn_id: str | None
+    session_id: str
+    source_message_id: str | None
     message_text: str
     policy: AIToolPolicy
     recalled_memory_ids: tuple[str, ...]
     recalled_memory_contents: tuple[str, ...]
     relationship_context: str | None
     execution_timeout_seconds: float | None = None
-
 
 @dataclass(frozen=True)
 class AIMemoryQueryObservationInput:
@@ -177,6 +175,18 @@ class AIToolObservationResult:
 class AIToolTurnCreateInput:
     """One tool observation turn to be written into conversation context."""
 
-    sender_id: str
-    content_text: str
-    raw_payload: dict[str, Any]
+    author_id: str
+    text_content: str
+    meta: dict[str, Any]
+
+    @property
+    def sender_id(self) -> str:
+        return self.author_id
+
+    @property
+    def content_text(self) -> str:
+        return self.text_content
+
+    @property
+    def raw_payload(self) -> dict[str, Any]:
+        return self.meta
