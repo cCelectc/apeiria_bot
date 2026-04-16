@@ -20,6 +20,8 @@ from apeiria.interfaces.http.schemas.ai_models import (
     AIModelProfileItem,
     AIPersonaBindingItem,
     AIPersonaItem,
+    AIPersonMemoryPointItem,
+    AIPersonProfileItem,
     AIRecentTargetItem,
     AIRelationshipEventItem,
     AIRelationshipStateItem,
@@ -57,6 +59,7 @@ if TYPE_CHECKING:
         AISourcePresetDefinition,
     )
     from apeiria.app.ai.model import AIModelCatalogItem as DomainModelCatalogItem
+    from apeiria.app.ai.person.models import AIPersonProfileDefinition
     from apeiria.app.ai.persona.models import (
         AIPersonaBindingSpec,
         AIPersonaDefinition,
@@ -510,4 +513,31 @@ def to_ai_capability_item(item: "AICapabilityDefinition") -> AICapabilityItem:
     return AICapabilityItem(
         capability_name=item.capability_name,
         bound_tool_name=item.bound_tool_name,
+    )
+
+
+def to_ai_person_profile_item(
+    item: "AIPersonProfileDefinition",
+) -> AIPersonProfileItem:
+    return AIPersonProfileItem(
+        person_id=item.person_id,
+        platform=item.platform,
+        user_id=item.user_id,
+        person_name=item.person_name,
+        nickname=item.nickname,
+        name_reason=item.name_reason,
+        memory_points=[
+            AIPersonMemoryPointItem(
+                category=point.category,
+                content=point.content,
+                confidence=point.confidence,
+                source_message_id=point.source_message_id,
+            )
+            for point in item.memory_points
+        ],
+        is_known=item.is_known,
+        know_since=item.know_since.isoformat() if item.know_since else None,
+        last_interaction=item.last_interaction.isoformat(),
+        created_at=item.created_at.isoformat(),
+        updated_at=item.updated_at.isoformat(),
     )

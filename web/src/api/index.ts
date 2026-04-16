@@ -634,6 +634,32 @@ export interface AIModelCatalogItem {
   name: string
 }
 
+export interface AIPersonMemoryPointItem {
+  category: string
+  content: string
+  confidence: number
+  source_message_id: string | null
+}
+
+export interface AIPersonProfileItem {
+  person_id: string
+  platform: string
+  user_id: string
+  person_name: string | null
+  nickname: string | null
+  name_reason: string | null
+  memory_points: AIPersonMemoryPointItem[]
+  is_known: boolean
+  know_since: string | null
+  last_interaction: string
+  created_at: string
+  updated_at: string
+}
+
+export interface AIMemoryBulkActionResult {
+  affected: number
+}
+
 export interface AIModelProfileItem {
   profile_id: string
   name: string
@@ -1262,6 +1288,53 @@ export function getAIRelationshipEvents (params: {
   limit?: number
 }) {
   return client.get<AIRelationshipEventItem[]>('/ai/relationships/events', { params })
+}
+
+export function getAIPersonProfiles (params?: {
+  limit?: number
+}) {
+  return client.get<AIPersonProfileItem[]>('/ai/person-profiles', { params })
+}
+
+export function getAIPersonProfile (params: {
+  platform: string
+  user_id: string
+}) {
+  return client.get<AIPersonProfileItem | null>('/ai/person-profiles/detail', { params })
+}
+
+export function updateAIPersonProfile (payload: {
+  person_id: string
+  person_name?: string | null
+  nickname?: string | null
+  memory_points?: AIPersonMemoryPointItem[] | null
+}) {
+  return client.patch<AIPersonProfileItem | null>('/ai/person-profiles', payload)
+}
+
+export function deleteAIPersonProfile (personId: string) {
+  return client.delete<boolean>('/ai/person-profiles', {
+    params: { person_id: personId },
+  })
+}
+
+export function toggleAIMemoryIgnored (memoryId: string) {
+  return client.patch<AIMemoryItem | null>('/ai/memories/toggle-ignored', {
+    memory_id: memoryId,
+  })
+}
+
+export function bulkDeleteAIMemories (memoryIds: string[]) {
+  return client.post<AIMemoryBulkActionResult>('/ai/memories/bulk-delete', {
+    memory_ids: memoryIds,
+  })
+}
+
+export function bulkToggleAIMemoryIgnored (memoryIds: string[], ignored: boolean) {
+  return client.post<AIMemoryBulkActionResult>('/ai/memories/bulk-toggle-ignored', {
+    memory_ids: memoryIds,
+    ignored,
+  })
 }
 
 export function getAICapabilities () {

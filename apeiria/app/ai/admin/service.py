@@ -48,6 +48,7 @@ from apeiria.app.ai.model.sources import (
     UnsupportedAISourcePresetError,
     resolve_client_type_for_preset,
 )
+from apeiria.app.ai.person.service import ai_person_profile_service
 from apeiria.app.ai.persona.models import AIPersonaBindingTarget, AIPersonaCreateInput
 from apeiria.app.ai.persona.service import (
     ai_persona_service,
@@ -120,6 +121,10 @@ if TYPE_CHECKING:
     )
     from apeiria.app.ai.model.capability_registry import (
         AICapabilityModelRegistryEntry,
+    )
+    from apeiria.app.ai.person.models import (
+        AIPersonMemoryPoint,
+        AIPersonProfileDefinition,
     )
     from apeiria.app.ai.persona.models import (
         AIPersonaBindingSpec,
@@ -1276,6 +1281,48 @@ class AIAdminService:
                 None,
             )
 
+    async def toggle_memory_ignored(
+        self,
+        *,
+        memory_id: str,
+    ) -> "AIMemoryDefinition | None":
+        async with get_session() as session:
+            result = await ai_memory_service.toggle_memory_ignored(
+                session,
+                memory_id=memory_id,
+            )
+            if result is not None:
+                await session.commit()
+            return result
+
+    async def bulk_delete_memories(
+        self,
+        *,
+        memory_ids: list[str],
+    ) -> int:
+        async with get_session() as session:
+            count = await ai_memory_service.bulk_delete_memories(
+                session,
+                memory_ids=memory_ids,
+            )
+            await session.commit()
+            return count
+
+    async def bulk_set_memories_ignored(
+        self,
+        *,
+        memory_ids: list[str],
+        ignored: bool,
+    ) -> int:
+        async with get_session() as session:
+            count = await ai_memory_service.bulk_set_ignored(
+                session,
+                memory_ids=memory_ids,
+                ignored=ignored,
+            )
+            await session.commit()
+            return count
+
     async def list_recent_sessions(
         self,
         *,
@@ -1794,6 +1841,61 @@ class AIAdminService:
             )
             await session.commit()
             return state
+
+    async def list_person_profiles(
+        self,
+        *,
+        limit: int = 50,
+    ) -> list["AIPersonProfileDefinition"]:
+        async with get_session() as session:
+            return await ai_person_profile_service.list_profiles(session, limit=limit)
+
+    async def get_person_profile(
+        self,
+        *,
+        platform: str,
+        user_id: str,
+    ) -> "AIPersonProfileDefinition | None":
+        async with get_session() as session:
+            return await ai_person_profile_service.get_profile(
+                session,
+                platform=platform,
+                user_id=user_id,
+            )
+
+    async def update_person_profile(
+        self,
+        *,
+        person_id: str,
+        person_name: str | None = None,
+        nickname: str | None = None,
+        memory_points: "tuple[AIPersonMemoryPoint, ...] | None" = None,
+    ) -> "AIPersonProfileDefinition | None":
+        async with get_session() as session:
+            result = await ai_person_profile_service.update_profile(
+                session,
+                person_id=person_id,
+                person_name=person_name,
+                nickname=nickname,
+                memory_points=memory_points,
+            )
+            if result is not None:
+                await session.commit()
+            return result
+
+    async def delete_person_profile(
+        self,
+        *,
+        person_id: str,
+    ) -> bool:
+        async with get_session() as session:
+            deleted = await ai_person_profile_service.delete_profile(
+                session,
+                person_id=person_id,
+            )
+            if deleted:
+                await session.commit()
+            return deleted
 
     def list_tools(self, policy: "AIToolPolicy | None" = None) -> list["AIToolSpec"]:
         return ai_tool_service.list_tool_specs(policy)

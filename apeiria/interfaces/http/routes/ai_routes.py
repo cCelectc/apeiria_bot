@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Annotated, Any, Literal
+from typing import Annotated, Any, Literal, cast
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
@@ -24,6 +24,7 @@ from apeiria.interfaces.http.routes.ai_route_support import (
     to_ai_model_binding_item,
     to_ai_model_catalog_item,
     to_ai_model_profile_item,
+    to_ai_person_profile_item,
     to_ai_persona_binding_item,
     to_ai_persona_item,
     to_ai_recent_target_item,
@@ -47,9 +48,13 @@ from apeiria.interfaces.http.schemas.ai_models import (
     AICapabilityPreviewRequest,
     AIChatMessageItem,
     AIFutureTaskItem,
+    AIMemoryBulkActionRequest,
+    AIMemoryBulkActionResult,
+    AIMemoryBulkIgnoreRequest,
     AIMemoryCreateRequest,
     AIMemoryDeleteResult,
     AIMemoryItem,
+    AIMemoryToggleIgnoredRequest,
     AIMemoryUpdateRequest,
     AIModelBindingItem,
     AIModelCatalogItem,
@@ -58,6 +63,8 @@ from apeiria.interfaces.http.schemas.ai_models import (
     AIPersonaBindingItem,
     AIPersonaItem,
     AIPersonaUpsertRequest,
+    AIPersonProfileItem,
+    AIPersonProfileUpdateRequest,
     AIRecentTargetItem,
     AIRelationshipEventItem,
     AIRelationshipScoreUpdateRequest,
@@ -424,6 +431,40 @@ async def delete_ai_memory(
     )
 
 
+@router.patch("/memories/toggle-ignored", response_model=AIMemoryItem | None)
+async def toggle_ai_memory_ignored(
+    payload: AIMemoryToggleIgnoredRequest,
+    _: Annotated[Any, Depends(require_control_panel)],
+) -> AIMemoryItem | None:
+    memory = await ai_admin_service.toggle_memory_ignored(
+        memory_id=payload.memory_id,
+    )
+    return to_ai_memory_item(memory) if memory is not None else None
+
+
+@router.post("/memories/bulk-delete", response_model=AIMemoryBulkActionResult)
+async def bulk_delete_ai_memories(
+    payload: AIMemoryBulkActionRequest,
+    _: Annotated[Any, Depends(require_control_panel)],
+) -> AIMemoryBulkActionResult:
+    count = await ai_admin_service.bulk_delete_memories(
+        memory_ids=payload.memory_ids,
+    )
+    return AIMemoryBulkActionResult(affected=count)
+
+
+@router.post("/memories/bulk-toggle-ignored", response_model=AIMemoryBulkActionResult)
+async def bulk_toggle_ai_memory_ignored(
+    payload: AIMemoryBulkIgnoreRequest,
+    _: Annotated[Any, Depends(require_control_panel)],
+) -> AIMemoryBulkActionResult:
+    count = await ai_admin_service.bulk_set_memories_ignored(
+        memory_ids=payload.memory_ids,
+        ignored=payload.ignored,
+    )
+    return AIMemoryBulkActionResult(affected=count)
+
+
 @router.get("/recent-targets", response_model=list[AIRecentTargetItem])
 async def list_ai_recent_targets(
     _: Annotated[Any, Depends(require_control_panel)],
@@ -546,6 +587,66 @@ async def update_ai_relationship_score(
         score=payload.score,
     )
     return to_ai_relationship_state_item(state)
+
+
+@router.get("/person-profiles", response_model=list[AIPersonProfileItem])
+async def list_ai_person_profiles(
+    _: Annotated[Any, Depends(require_control_panel)],
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
+) -> list[AIPersonProfileItem]:
+    profiles = await ai_admin_service.list_person_profiles(limit=limit)
+    return [to_ai_person_profile_item(item) for item in profiles]
+
+
+@router.get("/person-profiles/detail", response_model=AIPersonProfileItem | None)
+async def get_ai_person_profile(
+    _: Annotated[Any, Depends(require_control_panel)],
+    platform: Annotated[str, Query(min_length=1)],
+    user_id: Annotated[str, Query(min_length=1)],
+) -> AIPersonProfileItem | None:
+    profile = await ai_admin_service.get_person_profile(
+        platform=platform,
+        user_id=user_id,
+    )
+    return to_ai_person_profile_item(profile) if profile is not None else None
+
+
+@router.patch("/person-profiles", response_model=AIPersonProfileItem | None)
+async def update_ai_person_profile(
+    payload: AIPersonProfileUpdateRequest,
+    _: Annotated[Any, Depends(require_control_panel)],
+) -> AIPersonProfileItem | None:
+    from apeiria.app.ai.person.models import (
+        AIPersonMemoryPoint,
+        AIPersonMemoryPointCategory,
+    )
+
+    memory_points = None
+    if payload.memory_points is not None:
+        memory_points = tuple(
+            AIPersonMemoryPoint(
+                category=cast("AIPersonMemoryPointCategory", point.category),
+                content=point.content,
+                confidence=point.confidence,
+                source_message_id=point.source_message_id,
+            )
+            for point in payload.memory_points
+        )
+    profile = await ai_admin_service.update_person_profile(
+        person_id=payload.person_id,
+        person_name=payload.person_name,
+        nickname=payload.nickname,
+        memory_points=memory_points,
+    )
+    return to_ai_person_profile_item(profile) if profile is not None else None
+
+
+@router.delete("/person-profiles", response_model=bool)
+async def delete_ai_person_profile(
+    _: Annotated[Any, Depends(require_control_panel)],
+    person_id: Annotated[str, Query(min_length=1)],
+) -> bool:
+    return await ai_admin_service.delete_person_profile(person_id=person_id)
 
 
 @router.get("/tools", response_model=list[AIToolItem])

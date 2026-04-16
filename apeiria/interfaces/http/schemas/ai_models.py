@@ -446,3 +446,49 @@ class AIModelBindingItem(BaseModel):
 class AIModelCatalogItem(BaseModel):
     id: str
     name: str
+
+
+class AIPersonMemoryPointItem(BaseModel):
+    category: str
+    content: str
+    confidence: float
+    source_message_id: str | None = None
+
+
+class AIPersonProfileItem(BaseModel):
+    person_id: str
+    platform: str
+    user_id: str
+    person_name: str | None = None
+    nickname: str | None = None
+    name_reason: str | None = None
+    memory_points: list[AIPersonMemoryPointItem] = []
+    is_known: bool
+    know_since: str | None = None
+    last_interaction: str
+    created_at: str
+    updated_at: str
+
+
+class AIPersonProfileUpdateRequest(BaseModel):
+    person_id: str = Field(min_length=1, max_length=64)
+    person_name: str | None = Field(default=None, max_length=128)
+    nickname: str | None = Field(default=None, max_length=128)
+    memory_points: list[AIPersonMemoryPointItem] | None = None
+
+
+class AIMemoryBulkActionRequest(BaseModel):
+    memory_ids: list[str] = Field(min_length=1, max_length=100)
+
+
+class AIMemoryBulkIgnoreRequest(BaseModel):
+    memory_ids: list[str] = Field(min_length=1, max_length=100)
+    ignored: bool = True
+
+
+class AIMemoryBulkActionResult(BaseModel):
+    affected: int
+
+
+class AIMemoryToggleIgnoredRequest(BaseModel):
+    memory_id: str = Field(min_length=1, max_length=64)

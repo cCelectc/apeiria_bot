@@ -19,6 +19,7 @@
         <v-tab value="personas">{{ t('ai.personasTab') }}</v-tab>
         <v-tab value="memories">{{ t('ai.memoryTab') }}</v-tab>
         <v-tab value="relationships">{{ t('ai.relationshipTab') }}</v-tab>
+        <v-tab value="profiles">{{ t('ai.personProfileTab') }}</v-tab>
         <v-tab value="skills">{{ t('ai.skillsTab') }}</v-tab>
         <v-tab value="debug">{{ t('ai.debugTab') }}</v-tab>
       </v-tabs>
@@ -933,6 +934,45 @@
                 </v-btn>
               </div>
 
+              <div v-if="memories.length > 0" class="d-flex flex-wrap ga-2 align-center">
+                <v-btn size="small" variant="tonal" @click="toggleSelectAllMemories">
+                  {{ allMemoriesSelected ? t('ai.memoryDeselectAll') : t('ai.memorySelectAll') }}
+                </v-btn>
+                <template v-if="selectedMemoryCount > 0">
+                  <v-chip color="primary" size="small" variant="tonal">
+                    {{ t('ai.memorySelectedCount') }}: {{ selectedMemoryCount }}
+                  </v-chip>
+                  <v-btn
+                    color="error"
+                    :loading="bulkActionLoading"
+                    size="small"
+                    variant="tonal"
+                    @click="bulkDeleteMemories"
+                  >
+                    {{ t('ai.memoryBulkDelete') }}
+                  </v-btn>
+                  <v-btn
+                    :loading="bulkActionLoading"
+                    size="small"
+                    variant="tonal"
+                    @click="bulkSetMemoriesIgnored(true)"
+                  >
+                    {{ t('ai.memoryBulkIgnore') }}
+                  </v-btn>
+                  <v-btn
+                    :loading="bulkActionLoading"
+                    size="small"
+                    variant="tonal"
+                    @click="bulkSetMemoriesIgnored(false)"
+                  >
+                    {{ t('ai.memoryBulkUnignore') }}
+                  </v-btn>
+                  <v-btn size="small" variant="text" @click="clearMemorySelection">
+                    {{ t('common.cancel') }}
+                  </v-btn>
+                </template>
+              </div>
+
               <v-sheet class="surface-gradient-card pa-4" rounded="lg">
                 <div class="ai-binding-form ai-memory-toolbar">
                   <v-select
@@ -1000,7 +1040,13 @@
                       rounded="lg"
                     >
                       <div class="d-flex flex-wrap justify-space-between ga-3">
-                        <div class="d-flex flex-wrap ga-2">
+                        <div class="d-flex flex-wrap ga-2 align-center">
+                          <v-checkbox
+                            density="compact"
+                            hide-details
+                            :model-value="selectedMemoryIds.has(item.memory_id)"
+                            @update:model-value="toggleMemorySelection(item.memory_id)"
+                          />
                           <v-chip color="primary" size="small" variant="tonal">
                             {{ item.memory_kind }}
                           </v-chip>
@@ -1009,6 +1055,9 @@
                           </v-chip>
                           <v-chip v-if="!item.is_editable" color="warning" size="small" variant="tonal">
                             {{ t('ai.memoryReadOnly') }}
+                          </v-chip>
+                          <v-chip v-if="item.is_ignored" color="error" size="small" variant="tonal">
+                            {{ t('ai.memoryIgnored') }}
                           </v-chip>
                           <v-chip color="primary" size="small" variant="tonal">
                             {{ t('ai.memoryConfidence') }}: {{ formatMemoryScore(item.confidence) }}
@@ -1062,6 +1111,14 @@
                       </div>
 
                       <div class="d-flex justify-end mt-3">
+                        <v-btn
+                          :loading="togglingIgnoredId === item.memory_id"
+                          size="small"
+                          variant="text"
+                          @click="toggleMemoryIgnored(item.memory_id)"
+                        >
+                          {{ item.is_ignored ? t('ai.memoryUnignore') : t('ai.memoryIgnore') }}
+                        </v-btn>
                         <v-btn
                           v-if="editingMemoryId === item.memory_id"
                           variant="text"
@@ -1301,6 +1358,176 @@
                     </v-btn>
                   </div>
                 </div>
+              </v-sheet>
+            </v-col>
+          </v-row>
+        </v-card-text>
+      </template>
+
+      <template v-else-if="topTab === 'profiles'">
+        <v-card-text>
+          <v-row>
+            <v-col cols="12" lg="4">
+              <div class="d-flex justify-space-between align-center mb-3">
+                <div class="text-subtitle-1 font-weight-medium">
+                  {{ t('ai.personProfileListTitle') }}
+                </div>
+                <v-btn
+                  icon="mdi-refresh"
+                  :loading="loadingPersonProfiles"
+                  size="small"
+                  variant="text"
+                  @click="loadPersonProfiles"
+                />
+              </div>
+              <v-sheet class="surface-gradient-card pa-2" rounded="lg">
+                <template v-if="personProfiles.length > 0">
+                  <v-list class="bg-transparent" density="comfortable" lines="two">
+                    <v-list-item
+                      v-for="item in personProfiles"
+                      :key="item.person_id"
+                      :active="selectedPersonId === item.person_id"
+                      rounded="lg"
+                      @click="selectPersonProfile(item)"
+                    >
+                      <v-list-item-title>
+                        {{ item.nickname || item.person_name || item.user_id }}
+                      </v-list-item-title>
+                      <v-list-item-subtitle>
+                        {{ item.platform }} · {{ item.user_id }}
+                      </v-list-item-subtitle>
+                      <template #append>
+                        <v-chip
+                          :color="item.is_known ? 'success' : 'default'"
+                          size="x-small"
+                          variant="tonal"
+                        >
+                          {{ item.is_known ? t('ai.personProfileKnown') : t('ai.personProfileUnknown') }}
+                        </v-chip>
+                      </template>
+                    </v-list-item>
+                  </v-list>
+                </template>
+                <div v-else class="pa-4">
+                  <div class="empty-state-text">{{ t('ai.personProfileEmpty') }}</div>
+                  <div class="empty-state-hint mt-2">{{ t('ai.personProfileEmptyHint') }}</div>
+                </div>
+              </v-sheet>
+            </v-col>
+
+            <v-col cols="12" lg="8">
+              <template v-if="selectedPersonProfile">
+                <v-sheet class="surface-gradient-card pa-4" rounded="lg">
+                  <div class="d-flex flex-wrap ga-2 mb-4">
+                    <v-chip color="primary" size="small" variant="tonal">
+                      {{ t('ai.personProfilePlatform') }}: {{ selectedPersonProfile.platform }}
+                    </v-chip>
+                    <v-chip color="primary" size="small" variant="tonal">
+                      {{ t('ai.personProfileUserId') }}: {{ selectedPersonProfile.user_id }}
+                    </v-chip>
+                    <v-chip v-if="selectedPersonProfile.know_since" color="primary" size="small" variant="tonal">
+                      {{ t('ai.personProfileKnowSince') }}: {{ selectedPersonProfile.know_since }}
+                    </v-chip>
+                    <v-chip color="primary" size="small" variant="tonal">
+                      {{ t('ai.personProfileLastInteraction') }}: {{ selectedPersonProfile.last_interaction }}
+                    </v-chip>
+                  </div>
+
+                  <div class="d-flex flex-column ga-3">
+                    <v-text-field
+                      v-model.trim="personProfileEditForm.person_name"
+                      density="comfortable"
+                      hide-details
+                      :label="t('ai.personProfileName')"
+                    />
+                    <v-text-field
+                      v-model.trim="personProfileEditForm.nickname"
+                      density="comfortable"
+                      hide-details
+                      :label="t('ai.personProfileNickname')"
+                    />
+                  </div>
+
+                  <div class="mt-4">
+                    <div class="d-flex justify-space-between align-center mb-3">
+                      <div class="text-subtitle-2 font-weight-medium">
+                        {{ t('ai.personProfileMemoryPoints') }} · {{ personProfileEditForm.memory_points.length }}
+                      </div>
+                      <v-btn color="primary" size="small" variant="tonal" @click="addPersonMemoryPoint">
+                        {{ t('ai.personProfileAddPoint') }}
+                      </v-btn>
+                    </div>
+
+                    <div v-if="personProfileEditForm.memory_points.length > 0" class="d-flex flex-column ga-3">
+                      <v-sheet
+                        v-for="(point, index) in personProfileEditForm.memory_points"
+                        :key="index"
+                        class="surface-gradient-card pa-3"
+                        rounded="lg"
+                      >
+                        <div class="d-flex ga-3 align-center">
+                          <v-select
+                            v-model="point.category"
+                            density="comfortable"
+                            hide-details
+                            :items="personProfilePointCategoryOptions"
+                            :label="t('ai.personProfilePointCategory')"
+                            style="max-width: 160px"
+                          />
+                          <v-text-field
+                            v-model.trim="point.content"
+                            density="comfortable"
+                            hide-details
+                            :label="t('ai.personProfilePointContent')"
+                          />
+                          <v-text-field
+                            v-model.number="point.confidence"
+                            density="comfortable"
+                            hide-details
+                            :label="t('ai.personProfilePointConfidence')"
+                            max="1"
+                            min="0"
+                            step="0.1"
+                            style="max-width: 100px"
+                            type="number"
+                          />
+                          <v-btn
+                            color="error"
+                            icon="mdi-delete-outline"
+                            size="small"
+                            variant="text"
+                            @click="removePersonMemoryPoint(index)"
+                          />
+                        </div>
+                      </v-sheet>
+                    </div>
+                    <div v-else class="empty-state-hint">
+                      {{ t('ai.personProfileNoPoints') }}
+                    </div>
+                  </div>
+
+                  <div class="d-flex justify-end ga-3 mt-4">
+                    <v-btn
+                      color="error"
+                      :loading="deletingPersonProfileId === selectedPersonProfile.person_id"
+                      variant="text"
+                      @click="removePersonProfile(selectedPersonProfile.person_id)"
+                    >
+                      {{ t('common.delete') }}
+                    </v-btn>
+                    <v-btn
+                      color="primary"
+                      :disabled="!canSavePersonProfile"
+                      :loading="savingPersonProfile"
+                      @click="savePersonProfile"
+                    >
+                      {{ t('common.save') }}
+                    </v-btn>
+                  </div>
+                </v-sheet>
+              </template>
+              <v-sheet v-else class="surface-gradient-card pa-4" rounded="lg">
+                <div class="empty-state-text">{{ t('ai.personProfileSelectHint') }}</div>
               </v-sheet>
             </v-col>
           </v-row>
@@ -1941,6 +2168,7 @@
   import { useAIMemoryTab } from '@/composables/useAIMemoryTab'
   import { useAIModelsTab } from '@/composables/useAIModelsTab'
   import { useAIPersonasTab } from '@/composables/useAIPersonasTab'
+  import { useAIPersonProfilesTab } from '@/composables/useAIPersonProfilesTab'
   import { useAIRelationshipTab } from '@/composables/useAIRelationshipTab'
   import { useAISkillsTab } from '@/composables/useAISkillsTab'
 
@@ -2110,10 +2338,15 @@
   } = useAIFutureTasksTab(t)
 
   const {
+    allMemoriesSelected,
+    bulkActionLoading,
+    bulkDelete: bulkDeleteMemories,
+    bulkSetIgnored: bulkSetMemoriesIgnored,
     canLoadMemories,
     canSaveMemory,
     canSaveEditedMemory,
     cancelEditMemory,
+    clearSelection: clearMemorySelection,
     deletingMemoryId,
     editingMemoryId,
     loadMemories,
@@ -2130,9 +2363,15 @@
     saveEditedMemory,
     savingEditedMemoryId,
     savingMemory,
+    selectedMemoryCount,
+    selectedMemoryIds,
     selectRecentTarget,
     selectedRecentTargetId,
     startEditMemory,
+    toggleIgnored: toggleMemoryIgnored,
+    toggleMemorySelection,
+    toggleSelectAll: toggleSelectAllMemories,
+    togglingIgnoredId,
   } = useAIMemoryTab(t)
 
   const {
@@ -2147,6 +2386,23 @@
     savingRelationship,
     selectRelationship,
   } = useAIRelationshipTab(t)
+
+  const {
+    addMemoryPoint: addPersonMemoryPoint,
+    canSaveProfile: canSavePersonProfile,
+    deletingProfileId: deletingPersonProfileId,
+    editForm: personProfileEditForm,
+    loadProfiles: loadPersonProfiles,
+    loadingProfiles: loadingPersonProfiles,
+    profiles: personProfiles,
+    removeMemoryPoint: removePersonMemoryPoint,
+    removeProfile: removePersonProfile,
+    saveProfile: savePersonProfile,
+    savingProfile: savingPersonProfile,
+    selectProfile: selectPersonProfile,
+    selectedPersonId,
+    selectedProfile: selectedPersonProfile,
+  } = useAIPersonProfilesTab(t)
 
   const scopeOptions = computed(() => [
     { title: t('ai.scopeConversation'), value: 'conversation' },
@@ -2373,6 +2629,13 @@
 
   const memoryLimitOptions = [10, 20, 50, 100]
 
+  const personProfilePointCategoryOptions = computed(() => [
+    { title: t('ai.personProfileCategoryFact'), value: 'fact' },
+    { title: t('ai.personProfileCategoryPreference'), value: 'preference' },
+    { title: t('ai.personProfileCategoryRelationship'), value: 'relationship' },
+    { title: t('ai.personProfileCategoryImpression'), value: 'impression' },
+  ])
+
   const memoryTargetLabel = computed(() => {
     if (!memoryForm.anchor_id.trim()) {
       return t('ai.selectMemoryTarget')
@@ -2508,6 +2771,7 @@
         loadFutureTasks(),
         loadRelationships(),
         loadRecentTargets(),
+        loadPersonProfiles(),
       ])
     } catch (error) {
       errorMessage.value = getErrorMessage(error, t('ai.loadFailed'))

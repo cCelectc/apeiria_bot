@@ -533,6 +533,51 @@ class AIMemoryService:
         await session.delete(memory)
         return True
 
+    async def toggle_memory_ignored(
+        self,
+        session: AsyncSession,
+        *,
+        memory_id: str,
+    ) -> AIMemoryDefinition | None:
+        """Toggle the is_ignored flag on one memory item."""
+
+        memory = await self.get_memory(session, memory_id=memory_id)
+        if memory is None:
+            return None
+        memory.is_ignored = not memory.is_ignored
+        await session.flush()
+        return self._to_definition(memory)
+
+    async def bulk_delete_memories(
+        self,
+        session: AsyncSession,
+        *,
+        memory_ids: list[str],
+    ) -> int:
+        """Delete multiple memory items by stable id. Returns count deleted."""
+
+        deleted = 0
+        for mid in memory_ids:
+            if await self.delete_memory(session, memory_id=mid):
+                deleted += 1
+        return deleted
+
+    async def bulk_set_ignored(
+        self,
+        session: AsyncSession,
+        *,
+        memory_ids: list[str],
+        ignored: bool,
+    ) -> int:
+        """Set is_ignored on multiple memories. Returns count updated."""
+
+        result = await session.execute(
+            update(AIMemoryItem)
+            .where(AIMemoryItem.memory_id.in_(memory_ids))
+            .values(is_ignored=ignored)
+        )
+        return result.rowcount  # type: ignore[return-value]
+
     async def consolidate_anchor_summary(
         self,
         session: AsyncSession,

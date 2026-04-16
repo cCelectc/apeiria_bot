@@ -95,6 +95,59 @@ class AIPersonProfileService:
             await session.flush()
         return row
 
+    async def list_profiles(
+        self,
+        session: "AsyncSession",
+        *,
+        limit: int = 50,
+    ) -> list[AIPersonProfileDefinition]:
+        result = await session.execute(
+            select(AIPersonProfile)
+            .order_by(AIPersonProfile.last_interaction.desc())
+            .limit(limit)
+        )
+        return [self._to_definition(row) for row in result.scalars().all()]
+
+    async def update_profile(
+        self,
+        session: "AsyncSession",
+        *,
+        person_id: str,
+        person_name: str | None = None,
+        nickname: str | None = None,
+        memory_points: tuple[AIPersonMemoryPoint, ...] | None = None,
+    ) -> AIPersonProfileDefinition | None:
+        result = await session.execute(
+            select(AIPersonProfile).where(AIPersonProfile.person_id == person_id)
+        )
+        row = result.scalar_one_or_none()
+        if row is None:
+            return None
+        if person_name is not None:
+            row.person_name = person_name or None
+        if nickname is not None:
+            row.nickname = nickname or None
+        if memory_points is not None:
+            row.memory_points_json = self._serialize_memory_points(memory_points)
+        await session.flush()
+        return self._to_definition(row)
+
+    async def delete_profile(
+        self,
+        session: "AsyncSession",
+        *,
+        person_id: str,
+    ) -> bool:
+        row = await session.execute(
+            select(AIPersonProfile).where(AIPersonProfile.person_id == person_id)
+        )
+        target = row.scalar_one_or_none()
+        if target is None:
+            return False
+        await session.delete(target)
+        await session.flush()
+        return True
+
     async def ingest_message(  # noqa: PLR0913
         self,
         session: "AsyncSession",

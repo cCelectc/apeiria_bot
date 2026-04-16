@@ -1,6 +1,15 @@
 import type { AIMemoryItem, AIRecentTargetItem } from '@/api'
 import { computed, reactive, ref } from 'vue'
-import { createAIMemory, deleteAIMemory, getAIMemories, getAIRecentTargets, updateAIMemory } from '@/api'
+import {
+  bulkDeleteAIMemories,
+  bulkToggleAIMemoryIgnored,
+  createAIMemory,
+  deleteAIMemory,
+  getAIMemories,
+  getAIRecentTargets,
+  toggleAIMemoryIgnored,
+  updateAIMemory,
+} from '@/api'
 import { getErrorMessage } from '@/api/client'
 import { useNoticeStore } from '@/stores/notice'
 
@@ -34,6 +43,16 @@ export function useAIMemoryTab (t: (key: string) => string) {
     salience: 0.6,
     confidence: 0.8,
   })
+
+  const selectedMemoryIds = ref<Set<string>>(new Set())
+  const bulkActionLoading = ref(false)
+  const togglingIgnoredId = ref('')
+
+  const selectedMemoryCount = computed(() => selectedMemoryIds.value.size)
+  const allMemoriesSelected = computed(() => (
+    memories.value.length > 0
+    && selectedMemoryIds.value.size === memories.value.length
+  ))
 
   const canLoadMemories = computed(() => memoryForm.anchor_id.trim().length > 0)
   const canSaveMemory = computed(() => (
@@ -168,11 +187,93 @@ export function useAIMemoryTab (t: (key: string) => string) {
     }
   }
 
+  function toggleMemorySelection (memoryId: string) {
+    const next = new Set(selectedMemoryIds.value)
+    if (next.has(memoryId)) {
+      next.delete(memoryId)
+    } else {
+      next.add(memoryId)
+    }
+    selectedMemoryIds.value = next
+  }
+
+  function toggleSelectAll () {
+    if (allMemoriesSelected.value) {
+      selectedMemoryIds.value = new Set()
+    } else {
+      selectedMemoryIds.value = new Set(memories.value.map(item => item.memory_id))
+    }
+  }
+
+  function clearSelection () {
+    selectedMemoryIds.value = new Set()
+  }
+
+  async function toggleIgnored (memoryId: string) {
+    togglingIgnoredId.value = memoryId
+    try {
+      const response = await toggleAIMemoryIgnored(memoryId)
+      if (response.data) {
+        memories.value = memories.value.map(item => (
+          item.memory_id === response.data?.memory_id ? response.data : item
+        ))
+      }
+    } catch (error) {
+      noticeStore.show(getErrorMessage(error, t('ai.memoryToggleIgnoredFailed')), 'error')
+    } finally {
+      togglingIgnoredId.value = ''
+    }
+  }
+
+  async function bulkDelete () {
+    const ids = [...selectedMemoryIds.value]
+    if (ids.length === 0) {
+      return
+    }
+    bulkActionLoading.value = true
+    try {
+      const response = await bulkDeleteAIMemories(ids)
+      const deletedSet = new Set(ids)
+      memories.value = memories.value.filter(item => !deletedSet.has(item.memory_id))
+      selectedMemoryIds.value = new Set()
+      noticeStore.show(`${t('ai.memoryBulkDeleted')}: ${response.data.affected}`, 'success')
+    } catch (error) {
+      noticeStore.show(getErrorMessage(error, t('ai.memoryBulkDeleteFailed')), 'error')
+    } finally {
+      bulkActionLoading.value = false
+    }
+  }
+
+  async function bulkSetIgnored (ignored: boolean) {
+    const ids = [...selectedMemoryIds.value]
+    if (ids.length === 0) {
+      return
+    }
+    bulkActionLoading.value = true
+    try {
+      await bulkToggleAIMemoryIgnored(ids, ignored)
+      memories.value = memories.value.map(item => (
+        ids.includes(item.memory_id) ? { ...item, is_ignored: ignored } : item
+      ))
+      selectedMemoryIds.value = new Set()
+      noticeStore.show(t('ai.memoryBulkIgnoreUpdated'), 'success')
+    } catch (error) {
+      noticeStore.show(getErrorMessage(error, t('ai.memoryBulkIgnoreFailed')), 'error')
+    } finally {
+      bulkActionLoading.value = false
+    }
+  }
+
   return {
+    allMemoriesSelected,
+    bulkActionLoading,
+    bulkDelete,
+    bulkSetIgnored,
     cancelEditMemory,
     canLoadMemories,
     canSaveMemory,
     canSaveEditedMemory,
+    clearSelection,
     deletingMemoryId,
     editingMemoryId,
     loadMemories,
@@ -189,8 +290,14 @@ export function useAIMemoryTab (t: (key: string) => string) {
     saveEditedMemory,
     savingEditedMemoryId,
     savingMemory,
+    selectedMemoryCount,
+    selectedMemoryIds,
     selectRecentTarget,
     selectedRecentTargetId,
     startEditMemory,
+    toggleIgnored,
+    toggleMemorySelection,
+    toggleSelectAll,
+    togglingIgnoredId,
   }
 }
