@@ -12,7 +12,12 @@ from apeiria.app.ai.memory.extraction import (
     build_memory_extraction_prompt,
     parse_memory_extraction_response,
 )
-from apeiria.app.ai.memory.models import AIMemoryLayer, AIMemoryQuery
+from apeiria.app.ai.memory.models import (
+    AIMemoryExtractionResult,
+    AIMemoryLayer,
+    AIMemoryQuery,
+    AIMessageSentiment,
+)
 from apeiria.app.ai.memory.service import ai_memory_service
 from apeiria.app.ai.model.models import AIModelRouteQuery
 from apeiria.app.ai.model.service import ai_model_facade
@@ -25,7 +30,6 @@ if TYPE_CHECKING:
     from apeiria.app.ai.memory.models import (
         AIMemoryAnchorType,
         AIMemoryDefinition,
-        AIMemoryExtractionCandidate,
     )
 
 
@@ -281,6 +285,13 @@ def _build_knowledge_targets(
     ]
 
 
+_DEFAULT_EXTRACTION_RESULT = AIMemoryExtractionResult(
+    candidates=[],
+    sentiment=AIMessageSentiment(polarity="neutral", intensity=0.0),
+    self_introduction_name=None,
+)
+
+
 async def store_extracted_memories(
     session: "AsyncSession",
     *,
@@ -288,8 +299,11 @@ async def store_extracted_memories(
     user_id: str,
     message_text: str,
     source_message_id: str | None,
-) -> None:
-    """Extract and store structured long-term memory candidates."""
+) -> AIMemoryExtractionResult:
+    """Extract and store structured long-term memory candidates.
+
+    Returns the full extraction result including sentiment and name.
+    """
 
     write_anchors = build_memory_write_anchors(identity, user_id)
     existing_memories: list[AIMemoryDefinition] = []
@@ -306,7 +320,8 @@ async def store_extracted_memories(
                 continue
             seen_memory_ids.add(row.memory_id)
             existing_memories.append(row)
-    candidates: list[AIMemoryExtractionCandidate] = []
+
+    extraction_result = _DEFAULT_EXTRACTION_RESULT
     selected = await ai_model_facade.select_model(
         session,
         query=AIModelRouteQuery(task_class="memory_extraction"),
@@ -324,29 +339,30 @@ async def store_extracted_memories(
             logger.opt(exception=exc).warning("AI memory extraction failed")
             response = None
         if response is not None:
-            candidates = parse_memory_extraction_response(response.content)
+            extraction_result = parse_memory_extraction_response(response.content)
 
+    candidates = extraction_result.candidates
     await ai_person_profile_service.ingest_message(
         session,
         platform=identity.platform,
         user_id=identity.subject_id or user_id,
-        message_text=message_text,
         source_message_id=source_message_id,
         candidates=tuple(candidates),
+        self_introduction_name=extraction_result.self_introduction_name,
     )
-    if not candidates:
-        return
+    if candidates:
+        for anchor in write_anchors:
+            await ai_memory_service.remember_candidates(
+                session,
+                anchor_type=anchor.anchor_type,
+                anchor_id=anchor.anchor_id,
+                source_message_id=source_message_id,
+                candidates=candidates,
+            )
+            await ai_memory_service.consolidate_anchor_summary(
+                session,
+                anchor_type=anchor.anchor_type,
+                anchor_id=anchor.anchor_id,
+            )
 
-    for anchor in write_anchors:
-        await ai_memory_service.remember_candidates(
-            session,
-            anchor_type=anchor.anchor_type,
-            anchor_id=anchor.anchor_id,
-            source_message_id=source_message_id,
-            candidates=candidates,
-        )
-        await ai_memory_service.consolidate_anchor_summary(
-            session,
-            anchor_type=anchor.anchor_type,
-            anchor_id=anchor.anchor_id,
-        )
+    return extraction_result

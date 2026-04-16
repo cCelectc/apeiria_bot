@@ -72,7 +72,7 @@ if TYPE_CHECKING:
         ChatSessionIdentity,
     )
     from apeiria.app.ai.future_task.models import AIFutureTaskDefinition
-    from apeiria.app.ai.memory.models import AIMemoryDefinition
+    from apeiria.app.ai.memory.models import AIMemoryDefinition, AIMessageSentiment
     from apeiria.app.ai.model.adapter import (
         AIModelGenerateResponse,
         AIModelToolDefinition,
@@ -100,6 +100,7 @@ class AIRuntimeReplyRequest:
     runtime_mode: Literal["message", "future_task"]
     is_tome: bool = False
     future_task: "AIFutureTaskDefinition | None" = None
+    sentiment: "AIMessageSentiment | None" = None
 
 
 @dataclass(frozen=True)
@@ -324,7 +325,7 @@ class AIRuntimeService:
             identity, turn = ingested
             user_id = str(event.get_user_id())
             is_tome = bool(hasattr(event, "is_tome") and event.is_tome())
-            await store_extracted_memories(
+            extraction_result = await store_extracted_memories(
                 session,
                 identity=identity,
                 user_id=user_id,
@@ -342,6 +343,7 @@ class AIRuntimeService:
                     sender_id=str(bot.self_id),
                     runtime_mode="message",
                     is_tome=is_tome,
+                    sentiment=extraction_result.sentiment,
                 ),
             )
             return result.reply_text if result is not None else None
@@ -415,11 +417,11 @@ class AIRuntimeService:
                 turns=turns,
             ),
         )
-        if request.runtime_mode == "message":
+        if request.runtime_mode == "message" and request.sentiment is not None:
             await update_relationship_state(
                 session,
                 target=relationship_target,
-                message_text=request.message_text,
+                sentiment=request.sentiment,
                 is_tome=request.is_tome,
             )
         recalled_memories = await recall_memories(

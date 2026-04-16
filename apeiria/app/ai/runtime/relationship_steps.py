@@ -13,6 +13,7 @@ if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
     from apeiria.app.ai.conversation.models import ChatSessionIdentity
+    from apeiria.app.ai.memory.models import AIMessageSentiment
     from apeiria.app.ai.relationship.models import (
         AIRelationshipEvent,
         AIRelationshipState,
@@ -106,13 +107,13 @@ async def update_relationship_state(
     session: "AsyncSession",
     *,
     target: AIRelationshipTarget,
-    message_text: str,
+    sentiment: "AIMessageSentiment",
     is_tome: bool,
 ) -> None:
-    """Apply relationship deltas derived from the current inbound message."""
+    """Apply relationship deltas derived from LLM sentiment analysis."""
 
     delta = derive_relationship_delta(
-        text=message_text,
+        sentiment=sentiment,
         is_private=target.is_private,
         is_tome=is_tome,
     )

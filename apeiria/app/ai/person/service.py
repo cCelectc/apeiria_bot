@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
@@ -28,19 +27,6 @@ if TYPE_CHECKING:
 
 _MAX_STORED_MEMORY_POINTS = 12
 _MAX_PROMPT_POINTS_PER_CATEGORY = 2
-_NAME_PATTERNS = (
-    re.compile(
-        r"(?:我叫|叫我|你可以叫我|可以叫我|喊我)"
-        r"(?P<name>[A-Za-z0-9_\-\u4e00-\u9fff·]{1,16})"
-    ),
-)
-_POSITIVE_PREFERENCE_PATTERNS = (
-    re.compile(r"我(?:很|最|一直)?(?:喜欢|爱)(?P<item>[^，。！？,.!?]{1,24})"),
-)
-_NEGATIVE_PREFERENCE_PATTERNS = (
-    re.compile(r"我(?:很|最|一直)?(?:不喜欢|讨厌)(?P<item>[^，。！？,.!?]{1,24})"),
-)
-_FACT_PATTERNS = (re.compile(r"我是(?P<fact>[^，。！？,.!?]{1,24})"),)
 _CANDIDATE_MIN_CONFIDENCE = 0.6
 _PROMPT_CATEGORY_LABELS: dict[AIPersonMemoryPointCategory, str] = {
     "preference": "Stable preference",
@@ -115,14 +101,14 @@ class AIPersonProfileService:
         *,
         platform: str,
         user_id: str,
-        message_text: str,
         source_message_id: str | None,
-        candidates: tuple[AIMemoryExtractionCandidate, ...] = (),
+        candidates: tuple["AIMemoryExtractionCandidate", ...] = (),
+        self_introduction_name: str | None = None,
     ) -> AIPersonProfileDefinition | None:
         draft = _build_profile_draft(
-            message_text,
             source_message_id=source_message_id,
             candidates=candidates,
+            self_introduction_name=self_introduction_name,
         )
         has_profile_signal = _has_profile_signal(draft)
         row = await self._get_profile_row(
@@ -317,20 +303,19 @@ class AIPersonProfileService:
 
 
 def _build_profile_draft(
-    message_text: str,
     *,
     source_message_id: str | None,
-    candidates: tuple[AIMemoryExtractionCandidate, ...],
+    candidates: tuple["AIMemoryExtractionCandidate", ...],
+    self_introduction_name: str | None,
 ) -> _ProfileDraft:
-    explicit_name = _extract_explicit_name(message_text)
-    points = list(_extract_explicit_points(message_text, source_message_id))
+    points: list[AIPersonMemoryPoint] = []
     for candidate in select_person_profile_candidates(list(candidates)):
         point = _candidate_to_memory_point(candidate, source_message_id)
         if point is not None:
             points.append(point)
     return _ProfileDraft(
-        preferred_name=explicit_name,
-        name_reason="self_introduced" if explicit_name else None,
+        preferred_name=self_introduction_name,
+        name_reason="self_introduced" if self_introduction_name else None,
         memory_points=tuple(points),
     )
 
@@ -339,67 +324,8 @@ def _has_profile_signal(draft: _ProfileDraft) -> bool:
     return bool(draft.preferred_name or draft.memory_points)
 
 
-def _extract_explicit_name(message_text: str) -> str | None:
-    for pattern in _NAME_PATTERNS:
-        match = pattern.search(message_text)
-        if match is None:
-            continue
-        return _clean_fragment(match.group("name"))
-    return None
-
-
-def _extract_explicit_points(
-    message_text: str,
-    source_message_id: str | None,
-) -> tuple[AIPersonMemoryPoint, ...]:
-    points: list[AIPersonMemoryPoint] = []
-    for pattern in _POSITIVE_PREFERENCE_PATTERNS:
-        match = pattern.search(message_text)
-        if match is None:
-            continue
-        item = _clean_fragment(match.group("item"))
-        if item:
-            points.append(
-                AIPersonMemoryPoint(
-                    category="preference",
-                    content=f"喜欢{item}",
-                    confidence=0.9,
-                    source_message_id=source_message_id,
-                )
-            )
-    for pattern in _NEGATIVE_PREFERENCE_PATTERNS:
-        match = pattern.search(message_text)
-        if match is None:
-            continue
-        item = _clean_fragment(match.group("item"))
-        if item:
-            points.append(
-                AIPersonMemoryPoint(
-                    category="preference",
-                    content=f"不喜欢{item}",
-                    confidence=0.9,
-                    source_message_id=source_message_id,
-                )
-            )
-    for pattern in _FACT_PATTERNS:
-        match = pattern.search(message_text)
-        if match is None:
-            continue
-        fact = _clean_fragment(match.group("fact"))
-        if fact:
-            points.append(
-                AIPersonMemoryPoint(
-                    category="fact",
-                    content=f"是{fact}",
-                    confidence=0.82,
-                    source_message_id=source_message_id,
-                )
-            )
-    return tuple(points)
-
-
 def _candidate_to_memory_point(
-    candidate: AIMemoryExtractionCandidate,
+    candidate: "AIMemoryExtractionCandidate",
     source_message_id: str | None,
 ) -> AIPersonMemoryPoint | None:
     if candidate.confidence < _CANDIDATE_MIN_CONFIDENCE:
@@ -452,13 +378,6 @@ def _select_prompt_points(
         selected.append(point)
         counts[point.category] = counts.get(point.category, 0) + 1
     return tuple(selected)
-
-
-def _clean_fragment(fragment: str | None) -> str | None:
-    if not fragment:
-        return None
-    value = fragment.strip().strip(" \t\r\n,，。.!！？")
-    return value or None
 
 
 ai_person_profile_service = AIPersonProfileService()

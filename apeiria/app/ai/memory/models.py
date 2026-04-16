@@ -18,6 +18,15 @@ AIMemoryKind = Literal[
     "impression",
 ]
 AIMemoryExtractionAction = Literal["add", "update", "noop"]
+AISentimentPolarity = Literal["positive", "neutral", "negative", "playful"]
+
+
+@dataclass(frozen=True)
+class AIMessageSentiment:
+    """Sentiment analysis result extracted alongside memory candidates."""
+
+    polarity: AISentimentPolarity
+    intensity: float  # 0.0-1.0
 
 
 @dataclass(frozen=True)
@@ -61,3 +70,12 @@ class AIMemoryQuery:
     limit: int
     memory_layer: AIMemoryLayer | None = None
     memory_kind: AIMemoryKind | None = None
+
+
+@dataclass(frozen=True)
+class AIMemoryExtractionResult:
+    """Combined result of one LLM memory extraction call."""
+
+    candidates: list[AIMemoryExtractionCandidate]
+    sentiment: AIMessageSentiment
+    self_introduction_name: str | None
