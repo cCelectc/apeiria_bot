@@ -109,6 +109,34 @@ class ChatSessionService:
         chat_session.last_message_at = _utcnow_naive()
         return chat_session
 
+    async def load_session_summary(
+        self,
+        session: "AsyncSession",
+        identity: ChatSessionIdentity,
+    ) -> str | None:
+        """Load the stored conversation summary for one session."""
+
+        result = await session.execute(
+            select(ChatSession).where(ChatSession.session_id == identity.session_id)
+        )
+        chat_session = result.scalar_one_or_none()
+        if chat_session is None:
+            return None
+        return chat_session.summary_text
+
+    async def store_summary_text(
+        self,
+        session: "AsyncSession",
+        identity: ChatSessionIdentity,
+        *,
+        summary: str | None,
+    ) -> None:
+        """Persist an externally-built conversation summary."""
+
+        chat_session = await self.ensure_session(session, identity)
+        chat_session.summary_text = summary
+        await session.flush()
+
     async def update_summary_text(
         self,
         session: "AsyncSession",
@@ -116,7 +144,11 @@ class ChatSessionService:
         *,
         messages: list[ChatContextMessageView],
     ) -> str | None:
-        """Refresh the compact stored summary for one session."""
+        """Refresh the compact stored summary for one session.
+
+        .. deprecated::
+            Prefer ``store_summary_text`` with an externally-built summary.
+        """
 
         chat_session = await self.ensure_session(session, identity)
         summary = build_short_conversation_summary(messages)
@@ -340,6 +372,7 @@ class ChatSessionService:
             text_content=row.text_content,
             content=content,
             created_at=created_at,
+            reply_to_message_id=row.reply_to_message_id,
         )
 
     def _to_session_admin_view(self, row: ChatSession) -> ChatSessionAdminView:

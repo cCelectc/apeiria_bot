@@ -36,6 +36,7 @@ class ChatContextMessageView:
     text_content: str
     content: dict[str, Any] | None
     created_at: datetime
+    reply_to_message_id: str | None = None
 
     @property
     def sender_type(self) -> str:
