@@ -26,6 +26,12 @@ class GroupRecord:
 class GroupService:
     """Manage persisted per-group settings."""
 
+    async def get_group(self, group_id: str) -> GroupRecord | None:
+        row = await group_repository.get_group(group_id)
+        if row is None:
+            return None
+        return self._to_record(row)
+
     async def list_groups(self) -> list[GroupRecord]:
         rows = await group_repository.list_groups()
         return [self._to_record(row) for row in rows]

@@ -519,6 +519,27 @@ export interface AIChatMessageItem {
   tool_observation_count: number | null
 }
 
+export interface AISessionPromptChannelsItem {
+  mode: string
+  system_instructions: string[]
+  persona: string
+  style: string | null
+  relationship: string | null
+  social_policy: string | null
+  tool_policy: string | null
+  future_task: string | null
+  tool_results: string[]
+  operator_memories: string[]
+  summary_memories: string[]
+  long_term_memories: string[]
+  knowledge_memories: string[]
+  conversation_summary: string | null
+  context_priority: string[]
+  conversation_messages: string[]
+  response_rules: string[]
+  instruction: string
+}
+
 export interface AISessionPromptPreviewItem {
   session_id: string
   latest_user_message: string | null
@@ -548,6 +569,8 @@ export interface AISessionPromptPreviewItem {
   summary_memory_count: number
   long_term_memory_count: number
   knowledge_memory_count: number
+  planning_channels: AISessionPromptChannelsItem
+  roleplay_channels: AISessionPromptChannelsItem | null
   rendered_roleplay_prompt: string | null
   rendered_prompt: string
 }

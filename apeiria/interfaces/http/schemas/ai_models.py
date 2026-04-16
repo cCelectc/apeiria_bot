@@ -195,6 +195,27 @@ class AIChatMessageItem(BaseModel):
     tool_observation_count: int | None = None
 
 
+class AISessionPromptChannelsItem(BaseModel):
+    mode: str
+    system_instructions: list[str] = []
+    persona: str
+    style: str | None = None
+    relationship: str | None = None
+    social_policy: str | None = None
+    tool_policy: str | None = None
+    future_task: str | None = None
+    tool_results: list[str] = []
+    operator_memories: list[str] = []
+    summary_memories: list[str] = []
+    long_term_memories: list[str] = []
+    knowledge_memories: list[str] = []
+    conversation_summary: str | None = None
+    context_priority: list[str] = []
+    conversation_messages: list[str] = []
+    response_rules: list[str] = []
+    instruction: str
+
+
 class AISessionPromptPreviewItem(BaseModel):
     session_id: str
     latest_user_message: str | None = None
@@ -224,6 +245,8 @@ class AISessionPromptPreviewItem(BaseModel):
     summary_memory_count: int = 0
     long_term_memory_count: int = 0
     knowledge_memory_count: int = 0
+    planning_channels: AISessionPromptChannelsItem
+    roleplay_channels: AISessionPromptChannelsItem | None = None
     rendered_roleplay_prompt: str | None = None
     rendered_prompt: str
 

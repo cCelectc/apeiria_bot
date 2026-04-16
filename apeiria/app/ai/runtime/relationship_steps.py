@@ -46,17 +46,15 @@ def format_relationship_context(
     """Render relationship state into one prompt-side context string."""
 
     projection = project_emotion(state)
-    mood_part = (
-        f"Recent mood tags: {', '.join(state.mood_tags)}."
-        if state.mood_tags
-        else "Recent mood tags: none."
-    )
-    return (
-        f"Current affinity score toward this user: {state.score:.2f}. "
-        f"Projected tone: {projection.tone}. "
-        f"Warmth bias: {projection.warmth_bias:.2f}. "
-        f"Initiative bias: {projection.initiative_bias:.2f}. "
-        f"{mood_part}"
+    mood_tags = ", ".join(state.mood_tags) if state.mood_tags else "none"
+    return "\n".join(
+        (
+            f"Affinity score: {state.score:.2f}",
+            f"Projected tone: {projection.tone}",
+            f"Warmth bias: {projection.warmth_bias:.2f}",
+            f"Initiative bias: {projection.initiative_bias:.2f}",
+            f"Recent mood tags: {mood_tags}",
+        )
     )
 
 

@@ -1,6 +1,7 @@
 import type {
   AIChatMessageItem,
   AISessionItem,
+  AISessionPromptChannelsItem,
   AISessionPromptPreviewItem,
   AIToolExecutionItem,
 } from '@/api'
@@ -65,6 +66,12 @@ export function useAIDebugTab (t: (key: string, params?: Record<string, unknown>
   ))
   const promptPreviewKnowledgeMemories = computed(() => (
     (promptPreview.value?.memories ?? []).filter(item => item.memory_layer === 'knowledge')
+  ))
+  const planningPromptChannelSections = computed(() => (
+    buildPromptChannelSections(promptPreview.value?.planning_channels, t)
+  ))
+  const roleplayPromptChannelSections = computed(() => (
+    buildPromptChannelSections(promptPreview.value?.roleplay_channels, t)
   ))
 
   async function loadDebugData () {
@@ -150,11 +157,13 @@ export function useAIDebugTab (t: (key: string, params?: Record<string, unknown>
     loadingDebug,
     loadingTurns,
     latestAssistantTurn,
+    planningPromptChannelSections,
     promptPreviewOperatorMemories,
     promptPreview,
     promptPreviewKnowledgeMemories,
     promptPreviewLongTermMemories,
     promptPreviewSummaryMemories,
+    roleplayPromptChannelSections,
     selectedConversation,
     selectedConversationId: selectedSceneId,
     summarizeJsonText,
@@ -164,4 +173,47 @@ export function useAIDebugTab (t: (key: string, params?: Record<string, unknown>
     traceIds,
     turns,
   }
+}
+
+type PromptChannelSection = {
+  key: string
+  title: string
+  lines: string[]
+}
+
+function buildPromptChannelSections (
+  channels: AISessionPromptChannelsItem | null | undefined,
+  t: (key: string, params?: Record<string, unknown>) => string,
+): PromptChannelSection[] {
+  if (!channels) {
+    return []
+  }
+
+  const sections: PromptChannelSection[] = []
+  const append = (key: string, title: string, lines: string[] | null | undefined) => {
+    const normalizedLines = (lines ?? []).map(line => line.trim()).filter(Boolean)
+    if (normalizedLines.length === 0) {
+      return
+    }
+    sections.push({ key, title, lines: normalizedLines })
+  }
+
+  append('system_instructions', t('ai.promptChannelSystemInstructions'), channels.system_instructions)
+  append('persona', t('ai.promptChannelPersona'), [channels.persona])
+  append('style', t('ai.promptChannelStyle'), channels.style ? [channels.style] : [])
+  append('relationship', t('ai.promptChannelRelationship'), channels.relationship ? [channels.relationship] : [])
+  append('social_policy', t('ai.promptChannelSocialPolicy'), channels.social_policy ? [channels.social_policy] : [])
+  append('tool_policy', t('ai.promptChannelToolPolicy'), channels.tool_policy ? [channels.tool_policy] : [])
+  append('future_task', t('ai.promptChannelFutureTask'), channels.future_task ? [channels.future_task] : [])
+  append('tool_results', t('ai.promptChannelToolResults'), channels.tool_results)
+  append('operator_memories', t('ai.promptChannelOperatorMemories'), channels.operator_memories)
+  append('summary_memories', t('ai.promptChannelSummaryMemories'), channels.summary_memories)
+  append('long_term_memories', t('ai.promptChannelLongTermMemories'), channels.long_term_memories)
+  append('knowledge_memories', t('ai.promptChannelKnowledgeMemories'), channels.knowledge_memories)
+  append('conversation_summary', t('ai.promptChannelConversationSummary'), channels.conversation_summary ? [channels.conversation_summary] : [])
+  append('context_priority', t('ai.promptChannelContextPriority'), channels.context_priority)
+  append('conversation_messages', t('ai.promptChannelConversationMessages'), channels.conversation_messages)
+  append('response_rules', t('ai.promptChannelResponseRules'), channels.response_rules)
+  append('instruction', t('ai.promptChannelInstruction'), [channels.instruction])
+  return sections
 }

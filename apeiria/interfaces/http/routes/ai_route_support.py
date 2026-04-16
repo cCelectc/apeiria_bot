@@ -18,6 +18,7 @@ from apeiria.interfaces.http.schemas.ai_models import (
     AIRecentTargetItem,
     AIRelationshipStateItem,
     AISessionItem,
+    AISessionPromptChannelsItem,
     AISessionPromptPreviewItem,
     AISkillItem,
     AISourceItem,
@@ -31,7 +32,11 @@ from apeiria.interfaces.http.schemas.ai_models import (
 )
 
 if TYPE_CHECKING:
-    from apeiria.app.ai.admin.models import AIRecentTarget, AISessionPromptPreview
+    from apeiria.app.ai.admin.models import (
+        AIRecentTarget,
+        AISessionPromptChannels,
+        AISessionPromptPreview,
+    )
     from apeiria.app.ai.conversation.models import (
         ChatMessageDetailView,
         ChatSessionAdminView,
@@ -229,6 +234,31 @@ def to_ai_chat_message_item(
     )
 
 
+def to_ai_session_prompt_channels_item(
+    item: "AISessionPromptChannels",
+) -> AISessionPromptChannelsItem:
+    return AISessionPromptChannelsItem(
+        mode=item.mode,
+        system_instructions=list(item.system_instructions),
+        persona=item.persona,
+        style=item.style,
+        relationship=item.relationship,
+        social_policy=item.social_policy,
+        tool_policy=item.tool_policy,
+        future_task=item.future_task,
+        tool_results=list(item.tool_results),
+        operator_memories=list(item.operator_memories),
+        summary_memories=list(item.summary_memories),
+        long_term_memories=list(item.long_term_memories),
+        knowledge_memories=list(item.knowledge_memories),
+        conversation_summary=item.conversation_summary,
+        context_priority=list(item.context_priority),
+        conversation_messages=list(item.conversation_messages),
+        response_rules=list(item.response_rules),
+        instruction=item.instruction,
+    )
+
+
 def to_ai_session_prompt_preview_item(
     item: "AISessionPromptPreview",
 ) -> AISessionPromptPreviewItem:
@@ -261,6 +291,14 @@ def to_ai_session_prompt_preview_item(
         summary_memory_count=item.summary_memory_count,
         long_term_memory_count=item.long_term_memory_count,
         knowledge_memory_count=item.knowledge_memory_count,
+        planning_channels=to_ai_session_prompt_channels_item(
+            item.planning_channels
+        ),
+        roleplay_channels=(
+            to_ai_session_prompt_channels_item(item.roleplay_channels)
+            if item.roleplay_channels is not None
+            else None
+        ),
         rendered_roleplay_prompt=item.rendered_roleplay_prompt,
         rendered_prompt=item.rendered_prompt,
     )

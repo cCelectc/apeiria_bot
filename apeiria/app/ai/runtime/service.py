@@ -16,7 +16,10 @@ from apeiria.app.ai.future_task import ai_future_task_service
 from apeiria.app.ai.model import AIModelBindingTarget, AIModelRouteQuery
 from apeiria.app.ai.model.service import ai_model_facade
 from apeiria.app.ai.persona.models import AIPersonaBindingTarget
-from apeiria.app.ai.persona.service import ai_persona_service
+from apeiria.app.ai.persona.service import (
+    ai_persona_service,
+    build_persona_render_context,
+)
 from apeiria.app.ai.runtime.composer import (
     AIRuntimeComposeInput,
     compose_pre_tool_reply_prompt,
@@ -51,6 +54,7 @@ from apeiria.app.ai.tools.policy import (
 )
 from apeiria.app.ai.tools.runtime import AIToolRuntimeRequest, ai_tool_runtime
 from apeiria.app.ai.tools.service import ai_tool_service
+from apeiria.app.groups import group_service
 from apeiria.app.message_delivery import (
     MessageDeliveryRequest,
     MessageDeliveryResult,
@@ -73,6 +77,7 @@ if TYPE_CHECKING:
         AIModelToolDefinition,
     )
     from apeiria.app.ai.model.selection import AISelectedModel
+    from apeiria.app.ai.persona.service import AIPersonaRenderContext
     from apeiria.app.ai.runtime.prompting import AIPersonaPromptBundleLike
     from apeiria.app.ai.tools.models import (
         AIToolPolicy,
@@ -213,6 +218,47 @@ def _build_future_task_context(task: "AIFutureTaskDefinition | None") -> str | N
             f"status={task.status}",
         )
     )
+
+
+def _find_recent_user_name(
+    turns: list["ChatContextMessageView"],
+    user_id: str,
+) -> str | None:
+    for turn in reversed(turns):
+        if turn.author_role != "user" or turn.author_id != user_id:
+            continue
+        author_name = (turn.author_name or "").strip()
+        if author_name:
+            return author_name
+    return None
+
+
+async def _build_persona_render_context(
+    request: AIRuntimeReplyRequest,
+    *,
+    current_time: datetime,
+    turns: list["ChatContextMessageView"],
+) -> "AIPersonaRenderContext":
+    identity = request.identity
+    group_name = await _load_group_name(identity)
+    return build_persona_render_context(
+        bot_id=identity.bot_id,
+        current_time=current_time,
+        platform=identity.platform,
+        scene_type=identity.scene_type,
+        scene_id=identity.scene_id,
+        session_id=identity.session_id,
+        group_name=group_name,
+        user_id=request.user_id,
+        user_name=_find_recent_user_name(turns, request.user_id) or request.user_id,
+    )
+
+
+async def _load_group_name(identity: "ChatSessionIdentity") -> str | None:
+    if identity.scene_type != "group":
+        return None
+    group = await group_service.get_group(identity.scene_id)
+    return group.group_name if group is not None else None
 
 
 def _build_social_policy_input(  # noqa: PLR0913
@@ -361,6 +407,11 @@ class AIRuntimeService:
         persona = await ai_persona_service.build_persona_prompt_bundle(
             session,
             target=persona_target,
+            render_context=await _build_persona_render_context(
+                request,
+                current_time=current_time,
+                turns=turns,
+            ),
         )
         if request.runtime_mode == "message":
             await update_relationship_state(
@@ -557,9 +608,10 @@ class AIRuntimeService:
                 prompt=compose_pre_tool_reply_prompt(
                     AIRuntimeComposeInput(
                         persona=state.persona,
+                        scene_type=state.request.identity.scene_type,
                         relationship=state.relationship_context,
-                        skill_policy=skill_runtime.policy_text,
-                        skill_results=skill_runtime.result_lines,
+                        tool_policy=skill_runtime.policy_text,
+                        tool_results=skill_runtime.result_lines,
                         memories=state.recalled_memories,
                         conversation_summary=state.conversation_summary,
                         social_policy_summary=summarize_social_policy_decision(
@@ -619,9 +671,10 @@ class AIRuntimeService:
                     prompt=compose_roleplay_reply_prompt(
                         AIRuntimeComposeInput(
                             persona=state.persona,
+                            scene_type=state.request.identity.scene_type,
                             relationship=state.relationship_context,
-                            skill_policy=skill_runtime.policy_text,
-                            skill_results=skill_runtime.result_lines,
+                            tool_policy=skill_runtime.policy_text,
+                            tool_results=skill_runtime.result_lines,
                             memories=state.recalled_memories,
                             conversation_summary=state.conversation_summary,
                             social_policy_summary=summarize_social_policy_decision(

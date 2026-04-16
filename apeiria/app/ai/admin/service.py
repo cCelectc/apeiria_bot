@@ -9,7 +9,11 @@ from typing import TYPE_CHECKING, Literal, cast
 
 from nonebot_plugin_orm import get_session
 
-from apeiria.app.ai.admin.models import AIRecentTarget, AISessionPromptPreview
+from apeiria.app.ai.admin.models import (
+    AIRecentTarget,
+    AISessionPromptChannels,
+    AISessionPromptPreview,
+)
 from apeiria.app.ai.admin.workbench import (
     extract_tool_result_lines,
     select_latest_user_message,
@@ -45,10 +49,14 @@ from apeiria.app.ai.model.sources import (
     resolve_client_type_for_preset,
 )
 from apeiria.app.ai.persona.models import AIPersonaBindingTarget, AIPersonaCreateInput
-from apeiria.app.ai.persona.service import ai_persona_service
+from apeiria.app.ai.persona.service import (
+    ai_persona_service,
+    build_persona_render_context,
+)
 from apeiria.app.ai.relationship.service import ai_relationship_service
 from apeiria.app.ai.runtime.composer import (
     AIRuntimeComposeInput,
+    build_runtime_prompt_channels,
     compose_pre_tool_reply_prompt,
     compose_roleplay_reply_prompt,
 )
@@ -80,8 +88,11 @@ from apeiria.app.ai.tools.policy import (
     summarize_tool_policy,
 )
 from apeiria.app.ai.tools.service import ai_tool_service
+from apeiria.app.groups import group_service
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
+
     from sqlalchemy.ext.asyncio import AsyncSession
 
     from apeiria.app.ai.conversation.models import (
@@ -113,6 +124,7 @@ if TYPE_CHECKING:
         AIPersonaDefinition,
     )
     from apeiria.app.ai.relationship.models import AIRelationshipState
+    from apeiria.app.ai.runtime.prompting import AIReplyPromptChannels
     from apeiria.app.ai.skills.catalog import AISkillDefinition
     from apeiria.app.ai.tools.debug import (
         AICapabilityDefinition,
@@ -159,6 +171,51 @@ def _build_prompt_preview_social_input(  # noqa: PLR0913
         current_time=decision_time,
         runtime_mode="message",
         is_direct_wake=(identity.scene_type == "private"),
+    )
+
+
+def _find_recent_user_name(
+    turns: Sequence["ChatContextMessageView | ChatMessageDetailView"],
+    user_id: str,
+) -> str | None:
+    for turn in reversed(turns):
+        if turn.author_role != "user" or turn.author_id != user_id:
+            continue
+        author_name = (turn.author_name or "").strip()
+        if author_name:
+            return author_name
+    return None
+
+
+async def _load_group_name(identity: "ChatSessionIdentity") -> str | None:
+    if identity.scene_type != "group":
+        return None
+    group = await group_service.get_group(identity.scene_id)
+    return group.group_name if group is not None else None
+
+
+def _to_prompt_channel_preview(
+    channels: AIReplyPromptChannels,
+) -> AISessionPromptChannels:
+    return AISessionPromptChannels(
+        mode=channels.mode,
+        system_instructions=channels.system.instructions,
+        persona=channels.system.persona,
+        style=channels.system.style,
+        relationship=channels.system.relationship,
+        social_policy=channels.system.social_policy,
+        tool_policy=channels.system.tool_policy,
+        future_task=channels.system.future_task,
+        tool_results=channels.tool_results,
+        operator_memories=channels.memories.operator,
+        summary_memories=channels.memories.summary,
+        long_term_memories=channels.memories.long_term,
+        knowledge_memories=channels.memories.knowledge,
+        conversation_summary=channels.conversation.summary,
+        context_priority=channels.conversation.context_priority,
+        conversation_messages=channels.conversation.messages,
+        response_rules=channels.response_rules,
+        instruction=channels.instruction,
     )
 
 
@@ -1350,6 +1407,8 @@ class AIAdminService:
             )
             latest_user_message = select_latest_user_message(turns)
             user_id = identity.subject_id or identity.scene_id
+            prompt_time = turns[-1].created_at if turns else datetime.now(timezone.utc)
+            group_name = await _load_group_name(identity)
             relationship_target = build_relationship_target(identity, user_id)
             relationship_context = await load_relationship_context(
                 session,
@@ -1363,6 +1422,17 @@ class AIAdminService:
                         identity.scene_id if identity.scene_type == "group" else None
                     ),
                     user_id=identity.subject_id or user_id,
+                ),
+                render_context=build_persona_render_context(
+                    bot_id=identity.bot_id,
+                    current_time=prompt_time,
+                    platform=identity.platform,
+                    scene_type=identity.scene_type,
+                    scene_id=identity.scene_id,
+                    session_id=identity.session_id,
+                    group_name=group_name,
+                    user_id=user_id,
+                    user_name=_find_recent_user_name(turns, user_id) or user_id,
                 ),
             )
             tool_policy = await ai_tool_policy_binding_service.resolve_scene_policy(
@@ -1456,44 +1526,73 @@ class AIAdminService:
                 if latest_user_message
                 else None
             )
+            compose_input = AIRuntimeComposeInput(
+                persona=persona,
+                scene_type=identity.scene_type,
+                relationship=relationship_context,
+                tool_policy=tool_policy_text,
+                tool_results=tool_results,
+                memories=memories,
+                conversation_summary=conversation.summary_text,
+                social_policy_summary=(
+                    summarize_social_policy_decision(social_decision)
+                    if social_decision is not None
+                    else None
+                ),
+                turns=context_turns,
+            )
+            planning_channels = (
+                _to_prompt_channel_preview(
+                    build_runtime_prompt_channels(
+                        compose_input,
+                        mode="planner" if has_tools else "roleplay",
+                        include_tool_policy=has_tools,
+                    )
+                )
+                if social_decision is None or social_decision.should_speak
+                else AISessionPromptChannels(
+                    mode="planner" if has_tools else "roleplay",
+                    system_instructions=(),
+                    persona="",
+                    style=None,
+                    relationship=None,
+                    social_policy=None,
+                    tool_policy=None,
+                    future_task=None,
+                    tool_results=(),
+                    operator_memories=(),
+                    summary_memories=(),
+                    long_term_memories=(),
+                    knowledge_memories=(),
+                    conversation_summary=None,
+                    context_priority=(),
+                    conversation_messages=(),
+                    response_rules=(),
+                    instruction="Suppressed by social policy before prompt generation.",
+                )
+            )
             rendered_prompt = (
                 compose_pre_tool_reply_prompt(
-                    AIRuntimeComposeInput(
-                        persona=persona,
-                        relationship=relationship_context,
-                        skill_policy=tool_policy_text,
-                        skill_results=tool_results,
-                        memories=memories,
-                        conversation_summary=conversation.summary_text,
-                        social_policy_summary=(
-                            summarize_social_policy_decision(social_decision)
-                            if social_decision is not None
-                            else None
-                        ),
-                        turns=context_turns,
-                    ),
+                    compose_input,
                     has_tools=has_tools,
                 )
                 if social_decision is None or social_decision.should_speak
                 else "Suppressed by social policy before prompt generation."
             )
-            rendered_roleplay_prompt = (
-                compose_roleplay_reply_prompt(
-                    AIRuntimeComposeInput(
-                        persona=persona,
-                        relationship=relationship_context,
-                        skill_policy=tool_policy_text,
-                        skill_results=tool_results,
-                        memories=memories,
-                        conversation_summary=conversation.summary_text,
-                        social_policy_summary=(
-                            summarize_social_policy_decision(social_decision)
-                            if social_decision is not None
-                            else None
-                        ),
-                        turns=context_turns,
+            roleplay_channels = (
+                _to_prompt_channel_preview(
+                    build_runtime_prompt_channels(
+                        compose_input,
+                        mode="roleplay",
+                        include_tool_policy=False,
                     )
                 )
+                if has_tools
+                and (social_decision is None or social_decision.should_speak)
+                else None
+            )
+            rendered_roleplay_prompt = (
+                compose_roleplay_reply_prompt(compose_input)
                 if has_tools
                 and (social_decision is None or social_decision.should_speak)
                 else None
@@ -1576,6 +1675,8 @@ class AIAdminService:
                 summary_memory_count=summary_memory_count,
                 long_term_memory_count=long_term_memory_count,
                 knowledge_memory_count=knowledge_memory_count,
+                planning_channels=planning_channels,
+                roleplay_channels=roleplay_channels,
                 rendered_roleplay_prompt=(
                     rendered_roleplay_prompt if has_tools else None
                 ),

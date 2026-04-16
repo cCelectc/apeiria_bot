@@ -129,9 +129,8 @@ def summarize_tool_policy(
     if not policy.execution_enabled:
         if not preauthorized_tools:
             return (
-                "No external tool execution is enabled in this reply path. "
-                "Do not claim to have performed actions outside the visible "
-                "chat context."
+                "No tools are active for this turn. "
+                "Reply using only the visible conversation and recalled context."
             )
 
         tool_list = ", ".join(
@@ -140,9 +139,9 @@ def summarize_tool_policy(
         if len(preauthorized_tools) > _MAX_SUMMARY_TOOLS:
             tool_list += ", ..."
         return (
-            "Tool execution is currently disabled in this reply path. "
-            f"Pre-authorized tools for future execution: {tool_list}. "
-            "Do not claim to have used any tools in this response."
+            "Tools are unavailable for this turn. "
+            f"Pre-authorized tools for other turns: {tool_list}. "
+            "Reply without claiming any external actions."
         )
 
     allowed_tools = [
@@ -155,9 +154,9 @@ def summarize_tool_policy(
     if len(allowed_tools) > _MAX_SUMMARY_TOOLS:
         tool_list += ", ..."
     return (
-        "Tool use is restricted to explicitly allowed capabilities. "
-        f"Allowed tools in this scene: {tool_list}. "
-        "Do not claim to have used tools that are not listed here."
+        "Tools are available only when they add clear value. "
+        f"Allowed tools for this scene: {tool_list}. "
+        "Keep direct reply as the default path when tools are unnecessary."
     )
 
 

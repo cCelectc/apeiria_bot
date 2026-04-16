@@ -770,6 +770,9 @@
                   rows="5"
                   @blur="touchPersonaField('system_prompt')"
                 />
+                <div class="mt-2 text-caption text-medium-emphasis">
+                  {{ t('ai.personaTemplateVariablesHint') }}
+                </div>
                 <v-textarea
                   v-model.trim="personaForm.style_prompt"
                   auto-grow
@@ -780,6 +783,9 @@
                   :label="t('ai.personaStylePrompt')"
                   rows="4"
                 />
+                <div class="mt-2 text-caption text-medium-emphasis">
+                  {{ t('ai.personaTemplateVariablesHint') }}
+                </div>
                 <v-switch
                   v-model="personaForm.enabled"
                   class="mt-3"
@@ -1466,8 +1472,49 @@
                     <div>{{ t('ai.toolResultsTitle') }}: {{ promptPreview.tool_results.length }}</div>
                     <div class="text-subtitle-2 font-weight-medium mt-2">{{ t('ai.promptPreviewPlanning') }}</div>
                     <pre class="ai-prompt-preview">{{ promptPreview.rendered_prompt }}</pre>
+                    <v-expansion-panels class="mt-2" multiple variant="accordion">
+                      <v-expansion-panel
+                        v-for="section in planningPromptChannelSections"
+                        :key="`planning-${section.key}`"
+                      >
+                        <v-expansion-panel-title>
+                          <div class="d-flex align-center justify-space-between w-100">
+                            <span>{{ section.title }}</span>
+                            <v-chip color="primary" size="x-small" variant="tonal">
+                              {{ section.lines.length }}
+                            </v-chip>
+                          </div>
+                        </v-expansion-panel-title>
+                        <v-expansion-panel-text>
+                          <pre class="ai-prompt-preview">{{ section.lines.join('\n') }}</pre>
+                        </v-expansion-panel-text>
+                      </v-expansion-panel>
+                    </v-expansion-panels>
                     <div class="text-subtitle-2 font-weight-medium mt-2">{{ t('ai.promptPreviewRoleplay') }}</div>
                     <pre class="ai-prompt-preview">{{ promptPreview.rendered_roleplay_prompt || t('common.none') }}</pre>
+                    <v-expansion-panels
+                      v-if="roleplayPromptChannelSections.length > 0"
+                      class="mt-2"
+                      multiple
+                      variant="accordion"
+                    >
+                      <v-expansion-panel
+                        v-for="section in roleplayPromptChannelSections"
+                        :key="`roleplay-${section.key}`"
+                      >
+                        <v-expansion-panel-title>
+                          <div class="d-flex align-center justify-space-between w-100">
+                            <span>{{ section.title }}</span>
+                            <v-chip color="secondary" size="x-small" variant="tonal">
+                              {{ section.lines.length }}
+                            </v-chip>
+                          </div>
+                        </v-expansion-panel-title>
+                        <v-expansion-panel-text>
+                          <pre class="ai-prompt-preview">{{ section.lines.join('\n') }}</pre>
+                        </v-expansion-panel-text>
+                      </v-expansion-panel>
+                    </v-expansion-panels>
                   </div>
                   <div v-else class="empty-state-text">
                     {{ t('ai.noPromptPreview') }}
@@ -1839,11 +1886,13 @@
     loadDebugData,
     loadingDebug,
     loadingTurns,
+    planningPromptChannelSections,
     promptPreview,
     promptPreviewKnowledgeMemories,
     promptPreviewLongTermMemories,
     promptPreviewOperatorMemories,
     promptPreviewSummaryMemories,
+    roleplayPromptChannelSections,
     selectedConversation,
     summarizeJsonText,
     summarizeRawPayload,

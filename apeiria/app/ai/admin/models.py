@@ -27,6 +27,30 @@ class AIRecentTarget:
 
 
 @dataclass(frozen=True)
+class AISessionPromptChannels:
+    """Structured prompt channels for one composed runtime prompt."""
+
+    mode: str
+    system_instructions: tuple[str, ...]
+    persona: str
+    style: str | None
+    relationship: str | None
+    social_policy: str | None
+    tool_policy: str | None
+    future_task: str | None
+    tool_results: tuple[str, ...]
+    operator_memories: tuple[str, ...]
+    summary_memories: tuple[str, ...]
+    long_term_memories: tuple[str, ...]
+    knowledge_memories: tuple[str, ...]
+    conversation_summary: str | None
+    context_priority: tuple[str, ...]
+    conversation_messages: tuple[str, ...]
+    response_rules: tuple[str, ...]
+    instruction: str
+
+
+@dataclass(frozen=True)
 class AISessionPromptPreview:
     """Workbench prompt/context preview for one conversation."""
 
@@ -58,5 +82,7 @@ class AISessionPromptPreview:
     summary_memory_count: int
     long_term_memory_count: int
     knowledge_memory_count: int
+    planning_channels: AISessionPromptChannels
+    roleplay_channels: AISessionPromptChannels | None
     rendered_roleplay_prompt: str | None
     rendered_prompt: str

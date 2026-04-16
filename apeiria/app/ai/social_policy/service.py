@@ -77,9 +77,15 @@ class AISocialPolicyService:
 
 def summarize_social_policy_decision(decision: AISocialPolicyDecision) -> str:
     codes = ", ".join(decision.reason_codes)
-    return (
-        f"action={decision.action}; tool_mode={decision.tool_mode}; "
-        f"reasons={codes or 'none'}; summary={decision.reason_text}"
+    policy_source = str(decision.evidence.get("policy_source") or "unknown")
+    return "\n".join(
+        (
+            f"Action: {decision.action}",
+            f"Tool mode: {decision.tool_mode}",
+            f"Reason codes: {codes or 'none'}",
+            f"Reason: {decision.reason_text}",
+            f"Policy source: {policy_source}",
+        )
     )
 
 
