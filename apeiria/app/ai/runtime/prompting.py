@@ -275,8 +275,10 @@ def _build_response_rules(
         "Ground factual claims in the conversation, tool results, and recalled memory.",
         "Use recalled memory as supporting context for the active exchange.",
         (
-            "Apply relationship context only as expression-layer modulation; "
-            "do not change the persona core."
+            "Relationship context modulates only your expression layer — "
+            "warmth, distance, initiative, and phrasing style. "
+            "It must never override, weaken, or replace any aspect of "
+            "the persona core (identity, goals, personality traits, speech patterns)."
         ),
     ]
     if mode == "planner":

@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from apeiria.app.ai.relationship.scoring import project_emotion
+from apeiria.app.ai.relationship.scoring import TONE_LABEL, project_emotion
 from apeiria.app.ai.relationship.service import ai_relationship_service
 from apeiria.app.ai.relationship.signals import derive_relationship_delta
 
@@ -49,24 +49,21 @@ def format_relationship_context(
     *,
     recent_events: tuple["AIRelationshipEvent", ...] = (),
 ) -> str | None:
-    """Render relationship state into one prompt-side context string."""
+    """Render relationship state into prompt-facing behavioral guidance."""
 
     projection = project_emotion(state)
-    mood_tags = ", ".join(state.mood_tags) if state.mood_tags else "none"
+    tone_label = TONE_LABEL.get(projection.tone, projection.tone)
     sections = [
-        "Relationship modulation affects only warmth, distance, and initiative.",
-        "Do not change the persona core, goals, or identity from this section.",
-        f"Affinity score: {state.score:.2f}",
-        f"Projected tone: {projection.tone}",
-        f"Warmth bias: {projection.warmth_bias:.2f}",
-        f"Initiative bias: {projection.initiative_bias:.2f}",
-        f"Recent mood tags: {mood_tags}",
+        "⚠ 关系调制仅影响表达层（语气、措辞、主动性），不改变人格核心设定。",
+        f"当前关系: {tone_label} (score={state.score:.2f})",
     ]
     if projection.style_modulation:
-        sections.append("Style modulation:")
+        sections.append("表达调制:")
         sections.extend(f"- {line}" for line in projection.style_modulation)
+    if state.mood_tags:
+        sections.append(f"近期互动氛围: {', '.join(state.mood_tags)}")
     if recent_events:
-        sections.append("Recent relationship events:")
+        sections.append("近期关系事件:")
         sections.extend(
             _format_relationship_event_line(event) for event in recent_events
         )
@@ -130,9 +127,9 @@ async def update_relationship_state(
 
 
 def _format_relationship_event_line(event: "AIRelationshipEvent") -> str:
-    mood_tag = event.mood_tag or "none"
-    reason = event.reason or "no explicit reason"
+    reason = event.reason or "无明确原因"
+    delta_sign = "+" if event.score_delta >= 0 else ""
     return (
-        f"- [{event.event_type}] delta={event.score_delta:+.2f}; "
-        f"score_after={event.score_after:.2f}; mood_tag={mood_tag}; reason={reason}"
+        f"- [{event.event_type}] {delta_sign}{event.score_delta:.2f}"
+        f" → {event.score_after:.2f}; {reason}"
     )

@@ -54,7 +54,10 @@ class AIRelationshipEvent:
 
 @dataclass(frozen=True)
 class EmotionProjection:
-    """Lightweight emotion projection for response configuration."""
+    """Lightweight emotion projection for response configuration.
+
+    ``tone`` is one of: close, warm, neutral, guarded, cold.
+    """
 
     tone: str
     initiative_bias: float

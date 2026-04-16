@@ -63,8 +63,7 @@ def build_memory_extraction_prompt(
             "",
             "Allowed memory_kind values: "
             "preference, fact, relationship, note, impression.",
-            "Allowed sentiment polarity values: "
-            "positive, neutral, negative, playful.",
+            "Allowed sentiment polarity values: positive, neutral, negative, playful.",
             "",
             "## Memory extraction rules",
             "Only include information that is useful in future conversations.",
