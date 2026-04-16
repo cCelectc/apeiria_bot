@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 
 from nonebot.log import logger
 
-CURRENT_SCHEMA_VERSION = 22
+CURRENT_SCHEMA_VERSION = 23
 MIN_SUPPORTED_SCHEMA_VERSION = 22
 
 if TYPE_CHECKING:
@@ -28,6 +28,7 @@ CORE_TABLE_NAMES = frozenset(
         "ai_memory_item",
         "ai_model_binding",
         "ai_model_profile",
+        "ai_person_profile",
         "ai_persona",
         "ai_persona_binding",
         "ai_rerank_model",
@@ -623,6 +624,19 @@ async def _migrate_v20_to_v21(session: AsyncSession) -> None:
 
 
 MIGRATIONS[20] = _migrate_v20_to_v21
+
+
+async def _migrate_v22_to_v23(session: AsyncSession) -> None:
+    from nonebot_plugin_orm import Model
+
+    conn = await session.connection()
+    await conn.run_sync(Model.metadata.create_all)
+    await session.commit()
+
+
+MIGRATIONS[22] = _migrate_v22_to_v23
+
+
 async def _normalize_memory_types_to_note(session: AsyncSession) -> None:
     from sqlalchemy import text
 

@@ -64,6 +64,7 @@ class AIReplyPromptChannels:
 
     mode: AIPromptMode
     system: AIPromptSystemChannels
+    person_profile: tuple[str, ...]
     memories: AIPromptMemoryChannels
     tool_results: tuple[str, ...]
     conversation: AIPromptConversationChannel
@@ -82,6 +83,7 @@ class AIReplyPromptContext:
     tool_results: tuple[str, ...]
     memories: list["AIMemoryDefinition"]
     turns: list["ChatContextMessageView"]
+    person_profile: tuple[str, ...]
     conversation_summary: str | None = None
     social_policy: str | None = None
     future_task: str | None = None
@@ -115,6 +117,7 @@ def build_reply_prompt_channels(
             tool_policy=context.tool_policy if mode == "planner" else None,
             future_task=context.future_task,
         ),
+        person_profile=context.person_profile,
         memories=AIPromptMemoryChannels(
             operator=tuple(
                 _format_memory(memory)
@@ -166,6 +169,8 @@ def render_reply_prompt(channels: AIReplyPromptChannels) -> str:  # noqa: C901, 
         sections.append(f"[Style]\n{channels.system.style}")
     if channels.system.relationship:
         sections.append(f"[Relationship]\n{channels.system.relationship}")
+    if channels.person_profile:
+        sections.append("[PersonProfile]\n" + "\n".join(channels.person_profile))
     if channels.system.social_policy:
         sections.append(f"[SocialPolicy]\n{channels.system.social_policy}")
     if channels.system.tool_policy:

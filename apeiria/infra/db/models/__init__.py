@@ -9,6 +9,7 @@ from .ai_memory_embedding import AIMemoryEmbedding
 from .ai_memory_item import AIMemoryItem
 from .ai_model_binding import AIModelBinding
 from .ai_model_profile import AIModelProfile
+from .ai_person_profile import AIPersonProfile
 from .ai_persona import AIPersona
 from .ai_persona_binding import AIPersonaBinding
 from .ai_rerank_model import AIRerankModel
@@ -36,6 +37,7 @@ __all__ = [
     "AIMemoryItem",
     "AIModelBinding",
     "AIModelProfile",
+    "AIPersonProfile",
     "AIPersona",
     "AIPersonaBinding",
     "AIRerankModel",

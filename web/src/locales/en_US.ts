@@ -307,6 +307,7 @@ const enUS = {
     promptChannelPersona: 'Persona Channel',
     promptChannelStyle: 'Style Channel',
     promptChannelRelationship: 'Relationship Channel',
+    promptChannelPersonProfile: 'Person Profile Channel',
     promptChannelSocialPolicy: 'Social Channel',
     promptChannelToolPolicy: 'Tool Policy Channel',
     promptChannelFutureTask: 'Future Task Channel',

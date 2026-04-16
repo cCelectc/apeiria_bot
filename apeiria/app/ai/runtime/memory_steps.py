@@ -16,12 +16,17 @@ from apeiria.app.ai.memory.models import AIMemoryLayer, AIMemoryQuery
 from apeiria.app.ai.memory.service import ai_memory_service
 from apeiria.app.ai.model.models import AIModelRouteQuery
 from apeiria.app.ai.model.service import ai_model_facade
+from apeiria.app.ai.person import ai_person_profile_service
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
     from apeiria.app.ai.conversation.models import ChatSessionIdentity
-    from apeiria.app.ai.memory.models import AIMemoryAnchorType, AIMemoryDefinition
+    from apeiria.app.ai.memory.models import (
+        AIMemoryAnchorType,
+        AIMemoryDefinition,
+        AIMemoryExtractionCandidate,
+    )
 
 
 @dataclass(frozen=True)
@@ -176,6 +181,25 @@ async def recall_memories(
     return recalled
 
 
+async def load_person_profile_for_prompt(
+    session: "AsyncSession",
+    *,
+    identity: "ChatSessionIdentity",
+    user_id: str,
+) -> tuple[str, ...]:
+    """Load prompt-ready person profile lines for the active user."""
+
+    profile = await ai_person_profile_service.build_prompt_profile(
+        session,
+        platform=identity.platform,
+        user_id=identity.subject_id or user_id,
+        group_id=identity.scene_id if identity.scene_type == "group" else None,
+    )
+    if profile is None:
+        return ()
+    return profile.prompt_lines
+
+
 async def retrieve_memories_for_preview(
     session: "AsyncSession",
     *,
@@ -264,7 +288,7 @@ async def store_extracted_memories(
     user_id: str,
     message_text: str,
     source_message_id: str | None,
-) -> None:
+    ) -> None:
     """Extract and store structured long-term memory candidates."""
 
     write_anchors = build_memory_write_anchors(identity, user_id)
@@ -282,29 +306,34 @@ async def store_extracted_memories(
                 continue
             seen_memory_ids.add(row.memory_id)
             existing_memories.append(row)
+    candidates: list[AIMemoryExtractionCandidate] = []
     selected = await ai_model_facade.select_model(
         session,
         query=AIModelRouteQuery(task_class="memory_extraction"),
     )
-    if selected is None:
-        return
+    if selected is not None:
+        try:
+            response = await ai_model_facade.generate_text(
+                selected,
+                prompt=build_memory_extraction_prompt(
+                    message_text,
+                    existing_memories=tuple(existing_memories),
+                ),
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.opt(exception=exc).warning("AI memory extraction failed")
+            response = None
+        if response is not None:
+            candidates = parse_memory_extraction_response(response.content)
 
-    try:
-        response = await ai_model_facade.generate_text(
-            selected,
-            prompt=build_memory_extraction_prompt(
-                message_text,
-                existing_memories=tuple(existing_memories),
-            ),
-        )
-    except Exception as exc:  # noqa: BLE001
-        logger.opt(exception=exc).warning("AI memory extraction failed")
-        return
-
-    if response is None:
-        return
-
-    candidates = parse_memory_extraction_response(response.content)
+    await ai_person_profile_service.ingest_message(
+        session,
+        platform=identity.platform,
+        user_id=identity.subject_id or user_id,
+        message_text=message_text,
+        source_message_id=source_message_id,
+        candidates=tuple(candidates),
+    )
     if not candidates:
         return
 

@@ -30,6 +30,7 @@ class AIRuntimeComposeInput:
     tool_results: tuple[str, ...]
     memories: list["AIMemoryDefinition"]
     turns: list["ChatContextMessageView"]
+    person_profile: tuple[str, ...]
     conversation_summary: str | None = None
     social_policy_summary: str | None = None
     future_task_context: str | None = None
@@ -64,6 +65,7 @@ def build_runtime_prompt_channels(
         AIReplyPromptContext(
             persona=inputs.persona,
             scene_type=inputs.scene_type,
+            person_profile=inputs.person_profile,
             relationship=inputs.relationship,
             tool_policy=inputs.tool_policy if include_tool_policy else None,
             tool_results=inputs.tool_results,

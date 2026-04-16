@@ -26,6 +26,7 @@ from apeiria.app.ai.runtime.composer import (
     compose_roleplay_reply_prompt,
 )
 from apeiria.app.ai.runtime.memory_steps import (
+    load_person_profile_for_prompt,
     recall_memories,
     store_extracted_memories,
 )
@@ -129,6 +130,7 @@ class AIRuntimeReplyState:
     selected: "AISelectedModel"
     skill_runtime: "AIToolRuntimeResult"
     recalled_memories: list["AIMemoryDefinition"]
+    person_profile: tuple[str, ...]
     relationship_context: str | None
     conversation_summary: str | None
     persona: "AIPersonaPromptBundleLike | None"
@@ -430,6 +432,11 @@ class AIRuntimeService:
             session,
             target=relationship_target,
         )
+        person_profile = await load_person_profile_for_prompt(
+            session,
+            identity=identity,
+            user_id=request.user_id,
+        )
         allowed_tools = ai_tool_service.list_allowed_tools(tool_policy)
         social_decision = await ai_social_policy_service.decide(
             session,
@@ -498,6 +505,7 @@ class AIRuntimeService:
                 selected=selected,
                 skill_runtime=skill_runtime,
                 recalled_memories=recalled_memories,
+                person_profile=person_profile,
                 relationship_context=relationship_context,
                 conversation_summary=conversation_summary,
                 persona=persona,
@@ -609,6 +617,7 @@ class AIRuntimeService:
                     AIRuntimeComposeInput(
                         persona=state.persona,
                         scene_type=state.request.identity.scene_type,
+                        person_profile=state.person_profile,
                         relationship=state.relationship_context,
                         tool_policy=skill_runtime.policy_text,
                         tool_results=skill_runtime.result_lines,
@@ -672,6 +681,7 @@ class AIRuntimeService:
                         AIRuntimeComposeInput(
                             persona=state.persona,
                             scene_type=state.request.identity.scene_type,
+                            person_profile=state.person_profile,
                             relationship=state.relationship_context,
                             tool_policy=skill_runtime.policy_text,
                             tool_results=skill_runtime.result_lines,

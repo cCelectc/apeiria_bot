@@ -8,15 +8,26 @@ from apeiria.app.ai.conversation.models import (
 )
 
 
+def select_latest_user_turn(
+    turns: list[ChatMessageDetailView],
+) -> ChatMessageDetailView | None:
+    """Return the latest non-empty user turn in the conversation."""
+
+    for turn in reversed(turns):
+        if turn.author_role == "user" and turn.text_content.strip():
+            return turn
+    return None
+
+
 def select_latest_user_message(
     turns: list[ChatMessageDetailView],
 ) -> str | None:
     """Return the latest non-empty user message in the conversation."""
 
-    for turn in reversed(turns):
-        if turn.author_role == "user" and turn.text_content.strip():
-            return turn.text_content.strip()
-    return None
+    latest_user_turn = select_latest_user_turn(turns)
+    if latest_user_turn is None:
+        return None
+    return latest_user_turn.text_content.strip()
 
 
 def extract_tool_result_lines(

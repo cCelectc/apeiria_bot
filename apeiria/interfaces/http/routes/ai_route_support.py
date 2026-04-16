@@ -243,6 +243,7 @@ def to_ai_session_prompt_channels_item(
         persona=item.persona,
         style=item.style,
         relationship=item.relationship,
+        person_profile=list(item.person_profile),
         social_policy=item.social_policy,
         tool_policy=item.tool_policy,
         future_task=item.future_task,

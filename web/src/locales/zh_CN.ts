@@ -307,6 +307,7 @@ const zhCN = {
     promptChannelPersona: '人格通道',
     promptChannelStyle: '风格通道',
     promptChannelRelationship: '关系通道',
+    promptChannelPersonProfile: '人物档案通道',
     promptChannelSocialPolicy: '社交通道',
     promptChannelToolPolicy: '工具策略通道',
     promptChannelFutureTask: '未来任务通道',

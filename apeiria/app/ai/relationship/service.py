@@ -32,6 +32,24 @@ def _utcnow_naive() -> datetime:
 class AIRelationshipService:
     """Relationship persistence and emotion projection service."""
 
+    async def get_state_snapshot(
+        self,
+        session: AsyncSession,
+        *,
+        platform: str,
+        group_id: str | None,
+        user_id: str,
+    ) -> tuple[float, tuple[str, ...]]:
+        """Return a compact relationship snapshot for adjacent prompt systems."""
+
+        state = await self.get_state(
+            session,
+            platform=platform,
+            group_id=group_id,
+            user_id=user_id,
+        )
+        return state.score, state.mood_tags
+
     async def get_state(
         self,
         session: AsyncSession,

@@ -202,6 +202,7 @@ function buildPromptChannelSections (
   append('persona', t('ai.promptChannelPersona'), [channels.persona])
   append('style', t('ai.promptChannelStyle'), channels.style ? [channels.style] : [])
   append('relationship', t('ai.promptChannelRelationship'), channels.relationship ? [channels.relationship] : [])
+  append('person_profile', t('ai.promptChannelPersonProfile'), channels.person_profile)
   append('social_policy', t('ai.promptChannelSocialPolicy'), channels.social_policy ? [channels.social_policy] : [])
   append('tool_policy', t('ai.promptChannelToolPolicy'), channels.tool_policy ? [channels.tool_policy] : [])
   append('future_task', t('ai.promptChannelFutureTask'), channels.future_task ? [channels.future_task] : [])

@@ -525,6 +525,7 @@ export interface AISessionPromptChannelsItem {
   persona: string
   style: string | null
   relationship: string | null
+  person_profile: string[]
   social_policy: string | null
   tool_policy: string | null
   future_task: string | null

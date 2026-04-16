@@ -21,6 +21,13 @@ _ALLOWED_MEMORY_KINDS: set[AIMemoryKind] = {
     "note",
 }
 _MAX_CANDIDATES = 5
+_PERSON_PROFILE_ALLOWED_KINDS: set[AIMemoryKind] = {
+    "fact",
+    "preference",
+    "relationship",
+}
+_PERSON_PROFILE_MIN_CONFIDENCE = 0.8
+_MAX_PERSON_PROFILE_CANDIDATES = 4
 
 
 def build_memory_extraction_prompt(
@@ -74,6 +81,24 @@ def parse_memory_extraction_response(
         if len(candidates) >= _MAX_CANDIDATES:
             break
     return candidates
+
+
+def select_person_profile_candidates(
+    candidates: list[AIMemoryExtractionCandidate],
+) -> list[AIMemoryExtractionCandidate]:
+    """Choose high-precision candidates that should shape person profiles."""
+
+    selected = [
+        candidate
+        for candidate in candidates
+        if candidate.memory_kind in _PERSON_PROFILE_ALLOWED_KINDS
+        and candidate.confidence >= _PERSON_PROFILE_MIN_CONFIDENCE
+    ]
+    selected.sort(
+        key=lambda item: (item.confidence, item.salience, item.content),
+        reverse=True,
+    )
+    return selected[:_MAX_PERSON_PROFILE_CANDIDATES]
 
 
 def _parse_json_object(content: str) -> dict[str, Any]:

@@ -16,7 +16,7 @@ from apeiria.app.ai.admin.models import (
 )
 from apeiria.app.ai.admin.workbench import (
     extract_tool_result_lines,
-    select_latest_user_message,
+    select_latest_user_turn,
     to_context_turns,
 )
 from apeiria.app.ai.conversation.identity import build_participant_subject_id
@@ -60,7 +60,10 @@ from apeiria.app.ai.runtime.composer import (
     compose_pre_tool_reply_prompt,
     compose_roleplay_reply_prompt,
 )
-from apeiria.app.ai.runtime.memory_steps import retrieve_memories_for_preview
+from apeiria.app.ai.runtime.memory_steps import (
+    load_person_profile_for_prompt,
+    retrieve_memories_for_preview,
+)
 from apeiria.app.ai.runtime.relationship_steps import (
     build_relationship_target,
     load_relationship_context,
@@ -206,6 +209,7 @@ def _to_prompt_channel_preview(
         social_policy=channels.system.social_policy,
         tool_policy=channels.system.tool_policy,
         future_task=channels.system.future_task,
+        person_profile=channels.person_profile,
         tool_results=channels.tool_results,
         operator_memories=channels.memories.operator,
         summary_memories=channels.memories.summary,
@@ -1405,15 +1409,24 @@ class AIAdminService:
                 session_id=scene_id,
                 limit=turn_limit,
             )
-            latest_user_message = select_latest_user_message(turns)
-            user_id = identity.subject_id or identity.scene_id
+            latest_user_turn = select_latest_user_turn(turns)
+            latest_user_message = (
+                latest_user_turn.text_content.strip()
+                if latest_user_turn is not None
+                else None
+            )
+            user_id = identity.subject_id or (
+                latest_user_turn.author_id if latest_user_turn is not None else None
+            )
             prompt_time = turns[-1].created_at if turns else datetime.now(timezone.utc)
             group_name = await _load_group_name(identity)
-            relationship_target = build_relationship_target(identity, user_id)
-            relationship_context = await load_relationship_context(
-                session,
-                target=relationship_target,
-            )
+            relationship_context = None
+            if user_id is not None:
+                relationship_target = build_relationship_target(identity, user_id)
+                relationship_context = await load_relationship_context(
+                    session,
+                    target=relationship_target,
+                )
             persona = await ai_persona_service.build_persona_prompt_bundle(
                 session,
                 target=AIPersonaBindingTarget(
@@ -1421,7 +1434,7 @@ class AIAdminService:
                     group_id=(
                         identity.scene_id if identity.scene_type == "group" else None
                     ),
-                    user_id=identity.subject_id or user_id,
+                    user_id=user_id,
                 ),
                 render_context=build_persona_render_context(
                     bot_id=identity.bot_id,
@@ -1432,7 +1445,12 @@ class AIAdminService:
                     session_id=identity.session_id,
                     group_name=group_name,
                     user_id=user_id,
-                    user_name=_find_recent_user_name(turns, user_id) or user_id,
+                    user_name=(
+                        _find_recent_user_name(turns, user_id)
+                        if user_id is not None
+                        else None
+                    )
+                    or user_id,
                 ),
             )
             tool_policy = await ai_tool_policy_binding_service.resolve_scene_policy(
@@ -1446,7 +1464,7 @@ class AIAdminService:
                     group_id=(
                         identity.scene_id if identity.scene_type == "group" else None
                     ),
-                    user_id=identity.subject_id,
+                    user_id=user_id,
                 ),
             )
             memories = (
@@ -1456,13 +1474,22 @@ class AIAdminService:
                     user_id=user_id,
                     query_text=latest_user_message or "",
                 )
-                if latest_user_message
+                if latest_user_message and user_id is not None
                 else []
             )
             tool_results = extract_tool_result_lines(turns)
             tool_policy_text = summarize_tool_policy(
                 ai_tool_service.registry.list_tools(),
                 tool_policy,
+            )
+            person_profile = (
+                await load_person_profile_for_prompt(
+                    session,
+                    identity=identity,
+                    user_id=user_id,
+                )
+                if user_id is not None
+                else ()
             )
             allowed_tools = ai_tool_service.list_allowed_tools(tool_policy)
             has_tools = bool(allowed_tools)
@@ -1477,7 +1504,7 @@ class AIAdminService:
                     group_id=(
                         identity.scene_id if identity.scene_type == "group" else None
                     ),
-                    user_id=identity.subject_id or user_id,
+                    user_id=user_id,
                 ),
             )
             roleplay_selected = (
@@ -1493,7 +1520,7 @@ class AIAdminService:
                             if identity.scene_type == "group"
                             else None
                         ),
-                        user_id=identity.subject_id or user_id,
+                        user_id=user_id,
                     ),
                 )
                 if has_tools
@@ -1520,7 +1547,7 @@ class AIAdminService:
                             if identity.scene_type == "group"
                             else None
                         ),
-                        user_id=identity.subject_id or user_id,
+                        user_id=user_id,
                     ),
                 )
                 if latest_user_message
@@ -1529,6 +1556,7 @@ class AIAdminService:
             compose_input = AIRuntimeComposeInput(
                 persona=persona,
                 scene_type=identity.scene_type,
+                person_profile=person_profile,
                 relationship=relationship_context,
                 tool_policy=tool_policy_text,
                 tool_results=tool_results,
@@ -1556,6 +1584,7 @@ class AIAdminService:
                     persona="",
                     style=None,
                     relationship=None,
+                    person_profile=(),
                     social_policy=None,
                     tool_policy=None,
                     future_task=None,

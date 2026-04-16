@@ -201,6 +201,7 @@ class AISessionPromptChannelsItem(BaseModel):
     persona: str
     style: str | None = None
     relationship: str | None = None
+    person_profile: list[str] = []
     social_policy: str | None = None
     tool_policy: str | None = None
     future_task: str | None = None
