@@ -54,6 +54,12 @@ from apeiria.app.ai.persona.service import (
     build_persona_render_context,
 )
 from apeiria.app.ai.relationship.service import ai_relationship_service
+from apeiria.app.ai.reply_strategy import (
+    count_recent_bot_turns,
+    latest_bot_turn_at,
+    latest_user_turn_text,
+    summarize_reply_strategy_decision,
+)
 from apeiria.app.ai.runtime.composer import (
     AIRuntimeComposeInput,
     build_runtime_prompt_channels,
@@ -73,13 +79,6 @@ from apeiria.app.ai.runtime.routing import (
     select_pre_tool_reply_task_class,
 )
 from apeiria.app.ai.skills.service import ai_skill_service
-from apeiria.app.ai.social_policy import (
-    ai_social_policy_service,
-    count_recent_bot_turns,
-    latest_bot_turn_at,
-    latest_user_turn_text,
-    summarize_social_policy_decision,
-)
 from apeiria.app.ai.tools.policy import (
     AIToolPolicyBindingCreateInput,
     AIToolPolicyBindingSpec,
@@ -130,6 +129,10 @@ if TYPE_CHECKING:
         AIRelationshipEvent,
         AIRelationshipState,
     )
+    from apeiria.app.ai.reply_strategy.models import (
+        ReplyStrategyDecision,
+        SocialJudgmentInput,
+    )
     from apeiria.app.ai.runtime.prompting import AIReplyPromptChannels
     from apeiria.app.ai.skills.catalog import AISkillDefinition
     from apeiria.app.ai.tools.debug import (
@@ -155,14 +158,14 @@ def _build_prompt_preview_social_input(  # noqa: PLR0913
     allowed_tool_names: tuple[str, ...],
     context_turns: list["ChatContextMessageView"],
 ):
-    from apeiria.app.ai.social_policy import AISocialPolicyInput
+    from apeiria.app.ai.reply_strategy.models import SocialJudgmentInput
 
     decision_time = (
         latest_bot_turn_at(context_turns) or context_turns[-1].created_at
         if context_turns
         else datetime.now(timezone.utc)
     )
-    return AISocialPolicyInput(
+    return SocialJudgmentInput(
         session_id=session_id,
         scene_type=identity.scene_type,
         message_text=latest_user_message,
@@ -176,8 +179,31 @@ def _build_prompt_preview_social_input(  # noqa: PLR0913
         last_bot_turn_at=latest_bot_turn_at(context_turns),
         current_time=decision_time,
         runtime_mode="message",
-        is_direct_wake=(identity.scene_type == "private"),
+        engagement_type="direct",
+        initiative_budget_score=None,
+        consecutive_silence_count=0,
     )
+
+
+async def _evaluate_preview_social_judgment(
+    session: "AsyncSession",
+    *,
+    judgment_input: "SocialJudgmentInput",
+    target: "AIModelBindingTarget",
+) -> "ReplyStrategyDecision":
+    """Run social judgment for workbench preview and wrap as ReplyStrategyDecision."""
+
+    from apeiria.app.ai.reply_strategy.models import judgment_to_decision
+    from apeiria.app.ai.reply_strategy.social_judgment import (
+        evaluate_social_judgment,
+    )
+
+    result = await evaluate_social_judgment(
+        session,
+        judgment_input=judgment_input,
+        target=target,
+    )
+    return judgment_to_decision(result)
 
 
 def _find_recent_user_name(
@@ -1526,9 +1552,9 @@ class AIAdminService:
             )
             context_turns = to_context_turns(turns)
             social_decision = (
-                await ai_social_policy_service.decide(
+                await _evaluate_preview_social_judgment(
                     session,
-                    _build_prompt_preview_social_input(
+                    judgment_input=_build_prompt_preview_social_input(
                         session_id=scene_id,
                         identity=identity,
                         latest_user_message=latest_user_message,
@@ -1561,7 +1587,7 @@ class AIAdminService:
                 memories=memories,
                 conversation_summary=conversation.summary_text,
                 social_policy_summary=(
-                    summarize_social_policy_decision(social_decision)
+                    summarize_reply_strategy_decision(social_decision)
                     if social_decision is not None
                     else None
                 ),

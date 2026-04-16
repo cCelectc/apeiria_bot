@@ -11,7 +11,6 @@ from nonebot.log import logger
 from nonebot_plugin_orm import get_session
 
 from apeiria.app.ai.conversation.service import ChatMessageCreate, chat_session_service
-from apeiria.app.ai.decision.service import ai_decision_service
 from apeiria.app.ai.future_task import ai_future_task_service
 from apeiria.app.ai.model import AIModelBindingTarget, AIModelRouteQuery
 from apeiria.app.ai.model.service import ai_model_facade
@@ -20,6 +19,17 @@ from apeiria.app.ai.persona.service import (
     ai_persona_service,
     build_persona_render_context,
 )
+from apeiria.app.ai.relationship.service import ai_relationship_service
+from apeiria.app.ai.reply_strategy import (
+    ReplyStrategyDecision,
+    build_wake_context,
+    count_recent_bot_turns,
+    latest_bot_turn_at,
+    latest_user_turn_text,
+    reply_strategy_service,
+    summarize_reply_strategy_decision,
+)
+from apeiria.app.ai.reply_strategy.models import WakeContext
 from apeiria.app.ai.runtime.composer import (
     AIRuntimeComposeInput,
     compose_pre_tool_reply_prompt,
@@ -38,15 +48,6 @@ from apeiria.app.ai.runtime.relationship_steps import (
 from apeiria.app.ai.runtime.routing import (
     select_post_tool_reply_task_class,
     select_pre_tool_reply_task_class,
-)
-from apeiria.app.ai.social_policy import (
-    AISocialPolicyDecision,
-    AISocialPolicyInput,
-    ai_social_policy_service,
-    count_recent_bot_turns,
-    latest_bot_turn_at,
-    latest_user_turn_text,
-    summarize_social_policy_decision,
 )
 from apeiria.app.ai.tools.policy import (
     AIToolPolicyBindingTarget,
@@ -82,7 +83,6 @@ if TYPE_CHECKING:
     from apeiria.app.ai.runtime.prompting import AIPersonaPromptBundleLike
     from apeiria.app.ai.tools.models import (
         AIToolPolicy,
-        AIToolSpec,
         AIToolTurnCreateInput,
     )
     from apeiria.app.ai.tools.runtime import AIToolRuntimeResult
@@ -137,7 +137,7 @@ class AIRuntimeReplyState:
     persona: "AIPersonaPromptBundleLike | None"
     turns: list["ChatContextMessageView"]
     tool_policy: "AIToolPolicy"
-    social_decision: AISocialPolicyDecision
+    social_decision: ReplyStrategyDecision
     current_time: datetime
     trace_id: str
 
@@ -264,40 +264,8 @@ async def _load_group_name(identity: "ChatSessionIdentity") -> str | None:
     return group.group_name if group is not None else None
 
 
-def _build_social_policy_input(  # noqa: PLR0913
-    *,
-    request: AIRuntimeReplyRequest,
-    current_time: datetime,
-    turns: list["ChatContextMessageView"],
-    conversation_summary: str | None,
-    relationship_context: str | None,
-    persona_id: str | None,
-    allowed_tools: list["AIToolSpec"],
-) -> AISocialPolicyInput:
-    return AISocialPolicyInput(
-        session_id=request.identity.session_id,
-        scene_type=request.identity.scene_type,
-        message_text=request.message_text,
-        latest_user_turn_text=latest_user_turn_text(turns),
-        conversation_summary=conversation_summary,
-        relationship_context=relationship_context,
-        persona_id=persona_id,
-        available_tool_names=tuple(tool.name for tool in allowed_tools),
-        recent_turn_count=len(turns),
-        recent_bot_turn_count=count_recent_bot_turns(turns),
-        last_bot_turn_at=latest_bot_turn_at(turns),
-        current_time=current_time,
-        runtime_mode=request.runtime_mode,
-        is_direct_wake=(
-            request.runtime_mode == "future_task"
-            or request.identity.scene_type == "private"
-            or request.is_tome
-        ),
-    )
-
-
-def _should_skip_generation(decision: AISocialPolicyDecision) -> bool:
-    return decision.action in {"wait", "suppress"} or not decision.should_speak
+def _should_skip_generation(decision: ReplyStrategyDecision) -> bool:
+    return not decision.should_speak
 
 
 class AIRuntimeService:
@@ -310,12 +278,10 @@ class AIRuntimeService:
     ) -> str | None:
         """Handle one runtime message and optionally return a reply."""
 
-        decision_payload = ai_decision_service.decide_for_event(bot, event)
-        if decision_payload is None:
+        wake_context = build_wake_context(bot, event)
+        if wake_context is None:
             return None
-        decision, message_text = decision_payload
-        if not decision.should_reply:
-            return None
+        message_text = wake_context.message_text
 
         async with get_session() as session:
             ingested = await chat_session_service.ingest_event(session, bot, event)
@@ -345,6 +311,7 @@ class AIRuntimeService:
                     is_tome=is_tome,
                     sentiment=extraction_result.sentiment,
                 ),
+                wake_context=wake_context,
             )
             return result.reply_text if result is not None else None
 
@@ -387,6 +354,7 @@ class AIRuntimeService:
         *,
         trace_id: str,
         request: AIRuntimeReplyRequest,
+        wake_context: WakeContext | None = None,
     ) -> AIRuntimeReplyResult | None:
         current_time = datetime.now(timezone.utc)
         identity = request.identity
@@ -440,17 +408,43 @@ class AIRuntimeService:
             user_id=request.user_id,
         )
         allowed_tools = ai_tool_service.list_allowed_tools(tool_policy)
-        social_decision = await ai_social_policy_service.decide(
+
+        # --- Resolve initiative_bias from relationship projection ---
+        projection = await ai_relationship_service.project_state(
             session,
-            _build_social_policy_input(
-                request=request,
-                current_time=current_time,
-                turns=turns,
-                conversation_summary=conversation_summary,
-                relationship_context=relationship_context,
-                persona_id=persona.persona_id if persona is not None else None,
-                allowed_tools=allowed_tools,
-            ),
+            platform=relationship_target.platform,
+            group_id=relationship_target.group_id,
+            user_id=relationship_target.user_id,
+        )
+        initiative_bias = projection.initiative_bias
+
+        # --- Unified reply strategy pipeline ---
+        if wake_context is None:
+            wake_context = WakeContext(
+                bot_self_id=request.sender_id,
+                user_id=request.user_id,
+                message_text=request.message_text,
+                is_tome=request.is_tome,
+                is_private=identity.scene_type == "private",
+                is_future_task=request.runtime_mode == "future_task",
+            )
+        social_decision = await reply_strategy_service.evaluate(
+            session,
+            wake_context=wake_context,
+            session_id=identity.session_id,
+            scene_type=identity.scene_type,
+            message_text=request.message_text,
+            latest_user_turn_text=latest_user_turn_text(turns),
+            conversation_summary=conversation_summary,
+            relationship_context=relationship_context,
+            persona_id=persona.persona_id if persona is not None else None,
+            available_tool_names=tuple(tool.name for tool in allowed_tools),
+            recent_turn_count=len(turns),
+            recent_bot_turn_count=count_recent_bot_turns(turns),
+            last_bot_turn_at=latest_bot_turn_at(turns),
+            current_time=current_time,
+            runtime_mode=request.runtime_mode,
+            initiative_bias=initiative_bias,
             target=model_target,
         )
         if _should_skip_generation(social_decision):
@@ -583,6 +577,11 @@ class AIRuntimeService:
             messages=turns_after,
         )
         await session.commit()
+        # Only count as "replied" when the reply was actually delivered.
+        # For regular messages delivery_result is None (plugin handler sends).
+        # For future_tasks delivery happens internally and may fail.
+        if delivery_result is None or delivery_result.delivered:
+            reply_strategy_service.notify_replied(identity.session_id)
         logger.info(
             "AI trace {} generated {} reply for session {} with source={} "
             "model={} memories={} tool_observations={}",
@@ -624,7 +623,7 @@ class AIRuntimeService:
                         tool_results=skill_runtime.result_lines,
                         memories=state.recalled_memories,
                         conversation_summary=state.conversation_summary,
-                        social_policy_summary=summarize_social_policy_decision(
+                        social_policy_summary=summarize_reply_strategy_decision(
                             state.social_decision
                         ),
                         future_task_context=_build_future_task_context(
@@ -688,7 +687,7 @@ class AIRuntimeService:
                             tool_results=skill_runtime.result_lines,
                             memories=state.recalled_memories,
                             conversation_summary=state.conversation_summary,
-                            social_policy_summary=summarize_social_policy_decision(
+                            social_policy_summary=summarize_reply_strategy_decision(
                                 state.social_decision
                             ),
                             future_task_context=_build_future_task_context(
