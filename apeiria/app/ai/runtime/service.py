@@ -58,6 +58,7 @@ from apeiria.app.ai.runtime.routing import (
     select_post_tool_reply_task_class,
     select_pre_tool_reply_task_class,
 )
+from apeiria.app.ai.skills.service import ai_skill_service
 from apeiria.app.ai.tools.policy import (
     AIToolPolicyBindingTarget,
     AIToolSceneContext,
@@ -149,6 +150,7 @@ class AIRuntimeReplyState:
     social_decision: ReplyStrategyDecision
     current_time: datetime
     trace_id: str
+    skill_activation: str | None = None
 
 
 def _to_persona_target(
@@ -350,6 +352,7 @@ class AIRuntimeService:
     ) -> str | None:
         """Handle one runtime message and optionally return a reply."""
 
+        ai_skill_service.ensure_initialized()
         wake_context = build_wake_context(bot, event)
         if wake_context is None:
             return None
@@ -555,6 +558,15 @@ class AIRuntimeService:
             )
             return None
 
+        # Resolve prompt-only/workflow skills once before the first compose
+        # pass. Later compose/refinement passes reuse the activation text
+        # stored on state instead of re-running selection.
+        skill_selection = await ai_skill_service.select_skills(
+            session,
+            message_text=request.message_text,
+            conversation_summary=conversation_summary,
+        )
+
         (
             response,
             skill_runtime,
@@ -576,6 +588,7 @@ class AIRuntimeService:
                 social_decision=social_decision,
                 current_time=current_time,
                 trace_id=trace_id,
+                skill_activation=skill_selection.activation_prompt,
             ),
         )
         if response is None or not response.content.strip():
@@ -815,8 +828,8 @@ class AIRuntimeService:
         )
         return response, skill_runtime, post_tool_task_class, delivery_result
 
-    @staticmethod
     def _build_compose_input(
+        self,
         state: AIRuntimeReplyState,
     ) -> AIRuntimeComposeInput:
         return AIRuntimeComposeInput(
@@ -832,6 +845,7 @@ class AIRuntimeService:
                 state.social_decision
             ),
             future_task_context=_build_future_task_context(state.request.future_task),
+            skill_activation=state.skill_activation,
             turns=state.turns,
         )
 

@@ -70,6 +70,7 @@ class AIReplyPromptChannels:
     conversation: AIPromptConversationChannel
     response_rules: tuple[str, ...]
     instruction: str
+    skill_activation: str | None = None
 
 
 @dataclass(frozen=True)
@@ -87,6 +88,7 @@ class AIReplyPromptContext:
     conversation_summary: str | None = None
     social_policy: str | None = None
     future_task: str | None = None
+    skill_activation: str | None = None
 
 
 def build_reply_prompt_channels(
@@ -157,6 +159,7 @@ def build_reply_prompt_channels(
         ),
         response_rules=_build_response_rules(context, mode),
         instruction=_build_instruction(context, mode),
+        skill_activation=context.skill_activation,
     )
 
 
@@ -191,6 +194,8 @@ def render_reply_prompt(channels: AIReplyPromptChannels) -> str:  # noqa: C901, 
         sections.append(f"[ConversationSummary]\n{channels.conversation.summary}")
     if channels.system.future_task:
         sections.append(f"[FutureTask]\n{channels.system.future_task}")
+    if channels.skill_activation:
+        sections.append(f"[ActiveSkills]\n{channels.skill_activation}")
     if channels.conversation.context_priority:
         sections.append(
             "[ContextPriority]\n" + "\n".join(channels.conversation.context_priority)

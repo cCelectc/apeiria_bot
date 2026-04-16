@@ -13,6 +13,7 @@ SkillPermissionSource = Literal[
     "persona",
 ]
 SkillIdempotency = Literal["idempotent", "non_idempotent"]
+SkillOrigin = Literal["tool", "file"]
 
 
 @dataclass(frozen=True)
@@ -33,3 +34,6 @@ class AISkillDefinition:
     skill_name: str
     description: str
     contract: AISkillContract
+    origin: SkillOrigin = "tool"
+    entry_mode: str = "tool_backed"
+    tags: tuple[str, ...] = ()

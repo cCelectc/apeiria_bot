@@ -34,6 +34,7 @@ class AIRuntimeComposeInput:
     conversation_summary: str | None = None
     social_policy_summary: str | None = None
     future_task_context: str | None = None
+    skill_activation: str | None = None
 
 
 def compose_reply_prompt(
@@ -73,6 +74,7 @@ def build_runtime_prompt_channels(
             conversation_summary=inputs.conversation_summary,
             social_policy=inputs.social_policy_summary,
             future_task=inputs.future_task_context,
+            skill_activation=inputs.skill_activation,
             turns=inputs.turns,
         ),
         mode=mode,
