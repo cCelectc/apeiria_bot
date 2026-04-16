@@ -40,6 +40,7 @@ from apeiria.app.ai.reply_strategy import (
 from apeiria.app.ai.reply_strategy.models import WakeContext
 from apeiria.app.ai.runtime.composer import (
     AIRuntimeComposeInput,
+    build_runtime_prompt_channels,
     compose_pre_tool_reply_prompt,
     compose_roleplay_reply_prompt,
 )
@@ -667,32 +668,21 @@ class AIRuntimeService:
     ]:
         skill_runtime = state.skill_runtime
         has_tools = bool(skill_runtime.available_tools)
+
+        if has_tools:
+            return await self._generate_with_tool_loop(session, state)
+
+        # No tools — direct generation with flat prompt
         response = await self._safe_generate(
             AIRuntimeGenerationRequest(
                 selected=state.selected,
                 prompt=compose_pre_tool_reply_prompt(
-                    AIRuntimeComposeInput(
-                        persona=state.persona,
-                        scene_type=state.request.identity.scene_type,
-                        person_profile=state.person_profile,
-                        relationship=state.relationship_context,
-                        tool_policy=skill_runtime.policy_text,
-                        tool_results=skill_runtime.result_lines,
-                        memories=state.recalled_memories,
-                        conversation_summary=state.conversation_summary,
-                        social_policy_summary=summarize_reply_strategy_decision(
-                            state.social_decision
-                        ),
-                        future_task_context=_build_future_task_context(
-                            state.request.future_task
-                        ),
-                        turns=state.turns,
-                    ),
-                    has_tools=has_tools,
+                    self._build_compose_input(state),
+                    has_tools=False,
                 ),
                 trace_id=state.trace_id,
                 session_id=state.request.identity.session_id,
-                tools=skill_runtime.available_tools,
+                tools=(),
                 failure_stage="reply generation failed",
             )
         )
@@ -705,22 +695,65 @@ class AIRuntimeService:
             message_count=len(state.turns),
         )
 
+        delivery_result = await self._deliver_generated_reply(
+            state.request,
+            response.content.strip() if response.content else "",
+        )
+        return response, state.skill_runtime, None, delivery_result
+
+    async def _generate_with_tool_loop(
+        self,
+        session: "AsyncSession",
+        state: AIRuntimeReplyState,
+    ) -> tuple[
+        "AIModelGenerateResponse | None",
+        "AIToolRuntimeResult",
+        str | None,
+        MessageDeliveryResult | None,
+    ]:
+        """Messages-based multi-round tool calling flow."""
+
+        from apeiria.app.ai.runtime.message_builder import build_chat_messages
+
+        # Build structured messages from prompt channels
+        compose_input = self._build_compose_input(state)
+        channels = build_runtime_prompt_channels(
+            compose_input, mode="planner", include_tool_policy=True
+        )
+        messages = list(build_chat_messages(channels, state.turns))
+
+        # Run the multi-round tool loop
+        tool_request = AIToolRuntimeRequest(
+            session_id=state.request.identity.session_id,
+            source_message_id=state.request.source_message_id,
+            message_text=state.request.message_text,
+            policy=state.tool_policy,
+            recalled_memories=tuple(state.recalled_memories),
+            relationship_context=state.relationship_context,
+            current_time=state.current_time,
+            tool_mode=state.social_decision.tool_mode,
+        )
+
+        skill_runtime = await ai_tool_runtime.run_tool_loop(
+            session,
+            tool_request,
+            messages=messages,
+            tools=state.skill_runtime.available_tools,
+            selected=state.selected,
+        )
+
+        response = skill_runtime.final_response
         post_tool_task_class = None
-        if response.tool_calls:
-            skill_runtime = await ai_tool_runtime.execute_tool_calls(
-                session,
-                AIToolRuntimeRequest(
-                    session_id=state.request.identity.session_id,
-                    source_message_id=state.request.source_message_id,
-                    message_text=state.request.message_text,
-                    policy=state.tool_policy,
-                    recalled_memories=tuple(state.recalled_memories),
-                    relationship_context=state.relationship_context,
-                    current_time=state.current_time,
-                    tool_mode=state.social_decision.tool_mode,
-                ),
-                tool_calls=response.tool_calls,
+
+        if response is not None:
+            _record_context_usage(
+                state.request.identity.session_id,
+                response=response,
+                message_count=len(state.turns),
             )
+
+        # If tools were used, persist tool observation turns
+        if skill_runtime.turns:
             await _append_tool_observation_turns(
                 session,
                 identity=state.request.identity,
@@ -729,49 +762,78 @@ class AIRuntimeService:
             )
             await session.commit()
             post_tool_task_class = select_post_tool_reply_task_class()
-            roleplay_selected = await ai_model_facade.select_model(
-                session,
-                query=AIModelRouteQuery(task_class=post_tool_task_class),
-                target=_to_model_target(
-                    state.request.identity,
-                    state.request.user_id,
-                ),
-            )
-            response = await self._safe_generate(
-                AIRuntimeGenerationRequest(
-                    selected=roleplay_selected or state.selected,
-                    prompt=compose_roleplay_reply_prompt(
-                        AIRuntimeComposeInput(
-                            persona=state.persona,
-                            scene_type=state.request.identity.scene_type,
-                            person_profile=state.person_profile,
-                            relationship=state.relationship_context,
-                            tool_policy=skill_runtime.policy_text,
-                            tool_results=skill_runtime.result_lines,
-                            memories=state.recalled_memories,
-                            conversation_summary=state.conversation_summary,
-                            social_policy_summary=summarize_reply_strategy_decision(
-                                state.social_decision
-                            ),
-                            future_task_context=_build_future_task_context(
-                                state.request.future_task
-                            ),
-                            turns=state.turns,
-                        )
+
+            # Optional roleplay refinement pass for persona consistency
+            if response is not None and response.content.strip():
+                roleplay_selected = await ai_model_facade.select_model(
+                    session,
+                    query=AIModelRouteQuery(task_class=post_tool_task_class),
+                    target=_to_model_target(
+                        state.request.identity,
+                        state.request.user_id,
                     ),
-                    trace_id=state.trace_id,
-                    session_id=state.request.identity.session_id,
-                    tools=(),
-                    failure_stage="reply generation failed after tool calls",
                 )
-            )
+                refinement = await self._safe_generate(
+                    AIRuntimeGenerationRequest(
+                        selected=roleplay_selected or state.selected,
+                        prompt=compose_roleplay_reply_prompt(
+                            AIRuntimeComposeInput(
+                                persona=state.persona,
+                                scene_type=state.request.identity.scene_type,
+                                person_profile=state.person_profile,
+                                relationship=state.relationship_context,
+                                tool_policy=skill_runtime.policy_text,
+                                tool_results=skill_runtime.result_lines,
+                                memories=state.recalled_memories,
+                                conversation_summary=state.conversation_summary,
+                                social_policy_summary=(
+                                    summarize_reply_strategy_decision(
+                                        state.social_decision
+                                    )
+                                ),
+                                future_task_context=_build_future_task_context(
+                                    state.request.future_task
+                                ),
+                                turns=state.turns,
+                            )
+                        ),
+                        trace_id=state.trace_id,
+                        session_id=state.request.identity.session_id,
+                        tools=(),
+                        failure_stage=("reply generation failed after tool calls"),
+                    )
+                )
+                if refinement is not None:
+                    response = refinement
+
         if response is None:
             return None, skill_runtime, post_tool_task_class, None
+
         delivery_result = await self._deliver_generated_reply(
             state.request,
             response.content.strip() if response.content else "",
         )
         return response, skill_runtime, post_tool_task_class, delivery_result
+
+    @staticmethod
+    def _build_compose_input(
+        state: AIRuntimeReplyState,
+    ) -> AIRuntimeComposeInput:
+        return AIRuntimeComposeInput(
+            persona=state.persona,
+            scene_type=state.request.identity.scene_type,
+            person_profile=state.person_profile,
+            relationship=state.relationship_context,
+            tool_policy=state.skill_runtime.policy_text,
+            tool_results=state.skill_runtime.result_lines,
+            memories=state.recalled_memories,
+            conversation_summary=state.conversation_summary,
+            social_policy_summary=summarize_reply_strategy_decision(
+                state.social_decision
+            ),
+            future_task_context=_build_future_task_context(state.request.future_task),
+            turns=state.turns,
+        )
 
     async def _deliver_generated_reply(
         self,

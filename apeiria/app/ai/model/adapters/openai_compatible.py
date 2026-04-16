@@ -14,6 +14,7 @@ from apeiria.app.ai.model.adapter import (
     AIModelEmbeddingResponse,
     AIModelGenerateRequest,
     AIModelGenerateResponse,
+    AIModelMessage,
     AIModelRerankRequest,
     AIModelRerankResponse,
     AIModelSpeechRequest,
@@ -71,7 +72,11 @@ class OpenAICompatibleProvider:
 
         payload: dict[str, Any] = {
             "model": request.model_name,
-            "messages": [{"role": "user", "content": request.prompt}],
+            "messages": (
+                _build_openai_messages(request.messages)
+                if request.messages
+                else [{"role": "user", "content": request.prompt}]
+            ),
         }
         if request.tools:
             payload["tools"] = [
@@ -393,3 +398,40 @@ def _parse_tool_arguments(arguments: Any) -> dict[str, Any]:
     except json.JSONDecodeError:
         return {}
     return parsed if isinstance(parsed, dict) else {}
+
+
+def _build_openai_messages(
+    messages: tuple[AIModelMessage, ...],
+) -> list[dict[str, Any]]:
+    """Convert ``AIModelMessage`` sequence to OpenAI chat message format."""
+
+    result: list[dict[str, Any]] = []
+    for msg in messages:
+        if msg.role == "system":
+            result.append({"role": "system", "content": msg.content})
+        elif msg.role == "user":
+            result.append({"role": "user", "content": msg.content})
+        elif msg.role == "assistant":
+            entry: dict[str, Any] = {"role": "assistant", "content": msg.content}
+            if msg.tool_calls:
+                entry["tool_calls"] = [
+                    {
+                        "id": tc.tool_call_id,
+                        "type": "function",
+                        "function": {
+                            "name": tc.name,
+                            "arguments": json.dumps(tc.arguments, ensure_ascii=False),
+                        },
+                    }
+                    for tc in msg.tool_calls
+                ]
+            result.append(entry)
+        elif msg.role == "tool":
+            result.append(
+                {
+                    "role": "tool",
+                    "tool_call_id": msg.tool_call_id or "",
+                    "content": msg.content,
+                }
+            )
+    return result

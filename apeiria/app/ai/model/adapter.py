@@ -24,6 +24,25 @@ class AIModelToolCall:
     arguments: dict[str, Any]
 
 
+AIModelMessageRole = Literal["system", "user", "assistant", "tool"]
+
+
+@dataclass(frozen=True)
+class AIModelMessage:
+    """One message in a chat conversation.
+
+    - ``role="system"`` — system-level instructions (persona, rules).
+    - ``role="user"`` — user turn.
+    - ``role="assistant"`` — assistant turn, may carry ``tool_calls``.
+    - ``role="tool"`` — tool result, must have ``tool_call_id``.
+    """
+
+    role: AIModelMessageRole
+    content: str
+    tool_call_id: str | None = None
+    tool_calls: tuple[AIModelToolCall, ...] = ()
+
+
 @dataclass(frozen=True)
 class AIModelCatalogItem:
     """One source-reported model catalog item."""
@@ -34,11 +53,16 @@ class AIModelCatalogItem:
 
 @dataclass(frozen=True)
 class AIModelGenerateRequest:
-    """Unified text generation request for Apeiria AI services."""
+    """Unified text generation request for Apeiria AI services.
+
+    When ``messages`` is non-empty, adapters use it directly (chat mode).
+    When empty, ``prompt`` is wrapped as a single user message (legacy mode).
+    """
 
     source_id: str
     model_name: str
-    prompt: str
+    prompt: str = ""
+    messages: tuple[AIModelMessage, ...] = ()
     temperature: float | None = None
     max_tokens: int | None = None
     tools: tuple[AIModelToolDefinition, ...] = ()

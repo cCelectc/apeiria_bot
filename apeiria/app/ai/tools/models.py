@@ -6,9 +6,13 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Literal
 
 if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable
     from datetime import datetime
 
+    from sqlalchemy.ext.asyncio import AsyncSession
+
 AIToolRiskLevel = Literal["low", "medium", "high"]
+AIToolOrigin = Literal["builtin", "plugin", "skill"]
 AIToolIntentKind = Literal[
     "observe_read_only",
     "invoke_capability",
@@ -21,7 +25,12 @@ AIToolExecutionStatus = Literal["success", "error", "timeout"]
 
 @dataclass(frozen=True)
 class AIToolSpec:
-    """Pure tool declaration visible to the AI runtime layer."""
+    """Declarative tool definition visible to the AI runtime layer.
+
+    When ``entrypoint`` is provided, the tool can be executed generically
+    without per-tool dispatch logic.  The ``parameters`` tuple describes
+    the function signature for JSON Schema generation.
+    """
 
     name: str
     description: str
@@ -29,6 +38,33 @@ class AIToolSpec:
     concurrency_safe: bool
     risk_level: AIToolRiskLevel = "low"
     is_capability_bridge: bool = False
+    parameters: tuple[tuple[str, str, str, bool, tuple[str, ...] | None, Any], ...] = ()
+    entrypoint: Callable[..., Awaitable[AIToolResult]] | None = None
+    origin: AIToolOrigin = "builtin"
+    tags: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class AIToolResult:
+    """Unified return type for declarative tool handlers."""
+
+    summary: str
+    output_payload: Any = None
+    status: AIToolExecutionStatus = "success"
+
+
+@dataclass
+class AIToolExecutionContext:
+    """Unified context injected into every declarative tool handler."""
+
+    session: AsyncSession
+    session_id: str
+    source_message_id: str | None
+    message_text: str
+    policy: AIToolPolicy
+    recalled_memory_ids: tuple[str, ...]
+    recalled_memory_contents: tuple[str, ...]
+    relationship_context: str | None
 
 
 @dataclass(frozen=True)

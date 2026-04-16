@@ -12,6 +12,7 @@ from apeiria.app.ai.model.adapter import (
     AIModelEmbeddingResponse,
     AIModelGenerateRequest,
     AIModelGenerateResponse,
+    AIModelMessage,
     AIModelRerankRequest,
     AIModelRerankResponse,
     AIModelSpeechRequest,
@@ -70,11 +71,16 @@ class AnthropicCompatibleProvider:
         if not api_key:
             raise AnthropicCompatibleProviderConfigError("api_key")
 
+        system_text, chat_messages = _build_anthropic_payload(
+            request.messages, request.prompt
+        )
         payload: dict[str, Any] = {
             "model": request.model_name,
-            "messages": [{"role": "user", "content": request.prompt}],
+            "messages": chat_messages,
             "max_tokens": request.max_tokens or 1024,
         }
+        if system_text:
+            payload["system"] = system_text
         if request.temperature is not None:
             payload["temperature"] = request.temperature
         if request.tools:
@@ -165,12 +171,13 @@ def _extract_anthropic_content(response: Any) -> str:
     content = getattr(response, "content", None)
     if not isinstance(content, list):
         return ""
+    parts: list[str] = []
     for block in content:
         if getattr(block, "type", None) == "text":
             text = getattr(block, "text", None)
             if isinstance(text, str):
-                return text
-    return ""
+                parts.append(text)
+    return "\n".join(parts)
 
 
 def _extract_anthropic_models(page: Any) -> list[AIModelCatalogItem]:
@@ -213,3 +220,97 @@ def _extract_anthropic_tool_calls(response: Any) -> list[AIModelToolCall]:
             )
         )
     return extracted
+
+
+def _build_anthropic_payload(
+    messages: tuple[AIModelMessage, ...],
+    fallback_prompt: str,
+) -> tuple[str, list[dict[str, Any]]]:
+    """Convert ``AIModelMessage`` sequence to Anthropic API format.
+
+    Returns ``(system_text, messages_list)``.  Anthropic requires:
+    - ``system`` as a top-level parameter (not inside messages)
+    - ``tool_result`` content blocks inside ``user`` messages
+    - Messages must strictly alternate ``user`` / ``assistant``
+    """
+
+    if not messages:
+        return "", [{"role": "user", "content": fallback_prompt}]
+
+    system_parts: list[str] = []
+    chat: list[dict[str, Any]] = []
+
+    for msg in messages:
+        if msg.role == "system":
+            system_parts.append(msg.content)
+            continue
+
+        if msg.role == "user":
+            _append_anthropic_user(chat, msg.content)
+
+        elif msg.role == "assistant":
+            content: list[dict[str, Any]] = []
+            if msg.content:
+                content.append({"type": "text", "text": msg.content})
+            content.extend(
+                {
+                    "type": "tool_use",
+                    "id": tc.tool_call_id,
+                    "name": tc.name,
+                    "input": tc.arguments,
+                }
+                for tc in msg.tool_calls
+            )
+            chat.append(
+                {
+                    "role": "assistant",
+                    "content": content or [{"type": "text", "text": ""}],
+                }
+            )
+
+        elif msg.role == "tool":
+            # Anthropic requires tool_result inside a user message.
+            tool_result_block: dict[str, Any] = {
+                "type": "tool_result",
+                "tool_use_id": msg.tool_call_id or "",
+                "content": msg.content,
+            }
+            # Merge into the last message if it's already a user message
+            # with list content (i.e. another tool_result).
+            if (
+                chat
+                and chat[-1]["role"] == "user"
+                and isinstance(chat[-1]["content"], list)
+            ):
+                chat[-1]["content"].append(tool_result_block)
+            else:
+                chat.append(
+                    {
+                        "role": "user",
+                        "content": [tool_result_block],
+                    }
+                )
+
+    system_text = "\n\n".join(system_parts) if system_parts else ""
+    return system_text, chat
+
+
+def _append_anthropic_user(
+    chat: list[dict[str, Any]],
+    content: str,
+) -> None:
+    """Append a user message, merging with the previous user message if needed.
+
+    Anthropic requires strict user/assistant alternation.  Consecutive user
+    messages (common in group chats) are merged into one.
+    """
+
+    if chat and chat[-1]["role"] == "user":
+        prev = chat[-1]["content"]
+        if isinstance(prev, str):
+            chat[-1]["content"] = f"{prev}\n{content}"
+        elif isinstance(prev, list):
+            # Previous user message has tool_result blocks — append text block
+            prev.append({"type": "text", "text": content})
+    else:
+        chat.append({"role": "user", "content": content})

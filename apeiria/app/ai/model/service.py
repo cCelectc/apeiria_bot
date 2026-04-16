@@ -26,6 +26,7 @@ if TYPE_CHECKING:
         AIModelCatalogItem,
         AIModelEmbeddingResponse,
         AIModelGenerateResponse,
+        AIModelMessage,
         AIModelRerankResponse,
         AIModelSpeechResponse,
         AIModelToolDefinition,
@@ -100,7 +101,8 @@ class AIModelFacade:
         self,
         selected: "AISelectedModel",
         *,
-        prompt: str,
+        prompt: str = "",
+        messages: tuple["AIModelMessage", ...] = (),
         tools: tuple["AIModelToolDefinition", ...] = (),
     ) -> "AIModelGenerateResponse | None":
         api_key = ai_source_service.get_source_api_key(selected.source)
@@ -114,6 +116,7 @@ class AIModelFacade:
                 source_id=selected.source.source_id,
                 model_name=model_name,
                 prompt=prompt,
+                messages=messages,
                 tools=tools,
             )
         )
