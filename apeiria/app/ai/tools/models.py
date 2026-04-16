@@ -70,6 +70,7 @@ class AIToolExecutionView:
     output_json: str | None
     created_at: datetime
 
+
 @dataclass(frozen=True)
 class AIToolIntent:
     """One planned tool action awaiting execution."""
@@ -92,6 +93,7 @@ class AIToolObservationRequest:
     recalled_memory_contents: tuple[str, ...]
     relationship_context: str | None
     execution_timeout_seconds: float | None = None
+
 
 @dataclass(frozen=True)
 class AIMemoryQueryObservationInput:

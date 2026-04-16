@@ -601,7 +601,32 @@ export interface AIRelationshipStateItem {
   user_id: string
   score: number
   mood_tags: string[]
-  last_event_at: string
+  last_event_at: string | null
+  last_decay_at: string | null
+  projected_tone: string
+  warmth_bias: number
+  initiative_bias: number
+  style_modulation: string[]
+  effective_score: number
+  effective_mood_tags: string[]
+  effective_projected_tone: string
+  effective_warmth_bias: number
+  effective_initiative_bias: number
+  effective_style_modulation: string[]
+}
+
+export interface AIRelationshipEventItem {
+  event_id: string
+  affinity_id: string
+  platform: string
+  group_id: string | null
+  user_id: string
+  event_type: string
+  score_delta: number
+  score_after: number
+  mood_tag: string | null
+  reason: string | null
+  created_at: string
 }
 
 export interface AIModelCatalogItem {
@@ -1228,6 +1253,15 @@ export function updateAIRelationshipScore (payload: {
   score: number
 }) {
   return client.patch<AIRelationshipStateItem>('/ai/relationships', payload)
+}
+
+export function getAIRelationshipEvents (params: {
+  platform: string
+  user_id: string
+  group_id?: string
+  limit?: number
+}) {
+  return client.get<AIRelationshipEventItem[]>('/ai/relationships/events', { params })
 }
 
 export function getAICapabilities () {

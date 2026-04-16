@@ -2,8 +2,13 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
+from apeiria.app.ai.relationship.scoring import (
+    apply_inactivity_decay,
+    project_emotion,
+)
 from apeiria.interfaces.http.schemas.ai_models import (
     AICapabilityItem,
     AICapabilityPreviewItem,
@@ -16,6 +21,7 @@ from apeiria.interfaces.http.schemas.ai_models import (
     AIPersonaBindingItem,
     AIPersonaItem,
     AIRecentTargetItem,
+    AIRelationshipEventItem,
     AIRelationshipStateItem,
     AISessionItem,
     AISessionPromptChannelsItem,
@@ -55,7 +61,10 @@ if TYPE_CHECKING:
         AIPersonaBindingSpec,
         AIPersonaDefinition,
     )
-    from apeiria.app.ai.relationship.models import AIRelationshipState
+    from apeiria.app.ai.relationship.models import (
+        AIRelationshipEvent,
+        AIRelationshipState,
+    )
     from apeiria.app.ai.skills.catalog import AISkillDefinition
     from apeiria.app.ai.tools.debug import (
         AICapabilityDefinition,
@@ -292,9 +301,7 @@ def to_ai_session_prompt_preview_item(
         summary_memory_count=item.summary_memory_count,
         long_term_memory_count=item.long_term_memory_count,
         knowledge_memory_count=item.knowledge_memory_count,
-        planning_channels=to_ai_session_prompt_channels_item(
-            item.planning_channels
-        ),
+        planning_channels=to_ai_session_prompt_channels_item(item.planning_channels),
         roleplay_channels=(
             to_ai_session_prompt_channels_item(item.roleplay_channels)
             if item.roleplay_channels is not None
@@ -356,6 +363,12 @@ def to_ai_model_catalog_item(item: "DomainModelCatalogItem") -> AIModelCatalogIt
 def to_ai_relationship_state_item(
     item: "AIRelationshipState",
 ) -> AIRelationshipStateItem:
+    projection = project_emotion(item)
+    effective_state = apply_inactivity_decay(
+        item,
+        current_time=datetime.now(timezone.utc),
+    )
+    effective_projection = project_emotion(effective_state)
     return AIRelationshipStateItem(
         affinity_id=item.affinity_id,
         platform=item.platform,
@@ -363,7 +376,36 @@ def to_ai_relationship_state_item(
         user_id=item.user_id,
         score=item.score,
         mood_tags=list(item.mood_tags),
-        last_event_at=item.last_event_at.isoformat(),
+        last_event_at=item.last_event_at.isoformat() if item.last_event_at else None,
+        last_decay_at=item.last_decay_at.isoformat() if item.last_decay_at else None,
+        projected_tone=projection.tone,
+        warmth_bias=projection.warmth_bias,
+        initiative_bias=projection.initiative_bias,
+        style_modulation=list(projection.style_modulation),
+        effective_score=effective_state.score,
+        effective_mood_tags=list(effective_state.mood_tags),
+        effective_projected_tone=effective_projection.tone,
+        effective_warmth_bias=effective_projection.warmth_bias,
+        effective_initiative_bias=effective_projection.initiative_bias,
+        effective_style_modulation=list(effective_projection.style_modulation),
+    )
+
+
+def to_ai_relationship_event_item(
+    item: "AIRelationshipEvent",
+) -> AIRelationshipEventItem:
+    return AIRelationshipEventItem(
+        event_id=item.event_id,
+        affinity_id=item.affinity_id,
+        platform=item.platform,
+        group_id=item.group_id,
+        user_id=item.user_id,
+        event_type=item.event_type,
+        score_delta=item.score_delta,
+        score_after=item.score_after,
+        mood_tag=item.mood_tag,
+        reason=item.reason,
+        created_at=item.created_at.isoformat(),
     )
 
 

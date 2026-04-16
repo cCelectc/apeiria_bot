@@ -1176,7 +1176,11 @@
                   <div class="relationship-meta-grid text-body-2">
                     <div>
                       <span class="text-medium-emphasis">{{ t('ai.relationshipScore') }}</span>
-                      <div class="mt-1">{{ relationship.score.toFixed(1) }}</div>
+                      <div class="mt-1">{{ relationship.effective_score.toFixed(1) }}</div>
+                    </div>
+                    <div>
+                      <span class="text-medium-emphasis">{{ t('ai.relationshipProjectedTone') }}</span>
+                      <div class="mt-1">{{ relationship.effective_projected_tone || t('common.none') }}</div>
                     </div>
                     <div>
                       <span class="text-medium-emphasis">{{ t('ai.relationshipMoodTags') }}</span>
@@ -1185,6 +1189,36 @@
                     <div>
                       <span class="text-medium-emphasis">{{ t('ai.relationshipLastEventAt') }}</span>
                       <div class="mt-1">{{ relationship.last_event_at || t('common.none') }}</div>
+                    </div>
+                    <div>
+                      <span class="text-medium-emphasis">{{ t('ai.relationshipLastDecayAt') }}</span>
+                      <div class="mt-1">{{ relationship.last_decay_at || t('common.none') }}</div>
+                    </div>
+                    <div>
+                      <span class="text-medium-emphasis">{{ t('ai.relationshipWarmthBias') }}</span>
+                      <div class="mt-1">{{ formatSignedRelationshipValue(relationship.effective_warmth_bias) }}</div>
+                    </div>
+                    <div>
+                      <span class="text-medium-emphasis">{{ t('ai.relationshipInitiativeBias') }}</span>
+                      <div class="mt-1">{{ formatSignedRelationshipValue(relationship.effective_initiative_bias) }}</div>
+                    </div>
+                  </div>
+
+                  <div>
+                    <div class="text-body-2 text-medium-emphasis mb-2">{{ t('ai.relationshipStyleModulation') }}</div>
+                    <div v-if="relationship.effective_style_modulation.length > 0" class="d-flex flex-wrap ga-2">
+                      <v-chip
+                        v-for="line in relationship.effective_style_modulation"
+                        :key="`${relationship.affinity_id}-${line}`"
+                        color="primary"
+                        size="small"
+                        variant="tonal"
+                      >
+                        {{ line }}
+                      </v-chip>
+                    </div>
+                    <div v-else class="empty-state-hint">
+                      {{ t('common.none') }}
                     </div>
                   </div>
 
@@ -1205,6 +1239,53 @@
                     <v-btn color="primary" :loading="savingRelationship" @click="saveRelationship">
                       {{ t('ai.saveRelationship') }}
                     </v-btn>
+                  </div>
+
+                  <div>
+                    <div class="d-flex align-center justify-space-between mb-2">
+                      <div class="text-body-2 text-medium-emphasis">{{ t('ai.relationshipEvents') }}</div>
+                      <v-btn
+                        icon="mdi-refresh"
+                        :loading="loadingRelationshipEvents"
+                        size="small"
+                        variant="text"
+                        @click="selectRelationship(relationship)"
+                      />
+                    </div>
+                    <v-list
+                      v-if="relationshipEvents.length > 0"
+                      class="bg-transparent relation-event-list"
+                      density="comfortable"
+                      lines="three"
+                    >
+                      <v-list-item
+                        v-for="event in relationshipEvents"
+                        :key="event.event_id"
+                        rounded="lg"
+                      >
+                        <v-list-item-title class="d-flex flex-wrap ga-2 align-center">
+                          <span>{{ formatRelationshipEventType(event.event_type) }}</span>
+                          <v-chip color="primary" size="x-small" variant="tonal">
+                            {{ formatSignedRelationshipValue(event.score_delta) }}
+                          </v-chip>
+                          <v-chip color="default" size="x-small" variant="tonal">
+                            {{ t('ai.relationshipScoreAfter') }}: {{ event.score_after.toFixed(2) }}
+                          </v-chip>
+                        </v-list-item-title>
+                        <v-list-item-subtitle class="mt-1">
+                          {{ event.reason || t('common.none') }}
+                        </v-list-item-subtitle>
+                        <template #append>
+                          <div class="text-caption text-medium-emphasis text-right">
+                            <div>{{ event.created_at }}</div>
+                            <div>{{ event.mood_tag || t('common.none') }}</div>
+                          </div>
+                        </template>
+                      </v-list-item>
+                    </v-list>
+                    <div v-else class="empty-state-hint">
+                      {{ loadingRelationshipEvents ? t('common.loading') : t('ai.noRelationshipEvents') }}
+                    </div>
                   </div>
                 </div>
                 <div v-else>
@@ -2056,12 +2137,15 @@
 
   const {
     loadRelationshipForTarget,
+    loadingRelationshipEvents,
     loadRelationships,
     loadingSelectedRelationship,
     relationship,
+    relationshipEvents,
     relationshipForm,
     saveRelationship,
     savingRelationship,
+    selectRelationship,
   } = useAIRelationshipTab(t)
 
   const scopeOptions = computed(() => [
@@ -2363,12 +2447,29 @@
   })
 
   const relationshipMoodText = computed(() => {
-    const tags = relationship.value?.mood_tags ?? []
+    const tags = relationship.value?.effective_mood_tags ?? []
     if (tags.length === 0) {
       return t('common.none')
     }
     return tags.join('、')
   })
+
+  function formatSignedRelationshipValue (value: number) {
+    return `${value >= 0 ? '+' : ''}${value.toFixed(2)}`
+  }
+
+  function formatRelationshipEventType (value: string) {
+    if (value === 'message') {
+      return t('ai.relationshipEventMessage')
+    }
+    if (value === 'manual') {
+      return t('ai.relationshipEventManual')
+    }
+    if (value === 'absence_decay') {
+      return t('ai.relationshipEventDecay')
+    }
+    return value
+  }
 
   function formatMemoryScore (value: number) {
     return value.toFixed(2)

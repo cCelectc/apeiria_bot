@@ -182,9 +182,7 @@ def render_reply_prompt(channels: AIReplyPromptChannels) -> str:  # noqa: C901, 
     if channels.memories.summary:
         sections.append("[SummaryMemories]\n" + "\n".join(channels.memories.summary))
     if channels.memories.long_term:
-        sections.append(
-            "[LongTermMemories]\n" + "\n".join(channels.memories.long_term)
-        )
+        sections.append("[LongTermMemories]\n" + "\n".join(channels.memories.long_term))
     if channels.memories.knowledge:
         sections.append(
             "[KnowledgeMemories]\n" + "\n".join(channels.memories.knowledge)
@@ -276,15 +274,17 @@ def _build_response_rules(
         "Stay in character and answer naturally.",
         "Ground factual claims in the conversation, tool results, and recalled memory.",
         "Use recalled memory as supporting context for the active exchange.",
+        (
+            "Apply relationship context only as expression-layer modulation; "
+            "do not change the persona core."
+        ),
     ]
     if mode == "planner":
         rules.append(
             "Call tools with focused arguments when they improve correctness or "
             "complete a requested action."
         )
-        rules.append(
-            "Use direct reply when the existing context already supports it."
-        )
+        rules.append("Use direct reply when the existing context already supports it.")
         rules.append(
             "Keep internal planning and policy language out of the visible reply."
         )
@@ -294,8 +294,7 @@ def _build_response_rules(
             "available context."
         )
         rules.append(
-            "Keep tool usage implicit unless the user-facing result should "
-            "mention it."
+            "Keep tool usage implicit unless the user-facing result should mention it."
         )
     if context.future_task:
         rules.append(
@@ -310,12 +309,8 @@ def _build_instruction(
 ) -> str:
     if context.future_task:
         if mode == "planner":
-            return (
-                "Plan the scheduled follow-up reply for the same chat session."
-            )
+            return "Plan the scheduled follow-up reply for the same chat session."
         return "Write the scheduled follow-up reply for the same chat session."
     if mode == "planner":
-        return (
-            "Decide whether to reply directly or call tools for this chat turn."
-        )
+        return "Decide whether to reply directly or call tools for this chat turn."
     return "Write only the final assistant reply for this chat turn."

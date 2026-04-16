@@ -288,7 +288,7 @@ async def store_extracted_memories(
     user_id: str,
     message_text: str,
     source_message_id: str | None,
-    ) -> None:
+) -> None:
     """Extract and store structured long-term memory candidates."""
 
     write_anchors = build_memory_write_anchors(identity, user_id)

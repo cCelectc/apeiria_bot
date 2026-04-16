@@ -15,6 +15,7 @@ AIMemoryKind = Literal[
     "preference",
     "relationship",
     "note",
+    "impression",
 ]
 AIMemoryExtractionAction = Literal["add", "update", "noop"]
 

@@ -35,3 +35,4 @@ class AIAffinity(Model):
     score: Mapped[float] = mapped_column(Float, default=0.0)
     mood_tags_json: Mapped[str] = mapped_column(Text, default="[]")
     last_event_at: Mapped[datetime] = mapped_column()
+    last_decay_at: Mapped[datetime | None] = mapped_column(nullable=True)

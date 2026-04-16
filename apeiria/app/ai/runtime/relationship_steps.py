@@ -13,7 +13,10 @@ if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
     from apeiria.app.ai.conversation.models import ChatSessionIdentity
-    from apeiria.app.ai.relationship.models import AIRelationshipState
+    from apeiria.app.ai.relationship.models import (
+        AIRelationshipEvent,
+        AIRelationshipState,
+    )
 
 
 @dataclass(frozen=True)
@@ -42,20 +45,31 @@ def build_relationship_target(
 
 def format_relationship_context(
     state: "AIRelationshipState",
+    *,
+    recent_events: tuple["AIRelationshipEvent", ...] = (),
 ) -> str | None:
     """Render relationship state into one prompt-side context string."""
 
     projection = project_emotion(state)
     mood_tags = ", ".join(state.mood_tags) if state.mood_tags else "none"
-    return "\n".join(
-        (
-            f"Affinity score: {state.score:.2f}",
-            f"Projected tone: {projection.tone}",
-            f"Warmth bias: {projection.warmth_bias:.2f}",
-            f"Initiative bias: {projection.initiative_bias:.2f}",
-            f"Recent mood tags: {mood_tags}",
+    sections = [
+        "Relationship modulation affects only warmth, distance, and initiative.",
+        "Do not change the persona core, goals, or identity from this section.",
+        f"Affinity score: {state.score:.2f}",
+        f"Projected tone: {projection.tone}",
+        f"Warmth bias: {projection.warmth_bias:.2f}",
+        f"Initiative bias: {projection.initiative_bias:.2f}",
+        f"Recent mood tags: {mood_tags}",
+    ]
+    if projection.style_modulation:
+        sections.append("Style modulation:")
+        sections.extend(f"- {line}" for line in projection.style_modulation)
+    if recent_events:
+        sections.append("Recent relationship events:")
+        sections.extend(
+            _format_relationship_event_line(event) for event in recent_events
         )
-    )
+    return "\n".join(sections)
 
 
 async def load_relationship_context(
@@ -71,7 +85,21 @@ async def load_relationship_context(
         group_id=target.group_id,
         user_id=target.user_id,
     )
-    return format_relationship_context(state)
+    effective_state = await ai_relationship_service.get_effective_state(
+        session,
+        platform=target.platform,
+        group_id=target.group_id,
+        user_id=target.user_id,
+    )
+    events = await ai_relationship_service.list_events(
+        session,
+        affinity_id=state.affinity_id,
+        limit=3,
+    )
+    return format_relationship_context(
+        effective_state,
+        recent_events=tuple(reversed(events)),
+    )
 
 
 async def update_relationship_state(
@@ -97,4 +125,13 @@ async def update_relationship_state(
         group_id=target.group_id,
         user_id=target.user_id,
         delta=delta,
+    )
+
+
+def _format_relationship_event_line(event: "AIRelationshipEvent") -> str:
+    mood_tag = event.mood_tag or "none"
+    reason = event.reason or "no explicit reason"
+    return (
+        f"- [{event.event_type}] delta={event.score_delta:+.2f}; "
+        f"score_after={event.score_after:.2f}; mood_tag={mood_tag}; reason={reason}"
     )

@@ -27,6 +27,7 @@ from apeiria.interfaces.http.routes.ai_route_support import (
     to_ai_persona_binding_item,
     to_ai_persona_item,
     to_ai_recent_target_item,
+    to_ai_relationship_event_item,
     to_ai_relationship_state_item,
     to_ai_session_item,
     to_ai_session_prompt_preview_item,
@@ -58,6 +59,7 @@ from apeiria.interfaces.http.schemas.ai_models import (
     AIPersonaItem,
     AIPersonaUpsertRequest,
     AIRecentTargetItem,
+    AIRelationshipEventItem,
     AIRelationshipScoreUpdateRequest,
     AIRelationshipStateItem,
     AISessionItem,
@@ -513,6 +515,23 @@ async def get_ai_relationship_state(
         user_id=user_id,
     )
     return to_ai_relationship_state_item(state)
+
+
+@router.get("/relationships/events", response_model=list[AIRelationshipEventItem])
+async def list_ai_relationship_events(
+    _: Annotated[Any, Depends(require_control_panel)],
+    platform: Annotated[str, Query(min_length=1)],
+    user_id: Annotated[str, Query(min_length=1)],
+    group_id: Annotated[str | None, Query()] = None,
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
+) -> list[AIRelationshipEventItem]:
+    events = await ai_admin_service.list_relationship_events(
+        platform=platform,
+        group_id=group_id,
+        user_id=user_id,
+        limit=limit,
+    )
+    return [to_ai_relationship_event_item(item) for item in events]
 
 
 @router.patch("/relationships", response_model=AIRelationshipStateItem)

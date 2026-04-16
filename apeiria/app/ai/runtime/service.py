@@ -453,8 +453,7 @@ class AIRuntimeService:
         )
         if _should_skip_generation(social_decision):
             logger.info(
-                "AI trace {} suppressed {} reply for session {} "
-                "action={} reasons={}",
+                "AI trace {} suppressed {} reply for session {} action={} reasons={}",
                 trace_id,
                 request.runtime_mode,
                 identity.session_id,

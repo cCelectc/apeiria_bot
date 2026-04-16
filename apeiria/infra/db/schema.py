@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 
 from nonebot.log import logger
 
-CURRENT_SCHEMA_VERSION = 23
+CURRENT_SCHEMA_VERSION = 24
 MIN_SUPPORTED_SCHEMA_VERSION = 22
 
 if TYPE_CHECKING:
@@ -31,6 +31,7 @@ CORE_TABLE_NAMES = frozenset(
         "ai_person_profile",
         "ai_persona",
         "ai_persona_binding",
+        "ai_relationship_event",
         "ai_rerank_model",
         "ai_source",
         "ai_stt_model",
@@ -207,9 +208,7 @@ async def _inspect_memory_schema_layout(
         table_names = set(inspector.get_table_names())
         if "ai_memory_item" not in table_names:
             return None
-        columns = {
-            column["name"] for column in inspector.get_columns("ai_memory_item")
-        }
+        columns = {column["name"] for column in inspector.get_columns("ai_memory_item")}
         current_columns = {
             "anchor_type",
             "anchor_id",
@@ -635,6 +634,31 @@ async def _migrate_v22_to_v23(session: AsyncSession) -> None:
 
 
 MIGRATIONS[22] = _migrate_v22_to_v23
+
+
+async def _migrate_v23_to_v24(session: AsyncSession) -> None:
+    from nonebot_plugin_orm import Model
+    from sqlalchemy import inspect as sa_inspect
+    from sqlalchemy import text
+
+    conn = await session.connection()
+
+    def _has_last_decay_at(sync_conn):  # noqa: ANN001
+        inspector = sa_inspect(sync_conn)
+        columns = inspector.get_columns("ai_affinity")
+        return any(column["name"] == "last_decay_at" for column in columns)
+
+    has_last_decay_at = await conn.run_sync(_has_last_decay_at)
+    if not has_last_decay_at:
+        await session.execute(
+            text("ALTER TABLE ai_affinity ADD COLUMN last_decay_at DATETIME")
+        )
+
+    await conn.run_sync(Model.metadata.create_all)
+    await session.commit()
+
+
+MIGRATIONS[23] = _migrate_v23_to_v24
 
 
 async def _normalize_memory_types_to_note(session: AsyncSession) -> None:

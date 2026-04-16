@@ -277,7 +277,32 @@ class AIRelationshipStateItem(BaseModel):
     user_id: str
     score: float
     mood_tags: list[str] = []
-    last_event_at: str
+    last_event_at: str | None = None
+    last_decay_at: str | None = None
+    projected_tone: str
+    warmth_bias: float
+    initiative_bias: float
+    style_modulation: list[str] = []
+    effective_score: float
+    effective_mood_tags: list[str] = []
+    effective_projected_tone: str
+    effective_warmth_bias: float
+    effective_initiative_bias: float
+    effective_style_modulation: list[str] = []
+
+
+class AIRelationshipEventItem(BaseModel):
+    event_id: str
+    affinity_id: str
+    platform: str
+    group_id: str | None = None
+    user_id: str
+    event_type: str
+    score_delta: float
+    score_after: float
+    mood_tag: str | None = None
+    reason: str | None = None
+    created_at: str
 
 
 class AIRelationshipScoreUpdateRequest(BaseModel):

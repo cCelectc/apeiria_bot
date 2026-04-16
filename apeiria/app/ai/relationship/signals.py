@@ -42,18 +42,27 @@ def derive_relationship_delta(
 
     score_delta = 0.0
     mood_tag: str | None = None
+    reason_parts: list[str] = []
 
     if any(token in normalized for token in _POSITIVE_TOKENS):
         score_delta += _POSITIVE_SIGNAL
         mood_tag = "positive_contact"
+        reason_parts.append("positive wording")
     if any(token in normalized for token in _NEGATIVE_TOKENS):
         score_delta += _NEGATIVE_SIGNAL
         mood_tag = "negative_contact"
+        reason_parts.append("negative wording")
     if is_private or is_tome:
         score_delta += _DIRECT_ENGAGEMENT_BONUS
         if mood_tag is None:
             mood_tag = "direct_contact"
+        reason_parts.append("direct engagement")
 
     if score_delta == 0.0:
         return None
-    return AIRelationshipDelta(score_delta=score_delta, mood_tag=mood_tag)
+    return AIRelationshipDelta(
+        score_delta=score_delta,
+        mood_tag=mood_tag,
+        event_type="message",
+        reason=", ".join(reason_parts) or None,
+    )

@@ -322,11 +322,12 @@ class AIMemoryService:
         if limit <= 0 or not query_text.strip():
             return []
 
-        query_embedding_model, query_vector = (
-            await self._build_knowledge_embedding_vector(
-                session,
-                content=query_text,
-            )
+        (
+            query_embedding_model,
+            query_vector,
+        ) = await self._build_knowledge_embedding_vector(
+            session,
+            content=query_text,
         )
         scored: list[tuple[float, AIMemoryDefinition]] = []
         seen_memory_ids: set[str] = set()

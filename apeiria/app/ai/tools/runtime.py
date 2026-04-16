@@ -36,6 +36,7 @@ class AIToolRuntimeRequest:
     current_time: datetime
     tool_mode: str = "allow"
 
+
 @dataclass(frozen=True)
 class AIToolRuntimeResult:
     """Aggregated tool runtime output consumed by reply orchestration."""

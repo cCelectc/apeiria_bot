@@ -19,12 +19,14 @@ _ALLOWED_MEMORY_KINDS: set[AIMemoryKind] = {
     "preference",
     "relationship",
     "note",
+    "impression",
 }
 _MAX_CANDIDATES = 5
 _PERSON_PROFILE_ALLOWED_KINDS: set[AIMemoryKind] = {
     "fact",
     "preference",
     "relationship",
+    "impression",
 }
 _PERSON_PROFILE_MIN_CONFIDENCE = 0.8
 _MAX_PERSON_PROFILE_CANDIDATES = 4
@@ -41,13 +43,17 @@ def build_memory_extraction_prompt(
         (
             "Extract durable long-term memory candidates from the user message.",
             "Return strict JSON only, with this shape:",
-            '{"memories":[{"memory_kind":"preference|fact|relationship|note","content":"...","action":"add|update|noop","target_memory_id":"optional-existing-id","confidence":0.0,"salience":0.0}]}',
+            '{"memories":[{"memory_kind":"preference|fact|relationship|note|impression","content":"...","action":"add|update|noop","target_memory_id":"optional-existing-id","confidence":0.0,"salience":0.0}]}',
             "Only include information that is useful in future conversations.",
             "Do not include transient requests, jokes, or uncertain guesses.",
             "Use the same language as the source message for content.",
             "Use action=noop when nothing should be stored for that row.",
             "Use action=update when the message changes or corrects an "
             "existing durable memory.",
+            "Use memory_kind=impression for subjective observations about the "
+            "user's personality, communication style, or character traits "
+            "(e.g. enthusiastic, introverted, knowledgeable). "
+            "Only extract impressions when there is clear behavioral evidence.",
             _format_existing_memories(existing_memories),
             'If there is nothing durable, return {"memories":[]}.',
             f"User message: {message_text}",

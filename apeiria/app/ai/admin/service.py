@@ -126,7 +126,10 @@ if TYPE_CHECKING:
         AIPersonaBindingSpec,
         AIPersonaDefinition,
     )
-    from apeiria.app.ai.relationship.models import AIRelationshipState
+    from apeiria.app.ai.relationship.models import (
+        AIRelationshipEvent,
+        AIRelationshipState,
+    )
     from apeiria.app.ai.runtime.prompting import AIReplyPromptChannels
     from apeiria.app.ai.skills.catalog import AISkillDefinition
     from apeiria.app.ai.tools.debug import (
@@ -275,9 +278,7 @@ RERANK_TEST_DOCUMENTS = (
 def _coerce_source_preset_type(
     preset_type: str,
 ) -> "AISourcePresetType":
-    known_preset_types = {
-        item.preset_type for item in ai_source_service.list_presets()
-    }
+    known_preset_types = {item.preset_type for item in ai_source_service.list_presets()}
     if preset_type in known_preset_types:
         return cast("AISourcePresetType", preset_type)
     raise UnsupportedAISourcePresetError
@@ -1161,8 +1162,7 @@ class AIAdminService:
             )
             if normalized_layer == "summary":
                 msg = (
-                    "summary memories are system-managed "
-                    "and cannot be created manually"
+                    "summary memories are system-managed and cannot be created manually"
                 )
                 raise ValueError(msg)
             if normalized_layer == "knowledge":
@@ -1493,9 +1493,7 @@ class AIAdminService:
             )
             allowed_tools = ai_tool_service.list_allowed_tools(tool_policy)
             has_tools = bool(allowed_tools)
-            pre_tool_task_class = select_pre_tool_reply_task_class(
-                has_tools=has_tools
-            )
+            pre_tool_task_class = select_pre_tool_reply_task_class(has_tools=has_tools)
             selected = await ai_model_facade.select_model(
                 session,
                 query=AIModelRouteQuery(task_class=pre_tool_task_class),
@@ -1733,6 +1731,23 @@ class AIAdminService:
                 platform=platform,
                 group_id=group_id,
                 user_id=user_id,
+            )
+
+    async def list_relationship_events(
+        self,
+        *,
+        platform: str,
+        user_id: str,
+        group_id: str | None = None,
+        limit: int = 20,
+    ) -> list["AIRelationshipEvent"]:
+        async with get_session() as session:
+            return await ai_relationship_service.list_events_for_target(
+                session,
+                platform=platform,
+                group_id=group_id,
+                user_id=user_id,
+                limit=limit,
             )
 
     async def set_relationship_score(

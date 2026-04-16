@@ -292,9 +292,7 @@ async def _list_rerank_models(
     session: "AsyncSession",
     source_id: str,
 ) -> list[AISourceModelDefinition]:
-    return list(
-        await ai_rerank_model_service.list_models(session, source_id=source_id)
-    )
+    return list(await ai_rerank_model_service.list_models(session, source_id=source_id))
 
 
 async def _create_rerank_model(

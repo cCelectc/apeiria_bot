@@ -49,6 +49,7 @@ class AIFutureTaskDefinition:
     created_at: datetime
     updated_at: datetime
 
+
 @dataclass(frozen=True)
 class AIFutureTaskToolInput:
     """Structured tool input for future-task management."""

@@ -40,9 +40,8 @@ _POSITIVE_PREFERENCE_PATTERNS = (
 _NEGATIVE_PREFERENCE_PATTERNS = (
     re.compile(r"我(?:很|最|一直)?(?:不喜欢|讨厌)(?P<item>[^，。！？,.!?]{1,24})"),
 )
-_FACT_PATTERNS = (
-    re.compile(r"我是(?P<fact>[^，。！？,.!?]{1,24})"),
-)
+_FACT_PATTERNS = (re.compile(r"我是(?P<fact>[^，。！？,.!?]{1,24})"),)
+_CANDIDATE_MIN_CONFIDENCE = 0.6
 _PROMPT_CATEGORY_LABELS: dict[AIPersonMemoryPointCategory, str] = {
     "preference": "Stable preference",
     "fact": "Stable fact",
@@ -195,21 +194,20 @@ class AIPersonProfileService:
         if not preferred_name and not prompt_points:
             return None
 
-        relationship_score, mood_tags = (
-            await ai_relationship_service.get_state_snapshot(
-                session,
-                platform=platform,
-                group_id=group_id,
-                user_id=user_id,
-            )
+        (
+            relationship_score,
+            mood_tags,
+        ) = await ai_relationship_service.get_state_snapshot(
+            session,
+            platform=platform,
+            group_id=group_id,
+            user_id=user_id,
         )
         lines: list[str] = []
         if preferred_name:
             lines.append(f"- Preferred name: {preferred_name}")
         if profile.know_since is not None:
-            lines.append(
-                f"- Known since: {profile.know_since.date().isoformat()}"
-            )
+            lines.append(f"- Known since: {profile.know_since.date().isoformat()}")
         for point in prompt_points:
             label = _PROMPT_CATEGORY_LABELS.get(point.category, "Profile point")
             lines.append(f"- {label}: {point.content}")
@@ -404,10 +402,13 @@ def _candidate_to_memory_point(
     candidate: AIMemoryExtractionCandidate,
     source_message_id: str | None,
 ) -> AIPersonMemoryPoint | None:
+    if candidate.confidence < _CANDIDATE_MIN_CONFIDENCE:
+        return None
     category_map: dict[str, AIPersonMemoryPointCategory] = {
         "preference": "preference",
         "fact": "fact",
         "relationship": "relationship",
+        "impression": "impression",
     }
     category = category_map.get(candidate.memory_kind)
     if category is None:

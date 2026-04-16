@@ -12,6 +12,7 @@ from .ai_model_profile import AIModelProfile
 from .ai_person_profile import AIPersonProfile
 from .ai_persona import AIPersona
 from .ai_persona_binding import AIPersonaBinding
+from .ai_relationship_event import AIRelationshipEvent
 from .ai_rerank_model import AIRerankModel
 from .ai_source import AISource
 from .ai_stt_model import AISTTModel
@@ -40,6 +41,7 @@ __all__ = [
     "AIPersonProfile",
     "AIPersona",
     "AIPersonaBinding",
+    "AIRelationshipEvent",
     "AIRerankModel",
     "AISTTModel",
     "AISource",
