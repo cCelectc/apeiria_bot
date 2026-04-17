@@ -198,11 +198,9 @@ export function useAIMemoryTab (t: (key: string) => string) {
   }
 
   function toggleSelectAll () {
-    if (allMemoriesSelected.value) {
-      selectedMemoryIds.value = new Set()
-    } else {
-      selectedMemoryIds.value = new Set(memories.value.map(item => item.memory_id))
-    }
+    selectedMemoryIds.value = allMemoriesSelected.value
+      ? new Set()
+      : new Set(memories.value.map(item => item.memory_id))
   }
 
   function clearSelection () {
