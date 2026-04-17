@@ -32,18 +32,24 @@ def build_source_adapter(
 ) -> "AIModelAdapter":
     """Build a concrete source adapter from one source definition."""
 
+    extra_config = dict(source.extra_config or {})
+    if source.custom_headers:
+        extra_config["_custom_headers"] = dict(source.custom_headers)
+
     if source.client_type == "openai":
         return OpenAICompatibleProvider(
             api_base=source.api_base,
             api_key=api_key,
             timeout_seconds=source.timeout_seconds,
-            extra_config=source.extra_config,
+            extra_config=extra_config,
             request_func=request_func,
         )
     if source.client_type == "anthropic":
         return AnthropicCompatibleProvider(
             api_base=source.api_base,
             api_key=api_key,
+            timeout_seconds=source.timeout_seconds,
+            extra_config=extra_config,
             request_func=request_func,
         )
     if source.client_type == "generic_rerank":
@@ -51,7 +57,7 @@ def build_source_adapter(
             api_base=source.api_base,
             api_key=api_key,
             timeout_seconds=source.timeout_seconds,
-            extra_config=source.extra_config,
+            extra_config=extra_config,
             request_func=request_func,
         )
     raise UnsupportedAISourceClientTypeError(source.client_type)

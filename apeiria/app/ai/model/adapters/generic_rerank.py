@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import asyncio
 from http import HTTPStatus
 from typing import Any
 
 import httpx
+from nonebot.log import logger
 
 from apeiria.app.ai.model.adapter import (
     AIModelCatalogItem,
@@ -68,11 +70,21 @@ class GenericRerankProvider:
 
         async with httpx.AsyncClient(
             base_url=self.api_base,
-            headers=_build_auth_headers(resolved_api_key),
+            headers=_build_headers(
+                resolved_api_key,
+                custom_headers=_coerce_custom_headers(self.extra_config),
+            ),
             timeout=float(self.timeout_seconds or 20),
             proxy=_coerce_str(self.extra_config, "proxy"),
         ) as client:
-            response = await client.get("/models")
+            response = await _request_with_retries(
+                client.get,
+                "/models",
+                max_retries=_coerce_int(self.extra_config, "max_retries") or 1,
+                backoff_seconds=(
+                    _coerce_float(self.extra_config, "retry_backoff_seconds") or 0.25
+                ),
+            )
             if response.status_code >= HTTPStatus.BAD_REQUEST:
                 return []
             payload = response.json()
@@ -132,13 +144,31 @@ class GenericRerankProvider:
         )
         async with httpx.AsyncClient(
             base_url=self.api_base,
-            headers=_build_auth_headers(api_key),
+            headers=_build_headers(
+                api_key,
+                custom_headers=(
+                    _coerce_custom_headers(request.extra)
+                    or _coerce_custom_headers(self.extra_config)
+                ),
+            ),
             timeout=float(self.timeout_seconds or 20),
             proxy=_coerce_str(request.extra, "proxy")
             or _coerce_str(self.extra_config, "proxy"),
         ) as client:
-            response = await client.post(
-                _normalize_api_suffix(api_suffix), json=payload
+            response = await _request_with_retries(
+                client.post,
+                _normalize_api_suffix(api_suffix),
+                json=payload,
+                max_retries=(
+                    _coerce_int(request.extra, "max_retries")
+                    or _coerce_int(self.extra_config, "max_retries")
+                    or 1
+                ),
+                backoff_seconds=(
+                    _coerce_float(request.extra, "retry_backoff_seconds")
+                    or _coerce_float(self.extra_config, "retry_backoff_seconds")
+                    or 0.25
+                ),
             )
             response.raise_for_status()
             raw = response.json()
@@ -157,6 +187,34 @@ def _coerce_str(extra: dict[str, Any] | None, key: str) -> str | None:
     return value if isinstance(value, str) and value.strip() else None
 
 
+def _coerce_int(extra: dict[str, Any] | None, key: str) -> int | None:
+    if not extra:
+        return None
+    value = extra.get(key)
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str) and value.strip():
+        try:
+            return int(value.strip())
+        except ValueError:
+            return None
+    return None
+
+
+def _coerce_float(extra: dict[str, Any] | None, key: str) -> float | None:
+    if not extra:
+        return None
+    value = extra.get(key)
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, str) and value.strip():
+        try:
+            return float(value.strip())
+        except ValueError:
+            return None
+    return None
+
+
 def _normalize_api_base(api_base: str | None) -> str | None:
     if not isinstance(api_base, str) or not api_base.strip():
         return None
@@ -168,8 +226,77 @@ def _normalize_api_suffix(api_suffix: str) -> str:
     return normalized if normalized.startswith("/") else f"/{normalized}"
 
 
-def _build_auth_headers(api_key: str) -> dict[str, str]:
-    return {"Authorization": f"Bearer {api_key}"}
+def _coerce_custom_headers(
+    extra: dict[str, Any] | None,
+) -> dict[str, str] | None:
+    if not extra:
+        return None
+    raw = extra.get("_custom_headers")
+    if not isinstance(raw, dict):
+        return None
+    headers = {
+        key.strip(): value.strip()
+        for key, value in raw.items()
+        if isinstance(key, str)
+        and key.strip()
+        and isinstance(value, str)
+        and value.strip()
+    }
+    return headers or None
+
+
+def _build_headers(
+    api_key: str,
+    *,
+    custom_headers: dict[str, str] | None = None,
+) -> dict[str, str]:
+    return {
+        "Authorization": f"Bearer {api_key}",
+        **(custom_headers or {}),
+    }
+
+
+async def _request_with_retries(
+    request_func: Any,
+    *args: object,
+    max_retries: int,
+    backoff_seconds: float,
+    **kwargs: object,
+) -> httpx.Response:
+    attempts = max(max_retries, 0) + 1
+    last_error: Exception | None = None
+    for attempt in range(1, attempts + 1):
+        try:
+            response = await request_func(*args, **kwargs)
+        except (httpx.TimeoutException, httpx.NetworkError) as exc:
+            last_error = exc
+            if attempt >= attempts:
+                raise
+            logger.warning(
+                "generic rerank request failed attempt={}/{} error={}",
+                attempt,
+                attempts,
+                exc,
+            )
+            await asyncio.sleep(backoff_seconds * attempt)
+            continue
+
+        if (
+            response.status_code >= HTTPStatus.INTERNAL_SERVER_ERROR
+            and attempt < attempts
+        ):
+            logger.warning(
+                "generic rerank upstream 5xx attempt={}/{} status={}",
+                attempt,
+                attempts,
+                response.status_code,
+            )
+            await asyncio.sleep(backoff_seconds * attempt)
+            continue
+        return response
+
+    assert last_error is not None
+    raise last_error
 
 
 def _extract_openai_like_models(payload: Any) -> list[AIModelCatalogItem]:

@@ -297,12 +297,34 @@ def _build_openai_client(
 ) -> AsyncOpenAI:
     proxy = _coerce_str(extra_config, "proxy")
     http_client = httpx.AsyncClient(proxy=proxy) if proxy else None
+    max_retries = _coerce_int(extra_config, "max_retries")
     return AsyncOpenAI(
         api_key=api_key,
         base_url=api_base,
         timeout=timeout_seconds,
+        max_retries=max_retries if max_retries is not None else 1,
+        default_headers=_coerce_custom_headers(extra_config),
         http_client=http_client,
     )
+
+
+def _coerce_custom_headers(
+    extra: dict[str, Any] | None,
+) -> dict[str, str] | None:
+    if not extra:
+        return None
+    raw = extra.get("_custom_headers")
+    if not isinstance(raw, dict):
+        return None
+    headers = {
+        key.strip(): value.strip()
+        for key, value in raw.items()
+        if isinstance(key, str)
+        and key.strip()
+        and isinstance(value, str)
+        and value.strip()
+    }
+    return headers or None
 
 
 def _extract_openai_content(response: Any) -> str:

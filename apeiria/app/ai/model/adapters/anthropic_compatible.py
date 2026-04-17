@@ -47,16 +47,20 @@ class AnthropicCompatibleProviderCapabilityActionError(RuntimeError):
 class AnthropicCompatibleProvider:
     """Anthropic-compatible text generation adapter backed by the official SDK."""
 
-    def __init__(
+    def __init__(  # noqa: PLR0913
         self,
         *,
         api_base: str | None,
         api_key: str | None = None,
+        timeout_seconds: int | None = None,
+        extra_config: dict[str, Any] | None = None,
         request_func: Any | None = None,
         list_request_func: Any | None = None,
     ) -> None:
         self.api_base = _normalize_anthropic_api_base(api_base)
         self.api_key = api_key
+        self.timeout_seconds = timeout_seconds
+        self.extra_config = extra_config or {}
         self._request_func = request_func
         self._list_request_func = list_request_func
 
@@ -93,7 +97,13 @@ class AnthropicCompatibleProvider:
                 for tool in request.tools
             ]
 
-        client = AsyncAnthropic(api_key=api_key, base_url=api_base)
+        client = AsyncAnthropic(
+            api_key=api_key,
+            base_url=api_base,
+            timeout=self.timeout_seconds,
+            max_retries=_coerce_int(self.extra_config, "max_retries") or 1,
+            default_headers=_coerce_custom_headers(self.extra_config),
+        )
         try:
             response = await client.messages.create(**payload)
         finally:
@@ -118,7 +128,13 @@ class AnthropicCompatibleProvider:
         if not resolved_api_key:
             raise AnthropicCompatibleProviderConfigError("api_key")
 
-        client = AsyncAnthropic(api_key=resolved_api_key, base_url=self.api_base)
+        client = AsyncAnthropic(
+            api_key=resolved_api_key,
+            base_url=self.api_base,
+            timeout=self.timeout_seconds,
+            max_retries=_coerce_int(self.extra_config, "max_retries") or 1,
+            default_headers=_coerce_custom_headers(self.extra_config),
+        )
         try:
             page = await client.models.list()
         finally:
@@ -159,6 +175,39 @@ def _coerce_str(extra: dict[str, Any] | None, key: str) -> str | None:
         return None
     value = extra.get(key)
     return value if isinstance(value, str) and value.strip() else None
+
+
+def _coerce_int(extra: dict[str, Any] | None, key: str) -> int | None:
+    if not extra:
+        return None
+    value = extra.get(key)
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str) and value.strip():
+        try:
+            return int(value.strip())
+        except ValueError:
+            return None
+    return None
+
+
+def _coerce_custom_headers(
+    extra: dict[str, Any] | None,
+) -> dict[str, str] | None:
+    if not extra:
+        return None
+    raw = extra.get("_custom_headers")
+    if not isinstance(raw, dict):
+        return None
+    headers = {
+        key.strip(): value.strip()
+        for key, value in raw.items()
+        if isinstance(key, str)
+        and key.strip()
+        and isinstance(value, str)
+        and value.strip()
+    }
+    return headers or None
 
 
 def _normalize_anthropic_api_base(api_base: str | None) -> str | None:
