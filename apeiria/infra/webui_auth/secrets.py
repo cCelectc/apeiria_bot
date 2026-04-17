@@ -483,6 +483,24 @@ def list_security_audit_events(limit: int = 20) -> list[WebUISecurityAuditEvent]
     return items[-limit:][::-1]
 
 
+def record_security_audit_event(
+    event_type: str,
+    *,
+    actor_username: str | None = None,
+    target_username: str | None = None,
+    detail: str | None = None,
+) -> None:
+    """Persist one explicit audit event."""
+
+    _record_audit_event(
+        event_type,
+        actor_username=actor_username,
+        target_username=target_username,
+        detail=detail,
+    )
+    _persist_raw(_auth_store)
+
+
 def create_registration_code(
     *,
     role: str,

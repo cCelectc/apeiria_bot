@@ -50,6 +50,20 @@ class _ProfileDraft:
 class AIPersonProfileService:
     """Persistence and prompt assembly for known-user profiles."""
 
+    async def get_profile_by_id(
+        self,
+        session: "AsyncSession",
+        *,
+        person_id: str,
+    ) -> AIPersonProfileDefinition | None:
+        result = await session.execute(
+            select(AIPersonProfile).where(AIPersonProfile.person_id == person_id)
+        )
+        row = result.scalar_one_or_none()
+        if row is None:
+            return None
+        return self._to_definition(row)
+
     async def get_profile(
         self,
         session: "AsyncSession",

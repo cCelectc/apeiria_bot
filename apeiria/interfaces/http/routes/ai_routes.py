@@ -96,6 +96,11 @@ from apeiria.interfaces.http.schemas.ai_models import (
 router = APIRouter()
 
 
+def _actor_username_from_claims(claims: dict[str, Any]) -> str | None:
+    username = claims.get("username") or claims.get("sub")
+    return str(username) if isinstance(username, str) and username.strip() else None
+
+
 @router.get("/source-presets", response_model=list[AISourcePresetItem])
 async def list_ai_source_presets(
     _: Annotated[Any, Depends(require_control_panel)],
@@ -117,7 +122,7 @@ async def list_ai_sources(
 @router.post("/sources", response_model=AISourceItem)
 async def create_ai_source(
     payload: AISourceUpsertRequest,
-    _: Annotated[Any, Depends(require_control_panel)],
+    claims: Annotated[dict[str, Any], Depends(require_control_panel)],
 ) -> AISourceItem:
     item = await ai_admin_service.create_source(
         name=payload.name,
@@ -129,6 +134,7 @@ async def create_ai_source(
         timeout_seconds=payload.timeout_seconds,
         custom_headers=payload.custom_headers,
         extra_config=payload.extra_config,
+        actor_username=_actor_username_from_claims(claims),
     )
     return to_ai_source_item(item)
 
@@ -136,7 +142,7 @@ async def create_ai_source(
 @router.put("/sources", response_model=AISourceItem | None)
 async def update_ai_source(
     payload: AISourceUpsertRequest,
-    _: Annotated[Any, Depends(require_control_panel)],
+    claims: Annotated[dict[str, Any], Depends(require_control_panel)],
 ) -> AISourceItem | None:
     if not payload.source_id:
         return None
@@ -151,17 +157,21 @@ async def update_ai_source(
         timeout_seconds=payload.timeout_seconds,
         custom_headers=payload.custom_headers,
         extra_config=payload.extra_config,
+        actor_username=_actor_username_from_claims(claims),
     )
     return to_ai_source_item(item) if item is not None else None
 
 
 @router.delete("/sources", response_model=bool)
 async def delete_ai_source(
-    _: Annotated[Any, Depends(require_control_panel)],
+    claims: Annotated[dict[str, Any], Depends(require_control_panel)],
     source_id: Annotated[str, Query(min_length=1)],
 ) -> bool:
     try:
-        return await ai_admin_service.delete_source(source_id=source_id)
+        return await ai_admin_service.delete_source(
+            source_id=source_id,
+            actor_username=_actor_username_from_claims(claims),
+        )
     except AISourceDeleteBlockedError as exc:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -244,7 +254,7 @@ async def test_ai_source_model(
 @router.post("/sources/models", response_model=AISourceModelItem)
 async def create_ai_source_model(
     payload: AISourceModelUpsertRequest,
-    _: Annotated[Any, Depends(require_control_panel)],
+    claims: Annotated[dict[str, Any], Depends(require_control_panel)],
 ) -> AISourceModelItem:
     item = await ai_admin_service.create_source_model(
         source_id=payload.source_id,
@@ -253,6 +263,7 @@ async def create_ai_source_model(
         enabled=payload.enabled,
         is_default=payload.is_default,
         extra_params=payload.extra_params,
+        actor_username=_actor_username_from_claims(claims),
     )
     return to_ai_source_model_item(item)
 
@@ -260,7 +271,7 @@ async def create_ai_source_model(
 @router.put("/sources/models", response_model=AISourceModelItem | None)
 async def update_ai_source_model(
     payload: AISourceModelUpsertRequest,
-    _: Annotated[Any, Depends(require_control_panel)],
+    claims: Annotated[dict[str, Any], Depends(require_control_panel)],
 ) -> AISourceModelItem | None:
     if not payload.model_id:
         return None
@@ -272,13 +283,14 @@ async def update_ai_source_model(
         enabled=payload.enabled,
         is_default=payload.is_default,
         extra_params=payload.extra_params,
+        actor_username=_actor_username_from_claims(claims),
     )
     return to_ai_source_model_item(item) if item is not None else None
 
 
 @router.delete("/sources/models", response_model=bool)
 async def delete_ai_source_model(
-    _: Annotated[Any, Depends(require_control_panel)],
+    claims: Annotated[dict[str, Any], Depends(require_control_panel)],
     model_id: Annotated[str, Query(min_length=1)],
     source_id: Annotated[str | None, Query(max_length=64)] = None,
 ) -> bool:
@@ -286,6 +298,7 @@ async def delete_ai_source_model(
         return await ai_admin_service.delete_source_model(
             model_id=model_id,
             source_id=source_id,
+            actor_username=_actor_username_from_claims(claims),
         )
     except AISourceModelDeleteBlockedError as exc:
         raise HTTPException(
@@ -305,7 +318,7 @@ async def list_ai_model_profiles(
 @router.put("/model-profiles", response_model=AIModelProfileItem | None)
 async def upsert_ai_model_profile(
     payload: AIModelProfileUpsertRequest,
-    _: Annotated[Any, Depends(require_control_panel)],
+    claims: Annotated[dict[str, Any], Depends(require_control_panel)],
 ) -> AIModelProfileItem | None:
     item = (
         await ai_admin_service.update_model_profile(
@@ -316,6 +329,7 @@ async def upsert_ai_model_profile(
             priority=payload.priority,
             enabled=payload.enabled,
             fallback_profile_id=payload.fallback_profile_id,
+            actor_username=_actor_username_from_claims(claims),
         )
         if payload.profile_id
         else await ai_admin_service.create_model_profile(
@@ -325,6 +339,7 @@ async def upsert_ai_model_profile(
             priority=payload.priority,
             enabled=payload.enabled,
             fallback_profile_id=payload.fallback_profile_id,
+            actor_username=_actor_username_from_claims(claims),
         )
     )
     return to_ai_model_profile_item(item) if item is not None else None
@@ -349,7 +364,7 @@ async def list_ai_personas(
 @router.put("/personas", response_model=AIPersonaItem | None)
 async def upsert_ai_persona(
     payload: AIPersonaUpsertRequest,
-    _: Annotated[Any, Depends(require_control_panel)],
+    claims: Annotated[dict[str, Any], Depends(require_control_panel)],
 ) -> AIPersonaItem | None:
     persona = (
         await ai_admin_service.update_persona(
@@ -359,6 +374,7 @@ async def upsert_ai_persona(
             system_prompt=payload.system_prompt,
             style_prompt=payload.style_prompt,
             enabled=payload.enabled,
+            actor_username=_actor_username_from_claims(claims),
         )
         if payload.persona_id
         else await ai_admin_service.create_persona(
@@ -367,6 +383,7 @@ async def upsert_ai_persona(
             system_prompt=payload.system_prompt,
             style_prompt=payload.style_prompt,
             enabled=payload.enabled,
+            actor_username=_actor_username_from_claims(claims),
         )
     )
     return to_ai_persona_item(persona) if persona is not None else None
@@ -407,7 +424,7 @@ async def list_ai_memories(  # noqa: PLR0913
 @router.post("/memories", response_model=AIMemoryItem)
 async def create_ai_memory(
     payload: AIMemoryCreateRequest,
-    _: Annotated[Any, Depends(require_control_panel)],
+    claims: Annotated[dict[str, Any], Depends(require_control_panel)],
 ) -> AIMemoryItem:
     memory = await ai_admin_service.create_memory(
         memory_layer=payload.memory_layer,
@@ -417,6 +434,7 @@ async def create_ai_memory(
         content=payload.content,
         salience=payload.salience,
         confidence=payload.confidence,
+        actor_username=_actor_username_from_claims(claims),
     )
     return to_ai_memory_item(memory)
 
@@ -424,34 +442,39 @@ async def create_ai_memory(
 @router.patch("/memories", response_model=AIMemoryItem | None)
 async def update_ai_memory(
     payload: AIMemoryUpdateRequest,
-    _: Annotated[Any, Depends(require_control_panel)],
+    claims: Annotated[dict[str, Any], Depends(require_control_panel)],
 ) -> AIMemoryItem | None:
     memory = await ai_admin_service.update_memory(
         memory_id=payload.memory_id,
         content=payload.content,
         salience=payload.salience,
         confidence=payload.confidence,
+        actor_username=_actor_username_from_claims(claims),
     )
     return to_ai_memory_item(memory) if memory is not None else None
 
 
 @router.delete("/memories", response_model=AIMemoryDeleteResult)
 async def delete_ai_memory(
-    _: Annotated[Any, Depends(require_control_panel)],
+    claims: Annotated[dict[str, Any], Depends(require_control_panel)],
     memory_id: Annotated[str, Query(min_length=1)],
 ) -> AIMemoryDeleteResult:
     return AIMemoryDeleteResult(
-        deleted=await ai_admin_service.delete_memory(memory_id=memory_id)
+        deleted=await ai_admin_service.delete_memory(
+            memory_id=memory_id,
+            actor_username=_actor_username_from_claims(claims),
+        )
     )
 
 
 @router.patch("/memories/toggle-ignored", response_model=AIMemoryItem | None)
 async def toggle_ai_memory_ignored(
     payload: AIMemoryToggleIgnoredRequest,
-    _: Annotated[Any, Depends(require_control_panel)],
+    claims: Annotated[dict[str, Any], Depends(require_control_panel)],
 ) -> AIMemoryItem | None:
     memory = await ai_admin_service.toggle_memory_ignored(
         memory_id=payload.memory_id,
+        actor_username=_actor_username_from_claims(claims),
     )
     return to_ai_memory_item(memory) if memory is not None else None
 
@@ -459,10 +482,11 @@ async def toggle_ai_memory_ignored(
 @router.post("/memories/bulk-delete", response_model=AIMemoryBulkActionResult)
 async def bulk_delete_ai_memories(
     payload: AIMemoryBulkActionRequest,
-    _: Annotated[Any, Depends(require_control_panel)],
+    claims: Annotated[dict[str, Any], Depends(require_control_panel)],
 ) -> AIMemoryBulkActionResult:
     count = await ai_admin_service.bulk_delete_memories(
         memory_ids=payload.memory_ids,
+        actor_username=_actor_username_from_claims(claims),
     )
     return AIMemoryBulkActionResult(affected=count)
 
@@ -470,11 +494,12 @@ async def bulk_delete_ai_memories(
 @router.post("/memories/bulk-toggle-ignored", response_model=AIMemoryBulkActionResult)
 async def bulk_toggle_ai_memory_ignored(
     payload: AIMemoryBulkIgnoreRequest,
-    _: Annotated[Any, Depends(require_control_panel)],
+    claims: Annotated[dict[str, Any], Depends(require_control_panel)],
 ) -> AIMemoryBulkActionResult:
     count = await ai_admin_service.bulk_set_memories_ignored(
         memory_ids=payload.memory_ids,
         ignored=payload.ignored,
+        actor_username=_actor_username_from_claims(claims),
     )
     return AIMemoryBulkActionResult(affected=count)
 
@@ -539,10 +564,13 @@ async def list_ai_future_tasks(
 
 @router.delete("/future-tasks", response_model=AIFutureTaskItem | None)
 async def cancel_ai_future_task(
-    _: Annotated[Any, Depends(require_control_panel)],
+    claims: Annotated[dict[str, Any], Depends(require_control_panel)],
     task_id: Annotated[str, Query(min_length=1)],
 ) -> AIFutureTaskItem | None:
-    task = await ai_admin_service.cancel_future_task(task_id=task_id)
+    task = await ai_admin_service.cancel_future_task(
+        task_id=task_id,
+        actor_username=_actor_username_from_claims(claims),
+    )
     if task is None:
         return None
     return to_ai_future_task_item(task)
@@ -592,13 +620,14 @@ async def list_ai_relationship_events(
 @router.patch("/relationships", response_model=AIRelationshipStateItem)
 async def update_ai_relationship_score(
     payload: AIRelationshipScoreUpdateRequest,
-    _: Annotated[Any, Depends(require_control_panel)],
+    claims: Annotated[dict[str, Any], Depends(require_control_panel)],
 ) -> AIRelationshipStateItem:
     state = await ai_admin_service.set_relationship_score(
         platform=payload.platform,
         group_id=payload.group_id,
         user_id=payload.user_id,
         score=payload.score,
+        actor_username=_actor_username_from_claims(claims),
     )
     return to_ai_relationship_state_item(state)
 
@@ -628,7 +657,7 @@ async def get_ai_person_profile(
 @router.patch("/person-profiles", response_model=AIPersonProfileItem | None)
 async def update_ai_person_profile(
     payload: AIPersonProfileUpdateRequest,
-    _: Annotated[Any, Depends(require_control_panel)],
+    claims: Annotated[dict[str, Any], Depends(require_control_panel)],
 ) -> AIPersonProfileItem | None:
     from apeiria.app.ai.person.models import (
         AIPersonMemoryPoint,
@@ -651,16 +680,20 @@ async def update_ai_person_profile(
         person_name=payload.person_name,
         nickname=payload.nickname,
         memory_points=memory_points,
+        actor_username=_actor_username_from_claims(claims),
     )
     return to_ai_person_profile_item(profile) if profile is not None else None
 
 
 @router.delete("/person-profiles", response_model=bool)
 async def delete_ai_person_profile(
-    _: Annotated[Any, Depends(require_control_panel)],
+    claims: Annotated[dict[str, Any], Depends(require_control_panel)],
     person_id: Annotated[str, Query(min_length=1)],
 ) -> bool:
-    return await ai_admin_service.delete_person_profile(person_id=person_id)
+    return await ai_admin_service.delete_person_profile(
+        person_id=person_id,
+        actor_username=_actor_username_from_claims(claims),
+    )
 
 
 @router.get("/tools", response_model=list[AIToolItem])
@@ -757,13 +790,14 @@ async def list_ai_tool_policy_bindings(
 @router.post("/tools/policy-bindings", response_model=AIToolPolicyBindingItem)
 async def create_ai_tool_policy_binding(
     payload: AIToolPolicyBindingCreateRequest,
-    _: Annotated[Any, Depends(require_control_panel)],
+    claims: Annotated[dict[str, Any], Depends(require_control_panel)],
 ) -> AIToolPolicyBindingItem:
     item = await ai_admin_service.create_tool_policy_binding(
         scope_type=payload.scope_type,
         scope_id=payload.scope_id,
         allow_read_only_tools=payload.allow_read_only_tools,
         capability_mode=payload.capability_mode,
+        actor_username=_actor_username_from_claims(claims),
     )
     return to_ai_tool_policy_binding_item(item)
 
@@ -771,12 +805,13 @@ async def create_ai_tool_policy_binding(
 @router.patch("/tools/policy-bindings", response_model=AIToolPolicyBindingItem | None)
 async def update_ai_tool_policy_binding(
     payload: AIToolPolicyBindingUpdateRequest,
-    _: Annotated[Any, Depends(require_control_panel)],
+    claims: Annotated[dict[str, Any], Depends(require_control_panel)],
 ) -> AIToolPolicyBindingItem | None:
     item = await ai_admin_service.update_tool_policy_binding(
         binding_id=payload.binding_id,
         allow_read_only_tools=payload.allow_read_only_tools,
         capability_mode=payload.capability_mode,
+        actor_username=_actor_username_from_claims(claims),
     )
     if item is None:
         return None
@@ -785,11 +820,12 @@ async def update_ai_tool_policy_binding(
 
 @router.delete("/tools/policy-bindings")
 async def delete_ai_tool_policy_binding(
-    _: Annotated[Any, Depends(require_control_panel)],
+    claims: Annotated[dict[str, Any], Depends(require_control_panel)],
     binding_id: Annotated[str, Query(min_length=1)],
 ) -> dict[str, bool]:
     deleted = await ai_admin_service.delete_tool_policy_binding(
         binding_id=binding_id,
+        actor_username=_actor_username_from_claims(claims),
     )
     return {"deleted": deleted}
 

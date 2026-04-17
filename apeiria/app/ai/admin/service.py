@@ -8,6 +8,7 @@ import wave
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Literal, cast
 
+from nonebot.log import logger
 from nonebot_plugin_orm import get_session
 
 from apeiria.app.ai.admin.models import (
@@ -97,6 +98,7 @@ from apeiria.app.ai.tools.policy import (
 )
 from apeiria.app.ai.tools.service import ai_tool_service
 from apeiria.app.groups import group_service
+from apeiria.infra.webui_auth.secrets import record_security_audit_event
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -502,6 +504,28 @@ def _normalize_required_memory_kind(
     raise ValueError(msg)
 
 
+def _record_ai_admin_audit(
+    event_type: str,
+    *,
+    actor_username: str | None = None,
+    detail: str | None = None,
+) -> None:
+    if not actor_username:
+        return
+    try:
+        record_security_audit_event(
+            event_type,
+            actor_username=actor_username,
+            detail=detail,
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.opt(exception=exc).warning(
+            "AI admin audit logging failed event_type={} actor={}",
+            event_type,
+            actor_username,
+        )
+
+
 class AIAdminService:
     """Read and basic override operations for AI admin routes."""
 
@@ -524,6 +548,7 @@ class AIAdminService:
         timeout_seconds: int | None,
         custom_headers: dict[str, str],
         extra_config: dict[str, object],
+        actor_username: str | None = None,
     ) -> "AISourceDefinition":
         async with get_session() as session:
             await ai_source_service.create_source(
@@ -544,7 +569,13 @@ class AIAdminService:
                 ),
             )
             await session.commit()
-            return (await ai_source_service.list_sources(session))[-1]
+            created = (await ai_source_service.list_sources(session))[-1]
+            _record_ai_admin_audit(
+                "ai_source_created",
+                actor_username=actor_username,
+                detail=f"{created.source_id} {created.name}",
+            )
+            return created
 
     async def update_source(  # noqa: PLR0913
         self,
@@ -559,6 +590,7 @@ class AIAdminService:
         timeout_seconds: int | None,
         custom_headers: dict[str, str],
         extra_config: dict[str, object],
+        actor_username: str | None = None,
     ) -> "AISourceDefinition | None":
         async with get_session() as session:
             row = await ai_source_service.update_source(
@@ -583,10 +615,26 @@ class AIAdminService:
                 return None
             await session.commit()
             sources = await ai_source_service.list_sources(session)
-            return next((item for item in sources if item.source_id == source_id), None)
+            updated = next(
+                (item for item in sources if item.source_id == source_id),
+                None,
+            )
+            if updated is not None:
+                _record_ai_admin_audit(
+                    "ai_source_updated",
+                    actor_username=actor_username,
+                    detail=f"{updated.source_id} {updated.name}",
+                )
+            return updated
 
-    async def delete_source(self, *, source_id: str) -> bool:
+    async def delete_source(
+        self,
+        *,
+        source_id: str,
+        actor_username: str | None = None,
+    ) -> bool:
         async with get_session() as session:
+            source = await ai_source_service.get_source(session, source_id=source_id)
             dependency_report = await ai_source_service.build_delete_dependency_report(
                 session,
                 source_id=source_id,
@@ -602,6 +650,15 @@ class AIAdminService:
             )
             if deleted:
                 await session.commit()
+                _record_ai_admin_audit(
+                    "ai_source_deleted",
+                    actor_username=actor_username,
+                    detail=(
+                        f"{source.source_id} {source.name}"
+                        if source is not None
+                        else source_id
+                    ),
+                )
             return deleted
 
     async def list_model_profiles(self) -> list["AIModelProfileDefinition"]:
@@ -617,6 +674,7 @@ class AIAdminService:
         priority: int,
         enabled: bool,
         fallback_profile_id: str | None,
+        actor_username: str | None = None,
     ) -> "AIModelProfileDefinition":
         async with get_session() as session:
             create_input = await self._build_profile_create_input(
@@ -630,7 +688,13 @@ class AIAdminService:
             )
             await ai_model_profile_service.create_profile(session, create_input)
             await session.commit()
-            return (await ai_model_profile_service.list_profiles(session))[-1]
+            created = (await ai_model_profile_service.list_profiles(session))[-1]
+            _record_ai_admin_audit(
+                "ai_model_profile_created",
+                actor_username=actor_username,
+                detail=f"{created.profile_id} {created.name}",
+            )
+            return created
 
     async def update_model_profile(  # noqa: PLR0913
         self,
@@ -642,6 +706,7 @@ class AIAdminService:
         priority: int,
         enabled: bool,
         fallback_profile_id: str | None,
+        actor_username: str | None = None,
     ) -> "AIModelProfileDefinition | None":
         async with get_session() as session:
             create_input = await self._build_profile_create_input(
@@ -662,10 +727,17 @@ class AIAdminService:
                 return None
             await session.commit()
             profiles = await ai_model_profile_service.list_profiles(session)
-            return next(
+            updated = next(
                 (item for item in profiles if item.profile_id == profile_id),
                 None,
             )
+            if updated is not None:
+                _record_ai_admin_audit(
+                    "ai_model_profile_updated",
+                    actor_username=actor_username,
+                    detail=f"{updated.profile_id} {updated.name}",
+                )
+            return updated
 
     async def list_model_bindings(self) -> list["AIModelBindingSpec"]:
         async with get_session() as session:
@@ -736,6 +808,7 @@ class AIAdminService:
         enabled: bool,
         is_default: bool,
         extra_params: dict[str, object],
+        actor_username: str | None = None,
     ) -> "AISourceModelDefinition":
         async with get_session() as session:
             source = await ai_source_service.get_source(session, source_id=source_id)
@@ -753,7 +826,13 @@ class AIAdminService:
             )
             await session.commit()
             models = await self.list_source_models(source_id=source_id)
-            return models[0]
+            created = models[0]
+            _record_ai_admin_audit(
+                "ai_source_model_created",
+                actor_username=actor_username,
+                detail=f"{created.model_id} {created.display_name}",
+            )
+            return created
 
     async def update_source_model(  # noqa: PLR0913
         self,
@@ -765,6 +844,7 @@ class AIAdminService:
         enabled: bool,
         is_default: bool,
         extra_params: dict[str, object],
+        actor_username: str | None = None,
     ) -> "AISourceModelDefinition | None":
         async with get_session() as session:
             source = await ai_source_service.get_source(session, source_id=source_id)
@@ -785,13 +865,21 @@ class AIAdminService:
                 return None
             await session.commit()
             models = await self.list_source_models(source_id=source_id)
-            return next((item for item in models if item.model_id == model_id), None)
+            updated = next((item for item in models if item.model_id == model_id), None)
+            if updated is not None:
+                _record_ai_admin_audit(
+                    "ai_source_model_updated",
+                    actor_username=actor_username,
+                    detail=f"{updated.model_id} {updated.display_name}",
+                )
+            return updated
 
     async def delete_source_model(
         self,
         *,
         model_id: str,
         source_id: str | None = None,
+        actor_username: str | None = None,
     ) -> bool:
         async with get_session() as session:
             capability_type = await self._resolve_model_capability_type(
@@ -799,17 +887,22 @@ class AIAdminService:
                 model_id=model_id,
                 source_id=source_id,
             )
-            if capability_type == "chat_completion":
-                profiles = await ai_model_profile_service.list_profiles(session)
-                dependent_profiles = [
-                    profile for profile in profiles if profile.model_id == model_id
-                ]
-                if dependent_profiles:
-                    labels = tuple(profile.name for profile in dependent_profiles[:3])
-                    raise AISourceModelDeleteBlockedError(
-                        profile_count=len(dependent_profiles),
-                        profile_labels=labels,
-                    )
+            existing_label = await self._build_source_model_audit_label(
+                session,
+                capability_type=capability_type,
+                model_id=model_id,
+            )
+            dependent_profiles = await self._list_dependent_chat_model_profiles(
+                session,
+                capability_type=capability_type,
+                model_id=model_id,
+            )
+            if dependent_profiles:
+                labels = tuple(profile.name for profile in dependent_profiles[:3])
+                raise AISourceModelDeleteBlockedError(
+                    profile_count=len(dependent_profiles),
+                    profile_labels=labels,
+                )
             deleted = False
             if source_id:
                 source = await ai_source_service.get_source(
@@ -838,7 +931,38 @@ class AIAdminService:
                         break
             if deleted:
                 await session.commit()
+                _record_ai_admin_audit(
+                    "ai_source_model_deleted",
+                    actor_username=actor_username,
+                    detail=existing_label,
+                )
             return deleted
+
+    async def _build_source_model_audit_label(
+        self,
+        session: "AsyncSession",
+        *,
+        capability_type: "AISourceCapabilityType | None",
+        model_id: str,
+    ) -> str:
+        if capability_type != "chat_completion":
+            return model_id
+        existing = await ai_chat_model_service.get_model(session, model_id=model_id)
+        if existing is None:
+            return model_id
+        return f"{existing.model_id} {existing.display_name}"
+
+    async def _list_dependent_chat_model_profiles(
+        self,
+        session: "AsyncSession",
+        *,
+        capability_type: "AISourceCapabilityType | None",
+        model_id: str,
+    ) -> list["AIModelProfileDefinition"]:
+        if capability_type != "chat_completion":
+            return []
+        profiles = await ai_model_profile_service.list_profiles(session)
+        return [profile for profile in profiles if profile.model_id == model_id]
 
     async def test_source_model(  # noqa: PLR0913
         self,
@@ -1215,7 +1339,7 @@ class AIAdminService:
         async with get_session() as session:
             return await ai_persona_service.list_bindings(session)
 
-    async def create_persona(
+    async def create_persona(  # noqa: PLR0913
         self,
         *,
         name: str,
@@ -1223,6 +1347,7 @@ class AIAdminService:
         system_prompt: str,
         style_prompt: str,
         enabled: bool,
+        actor_username: str | None = None,
     ) -> "AIPersonaDefinition":
         async with get_session() as session:
             row = await ai_persona_service.create_persona(
@@ -1237,7 +1362,15 @@ class AIAdminService:
             )
             await session.commit()
             personas = await ai_persona_service.list_personas(session)
-            return next(item for item in personas if item.persona_id == row.persona_id)
+            created = next(
+                item for item in personas if item.persona_id == row.persona_id
+            )
+            _record_ai_admin_audit(
+                "ai_persona_created",
+                actor_username=actor_username,
+                detail=f"{created.persona_id} {created.name}",
+            )
+            return created
 
     async def update_persona(  # noqa: PLR0913
         self,
@@ -1248,6 +1381,7 @@ class AIAdminService:
         system_prompt: str,
         style_prompt: str,
         enabled: bool,
+        actor_username: str | None = None,
     ) -> "AIPersonaDefinition | None":
         async with get_session() as session:
             row = await ai_persona_service.update_persona(
@@ -1265,10 +1399,17 @@ class AIAdminService:
                 return None
             await session.commit()
             personas = await ai_persona_service.list_personas(session)
-            return next(
+            updated = next(
                 (item for item in personas if item.persona_id == persona_id),
                 None,
             )
+            if updated is not None:
+                _record_ai_admin_audit(
+                    "ai_persona_updated",
+                    actor_username=actor_username,
+                    detail=f"{updated.persona_id} {updated.name}",
+                )
+            return updated
 
     async def list_memories(  # noqa: PLR0913
         self,
@@ -1316,6 +1457,7 @@ class AIAdminService:
         content: str,
         salience: float,
         confidence: float,
+        actor_username: str | None = None,
     ) -> "AIMemoryDefinition":
         normalized_layer = cast(
             "AIMemoryLayer",
@@ -1367,19 +1509,37 @@ class AIAdminService:
                 memory_layer=normalized_layer,
                 include_ignored=True,
             )
-            return next(item for item in memories if item.memory_id == row.memory_id)
+            created = next(item for item in memories if item.memory_id == row.memory_id)
+            _record_ai_admin_audit(
+                "ai_memory_created",
+                actor_username=actor_username,
+                detail=f"{created.memory_id} {created.anchor_type}:{created.anchor_id}",
+            )
+            return created
 
     async def delete_memory(
         self,
         *,
         memory_id: str,
+        actor_username: str | None = None,
     ) -> bool:
         async with get_session() as session:
+            existing = await ai_memory_service.get_memory(session, memory_id=memory_id)
             deleted = await ai_memory_service.delete_memory(
                 session,
                 memory_id=memory_id,
             )
             await session.commit()
+            if deleted:
+                _record_ai_admin_audit(
+                    "ai_memory_deleted",
+                    actor_username=actor_username,
+                    detail=(
+                        f"{memory_id} {existing.anchor_type}:{existing.anchor_id}"
+                        if existing is not None
+                        else memory_id
+                    ),
+                )
             return deleted
 
     async def update_memory(
@@ -1389,6 +1549,7 @@ class AIAdminService:
         content: str,
         salience: float,
         confidence: float,
+        actor_username: str | None = None,
     ) -> "AIMemoryDefinition | None":
         async with get_session() as session:
             existing = await ai_memory_service.get_memory(session, memory_id=memory_id)
@@ -1422,15 +1583,25 @@ class AIAdminService:
                 memory_layer=cast("AIMemoryLayer", row.memory_layer),
                 include_ignored=True,
             )
-            return next(
+            updated = next(
                 (item for item in memories if item.memory_id == row.memory_id),
                 None,
             )
+            if updated is not None:
+                _record_ai_admin_audit(
+                    "ai_memory_updated",
+                    actor_username=actor_username,
+                    detail=(
+                        f"{updated.memory_id} {updated.anchor_type}:{updated.anchor_id}"
+                    ),
+                )
+            return updated
 
     async def toggle_memory_ignored(
         self,
         *,
         memory_id: str,
+        actor_username: str | None = None,
     ) -> "AIMemoryDefinition | None":
         async with get_session() as session:
             result = await ai_memory_service.toggle_memory_ignored(
@@ -1439,12 +1610,18 @@ class AIAdminService:
             )
             if result is not None:
                 await session.commit()
+                _record_ai_admin_audit(
+                    "ai_memory_ignored_toggled",
+                    actor_username=actor_username,
+                    detail=f"{result.memory_id} ignored={result.is_ignored}",
+                )
             return result
 
     async def bulk_delete_memories(
         self,
         *,
         memory_ids: list[str],
+        actor_username: str | None = None,
     ) -> int:
         async with get_session() as session:
             count = await ai_memory_service.bulk_delete_memories(
@@ -1452,6 +1629,12 @@ class AIAdminService:
                 memory_ids=memory_ids,
             )
             await session.commit()
+            if count > 0:
+                _record_ai_admin_audit(
+                    "ai_memory_bulk_deleted",
+                    actor_username=actor_username,
+                    detail=f"count={count}",
+                )
             return count
 
     async def bulk_set_memories_ignored(
@@ -1459,6 +1642,7 @@ class AIAdminService:
         *,
         memory_ids: list[str],
         ignored: bool,
+        actor_username: str | None = None,
     ) -> int:
         async with get_session() as session:
             count = await ai_memory_service.bulk_set_ignored(
@@ -1467,6 +1651,12 @@ class AIAdminService:
                 ignored=ignored,
             )
             await session.commit()
+            if count > 0:
+                _record_ai_admin_audit(
+                    "ai_memory_bulk_ignored_set",
+                    actor_username=actor_username,
+                    detail=f"count={count} ignored={ignored}",
+                )
             return count
 
     async def list_recent_sessions(
@@ -1584,11 +1774,17 @@ class AIAdminService:
         self,
         *,
         task_id: str,
+        actor_username: str | None = None,
     ) -> "AIFutureTaskDefinition | None":
         async with get_session() as session:
             task = await ai_future_task_service.cancel_task(session, task_id=task_id)
             if task is not None:
                 await session.commit()
+                _record_ai_admin_audit(
+                    "ai_future_task_cancelled",
+                    actor_username=actor_username,
+                    detail=f"{task.task_id} {task.title}",
+                )
             return task
 
     async def list_scene_turns(
@@ -1976,6 +2172,7 @@ class AIAdminService:
         user_id: str,
         score: float,
         group_id: str | None = None,
+        actor_username: str | None = None,
     ) -> "AIRelationshipState":
         async with get_session() as session:
             state = await ai_relationship_service.set_manual_score(
@@ -1986,6 +2183,13 @@ class AIAdminService:
                 score=score,
             )
             await session.commit()
+            _record_ai_admin_audit(
+                "ai_relationship_score_updated",
+                actor_username=actor_username,
+                detail=(
+                    f"{platform}:{group_id or '__private__'}:{user_id} score={score}"
+                ),
+            )
             return state
 
     async def list_person_profiles(
@@ -2016,6 +2220,7 @@ class AIAdminService:
         person_name: str | None = None,
         nickname: str | None = None,
         memory_points: "tuple[AIPersonMemoryPoint, ...] | None" = None,
+        actor_username: str | None = None,
     ) -> "AIPersonProfileDefinition | None":
         async with get_session() as session:
             result = await ai_person_profile_service.update_profile(
@@ -2027,20 +2232,39 @@ class AIAdminService:
             )
             if result is not None:
                 await session.commit()
+                _record_ai_admin_audit(
+                    "ai_person_profile_updated",
+                    actor_username=actor_username,
+                    detail=f"{result.person_id} {result.person_name}",
+                )
             return result
 
     async def delete_person_profile(
         self,
         *,
         person_id: str,
+        actor_username: str | None = None,
     ) -> bool:
         async with get_session() as session:
+            existing = await ai_person_profile_service.get_profile_by_id(
+                session,
+                person_id=person_id,
+            )
             deleted = await ai_person_profile_service.delete_profile(
                 session,
                 person_id=person_id,
             )
             if deleted:
                 await session.commit()
+                _record_ai_admin_audit(
+                    "ai_person_profile_deleted",
+                    actor_username=actor_username,
+                    detail=(
+                        f"{existing.person_id} {existing.person_name}"
+                        if existing is not None
+                        else person_id
+                    ),
+                )
             return deleted
 
     def list_tools(self, policy: "AIToolPolicy | None" = None) -> list["AIToolSpec"]:
@@ -2088,6 +2312,7 @@ class AIAdminService:
         scope_id: str,
         allow_read_only_tools: bool,
         capability_mode: str,
+        actor_username: str | None = None,
     ) -> AIToolPolicyBindingSpec:
         async with get_session() as session:
             row = await ai_tool_policy_binding_service.create_binding(
@@ -2100,13 +2325,19 @@ class AIAdminService:
                 ),
             )
             await session.commit()
-            return AIToolPolicyBindingSpec(
+            created = AIToolPolicyBindingSpec(
                 binding_id=row.binding_id,
                 scope_type=row.scope_type,
                 scope_id=row.scope_id,
                 allow_read_only_tools=row.allow_read_only_tools,
                 capability_mode=row.capability_mode,  # type: ignore[arg-type]
             )
+            _record_ai_admin_audit(
+                "ai_tool_policy_binding_created",
+                actor_username=actor_username,
+                detail=f"{created.binding_id} {created.scope_type}:{created.scope_id}",
+            )
+            return created
 
     async def update_tool_policy_binding(
         self,
@@ -2114,6 +2345,7 @@ class AIAdminService:
         binding_id: str,
         allow_read_only_tools: bool,
         capability_mode: str,
+        actor_username: str | None = None,
     ) -> AIToolPolicyBindingSpec | None:
         async with get_session() as session:
             row = await ai_tool_policy_binding_service.update_binding(
@@ -2125,18 +2357,25 @@ class AIAdminService:
             if row is None:
                 return None
             await session.commit()
-            return AIToolPolicyBindingSpec(
+            updated = AIToolPolicyBindingSpec(
                 binding_id=row.binding_id,
                 scope_type=row.scope_type,
                 scope_id=row.scope_id,
                 allow_read_only_tools=row.allow_read_only_tools,
                 capability_mode=row.capability_mode,  # type: ignore[arg-type]
             )
+            _record_ai_admin_audit(
+                "ai_tool_policy_binding_updated",
+                actor_username=actor_username,
+                detail=f"{updated.binding_id} {updated.scope_type}:{updated.scope_id}",
+            )
+            return updated
 
     async def delete_tool_policy_binding(
         self,
         *,
         binding_id: str,
+        actor_username: str | None = None,
     ) -> bool:
         async with get_session() as session:
             deleted = await ai_tool_policy_binding_service.delete_binding(
@@ -2145,6 +2384,11 @@ class AIAdminService:
             )
             if deleted:
                 await session.commit()
+                _record_ai_admin_audit(
+                    "ai_tool_policy_binding_deleted",
+                    actor_username=actor_username,
+                    detail=binding_id,
+                )
             return deleted
 
     def preview_tool_policy(
