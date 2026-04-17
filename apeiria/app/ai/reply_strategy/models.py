@@ -26,6 +26,7 @@ class WakeContext:
     is_tome: bool
     is_private: bool
     is_future_task: bool
+    allow_group_initiative: bool = True
 
 
 @dataclass(frozen=True)

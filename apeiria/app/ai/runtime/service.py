@@ -10,6 +10,7 @@ from uuid import uuid4
 from nonebot.log import logger
 from nonebot_plugin_orm import get_session
 
+from apeiria.app.ai.config import get_ai_plugin_config
 from apeiria.app.ai.conversation.context_window import (
     MAX_FETCH_MESSAGES,
     context_window_service,
@@ -38,6 +39,7 @@ from apeiria.app.ai.reply_strategy import (
     summarize_reply_strategy_decision,
 )
 from apeiria.app.ai.reply_strategy.models import WakeContext
+from apeiria.app.ai.reply_strategy.wake_gate import evaluate_wake
 from apeiria.app.ai.runtime.composer import (
     AIRuntimeComposeInput,
     build_runtime_prompt_channels,
@@ -353,13 +355,25 @@ class AIRuntimeService:
         """Handle one runtime message and optionally return a reply."""
 
         ai_skill_service.ensure_initialized()
-        wake_context = build_wake_context(bot, event)
+        config = get_ai_plugin_config()
+        wake_context = build_wake_context(
+            bot,
+            event,
+            allow_group_initiative=config.allow_group_initiative,
+        )
         if wake_context is None:
+            return None
+        if not evaluate_wake(wake_context).should_process:
             return None
         message_text = wake_context.message_text
 
         async with get_session() as session:
-            ingested = await chat_session_service.ingest_event(session, bot, event)
+            ingested = await chat_session_service.ingest_event(
+                session,
+                bot,
+                event,
+                persist_raw_data=config.persist_raw_event_payloads,
+            )
             if ingested is None:
                 return None
 

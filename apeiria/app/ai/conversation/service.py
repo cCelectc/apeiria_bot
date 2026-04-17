@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any, cast
@@ -192,6 +193,8 @@ class ChatSessionService:
         session: "AsyncSession",
         bot: "Bot",
         event: "Event",
+        *,
+        persist_raw_data: bool = False,
     ) -> tuple[ChatSessionIdentity, ChatMessage] | None:
         """Convert one runtime event into a canonical chat message."""
 
@@ -230,7 +233,9 @@ class ChatSessionService:
                 platform_message_id=platform_message_id,
                 platform_reply_id=platform_reply_id,
                 content=content,
-                raw_data=raw_data,
+                raw_data=(
+                    _build_debug_raw_payload(raw_data) if persist_raw_data else None
+                ),
             ),
         )
         return identity, message
@@ -248,11 +253,12 @@ class ChatSessionService:
             select(ChatMessage)
             .join(ChatSession, ChatMessage.session_pk == ChatSession.id)
             .where(ChatSession.session_id == identity.session_id)
-            .order_by(ChatMessage.created_at.asc(), ChatMessage.id.asc())
+            .order_by(ChatMessage.created_at.desc(), ChatMessage.id.desc())
+            .limit(max_messages)
         )
-        messages = [
-            self._to_context_message_view(row) for row in result.scalars().all()
-        ]
+        rows = list(result.scalars().all())
+        rows.reverse()
+        messages = [self._to_context_message_view(row) for row in rows]
         return trim_message_window(messages, max_messages=max_messages)
 
     async def list_recent_sessions(
@@ -556,3 +562,74 @@ def _build_normalized_content(  # noqa: C901, PLR0912
     if quoted_text:
         payload["quoted_text"] = quoted_text
     return payload
+
+
+def _build_debug_raw_payload(
+    raw_data: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    if not raw_data:
+        return None
+
+    payload: dict[str, Any] = {}
+    for key in (
+        "message_id",
+        "id",
+        "time",
+        "self_id",
+        "user_id",
+        "group_id",
+        "post_type",
+        "message_type",
+        "sub_type",
+        "notice_type",
+        "request_type",
+    ):
+        value = raw_data.get(key)
+        if isinstance(value, (str, int, float, bool)):
+            payload[key] = value
+
+    sender = raw_data.get("sender")
+    sender_summary = _build_mapping_summary(
+        sender,
+        allowed_keys=("user_id", "nickname", "card", "name", "role"),
+    )
+    if sender_summary:
+        payload["sender"] = sender_summary
+
+    reply = raw_data.get("reply")
+    reply_summary = _build_mapping_summary(
+        reply,
+        allowed_keys=("message_id", "id", "user_id", "text"),
+    )
+    if reply_summary:
+        payload["reply"] = reply_summary
+
+    message = raw_data.get("message")
+    if isinstance(message, list):
+        segment_types = [
+            seg_type
+            for segment in message
+            if isinstance(segment, Mapping)
+            and isinstance((seg_type := segment.get("type")), str)
+            and seg_type.strip()
+        ]
+        if segment_types:
+            payload["message_segment_types"] = segment_types[:20]
+
+    return payload or None
+
+
+def _build_mapping_summary(
+    value: object,
+    *,
+    allowed_keys: tuple[str, ...],
+) -> dict[str, Any] | None:
+    if not isinstance(value, Mapping):
+        return None
+
+    summary = {
+        key: item
+        for key in allowed_keys
+        if isinstance((item := value.get(key)), (str, int, float, bool))
+    }
+    return summary or None

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from apeiria.app.ai.reply_strategy.models import WakeContext, WakeSignal
+from apeiria.app.ai.reply_strategy.models import WakeContext, WakeEngagement, WakeSignal
 
 if TYPE_CHECKING:
     from nonebot.adapters import Bot, Event
@@ -22,41 +22,38 @@ def evaluate_wake(context: WakeContext) -> WakeSignal:
     """
 
     if context.user_id == context.bot_self_id:
-        return WakeSignal(
-            should_process=False,
-            engagement="drop",
-            reason="ignore_self_message",
-        )
-    if not context.message_text.strip():
-        return WakeSignal(
-            should_process=False,
-            engagement="drop",
-            reason="empty_plaintext",
-        )
-
-    if context.is_future_task:
-        return WakeSignal(
-            should_process=True,
-            engagement="direct",
-            reason="future_task",
-        )
-    if context.is_tome:
-        return WakeSignal(
-            should_process=True,
-            engagement="direct",
-            reason="mentioned_bot",
-        )
-    if context.is_private:
-        return WakeSignal(
-            should_process=True,
-            engagement="direct",
-            reason="private_message",
-        )
+        should_process = False
+        engagement: WakeEngagement = "drop"
+        reason = "ignore_self_message"
+    elif not context.message_text.strip():
+        should_process = False
+        engagement = "drop"
+        reason = "empty_plaintext"
+    elif context.is_future_task:
+        should_process = True
+        engagement = "direct"
+        reason = "future_task"
+    elif context.is_tome:
+        should_process = True
+        engagement = "direct"
+        reason = "mentioned_bot"
+    elif context.is_private:
+        should_process = True
+        engagement = "direct"
+        reason = "private_message"
+    elif not context.allow_group_initiative:
+        should_process = False
+        engagement = "drop"
+        reason = "group_initiative_disabled"
+    else:
+        should_process = True
+        engagement = "candidate"
+        reason = "group_initiative_candidate"
 
     return WakeSignal(
-        should_process=True,
-        engagement="candidate",
-        reason="group_initiative_candidate",
+        should_process=should_process,
+        engagement=engagement,
+        reason=reason,
     )
 
 
@@ -76,7 +73,12 @@ def is_private_like_event(event: "Event", user_id: str) -> bool:
     return session_id == user_id
 
 
-def build_wake_context(bot: "Bot", event: "Event") -> WakeContext | None:
+def build_wake_context(
+    bot: "Bot",
+    event: "Event",
+    *,
+    allow_group_initiative: bool = True,
+) -> WakeContext | None:
     """Build a wake context from a generic NoneBot event."""
 
     try:
@@ -92,4 +94,5 @@ def build_wake_context(bot: "Bot", event: "Event") -> WakeContext | None:
         is_tome=is_tome,
         is_private=is_private_like_event(event, user_id),
         is_future_task=False,
+        allow_group_initiative=allow_group_initiative,
     )
