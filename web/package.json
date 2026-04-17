@@ -9,6 +9,7 @@
     "preview": "vite preview",
     "build-only": "vite build",
     "lint": "eslint .",
+    "lint:fix-dry-run": "eslint . --fix-dry-run",
     "type-check": "vue-tsc --build --force"
   },
   "dependencies": {
