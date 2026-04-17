@@ -7,6 +7,8 @@ from typing import Annotated, Any, Literal, cast
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from apeiria.app.ai.admin.service import (
+    AISourceDeleteBlockedError,
+    AISourceModelDeleteBlockedError,
     AISourceModelFetchConfigError,
     AISourceModelFetchUpstreamError,
     AISourceModelTestConfigError,
@@ -158,7 +160,13 @@ async def delete_ai_source(
     _: Annotated[Any, Depends(require_control_panel)],
     source_id: Annotated[str, Query(min_length=1)],
 ) -> bool:
-    return await ai_admin_service.delete_source(source_id=source_id)
+    try:
+        return await ai_admin_service.delete_source(source_id=source_id)
+    except AISourceDeleteBlockedError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(exc),
+        ) from exc
 
 
 @router.get("/sources/models", response_model=list[AISourceModelItem])
@@ -274,10 +282,16 @@ async def delete_ai_source_model(
     model_id: Annotated[str, Query(min_length=1)],
     source_id: Annotated[str | None, Query(max_length=64)] = None,
 ) -> bool:
-    return await ai_admin_service.delete_source_model(
-        model_id=model_id,
-        source_id=source_id,
-    )
+    try:
+        return await ai_admin_service.delete_source_model(
+            model_id=model_id,
+            source_id=source_id,
+        )
+    except AISourceModelDeleteBlockedError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(exc),
+        ) from exc
 
 
 @router.get("/model-profiles", response_model=list[AIModelProfileItem])

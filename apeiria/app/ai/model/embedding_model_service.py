@@ -30,6 +30,28 @@ class AIEmbeddingModelCreateInput:
 class AIEmbeddingModelService:
     """Embedding model CRUD service."""
 
+    async def get_model(
+        self,
+        session: "AsyncSession",
+        *,
+        model_id: str,
+    ) -> AIEmbeddingModelDefinition | None:
+        result = await session.execute(
+            select(AIEmbeddingModel).where(AIEmbeddingModel.model_id == model_id)
+        )
+        row = result.scalar_one_or_none()
+        if row is None:
+            return None
+        return AIEmbeddingModelDefinition(
+            model_id=row.model_id,
+            source_id=row.source_id,
+            model_identifier=row.model_identifier,
+            display_name=row.display_name,
+            enabled=row.enabled,
+            is_default=row.is_default,
+            extra_params=row.extra_params_json or {},
+        )
+
     async def list_models(
         self,
         session: "AsyncSession",

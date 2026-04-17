@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import io
+import re
 import wave
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Literal, cast
@@ -36,10 +37,12 @@ from apeiria.app.ai.model.capability_registry import (
 from apeiria.app.ai.model.chat_model_service import (
     ai_chat_model_service,
 )
+from apeiria.app.ai.model.embedding_model_service import ai_embedding_model_service
 from apeiria.app.ai.model.profile_service import (
     AIModelProfileCreateInput,
     ai_model_profile_service,
 )
+from apeiria.app.ai.model.rerank_model_service import ai_rerank_model_service
 from apeiria.app.ai.model.service import ai_model_facade
 from apeiria.app.ai.model.source_service import AISourceCreateInput, ai_source_service
 from apeiria.app.ai.model.sources import (
@@ -48,6 +51,8 @@ from apeiria.app.ai.model.sources import (
     UnsupportedAISourcePresetError,
     resolve_client_type_for_preset,
 )
+from apeiria.app.ai.model.stt_model_service import ai_stt_model_service
+from apeiria.app.ai.model.tts_model_service import ai_tts_model_service
 from apeiria.app.ai.person.service import ai_person_profile_service
 from apeiria.app.ai.persona.models import AIPersonaBindingTarget, AIPersonaCreateInput
 from apeiria.app.ai.persona.service import (
@@ -295,6 +300,36 @@ class AISourceModelTestUpstreamError(RuntimeError):
         super().__init__(detail)
 
 
+class AISourceDeleteBlockedError(ValueError):
+    """Raised when deleting one source would leave dependent rows behind."""
+
+    def __init__(
+        self,
+        *,
+        model_count: int,
+        model_labels: tuple[str, ...] = (),
+    ) -> None:
+        suffix = f"：{', '.join(model_labels)}" if model_labels else ""
+        super().__init__(
+            f"当前接入仍绑定 {model_count} 个模型，请先删除相关模型{suffix}。"
+        )
+
+
+class AISourceModelDeleteBlockedError(ValueError):
+    """Raised when deleting one source model would leave profiles behind."""
+
+    def __init__(
+        self,
+        *,
+        profile_count: int,
+        profile_labels: tuple[str, ...] = (),
+    ) -> None:
+        suffix = f"：{', '.join(profile_labels)}" if profile_labels else ""
+        super().__init__(
+            f"当前模型仍被 {profile_count} 个模型档案引用，请先调整模型档案{suffix}。"
+        )
+
+
 MODEL_TEST_PROMPT = "Reply with exactly OK."
 EMBEDDING_TEST_TEXT = "Apeiria embedding connectivity check"
 TTS_TEST_TEXT = "Apeiria text to speech connectivity check"
@@ -304,6 +339,43 @@ RERANK_TEST_DOCUMENTS = (
     "This sentence is about connectivity verification.",
     "Another unrelated document.",
 )
+
+_REDACTED_TOKEN_TEXT = "[redacted]"
+_BEARER_TOKEN_PATTERN = re.compile(r"(?i)(bearer\s+)([A-Za-z0-9._~+/=-]+)")
+_AUTH_HEADER_PATTERN = re.compile(
+    r"(?i)(authorization['\"]?\s*[:=]\s*['\"]?bearer\s+)([A-Za-z0-9._~+/=-]+)"
+)
+
+
+def _sanitize_upstream_error_detail(
+    detail: object,
+    *,
+    secrets: tuple[str | None, ...] = (),
+) -> str:
+    """Remove obvious credential material from upstream error text."""
+
+    text = str(detail).strip()
+    if not text:
+        return "upstream request failed"
+
+    sanitized = _BEARER_TOKEN_PATTERN.sub(
+        rf"\1{_REDACTED_TOKEN_TEXT}",
+        text,
+    )
+    sanitized = _AUTH_HEADER_PATTERN.sub(
+        rf"\1{_REDACTED_TOKEN_TEXT}",
+        sanitized,
+    )
+
+    for secret in secrets:
+        if not isinstance(secret, str):
+            continue
+        normalized = secret.strip()
+        if not normalized:
+            continue
+        sanitized = sanitized.replace(normalized, _REDACTED_TOKEN_TEXT)
+
+    return sanitized or "upstream request failed"
 
 
 def _coerce_source_preset_type(
@@ -515,6 +587,15 @@ class AIAdminService:
 
     async def delete_source(self, *, source_id: str) -> bool:
         async with get_session() as session:
+            dependency_report = await ai_source_service.build_delete_dependency_report(
+                session,
+                source_id=source_id,
+            )
+            if dependency_report is not None:
+                raise AISourceDeleteBlockedError(
+                    model_count=dependency_report.model_count,
+                    model_labels=dependency_report.model_labels,
+                )
             deleted = await ai_source_service.delete_source(
                 session,
                 source_id=source_id,
@@ -639,7 +720,12 @@ class AIAdminService:
                     api_key=resolved_api_key,
                 )
             except Exception as exc:
-                raise AISourceModelFetchUpstreamError(str(exc)) from exc
+                raise AISourceModelFetchUpstreamError(
+                    _sanitize_upstream_error_detail(
+                        exc,
+                        secrets=(api_key, resolved_api_key),
+                    )
+                ) from exc
 
     async def create_source_model(  # noqa: PLR0913
         self,
@@ -708,6 +794,22 @@ class AIAdminService:
         source_id: str | None = None,
     ) -> bool:
         async with get_session() as session:
+            capability_type = await self._resolve_model_capability_type(
+                session,
+                model_id=model_id,
+                source_id=source_id,
+            )
+            if capability_type == "chat_completion":
+                profiles = await ai_model_profile_service.list_profiles(session)
+                dependent_profiles = [
+                    profile for profile in profiles if profile.model_id == model_id
+                ]
+                if dependent_profiles:
+                    labels = tuple(profile.name for profile in dependent_profiles[:3])
+                    raise AISourceModelDeleteBlockedError(
+                        profile_count=len(dependent_profiles),
+                        profile_labels=labels,
+                    )
             deleted = False
             if source_id:
                 source = await ai_source_service.get_source(
@@ -877,7 +979,12 @@ class AIAdminService:
                     max_tokens=32,
                 )
             except Exception as exc:
-                raise AISourceModelTestUpstreamError(str(exc)) from exc
+                raise AISourceModelTestUpstreamError(
+                    _sanitize_upstream_error_detail(
+                        exc,
+                        secrets=(api_key, resolved_api_key),
+                    )
+                ) from exc
             return (
                 resolved_model_identifier,
                 response.content.strip(),
@@ -1054,6 +1161,45 @@ class AIAdminService:
     ) -> bool:
         entry = self._get_model_capability_entry(capability_type)
         return await entry.delete_model(session, model_id)
+
+    async def _resolve_model_capability_type(
+        self,
+        session: "AsyncSession",
+        *,
+        model_id: str,
+        source_id: str | None = None,
+    ) -> "AISourceCapabilityType | None":
+        if source_id:
+            source = await ai_source_service.get_source(session, source_id=source_id)
+            if source is not None:
+                return source.capability_type
+
+        lookups = (
+            (
+                cast("AISourceCapabilityType", "chat_completion"),
+                ai_chat_model_service.get_model,
+            ),
+            (
+                cast("AISourceCapabilityType", "embedding"),
+                ai_embedding_model_service.get_model,
+            ),
+            (
+                cast("AISourceCapabilityType", "speech_to_text"),
+                ai_stt_model_service.get_model,
+            ),
+            (
+                cast("AISourceCapabilityType", "text_to_speech"),
+                ai_tts_model_service.get_model,
+            ),
+            (
+                cast("AISourceCapabilityType", "rerank"),
+                ai_rerank_model_service.get_model,
+            ),
+        )
+        for capability_type, get_model in lookups:
+            if await get_model(session, model_id=model_id) is not None:
+                return cast("AISourceCapabilityType", capability_type)
+        return None
 
     @staticmethod
     def _get_model_capability_entry(

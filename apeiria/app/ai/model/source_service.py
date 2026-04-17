@@ -39,6 +39,14 @@ class AISourceCreateInput:
     extra_config: dict[str, Any] | None = None
 
 
+@dataclass(frozen=True)
+class AISourceDeleteDependencyReport:
+    """Dependency report returned when deleting one source is unsafe."""
+
+    model_count: int
+    model_labels: tuple[str, ...]
+
+
 class AISourceService:
     """Source registry CRUD service."""
 
@@ -187,6 +195,31 @@ class AISourceService:
         await session.delete(row)
         await session.flush()
         return True
+
+    async def build_delete_dependency_report(
+        self,
+        session: "AsyncSession",
+        *,
+        source_id: str,
+    ) -> AISourceDeleteDependencyReport | None:
+        from apeiria.app.ai.model.capability_registry import (
+            SOURCE_MODEL_CAPABILITY_REGISTRY,
+        )
+
+        source = await self.get_source(session, source_id=source_id)
+        if source is None:
+            return None
+        entry = SOURCE_MODEL_CAPABILITY_REGISTRY[source.capability_type]
+        models = await entry.list_models(session, source_id)
+        if not models:
+            return None
+        labels = tuple(
+            item.display_name or item.model_identifier for item in models[:3]
+        )
+        return AISourceDeleteDependencyReport(
+            model_count=len(models),
+            model_labels=labels,
+        )
 
     @staticmethod
     def get_source_api_key(source: AISourceDefinition) -> str | None:
