@@ -11,7 +11,7 @@ from apeiria.shared.i18n import t
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
 
-    from apeiria.app.plugins.service import PluginCatalogItem
+    from apeiria.app.plugins import PluginCatalogEntry
 
 
 @dataclass(frozen=True)
@@ -47,7 +47,7 @@ class PluginToggleService:
         *,
         enabled: bool,
         cascade: bool,
-        list_plugins: Callable[[], Awaitable[list["PluginCatalogItem"]]],
+        list_plugins: Callable[[], Awaitable[list["PluginCatalogEntry"]]],
         set_plugin_enabled_record: Callable[..., Awaitable[bool]],
     ) -> PluginToggleResult:
         preview = await self.preview_toggle_plugin(
@@ -92,10 +92,10 @@ class PluginToggleService:
         module_name: str,
         *,
         enabled: bool,
-        list_plugins: Callable[[], Awaitable[list["PluginCatalogItem"]]],
+        list_plugins: Callable[[], Awaitable[list["PluginCatalogEntry"]]],
     ) -> PluginTogglePreview:
         items = await list_plugins()
-        item_map = {item.module_name: item for item in items}
+        item_map = {item.descriptor.module_name: item for item in items}
         item = item_map.get(module_name)
         if item is None:
             raise ResourceNotFoundError(module_name)
@@ -106,17 +106,17 @@ class PluginToggleService:
 
     def _preview_enable(
         self,
-        item: "PluginCatalogItem",
-        item_map: dict[str, "PluginCatalogItem"],
+        item: "PluginCatalogEntry",
+        item_map: dict[str, "PluginCatalogEntry"],
     ) -> PluginTogglePreview:
         requires_enable: list[str] = []
         missing_dependencies: list[str] = []
-        for dependency in item.required_plugins:
+        for dependency in item.governance_state.required_plugins:
             dependency_item = item_map.get(dependency)
             if dependency_item is None:
                 missing_dependencies.append(dependency)
                 continue
-            if not dependency_item.is_global_enabled:
+            if not dependency_item.governance_state.is_global_enabled:
                 requires_enable.append(dependency)
 
         blocked_reason = (
@@ -136,7 +136,7 @@ class PluginToggleService:
             )
         )
         return PluginTogglePreview(
-            module_name=item.module_name,
+            module_name=item.descriptor.module_name,
             enabled=True,
             allowed=not missing_dependencies,
             summary=summary,
@@ -149,32 +149,43 @@ class PluginToggleService:
 
     def _preview_disable(
         self,
-        item: "PluginCatalogItem",
-        items: list["PluginCatalogItem"],
+        item: "PluginCatalogEntry",
+        items: list["PluginCatalogEntry"],
     ) -> PluginTogglePreview:
         requires_disable: list[str] = []
         requires_disable_names: list[str] = []
         protected_dependents: list[str] = []
-        for dependent_name in item.dependent_plugins:
+        for dependent_name in item.governance_state.dependent_plugins:
             dependent = next(
                 (
                     candidate
                     for candidate in items
-                    if dependent_name in {candidate.name, candidate.module_name}
+                    if dependent_name
+                    in {
+                        candidate.descriptor.name,
+                        candidate.descriptor.module_name,
+                    }
                 ),
                 None,
             )
-            if dependent is None or not dependent.is_global_enabled:
+            if dependent is None or not dependent.governance_state.is_global_enabled:
                 continue
-            if dependent.is_protected:
-                protected_dependents.append(dependent.name or dependent.module_name)
+            if dependent.governance_state.is_protected:
+                protected_dependents.append(
+                    dependent.descriptor.name or dependent.descriptor.module_name,
+                )
                 continue
-            requires_disable.append(dependent.module_name)
-            requires_disable_names.append(dependent.name or dependent.module_name)
+            requires_disable.append(dependent.descriptor.module_name)
+            requires_disable_names.append(
+                dependent.descriptor.name or dependent.descriptor.module_name,
+            )
 
         blocked_reason = None
-        if item.is_protected and item.protected_reason:
-            blocked_reason = item.protected_reason
+        if (
+            item.governance_state.is_protected
+            and item.governance_state.protected_reason
+        ):
+            blocked_reason = item.governance_state.protected_reason
         elif protected_dependents:
             blocked_reason = t(
                 "common.required_by_plugins",
@@ -189,7 +200,7 @@ class PluginToggleService:
             )
         )
         return PluginTogglePreview(
-            module_name=item.module_name,
+            module_name=item.descriptor.module_name,
             enabled=False,
             allowed=blocked_reason is None,
             summary=summary,

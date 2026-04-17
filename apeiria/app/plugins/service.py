@@ -12,7 +12,14 @@ from apeiria.app.plugins.config_cleanup_service import (
     OrphanPluginConfigItem,
     plugin_config_cleanup_service,
 )
-from apeiria.app.plugins.models import PluginUninstallResult
+from apeiria.app.plugins.models import (
+    PluginCatalogEntry,
+    PluginDescriptor,
+    PluginGovernanceState,
+    PluginPackageBinding,
+    PluginRuntimeState,
+    PluginUninstallResult,
+)
 from apeiria.app.plugins.policy_service import plugin_policy_service
 from apeiria.app.plugins.readme_service import PluginReadme, plugin_readme_service
 from apeiria.app.plugins.repository import plugin_catalog_repository
@@ -23,6 +30,10 @@ from apeiria.app.plugins.toggle_service import (
 )
 from apeiria.app.plugins.uninstall_service import plugin_uninstall_service
 from apeiria.infra.config.plugins import plugin_config_service
+from apeiria.infra.plugin_metadata.builders import (
+    handler_descriptor_builder,
+    plugin_descriptor_builder,
+)
 from apeiria.infra.runtime.framework_loader import iter_builtin_plugin_modules
 from apeiria.infra.runtime.module_cache import is_module_importable
 from apeiria.infra.runtime.plugin_policy import is_framework_dependency_plugin_module
@@ -33,11 +44,14 @@ from apeiria.shared.plugin_introspection import (
     find_loaded_plugin,
     get_module_required_plugins,
     get_pending_uninstall_plugin_modules,
-    get_plugin_extra,
     get_plugin_name,
     get_plugin_required_plugins,
     get_plugin_source,
     get_plugin_source_by_module_name,
+)
+from apeiria.shared.plugin_metadata import (
+    PluginExtraData,
+    normalize_plugin_type_value,
 )
 
 if TYPE_CHECKING:
@@ -46,7 +60,6 @@ if TYPE_CHECKING:
 
     from nonebot.plugin import Plugin
 
-    from apeiria.app.plugins.models import PluginUninstallResult
     from apeiria.infra.db.models.plugin_info import PluginInfo
 
 
@@ -67,44 +80,10 @@ class _PluginItemFacts:
     dependent_plugins: list[str]
 
 
-@dataclass(frozen=True)
-class PluginCatalogItem:
-    """Normalized plugin list entry."""
+class PluginGovernanceService:
+    """List and mutate governance-facing plugin state."""
 
-    module_name: str
-    kind: str
-    access_mode: str
-    name: str
-    description: str | None
-    homepage: str | None
-    source: str
-    is_global_enabled: bool
-    is_protected: bool
-    protected_reason: str | None
-    plugin_type: str
-    admin_level: int
-    author: str | None
-    version: str | None
-    is_loaded: bool
-    is_explicit: bool
-    is_dependency: bool
-    is_pending_uninstall: bool
-    can_edit_config: bool
-    can_view_readme: bool
-    can_enable_disable: bool
-    can_uninstall: bool
-    child_plugins: list[str]
-    required_plugins: list[str]
-    dependent_plugins: list[str]
-    installed_package: str | None
-    installed_module_names: list[str]
-    ui_order: int = 99
-
-
-class PluginCatalogService:
-    """List and mutate plugin registry state."""
-
-    async def list_plugins(self) -> list[PluginCatalogItem]:  # noqa: C901, PLR0915
+    async def list_plugins(self) -> list[PluginCatalogEntry]:  # noqa: C901, PLR0915
         enabled_map = await plugin_catalog_repository.get_enabled_map()
         info_map = await plugin_catalog_repository.get_plugin_info_map()
         policy_map = await plugin_catalog_repository.get_plugin_policy_map()
@@ -184,7 +163,7 @@ class PluginCatalogService:
                     dependent_name_map[dependency] = set()
                 dependent_name_map[dependency].add(owner_name)
 
-        items: list[PluginCatalogItem] = []
+        items: list[PluginCatalogEntry] = []
         for module_name in sorted(candidate_modules):
             is_loaded = module_name in loaded_plugins
             is_explicit = module_name in explicit_modules
@@ -200,7 +179,7 @@ class PluginCatalogService:
 
             if is_loaded:
                 policy = policy_map.get(module_name)
-                plugin_item = self._build_loaded_plugin_item(
+                plugin_item = self._build_loaded_plugin_entry(
                     plugin=loaded_plugins[module_name],
                     context=build_context,
                     facts=facts,
@@ -211,7 +190,7 @@ class PluginCatalogService:
                 continue
 
             policy = policy_map.get(module_name)
-            plugin_item = self._build_unloaded_plugin_item(
+            plugin_item = self._build_unloaded_plugin_entry(
                 module_name=module_name,
                 context=build_context,
                 facts=facts,
@@ -221,7 +200,7 @@ class PluginCatalogService:
                 items.append(plugin_item)
         return self._collapse_child_plugins(items)
 
-    async def get_plugin(self, module_name: str) -> PluginCatalogItem | None:
+    async def get_plugin(self, module_name: str) -> PluginCatalogEntry | None:
         enabled_map = await plugin_catalog_repository.get_enabled_map()
         info_map = await plugin_catalog_repository.get_plugin_info_map()
         policy = await plugin_catalog_repository.get_plugin_policy(module_name)
@@ -311,13 +290,13 @@ class PluginCatalogService:
 
         plugin = loaded_plugins.get(module_name)
         if plugin is not None:
-            return self._build_loaded_plugin_item(
+            return self._build_loaded_plugin_entry(
                 plugin=plugin,
                 context=build_context,
                 facts=facts,
                 access_mode=access_mode,
             )
-        return self._build_unloaded_plugin_item(
+        return self._build_unloaded_plugin_entry(
             module_name=module_name,
             context=build_context,
             facts=facts,
@@ -381,11 +360,11 @@ class PluginCatalogService:
     async def _resolve_protection_reason(self, module_name: str) -> str | None:
         items = await self.list_plugins()
         item = next(
-            (entry for entry in items if entry.module_name == module_name),
+            (entry for entry in items if entry.descriptor.module_name == module_name),
             None,
         )
         if item is not None:
-            return item.protected_reason
+            return item.governance_state.protected_reason
         reasons = self._collect_core_block_reasons(module_name)
         return "；".join(reasons) if reasons else None
 
@@ -449,19 +428,22 @@ class PluginCatalogService:
         inferred = top_level_packages.get(top_level, [])
         return inferred[0] if inferred else None
 
-    def _build_loaded_plugin_item(
+    def _build_loaded_plugin_entry(
         self,
         *,
         plugin: Plugin,
         context: _PluginListContext,
         facts: _PluginItemFacts,
         access_mode: str,
-    ) -> PluginCatalogItem | None:
-        meta = plugin.metadata
-        extra = get_plugin_extra(plugin)
-        if extra and extra.ui.hidden:
+    ) -> PluginCatalogEntry | None:
+        descriptor = plugin_descriptor_builder.build(plugin)
+        if descriptor.is_ui_hidden:
             return None
-        plugin_source = get_plugin_source(plugin)
+        extra = (
+            PluginExtraData.from_extra(plugin.metadata.extra)
+            if plugin.metadata and plugin.metadata.extra
+            else None
+        )
         installed_package = self._resolve_listed_installed_package(
             plugin.module_name,
             context.package_bindings,
@@ -479,68 +461,60 @@ class PluginCatalogService:
         can_uninstall = (
             facts.is_explicit
             and can_enable_disable
-            and plugin_source in {"custom", "external"}
+            and descriptor.source in {"custom", "external"}
             and uninstall_block_reason is None
         )
-        return PluginCatalogItem(
-            module_name=plugin.module_name,
-            kind=plugin_policy_service.get_kind(plugin.module_name),
-            access_mode=access_mode,
-            name=(
-                extra.ui.label if extra and extra.ui.label else get_plugin_name(plugin)
+        return PluginCatalogEntry(
+            descriptor=descriptor,
+            runtime_state=PluginRuntimeState(
+                is_loaded=True,
+                is_pending_uninstall=(
+                    plugin.module_name in context.pending_uninstall_modules
+                ),
             ),
-            description=meta.description if meta else None,
-            homepage=meta.homepage if meta else None,
-            source=plugin_source,
-            is_global_enabled=context.enabled_map.get(plugin.module_name, True),
-            is_protected=protected_reason is not None,
-            protected_reason=protected_reason,
-            plugin_type=extra.plugin_type.value if extra else "normal",
-            admin_level=extra.admin_level if extra else 0,
-            author=extra.author if extra else None,
-            version=extra.version if extra else None,
-            is_loaded=True,
-            is_explicit=facts.is_explicit,
-            is_dependency=facts.is_dependency,
-            is_pending_uninstall=(
-                plugin.module_name in context.pending_uninstall_modules
+            governance_state=PluginGovernanceState(
+                kind=plugin_policy_service.get_kind(plugin.module_name),
+                access_mode=access_mode,
+                is_global_enabled=context.enabled_map.get(plugin.module_name, True),
+                is_protected=protected_reason is not None,
+                protected_reason=protected_reason,
+                is_explicit=facts.is_explicit,
+                is_dependency=facts.is_dependency,
+                can_edit_config=True,
+                can_view_readme=plugin_readme_service.resolve_plugin_readme_path(
+                    plugin.module_name,
+                    plugin=plugin,
+                )
+                is not None,
+                can_enable_disable=can_enable_disable,
+                can_uninstall=can_uninstall,
+                required_plugins=facts.required_plugins,
+                dependent_plugins=facts.dependent_plugins,
             ),
-            can_edit_config=True,
-            can_view_readme=plugin_readme_service.resolve_plugin_readme_path(
-                plugin.module_name,
-                plugin=plugin,
-            )
-            is not None,
-            can_enable_disable=can_enable_disable,
-            can_uninstall=can_uninstall,
-            child_plugins=[],
-            required_plugins=facts.required_plugins,
-            dependent_plugins=facts.dependent_plugins,
-            installed_package=installed_package,
-            installed_module_names=sorted(
-                context.package_bindings.get(installed_package, [])
-            )
-            if installed_package in context.package_bindings
-            else [plugin.module_name]
-            if installed_package
-            else [],
-            ui_order=extra.ui.order if extra else 99,
+            handler_descriptors=handler_descriptor_builder.build_for_plugin(plugin),
+            package_binding=PluginPackageBinding(
+                installed_package=installed_package,
+                installed_module_names=sorted(
+                    context.package_bindings.get(installed_package, [])
+                )
+                if installed_package in context.package_bindings
+                else [plugin.module_name]
+                if installed_package
+                else [],
+            ),
+            ui_order=extra.ui.order if extra is not None else 99,
         )
 
-    def _build_unloaded_plugin_item(
+    def _build_unloaded_plugin_entry(
         self,
         *,
         module_name: str,
         context: _PluginListContext,
         facts: _PluginItemFacts,
         access_mode: str,
-    ) -> PluginCatalogItem | None:
+    ) -> PluginCatalogEntry | None:
         persisted = context.info_map.get(module_name)
-        if (
-            persisted is not None
-            and persisted.name
-            and persisted.plugin_type == "hidden"
-        ):
+        if persisted is not None and bool(getattr(persisted, "is_ui_hidden", False)):
             return None
         installed_package = self._resolve_listed_installed_package(
             module_name,
@@ -557,43 +531,58 @@ class PluginCatalogService:
             and module_name not in context.pending_uninstall_modules
             and protected_reason is None
         )
-        return PluginCatalogItem(
-            module_name=module_name,
-            kind=plugin_policy_service.get_kind(module_name),
-            access_mode=access_mode,
-            name=persisted.name if persisted and persisted.name else module_name,
-            description=persisted.description if persisted else None,
-            homepage=None,
-            source=get_plugin_source_by_module_name(module_name),
-            is_global_enabled=context.enabled_map.get(module_name, facts.is_explicit),
-            is_protected=protected_reason is not None,
-            protected_reason=protected_reason,
-            plugin_type=persisted.plugin_type if persisted else "normal",
-            admin_level=persisted.admin_level if persisted else 0,
-            author=persisted.author if persisted else None,
-            version=persisted.version if persisted else None,
-            is_loaded=False,
-            is_explicit=facts.is_explicit,
-            is_dependency=facts.is_dependency,
-            is_pending_uninstall=module_name in context.pending_uninstall_modules,
-            can_edit_config=is_importable or facts.is_explicit,
-            can_view_readme=plugin_readme_service.resolve_plugin_readme_path(
-                module_name
-            )
-            is not None,
-            can_enable_disable=can_enable_disable,
-            can_uninstall=False,
-            child_plugins=[],
-            required_plugins=facts.required_plugins,
-            dependent_plugins=facts.dependent_plugins,
-            installed_package=installed_package,
-            installed_module_names=sorted(
-                context.package_bindings.get(installed_package, [])
-            )
-            if installed_package in context.package_bindings
-            else [module_name]
-            if installed_package
-            else [],
+        return PluginCatalogEntry(
+            descriptor=PluginDescriptor(
+                module_name=module_name,
+                name=persisted.name if persisted and persisted.name else module_name,
+                description=persisted.description if persisted else None,
+                homepage=None,
+                source=get_plugin_source_by_module_name(module_name),
+                plugin_type=(
+                    normalize_plugin_type_value(persisted.plugin_type)
+                    if persisted
+                    else "normal"
+                ),
+                admin_level=persisted.admin_level if persisted else 0,
+                author=persisted.author if persisted else None,
+                version=persisted.version if persisted else None,
+                is_ui_hidden=bool(getattr(persisted, "is_ui_hidden", False)),
+            ),
+            runtime_state=PluginRuntimeState(
+                is_loaded=False,
+                is_pending_uninstall=(module_name in context.pending_uninstall_modules),
+            ),
+            governance_state=PluginGovernanceState(
+                kind=plugin_policy_service.get_kind(module_name),
+                access_mode=access_mode,
+                is_global_enabled=context.enabled_map.get(
+                    module_name,
+                    facts.is_explicit,
+                ),
+                is_protected=protected_reason is not None,
+                protected_reason=protected_reason,
+                is_explicit=facts.is_explicit,
+                is_dependency=facts.is_dependency,
+                can_edit_config=is_importable or facts.is_explicit,
+                can_view_readme=plugin_readme_service.resolve_plugin_readme_path(
+                    module_name
+                )
+                is not None,
+                can_enable_disable=can_enable_disable,
+                can_uninstall=False,
+                required_plugins=facts.required_plugins,
+                dependent_plugins=facts.dependent_plugins,
+            ),
+            package_binding=PluginPackageBinding(
+                installed_package=installed_package,
+                installed_module_names=sorted(
+                    context.package_bindings.get(installed_package, [])
+                )
+                if installed_package in context.package_bindings
+                else [module_name]
+                if installed_package
+                else [],
+            ),
             ui_order=99,
         )
 
@@ -660,9 +649,9 @@ class PluginCatalogService:
 
     def _collapse_child_plugins(
         self,
-        items: list[PluginCatalogItem],
-    ) -> list[PluginCatalogItem]:
-        item_map = {item.module_name: item for item in items}
+        items: list[PluginCatalogEntry],
+    ) -> list[PluginCatalogEntry]:
+        item_map = {item.descriptor.module_name: item for item in items}
         child_map: dict[str, list[str]] = {}
         hidden_children: set[str] = set()
 
@@ -670,41 +659,45 @@ class PluginCatalogService:
             parent_module = self._resolve_parent_plugin_module(item, item_map)
             if parent_module is None:
                 continue
-            child_map.setdefault(parent_module, []).append(item.module_name)
-            hidden_children.add(item.module_name)
+            child_map.setdefault(parent_module, []).append(item.descriptor.module_name)
+            hidden_children.add(item.descriptor.module_name)
 
-        collapsed: list[PluginCatalogItem] = []
+        collapsed: list[PluginCatalogEntry] = []
         for item in items:
-            if item.module_name in hidden_children:
+            if item.descriptor.module_name in hidden_children:
                 continue
-            child_plugins = sorted(child_map.get(item.module_name, []))
+            child_plugins = sorted(
+                child_map.get(item.descriptor.module_name, []),
+            )
             next_item = item
             if child_plugins:
-                next_item = replace(item, child_plugins=child_plugins)
+                next_item = replace(item, child_plugin_modules=child_plugins)
             collapsed.append(next_item)
         collapsed.sort(
-            key=lambda item: (
-                item.ui_order,
-                item.name.lower() if item.name else item.module_name.lower(),
-            )
+            key=lambda entry: (
+                entry.ui_order,
+                entry.descriptor.name.lower()
+                if entry.descriptor.name
+                else entry.descriptor.module_name.lower(),
+            ),
         )
         return collapsed
 
     def _resolve_parent_plugin_module(
         self,
-        item: PluginCatalogItem,
-        item_map: dict[str, PluginCatalogItem],
+        item: PluginCatalogEntry,
+        item_map: dict[str, PluginCatalogEntry],
     ) -> str | None:
-        if not item.is_loaded or item.is_explicit:
+        if not item.runtime_state.is_loaded or item.governance_state.is_explicit:
             return None
 
-        parent_module = item.module_name.rpartition(".")[0]
+        parent_module = item.descriptor.module_name.rpartition(".")[0]
         while parent_module:
             parent_item = item_map.get(parent_module)
-            if parent_item is not None and parent_item.is_loaded:
+            if parent_item is not None and parent_item.runtime_state.is_loaded:
                 return parent_module
             parent_module = parent_module.rpartition(".")[0]
         return None
 
 
-plugin_catalog_service = PluginCatalogService()
+plugin_governance_service = PluginGovernanceService()

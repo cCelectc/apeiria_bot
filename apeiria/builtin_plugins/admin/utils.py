@@ -7,14 +7,14 @@ from typing import TYPE_CHECKING
 import nonebot
 from nonebot.adapters import Event  # noqa: TC002
 
-from apeiria.app.plugins import plugin_catalog_service
+from apeiria.app.plugins import plugin_governance_service
 from apeiria.shared.i18n import t
 from apeiria.shared.plugin_introspection import get_plugin_name
 
 if TYPE_CHECKING:
     from nonebot.plugin import Plugin
 
-    from apeiria.app.plugins import PluginCatalogItem
+    from apeiria.app.plugins import PluginCatalogEntry
 
 
 def resolve_plugin_query(
@@ -59,20 +59,18 @@ async def resolve_plugin_catalog_query(
     query: str,
     *,
     allow_fuzzy: bool,
-) -> tuple["PluginCatalogItem | None", list[str]]:
+) -> tuple["PluginCatalogEntry | None", list[str]]:
     """Resolve one plugin query from the plugin catalog."""
     normalized = query.strip().lower()
     if not normalized:
         return None, []
 
-    exact_matches: list[PluginCatalogItem] = []
-    fuzzy_matches: list[PluginCatalogItem] = []
-    for item in await plugin_catalog_service.list_plugins():
-        if item.plugin_type in {"hidden", "parent"}:
-            continue
+    exact_matches: list[PluginCatalogEntry] = []
+    fuzzy_matches: list[PluginCatalogEntry] = []
+    for item in await plugin_governance_service.list_plugins():
         candidates = [
-            item.module_name.lower(),
-            item.name.lower(),
+            item.descriptor.module_name.lower(),
+            item.descriptor.name.lower(),
         ]
         if normalized in candidates:
             exact_matches.append(item)
@@ -80,7 +78,7 @@ async def resolve_plugin_catalog_query(
         if any(normalized in candidate for candidate in candidates):
             fuzzy_matches.append(item)
 
-    resolved: PluginCatalogItem | None = None
+    resolved: PluginCatalogEntry | None = None
     candidates: list[str] = []
     if len(exact_matches) == 1:
         resolved = exact_matches[0]
@@ -122,12 +120,12 @@ def _format_plugin_candidate(plugin: Plugin) -> str:
     return f"{name} ({plugin.module_name})"
 
 
-def _format_catalog_candidates(plugins: list["PluginCatalogItem"]) -> list[str]:
+def _format_catalog_candidates(plugins: list["PluginCatalogEntry"]) -> list[str]:
     labels = {
         (
-            item.module_name
-            if item.name == item.module_name
-            else f"{item.name} ({item.module_name})"
+            item.descriptor.module_name
+            if item.descriptor.name == item.descriptor.module_name
+            else f"{item.descriptor.name} ({item.descriptor.module_name})"
         )
         for item in plugins
     }

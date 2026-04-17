@@ -9,7 +9,7 @@ from arclet.alconna import CommandMeta
 from nonebot.adapters import Event  # noqa: TC002
 from nonebot_plugin_alconna import Alconna, on_alconna
 
-from apeiria.app.plugins import plugin_config_view_service
+from apeiria.app.plugins import config_query_service
 from apeiria.shared.i18n import t
 
 from .presenter import render_list_block
@@ -32,7 +32,7 @@ async def handle_adapters(event: Event) -> None:
     if owner_error:
         await _adapters.finish(owner_error)
 
-    state = plugin_config_view_service.get_adapter_config()
+    state = config_query_service.get_adapter_config()
     loaded_runtime = sorted(nonebot.get_adapters().keys())
     lines = [_format_adapter_line(item) for item in state.modules]
     loaded_runtime_names = (

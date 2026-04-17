@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from apeiria.app.plugin_store import plugin_store_task_service
-from apeiria.app.plugins import plugin_catalog_service
+from apeiria.app.plugins import plugin_governance_service
 from apeiria.infra.package_store.update_check import supports_plugin_update_check
 from apeiria.interfaces.http.auth import require_control_panel, require_owner
 from apeiria.interfaces.http.routes.plugin_route_support import (
@@ -44,7 +44,7 @@ async def update_plugin(
     cascade: bool = False,
 ) -> PluginToggleResponse:
     try:
-        result = await plugin_catalog_service.apply_plugin_toggle(
+        result = await plugin_governance_service.apply_plugin_toggle(
             module_name,
             enabled=enabled,
             cascade=cascade,
@@ -71,7 +71,7 @@ async def preview_toggle_plugin(
     _: Annotated[Any, Depends(require_control_panel)],
 ) -> PluginTogglePreviewResponse:
     try:
-        preview = await plugin_catalog_service.preview_toggle_plugin(
+        preview = await plugin_governance_service.preview_toggle_plugin(
             module_name,
             enabled=query.enabled,
         )
@@ -90,7 +90,7 @@ async def uninstall_plugin(
     _: Annotated[Any, Depends(require_owner)],
 ) -> OperationStatusResponse:
     try:
-        await plugin_catalog_service.uninstall_plugin(
+        await plugin_governance_service.uninstall_plugin(
             module_name,
             remove_config=payload.remove_config,
         )
@@ -130,15 +130,15 @@ async def update_plugin_package_task(
     payload: PluginPackageUpdateRequest,
     _: Annotated[Any, Depends(require_owner)],
 ) -> PluginStoreTaskItem:
-    plugin = await plugin_catalog_service.get_plugin(module_name)
+    plugin = await plugin_governance_service.get_plugin(module_name)
     if plugin is None:
         raise HTTPException(
             status_code=404,
             detail=t("web_ui.plugins.not_found"),
         ) from None
     if (
-        not plugin.can_uninstall
-        or plugin.installed_package != payload.package_name
+        not plugin.governance_state.can_uninstall
+        or plugin.package_binding.installed_package != payload.package_name
         or not supports_plugin_update_check(payload.package_name)
     ):
         raise HTTPException(

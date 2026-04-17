@@ -9,7 +9,7 @@ from arclet.alconna import CommandMeta
 from nonebot.adapters import Event  # noqa: TC002
 from nonebot_plugin_alconna import Alconna, on_alconna
 
-from apeiria.app.plugins import plugin_config_view_service
+from apeiria.app.plugins import config_query_service
 from apeiria.shared.i18n import t
 
 from .presenter import render_block, render_list_block
@@ -33,7 +33,7 @@ async def handle_drivers(event: Event) -> None:
         await _drivers.finish(owner_error)
 
     driver = nonebot.get_driver()
-    state = plugin_config_view_service.get_driver_config()
+    state = config_query_service.get_driver_config()
     lines = [_format_driver_line(item) for item in state.builtin]
 
     await _drivers.finish(

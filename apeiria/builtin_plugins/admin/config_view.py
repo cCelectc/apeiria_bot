@@ -8,7 +8,7 @@ from nonebot_plugin_alconna import Alconna, Match, on_alconna
 
 from apeiria.app.plugins import (
     PluginSettingsNotConfigurableError,
-    plugin_config_view_service,
+    config_query_service,
 )
 from apeiria.shared.i18n import t
 
@@ -63,11 +63,16 @@ async def handle_config(
     if plugin is None:
         await _config.finish(t("admin.plugin.not_found", name=target.result))
 
-    await _config.finish(_render_plugin_settings(plugin.module_name, plugin.name))
+    await _config.finish(
+        _render_plugin_settings(
+            plugin.descriptor.module_name,
+            plugin.descriptor.name,
+        )
+    )
 
 
 def _render_core_settings() -> str:
-    state = plugin_config_view_service.get_core_settings()
+    state = config_query_service.get_core_view()
     items = [
         f"- {field.key} = {summarize_value(field.key, field.current_value)} "
         f"({_source_label(field.value_source)})"
@@ -83,7 +88,7 @@ def _render_core_settings() -> str:
 
 def _render_plugin_settings(module_name: str, plugin_name: str) -> str:
     try:
-        state = plugin_config_view_service.get_plugin_settings(module_name)
+        state = config_query_service.get_plugin_view(module_name)
     except PluginSettingsNotConfigurableError:
         return t("admin.config.plugin_not_configurable", name=plugin_name)
     except ValueError:

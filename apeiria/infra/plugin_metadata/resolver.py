@@ -8,6 +8,7 @@ import nonebot
 from pydantic import BaseModel
 
 from apeiria.infra.config import plugin_config_service, project_config_service
+from apeiria.infra.plugin_metadata.contracts import ConfigNamespaceContract
 from apeiria.infra.plugin_metadata.registry import (
     PluginConfigRegistration,
     RegisterPluginConfigOptions,
@@ -35,15 +36,6 @@ _DEFAULT_CONFIG_ORDER = 99
 class PluginScanCandidate:
     module_name: str
     origin: Path | None = None
-
-
-@dataclass(frozen=True)
-class ResolvedPluginConfig:
-    section: str
-    legacy_flatten: bool
-    source: str
-    has_config_model: bool
-    configs: list[RegisterConfig]
 
 
 def _merge_declared_configs(
@@ -185,9 +177,11 @@ def collect_plugin_config_candidates(
 
 def _resolved_from_registration(
     registration: PluginConfigRegistration,
-) -> ResolvedPluginConfig:
-    return ResolvedPluginConfig(
-        section=registration.section,
+) -> ConfigNamespaceContract:
+    return ConfigNamespaceContract(
+        namespace=registration.section,
+        owner_kind="plugin",
+        owner_id=registration.plugin_name,
         legacy_flatten=registration.legacy_flatten,
         source=registration.source,
         has_config_model=bool(registration.configs),
@@ -195,9 +189,9 @@ def _resolved_from_registration(
     )
 
 
-def ensure_plugin_config_registration(
+def ensure_config_namespace_contract(
     candidate: PluginScanCandidate,
-) -> ResolvedPluginConfig:
+) -> ConfigNamespaceContract:
     plugin_name = candidate.module_name
     registration = get_registered_plugin_config(plugin_name)
     if registration is not None:
@@ -209,8 +203,10 @@ def ensure_plugin_config_registration(
         else scan_plugin_config(plugin_name)
     )
     if scanned.is_apeiria_plugin or not scanned.has_config_model:
-        return ResolvedPluginConfig(
-            section=plugin_name.rsplit(".", maxsplit=1)[-1],
+        return ConfigNamespaceContract(
+            namespace=plugin_name.rsplit(".", maxsplit=1)[-1],
+            owner_kind="plugin",
+            owner_id=plugin_name,
             legacy_flatten=False,
             source="none",
             has_config_model=False,
@@ -229,7 +225,7 @@ def ensure_plugin_config_registration(
     return _resolved_from_registration(registration)
 
 
-def resolve_plugin_declared_config(module_name: str) -> ResolvedPluginConfig:
+def resolve_config_namespace_contract(module_name: str) -> ConfigNamespaceContract:
     registration = get_registered_plugin_config(module_name)
     if registration is not None:
         return _resolved_from_registration(registration)
@@ -253,8 +249,10 @@ def resolve_plugin_declared_config(module_name: str) -> ResolvedPluginConfig:
             configs = configs_from_model(config_model)
             if extra is not None:
                 configs = _merge_declared_configs(configs, extra.configs)
-            return ResolvedPluginConfig(
-                section=module_name.rsplit(".", maxsplit=1)[-1],
+            return ConfigNamespaceContract(
+                namespace=module_name.rsplit(".", maxsplit=1)[-1],
+                owner_kind="plugin",
+                owner_id=module_name,
                 legacy_flatten=False,
                 source="plugin_metadata",
                 has_config_model=True,
@@ -264,12 +262,14 @@ def resolve_plugin_declared_config(module_name: str) -> ResolvedPluginConfig:
     if plugin and plugin.metadata and plugin.metadata.extra:
         extra = PluginExtraData.from_extra(plugin.metadata.extra)
         if extra is not None:
-            return ResolvedPluginConfig(
-                section=module_name.rsplit(".", maxsplit=1)[-1],
+            return ConfigNamespaceContract(
+                namespace=module_name.rsplit(".", maxsplit=1)[-1],
+                owner_kind="plugin",
+                owner_id=module_name,
                 legacy_flatten=False,
                 source="plugin_metadata",
                 has_config_model=bool(extra.configs),
                 configs=extra.configs,
             )
 
-    return ensure_plugin_config_registration(PluginScanCandidate(module_name))
+    return ensure_config_namespace_contract(PluginScanCandidate(module_name))

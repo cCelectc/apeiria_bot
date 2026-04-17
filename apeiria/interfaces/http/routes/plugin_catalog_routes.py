@@ -8,7 +8,7 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse
 
-from apeiria.app.plugins import plugin_catalog_service
+from apeiria.app.plugins import plugin_governance_service
 from apeiria.infra.package_store.update_check import (
     plugin_update_check_service,
     supports_plugin_update_check,
@@ -39,7 +39,7 @@ async def get_plugin_readme(
     _: Annotated[Any, Depends(require_control_panel)],
 ) -> PluginReadmeResponse:
     try:
-        state = await plugin_catalog_service.get_plugin_readme(module_name)
+        state = await plugin_governance_service.get_plugin_readme(module_name)
     except ResourceNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except FileNotFoundError:
@@ -59,7 +59,7 @@ async def get_plugin_readme_asset(
     _: Annotated[Any, Depends(require_control_panel)],
 ) -> FileResponse:
     try:
-        asset_path = await plugin_catalog_service.get_plugin_readme_asset_path(
+        asset_path = await plugin_governance_service.get_plugin_readme_asset_path(
             module_name,
             path,
         )
@@ -94,14 +94,16 @@ async def get_plugin_readme_asset(
 async def list_plugins(
     _: Annotated[Any, Depends(require_control_panel)],
 ) -> list[PluginItem]:
-    plugins = await plugin_catalog_service.list_plugins()
+    plugins = await plugin_governance_service.list_plugins()
     return [
         to_plugin_item_response(
             plugin,
             can_package_update=(
-                plugin.can_uninstall
-                and bool(plugin.installed_package)
-                and supports_plugin_update_check(plugin.installed_package)
+                plugin.governance_state.can_uninstall
+                and bool(plugin.package_binding.installed_package)
+                and supports_plugin_update_check(
+                    plugin.package_binding.installed_package
+                )
             ),
         )
         for plugin in plugins
@@ -113,7 +115,7 @@ async def check_plugin_updates(
     payload: PluginUpdateCheckRequest,
     _: Annotated[Any, Depends(require_control_panel)],
 ) -> list[PluginUpdateCheckItem]:
-    plugins = await plugin_catalog_service.list_plugins()
+    plugins = await plugin_governance_service.list_plugins()
     results = await plugin_update_check_service.check_plugins(
         plugins,
         force_refresh=payload.force_refresh,
@@ -125,7 +127,7 @@ async def check_plugin_updates(
 async def list_orphan_plugin_configs(
     _: Annotated[Any, Depends(require_owner)],
 ) -> OrphanPluginConfigResponse:
-    items = await plugin_catalog_service.list_orphan_plugin_configs()
+    items = await plugin_governance_service.list_orphan_plugin_configs()
     return to_orphan_plugin_config_response(items)
 
 
@@ -133,5 +135,5 @@ async def list_orphan_plugin_configs(
 async def cleanup_orphan_plugin_configs(
     _: Annotated[Any, Depends(require_owner)],
 ) -> OrphanPluginConfigResponse:
-    items = await plugin_catalog_service.cleanup_orphan_plugin_configs()
+    items = await plugin_governance_service.cleanup_orphan_plugin_configs()
     return to_orphan_plugin_config_response(items)

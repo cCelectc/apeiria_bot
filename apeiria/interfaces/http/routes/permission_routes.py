@@ -7,7 +7,7 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Depends, HTTPException
 
 from apeiria.app.access import access_service
-from apeiria.app.plugins import plugin_catalog_service, plugin_policy_service
+from apeiria.app.plugins import plugin_governance_service, plugin_policy_service
 from apeiria.interfaces.http.auth import require_control_panel
 from apeiria.interfaces.http.schemas.models import (
     AccessRuleCreateRequest,
@@ -24,10 +24,10 @@ router = APIRouter()
 
 
 async def _require_manageable_plugin(module_name: str) -> None:
-    plugin = await plugin_catalog_service.get_plugin(module_name)
+    plugin = await plugin_governance_service.get_plugin(module_name)
     if plugin is None:
         raise ResourceNotFoundError(module_name)
-    if plugin.kind == "core":
+    if plugin.governance_state.kind == "core":
         raise ProtectedPluginError(module_name)
 
 

@@ -6,7 +6,10 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends
 
-from apeiria.app.plugins import plugin_config_view_service
+from apeiria.app.plugins import (
+    config_mutation_service,
+    config_query_service,
+)
 from apeiria.interfaces.http.auth import require_control_panel
 from apeiria.interfaces.http.routes.plugin_route_support import (
     raise_settings_error,
@@ -38,7 +41,7 @@ router = APIRouter()
 async def get_adapter_config(
     _: Annotated[Any, Depends(require_control_panel)],
 ) -> AdapterConfigResponse:
-    return to_adapter_config_response(plugin_config_view_service.get_adapter_config())
+    return to_adapter_config_response(config_query_service.get_adapter_config())
 
 
 @router.patch("/adapters/config", response_model=AdapterConfigResponse)
@@ -47,7 +50,7 @@ async def update_adapter_config(
     _: Annotated[Any, Depends(require_control_panel)],
 ) -> AdapterConfigResponse:
     return to_adapter_config_response(
-        plugin_config_view_service.update_adapter_config(payload.modules)
+        config_mutation_service.update_adapter_config(payload.modules)
     )
 
 
@@ -55,7 +58,7 @@ async def update_adapter_config(
 async def get_driver_config(
     _: Annotated[Any, Depends(require_control_panel)],
 ) -> DriverConfigResponse:
-    return to_driver_config_response(plugin_config_view_service.get_driver_config())
+    return to_driver_config_response(config_query_service.get_driver_config())
 
 
 @router.patch("/drivers/config", response_model=DriverConfigResponse)
@@ -64,7 +67,7 @@ async def update_driver_config(
     _: Annotated[Any, Depends(require_control_panel)],
 ) -> DriverConfigResponse:
     return to_driver_config_response(
-        plugin_config_view_service.update_driver_config(payload.builtin)
+        config_mutation_service.update_driver_config(payload.builtin)
     )
 
 
@@ -72,7 +75,7 @@ async def update_driver_config(
 async def get_plugin_config(
     _: Annotated[Any, Depends(require_control_panel)],
 ) -> PluginConfigResponse:
-    return to_plugin_config_response(plugin_config_view_service.get_plugin_config())
+    return to_plugin_config_response(config_query_service.get_plugin_config())
 
 
 @router.patch("/config", response_model=PluginConfigResponse)
@@ -81,7 +84,7 @@ async def update_plugin_config(
     _: Annotated[Any, Depends(require_control_panel)],
 ) -> PluginConfigResponse:
     return to_plugin_config_response(
-        plugin_config_view_service.update_plugin_config(
+        config_mutation_service.update_plugin_config(
             payload.modules,
             payload.dirs,
         )
@@ -92,16 +95,14 @@ async def update_plugin_config(
 async def get_core_settings(
     _: Annotated[Any, Depends(require_control_panel)],
 ) -> PluginSettingsResponse:
-    return to_plugin_settings_response(plugin_config_view_service.get_core_settings())
+    return to_plugin_settings_response(config_query_service.get_core_view())
 
 
 @router.get("/core/settings/raw", response_model=PluginRawSettingsResponse)
 async def get_core_settings_raw(
     _: Annotated[Any, Depends(require_control_panel)],
 ) -> PluginRawSettingsResponse:
-    return to_plugin_raw_settings_response(
-        plugin_config_view_service.get_core_settings_raw()
-    )
+    return to_plugin_raw_settings_response(config_query_service.get_core_text())
 
 
 @router.patch("/core/settings", response_model=PluginSettingsResponse)
@@ -110,7 +111,7 @@ async def update_core_settings(
     _: Annotated[Any, Depends(require_control_panel)],
 ) -> PluginSettingsResponse:
     try:
-        state = plugin_config_view_service.update_core_settings(
+        state = config_mutation_service.update_core_view(
             payload.values,
             payload.clear,
         )
@@ -126,7 +127,7 @@ async def update_core_settings_raw(
     _: Annotated[Any, Depends(require_control_panel)],
 ) -> PluginRawSettingsResponse:
     try:
-        state = plugin_config_view_service.update_core_settings_raw(payload.text)
+        state = config_mutation_service.update_core_text(payload.text)
     except Exception as exc:
         raise_settings_error(exc)
         raise AssertionError("unreachable") from exc
@@ -142,7 +143,7 @@ async def validate_core_settings_raw(
     _: Annotated[Any, Depends(require_control_panel)],
 ) -> PluginSettingsRawValidationResponse:
     return to_raw_validation_response(
-        plugin_config_view_service.validate_core_settings_raw(payload.text)
+        config_mutation_service.validate_core_text(payload.text)
     )
 
 
@@ -152,7 +153,7 @@ async def get_plugin_settings(
     _: Annotated[Any, Depends(require_control_panel)],
 ) -> PluginSettingsResponse:
     try:
-        state = plugin_config_view_service.get_plugin_settings(module_name)
+        state = config_query_service.get_plugin_view(module_name)
     except Exception as exc:
         raise_settings_error(exc)
         raise AssertionError("unreachable") from exc
@@ -165,7 +166,7 @@ async def get_plugin_settings_raw(
     _: Annotated[Any, Depends(require_control_panel)],
 ) -> PluginRawSettingsResponse:
     try:
-        state = plugin_config_view_service.get_plugin_settings_raw(module_name)
+        state = config_query_service.get_plugin_text(module_name)
     except Exception as exc:
         raise_settings_error(exc)
         raise AssertionError("unreachable") from exc
@@ -179,7 +180,7 @@ async def update_plugin_settings(
     _: Annotated[Any, Depends(require_control_panel)],
 ) -> PluginSettingsResponse:
     try:
-        state = plugin_config_view_service.update_plugin_settings(
+        state = config_mutation_service.update_plugin_view(
             module_name,
             payload.values,
             payload.clear,
@@ -197,7 +198,7 @@ async def update_plugin_settings_raw(
     _: Annotated[Any, Depends(require_control_panel)],
 ) -> PluginRawSettingsResponse:
     try:
-        state = plugin_config_view_service.update_plugin_settings_raw(
+        state = config_mutation_service.update_plugin_text(
             module_name,
             payload.text,
         )
@@ -217,7 +218,7 @@ async def validate_plugin_settings_raw(
     _: Annotated[Any, Depends(require_control_panel)],
 ) -> PluginSettingsRawValidationResponse:
     try:
-        state = plugin_config_view_service.validate_plugin_settings_raw(
+        state = config_mutation_service.validate_plugin_text(
             module_name,
             payload.text,
         )

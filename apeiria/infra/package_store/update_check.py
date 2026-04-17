@@ -19,7 +19,7 @@ from packaging.version import InvalidVersion, Version
 from apeiria.infra.runtime.environment import plugin_site_packages_paths
 
 if TYPE_CHECKING:
-    from apeiria.app.plugins.service import PluginCatalogItem
+    from apeiria.app.plugins import PluginCatalogEntry
 
 
 _HTTP_NOT_FOUND = 404
@@ -56,21 +56,24 @@ class PluginUpdateCheckService:
 
     async def check_plugins(
         self,
-        plugins: list[PluginCatalogItem],
+        plugins: list[PluginCatalogEntry],
         *,
         force_refresh: bool = False,
     ) -> list[PluginUpdateCheckResult]:
         candidates = [
             plugin
             for plugin in plugins
-            if plugin.can_uninstall and plugin.installed_package
+            if (
+                plugin.governance_state.can_uninstall
+                and plugin.package_binding.installed_package
+            )
         ]
         installed_versions = _discover_plugin_distribution_versions()
         results = await asyncio.gather(
             *[
                 self.check_plugin(
-                    plugin.module_name,
-                    plugin.installed_package or "",
+                    plugin.descriptor.module_name,
+                    plugin.package_binding.installed_package or "",
                     force_refresh=force_refresh,
                     installed_versions=installed_versions,
                 )

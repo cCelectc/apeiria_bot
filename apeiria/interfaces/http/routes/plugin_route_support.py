@@ -8,14 +8,14 @@ from fastapi import HTTPException
 
 from apeiria.app.plugins import (
     AdapterConfigState,
+    ConfigTextView,
+    ConfigValidationReport,
+    ConfigView,
     DriverConfigState,
     PluginConfigConflictError,
     PluginConfigState,
-    PluginRawSettingsState,
-    PluginRawValidationState,
     PluginReadme,
     PluginSettingsNotConfigurableError,
-    PluginSettingsState,
 )
 from apeiria.app.plugins import (
     OrphanPluginConfigItem as DomainOrphanPluginConfigItem,
@@ -106,7 +106,7 @@ def to_plugin_config_response(state: PluginConfigState) -> PluginConfigResponse:
     )
 
 
-def to_plugin_settings_response(state: PluginSettingsState) -> PluginSettingsResponse:
+def to_plugin_settings_response(state: ConfigView) -> PluginSettingsResponse:
     return PluginSettingsResponse(
         module_name=state.module_name,
         section=state.section,
@@ -143,7 +143,7 @@ def to_plugin_settings_response(state: PluginSettingsState) -> PluginSettingsRes
 
 
 def to_plugin_raw_settings_response(
-    state: PluginRawSettingsState,
+    state: ConfigTextView,
 ) -> PluginRawSettingsResponse:
     return PluginRawSettingsResponse(
         module_name=state.module_name,
@@ -161,7 +161,7 @@ def to_plugin_readme_response(state: PluginReadme) -> PluginReadmeResponse:
 
 
 def to_raw_validation_response(
-    state: PluginRawValidationState,
+    state: ConfigValidationReport,
 ) -> PluginSettingsRawValidationResponse:
     return PluginSettingsRawValidationResponse(
         valid=state.valid,
@@ -190,34 +190,34 @@ def to_plugin_item_response(
     can_package_update: bool,
 ) -> PluginItem:
     return PluginItem(
-        module_name=plugin.module_name,
-        kind=plugin.kind,
-        access_mode=plugin.access_mode,
-        name=plugin.name,
-        description=plugin.description,
-        homepage=plugin.homepage,
-        source=plugin.source,
-        is_global_enabled=plugin.is_global_enabled,
-        is_protected=plugin.is_protected,
-        protected_reason=plugin.protected_reason,
-        plugin_type=plugin.plugin_type,
-        admin_level=plugin.admin_level,
-        author=plugin.author,
-        version=plugin.version,
-        is_loaded=plugin.is_loaded,
-        is_explicit=plugin.is_explicit,
-        is_dependency=plugin.is_dependency,
-        is_pending_uninstall=plugin.is_pending_uninstall,
-        can_edit_config=plugin.can_edit_config,
-        can_view_readme=plugin.can_view_readme,
-        can_enable_disable=plugin.can_enable_disable,
-        can_uninstall=plugin.can_uninstall,
+        module_name=plugin.descriptor.module_name,
+        kind=plugin.governance_state.kind,
+        access_mode=plugin.governance_state.access_mode,
+        name=plugin.descriptor.name,
+        description=plugin.descriptor.description,
+        homepage=plugin.descriptor.homepage,
+        source=plugin.descriptor.source,
+        is_global_enabled=plugin.governance_state.is_global_enabled,
+        is_protected=plugin.governance_state.is_protected,
+        protected_reason=plugin.governance_state.protected_reason,
+        plugin_type=plugin.descriptor.plugin_type,
+        admin_level=plugin.descriptor.admin_level,
+        author=plugin.descriptor.author,
+        version=plugin.descriptor.version,
+        is_loaded=plugin.runtime_state.is_loaded,
+        is_explicit=plugin.governance_state.is_explicit,
+        is_dependency=plugin.governance_state.is_dependency,
+        is_pending_uninstall=plugin.runtime_state.is_pending_uninstall,
+        can_edit_config=plugin.governance_state.can_edit_config,
+        can_view_readme=plugin.governance_state.can_view_readme,
+        can_enable_disable=plugin.governance_state.can_enable_disable,
+        can_uninstall=plugin.governance_state.can_uninstall,
         can_package_update=can_package_update,
-        child_plugins=plugin.child_plugins,
-        required_plugins=plugin.required_plugins,
-        dependent_plugins=plugin.dependent_plugins,
-        installed_package=plugin.installed_package,
-        installed_module_names=plugin.installed_module_names,
+        child_plugins=plugin.child_plugin_modules,
+        required_plugins=plugin.governance_state.required_plugins,
+        dependent_plugins=plugin.governance_state.dependent_plugins,
+        installed_package=plugin.package_binding.installed_package,
+        installed_module_names=plugin.package_binding.installed_module_names,
     )
 
 

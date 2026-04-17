@@ -17,7 +17,7 @@ from apeiria.infra.plugin_metadata.registry import get_registered_plugin_config
 
 if TYPE_CHECKING:
     from apeiria.app.plugins.config_service import (
-        PluginSettingFieldState,
+        ConfigFieldView,
     )
     from apeiria.app.plugins.settings_support import PluginDeclaredConfig
     from apeiria.shared.plugin_metadata import RegisterConfig
@@ -45,7 +45,7 @@ class PluginFieldContext:
 
 def build_plugin_setting_fields(
     declared: "PluginDeclaredConfig",
-) -> list["PluginSettingFieldState"]:
+) -> list["ConfigFieldView"]:
     """Combine plugin declarations with current effective values."""
     registration = get_registered_plugin_config(declared.module_name)
     ctx = PluginFieldContext(
@@ -67,7 +67,7 @@ def build_plugin_setting_fields(
     ]
 
 
-def build_core_setting_fields() -> list["PluginSettingFieldState"]:
+def build_core_setting_fields() -> list["ConfigFieldView"]:
     """Build the editable core settings field list with current values."""
     effective_config = project_config_service.read_project_config()
     env_config = project_config_service.read_env_config()
@@ -167,12 +167,12 @@ def build_core_field_state(
 def build_setting_field_item(
     config: "RegisterConfig",
     state: FieldValueState,
-) -> "PluginSettingFieldState":
+) -> "ConfigFieldView":
     """Map one config declaration plus value state into UI-facing field state."""
-    from apeiria.app.plugins.config_service import PluginSettingFieldState
+    from apeiria.app.plugins.config_service import ConfigFieldView
 
     capability = get_field_capability(config)
-    return PluginSettingFieldState(
+    return ConfigFieldView(
         key=config.key,
         label=config.label or config.key,
         type=format_type_name(config.type) or "unknown",

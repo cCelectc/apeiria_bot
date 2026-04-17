@@ -35,7 +35,7 @@ __plugin_meta__ = PluginMetadata(
     extra=PluginExtraData(
         author="apeiria",
         version="0.1.0",
-        plugin_type=PluginType.HIDDEN,
+        plugin_type=PluginType.NORMAL,
         admin_level=0,
         ui=UiExtra(order=0, hidden=True),
         config=ConfigExtra(

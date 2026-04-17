@@ -181,7 +181,7 @@ def _discover_plugins(
             continue
 
         extra = get_plugin_extra(plugin)
-        if extra and extra.plugin_type in (PluginType.HIDDEN, PluginType.PARENT):
+        if extra and extra.ui.hidden:
             continue
         if extra and not _plugin_visible_in_role(
             extra.plugin_type,
@@ -468,7 +468,7 @@ def _plugin_visible_in_role(
     if role == "owner":
         return True
     if role == "admin":
-        return plugin_type in {PluginType.NORMAL, PluginType.ADMIN}
+        return plugin_type == PluginType.NORMAL
     return plugin_type == PluginType.NORMAL and admin_level <= 0
 
 

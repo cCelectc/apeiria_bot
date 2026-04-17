@@ -2,13 +2,13 @@ from apeiria.infra.plugin_metadata.registry import PluginConfigConflictError
 from apeiria.infra.plugin_metadata.resolver import (
     PluginScanCandidate,
     collect_plugin_config_candidates,
-    ensure_plugin_config_registration,
+    ensure_config_namespace_contract,
 )
 
 
 def _register_candidate(candidate: PluginScanCandidate) -> None:
     try:
-        ensure_plugin_config_registration(candidate)
+        ensure_config_namespace_contract(candidate)
     except PluginConfigConflictError as exc:
         msg = f"failed to bootstrap plugin config for {candidate.module_name}: {exc}"
         raise RuntimeError(msg) from exc

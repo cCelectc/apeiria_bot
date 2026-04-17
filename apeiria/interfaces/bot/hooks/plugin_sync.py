@@ -6,8 +6,8 @@ import nonebot
 from nonebot import get_driver
 from nonebot.log import logger
 
+from apeiria.infra.plugin_metadata.builders import plugin_descriptor_builder
 from apeiria.shared.i18n import t
-from apeiria.shared.plugin_metadata import PluginExtraData
 
 
 @get_driver().on_startup
@@ -25,50 +25,36 @@ async def sync_plugins() -> None:
 
     async with get_session() as session:
         for plugin in plugins:
-            module_name = plugin.module_name
+            descriptor = plugin_descriptor_builder.build(plugin)
+            module_name = descriptor.module_name
             meta = plugin.metadata
-
-            extra: PluginExtraData | None = None
-            if meta and meta.extra:
-                extra = PluginExtraData.from_extra(meta.extra)
-
-            name = (
-                extra.ui.label
-                if extra is not None and extra.ui.label
-                else meta.name
-                if meta
-                else plugin.name
-            )
-            description = meta.description if meta else None
             usage = meta.usage if meta else None
-            plugin_type = extra.plugin_type.value if extra else "normal"
-            admin_level = extra.admin_level if extra else 0
-            author = extra.author if extra else None
-            version = extra.version if extra else None
 
             result = await session.execute(
                 select(PluginInfo).where(PluginInfo.module_name == module_name)
             )
             record = result.scalar_one_or_none()
             if record is not None:
-                record.name = name
-                record.description = description
+                record.name = descriptor.name
+                record.description = descriptor.description
                 record.usage = usage
-                record.plugin_type = plugin_type
-                record.admin_level = admin_level
-                record.author = author
-                record.version = version
+                record.plugin_type = descriptor.plugin_type
+                record.is_ui_hidden = descriptor.is_ui_hidden
+                record.admin_level = descriptor.admin_level
+                record.author = descriptor.author
+                record.version = descriptor.version
             else:
                 session.add(
                     PluginInfo(
                         module_name=module_name,
-                        name=name,
-                        description=description,
+                        name=descriptor.name,
+                        description=descriptor.description,
                         usage=usage,
-                        plugin_type=plugin_type,
-                        admin_level=admin_level,
-                        author=author,
-                        version=version,
+                        plugin_type=descriptor.plugin_type,
+                        is_ui_hidden=descriptor.is_ui_hidden,
+                        admin_level=descriptor.admin_level,
+                        author=descriptor.author,
+                        version=descriptor.version,
                     )
                 )
 
@@ -84,13 +70,13 @@ async def sync_plugins() -> None:
                     PluginPolicyEntry(
                         plugin_module=module_name,
                         access_mode="default_allow",
-                        required_level=admin_level,
+                        required_level=descriptor.admin_level,
                         protection_mode=protection_mode,
                     )
                 )
             else:
-                if policy_record.required_level == 0 and admin_level > 0:
-                    policy_record.required_level = admin_level
+                if policy_record.required_level == 0 and descriptor.admin_level > 0:
+                    policy_record.required_level = descriptor.admin_level
                 if (
                     policy_record.protection_mode == "normal"
                     and protection_mode != "normal"

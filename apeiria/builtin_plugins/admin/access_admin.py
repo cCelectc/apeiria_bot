@@ -102,22 +102,23 @@ async def _render_plugin_access(plugin_query: str) -> str:
     if item is None:
         return t("admin.plugin.not_found", name=plugin_query)
 
-    spec = await plugin_policy_service.get_access_spec(item.module_name)
+    module_name = item.descriptor.module_name
+    spec = await plugin_policy_service.get_policy(module_name)
     rules = [
         rule
         for rule in await access_service.list_access_rules()
-        if rule.plugin_module == item.module_name
+        if rule.plugin_module == module_name
     ]
     groups = await group_service.list_groups()
     disabled_groups = [
-        group for group in groups if item.module_name in group.disabled_plugins
+        group for group in groups if module_name in group.disabled_plugins
     ]
 
     return render_block(
-        t("admin.access.plugin_title", name=item.name),
+        t("admin.access.plugin_title", name=item.descriptor.name),
         [
-            (t("admin.plugin.field_module"), item.module_name),
-            (t("admin.plugin.field_kind"), item.kind),
+            (t("admin.plugin.field_module"), module_name),
+            (t("admin.plugin.field_kind"), item.governance_state.kind),
             (t("admin.access.field_access_mode"), spec.access_mode),
             (t("admin.access.field_required_level"), spec.required_level),
             (
@@ -154,10 +155,10 @@ async def _render_plugin_access(plugin_query: str) -> str:
             ),
             (t("admin.access.field_disabled_groups"), len(disabled_groups)),
         ],
-        summary=item.description or t("admin.plugin.no_description"),
+        summary=item.descriptor.description or t("admin.plugin.no_description"),
         footer=t(
             "admin.access.plugin_footer",
-            module=item.module_name,
+            module=module_name,
         ),
     )
 
@@ -192,7 +193,7 @@ async def _upsert_rule(
     await access_service.upsert_access_rule(
         subject_type=normalized_subject_type,
         subject_id=subject_id.strip(),
-        plugin_module=item.module_name,
+        plugin_module=item.descriptor.module_name,
         effect=normalized_effect,
     )
     return t(
@@ -200,7 +201,7 @@ async def _upsert_rule(
         effect=normalized_effect,
         subject_type=normalized_subject_type,
         subject_id=subject_id.strip(),
-        plugin=item.name,
+        plugin=item.descriptor.name,
     )
 
 
@@ -230,7 +231,7 @@ async def _delete_rule(
     deleted = await access_service.delete_access_rule(
         subject_type=normalized_subject_type,
         subject_id=subject_id.strip(),
-        plugin_module=item.module_name,
+        plugin_module=item.descriptor.module_name,
     )
     if not deleted:
         return t("admin.access.rule_not_found")
@@ -238,7 +239,7 @@ async def _delete_rule(
         "admin.access.rule_removed",
         subject_type=normalized_subject_type,
         subject_id=subject_id.strip(),
-        plugin=item.name,
+        plugin=item.descriptor.name,
     )
 
 

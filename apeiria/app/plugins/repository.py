@@ -103,6 +103,7 @@ class PluginCatalogRepository:
                         description=meta.description if meta else None,
                         usage=meta.usage if meta else None,
                         plugin_type=extra.plugin_type.value if extra else "normal",
+                        is_ui_hidden=extra.ui.hidden if extra else False,
                         admin_level=extra.admin_level if extra else 0,
                         author=extra.author if extra else None,
                         version=extra.version if extra else None,
@@ -115,6 +116,7 @@ class PluginCatalogRepository:
             record.description = meta.description if meta else None
             record.usage = meta.usage if meta else None
             record.plugin_type = extra.plugin_type.value if extra else "normal"
+            record.is_ui_hidden = extra.ui.hidden if extra else False
             record.admin_level = extra.admin_level if extra else 0
             record.author = extra.author if extra else None
             record.version = extra.version if extra else None

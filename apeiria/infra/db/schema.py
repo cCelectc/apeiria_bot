@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 
 from nonebot.log import logger
 
-CURRENT_SCHEMA_VERSION = 24
+CURRENT_SCHEMA_VERSION = 25
 MIN_SUPPORTED_SCHEMA_VERSION = 22
 
 if TYPE_CHECKING:
@@ -659,6 +659,34 @@ async def _migrate_v23_to_v24(session: AsyncSession) -> None:
 
 
 MIGRATIONS[23] = _migrate_v23_to_v24
+
+
+async def _migrate_v24_to_v25(session: AsyncSession) -> None:
+    from nonebot_plugin_orm import Model
+    from sqlalchemy import inspect as sa_inspect
+    from sqlalchemy import text
+
+    conn = await session.connection()
+
+    def _has_is_ui_hidden(sync_conn):  # noqa: ANN001
+        inspector = sa_inspect(sync_conn)
+        columns = inspector.get_columns("plugin_info")
+        return any(column["name"] == "is_ui_hidden" for column in columns)
+
+    has_is_ui_hidden = await conn.run_sync(_has_is_ui_hidden)
+    if not has_is_ui_hidden:
+        await session.execute(
+            text(
+                "ALTER TABLE plugin_info "
+                "ADD COLUMN is_ui_hidden BOOLEAN NOT NULL DEFAULT 0"
+            )
+        )
+
+    await conn.run_sync(Model.metadata.create_all)
+    await session.commit()
+
+
+MIGRATIONS[24] = _migrate_v24_to_v25
 
 
 async def _normalize_memory_types_to_note(session: AsyncSession) -> None:

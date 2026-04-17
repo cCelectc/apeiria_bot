@@ -230,10 +230,10 @@ async def _plugin_state() -> _PluginState:
         for module_name in module_names
     }
     try:
-        from apeiria.app.plugins import plugin_catalog_service
+        from apeiria.app.plugins import plugin_governance_service
 
-        loaded_plugins = await plugin_catalog_service.list_plugins()
-        loaded_module_names = {item.module_name for item in loaded_plugins}
+        loaded_plugins = await plugin_governance_service.list_plugins()
+        loaded_module_names = {item.descriptor.module_name for item in loaded_plugins}
     except ValueError:
         loaded_module_names = set()
 

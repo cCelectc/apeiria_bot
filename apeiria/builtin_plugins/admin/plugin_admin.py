@@ -7,10 +7,10 @@ from nonebot.adapters import Event  # noqa: TC002
 from nonebot_plugin_alconna import Alconna, Match, on_alconna
 
 from apeiria.app.plugins import (
-    PluginCatalogItem,
+    PluginCatalogEntry,
     PluginSettingsNotConfigurableError,
-    plugin_catalog_service,
-    plugin_config_view_service,
+    config_query_service,
+    plugin_governance_service,
 )
 from apeiria.shared.exceptions import ProtectedPluginError, ResourceNotFoundError
 from apeiria.shared.i18n import t
@@ -55,8 +55,8 @@ async def handle_plugins(event: Event) -> None:
             )
         )
 
-    enabled_count = sum(1 for item in items if item.is_global_enabled)
-    protected_count = sum(1 for item in items if item.is_protected)
+    enabled_count = sum(1 for item in items if item.governance_state.is_global_enabled)
+    protected_count = sum(1 for item in items if item.governance_state.is_protected)
     lines = [_format_plugin_summary_line(item) for item in items]
     await _plugins.finish(
         render_list_block(
@@ -105,11 +105,13 @@ async def handle_plugin(
     if item is None:
         await _plugin.finish(t("admin.plugin.not_found", name=plugin_name.result))
 
-    module_name = item.module_name
+    module_name = item.descriptor.module_name
     if selected_action == "info":
         await _plugin.finish(await _render_plugin_info(module_name))
     if selected_action == "configs":
-        await _plugin.finish(render_plugin_settings_summary(module_name, item.name))
+        await _plugin.finish(
+            render_plugin_settings_summary(module_name, item.descriptor.name)
+        )
 
     await _plugin.finish(
         await _handle_plugin_toggle(
@@ -121,12 +123,12 @@ async def handle_plugin(
 
 
 async def _render_plugin_info(module_name: str) -> str:
-    item = await plugin_catalog_service.get_plugin(module_name)
+    item = await plugin_governance_service.get_plugin(module_name)
     if item is None:
         return t("admin.plugin.not_found", name=module_name)
 
     try:
-        settings = plugin_config_view_service.get_plugin_settings(module_name)
+        settings = config_query_service.get_plugin_view(module_name)
         configurable = (
             t("admin.common.yes") if settings.has_config_model else t("admin.common.no")
         )
@@ -141,30 +143,38 @@ async def _render_plugin_info(module_name: str) -> str:
     return render_block(
         t("admin.plugin.info_title"),
         [
-            (t("admin.plugin.field_name"), item.name),
-            (t("admin.plugin.field_module"), item.module_name),
-            (t("admin.plugin.field_kind"), item.kind),
-            (t("admin.plugin.field_source"), item.source),
-            (t("admin.plugin.field_type"), item.plugin_type),
-            (t("admin.plugin.field_version"), item.version or t("admin.common.none")),
-            (t("admin.plugin.field_author"), item.author or t("admin.common.none")),
+            (t("admin.plugin.field_name"), item.descriptor.name),
+            (t("admin.plugin.field_module"), item.descriptor.module_name),
+            (t("admin.plugin.field_kind"), item.governance_state.kind),
+            (t("admin.plugin.field_source"), item.descriptor.source),
+            (t("admin.plugin.field_type"), item.descriptor.plugin_type),
+            (
+                t("admin.plugin.field_version"),
+                item.descriptor.version or t("admin.common.none"),
+            ),
+            (
+                t("admin.plugin.field_author"),
+                item.descriptor.author or t("admin.common.none"),
+            ),
             (
                 t("admin.plugin.field_enabled"),
                 t("admin.common.enabled")
-                if item.is_global_enabled
+                if item.governance_state.is_global_enabled
                 else t("admin.common.disabled"),
             ),
             (
                 t("admin.plugin.field_protected"),
-                item.protected_reason or t("admin.common.none"),
+                item.governance_state.protected_reason or t("admin.common.none"),
             ),
             (
                 t("admin.plugin.field_required"),
-                ", ".join(item.required_plugins) or t("admin.common.none"),
+                ", ".join(item.governance_state.required_plugins)
+                or t("admin.common.none"),
             ),
             (
                 t("admin.plugin.field_dependents"),
-                ", ".join(item.dependent_plugins) or t("admin.common.none"),
+                ", ".join(item.governance_state.dependent_plugins)
+                or t("admin.common.none"),
             ),
             (
                 t("admin.plugin.field_configurable"),
@@ -172,20 +182,20 @@ async def _render_plugin_info(module_name: str) -> str:
             ),
             (t("admin.plugin.field_config_section"), section),
         ],
-        summary=item.description or t("admin.plugin.no_description"),
+        summary=item.descriptor.description or t("admin.plugin.no_description"),
     )
 
 
 async def _handle_plugin_toggle(
-    item: PluginCatalogItem,
+    item: PluginCatalogEntry,
     *,
     selected_action: str,
     raw_query: str,
 ) -> str:
-    module_name = item.module_name
-    plugin_name = item.name
+    module_name = item.descriptor.module_name
+    plugin_name = item.descriptor.name
     try:
-        changed = await plugin_catalog_service.set_plugin_enabled(
+        changed = await plugin_governance_service.set_plugin_enabled(
             module_name,
             enabled=selected_action == "enable",
         )
@@ -210,24 +220,31 @@ async def _handle_plugin_toggle(
     return t(key, name=plugin_name)
 
 
-async def _list_visible_plugins() -> list[PluginCatalogItem]:
-    items = await plugin_catalog_service.list_plugins()
+async def _list_visible_plugins() -> list[PluginCatalogEntry]:
+    items = await plugin_governance_service.list_plugins()
     return sorted(
-        [item for item in items if item.plugin_type not in {"hidden", "parent"}],
-        key=lambda item: (item.source, item.name.lower(), item.module_name),
+        items,
+        key=lambda item: (
+            item.descriptor.source,
+            item.descriptor.name.lower(),
+            item.descriptor.module_name,
+        ),
     )
 
 
-def _format_plugin_summary_line(item: PluginCatalogItem) -> str:
+def _format_plugin_summary_line(item: PluginCatalogEntry) -> str:
     status = (
         t("admin.common.enabled")
-        if item.is_global_enabled
+        if item.governance_state.is_global_enabled
         else t("admin.common.disabled")
     )
     protection = (
-        t("admin.common.locked") if item.is_protected else t("admin.common.unlocked")
+        t("admin.common.locked")
+        if item.governance_state.is_protected
+        else t("admin.common.unlocked")
     )
     return (
-        f"- {status} {item.name} ({item.module_name}) | {item.source} | "
-        f"{item.plugin_type} | {protection}"
+        f"- {status} {item.descriptor.name} ({item.descriptor.module_name})"
+        f" | {item.descriptor.source} | {item.descriptor.plugin_type}"
+        f" | {protection}"
     )

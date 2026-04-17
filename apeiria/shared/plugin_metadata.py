@@ -11,10 +11,20 @@ class PluginType(str, Enum):
     """Plugin type classification."""
 
     NORMAL = "normal"
-    ADMIN = "admin"
     SUPERUSER = "superuser"
-    HIDDEN = "hidden"
-    PARENT = "parent"
+
+
+def normalize_plugin_type_value(value: object) -> str:
+    """Normalize persisted plugin type values to the supported subset."""
+
+    if not isinstance(value, str):
+        return PluginType.NORMAL.value
+    normalized = value.strip().lower()
+    if normalized in {"admin", "hidden", "parent"}:
+        return PluginType.NORMAL.value
+    if normalized == PluginType.SUPERUSER.value:
+        return PluginType.SUPERUSER.value
+    return PluginType.NORMAL.value
 
 
 @dataclass
@@ -123,9 +133,9 @@ class PluginExtraData:
         if not extra.get("_apeiria"):
             return None
         try:
-            plugin_type = extra.get("plugin_type", "normal")
-            if isinstance(plugin_type, str):
-                plugin_type = PluginType(plugin_type)
+            plugin_type = PluginType(
+                normalize_plugin_type_value(extra.get("plugin_type", "normal"))
+            )
 
             help_raw = extra.get("help")
             if not isinstance(help_raw, dict):

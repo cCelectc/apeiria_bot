@@ -11,7 +11,7 @@ from pydantic import BaseModel
 from apeiria.app.plugins.config_capabilities import coerce_config_value
 from apeiria.infra.config.bot_config import BotConfig
 from apeiria.infra.plugin_metadata.registry import configs_from_model
-from apeiria.infra.plugin_metadata.resolver import resolve_plugin_declared_config
+from apeiria.infra.plugin_metadata.resolver import resolve_config_namespace_contract
 
 if TYPE_CHECKING:
     from apeiria.shared.plugin_metadata import RegisterConfig
@@ -42,10 +42,10 @@ class PluginDeclaredConfig:
 
 def get_plugin_declared_configs(module_name: str) -> PluginDeclaredConfig:
     """Resolve a plugin's declared config model and storage section."""
-    resolved = resolve_plugin_declared_config(module_name)
+    resolved = resolve_config_namespace_contract(module_name)
     return PluginDeclaredConfig(
         module_name=module_name,
-        section=resolved.section,
+        section=resolved.namespace,
         legacy_flatten=resolved.legacy_flatten,
         config_source=resolved.source,
         has_config_model=resolved.has_config_model,
