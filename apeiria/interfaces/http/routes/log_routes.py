@@ -14,7 +14,7 @@ from fastapi import (
 
 from apeiria.interfaces.http.auth import (
     require_control_panel,
-    verify_token,
+    verify_auth_session_token,
 )
 from apeiria.interfaces.http.schemas.models import (
     LogHistoryQuery,
@@ -22,14 +22,14 @@ from apeiria.interfaces.http.schemas.models import (
     LogItem,
     LogSourcesResponse,
 )
-from apeiria.shared.webui_roles import can_access_control_panel
+from apeiria.shared.principal_roles import CAP_CONTROL_PANEL
 
 router = APIRouter()
 
 
 def _require_log_stream_claims(token: str) -> None:
-    claims = verify_token(token)
-    if not can_access_control_panel(claims.get("role")):
+    session = verify_auth_session_token(token)
+    if not session.has_capability(CAP_CONTROL_PANEL):
         msg = "forbidden"
         raise ValueError(msg)
 

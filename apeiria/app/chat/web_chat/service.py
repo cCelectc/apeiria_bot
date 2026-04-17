@@ -21,6 +21,8 @@ from .protocol import (
 from .state import WebChatStateManager
 
 if TYPE_CHECKING:
+    from apeiria.shared.principal import AuthSession
+
     from .connection import WebChatConnection
 
 
@@ -43,13 +45,13 @@ class WebChatService:
             self.emitter,
         )
 
-    def build_principal(self, claims: dict[str, Any]) -> WebUIPrincipal:
-        """Normalize JWT-style claims into the principal used by WebChat."""
-        username = str(claims.get("username") or claims.get("sub") or "webui")
+    def build_principal(self, session: "AuthSession") -> WebUIPrincipal:
+        """Normalize one auth session into the principal used by WebChat."""
+        username = session.username or "webui"
         return WebUIPrincipal(
-            id=str(claims.get("user_id") or claims.get("sub") or "webui_admin"),
+            id=session.user_id or "webui_admin",
             username=username,
-            role=str(claims.get("role") or "admin"),
+            role=session.role_id or "admin",
         )
 
     def create_session(

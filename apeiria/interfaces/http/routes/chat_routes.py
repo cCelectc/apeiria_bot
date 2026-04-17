@@ -14,9 +14,12 @@ from apeiria.app.chat import (
     chat_gateway_service,
 )
 from apeiria.app.chat.transport import serve_chat_websocket
-from apeiria.interfaces.http.auth import require_control_panel, verify_token
+from apeiria.interfaces.http.auth import (
+    require_control_panel,
+    verify_auth_session_token,
+)
 from apeiria.shared.i18n import t
-from apeiria.shared.webui_roles import can_access_control_panel
+from apeiria.shared.principal_roles import CAP_CONTROL_PANEL
 
 router = APIRouter()
 
@@ -55,10 +58,10 @@ async def get_chat_asset(
 
 @router.websocket("/ws")
 async def chat_websocket(websocket: WebSocket) -> None:
-    def _verify_admin_token(token: str) -> dict[str, object]:
-        claims = verify_token(token)
-        if not can_access_control_panel(claims.get("role")):
+    def _verify_admin_token(token: str):
+        session = verify_auth_session_token(token)
+        if not session.has_capability(CAP_CONTROL_PANEL):
             raise ChatAuthError(t("web_ui.auth.permission_denied"))
-        return claims
+        return session
 
     await serve_chat_websocket(websocket, _verify_admin_token)

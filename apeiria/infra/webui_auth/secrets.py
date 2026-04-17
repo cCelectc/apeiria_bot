@@ -15,10 +15,8 @@ from nonebot.log import logger
 
 from apeiria.shared.files import atomic_write_text
 from apeiria.shared.i18n import t
-from apeiria.shared.webui_principal import WebUIPrincipal
-from apeiria.shared.webui_roles import (
+from apeiria.shared.principal_roles import (
     ROLE_OWNER,
-    capabilities_for_role,
     normalize_supported_role,
 )
 
@@ -26,6 +24,8 @@ _PASSWORD_HASH_N = 2**14
 _PASSWORD_HASH_R = 8
 _PASSWORD_HASH_P = 1
 _PASSWORD_HASH_LEN = 64
+_PASSWORD_MIN_LENGTH = 8
+_PASSWORD_MAX_LENGTH = 128
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -43,15 +43,6 @@ class WebUIAccount:
     last_login_at: str | None = None
     password_changed_at: str | None = None
     session_version: int = 0
-
-    def to_principal(self) -> WebUIPrincipal:
-        """Convert the account into the API principal shape."""
-        return WebUIPrincipal(
-            user_id=self.user_id,
-            username=self.username,
-            role=self.role,
-            capabilities=capabilities_for_role(self.role),
-        )
 
 
 @dataclass(frozen=True)
@@ -115,6 +106,13 @@ def _normalize_username(username: str) -> str:
     return username.strip().lower()
 
 
+def _validate_password(password: str) -> None:
+    """Validate password length before hashing."""
+
+    if not (_PASSWORD_MIN_LENGTH <= len(password) <= _PASSWORD_MAX_LENGTH):
+        raise ValueError("password_invalid")
+
+
 def _iso_now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
@@ -148,6 +146,27 @@ def _record_audit_event(
         }
     )
     _auth_store["audit_events"] = current_events[-100:]
+
+
+def _enabled_owner_count() -> int:
+    """Count enabled owner accounts in the current auth store."""
+
+    return sum(
+        1
+        for item in _auth_store.get("users", [])
+        if isinstance(item, dict)
+        if normalize_supported_role(item.get("role"), fallback=ROLE_OWNER) == ROLE_OWNER
+        if not bool(item.get("is_disabled", False))
+    )
+
+
+def _ensure_supported_role(role: object) -> str:
+    """Normalize a role and reject unsupported values."""
+
+    normalized_role = normalize_supported_role(role)
+    if not normalized_role:
+        raise ValueError("invalid_role")
+    return normalized_role
 
 
 def _ensure_bootstrap_registration_code(data: dict[str, Any]) -> dict[str, Any]:
@@ -424,6 +443,38 @@ def get_account_by_id(user_id: str) -> WebUIAccount | None:
     )
 
 
+def create_account(username: str, password: str, *, role: str = ROLE_OWNER) -> str:
+    """Create one account from the host-side management surface."""
+
+    normalized_username = _normalize_username(username)
+    if not normalized_username:
+        raise ValueError("username_invalid")
+    _validate_password(password)
+    normalized_role = _ensure_supported_role(role)
+    if get_account_by_username(normalized_username) is not None:
+        raise ValueError("username_taken")
+
+    _auth_store["users"] = [
+        *[item for item in _auth_store.get("users", []) if isinstance(item, dict)],
+        {
+            "user_id": f"webui_{secrets.token_hex(8)}",
+            "username": normalized_username,
+            "password_hash": _hash_password(password),
+            "role": normalized_role,
+            "is_disabled": False,
+            "password_changed_at": _iso_now(),
+            "session_version": 0,
+        },
+    ]
+    _record_audit_event(
+        "account_created",
+        actor_username="host",
+        target_username=normalized_username,
+    )
+    _persist_raw(_auth_store)
+    return normalized_username
+
+
 def verify_account_password(username: str, password: str) -> WebUIAccount | None:
     """Verify credentials and return the matching account when valid."""
     account = get_account_by_username(username)
@@ -503,11 +554,15 @@ def record_security_audit_event(
 
 def create_registration_code(
     *,
-    role: str,
-    created_by: str,
+    role: str = ROLE_OWNER,
+    created_by: str = "host",
 ) -> WebUIRegistrationCode:
     """Create and persist one registration code."""
-    registration_code = _new_registration_code(role=role, created_by=created_by)
+    normalized_role = _ensure_supported_role(role)
+    registration_code = _new_registration_code(
+        role=normalized_role,
+        created_by=created_by,
+    )
     current_registration_codes = [
         item
         for item in _auth_store.get(
@@ -524,13 +579,17 @@ def create_registration_code(
     _record_audit_event(
         "registration_code_created",
         actor_username=created_by,
-        detail=registration_code["role"],
+        detail=normalized_role,
     )
     _persist_raw(_auth_store)
     return WebUIRegistrationCode(**registration_code)
 
 
-def revoke_registration_code(code: str, *, revoked_by: str | None = None) -> bool:
+def revoke_registration_code(
+    code: str,
+    *,
+    revoked_by: str | None = None,
+) -> str:
     """Delete one registration code."""
     normalized = code.strip()
     current = [
@@ -545,7 +604,7 @@ def revoke_registration_code(code: str, *, revoked_by: str | None = None) -> boo
         item for item in current if str(item.get("code") or "").strip() != normalized
     ]
     if len(next_registration_codes) == len(current):
-        return False
+        raise ValueError("registration_code_not_found")
     _auth_store["registration_codes"] = next_registration_codes
     _auth_store.pop("invite_codes", None)
     _record_audit_event(
@@ -554,11 +613,12 @@ def revoke_registration_code(code: str, *, revoked_by: str | None = None) -> boo
         detail=None,
     )
     _persist_raw(_auth_store)
-    return True
+    return normalized
 
 
 def update_account_password(user_id: str, password: str) -> WebUIAccount | None:
     """Update one account password."""
+    _validate_password(password)
     for item in _auth_store.get("users", []):
         if not isinstance(item, dict):
             continue
@@ -577,6 +637,33 @@ def update_account_password(user_id: str, password: str) -> WebUIAccount | None:
     return None
 
 
+def set_account_password(username: str, password: str) -> str:
+    """Reset one account password from the host-side management surface."""
+
+    normalized_username = _normalize_username(username)
+    _validate_password(password)
+    account = get_account_by_username(normalized_username)
+    if account is None:
+        raise ValueError("account_not_found")
+    for item in _auth_store.get("users", []):
+        if not isinstance(item, dict):
+            continue
+        if str(item.get("user_id")) != account.user_id:
+            continue
+        item["password_hash"] = _hash_password(password)
+        item["password_changed_at"] = _iso_now()
+        item["session_version"] = int(item.get("session_version") or 0) + 1
+        item["is_disabled"] = False
+        _record_audit_event(
+            "password_changed",
+            actor_username="host",
+            target_username=normalized_username,
+        )
+        _persist_raw(_auth_store)
+        return normalized_username
+    raise ValueError("account_not_found")
+
+
 def update_account_role(user_id: str, role: str) -> WebUIAccount | None:
     """Update one account role."""
     normalized_role = normalize_supported_role(role)
@@ -591,6 +678,67 @@ def update_account_role(user_id: str, role: str) -> WebUIAccount | None:
         _persist_raw(_auth_store)
         return get_account_by_username(str(item.get("username") or ""))
     return None
+
+
+def set_account_disabled(username: str, *, disabled: bool) -> str:
+    """Enable or disable one account from the host-side management surface."""
+
+    normalized_username = _normalize_username(username)
+    account = get_account_by_username(normalized_username)
+    if account is None:
+        raise ValueError("account_not_found")
+    if (
+        disabled
+        and account.role == ROLE_OWNER
+        and not account.is_disabled
+        and _enabled_owner_count() <= 1
+    ):
+        raise ValueError("last_owner_forbidden")
+
+    for item in _auth_store.get("users", []):
+        if not isinstance(item, dict):
+            continue
+        if str(item.get("user_id")) != account.user_id:
+            continue
+        item["is_disabled"] = disabled
+        item["session_version"] = int(item.get("session_version") or 0) + 1
+        _record_audit_event(
+            "account_disabled" if disabled else "account_enabled",
+            actor_username="host",
+            target_username=normalized_username,
+        )
+        _persist_raw(_auth_store)
+        return normalized_username
+    raise ValueError("account_not_found")
+
+
+def delete_account(username: str) -> str:
+    """Delete one account from the host-side management surface."""
+
+    normalized_username = _normalize_username(username)
+    account = get_account_by_username(normalized_username)
+    if account is None:
+        raise ValueError("account_not_found")
+    if (
+        account.role == ROLE_OWNER
+        and not account.is_disabled
+        and _enabled_owner_count() <= 1
+    ):
+        raise ValueError("last_owner_forbidden")
+
+    _auth_store["users"] = [
+        item
+        for item in _auth_store.get("users", [])
+        if isinstance(item, dict)
+        if str(item.get("user_id")) != account.user_id
+    ]
+    _record_audit_event(
+        "account_deleted",
+        actor_username="host",
+        target_username=normalized_username,
+    )
+    _persist_raw(_auth_store)
+    return normalized_username
 
 
 def rotate_account_session_version(
@@ -658,6 +806,7 @@ def register_account(
     normalized_username = _normalize_username(username)
     if not normalized_username:
         raise ValueError("username_invalid")
+    _validate_password(password)
     if get_account_by_username(normalized_username) is not None:
         raise ValueError("username_taken")
 
@@ -701,3 +850,52 @@ def register_account(
     )
     _persist_raw(_auth_store)
     return account
+
+
+def recover_owner_account(username: str, password: str) -> tuple[str, bool]:
+    """Create or recover one owner account from the host."""
+
+    normalized_username = _normalize_username(username)
+    if not normalized_username:
+        raise ValueError("username_invalid")
+    _validate_password(password)
+
+    account = get_account_by_username(normalized_username)
+    if account is not None:
+        for item in _auth_store.get("users", []):
+            if not isinstance(item, dict):
+                continue
+            if str(item.get("user_id")) != account.user_id:
+                continue
+            item["password_hash"] = _hash_password(password)
+            item["password_changed_at"] = _iso_now()
+            item["session_version"] = int(item.get("session_version") or 0) + 1
+            item["role"] = ROLE_OWNER
+            item["is_disabled"] = False
+            _record_audit_event(
+                "owner_account_recovered",
+                actor_username="host",
+                target_username=normalized_username,
+            )
+            _persist_raw(_auth_store)
+            return normalized_username, False
+
+    _auth_store["users"] = [
+        *[item for item in _auth_store.get("users", []) if isinstance(item, dict)],
+        {
+            "user_id": f"webui_{secrets.token_hex(8)}",
+            "username": normalized_username,
+            "password_hash": _hash_password(password),
+            "role": ROLE_OWNER,
+            "is_disabled": False,
+            "password_changed_at": _iso_now(),
+            "session_version": 0,
+        },
+    ]
+    _record_audit_event(
+        "owner_account_recovered",
+        actor_username="host",
+        target_username=normalized_username,
+    )
+    _persist_raw(_auth_store)
+    return normalized_username, True

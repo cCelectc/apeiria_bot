@@ -20,6 +20,7 @@ if TYPE_CHECKING:
 
     from apeiria.app.chat.web_chat.assets import ChatAsset
     from apeiria.app.chat.web_chat.protocol import WebUIPrincipal
+    from apeiria.shared.principal import AuthSession
 
 
 class ChatAssetNotFoundError(ValueError):
@@ -55,7 +56,7 @@ class ChatGatewayService:
         connection: WebChatConnection,
         frame: ChatEnvelope,
         active_session_id: str | None,
-        token_verifier: Callable[[str], dict[str, object]],
+        token_verifier: Callable[[str], "AuthSession"],
     ) -> str | None:
         if frame.type != "auth.hello" and connection.principal is None:
             await web_chat_service.emit_error(
@@ -204,13 +205,13 @@ class ChatGatewayService:
         self,
         connection: WebChatConnection,
         frame: ChatEnvelope,
-        token_verifier: Callable[[str], dict[str, object]],
+        token_verifier: Callable[[str], "AuthSession"],
         active_session_id: str | None,
     ) -> str | None:
         try:
             payload = AuthHelloPayload.model_validate(frame.payload)
-            claims = token_verifier(payload.token)
-            principal = web_chat_service.build_principal(claims)
+            session = token_verifier(payload.token)
+            principal = web_chat_service.build_principal(session)
             await web_chat_service.emit_auth_ok(
                 connection,
                 principal,

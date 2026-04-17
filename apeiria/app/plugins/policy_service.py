@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from apeiria.app.access.models import PluginAccessSpec
+from apeiria.app.access.models import PluginPolicy
 from apeiria.app.plugins.repository import plugin_catalog_repository
 from apeiria.infra.runtime.plugin_policy import (
     get_default_protection_mode,
@@ -16,16 +16,16 @@ class PluginPolicyService:
     def get_kind(self, module_name: str) -> str:
         return get_plugin_kind(module_name)
 
-    async def get_access_spec(self, module_name: str) -> PluginAccessSpec:
+    async def get_policy(self, module_name: str) -> PluginPolicy:
         policy = await plugin_catalog_repository.get_plugin_policy(module_name)
         if policy is None:
-            return PluginAccessSpec(
+            return PluginPolicy(
                 plugin_module=module_name,
                 access_mode="default_allow",
                 required_level=0,
                 protection_mode=get_default_protection_mode(module_name),  # type: ignore[arg-type]
             )
-        return PluginAccessSpec(
+        return PluginPolicy(
             plugin_module=module_name,
             access_mode=policy.access_mode,  # type: ignore[arg-type]
             required_level=policy.required_level,
@@ -56,12 +56,12 @@ class PluginPolicyService:
         module_name: str,
         *,
         access_mode: str,
-    ) -> PluginAccessSpec:
+    ) -> PluginPolicy:
         await plugin_catalog_repository.update_plugin_policy(
             module_name,
             access_mode=access_mode,
         )
-        return await self.get_access_spec(module_name)
+        return await self.get_policy(module_name)
 
 
 plugin_policy_service = PluginPolicyService()

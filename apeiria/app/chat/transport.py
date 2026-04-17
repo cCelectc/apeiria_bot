@@ -15,10 +15,12 @@ from apeiria.shared.i18n import t
 if TYPE_CHECKING:
     from collections.abc import Callable
 
+    from apeiria.shared.principal import AuthSession
+
 
 async def serve_chat_websocket(
     websocket: WebSocket,
-    token_verifier: Callable[[str], dict[str, object]],
+    token_verifier: Callable[[str], "AuthSession"],
 ) -> None:
     """Run the full websocket session loop for one browser connection."""
     await websocket.accept()

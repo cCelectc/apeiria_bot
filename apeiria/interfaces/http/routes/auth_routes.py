@@ -1,6 +1,8 @@
 """Authentication routes for the Web UI."""
 
-from typing import Annotated, Any
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 
@@ -13,8 +15,12 @@ from apeiria.infra.webui_auth.secrets import (
     update_account_password,
     verify_account_password,
 )
+from apeiria.infra.webui_auth.service import (
+    AuthSessionContext,
+    auth_session_service,
+)
 from apeiria.interfaces.http.auth import (
-    create_token,
+    create_auth_session_token,
     require_auth,
     require_control_panel,
 )
@@ -37,26 +43,20 @@ from apeiria.interfaces.http.schemas.models import (
     WebUIPrincipalResponse,
 )
 from apeiria.shared.i18n import t
-from apeiria.shared.webui_roles import (
-    can_access_control_panel,
-    capabilities_for_role,
-    normalize_role,
-)
+from apeiria.shared.principal_roles import can_access_control_panel
+
+if TYPE_CHECKING:
+    from apeiria.shared.principal import AuthSession, Principal
 
 router = APIRouter()
 
 
-def _to_webui_principal_response(
-    *,
-    user_id: str,
-    username: str,
-    role: str,
-) -> WebUIPrincipalResponse:
+def _to_webui_principal_response(principal: Principal) -> WebUIPrincipalResponse:
     return WebUIPrincipalResponse(
-        user_id=user_id,
-        username=username,
-        role=role,
-        capabilities=capabilities_for_role(role),
+        user_id=principal.principal_id,
+        username=principal.display_name,
+        role=principal.role.role_id,
+        capabilities=principal.capabilities,
     )
 
 
@@ -83,24 +83,14 @@ async def login(body: LoginRequest, request: Request) -> LoginResponse:
         )
     clear_login_failures(account.username, client_ip)
     account = record_login_success(account.user_id) or account
-    principal = account.to_principal()
+    session = auth_session_service.create_session(
+        account,
+        auth_method="password",
+        context=AuthSessionContext(client_ip=client_ip),
+    )
     return LoginResponse(
-        token=create_token(
-            {
-                "sub": principal.username,
-                "user_id": principal.user_id,
-                "username": principal.username,
-                "role": principal.role,
-                "capabilities": capabilities_for_role(principal.role),
-                "session_version": account.session_version,
-                "client_ip": client_ip,
-            }
-        ),
-        principal=_to_webui_principal_response(
-            user_id=principal.user_id,
-            username=principal.username,
-            role=principal.role,
-        ),
+        token=create_auth_session_token(session),
+        principal=_to_webui_principal_response(session.principal),
     )
 
 
@@ -125,28 +115,23 @@ async def register(body: RegisterRequest) -> RegisterResponse:
 
 @router.get("/me")
 async def get_current_user(
-    claims: Annotated[Any, Depends(require_auth)],
+    session: Annotated[AuthSession, Depends(require_auth)],
 ) -> WebUIPrincipalResponse:
     """Return the current authenticated user."""
-    role = normalize_role(claims.get("role"))
-    if not can_access_control_panel(role):
+    if not can_access_control_panel(session.role_id):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail=t("web_ui.auth.permission_denied"),
         )
-    return _to_webui_principal_response(
-        user_id=str(claims.get("user_id") or claims.get("sub") or "webui"),
-        username=str(claims.get("username") or claims.get("sub") or "webui"),
-        role=role,
-    )
+    return _to_webui_principal_response(session.principal)
 
 
 @router.get("/me/account")
 async def get_current_account(
-    claims: Annotated[dict[str, Any], Depends(require_control_panel)],
+    session: Annotated[AuthSession, Depends(require_control_panel)],
 ) -> WebUIAccountItem:
     """Return the current account record."""
-    user_id = str(claims.get("user_id") or "")
+    user_id = session.user_id
     account = get_account_by_id(user_id)
     if account is None:
         raise HTTPException(
@@ -183,11 +168,11 @@ async def get_security_audit_events(
 @router.post("/password")
 async def change_password(
     body: PasswordChangeRequest,
-    claims: Annotated[dict[str, Any], Depends(require_control_panel)],
+    session: Annotated[AuthSession, Depends(require_control_panel)],
 ) -> SessionRefreshResponse:
     """Change the current account password."""
-    username = str(claims.get("username") or claims.get("sub") or "")
-    user_id = str(claims.get("user_id") or "")
+    username = session.username
+    user_id = session.user_id
     if body.current_password is None:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -205,34 +190,24 @@ async def change_password(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=t("web_ui.auth.account_not_found"),
         )
-    updated_principal = updated_account.to_principal()
+    updated_session = auth_session_service.create_session(
+        updated_account,
+        auth_method="session_refresh",
+    )
     return SessionRefreshResponse(
         detail=t("web_ui.auth.password_changed"),
-        token=create_token(
-            {
-                "sub": updated_principal.username,
-                "user_id": updated_principal.user_id,
-                "username": updated_principal.username,
-                "role": updated_principal.role,
-                "capabilities": capabilities_for_role(updated_principal.role),
-                "session_version": updated_account.session_version,
-            }
-        ),
-        principal=_to_webui_principal_response(
-            user_id=updated_principal.user_id,
-            username=updated_principal.username,
-            role=updated_principal.role,
-        ),
+        token=create_auth_session_token(updated_session),
+        principal=_to_webui_principal_response(updated_session.principal),
     )
 
 
 @router.post("/sessions/revoke-others")
 async def revoke_other_sessions(
-    claims: Annotated[dict[str, Any], Depends(require_control_panel)],
+    session: Annotated[AuthSession, Depends(require_control_panel)],
 ) -> SessionRefreshResponse:
     """Invalidate previous sessions and return a fresh token for the current account."""
-    user_id = str(claims.get("user_id") or "")
-    actor_username = str(claims.get("username") or claims.get("sub") or "")
+    user_id = session.user_id
+    actor_username = session.username
     updated_account = rotate_account_session_version(
         user_id,
         actor_username=actor_username,
@@ -242,22 +217,12 @@ async def revoke_other_sessions(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=t("web_ui.auth.account_not_found"),
         )
-    updated_principal = updated_account.to_principal()
+    updated_session = auth_session_service.create_session(
+        updated_account,
+        auth_method="session_refresh",
+    )
     return SessionRefreshResponse(
         detail=t("web_ui.auth.sessions_revoked"),
-        token=create_token(
-            {
-                "sub": updated_principal.username,
-                "user_id": updated_principal.user_id,
-                "username": updated_principal.username,
-                "role": updated_principal.role,
-                "capabilities": capabilities_for_role(updated_principal.role),
-                "session_version": updated_account.session_version,
-            }
-        ),
-        principal=_to_webui_principal_response(
-            user_id=updated_principal.user_id,
-            username=updated_principal.username,
-            role=updated_principal.role,
-        ),
+        token=create_auth_session_token(updated_session),
+        principal=_to_webui_principal_response(updated_session.principal),
     )

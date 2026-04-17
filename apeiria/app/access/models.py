@@ -33,20 +33,24 @@ class AccessPolicyRule:
 
 
 @dataclass(frozen=True)
-class PluginAccessSpec:
-    """Framework-owned runtime policy for one plugin."""
+class PluginPolicy:
+    """Framework-owned governance policy for one plugin."""
 
     plugin_module: str
     access_mode: Literal["default_allow", "default_deny"]
     required_level: int
     protection_mode: Literal["normal", "required"]
+    visibility: Literal["normal", "hidden"] = "normal"
+    labels: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
-class Decision:
-    """Unified runtime decision."""
+class PermissionDecision:
+    """Unified runtime permission decision with governance context."""
 
     allowed: bool
     code: str
-    message: str | None = None
+    reason: str | None = None
+    source: str = "runtime"
+    degradation: dict[str, object] | None = None
     details: dict[str, object] | None = None
