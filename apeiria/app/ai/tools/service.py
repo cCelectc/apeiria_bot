@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 from dataclasses import asdict, dataclass, is_dataclass
 from datetime import timezone
@@ -29,7 +30,6 @@ from apeiria.app.ai.tools.models import (
     AIToolObservationRequest,
     AIToolObservationResult,
     AIToolPolicy,
-    AIToolResult,
     AIToolSpec,
     AIToolTurnCreateInput,
 )
@@ -52,6 +52,7 @@ class AIToolExecutionCreateInput:
     session_id: str
     tool_name: str
     status: str
+    trace_id: str | None = None
     input_payload: Any | None = None
     output_payload: Any | None = None
 
@@ -242,6 +243,7 @@ class AIToolService:
                     session_id=request.session_id,
                     tool_name=observation.tool_name,
                     status=observation.status,
+                    trace_id=request.trace_id,
                     input_payload=observation.input_payload,
                     output_payload=observation.output_payload,
                 ),
@@ -275,11 +277,13 @@ class AIToolService:
             session=session,
             session_id=request.session_id,
             source_message_id=request.source_message_id,
+            trace_id=request.trace_id,
             message_text=request.message_text,
             policy=request.policy,
             recalled_memory_ids=request.recalled_memory_ids,
             recalled_memory_contents=request.recalled_memory_contents,
             relationship_context=request.relationship_context,
+            execution_timeout_seconds=request.execution_timeout_seconds,
         )
 
         # Parse arguments from model output
@@ -288,7 +292,14 @@ class AIToolService:
         )
 
         try:
-            result: AIToolResult = await spec.entrypoint(**arguments, context=context)
+            execution = spec.entrypoint(**arguments, context=context)
+            if request.execution_timeout_seconds is not None:
+                result = await asyncio.wait_for(
+                    execution,
+                    timeout=request.execution_timeout_seconds,
+                )
+            else:
+                result = await execution
             return AIToolObservationResult(
                 tool_name=intent.tool_name,
                 summary=result.summary,
@@ -296,26 +307,59 @@ class AIToolService:
                 output_payload=result.output_payload,
                 status=result.status,
             )
+        except TimeoutError:
+            logger.warning(
+                "Tool {} execution timed out trace_id={} timeout={}s",
+                intent.tool_name,
+                request.trace_id,
+                request.execution_timeout_seconds,
+            )
+            timeout_summary = (
+                f"- [{intent.tool_name}] timed out after "
+                f"{request.execution_timeout_seconds:.1f}s"
+                if request.execution_timeout_seconds is not None
+                else f"- [{intent.tool_name}] timed out"
+            )
+            return AIToolObservationResult(
+                tool_name=intent.tool_name,
+                summary=timeout_summary,
+                input_payload=intent.input_payload,
+                output_payload={
+                    "error": "timeout",
+                    "timeout_seconds": request.execution_timeout_seconds,
+                    "trace_id": request.trace_id,
+                },
+                status="timeout",
+            )
         except TypeError as exc:
             logger.opt(exception=exc).debug(
-                "Tool {} argument error: {}", intent.tool_name, exc
+                "Tool {} argument error trace_id={}: {}",
+                intent.tool_name,
+                request.trace_id,
+                exc,
             )
             return AIToolObservationResult(
                 tool_name=intent.tool_name,
                 summary=f"- [{intent.tool_name}] failed: invalid arguments",
                 input_payload=intent.input_payload,
-                output_payload={"error": f"invalid arguments: {exc}"},
+                output_payload={
+                    "error": f"invalid arguments: {exc}",
+                    "trace_id": request.trace_id,
+                },
                 status="error",
             )
         except Exception as exc:  # noqa: BLE001
             logger.opt(exception=exc).warning(
-                "Tool {} execution failed: {}", intent.tool_name, exc
+                "Tool {} execution failed trace_id={}: {}",
+                intent.tool_name,
+                request.trace_id,
+                exc,
             )
             return AIToolObservationResult(
                 tool_name=intent.tool_name,
                 summary=f"- [{intent.tool_name}] failed: {exc}",
                 input_payload=intent.input_payload,
-                output_payload={"error": str(exc)},
+                output_payload={"error": str(exc), "trace_id": request.trace_id},
                 status="error",
             )
 
@@ -333,6 +377,11 @@ class AIToolService:
                 text_content=observation.summary,
                 meta={
                     "source": "tool_observation",
+                    "trace_id": (
+                        observation.output_payload.get("trace_id")
+                        if isinstance(observation.output_payload, dict)
+                        else None
+                    ),
                     "tool_name": observation.tool_name,
                     "status": observation.status,
                     "input": _to_jsonable_payload(observation.input_payload),
@@ -358,7 +407,12 @@ class AIToolService:
             status=create_input.status,
             input_json=(
                 json.dumps(
-                    _to_jsonable_payload(create_input.input_payload),
+                    _to_jsonable_payload(
+                        {
+                            "trace_id": create_input.trace_id,
+                            "payload": create_input.input_payload,
+                        }
+                    ),
                     ensure_ascii=False,
                     sort_keys=True,
                     default=str,
@@ -368,7 +422,12 @@ class AIToolService:
             ),
             output_json=(
                 json.dumps(
-                    _to_jsonable_payload(create_input.output_payload),
+                    _to_jsonable_payload(
+                        {
+                            "trace_id": create_input.trace_id,
+                            "payload": create_input.output_payload,
+                        }
+                    ),
                     ensure_ascii=False,
                     sort_keys=True,
                     default=str,

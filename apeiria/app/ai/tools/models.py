@@ -60,11 +60,13 @@ class AIToolExecutionContext:
     session: AsyncSession
     session_id: str
     source_message_id: str | None
+    trace_id: str | None
     message_text: str
     policy: AIToolPolicy
     recalled_memory_ids: tuple[str, ...]
     recalled_memory_contents: tuple[str, ...]
     relationship_context: str | None
+    execution_timeout_seconds: float | None
 
 
 @dataclass(frozen=True)
@@ -123,6 +125,7 @@ class AIToolObservationRequest:
 
     session_id: str
     source_message_id: str | None
+    trace_id: str | None
     message_text: str
     policy: AIToolPolicy
     recalled_memory_ids: tuple[str, ...]

@@ -54,6 +54,50 @@ __plugin_meta__ = PluginMetadata(
                     ),
                     type=bool,
                 ),
+                RegisterConfig(
+                    key="tool_execution_timeout_seconds",
+                    default=8.0,
+                    help="Maximum seconds allowed for one AI tool execution.",
+                    type=float,
+                ),
+                RegisterConfig(
+                    key="cleanup_interval_minutes",
+                    default=30,
+                    help=(
+                        "Minimum interval between automatic AI retention cleanup runs."
+                    ),
+                    type=int,
+                ),
+                RegisterConfig(
+                    key="conversation_retention_days",
+                    default=30,
+                    help="Retention window for persisted AI chat messages.",
+                    type=int,
+                ),
+                RegisterConfig(
+                    key="raw_event_retention_days",
+                    default=7,
+                    help=("Retention window for reduced persisted raw event payloads."),
+                    type=int,
+                ),
+                RegisterConfig(
+                    key="tool_execution_retention_days",
+                    default=30,
+                    help="Retention window for AI tool execution audit rows.",
+                    type=int,
+                ),
+                RegisterConfig(
+                    key="future_task_retention_days",
+                    default=30,
+                    help="Retention window for terminal AI future task rows.",
+                    type=int,
+                ),
+                RegisterConfig(
+                    key="ignored_memory_retention_days",
+                    default=30,
+                    help="Retention window for ignored AI memory rows.",
+                    type=int,
+                ),
             ]
         ),
         commands=["ai-status"],

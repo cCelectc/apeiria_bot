@@ -40,6 +40,7 @@ from apeiria.app.ai.reply_strategy import (
 )
 from apeiria.app.ai.reply_strategy.models import WakeContext
 from apeiria.app.ai.reply_strategy.wake_gate import evaluate_wake
+from apeiria.app.ai.retention import ai_retention_service
 from apeiria.app.ai.runtime.composer import (
     AIRuntimeComposeInput,
     build_runtime_prompt_channels,
@@ -366,6 +367,7 @@ class AIRuntimeService:
         if not evaluate_wake(wake_context).should_process:
             return None
         message_text = wake_context.message_text
+        ai_retention_service.maybe_schedule_cleanup(config=config)
 
         async with get_session() as session:
             ingested = await chat_session_service.ingest_event(
@@ -410,6 +412,7 @@ class AIRuntimeService:
     ) -> AIRuntimeReplyResult | None:
         """Handle one due future task by running the normal reply pipeline."""
 
+        ai_retention_service.maybe_schedule_cleanup(config=get_ai_plugin_config())
         async with get_session() as session:
             task = await ai_future_task_service.get_task(session, task_id=task_id)
             if task is None or task.status != "running":
@@ -447,6 +450,9 @@ class AIRuntimeService:
     ) -> AIRuntimeReplyResult | None:
         current_time = datetime.now(timezone.utc)
         identity = request.identity
+        tool_execution_timeout_seconds = (
+            get_ai_plugin_config().tool_execution_timeout_seconds
+        )
 
         turns, conversation_summary = await _build_context_window(
             session,
@@ -547,12 +553,14 @@ class AIRuntimeService:
             AIToolRuntimeRequest(
                 session_id=identity.session_id,
                 source_message_id=request.source_message_id,
+                trace_id=trace_id,
                 message_text=request.message_text,
                 policy=tool_policy,
                 recalled_memories=tuple(recalled_memories),
                 relationship_context=relationship_context,
                 current_time=current_time,
                 tool_mode=social_decision.tool_mode,
+                execution_timeout_seconds=tool_execution_timeout_seconds,
             ),
         )
         pre_tool_task_class = select_pre_tool_reply_task_class(
@@ -753,12 +761,14 @@ class AIRuntimeService:
         tool_request = AIToolRuntimeRequest(
             session_id=state.request.identity.session_id,
             source_message_id=state.request.source_message_id,
+            trace_id=state.trace_id,
             message_text=state.request.message_text,
             policy=state.tool_policy,
             recalled_memories=tuple(state.recalled_memories),
             relationship_context=state.relationship_context,
             current_time=state.current_time,
             tool_mode=state.social_decision.tool_mode,
+            execution_timeout_seconds=get_ai_plugin_config().tool_execution_timeout_seconds,
         )
 
         skill_runtime = await ai_tool_runtime.run_tool_loop(

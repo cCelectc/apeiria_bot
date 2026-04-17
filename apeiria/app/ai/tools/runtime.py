@@ -39,12 +39,14 @@ class AIToolRuntimeRequest:
 
     session_id: str
     source_message_id: str | None
+    trace_id: str | None
     message_text: str
     policy: AIToolPolicy
     recalled_memories: tuple["AIMemoryDefinition", ...]
     relationship_context: str | None
     current_time: datetime
     tool_mode: str = "allow"
+    execution_timeout_seconds: float | None = None
 
 
 @dataclass(frozen=True)
@@ -100,6 +102,7 @@ class AIToolRuntime:
             request=AIToolObservationRequest(
                 session_id=request.session_id,
                 source_message_id=request.source_message_id,
+                trace_id=request.trace_id,
                 message_text=request.message_text,
                 policy=request.policy,
                 recalled_memory_ids=tuple(
@@ -109,7 +112,7 @@ class AIToolRuntime:
                     memory.content for memory in request.recalled_memories
                 ),
                 relationship_context=request.relationship_context,
-                execution_timeout_seconds=None,
+                execution_timeout_seconds=request.execution_timeout_seconds,
             ),
             intents=intents,
         )
@@ -181,6 +184,7 @@ class AIToolRuntime:
                 request=AIToolObservationRequest(
                     session_id=request.session_id,
                     source_message_id=request.source_message_id,
+                    trace_id=request.trace_id,
                     message_text=request.message_text,
                     policy=request.policy,
                     recalled_memory_ids=tuple(
@@ -190,7 +194,7 @@ class AIToolRuntime:
                         m.content for m in request.recalled_memories
                     ),
                     relationship_context=request.relationship_context,
-                    execution_timeout_seconds=None,
+                    execution_timeout_seconds=request.execution_timeout_seconds,
                 ),
                 intents=intents,
             )

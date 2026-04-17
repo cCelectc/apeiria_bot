@@ -2,13 +2,10 @@
 
 from __future__ import annotations
 
-import asyncio
 from typing import Annotated, Any
 
 from apeiria.app.ai.tools.decorators import ai_tool
 from apeiria.app.ai.tools.models import AIToolExecutionContext, AIToolResult
-
-_DEFAULT_TIMEOUT_SECONDS = 5.0
 
 
 @ai_tool(
@@ -40,33 +37,18 @@ async def handle_capability(
     )
 
     try:
-        result = await asyncio.wait_for(
-            invoke_skill_with_policy(
-                registry=ai_tool_service.registry,
-                bridge=ai_tool_service.capability_bridge,
-                request=request,
-                policy=context.policy,
-            ),
-            timeout=_DEFAULT_TIMEOUT_SECONDS,
-        )
-    except TimeoutError:
-        return AIToolResult(
-            summary=(
-                f"- [plugin.capability] {capability_name} timed out after "
-                f"{_DEFAULT_TIMEOUT_SECONDS:.1f}s"
-            ),
-            output_payload={
-                "capability_name": capability_name,
-                "error": "timeout",
-                "timeout_seconds": _DEFAULT_TIMEOUT_SECONDS,
-            },
-            status="timeout",
+        result = await invoke_skill_with_policy(
+            registry=ai_tool_service.registry,
+            bridge=ai_tool_service.capability_bridge,
+            request=request,
+            policy=context.policy,
         )
     except Exception as exc:  # noqa: BLE001
         return AIToolResult(
             summary=(f"- [plugin.capability] {capability_name} failed: {exc}"),
             output_payload={
                 "capability_name": capability_name,
+                "trace_id": context.trace_id,
                 "error": str(exc),
             },
             status="error",
@@ -82,6 +64,7 @@ async def handle_capability(
         summary=summary,
         output_payload={
             "capability_name": capability_name,
+            "trace_id": context.trace_id,
             "result": result,
         },
     )

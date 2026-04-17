@@ -16,6 +16,13 @@ class AIPluginConfig(BaseModel):
 
     allow_group_initiative: bool = False
     persist_raw_event_payloads: bool = False
+    tool_execution_timeout_seconds: float = 8.0
+    cleanup_interval_minutes: int = 30
+    conversation_retention_days: int = 30
+    raw_event_retention_days: int = 7
+    tool_execution_retention_days: int = 30
+    future_task_retention_days: int = 30
+    ignored_memory_retention_days: int = 30
 
 
 def _validate_config(model: type[ModelT], data: dict[str, object]) -> ModelT:
