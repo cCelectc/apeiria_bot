@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal
 
 if TYPE_CHECKING:
-    from apeiria.app.ai.conversation.models import ScopeType
+    from apeiria.app.ai.conversation.models import SceneType
 
 MessageDeliveryChannel = Literal["onebot.v11", "unsupported", "missing_bot"]
 
@@ -17,7 +17,7 @@ class MessageDeliveryTarget:
 
     platform: str
     bot_id: str
-    scope_type: ScopeType
+    scope_type: SceneType
     scope_id: str
     user_id: str | None
 

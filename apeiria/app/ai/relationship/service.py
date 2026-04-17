@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 from uuid import uuid4
 
 from sqlalchemy import select
@@ -13,6 +13,7 @@ from sqlalchemy import select
 from apeiria.app.ai.relationship.models import (
     AIRelationshipDelta,
     AIRelationshipEvent,
+    AIRelationshipEventType,
     AIRelationshipState,
     EmotionProjection,
 )
@@ -369,7 +370,7 @@ class AIRelationshipService:
         platform: str,
         group_id: str | None,
         user_id: str,
-        event_type: str,
+        event_type: AIRelationshipEventType,
         score_delta: float,
         score_after: float,
         mood_tag: str | None,
@@ -467,7 +468,7 @@ class AIRelationshipService:
             platform=row.platform,
             group_id=row.group_id,
             user_id=row.user_id,
-            event_type=row.event_type,
+            event_type=cast("AIRelationshipEventType", row.event_type),
             score_delta=row.score_delta,
             score_after=row.score_after,
             mood_tag=row.mood_tag,
