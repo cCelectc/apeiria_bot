@@ -29,6 +29,12 @@ class PrincipalService:
         )
 
     def build_system_actor(self, actor_name: str = "system") -> Principal:
+        """Reserved for Phase 3 runtime ingress.
+
+        Not yet wired to any caller; kept so that non-WebUI audit/ingress
+        paths can resolve a stable governance principal without inventing
+        a second Principal factory.
+        """
         resolved_role = role_for(ROLE_OWNER, fallback=ROLE_OWNER)
         assert resolved_role is not None
         return Principal(
@@ -39,6 +45,11 @@ class PrincipalService:
         )
 
     def build_host_operator(self, actor_name: str = "host") -> Principal:
+        """Reserved for Phase 3 runtime ingress.
+
+        Intended caller: host-side recovery / CLI that needs to present a
+        governance principal but cannot use the WebUI account path.
+        """
         resolved_role = role_for(ROLE_OWNER, fallback=ROLE_OWNER)
         assert resolved_role is not None
         return Principal(
@@ -55,6 +66,12 @@ class PrincipalService:
         display_name: str,
         role: object = ROLE_OWNER,
     ) -> Principal:
+        """Reserved for Phase 3 runtime ingress.
+
+        Intended caller: message ingress normalization, where the incoming
+        bot identity needs to become a governance principal for audit /
+        permission attribution.
+        """
         resolved_role = role_for(role, fallback=ROLE_OWNER)
         assert resolved_role is not None
         return Principal(
