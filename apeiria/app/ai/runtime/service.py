@@ -11,15 +11,7 @@ from nonebot.log import logger
 from nonebot_plugin_orm import get_session
 
 from apeiria.app.ai.config import get_ai_plugin_config
-from apeiria.app.ai.conversation.context_window import (
-    MAX_FETCH_MESSAGES,
-    context_window_service,
-)
 from apeiria.app.ai.conversation.service import ChatMessageCreate, chat_session_service
-from apeiria.app.ai.conversation.summary import (
-    build_short_conversation_summary,
-    compress_conversation_history,
-)
 from apeiria.app.ai.future_task import ai_future_task_service
 from apeiria.app.ai.model import AIModelBindingTarget, AIModelRouteQuery
 from apeiria.app.ai.model.gateway import model_gateway
@@ -46,6 +38,10 @@ from apeiria.app.ai.runtime.composer import (
     build_runtime_prompt_channels,
     compose_pre_tool_reply_prompt,
     compose_roleplay_reply_prompt,
+)
+from apeiria.app.ai.runtime.context_window_steps import (
+    build_and_store_context_window,
+    record_context_usage,
 )
 from apeiria.app.ai.runtime.memory_steps import (
     load_person_profile_for_prompt,
@@ -286,69 +282,6 @@ def _should_skip_generation(decision: ReplyStrategyDecision) -> bool:
     return not decision.should_speak
 
 
-def _record_context_usage(
-    session_id: str,
-    *,
-    response: "AIModelGenerateResponse",
-    message_count: int,
-) -> None:
-    """Feed actual prompt token usage back to the context window calibrator."""
-
-    raw = response.raw
-    if not isinstance(raw, dict):
-        return
-    usage = raw.get("usage")
-    if not isinstance(usage, dict):
-        return
-    prompt_tokens = usage.get("prompt_tokens")
-    if not isinstance(prompt_tokens, int) or prompt_tokens <= 0:
-        return
-    context_window_service.record_usage(
-        session_id,
-        prompt_tokens=prompt_tokens,
-        message_count=message_count,
-    )
-
-
-async def _build_context_window(
-    session: "AsyncSession",
-    *,
-    identity: "ChatSessionIdentity",
-) -> tuple[list["ChatContextMessageView"], str | None]:
-    """Fetch messages, split via dynamic window, compress overflow."""
-
-    all_recent = await chat_session_service.list_recent_messages(
-        session,
-        identity,
-        max_messages=MAX_FETCH_MESSAGES,
-    )
-    window = context_window_service.compute_window(
-        all_recent,
-        session_id=identity.session_id,
-    )
-    turns = window.kept_messages
-
-    if window.needs_compression:
-        existing_summary = await chat_session_service.load_session_summary(
-            session,
-            identity,
-        )
-        conversation_summary = await compress_conversation_history(
-            window.overflow_messages,
-            existing_summary=existing_summary,
-            scene_type=identity.scene_type,
-        )
-    else:
-        conversation_summary = build_short_conversation_summary(turns)
-
-    await chat_session_service.store_summary_text(
-        session,
-        identity,
-        summary=conversation_summary,
-    )
-    return turns, conversation_summary
-
-
 class AIRuntimeService:
     """Minimal end-to-end runtime path for the AI plugin."""
 
@@ -494,7 +427,7 @@ class AIRuntimeService:
             get_ai_plugin_config().tool_execution_timeout_seconds
         )
 
-        turns, conversation_summary = await _build_context_window(
+        turns, conversation_summary = await build_and_store_context_window(
             session,
             identity=identity,
         )
@@ -708,7 +641,7 @@ class AIRuntimeService:
                 },
             ),
         )
-        await _build_context_window(session, identity=identity)
+        await build_and_store_context_window(session, identity=identity)
         await session.commit()
         # Only count as "replied" when the reply was actually delivered.
         # For regular messages delivery_result is None (plugin handler sends).
@@ -764,7 +697,7 @@ class AIRuntimeService:
         if response is None:
             return None, state.skill_runtime, None, None
 
-        _record_context_usage(
+        record_context_usage(
             state.request.identity.session_id,
             response=response,
             message_count=len(state.turns),
@@ -823,7 +756,7 @@ class AIRuntimeService:
         post_tool_task_class = None
 
         if response is not None:
-            _record_context_usage(
+            record_context_usage(
                 state.request.identity.session_id,
                 response=response,
                 message_count=len(state.turns),
