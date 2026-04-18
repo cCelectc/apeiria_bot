@@ -8,6 +8,7 @@ from typing import Literal
 SubjectType = Literal["user", "group"]
 RuleEffect = Literal["allow", "deny"]
 ConversationType = Literal["private", "group", "other"]
+ResourceKind = Literal["plugin"]
 
 
 @dataclass(frozen=True)
@@ -23,13 +24,23 @@ class AccessContext:
 
 @dataclass(frozen=True)
 class AccessPolicyRule:
-    """One explicit allow/deny rule bound to one subject and plugin."""
+    """One explicit allow/deny rule bound to one subject and resource.
+
+    Phase 1 only persists `plugin`-scoped rules. `resource_kind` / `resource_id`
+    are reserved for future generalization to adapter / driver / package rules
+    without requiring another schema migration.
+    """
 
     subject_type: SubjectType
     subject_id: str
     plugin_module: str
     effect: RuleEffect
     note: str | None = None
+    resource_kind: ResourceKind = "plugin"
+
+    @property
+    def resource_id(self) -> str:
+        return self.plugin_module
 
 
 @dataclass(frozen=True)
