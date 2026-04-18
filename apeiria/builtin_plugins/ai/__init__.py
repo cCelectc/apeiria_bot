@@ -9,6 +9,7 @@ from nonebot.plugin.on import on_command, on_message
 from apeiria.app.ai import ai_service
 from apeiria.app.ai.config import AIPluginConfig
 from apeiria.app.ai.runtime import ai_runtime_service
+from apeiria.app.message_delivery import delivery_gateway
 from apeiria.shared.plugin_metadata import (
     ConfigExtra,
     PluginExtraData,
@@ -121,4 +122,9 @@ async def handle_ai_message(bot: Bot, event: Event) -> None:
     """Minimal working AI reply loop."""
     reply = await ai_runtime_service.handle_message(bot, event)
     if reply:
-        await bot.send(event, reply)
+        await delivery_gateway.reply(
+            bot=bot,
+            event=event,
+            text=reply,
+            origin="builtin_plugins.ai.reply",
+        )

@@ -4,13 +4,17 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 from contextvars import ContextVar
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 
 from apeiria.app.runtime.diagnostics import (
     RuntimeDiagnostic,
     runtime_diagnostic_recorder,
+)
+from apeiria.app.runtime.effect import (
+    bind_effect_queue,
+    reset_effect_queue,
 )
 from apeiria.app.runtime.models import (
     DispatchRequest,
@@ -31,6 +35,15 @@ _current_frame: ContextVar[RuntimeFrame | None] = ContextVar(
     "apeiria_runtime_frame",
     default=None,
 )
+
+
+@dataclass
+class _MatcherBinding:
+    """Per-matcher observer bookkeeping tied to one in-flight run."""
+
+    frame: RuntimeFrame
+    effect_token: Any = field(default=None)
+    frame_token: Any = field(default=None)
 
 
 @dataclass(frozen=True)
@@ -65,7 +78,7 @@ class RuntimeMatcherObserver:
     """Build and seal `DispatchRequest` / `ExecutionReport` for matcher runs."""
 
     def __init__(self) -> None:
-        self._frames: dict[int, RuntimeFrame] = {}
+        self._bindings: dict[int, _MatcherBinding] = {}
 
     def observe_pre_run(
         self,
@@ -75,7 +88,12 @@ class RuntimeMatcherObserver:
     ) -> RuntimeFrame:
         request = runtime_ingress_normalizer.build_native_dispatch_request(bot, event)
         frame = RuntimeFrame(request=request)
-        self._frames[id(matcher)] = frame
+        binding = _MatcherBinding(
+            frame=frame,
+            effect_token=bind_effect_queue(frame.effect_queue),
+            frame_token=_current_frame.set(frame),
+        )
+        self._bindings[id(matcher)] = binding
         runtime_diagnostic_recorder.record(
             "ingress",
             source="runtime.matcher_observer",
@@ -95,44 +113,54 @@ class RuntimeMatcherObserver:
         matcher: Matcher,
         exception: Exception | None,
     ) -> MatcherObservation | None:
-        frame = self._frames.pop(id(matcher), None)
-        if frame is None:
+        binding = self._bindings.pop(id(matcher), None)
+        if binding is None:
             return None
+        frame = binding.frame
 
-        plugin_module = matcher.plugin.module_name if matcher.plugin else None
-        if exception is not None:
-            disposition: InvocationDisposition = "failed"
-            runtime_diagnostic_recorder.record(
-                "handler.error",
-                source="runtime.matcher_observer",
-                message=str(exception),
+        try:
+            plugin_module = matcher.plugin.module_name if matcher.plugin else None
+            if exception is not None:
+                disposition: InvocationDisposition = "failed"
+                runtime_diagnostic_recorder.record(
+                    "handler.error",
+                    source="runtime.matcher_observer",
+                    message=str(exception),
+                    request_id=frame.request.request_id,
+                    plugin_module=plugin_module,
+                    data={"exception_type": type(exception).__name__},
+                )
+            else:
+                disposition = self._disposition_from_frame(frame)
+
+            report = ExecutionReport(
                 request_id=frame.request.request_id,
-                plugin_module=plugin_module,
-                data={"exception_type": type(exception).__name__},
+                subject_kind=frame.request.subject_kind,
+                ingress_kind=frame.request.ingress_kind,
+                disposition=disposition,
+                started_at=frame.request.created_at,
+                finished_at=datetime.now(timezone.utc),
+                diagnostics=tuple(frame.diagnostics),
+                phase_notes=dict(frame.phase_notes),
+                effects=frame.effect_queue.snapshot(),
+                error_code=type(exception).__name__ if exception else None,
+                error_message=str(exception) if exception else None,
             )
-        else:
-            disposition = self._disposition_from_frame(frame)
-
-        report = ExecutionReport(
-            request_id=frame.request.request_id,
-            subject_kind=frame.request.subject_kind,
-            ingress_kind=frame.request.ingress_kind,
-            disposition=disposition,
-            started_at=frame.request.created_at,
-            finished_at=datetime.now(timezone.utc),
-            diagnostics=tuple(frame.diagnostics),
-            phase_notes=dict(frame.phase_notes),
-            error_code=type(exception).__name__ if exception else None,
-            error_message=str(exception) if exception else None,
-        )
-        return MatcherObservation(request=frame.request, report=report)
+            return MatcherObservation(request=frame.request, report=report)
+        finally:
+            reset_effect_queue(binding.effect_token)
+            _current_frame.reset(binding.frame_token)
 
     @contextmanager
     def frame_scope(self, frame: RuntimeFrame) -> "Iterator[RuntimeFrame]":
         """Bind ``frame`` as the current runtime frame within the block."""
 
-        with _frame_scope(frame) as active:
-            yield active
+        effect_token = bind_effect_queue(frame.effect_queue)
+        try:
+            with _frame_scope(frame) as active:
+                yield active
+        finally:
+            reset_effect_queue(effect_token)
 
     @staticmethod
     def attach_diagnostic(

@@ -7,7 +7,11 @@ from nonebot import get_driver
 from nonebot.log import logger
 
 from apeiria.app.runtime.diagnostics import runtime_diagnostic_recorder
-from apeiria.infra.plugin_metadata.builders import plugin_descriptor_builder
+from apeiria.app.runtime.handler_registry import handler_registry
+from apeiria.infra.plugin_metadata.builders import (
+    handler_descriptor_builder,
+    plugin_descriptor_builder,
+)
 from apeiria.shared.i18n import t
 
 
@@ -24,9 +28,14 @@ async def sync_plugins() -> None:
     plugins = nonebot.get_loaded_plugins()
     logger.info("{}", t("plugin_sync.syncing", count=len(plugins)))
 
+    handler_registry.clear()
     async with get_session() as session:
         for plugin in plugins:
             descriptor = plugin_descriptor_builder.build(plugin)
+            handler_registry.replace_for_plugin(
+                descriptor.module_name,
+                handler_descriptor_builder.build_for_plugin(plugin),
+            )
             module_name = descriptor.module_name
             meta = plugin.metadata
             usage = meta.usage if meta else None
@@ -90,6 +99,9 @@ async def sync_plugins() -> None:
         "plugin.sync",
         source="bot.hooks.plugin_sync",
         message="plugin_sync_completed",
-        data={"plugin_count": len(plugins)},
+        data={
+            "plugin_count": len(plugins),
+            "handler_count": len(handler_registry),
+        },
     )
     logger.info("{}", t("plugin_sync.complete", count=len(plugins)))

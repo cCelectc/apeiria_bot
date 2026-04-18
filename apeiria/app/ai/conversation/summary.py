@@ -58,8 +58,8 @@ async def compress_conversation_history(
 
     from nonebot_plugin_orm import get_session
 
+    from apeiria.app.ai.model.gateway import model_gateway
     from apeiria.app.ai.model.models import AIModelRouteQuery
-    from apeiria.app.ai.model.service import ai_model_facade
 
     prompt = _build_compression_prompt(
         overflow_messages,
@@ -68,7 +68,7 @@ async def compress_conversation_history(
     )
 
     async with get_session() as session:
-        selected = await ai_model_facade.select_model(
+        selected = await model_gateway.select_model(
             session,
             query=AIModelRouteQuery(task_class="planner_light"),
         )
@@ -78,9 +78,10 @@ async def compress_conversation_history(
         return _fallback_summary(overflow_messages, existing_summary)
 
     try:
-        response = await ai_model_facade.generate_text(
-            selected,
+        response = await model_gateway.generate_native(
+            selected=selected,
             prompt=prompt,
+            origin="ai_conversation.summary_compression",
         )
     except Exception as exc:  # noqa: BLE001
         logger.opt(exception=exc).warning("context compression LLM call failed")

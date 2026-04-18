@@ -29,6 +29,7 @@ from apeiria.app.plugins.toggle_service import (
     plugin_toggle_service,
 )
 from apeiria.app.plugins.uninstall_service import plugin_uninstall_service
+from apeiria.app.runtime.plugin_state_store import plugin_runtime_state_store
 from apeiria.infra.config.plugins import plugin_config_service
 from apeiria.infra.plugin_metadata.builders import (
     handler_descriptor_builder,
@@ -37,7 +38,6 @@ from apeiria.infra.plugin_metadata.builders import (
 from apeiria.infra.runtime.framework_loader import iter_builtin_plugin_modules
 from apeiria.infra.runtime.module_cache import is_module_importable
 from apeiria.infra.runtime.plugin_policy import is_framework_dependency_plugin_module
-from apeiria.infra.runtime.plugin_state import get_disabled_plugin_modules
 from apeiria.shared.exceptions import ResourceNotFoundError
 from apeiria.shared.i18n import t
 from apeiria.shared.plugin_introspection import (
@@ -111,7 +111,7 @@ class PluginGovernanceService:
             required_by_module=required_by_module,
         )
         top_level_packages = packages_distributions()
-        disabled_modules = await get_disabled_plugin_modules()
+        disabled_modules = await plugin_runtime_state_store.get_disabled_modules()
         build_context = _PluginListContext(
             enabled_map=enabled_map,
             info_map=info_map,
@@ -225,7 +225,7 @@ class PluginGovernanceService:
             seed_modules=pending_uninstall_modules,
             required_by_module=required_by_module,
         )
-        disabled_modules = await get_disabled_plugin_modules()
+        disabled_modules = await plugin_runtime_state_store.get_disabled_modules()
 
         loaded_modules = set(loaded_plugins)
         unloaded_declared_modules = (

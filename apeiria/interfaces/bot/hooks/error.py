@@ -5,6 +5,7 @@ from nonebot.log import logger
 from nonebot.matcher import Matcher
 from nonebot.message import run_postprocessor
 
+from apeiria.app.message_delivery import delivery_gateway
 from apeiria.app.runtime.diagnostics import runtime_diagnostic_recorder
 from apeiria.app.runtime.observer import current_request_id
 from apeiria.infra.config.bot_config import get_error_message
@@ -47,6 +48,11 @@ async def error_hook(
 
     # Send friendly error message
     try:
-        await bot.send(event, get_error_message())
+        await delivery_gateway.reply(
+            bot=bot,
+            event=event,
+            text=get_error_message(),
+            origin="bot.hooks.error",
+        )
     except Exception:  # noqa: BLE001
         logger.debug("Failed to send error message to user")

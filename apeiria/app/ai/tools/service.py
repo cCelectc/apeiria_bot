@@ -162,22 +162,22 @@ class AIToolService:
         recalled_memory_contents: tuple[str, ...],
         relationship_context: str | None,
     ) -> list[AIToolIntent]:
+        from apeiria.app.ai.model.gateway import model_gateway
         from apeiria.app.ai.model.models import AIModelRouteQuery
-        from apeiria.app.ai.model.service import ai_model_facade
 
         allowed_tools = self.list_allowed_tools(policy)
         if not allowed_tools:
             return []
 
-        selected = await ai_model_facade.select_model(
+        selected = await model_gateway.select_model(
             session,
             query=AIModelRouteQuery(task_class="tool_orchestration"),
         )
         if selected is None:
             return []
 
-        response = await ai_model_facade.generate_text(
-            selected,
+        response = await model_gateway.generate_native(
+            selected=selected,
             prompt=build_tool_planning_prompt(
                 message_text=message_text,
                 recalled_memory_ids=recalled_memory_ids,
@@ -185,6 +185,7 @@ class AIToolService:
                 relationship_context=relationship_context,
             ),
             tools=build_function_tools(allowed_tools),
+            origin="ai_tool_service.plan_intents",
         )
         if response is None:
             return []

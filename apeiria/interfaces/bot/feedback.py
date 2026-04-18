@@ -5,6 +5,8 @@ from __future__ import annotations
 import contextlib
 from typing import TYPE_CHECKING
 
+from apeiria.app.message_delivery import delivery_gateway
+
 if TYPE_CHECKING:
     from nonebot.adapters import Bot, Event
 
@@ -23,7 +25,12 @@ class GuardFeedbackService:
         if not decision.reason:
             return
         with contextlib.suppress(Exception):
-            await bot.send(event, decision.reason)
+            await delivery_gateway.reply(
+                bot=bot,
+                event=event,
+                text=decision.reason,
+                origin="bot.guard_feedback",
+            )
 
 
 guard_feedback_service = GuardFeedbackService()

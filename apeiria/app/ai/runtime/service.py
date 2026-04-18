@@ -22,7 +22,7 @@ from apeiria.app.ai.conversation.summary import (
 )
 from apeiria.app.ai.future_task import ai_future_task_service
 from apeiria.app.ai.model import AIModelBindingTarget, AIModelRouteQuery
-from apeiria.app.ai.model.service import ai_model_facade
+from apeiria.app.ai.model.gateway import model_gateway
 from apeiria.app.ai.persona.models import AIPersonaBindingTarget
 from apeiria.app.ai.persona.service import (
     ai_persona_service,
@@ -67,20 +67,20 @@ from apeiria.app.ai.runtime.routing import (
     select_pre_tool_reply_task_class,
 )
 from apeiria.app.ai.skills.service import ai_skill_service
+from apeiria.app.ai.tools.gateway import (
+    ToolGatewayRequest,
+    ToolGatewayResult,
+    tool_gateway,
+)
 from apeiria.app.ai.tools.policy import (
     AIToolPolicyBindingTarget,
     AIToolSceneContext,
     ai_tool_policy_binding_service,
 )
-from apeiria.app.ai.tools.runtime import AIToolRuntimeRequest, ai_tool_runtime
 from apeiria.app.ai.tools.service import ai_tool_service
 from apeiria.app.groups import group_service
-from apeiria.app.message_delivery import (
-    MessageDeliveryRequest,
-    MessageDeliveryResult,
-    MessageDeliveryTarget,
-    message_delivery_service,
-)
+from apeiria.app.message_delivery import delivery_gateway
+from apeiria.app.runtime import DeliveryTarget, SendResult
 
 if TYPE_CHECKING:
     from nonebot.adapters import Bot, Event
@@ -103,7 +103,6 @@ if TYPE_CHECKING:
         AIToolPolicy,
         AIToolTurnCreateInput,
     )
-    from apeiria.app.ai.tools.runtime import AIToolRuntimeResult
 
 
 @dataclass(frozen=True)
@@ -126,7 +125,7 @@ class AIRuntimeReplyResult:
     """Final runtime reply plus optional outbound delivery metadata."""
 
     reply_text: str
-    delivery_result: MessageDeliveryResult | None = None
+    delivery_result: SendResult | None = None
 
 
 @dataclass(frozen=True)
@@ -147,7 +146,7 @@ class AIRuntimeReplyState:
 
     request: AIRuntimeReplyRequest
     selected: "AISelectedModel"
-    skill_runtime: "AIToolRuntimeResult"
+    skill_runtime: ToolGatewayResult
     recalled_memories: list["AIMemoryDefinition"]
     person_profile: tuple[str, ...]
     relationship_context: str | None
@@ -589,9 +588,9 @@ class AIRuntimeService:
             )
             await session.commit()
             return None
-        skill_runtime = await ai_tool_runtime.run_for_message(
+        skill_runtime = await tool_gateway.prepare(
             session,
-            AIToolRuntimeRequest(
+            ToolGatewayRequest(
                 session_id=identity.session_id,
                 source_message_id=request.source_message_id,
                 trace_id=trace_id,
@@ -607,7 +606,7 @@ class AIRuntimeService:
         pre_tool_task_class = select_pre_tool_reply_task_class(
             has_tools=bool(skill_runtime.available_tools),
         )
-        selected = await ai_model_facade.select_model(
+        selected = await model_gateway.select_model(
             session,
             query=AIModelRouteQuery(task_class=pre_tool_task_class),
             target=model_target,
@@ -738,9 +737,9 @@ class AIRuntimeService:
         state: AIRuntimeReplyState,
     ) -> tuple[
         "AIModelGenerateResponse | None",
-        "AIToolRuntimeResult",
+        ToolGatewayResult,
         str | None,
-        MessageDeliveryResult | None,
+        SendResult | None,
     ]:
         skill_runtime = state.skill_runtime
         has_tools = bool(skill_runtime.available_tools)
@@ -783,9 +782,9 @@ class AIRuntimeService:
         state: AIRuntimeReplyState,
     ) -> tuple[
         "AIModelGenerateResponse | None",
-        "AIToolRuntimeResult",
+        ToolGatewayResult,
         str | None,
-        MessageDeliveryResult | None,
+        SendResult | None,
     ]:
         """Messages-based multi-round tool calling flow."""
 
@@ -799,7 +798,7 @@ class AIRuntimeService:
         messages = list(build_chat_messages(channels, state.turns))
 
         # Run the multi-round tool loop
-        tool_request = AIToolRuntimeRequest(
+        tool_request = ToolGatewayRequest(
             session_id=state.request.identity.session_id,
             source_message_id=state.request.source_message_id,
             trace_id=state.trace_id,
@@ -812,7 +811,7 @@ class AIRuntimeService:
             execution_timeout_seconds=get_ai_plugin_config().tool_execution_timeout_seconds,
         )
 
-        skill_runtime = await ai_tool_runtime.run_tool_loop(
+        skill_runtime = await tool_gateway.run_tool_loop(
             session,
             tool_request,
             messages=messages,
@@ -843,7 +842,7 @@ class AIRuntimeService:
 
             # Optional roleplay refinement pass for persona consistency
             if response is not None and response.content.strip():
-                roleplay_selected = await ai_model_facade.select_model(
+                roleplay_selected = await model_gateway.select_model(
                     session,
                     query=AIModelRouteQuery(task_class=post_tool_task_class),
                     target=_to_model_target(
@@ -918,20 +917,20 @@ class AIRuntimeService:
         self,
         request: AIRuntimeReplyRequest,
         reply_text: str,
-    ) -> MessageDeliveryResult | None:
+    ) -> SendResult | None:
         if request.runtime_mode != "future_task" or not reply_text.strip():
             return None
-        return await message_delivery_service.send(
-            MessageDeliveryRequest(
-                target=MessageDeliveryTarget(
-                    platform=request.identity.platform,
-                    bot_id=request.identity.bot_id,
-                    scope_type=request.identity.scene_type,
-                    scope_id=request.identity.scene_id,
-                    user_id=request.identity.subject_id or request.user_id,
-                ),
-                content_text=reply_text,
-            )
+        return await delivery_gateway.send(
+            target=DeliveryTarget(
+                platform=request.identity.platform,
+                bot_id=request.identity.bot_id,
+                scope_kind=request.identity.scene_type,
+                scope_id=request.identity.scene_id,
+                user_id=request.identity.subject_id or request.user_id,
+                route_facts={"source": "ai_runtime.future_task"},
+            ),
+            text=reply_text,
+            origin="ai_runtime.future_task_delivery",
         )
 
     async def _safe_generate(
@@ -939,10 +938,12 @@ class AIRuntimeService:
         request: AIRuntimeGenerationRequest,
     ) -> "AIModelGenerateResponse | None":
         try:
-            return await ai_model_facade.generate_text(
-                request.selected,
+            return await model_gateway.generate_native(
+                selected=request.selected,
                 prompt=request.prompt,
                 tools=request.tools,
+                trace_id=request.trace_id,
+                origin="ai_runtime.reply_generation",
             )
         except Exception as exc:  # noqa: BLE001
             logger.opt(exception=exc).warning(

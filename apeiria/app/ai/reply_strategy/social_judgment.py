@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 from nonebot.log import logger
 
 from apeiria.app.ai.model import AIModelRouteQuery
-from apeiria.app.ai.model.service import ai_model_facade
+from apeiria.app.ai.model.gateway import model_gateway
 from apeiria.app.ai.reply_strategy.models import (
     SocialJudgmentInput,
     SocialJudgmentResult,
@@ -69,7 +69,7 @@ async def evaluate_social_judgment(
 
     fallback = build_fallback_judgment(judgment_input)
 
-    selected = await ai_model_facade.select_model(
+    selected = await model_gateway.select_model(
         session,
         query=AIModelRouteQuery(task_class=_SOCIAL_JUDGMENT_TASK_CLASS),
         target=target,
@@ -78,9 +78,10 @@ async def evaluate_social_judgment(
         return fallback
 
     try:
-        response = await ai_model_facade.generate_text(
-            selected,
+        response = await model_gateway.generate_native(
+            selected=selected,
             prompt=build_social_judgment_prompt(judgment_input),
+            origin="ai_reply_strategy.social_judgment",
         )
     except Exception as exc:  # noqa: BLE001
         logger.opt(exception=exc).warning("AI social judgment generation failed")

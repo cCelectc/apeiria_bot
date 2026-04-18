@@ -8,6 +8,7 @@ from nonebot.rule import Rule
 
 from apeiria.app.access.runtime import extract_group_id
 from apeiria.app.access.service import access_service
+from apeiria.app.message_delivery import delivery_gateway
 from apeiria.shared.i18n import t
 
 
@@ -25,7 +26,12 @@ def owner_check() -> Rule:
             return True
 
         with suppress(Exception):
-            await bot.send(event, t("admin.owner_only"))
+            await delivery_gateway.reply(
+                bot=bot,
+                event=event,
+                text=t("admin.owner_only"),
+                origin="access.rules.owner_check",
+            )
         return False
 
     return Rule(_check)

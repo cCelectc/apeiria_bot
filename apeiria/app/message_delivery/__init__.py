@@ -1,18 +1,8 @@
-"""Application-level outbound message delivery boundary."""
+"""Runtime outbound delivery gateway."""
 
-from .models import (
-    MessageDeliveryChannel,
-    MessageDeliveryRequest,
-    MessageDeliveryResult,
-    MessageDeliveryTarget,
-)
-from .service import MessageDeliveryService, message_delivery_service
+from .gateway import DeliveryGateway, delivery_gateway
 
 __all__ = [
-    "MessageDeliveryChannel",
-    "MessageDeliveryRequest",
-    "MessageDeliveryResult",
-    "MessageDeliveryService",
-    "MessageDeliveryTarget",
-    "message_delivery_service",
+    "DeliveryGateway",
+    "delivery_gateway",
 ]

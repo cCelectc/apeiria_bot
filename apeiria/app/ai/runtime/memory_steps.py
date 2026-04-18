@@ -19,8 +19,8 @@ from apeiria.app.ai.memory.models import (
     AIMessageSentiment,
 )
 from apeiria.app.ai.memory.service import ai_memory_service
+from apeiria.app.ai.model.gateway import model_gateway
 from apeiria.app.ai.model.models import AIModelRouteQuery
-from apeiria.app.ai.model.service import ai_model_facade
 from apeiria.app.ai.person import ai_person_profile_service
 
 if TYPE_CHECKING:
@@ -322,18 +322,19 @@ async def store_extracted_memories(
             existing_memories.append(row)
 
     extraction_result = _DEFAULT_EXTRACTION_RESULT
-    selected = await ai_model_facade.select_model(
+    selected = await model_gateway.select_model(
         session,
         query=AIModelRouteQuery(task_class="memory_extraction"),
     )
     if selected is not None:
         try:
-            response = await ai_model_facade.generate_text(
-                selected,
+            response = await model_gateway.generate_native(
+                selected=selected,
                 prompt=build_memory_extraction_prompt(
                     message_text,
                     existing_memories=tuple(existing_memories),
                 ),
+                origin="ai_runtime.memory_extraction",
             )
         except Exception as exc:  # noqa: BLE001
             logger.opt(exception=exc).warning("AI memory extraction failed")

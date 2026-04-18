@@ -214,10 +214,10 @@ class AISkillRuntime:
     ) -> list[str]:
         """Call a lightweight model to classify which skills apply."""
 
+        from apeiria.app.ai.model.gateway import model_gateway
         from apeiria.app.ai.model.models import AIModelRouteQuery
-        from apeiria.app.ai.model.service import ai_model_facade
 
-        selected: AISelectedModel | None = await ai_model_facade.select_model(
+        selected: AISelectedModel | None = await model_gateway.select_model(
             session,
             query=AIModelRouteQuery(task_class="planner_light"),
         )
@@ -230,7 +230,11 @@ class AISkillRuntime:
             catalog_prompt=catalog_prompt,
         )
         try:
-            response = await ai_model_facade.generate_text(selected, prompt=prompt)
+            response = await model_gateway.generate_native(
+                selected=selected,
+                prompt=prompt,
+                origin="ai_skills.select_skills",
+            )
         except Exception as exc:  # noqa: BLE001
             logger.opt(exception=exc).debug("Skill selection model call failed")
             return []
