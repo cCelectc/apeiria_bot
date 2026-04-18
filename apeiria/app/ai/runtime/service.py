@@ -61,16 +61,15 @@ from apeiria.app.ai.runtime.routing import (
     select_post_tool_reply_task_class,
     select_pre_tool_reply_task_class,
 )
+from apeiria.app.ai.runtime.tool_steps import (
+    append_tool_observation_turns,
+    resolve_tool_policy,
+)
 from apeiria.app.ai.skills.service import ai_skill_service
 from apeiria.app.ai.tools.gateway import (
     ToolGatewayRequest,
     ToolGatewayResult,
     tool_gateway,
-)
-from apeiria.app.ai.tools.policy import (
-    AIToolPolicyBindingTarget,
-    AIToolSceneContext,
-    ai_tool_policy_binding_service,
 )
 from apeiria.app.ai.tools.service import ai_tool_service
 from apeiria.app.message_delivery import delivery_gateway
@@ -92,10 +91,7 @@ if TYPE_CHECKING:
     )
     from apeiria.app.ai.model.selection import AISelectedModel
     from apeiria.app.ai.runtime.prompting import AIPersonaPromptBundleLike
-    from apeiria.app.ai.tools.models import (
-        AIToolPolicy,
-        AIToolTurnCreateInput,
-    )
+    from apeiria.app.ai.tools.models import AIToolPolicy
 
 
 @dataclass(frozen=True)
@@ -151,51 +147,6 @@ class AIRuntimeReplyState:
     current_time: datetime
     trace_id: str
     skill_activation: str | None = None
-
-
-async def _resolve_tool_policy(
-    session: "AsyncSession",
-    identity: "ChatSessionIdentity",
-    *,
-    is_tome: bool,
-) -> "AIToolPolicy":
-    return await ai_tool_policy_binding_service.resolve_scene_policy(
-        session,
-        scene_context=AIToolSceneContext(
-            scope_type=identity.scene_type,
-            is_tome=is_tome,
-        ),
-        target=AIToolPolicyBindingTarget(
-            conversation_id=identity.session_id,
-            group_id=identity.scene_id if identity.scene_type == "group" else None,
-            user_id=identity.subject_id,
-        ),
-    )
-
-
-async def _append_tool_observation_turns(
-    session: "AsyncSession",
-    *,
-    identity: "ChatSessionIdentity",
-    trace_id: str,
-    tool_turns: tuple["AIToolTurnCreateInput", ...],
-) -> None:
-    for index, turn in enumerate(tool_turns):
-        await chat_session_service.append_message(
-            session,
-            identity,
-            ChatMessageCreate(
-                author_role="tool",
-                author_id=turn.author_id,
-                text_content=turn.text_content,
-                message_kind="tool",
-                meta={
-                    "trace_id": trace_id,
-                    "index": index,
-                    **turn.meta,
-                },
-            ),
-        )
 
 
 def _build_future_task_context(task: "AIFutureTaskDefinition | None") -> str | None:
@@ -367,7 +318,7 @@ class AIRuntimeService:
         )
         relationship_target = build_relationship_target(identity, request.user_id)
         model_target = build_model_binding_target(identity, request.user_id)
-        tool_policy = await _resolve_tool_policy(
+        tool_policy = await resolve_tool_policy(
             session,
             identity,
             is_tome=request.is_tome,
@@ -694,7 +645,7 @@ class AIRuntimeService:
 
         # If tools were used, persist tool observation turns
         if skill_runtime.turns:
-            await _append_tool_observation_turns(
+            await append_tool_observation_turns(
                 session,
                 identity=state.request.identity,
                 trace_id=state.trace_id,
