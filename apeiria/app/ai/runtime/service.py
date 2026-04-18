@@ -13,13 +13,8 @@ from nonebot_plugin_orm import get_session
 from apeiria.app.ai.config import get_ai_plugin_config
 from apeiria.app.ai.conversation.service import ChatMessageCreate, chat_session_service
 from apeiria.app.ai.future_task import ai_future_task_service
-from apeiria.app.ai.model import AIModelBindingTarget, AIModelRouteQuery
+from apeiria.app.ai.model import AIModelRouteQuery
 from apeiria.app.ai.model.gateway import model_gateway
-from apeiria.app.ai.persona.models import AIPersonaBindingTarget
-from apeiria.app.ai.persona.service import (
-    ai_persona_service,
-    build_persona_render_context,
-)
 from apeiria.app.ai.relationship.service import ai_relationship_service
 from apeiria.app.ai.reply_strategy import (
     ReplyStrategyDecision,
@@ -53,6 +48,10 @@ from apeiria.app.ai.runtime.observation import (
     build_message_observation,
     finalize_observation,
 )
+from apeiria.app.ai.runtime.persona_steps import (
+    build_model_binding_target,
+    load_persona_bundle,
+)
 from apeiria.app.ai.runtime.relationship_steps import (
     build_relationship_target,
     load_relationship_context,
@@ -74,7 +73,6 @@ from apeiria.app.ai.tools.policy import (
     ai_tool_policy_binding_service,
 )
 from apeiria.app.ai.tools.service import ai_tool_service
-from apeiria.app.groups import group_service
 from apeiria.app.message_delivery import delivery_gateway
 from apeiria.app.runtime import DeliveryTarget, SendResult
 
@@ -93,7 +91,6 @@ if TYPE_CHECKING:
         AIModelToolDefinition,
     )
     from apeiria.app.ai.model.selection import AISelectedModel
-    from apeiria.app.ai.persona.service import AIPersonaRenderContext
     from apeiria.app.ai.runtime.prompting import AIPersonaPromptBundleLike
     from apeiria.app.ai.tools.models import (
         AIToolPolicy,
@@ -156,28 +153,6 @@ class AIRuntimeReplyState:
     skill_activation: str | None = None
 
 
-def _to_persona_target(
-    identity: "ChatSessionIdentity",
-    user_id: str,
-) -> AIPersonaBindingTarget:
-    return AIPersonaBindingTarget(
-        conversation_id=identity.session_id,
-        group_id=identity.scene_id if identity.scene_type == "group" else None,
-        user_id=identity.subject_id or user_id,
-    )
-
-
-def _to_model_target(
-    identity: "ChatSessionIdentity",
-    user_id: str,
-) -> AIModelBindingTarget:
-    return AIModelBindingTarget(
-        conversation_id=identity.session_id,
-        group_id=identity.scene_id if identity.scene_type == "group" else None,
-        user_id=identity.subject_id or user_id,
-    )
-
-
 async def _resolve_tool_policy(
     session: "AsyncSession",
     identity: "ChatSessionIdentity",
@@ -235,47 +210,6 @@ def _build_future_task_context(task: "AIFutureTaskDefinition | None") -> str | N
             f"status={task.status}",
         )
     )
-
-
-def _find_recent_user_name(
-    turns: list["ChatContextMessageView"],
-    user_id: str,
-) -> str | None:
-    for turn in reversed(turns):
-        if turn.author_role != "user" or turn.author_id != user_id:
-            continue
-        author_name = (turn.author_name or "").strip()
-        if author_name:
-            return author_name
-    return None
-
-
-async def _build_persona_render_context(
-    request: AIRuntimeReplyRequest,
-    *,
-    current_time: datetime,
-    turns: list["ChatContextMessageView"],
-) -> "AIPersonaRenderContext":
-    identity = request.identity
-    group_name = await _load_group_name(identity)
-    return build_persona_render_context(
-        bot_id=identity.bot_id,
-        current_time=current_time,
-        platform=identity.platform,
-        scene_type=identity.scene_type,
-        scene_id=identity.scene_id,
-        session_id=identity.session_id,
-        group_name=group_name,
-        user_id=request.user_id,
-        user_name=_find_recent_user_name(turns, request.user_id) or request.user_id,
-    )
-
-
-async def _load_group_name(identity: "ChatSessionIdentity") -> str | None:
-    if identity.scene_type != "group":
-        return None
-    group = await group_service.get_group(identity.scene_id)
-    return group.group_name if group is not None else None
 
 
 def _should_skip_generation(decision: ReplyStrategyDecision) -> bool:
@@ -432,21 +366,17 @@ class AIRuntimeService:
             identity=identity,
         )
         relationship_target = build_relationship_target(identity, request.user_id)
-        persona_target = _to_persona_target(identity, request.user_id)
-        model_target = _to_model_target(identity, request.user_id)
+        model_target = build_model_binding_target(identity, request.user_id)
         tool_policy = await _resolve_tool_policy(
             session,
             identity,
             is_tome=request.is_tome,
         )
-        persona = await ai_persona_service.build_persona_prompt_bundle(
+        persona = await load_persona_bundle(
             session,
-            target=persona_target,
-            render_context=await _build_persona_render_context(
-                request,
-                current_time=current_time,
-                turns=turns,
-            ),
+            request=request,
+            current_time=current_time,
+            turns=turns,
         )
         if request.runtime_mode == "message" and request.sentiment is not None:
             await update_relationship_state(
@@ -778,7 +708,7 @@ class AIRuntimeService:
                 roleplay_selected = await model_gateway.select_model(
                     session,
                     query=AIModelRouteQuery(task_class=post_tool_task_class),
-                    target=_to_model_target(
+                    target=build_model_binding_target(
                         state.request.identity,
                         state.request.user_id,
                     ),
