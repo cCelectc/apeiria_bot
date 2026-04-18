@@ -15,13 +15,9 @@ from apeiria.app.ai.conversation.service import ChatMessageCreate, chat_session_
 from apeiria.app.ai.future_task import ai_future_task_service
 from apeiria.app.ai.model import AIModelRouteQuery
 from apeiria.app.ai.model.gateway import model_gateway
-from apeiria.app.ai.relationship.service import ai_relationship_service
 from apeiria.app.ai.reply_strategy import (
     ReplyStrategyDecision,
     build_wake_context,
-    count_recent_bot_turns,
-    latest_bot_turn_at,
-    latest_user_turn_text,
     reply_strategy_service,
     summarize_reply_strategy_decision,
 )
@@ -56,6 +52,10 @@ from apeiria.app.ai.runtime.relationship_steps import (
     build_relationship_target,
     load_relationship_context,
     update_relationship_state,
+)
+from apeiria.app.ai.runtime.reply_strategy_steps import (
+    decide_whether_to_speak,
+    resolve_initiative_bias,
 )
 from apeiria.app.ai.runtime.routing import (
     select_post_tool_reply_task_class,
@@ -353,53 +353,25 @@ class AIRuntimeService:
         )
         allowed_tools = ai_tool_service.list_allowed_tools(tool_policy)
 
-        # --- Resolve initiative_bias from relationship projection ---
-        projection = await ai_relationship_service.project_state(
+        initiative_bias = await resolve_initiative_bias(
             session,
-            platform=relationship_target.platform,
-            group_id=relationship_target.group_id,
-            user_id=relationship_target.user_id,
+            relationship_target=relationship_target,
         )
-        initiative_bias = projection.initiative_bias
-
-        # --- Unified reply strategy pipeline ---
-        if wake_context is None:
-            wake_context = WakeContext(
-                bot_self_id=request.sender_id,
-                user_id=request.user_id,
-                message_text=request.message_text,
-                is_tome=request.is_tome,
-                is_private=identity.scene_type == "private",
-                is_future_task=request.runtime_mode == "future_task",
-            )
-        social_decision = await reply_strategy_service.evaluate(
+        social_decision = await decide_whether_to_speak(
             session,
+            request=request,
             wake_context=wake_context,
-            session_id=identity.session_id,
-            scene_type=identity.scene_type,
-            message_text=request.message_text,
-            latest_user_turn_text=latest_user_turn_text(turns),
+            turns=turns,
             conversation_summary=conversation_summary,
             relationship_context=relationship_context,
-            persona_id=persona.persona_id if persona is not None else None,
-            available_tool_names=tuple(tool.name for tool in allowed_tools),
-            recent_turn_count=len(turns),
-            recent_bot_turn_count=count_recent_bot_turns(turns),
-            last_bot_turn_at=latest_bot_turn_at(turns),
-            current_time=current_time,
-            runtime_mode=request.runtime_mode,
+            persona=persona,
+            allowed_tools=tuple(allowed_tools),
             initiative_bias=initiative_bias,
-            target=model_target,
+            model_target=model_target,
+            current_time=current_time,
+            trace_id=trace_id,
         )
         if _should_skip_generation(social_decision):
-            logger.info(
-                "AI trace {} suppressed {} reply for session {} action={} reasons={}",
-                trace_id,
-                request.runtime_mode,
-                identity.session_id,
-                social_decision.action,
-                ",".join(social_decision.reason_codes),
-            )
             await session.commit()
             return None
         skill_runtime = await tool_gateway.prepare(
