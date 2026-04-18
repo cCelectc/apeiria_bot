@@ -4,17 +4,16 @@ from pathlib import Path
 
 import click
 
-from apeiria.app.plugin_store.package_ops import (
-    install_plugin_package,
-    install_plugin_requirement_with_auto_module,
-    uninstall_plugin_package,
+from apeiria.app.operations import (
+    PackageOperationRequest,
+    StoreInstallError,
+    package_service,
 )
 from apeiria.infra.config import (
     adapter_config_service,
     driver_config_service,
     plugin_config_service,
 )
-from apeiria.infra.runtime.environment import update_plugin_requirement
 from apeiria.infra.runtime.plugin_policy import is_protected_plugin_module
 
 from .actions import (
@@ -32,14 +31,6 @@ from .actions import (
 )
 from .i18n import _
 from .nb import MODULE_TYPE, prompt_select_text
-from .store import (
-    install_adapter_package,
-    install_adapter_requirement_with_auto_module,
-    install_driver_package,
-    install_driver_requirement_with_auto_builtin,
-    uninstall_adapter_package,
-    uninstall_driver_package,
-)
 
 add_project_adapter_module = adapter_config_service.add_project_adapter_module
 default_adapter_config_path = adapter_config_service.default_config_path
@@ -401,9 +392,16 @@ def update_resource_requirement(
         prompt_package_name=prompt_package_name,
     )
     try:
-        update_plugin_requirement(target, pip_args)
-    except RuntimeError as exc:
-        raise_click_runtime_error(exc)
+        package_service.update(
+            PackageOperationRequest(
+                resource_kind=spec.resource_kind,
+                operation="update",
+                requirement=target,
+                extra_args=pip_args,
+            )
+        )
+    except StoreInstallError as exc:
+        raise click.ClickException(str(exc)) from exc
     return target
 
 
@@ -430,13 +428,11 @@ def uninstall_resource_requirement(
 
 PLUGIN_RESOURCE = ResourceSpec(
     module_type="plugin",
+    resource_kind="plugin",
     missing_binding_message=_(
         "plugin module name is required when package is not from store"
     ),
     unbound_request_message=_("requested module is not bound to package"),
-    install_with_binding=install_plugin_package,
-    install_with_auto_binding=install_plugin_requirement_with_auto_module,
-    uninstall_with_binding=uninstall_plugin_package,
     get_bound_items=get_project_plugin_package_modules,
     installed_package_names=installed_plugin_package_names,
     select_bound_value=resolve_plugin_module,
@@ -445,13 +441,11 @@ PLUGIN_RESOURCE = ResourceSpec(
 
 ADAPTER_RESOURCE = ResourceSpec(
     module_type="adapter",
+    resource_kind="adapter",
     missing_binding_message=_(
         "adapter module name is required when package is not from store"
     ),
     unbound_request_message=_("requested module is not bound to package"),
-    install_with_binding=install_adapter_package,
-    install_with_auto_binding=install_adapter_requirement_with_auto_module,
-    uninstall_with_binding=uninstall_adapter_package,
     get_bound_items=get_project_adapter_package_modules,
     installed_package_names=installed_adapter_package_names,
     select_bound_value=resolve_adapter_module,
@@ -459,13 +453,11 @@ ADAPTER_RESOURCE = ResourceSpec(
 
 DRIVER_RESOURCE = ResourceSpec(
     module_type="driver",
+    resource_kind="driver",
     missing_binding_message=_(
         "driver builtin name is required when package is not from store"
     ),
     unbound_request_message=_("requested builtin is not bound to package"),
-    install_with_binding=install_driver_package,
-    install_with_auto_binding=install_driver_requirement_with_auto_builtin,
-    uninstall_with_binding=uninstall_driver_package,
     get_bound_items=get_project_driver_package_builtin,
     installed_package_names=installed_driver_package_names,
     select_bound_value=resolve_driver_builtin,

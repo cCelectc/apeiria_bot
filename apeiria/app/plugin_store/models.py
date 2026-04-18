@@ -170,11 +170,3 @@ class StoreTask:
     created_at: str | None = None
     started_at: str | None = None
     finished_at: str | None = None
-
-
-StoreSourceInfo = StoreSource
-StorePluginItem = StoreItem
-StoreItemsQuery = StoreQuery
-StoreItemsPage = StorePage
-PluginStoreInstallRequest = StoreInstallRequest
-PluginStoreTask = StoreTask

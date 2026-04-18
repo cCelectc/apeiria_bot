@@ -11,6 +11,7 @@ Apeiria is a project layer on top of NoneBot 2. It adds project-managed config, 
 ### Backend
 
 - `apeiria/app/` — application services and use-case orchestration
+- `apeiria/app/operations/` — Operations Plane services for environment, package, store, and health facades
 - `apeiria/infra/` — config, runtime bootstrap, logging, scheduler, auth, metadata, and other infrastructure
 - `apeiria/interfaces/` — external entrypoints for CLI, HTTP, and bot hooks
 - `apeiria/shared/` — shared helpers, types, and cross-cutting utilities
@@ -52,6 +53,7 @@ When you need to understand startup and ownership, read in this order:
 ## Where to change what
 
 - NoneBot startup, plugin loading, runtime environment: `apeiria/infra/runtime/`
+- Environment, package/store operations, and health facades: `apeiria/app/operations/`
 - Project config reading/writing: `apeiria/infra/config/`
 - Plugin catalog, config, install/uninstall, policy: `apeiria/app/plugins/`
 - HTTP auth and API routes: `apeiria/interfaces/http/`

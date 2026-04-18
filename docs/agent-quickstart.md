@@ -18,6 +18,7 @@ Use this guide when you need a fast path into the repo before making a change.
 ## When to read what
 
 - Runtime, config, plugin loading, or CLI changes: start from `apeiria/infra/` and `apeiria/interfaces/`.
+- Environment/package/store/health surface changes: check `apeiria/app/operations/` before editing CLI or HTTP entrypoints.
 - Builtin plugin changes: check `apeiria/builtin_plugins/*/README.md` before editing code.
 - Web UI changes: read `web/` plus the frontend guide before touching views or stores.
 - Docs changes: update the canonical detailed doc, then keep `AGENTS.md` as a summary.
@@ -30,6 +31,7 @@ Use this guide when you need a fast path into the repo before making a change.
 - `apeiria/interfaces/http/routes/router.py` — API router aggregation
 - `apeiria/interfaces/cli/main.py` — CLI entrypoint
 - `apeiria/app/plugins/service.py` — plugin catalog and management service layer
+- `apeiria/app/operations/` — Operations Plane facades for environment, package, store, and health
 - `web/src/api/` — frontend HTTP client layer
 - `web/src/` — frontend application source
 

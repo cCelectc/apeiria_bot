@@ -16,6 +16,7 @@ This file is the contributor and agent navigation hub. Keep it short. Put detail
 | Path | Responsibility | Read first |
 | --- | --- | --- |
 | `apeiria/app/` | Application services for plugins, access, chat, dashboard | [`docs/architecture-map.md`](docs/architecture-map.md) |
+| `apeiria/app/operations/` | Operations Plane services for environment, package, store, health | [`docs/architecture-map.md`](docs/architecture-map.md) |
 | `apeiria/infra/` | Config, runtime bootstrap, logging, scheduler, auth, metadata | [`docs/backend-guidelines.md`](docs/backend-guidelines.md) |
 | `apeiria/interfaces/` | CLI, HTTP, bot-facing entrypoints | [`docs/backend-guidelines.md`](docs/backend-guidelines.md) |
 | `apeiria/builtin_plugins/` | Built-in NoneBot plugins | [`docs/architecture-map.md`](docs/architecture-map.md) |
@@ -27,6 +28,7 @@ This file is the contributor and agent navigation hub. Keep it short. Put detail
 ## Task routing
 
 - If you are changing runtime/bootstrap/config loading, read [`docs/architecture-map.md`](docs/architecture-map.md) and [`docs/backend-guidelines.md`](docs/backend-guidelines.md).
+- If you are changing environment init, package/store operations, or health checks, read [`docs/architecture-map.md`](docs/architecture-map.md) first and start in `apeiria/app/operations/`.
 - If you are changing HTTP routes, auth, or Web UI backend behavior, read [`docs/backend-guidelines.md`](docs/backend-guidelines.md) first.
 - If you are changing Vue components or frontend interaction patterns, read [`docs/frontend-guidelines.md`](docs/frontend-guidelines.md) first.
 - If you are changing shared standards, linting expectations, or verification steps, read [`docs/code-quality.md`](docs/code-quality.md).

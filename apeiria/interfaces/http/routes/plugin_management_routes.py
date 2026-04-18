@@ -7,7 +7,7 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
-from apeiria.app.plugin_store import plugin_store_task_service
+from apeiria.app.plugin_store.tasks import plugin_store_task_service
 from apeiria.app.plugins import plugin_governance_service
 from apeiria.infra.package_store.update_check import supports_plugin_update_check
 from apeiria.interfaces.http.auth import require_control_panel, require_owner

@@ -1,104 +1,40 @@
 from __future__ import annotations
 
-import asyncio
-import os
-import shutil
 import subprocess
 import sys
 from pathlib import Path
 
 import click
 
-from apeiria.app.system import system_health_service
-from apeiria.infra.db.schema import ensure_database_ready
-from apeiria.infra.runtime.bootstrap import initialize_nonebot
-from apeiria.infra.runtime.environment import (
-    ensure_plugin_project,
-    find_uv_executable,
-    plugin_project_exists,
-    plugin_project_lock_path,
-    plugin_project_pyproject_path,
-    plugin_project_root,
-    sync_plugin_project,
-    uv_cache_dir,
-)
-from apeiria.infra.webui.build import write_frontend_build_meta
+from apeiria.app.operations import environment_service, health_service
 
 from .i18n import _
 
 
 def project_root() -> Path:
-    return Path(__file__).resolve().parent.parent.parent.parent
+    return environment_service.project_root
 
 
 def main_config_path(root: Path | None = None) -> Path:
-    project_dir = root or project_root()
-    return project_dir / "apeiria.config.toml"
-
-
-def run_uv_for_project(*args: str) -> None:
-    executable = find_uv_executable()
-    cache_dir = uv_cache_dir()
-    root = project_root()
-    cache_dir.mkdir(parents=True, exist_ok=True)
-    env = os.environ.copy()
-    env["UV_CACHE_DIR"] = str(cache_dir)
-    env["UV_PROJECT_ENVIRONMENT"] = str(root / ".venv")
-    env.pop("VIRTUAL_ENV", None)
-    result = subprocess.run(
-        [executable, *args],
-        cwd=root,
-        check=False,
-        env=env,
-    )
-    if result.returncode != 0:
-        raise click.ClickException(_("uv command failed"))
-
-
-def sync_main_project(*, no_dev: bool = False) -> None:
-    args = ["sync"]
-    if (project_root() / "uv.lock").exists():
-        args.append("--locked")
-    if no_dev:
-        args.append("--no-dev")
-    run_uv_for_project(*args)
-
-
-def ensure_empty_file(target: Path) -> None:
-    if target.exists():
-        return
-    target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text("", encoding="utf-8")
-
-
-def ensure_runtime_env_files() -> None:
-    root = project_root()
-    ensure_empty_file(root / ".env")
-    ensure_empty_file(root / ".env.dev")
-    ensure_empty_file(root / ".env.prod")
+    del root
+    return environment_service.main_config_path()
 
 
 def initialize_user_environment(*, no_dev: bool = False) -> None:
-    ensure_runtime_env_files()
-    sync_main_project(no_dev=no_dev)
-    ensure_plugin_project()
-    sync_plugin_project(locked=True)
+    environment_service.initialize_user_environment(no_dev=no_dev)
 
 
 def repair_user_environment() -> None:
-    initialize_user_environment()
+    environment_service.repair_user_environment()
 
 
 def validate_database_schema() -> None:
-    """Initialize NoneBot once and verify Apeiria database schema readiness."""
-    initialize_nonebot()
-    asyncio.run(ensure_database_ready())
+    environment_service.validate_database_schema()
 
 
 def repair_database_schema() -> None:
-    """Repair database metadata or fail with an actionable CLI error."""
     try:
-        validate_database_schema()
+        environment_service.repair_database_schema()
     except Exception as exc:
         hint = _startup_check_hint(str(exc))
         if hint:
@@ -117,60 +53,21 @@ def raise_click_runtime_error(exc: RuntimeError) -> None:
     raise click.ClickException(str(exc)) from exc
 
 
-def runtime_export_targets() -> list[tuple[Path, Path]]:
-    root = project_root()
-    return [
-        (main_config_path(root), Path("apeiria.config.toml")),
-        (root / "apeiria.plugins.toml", Path("apeiria.plugins.toml")),
-        (root / "apeiria.adapters.toml", Path("apeiria.adapters.toml")),
-        (root / "apeiria.drivers.toml", Path("apeiria.drivers.toml")),
-        (
-            plugin_project_pyproject_path(),
-            Path(".apeiria/extensions/pyproject.toml"),
-        ),
-        (
-            plugin_project_lock_path(),
-            Path(".apeiria/extensions/uv.lock"),
-        ),
-    ]
-
-
-def copy_if_exists(source: Path, destination: Path) -> bool:
-    if not source.exists():
-        return False
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(source, destination)
-    return True
-
-
-def replace_managed_file(source: Path, destination: Path) -> bool:
-    if not source.exists():
-        if destination.exists():
-            destination.unlink()
-        return False
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(source, destination)
-    return True
-
-
 def check_system_dependencies() -> None:
-    missing: list[str] = []
-    if shutil.which("uv") is None:
-        missing.append("uv")
-    if missing:
+    snapshot = environment_service.get_environment_snapshot()
+    if not snapshot.uv_available:
         raise click.ClickException(
-            _("missing system dependencies: {deps}").format(deps=", ".join(missing))
+            _("missing system dependencies: {deps}").format(deps="uv")
         )
 
-    web_dir = project_root() / "web"
-    needs_frontend_toolchain = (web_dir / "package.json").is_file() and not (
-        web_dir / "dist"
-    ).is_dir()
     frontend_missing: list[str] = []
+    needs_frontend_toolchain = (
+        snapshot.frontend_workspace_exists and not snapshot.frontend_dist_exists
+    )
     if needs_frontend_toolchain:
-        if shutil.which("node") is None:
+        if not snapshot.node_available:
             frontend_missing.append("node")
-        if shutil.which("pnpm") is None and shutil.which("npm") is None:
+        if not snapshot.pnpm_available and not snapshot.npm_available:
             frontend_missing.append("pnpm-or-npm")
     if frontend_missing:
         click.echo(
@@ -182,27 +79,15 @@ def check_system_dependencies() -> None:
 
 
 def build_frontend() -> None:
-    web_dir = project_root() / "web"
-    if not (web_dir / "package.json").is_file():
-        raise click.ClickException(_("frontend workspace not found"))
-    if shutil.which("node") is None:
-        raise click.ClickException(
-            _("frontend toolchain missing: {deps}").format(deps="node")
-        )
-
-    if shutil.which("pnpm") is not None:
-        build_cmd = ["pnpm", "build"]
-    elif shutil.which("npm") is not None:
-        build_cmd = ["npm", "run", "build"]
-    else:
-        raise click.ClickException(
-            _("frontend toolchain missing: {deps}").format(deps="pnpm-or-npm")
-        )
-
-    result = subprocess.run(build_cmd, cwd=web_dir, check=False)
-    if result.returncode != 0:
-        raise click.exceptions.Exit(result.returncode)
-    write_frontend_build_meta(project_root())
+    try:
+        environment_service.build_frontend_sync()
+    except RuntimeError as exc:
+        detail = str(exc)
+        if detail == "build_tool_unavailable":
+            raise click.ClickException(
+                _("frontend toolchain missing: {deps}").format(deps="pnpm-or-npm")
+            ) from exc
+        raise click.ClickException(detail) from exc
 
 
 @click.group(
@@ -278,30 +163,29 @@ def run(*, build_frontend_first: bool, extra_args: tuple[str, ...]) -> None:
 
 @env.command("info", help=_("Show current Apeiria environment paths and status."))
 def env_info() -> None:
-    root = project_root()
-    plugin_root = plugin_project_root()
+    snapshot = environment_service.get_environment_snapshot()
     lines = [
-        f"project_root={root}",
-        f"uv_available={shutil.which('uv') is not None}",
-        f"node_available={shutil.which('node') is not None}",
-        f"pnpm_available={shutil.which('pnpm') is not None}",
-        f"npm_available={shutil.which('npm') is not None}",
-        f"main_lock_exists={(root / 'uv.lock').exists()}",
-        f"plugin_project={plugin_root}",
-        f"plugin_project_exists={plugin_project_exists()}",
-        f"plugin_lock_exists={plugin_project_lock_path().exists()}",
-        f"main_config_path={main_config_path(root)}",
-        f"project_config_exists={main_config_path(root).exists()}",
-        f"plugin_config_exists={(root / 'apeiria.plugins.toml').exists()}",
-        f"adapter_config_exists={(root / 'apeiria.adapters.toml').exists()}",
-        f"driver_config_exists={(root / 'apeiria.drivers.toml').exists()}",
+        f"project_root={snapshot.project_root}",
+        f"uv_available={snapshot.uv_available}",
+        f"node_available={snapshot.node_available}",
+        f"pnpm_available={snapshot.pnpm_available}",
+        f"npm_available={snapshot.npm_available}",
+        f"main_lock_exists={snapshot.main_lock_exists}",
+        f"plugin_project={snapshot.plugin_project_root}",
+        f"plugin_project_exists={snapshot.plugin_project_exists}",
+        f"plugin_lock_exists={snapshot.plugin_lock_exists}",
+        f"main_config_path={snapshot.main_config_path}",
+        f"project_config_exists={snapshot.project_config_exists}",
+        f"plugin_config_exists={snapshot.plugin_config_exists}",
+        f"adapter_config_exists={snapshot.adapter_config_exists}",
+        f"driver_config_exists={snapshot.driver_config_exists}",
     ]
     for line in lines:
         click.echo(line)
 
 
 def _echo_system_health(*, include_checks: bool) -> None:
-    snapshot = system_health_service.get_snapshot()
+    snapshot = health_service.get_snapshot()
     click.echo(f"status={snapshot.status}")
     click.echo(f"project_root={snapshot.project_root}")
     if include_checks:
@@ -395,15 +279,9 @@ def check() -> None:
 @env.command("export", help=_("Export local runtime state for migration."))
 @click.argument("output_dir", required=False)
 def env_export(output_dir: str | None) -> None:
-    target_root = (
-        Path(output_dir).expanduser().resolve()
-        if output_dir
-        else (project_root() / ".apeiria" / "export").resolve()
+    target_root, copied = environment_service.export_runtime_state(
+        Path(output_dir) if output_dir else None
     )
-    copied = 0
-    for source, relative_path in runtime_export_targets():
-        if copy_if_exists(source, target_root / relative_path):
-            copied += 1
     click.echo(_("exported files: {count}").format(count=copied))
     click.echo(_("export target: {target}").format(target=target_root))
 
@@ -411,18 +289,10 @@ def env_export(output_dir: str | None) -> None:
 @env.command("import", help=_("Import local runtime state from a migration bundle."))
 @click.argument("input_dir")
 def env_import(input_dir: str) -> None:
-    source_root = Path(input_dir).expanduser().resolve()
-    if not source_root.is_dir():
-        raise click.ClickException(
-            _("import source not found: {path}").format(path=source_root)
-        )
-    copied = 0
-    for destination, relative_path in runtime_export_targets():
-        source = source_root / relative_path
-        if replace_managed_file(source, destination):
-            copied += 1
     try:
-        initialize_user_environment()
+        _target_root, copied = environment_service.import_runtime_state(Path(input_dir))
+    except FileNotFoundError as exc:
+        raise click.ClickException(str(exc)) from exc
     except RuntimeError as exc:
-        raise_click_runtime_error(exc)
+        raise click.ClickException(str(exc)) from exc
     click.echo(_("imported files: {count}").format(count=copied))

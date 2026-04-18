@@ -6,18 +6,21 @@ from typing import TYPE_CHECKING, Any
 
 import click
 
+from apeiria.app.operations import (
+    PackageOperationRequest,
+    StoreInstallError,
+    package_service,
+)
 from apeiria.infra.runtime.environment import resolve_declared_plugin_requirement
 
 from .i18n import _
-from .store import StoreInstallError
 from .store_sources import resolve_cli_store_source
 
 if TYPE_CHECKING:
+    from apeiria.app.operations.models import ResourceKind
+
     from .nb import MODULE_TYPE
 
-InstallWithBinding = Callable[[str, str, tuple[str, ...]], object]
-InstallWithAutoBinding = Callable[[str, tuple[str, ...]], object]
-UninstallWithBinding = Callable[[str, str, tuple[str, ...]], object]
 GetBoundItems = Callable[[str], list[str]]
 SelectBoundValue = Callable[[object | None, str | None], str]
 EnsureRemovable = Callable[[str], None]
@@ -29,11 +32,9 @@ Fail = Callable[[str], None]
 @dataclass(frozen=True)
 class ResourceSpec:
     module_type: MODULE_TYPE
+    resource_kind: ResourceKind
     missing_binding_message: str
     unbound_request_message: str
-    install_with_binding: InstallWithBinding
-    install_with_auto_binding: InstallWithAutoBinding
-    uninstall_with_binding: UninstallWithBinding
     get_bound_items: GetBoundItems
     installed_package_names: InstalledPackageNames
     select_bound_value: SelectBoundValue
@@ -205,13 +206,18 @@ def run_install(
     pip_args: tuple[str, ...],
 ) -> str:
     try:
-        if binding_value is not None:
-            result = spec.install_with_binding(target, binding_value, pip_args)
-        else:
-            result = spec.install_with_auto_binding(target, pip_args)
+        result = package_service.install(
+            PackageOperationRequest(
+                resource_kind=spec.resource_kind,
+                operation="install",
+                requirement=target,
+                binding_value=binding_value,
+                extra_args=pip_args,
+            )
+        )
     except StoreInstallError as exc:
         raise click.ClickException(str(exc)) from exc
-    return str(getattr(result, "requirement", target))
+    return result.requirement
 
 
 def resolve_uninstall_bindings(
@@ -265,6 +271,14 @@ def run_uninstall(
             spec.ensure_removable(binding_value)
     try:
         for binding_value in binding_values:
-            spec.uninstall_with_binding(target, binding_value, pip_args)
+            package_service.uninstall(
+                PackageOperationRequest(
+                    resource_kind=spec.resource_kind,
+                    operation="uninstall",
+                    requirement=target,
+                    binding_value=binding_value,
+                    extra_args=pip_args,
+                )
+            )
     except StoreInstallError as exc:
         raise click.ClickException(str(exc)) from exc

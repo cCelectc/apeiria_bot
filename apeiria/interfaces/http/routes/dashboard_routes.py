@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 
 from apeiria.app.dashboard import dashboard_service
+from apeiria.app.operations import environment_service
 from apeiria.interfaces.http.auth import require_control_panel
 from apeiria.interfaces.http.schemas.models import (
     DashboardEventItem,
@@ -62,7 +63,7 @@ async def get_events(
 async def get_webui_build_status(
     _: Annotated[Any, Depends(require_control_panel)],
 ) -> WebUIBuildStatusResponse:
-    status = dashboard_service.get_web_ui_build_status()
+    status = environment_service.get_frontend_build_status()
     return WebUIBuildStatusResponse(
         is_built=status.is_built,
         is_stale=status.is_stale,
@@ -77,7 +78,7 @@ async def rebuild_webui(
     _: Annotated[Any, Depends(require_control_panel)],
 ) -> WebUIBuildRunResponse:
     try:
-        status = await dashboard_service.rebuild_web_ui()
+        status = await environment_service.rebuild_frontend()
     except RuntimeError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return WebUIBuildRunResponse(
@@ -94,14 +95,14 @@ async def rebuild_webui(
 async def rebuild_webui_stream(
     _: Annotated[Any, Depends(require_control_panel)],
 ) -> StreamingResponse:
-    status = dashboard_service.get_web_ui_build_status()
+    status = environment_service.get_frontend_build_status()
     if not status.can_build:
         raise HTTPException(
             status_code=400,
             detail=t("web_ui.dashboard.build_tool_unavailable"),
         )
     return StreamingResponse(
-        dashboard_service.stream_web_ui_rebuild(),
+        environment_service.stream_frontend_rebuild(),
         media_type="application/x-ndjson",
     )
 

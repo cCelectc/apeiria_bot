@@ -1,12 +1,12 @@
-"""System health checks shared by CLI and future management surfaces."""
+"""Operations-plane health service."""
 
 from __future__ import annotations
 
-import shutil
-from dataclasses import dataclass
-from pathlib import Path
-
-from apeiria.infra.webui.build import read_frontend_build_status
+from apeiria.app.operations.environment_service import (
+    EnvironmentService,
+    environment_service,
+)
+from apeiria.app.operations.models import HealthCheck, HealthSnapshot
 
 _CHECK_MESSAGES: dict[tuple[str, str], tuple[str, str | None]] = {
     ("uv", "available"): ("uv is available.", None),
@@ -76,118 +76,85 @@ _CHECK_MESSAGES: dict[tuple[str, str], tuple[str, str | None]] = {
 }
 
 
-@dataclass(frozen=True)
-class SystemHealthCheck:
-    """One environment or runtime health check."""
+class HealthService:
+    """Inspect the local workspace without mutating it."""
 
-    key: str
-    ok: bool
-    detail: str
-    message: str = ""
-    hint: str | None = None
+    def __init__(
+        self,
+        environment: EnvironmentService | None = None,
+    ) -> None:
+        self._environment = environment or environment_service
 
-
-@dataclass(frozen=True)
-class SystemHealthSnapshot:
-    """Aggregated system health summary."""
-
-    status: str
-    project_root: Path
-    checks: list[SystemHealthCheck]
-
-
-class SystemHealthService:
-    """Inspect the local Apeiria workspace without mutating it."""
-
-    def __init__(self, project_root: Path | None = None) -> None:
-        self._project_root = (
-            project_root
-            if project_root is not None
-            else Path(__file__).resolve().parent.parent.parent.parent
-        )
-
-    def _main_config_path(self) -> Path:
-        return self._project_root / "apeiria.config.toml"
-
-    def get_snapshot(self) -> SystemHealthSnapshot:
-        """Collect environment checks for CLI diagnostics."""
-        root = self._project_root
-        web_dir = root / "web"
-        extension_root = root / ".apeiria" / "extensions"
-        build_status = read_frontend_build_status(root)
-        uv_executable = shutil.which("uv")
-        package_manager = shutil.which("pnpm") or shutil.which("npm")
-        main_config = self._main_config_path()
-
+    def get_snapshot(self) -> HealthSnapshot:
+        environment = self._environment.get_environment_snapshot()
+        frontend_toolchain = environment.frontend_build_tool or "missing"
         checks = [
             self._build_check(
                 key="uv",
-                ok=uv_executable is not None,
-                detail="available" if uv_executable is not None else "missing",
+                ok=environment.uv_available,
+                detail="available" if environment.uv_available else "missing",
             ),
             self._build_check(
                 key="main_config",
-                ok=main_config.is_file(),
-                detail="present" if main_config.is_file() else "missing",
+                ok=environment.project_config_exists,
+                detail="present" if environment.project_config_exists else "missing",
             ),
             self._build_check(
                 key="plugin_config",
-                ok=(root / "apeiria.plugins.toml").is_file(),
-                detail="present"
-                if (root / "apeiria.plugins.toml").is_file()
-                else "missing",
+                ok=environment.plugin_config_exists,
+                detail="present" if environment.plugin_config_exists else "missing",
             ),
             self._build_check(
                 key="adapter_config",
-                ok=(root / "apeiria.adapters.toml").is_file(),
-                detail="present"
-                if (root / "apeiria.adapters.toml").is_file()
-                else "missing",
+                ok=environment.adapter_config_exists,
+                detail="present" if environment.adapter_config_exists else "missing",
             ),
             self._build_check(
                 key="driver_config",
-                ok=(root / "apeiria.drivers.toml").is_file(),
-                detail="present"
-                if (root / "apeiria.drivers.toml").is_file()
-                else "missing",
+                ok=environment.driver_config_exists,
+                detail="present" if environment.driver_config_exists else "missing",
             ),
             self._build_check(
                 key="main_venv",
-                ok=(root / ".venv").is_dir(),
-                detail="present" if (root / ".venv").is_dir() else "missing",
+                ok=environment.main_virtualenv_exists,
+                detail="present" if environment.main_virtualenv_exists else "missing",
             ),
             self._build_check(
                 key="extension_project",
-                ok=(extension_root / "pyproject.toml").is_file(),
-                detail="present"
-                if (extension_root / "pyproject.toml").is_file()
-                else "missing",
+                ok=environment.plugin_project_exists,
+                detail="present" if environment.plugin_project_exists else "missing",
             ),
             self._build_check(
                 key="frontend_workspace",
-                ok=(web_dir / "package.json").is_file(),
-                detail="present" if (web_dir / "package.json").is_file() else "missing",
+                ok=environment.frontend_workspace_exists,
+                detail="present"
+                if environment.frontend_workspace_exists
+                else "missing",
             ),
             self._build_check(
                 key="frontend_toolchain",
                 ok=(
-                    not (web_dir / "package.json").is_file()
-                    or package_manager is not None
+                    not environment.frontend_workspace_exists
+                    or environment.frontend_build_tool is not None
                 ),
-                detail=(
-                    Path(package_manager).name
-                    if package_manager is not None
-                    else "missing"
-                ),
+                detail=frontend_toolchain,
             ),
             self._build_check(
                 key="frontend_build",
-                ok=build_status.is_built and not build_status.is_stale,
-                detail=build_status.detail,
+                ok=(
+                    environment.frontend_build_is_built
+                    and not environment.frontend_build_is_stale
+                ),
+                detail=environment.frontend_build_detail or "unknown",
             ),
         ]
         status = "ok" if all(check.ok for check in checks) else "warning"
-        return SystemHealthSnapshot(status=status, project_root=root, checks=checks)
+        return HealthSnapshot(
+            status=status,
+            project_root=environment.project_root,
+            checks=checks,
+            environment=environment,
+        )
 
     def _build_check(
         self,
@@ -195,9 +162,9 @@ class SystemHealthService:
         key: str,
         ok: bool,
         detail: str,
-    ) -> SystemHealthCheck:
+    ) -> HealthCheck:
         message, hint = self._describe_check(key=key, ok=ok, detail=detail)
-        return SystemHealthCheck(
+        return HealthCheck(
             key=key,
             ok=ok,
             detail=detail,
@@ -219,4 +186,4 @@ class SystemHealthService:
         return (f"Check `{key}` is {detail}.", None)
 
 
-system_health_service = SystemHealthService()
+health_service = HealthService()

@@ -7,16 +7,13 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
-from apeiria.app.plugin_store import (
-    PluginStoreInstallRequest as PluginStoreInstallCommand,
+from apeiria.app.operations import (
+    PackageOperationRequest,
+    package_service,
+    store_service,
 )
-from apeiria.app.plugin_store import (
-    StoreItemsQuery,
-    plugin_store_service,
-    plugin_store_task_service,
-)
-from apeiria.app.plugin_store import StorePluginItem as DomainStorePluginItem
-from apeiria.app.plugin_store.package_ops import uninstall_plugin_package
+from apeiria.app.plugin_store.models import StoreInstallRequest, StoreItem, StoreQuery
+from apeiria.app.plugin_store.tasks import plugin_store_task_service
 from apeiria.interfaces.http.auth import require_control_panel, require_owner
 from apeiria.interfaces.http.schemas.models import (
     OperationStatusResponse,
@@ -52,7 +49,7 @@ class PluginStoreRefreshRequest(BaseModel):
     source_id: str = ""
 
 
-def _build_plugin_store_item(item: DomainStorePluginItem) -> PluginStoreItem:
+def _build_plugin_store_item(item: StoreItem) -> PluginStoreItem:
     return PluginStoreItem(
         source_id=item.source_id,
         source_name=item.source_name,
@@ -94,7 +91,7 @@ async def list_plugin_store_sources(
             last_synced_at=item.last_synced_at,
             last_error=item.last_error,
         )
-        for item in plugin_store_service.list_sources()
+        for item in store_service.list_sources()
     ]
 
 
@@ -103,8 +100,8 @@ async def list_plugin_store_items(
     _: Annotated[Any, Depends(require_control_panel)],
     params: Annotated[PluginStoreItemsQueryParams, Depends()],
 ) -> PluginStoreItemsResponse:
-    result = await plugin_store_service.list_items(
-        StoreItemsQuery(
+    result = await store_service.list_items(
+        StoreQuery(
             type="plugin",
             source_id=params.source,
             keyword=params.search,
@@ -134,7 +131,7 @@ async def get_plugin_store_item(
     plugin_id: str,
     _: Annotated[Any, Depends(require_control_panel)],
 ) -> PluginStoreItem:
-    item = await plugin_store_service.get_item(
+    item = await store_service.get_item(
         source_id=source_id,
         plugin_id=plugin_id,
         item_type="plugin",
@@ -164,7 +161,7 @@ async def refresh_plugin_store_sources(
             last_synced_at=item.last_synced_at,
             last_error=item.last_error,
         )
-        for item in await plugin_store_service.refresh_sources(
+        for item in await store_service.refresh_sources(
             item_type="plugin",
             source_id=payload.source_id,
         )
@@ -178,7 +175,7 @@ async def install_plugin_store_item(
 ) -> PluginStoreTaskItem:
     try:
         task = await plugin_store_task_service.create_plugin_install_task(
-            PluginStoreInstallCommand(
+            StoreInstallRequest(
                 source_id=payload.source_id,
                 item_id=payload.plugin_id,
                 type="plugin",
@@ -209,7 +206,7 @@ async def update_plugin_store_item(
 ) -> PluginStoreTaskItem:
     try:
         task = await plugin_store_task_service.create_plugin_update_task(
-            PluginStoreInstallCommand(
+            StoreInstallRequest(
                 source_id=payload.source_id,
                 item_id=payload.plugin_id,
                 type="plugin",
@@ -260,9 +257,13 @@ async def revert_plugin_store_install(
     _: Annotated[Any, Depends(require_owner)],
 ) -> OperationStatusResponse:
     try:
-        uninstall_plugin_package(
-            payload.package_name,
-            payload.module_name,
+        package_service.uninstall(
+            PackageOperationRequest(
+                resource_kind="plugin",
+                operation="uninstall",
+                requirement=payload.package_name,
+                binding_value=payload.module_name,
+            )
         )
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

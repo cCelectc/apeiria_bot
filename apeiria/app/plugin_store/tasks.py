@@ -7,17 +7,16 @@ from dataclasses import replace
 from datetime import datetime, timezone
 from uuid import uuid4
 
+from apeiria.app.operations import (
+    PackageOperationRequest,
+    package_service,
+    store_service,
+)
 from apeiria.app.plugin_store.models import (
-    PluginStoreInstallRequest,
-    PluginStoreTask,
-    StorePluginItem,
+    StoreInstallRequest,
+    StoreItem,
+    StoreTask,
 )
-from apeiria.app.plugin_store.package_ops import (
-    install_plugin_package,
-    install_plugin_requirement_with_auto_module,
-    update_plugin_package,
-)
-from apeiria.app.plugin_store.service import plugin_store_service
 from apeiria.package_ids import normalize_package_id
 
 
@@ -74,18 +73,18 @@ class PluginStoreTaskService:
     """Own in-memory plugin store tasks."""
 
     def __init__(self) -> None:
-        self._tasks: dict[str, PluginStoreTask] = {}
+        self._tasks: dict[str, StoreTask] = {}
         self._background_tasks: set[asyncio.Task[None]] = set()
         self._active_install_keys: set[tuple[str, ...]] = set()
 
-    def get_task(self, task_id: str) -> PluginStoreTask | None:
+    def get_task(self, task_id: str) -> StoreTask | None:
         return self._tasks.get(task_id)
 
     async def create_plugin_install_task(
         self,
-        request: PluginStoreInstallRequest,
-    ) -> PluginStoreTask:
-        item = await plugin_store_service.get_item(
+        request: StoreInstallRequest,
+    ) -> StoreTask:
+        item = await store_service.get_item(
             source_id=request.source_id,
             plugin_id=request.plugin_id,
             item_type=request.type,
@@ -98,7 +97,7 @@ class PluginStoreTaskService:
             raise _install_task_running_for_plugin_error()
 
         task_id = uuid4().hex
-        task = PluginStoreTask(
+        task = StoreTask(
             task_id=task_id,
             title=f"Install {item.name}",
             status="pending",
@@ -116,9 +115,9 @@ class PluginStoreTaskService:
 
     async def create_plugin_update_task(
         self,
-        request: PluginStoreInstallRequest,
-    ) -> PluginStoreTask:
-        item = await plugin_store_service.get_item(
+        request: StoreInstallRequest,
+    ) -> StoreTask:
+        item = await store_service.get_item(
             source_id=request.source_id,
             plugin_id=request.plugin_id,
             item_type=request.type,
@@ -131,7 +130,7 @@ class PluginStoreTaskService:
             raise _update_task_running_for_plugin_error()
 
         task_id = uuid4().hex
-        task = PluginStoreTask(
+        task = StoreTask(
             task_id=task_id,
             title=f"Update {item.name}",
             status="pending",
@@ -151,7 +150,7 @@ class PluginStoreTaskService:
         self,
         requirement: str,
         module_name: str | None = None,
-    ) -> PluginStoreTask:
+    ) -> StoreTask:
         target = requirement.strip()
         resolved_module = (module_name or "").strip()
         if not target:
@@ -162,7 +161,7 @@ class PluginStoreTaskService:
             raise _install_task_running_for_target_error()
 
         task_id = uuid4().hex
-        task = PluginStoreTask(
+        task = StoreTask(
             task_id=task_id,
             title=f"Install {target}",
             status="pending",
@@ -187,7 +186,7 @@ class PluginStoreTaskService:
         self,
         requirement: str,
         module_name: str,
-    ) -> PluginStoreTask:
+    ) -> StoreTask:
         target = requirement.strip()
         resolved_module = module_name.strip()
         if not target:
@@ -200,7 +199,7 @@ class PluginStoreTaskService:
             raise _update_task_running_for_target_error()
 
         task_id = uuid4().hex
-        task = PluginStoreTask(
+        task = StoreTask(
             task_id=task_id,
             title=f"Update {resolved_module}",
             status="pending",
@@ -224,8 +223,8 @@ class PluginStoreTaskService:
     async def _run_plugin_install_task(
         self,
         task_id: str,
-        item: StorePluginItem,
-        request: PluginStoreInstallRequest,
+        item: StoreItem,
+        request: StoreInstallRequest,
         install_key: tuple[str, str, str, str],
     ) -> None:
         self._update_task(
@@ -241,9 +240,13 @@ class PluginStoreTaskService:
         )
         try:
             result = await asyncio.to_thread(
-                install_plugin_package,
-                request.package_name,
-                request.module_name,
+                package_service.install,
+                PackageOperationRequest(
+                    resource_kind="plugin",
+                    operation="install",
+                    requirement=request.package_name,
+                    binding_value=request.module_name,
+                ),
             )
             self._update_task(
                 task_id,
@@ -251,7 +254,7 @@ class PluginStoreTaskService:
                 finished_at=_now(),
                 result={
                     "requirement": result.requirement,
-                    "module_name": result.module_name,
+                    "module_name": result.binding_value or "",
                     "restart_required": True,
                 },
                 logs=f"{self._tasks[task_id].logs}install succeeded\n",
@@ -288,14 +291,22 @@ class PluginStoreTaskService:
         try:
             if module_name:
                 result = await asyncio.to_thread(
-                    install_plugin_package,
-                    requirement,
-                    module_name,
+                    package_service.install,
+                    PackageOperationRequest(
+                        resource_kind="plugin",
+                        operation="install",
+                        requirement=requirement,
+                        binding_value=module_name,
+                    ),
                 )
             else:
                 result = await asyncio.to_thread(
-                    install_plugin_requirement_with_auto_module,
-                    requirement,
+                    package_service.install,
+                    PackageOperationRequest(
+                        resource_kind="plugin",
+                        operation="install",
+                        requirement=requirement,
+                    ),
                 )
             self._update_task(
                 task_id,
@@ -303,7 +314,7 @@ class PluginStoreTaskService:
                 finished_at=_now(),
                 result={
                     "requirement": result.requirement,
-                    "module_name": result.module_name,
+                    "module_name": result.binding_value or "",
                     "restart_required": True,
                 },
                 logs=f"{self._tasks[task_id].logs}install succeeded\n",
@@ -339,9 +350,13 @@ class PluginStoreTaskService:
         )
         try:
             result = await asyncio.to_thread(
-                update_plugin_package,
-                requirement,
-                module_name,
+                package_service.update,
+                PackageOperationRequest(
+                    resource_kind="plugin",
+                    operation="update",
+                    requirement=requirement,
+                    binding_value=module_name,
+                ),
             )
             self._update_task(
                 task_id,
@@ -349,7 +364,7 @@ class PluginStoreTaskService:
                 finished_at=_now(),
                 result={
                     "requirement": result.requirement,
-                    "module_name": result.module_name,
+                    "module_name": result.binding_value or "",
                     "restart_required": True,
                 },
                 logs=f"{self._tasks[task_id].logs}update succeeded\n",
@@ -369,8 +384,8 @@ class PluginStoreTaskService:
     async def _run_plugin_update_task(
         self,
         task_id: str,
-        item: StorePluginItem,
-        request: PluginStoreInstallRequest,
+        item: StoreItem,
+        request: StoreInstallRequest,
         install_key: tuple[str, ...],
     ) -> None:
         self._update_task(
@@ -386,9 +401,13 @@ class PluginStoreTaskService:
         )
         try:
             result = await asyncio.to_thread(
-                update_plugin_package,
-                request.package_name,
-                request.module_name,
+                package_service.update,
+                PackageOperationRequest(
+                    resource_kind="plugin",
+                    operation="update",
+                    requirement=request.package_name,
+                    binding_value=request.module_name,
+                ),
             )
             self._update_task(
                 task_id,
@@ -396,7 +415,7 @@ class PluginStoreTaskService:
                 finished_at=_now(),
                 result={
                     "requirement": result.requirement,
-                    "module_name": result.module_name,
+                    "module_name": result.binding_value or "",
                     "restart_required": True,
                 },
                 logs=f"{self._tasks[task_id].logs}update succeeded\n",
@@ -415,8 +434,8 @@ class PluginStoreTaskService:
 
     def _validate_install_request(
         self,
-        item: StorePluginItem,
-        request: PluginStoreInstallRequest,
+        item: StoreItem,
+        request: StoreInstallRequest,
     ) -> None:
         if item.package_name != request.package_name:
             raise _package_name_mismatch_error()
@@ -425,8 +444,8 @@ class PluginStoreTaskService:
 
     def _validate_update_request(
         self,
-        item: StorePluginItem,
-        request: PluginStoreInstallRequest,
+        item: StoreItem,
+        request: StoreInstallRequest,
     ) -> None:
         self._validate_install_request(item, request)
         if not item.can_update:
@@ -442,7 +461,7 @@ class PluginStoreTaskService:
 
     def _install_key(
         self,
-        request: PluginStoreInstallRequest,
+        request: StoreInstallRequest,
     ) -> tuple[str, str, str, str]:
         return (
             request.source_id,

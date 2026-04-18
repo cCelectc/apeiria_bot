@@ -1,4 +1,4 @@
-"""Plugin store application service."""
+"""Operations-plane store service."""
 
 from __future__ import annotations
 
@@ -22,7 +22,7 @@ from apeiria.infra.config.plugins import plugin_config_service
 from apeiria.package_ids import normalize_package_id
 
 
-class PluginStoreService:
+class StoreService:
     """Store aggregation and normalization service."""
 
     def __init__(self, sources: list[StoreSourceAdapter] | None = None) -> None:
@@ -315,4 +315,4 @@ def _collect_categories(items: list[StoreItem]) -> list[StoreCategoryCount]:
     ]
 
 
-plugin_store_service = PluginStoreService()
+store_service = StoreService()

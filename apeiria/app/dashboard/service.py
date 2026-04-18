@@ -3,23 +3,15 @@
 from __future__ import annotations
 
 import asyncio
-import json
 import os
-import shutil
 import sys
 import time
 from dataclasses import dataclass
-from pathlib import Path
 from typing import TYPE_CHECKING
 
 import nonebot
 
-from apeiria.infra.db.models.access_policy import AccessPolicyEntry
-from apeiria.infra.webui.build import (
-    read_frontend_build_status,
-    web_dir,
-    write_frontend_build_meta,
-)
+from apeiria.app.operations import environment_service
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
@@ -89,14 +81,13 @@ class DashboardService:
         self._start_time = time.time()
         self._background_tasks: set[asyncio.Task[None]] = set()
         self._restart_task: asyncio.Task[None] | None = None
-        self._project_root = Path(__file__).resolve().parent.parent.parent.parent
-        self._web_dir = web_dir(self._project_root)
 
     async def get_status_snapshot(self) -> DashboardStatusSnapshot:
         """Collect the current dashboard metrics snapshot."""
         from nonebot_plugin_orm import get_session
         from sqlalchemy import func, select
 
+        from apeiria.infra.db.models.access_policy import AccessPolicyEntry
         from apeiria.infra.db.models.group import GroupConsole
         from apeiria.infra.db.models.plugin_info import PluginInfo
 
@@ -164,123 +155,32 @@ class DashboardService:
         return entries[-limit:][::-1]
 
     def get_web_ui_build_status(self) -> WebUIBuildStatusSnapshot:
-        """Return whether frontend assets match the current source fingerprint."""
-        build_tool = shutil.which("pnpm") or shutil.which("npm")
-        can_build = (
-            build_tool is not None and (self._web_dir / "package.json").is_file()
-        )
-        status = read_frontend_build_status(self._project_root)
+        """Return Web UI build state through Operations Plane."""
+        status = environment_service.get_frontend_build_status()
         return WebUIBuildStatusSnapshot(
             is_built=status.is_built,
             is_stale=status.is_stale,
-            can_build=can_build,
-            build_tool=Path(build_tool).name if build_tool else None,
+            can_build=status.can_build,
+            build_tool=status.build_tool,
             detail=status.detail,
         )
 
     async def rebuild_web_ui(self) -> WebUIBuildRunSnapshot:
-        """Build frontend assets in the local web workspace."""
-        status = self.get_web_ui_build_status()
-        if not status.can_build:
-            raise RuntimeError("build_tool_unavailable")
-
-        command = (
-            ["pnpm", "build"]
-            if status.build_tool == "pnpm"
-            else ["npm", "run", "build"]
-        )
-        process = await asyncio.create_subprocess_exec(
-            *command,
-            cwd=str(self._web_dir),
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-        stdout, stderr = await process.communicate()
-        logs = self._merge_build_logs(
-            stdout.decode("utf-8", errors="replace"),
-            stderr.decode("utf-8", errors="replace"),
-        )
-        if process.returncode != 0:
-            raise RuntimeError(logs.strip() or "build_failed")
-        write_frontend_build_meta(self._project_root)
-        next_status = self.get_web_ui_build_status()
+        """Build frontend assets through Operations Plane."""
+        status = await environment_service.rebuild_frontend()
         return WebUIBuildRunSnapshot(
-            is_built=next_status.is_built,
-            is_stale=next_status.is_stale,
-            can_build=next_status.can_build,
-            build_tool=next_status.build_tool,
-            detail=next_status.detail,
-            logs=logs,
+            is_built=status.is_built,
+            is_stale=status.is_stale,
+            can_build=status.can_build,
+            build_tool=status.build_tool,
+            detail=status.detail,
+            logs=status.logs,
         )
 
     async def stream_web_ui_rebuild(self) -> AsyncIterator[bytes]:
-        """Stream frontend build logs as newline-delimited JSON."""
-        status = self.get_web_ui_build_status()
-        if not status.can_build:
-            raise RuntimeError("build_tool_unavailable")
-
-        command = (
-            ["pnpm", "build"]
-            if status.build_tool == "pnpm"
-            else ["npm", "run", "build"]
-        )
-        process = await asyncio.create_subprocess_exec(
-            *command,
-            cwd=str(self._web_dir),
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.STDOUT,
-        )
-
-        output_chunks: list[str] = []
-        assert process.stdout is not None
-        while True:
-            chunk = await process.stdout.read(1024)
-            if not chunk:
-                break
-            text = chunk.decode("utf-8", errors="replace")
-            output_chunks.append(text)
-            yield self._encode_build_stream_event(
-                WebUIBuildStreamEvent(event="chunk", chunk=text)
-            )
-
-        return_code = await process.wait()
-        logs = "".join(output_chunks).strip()
-        if return_code != 0:
-            detail = logs or "build_failed"
-            yield self._encode_build_stream_event(
-                WebUIBuildStreamEvent(event="error", detail=detail)
-            )
-            return
-
-        write_frontend_build_meta(self._project_root)
-        next_status = self.get_web_ui_build_status()
-        yield self._encode_build_stream_event(
-            WebUIBuildStreamEvent(event="done", status=next_status)
-        )
-
-    def _merge_build_logs(self, stdout: str, stderr: str) -> str:
-        sections: list[str] = []
-        if stdout.strip():
-            sections.append(stdout.strip())
-        if stderr.strip():
-            sections.append(stderr.strip())
-        return "\n\n".join(sections)
-
-    def _encode_build_stream_event(self, event: WebUIBuildStreamEvent) -> bytes:
-        payload: dict[str, object] = {"event": event.event}
-        if event.chunk:
-            payload["chunk"] = event.chunk
-        if event.detail is not None:
-            payload["detail"] = event.detail
-        if event.status is not None:
-            payload["status"] = {
-                "is_built": event.status.is_built,
-                "is_stale": event.status.is_stale,
-                "can_build": event.status.can_build,
-                "build_tool": event.status.build_tool,
-                "detail": event.status.detail,
-            }
-        return (json.dumps(payload, ensure_ascii=False) + "\n").encode("utf-8")
+        """Stream frontend build logs through Operations Plane."""
+        async for event in environment_service.stream_frontend_rebuild():
+            yield event
 
     def schedule_restart(self) -> None:
         if self._restart_task is None or self._restart_task.done():
