@@ -6,6 +6,7 @@ import nonebot
 from nonebot import get_driver
 from nonebot.log import logger
 
+from apeiria.app.runtime.diagnostics import runtime_diagnostic_recorder
 from apeiria.infra.plugin_metadata.builders import plugin_descriptor_builder
 from apeiria.shared.i18n import t
 
@@ -85,4 +86,10 @@ async def sync_plugins() -> None:
 
         await session.commit()
 
+    runtime_diagnostic_recorder.record(
+        "plugin.sync",
+        source="bot.hooks.plugin_sync",
+        message="plugin_sync_completed",
+        data={"plugin_count": len(plugins)},
+    )
     logger.info("{}", t("plugin_sync.complete", count=len(plugins)))

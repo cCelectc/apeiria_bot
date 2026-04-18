@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from apeiria.app.access.models import PluginPolicy
+from apeiria.app.governance import audit_service
 from apeiria.app.plugins.repository import plugin_catalog_repository
 from apeiria.infra.runtime.plugin_policy import (
     get_default_protection_mode,
@@ -60,6 +61,13 @@ class PluginPolicyService:
         await plugin_catalog_repository.update_plugin_policy(
             module_name,
             access_mode=access_mode,
+        )
+        audit_service.record(
+            "plugin.policy_update",
+            target_kind="plugin",
+            target_id=module_name,
+            detail=f"access_mode={access_mode}",
+            metadata={"access_mode": access_mode},
         )
         return await self.get_policy(module_name)
 

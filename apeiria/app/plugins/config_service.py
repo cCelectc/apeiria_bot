@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Literal
 
+from apeiria.app.governance import audit_service
 from apeiria.app.plugins.registration_service import (
     AdapterConfigState,
     DriverConfigState,
@@ -269,17 +270,34 @@ class _ConfigGovernanceFacade:
 
     def apply_mutation(self, mutation: ConfigMutation) -> ConfigView | ConfigTextView:
         if mutation.mutation_kind == "structured_patch":
-            return self._apply_structured_mutation(mutation)
-        if mutation.mutation_kind == "raw_replace":
-            return self._apply_raw_replace_mutation(mutation)
-        msg = f"unsupported mutation kind for apply: {mutation.mutation_kind}"
-        raise ValueError(msg)
+            result = self._apply_structured_mutation(mutation)
+        elif mutation.mutation_kind == "raw_replace":
+            result = self._apply_raw_replace_mutation(mutation)
+        else:
+            msg = f"unsupported mutation kind for apply: {mutation.mutation_kind}"
+            raise ValueError(msg)
+        self._record_mutation_audit(mutation)
+        return result
 
     def validate_mutation(self, mutation: ConfigMutation) -> ConfigValidationReport:
         if mutation.mutation_kind != "raw_validate":
             msg = f"unsupported mutation kind for validate: {mutation.mutation_kind}"
             raise ValueError(msg)
         return self._apply_raw_validate_mutation(mutation)
+
+    @staticmethod
+    def _record_mutation_audit(mutation: ConfigMutation) -> None:
+        audit_service.record(
+            "config.update",
+            target_kind="config_namespace",
+            target_id=mutation.module_name,
+            detail=mutation.mutation_kind,
+            metadata={
+                "section": mutation.section,
+                "changed_keys": sorted(mutation.values.keys()),
+                "cleared_keys": list(mutation.clear),
+            },
+        )
 
     def _apply_structured_mutation(self, mutation: ConfigMutation) -> ConfigView:
         if mutation.module_name == self._CORE_SETTINGS_MODULE_NAME:

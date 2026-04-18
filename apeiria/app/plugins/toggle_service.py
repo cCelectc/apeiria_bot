@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from apeiria.app.governance import audit_service
 from apeiria.shared.exceptions import ProtectedPluginError, ResourceNotFoundError
 from apeiria.shared.i18n import t
 
@@ -81,6 +82,16 @@ class PluginToggleService:
             if changed:
                 changed_modules.append(target_module)
 
+        audit_service.record(
+            "plugin.toggle",
+            target_kind="plugin",
+            target_id=module_name,
+            detail="enabled" if enabled else "disabled",
+            metadata={
+                "cascade": cascade,
+                "affected_modules": list(changed_modules),
+            },
+        )
         return PluginToggleResult(
             module_name=module_name,
             enabled=enabled,

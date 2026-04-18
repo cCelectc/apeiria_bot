@@ -5,6 +5,8 @@ from nonebot.log import logger
 from nonebot.matcher import Matcher
 from nonebot.message import run_postprocessor
 
+from apeiria.app.runtime.diagnostics import runtime_diagnostic_recorder
+from apeiria.app.runtime.observer import current_request_id
 from apeiria.infra.config.bot_config import get_error_message
 
 
@@ -20,6 +22,7 @@ async def error_hook(
         return
 
     plugin_name = matcher.plugin.name if matcher.plugin else "unknown"
+    plugin_module = matcher.plugin.module_name if matcher.plugin else None
     try:
         user_id = event.get_user_id()
     except Exception:  # noqa: BLE001
@@ -29,6 +32,17 @@ async def error_hook(
         "Unhandled exception in plugin '{}' (user: {})",
         plugin_name,
         user_id,
+    )
+    runtime_diagnostic_recorder.record(
+        "handler.error",
+        source="bot.hooks.error",
+        message=str(exception),
+        request_id=current_request_id(),
+        plugin_module=plugin_module,
+        data={
+            "exception_type": type(exception).__name__,
+            "user_id": str(user_id),
+        },
     )
 
     # Send friendly error message

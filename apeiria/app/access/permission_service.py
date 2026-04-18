@@ -7,7 +7,10 @@ from nonebot.log import logger
 
 from apeiria.app.access.models import AccessContext, PermissionDecision, PluginPolicy
 from apeiria.app.access.service import access_service
+from apeiria.app.governance import AuditActor, audit_service
 from apeiria.app.plugins import plugin_policy_service
+from apeiria.app.runtime.diagnostics import runtime_diagnostic_recorder
+from apeiria.app.runtime.observer import current_request_id
 from apeiria.shared.i18n import t
 
 
@@ -20,6 +23,15 @@ class PermissionService:
             return self._allow()
 
         plugin_module = plugin.module_name  # type: ignore[attr-defined]
+        decision = await self._evaluate_plugin(context, plugin_module)
+        self._emit_diagnostic(plugin_module, decision)
+        return decision
+
+    async def _evaluate_plugin(
+        self,
+        context: AccessContext,
+        plugin_module: str,
+    ) -> PermissionDecision:
         policy = await plugin_policy_service.get_policy(plugin_module)
         decision = await self._check_plugin_state(context.group_id, policy)
         if decision is not None:
@@ -134,6 +146,54 @@ class PermissionService:
 
     def _allow(self) -> PermissionDecision:
         return PermissionDecision(allowed=True, code="ok", source="runtime")
+
+    def _emit_diagnostic(
+        self,
+        plugin_module: str,
+        decision: PermissionDecision,
+    ) -> None:
+        if decision.allowed:
+            return
+        request_id = current_request_id()
+        runtime_diagnostic_recorder.record(
+            "permission.denied",
+            source="access.permission_service",
+            message=decision.code,
+            request_id=request_id,
+            plugin_module=plugin_module,
+            data={
+                "source": decision.source,
+                "reason": decision.reason,
+                "details": decision.details,
+            },
+        )
+        audit_service.record(
+            "permission.denied",
+            actor=self._audit_actor_for_decision(decision),
+            target_kind="plugin",
+            target_id=plugin_module,
+            outcome="failed",
+            detail=decision.code,
+            metadata={
+                "source": decision.source,
+                "request_id": request_id,
+                "details": decision.details,
+            },
+        )
+
+    @staticmethod
+    def _audit_actor_for_decision(decision: PermissionDecision) -> AuditActor | None:
+        details = decision.details or {}
+        subject_id = details.get("subject_id")
+        if not isinstance(subject_id, str) or not subject_id:
+            return None
+        subject_type = details.get("subject_type")
+        actor_kind = "adapter_user" if subject_type == "user" else "adapter_group"
+        return AuditActor(
+            actor_kind=actor_kind,
+            actor_id=subject_id,
+            display_name=subject_id,
+        )
 
 
 permission_service = PermissionService()

@@ -52,6 +52,11 @@ from apeiria.app.ai.runtime.memory_steps import (
     recall_memories,
     store_extracted_memories,
 )
+from apeiria.app.ai.runtime.observation import (
+    build_future_task_observation,
+    build_message_observation,
+    finalize_observation,
+)
 from apeiria.app.ai.runtime.relationship_steps import (
     build_relationship_target,
     load_relationship_context,
@@ -382,27 +387,41 @@ class AIRuntimeService:
             identity, turn = ingested
             user_id = str(event.get_user_id())
             is_tome = bool(hasattr(event, "is_tome") and event.is_tome())
-            extraction_result = await store_extracted_memories(
-                session,
-                identity=identity,
+            observation = build_message_observation(
+                identity,
                 user_id=user_id,
-                message_text=message_text,
-                source_message_id=turn.message_id,
+                is_tome=is_tome,
             )
-            result = await self._run_reply_pipeline(
-                session,
-                trace_id=f"ai_trace_{uuid4().hex}",
-                request=AIRuntimeReplyRequest(
+            try:
+                extraction_result = await store_extracted_memories(
+                    session,
                     identity=identity,
+                    user_id=user_id,
                     message_text=message_text,
                     source_message_id=turn.message_id,
-                    user_id=user_id,
-                    sender_id=str(bot.self_id),
-                    runtime_mode="message",
-                    is_tome=is_tome,
-                    sentiment=extraction_result.sentiment,
-                ),
-                wake_context=wake_context,
+                )
+                result = await self._run_reply_pipeline(
+                    session,
+                    trace_id=f"ai_trace_{uuid4().hex}",
+                    request=AIRuntimeReplyRequest(
+                        identity=identity,
+                        message_text=message_text,
+                        source_message_id=turn.message_id,
+                        user_id=user_id,
+                        sender_id=str(bot.self_id),
+                        runtime_mode="message",
+                        is_tome=is_tome,
+                        sentiment=extraction_result.sentiment,
+                    ),
+                    wake_context=wake_context,
+                )
+            except Exception as exc:
+                finalize_observation(observation, exception=exc)
+                raise
+            finalize_observation(
+                observation,
+                disposition="skipped" if result is None else "completed",
+                note={"trace_id": f"ai_trace_{uuid4().hex[:8]}"},
             )
             return result.reply_text if result is not None else None
 
@@ -426,19 +445,41 @@ class AIRuntimeService:
                 return None
 
             user_id = identity.subject_id or task.user_id or identity.scene_id
-            return await self._run_reply_pipeline(
-                session,
-                trace_id=f"ai_trace_{uuid4().hex}",
-                request=AIRuntimeReplyRequest(
-                    identity=identity,
-                    message_text=task.description,
-                    source_message_id=task.source_message_id,
-                    user_id=user_id,
-                    sender_id=identity.bot_id,
-                    runtime_mode="future_task",
-                    future_task=task,
-                ),
+            observation = build_future_task_observation(
+                identity,
+                task=task,
+                user_id=user_id,
             )
+            try:
+                result = await self._run_reply_pipeline(
+                    session,
+                    trace_id=f"ai_trace_{uuid4().hex}",
+                    request=AIRuntimeReplyRequest(
+                        identity=identity,
+                        message_text=task.description,
+                        source_message_id=task.source_message_id,
+                        user_id=user_id,
+                        sender_id=identity.bot_id,
+                        runtime_mode="future_task",
+                        future_task=task,
+                    ),
+                )
+            except Exception as exc:
+                finalize_observation(observation, exception=exc)
+                raise
+            finalize_observation(
+                observation,
+                disposition="skipped" if result is None else "completed",
+                note={
+                    "task_id": task.task_id,
+                    "delivery_channel": (
+                        result.delivery_result.channel
+                        if result and result.delivery_result
+                        else None
+                    ),
+                },
+            )
+            return result
 
     async def _run_reply_pipeline(
         self,
