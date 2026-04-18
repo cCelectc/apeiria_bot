@@ -41,10 +41,12 @@ def resolve_driver_kwargs(config_kwargs: dict[str, object]) -> dict[str, object]
 
 def initialize_nonebot() -> None:
     """Initialize NoneBot and load all project-managed runtime layers."""
-    bootstrap_plugin_configs()
     process_pending_plugin_requirement_removals()
     process_pending_plugin_module_uninstalls()
     inject_plugin_site_packages()
+    # Plugin config bootstrap must run after extension site-packages are exposed,
+    # otherwise plugins installed only in `.apeiria/extensions` cannot be scanned.
+    bootstrap_plugin_configs()
 
     config_kwargs = project_config_service.get_project_config_kwargs()
     driver_kwargs = resolve_driver_kwargs(config_kwargs)
