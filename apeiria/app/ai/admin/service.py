@@ -20,11 +20,15 @@ from apeiria.app.ai.admin.errors import (
     AISourceModelTestConfigError,
     AISourceModelTestUpstreamError,
 )
+from apeiria.app.ai.admin.future_tasks_admin import FutureTasksAdminMixin
 from apeiria.app.ai.admin.models import (
     AIRecentTarget,
     AISessionPromptChannels,
     AISessionPromptPreview,
 )
+from apeiria.app.ai.admin.person_profiles_admin import PersonProfilesAdminMixin
+from apeiria.app.ai.admin.personas_admin import PersonasAdminMixin
+from apeiria.app.ai.admin.relationships_admin import RelationshipsAdminMixin
 from apeiria.app.ai.admin.workbench import (
     extract_tool_result_lines,
     select_latest_user_turn,
@@ -32,7 +36,6 @@ from apeiria.app.ai.admin.workbench import (
 )
 from apeiria.app.ai.conversation.identity import build_participant_subject_id
 from apeiria.app.ai.conversation.service import chat_session_service
-from apeiria.app.ai.future_task import ai_future_task_service
 from apeiria.app.ai.memory.service import (
     AIMemoryCreateInput,
     AIMemoryQuery,
@@ -63,13 +66,11 @@ from apeiria.app.ai.model.sources import (
 )
 from apeiria.app.ai.model.stt_model_service import ai_stt_model_service
 from apeiria.app.ai.model.tts_model_service import ai_tts_model_service
-from apeiria.app.ai.person.service import ai_person_profile_service
-from apeiria.app.ai.persona.models import AIPersonaBindingTarget, AIPersonaCreateInput
+from apeiria.app.ai.persona.models import AIPersonaBindingTarget
 from apeiria.app.ai.persona.service import (
     ai_persona_service,
     build_persona_render_context,
 )
-from apeiria.app.ai.relationship.service import ai_relationship_service
 from apeiria.app.ai.reply_strategy import (
     count_recent_bot_turns,
     latest_bot_turn_at,
@@ -119,7 +120,6 @@ if TYPE_CHECKING:
         ChatSessionAdminView,
         ChatSessionIdentity,
     )
-    from apeiria.app.ai.future_task.models import AIFutureTaskDefinition
     from apeiria.app.ai.memory.models import (
         AIMemoryAnchorType,
         AIMemoryDefinition,
@@ -136,18 +136,6 @@ if TYPE_CHECKING:
     )
     from apeiria.app.ai.model.capability_registry import (
         AICapabilityModelRegistryEntry,
-    )
-    from apeiria.app.ai.person.models import (
-        AIPersonMemoryPoint,
-        AIPersonProfileDefinition,
-    )
-    from apeiria.app.ai.persona.models import (
-        AIPersonaBindingSpec,
-        AIPersonaDefinition,
-    )
-    from apeiria.app.ai.relationship.models import (
-        AIRelationshipEvent,
-        AIRelationshipState,
     )
     from apeiria.app.ai.reply_strategy.models import (
         ReplyStrategyDecision,
@@ -329,23 +317,6 @@ def _coerce_source_preset_type(
     raise UnsupportedAISourcePresetError
 
 
-def _build_persona_create_input(
-    *,
-    name: str,
-    description: str,
-    system_prompt: str,
-    style_prompt: str,
-    enabled: bool,
-) -> AIPersonaCreateInput:
-    return AIPersonaCreateInput(
-        name=name,
-        description=description,
-        system_prompt=system_prompt,
-        style_prompt=style_prompt,
-        enabled=enabled,
-    )
-
-
 def _build_test_wav_bytes() -> bytes:
     buffer = io.BytesIO()
     with wave.open(buffer, "wb") as wav_file:
@@ -444,7 +415,12 @@ def _normalize_required_memory_kind(
     raise ValueError(msg)
 
 
-class AIAdminService:
+class AIAdminService(
+    FutureTasksAdminMixin,
+    PersonasAdminMixin,
+    PersonProfilesAdminMixin,
+    RelationshipsAdminMixin,
+):
     """Read and basic override operations for AI admin routes."""
 
     def list_source_presets(self) -> tuple["AISourcePresetDefinition", ...]:
@@ -1249,86 +1225,6 @@ class AIAdminService:
     ) -> "AICapabilityModelRegistryEntry":
         return SOURCE_MODEL_CAPABILITY_REGISTRY[capability_type]
 
-    async def list_personas(self) -> list["AIPersonaDefinition"]:
-        async with get_session() as session:
-            return await ai_persona_service.list_personas(session)
-
-    async def list_persona_bindings(self) -> list["AIPersonaBindingSpec"]:
-        async with get_session() as session:
-            return await ai_persona_service.list_bindings(session)
-
-    async def create_persona(  # noqa: PLR0913
-        self,
-        *,
-        name: str,
-        description: str,
-        system_prompt: str,
-        style_prompt: str,
-        enabled: bool,
-        actor_username: str | None = None,
-    ) -> "AIPersonaDefinition":
-        async with get_session() as session:
-            row = await ai_persona_service.create_persona(
-                session,
-                _build_persona_create_input(
-                    name=name,
-                    description=description,
-                    system_prompt=system_prompt,
-                    style_prompt=style_prompt,
-                    enabled=enabled,
-                ),
-            )
-            await session.commit()
-            personas = await ai_persona_service.list_personas(session)
-            created = next(
-                item for item in personas if item.persona_id == row.persona_id
-            )
-            record_ai_admin_audit(
-                "ai_persona_created",
-                actor_username=actor_username,
-                detail=f"{created.persona_id} {created.name}",
-            )
-            return created
-
-    async def update_persona(  # noqa: PLR0913
-        self,
-        *,
-        persona_id: str,
-        name: str,
-        description: str,
-        system_prompt: str,
-        style_prompt: str,
-        enabled: bool,
-        actor_username: str | None = None,
-    ) -> "AIPersonaDefinition | None":
-        async with get_session() as session:
-            row = await ai_persona_service.update_persona(
-                session,
-                persona_id=persona_id,
-                create_input=_build_persona_create_input(
-                    name=name,
-                    description=description,
-                    system_prompt=system_prompt,
-                    style_prompt=style_prompt,
-                    enabled=enabled,
-                ),
-            )
-            if row is None:
-                return None
-            await session.commit()
-            personas = await ai_persona_service.list_personas(session)
-            updated = next(
-                (item for item in personas if item.persona_id == persona_id),
-                None,
-            )
-            if updated is not None:
-                record_ai_admin_audit(
-                    "ai_persona_updated",
-                    actor_username=actor_username,
-                    detail=f"{updated.persona_id} {updated.name}",
-                )
-            return updated
-
     async def list_memories(  # noqa: PLR0913
         self,
         *,
@@ -1680,31 +1576,6 @@ class AIAdminService:
 
         return targets[: limit * 2]
 
-    async def list_future_tasks(
-        self,
-        *,
-        limit: int = 20,
-    ) -> list["AIFutureTaskDefinition"]:
-        async with get_session() as session:
-            return await ai_future_task_service.list_tasks(session, limit=limit)
-
-    async def cancel_future_task(
-        self,
-        *,
-        task_id: str,
-        actor_username: str | None = None,
-    ) -> "AIFutureTaskDefinition | None":
-        async with get_session() as session:
-            task = await ai_future_task_service.cancel_task(session, task_id=task_id)
-            if task is not None:
-                await session.commit()
-                record_ai_admin_audit(
-                    "ai_future_task_cancelled",
-                    actor_username=actor_username,
-                    detail=f"{task.task_id} {task.title}",
-                )
-            return task
-
     async def list_scene_turns(
         self,
         *,
@@ -2042,148 +1913,6 @@ class AIAdminService:
                 ),
                 rendered_prompt=rendered_prompt,
             )
-
-    async def list_relationships(
-        self,
-        *,
-        limit: int = 50,
-    ) -> list["AIRelationshipState"]:
-        async with get_session() as session:
-            return await ai_relationship_service.list_states(session, limit=limit)
-
-    async def get_relationship_state(
-        self,
-        *,
-        platform: str,
-        user_id: str,
-        group_id: str | None = None,
-    ) -> "AIRelationshipState":
-        async with get_session() as session:
-            return await ai_relationship_service.get_state(
-                session,
-                platform=platform,
-                group_id=group_id,
-                user_id=user_id,
-            )
-
-    async def list_relationship_events(
-        self,
-        *,
-        platform: str,
-        user_id: str,
-        group_id: str | None = None,
-        limit: int = 20,
-    ) -> list["AIRelationshipEvent"]:
-        async with get_session() as session:
-            return await ai_relationship_service.list_events_for_target(
-                session,
-                platform=platform,
-                group_id=group_id,
-                user_id=user_id,
-                limit=limit,
-            )
-
-    async def set_relationship_score(
-        self,
-        *,
-        platform: str,
-        user_id: str,
-        score: float,
-        group_id: str | None = None,
-        actor_username: str | None = None,
-    ) -> "AIRelationshipState":
-        async with get_session() as session:
-            state = await ai_relationship_service.set_manual_score(
-                session,
-                platform=platform,
-                group_id=group_id,
-                user_id=user_id,
-                score=score,
-            )
-            await session.commit()
-            record_ai_admin_audit(
-                "ai_relationship_score_updated",
-                actor_username=actor_username,
-                detail=(
-                    f"{platform}:{group_id or '__private__'}:{user_id} score={score}"
-                ),
-            )
-            return state
-
-    async def list_person_profiles(
-        self,
-        *,
-        limit: int = 50,
-    ) -> list["AIPersonProfileDefinition"]:
-        async with get_session() as session:
-            return await ai_person_profile_service.list_profiles(session, limit=limit)
-
-    async def get_person_profile(
-        self,
-        *,
-        platform: str,
-        user_id: str,
-    ) -> "AIPersonProfileDefinition | None":
-        async with get_session() as session:
-            return await ai_person_profile_service.get_profile(
-                session,
-                platform=platform,
-                user_id=user_id,
-            )
-
-    async def update_person_profile(
-        self,
-        *,
-        person_id: str,
-        person_name: str | None = None,
-        nickname: str | None = None,
-        memory_points: "tuple[AIPersonMemoryPoint, ...] | None" = None,
-        actor_username: str | None = None,
-    ) -> "AIPersonProfileDefinition | None":
-        async with get_session() as session:
-            result = await ai_person_profile_service.update_profile(
-                session,
-                person_id=person_id,
-                person_name=person_name,
-                nickname=nickname,
-                memory_points=memory_points,
-            )
-            if result is not None:
-                await session.commit()
-                record_ai_admin_audit(
-                    "ai_person_profile_updated",
-                    actor_username=actor_username,
-                    detail=f"{result.person_id} {result.person_name}",
-                )
-            return result
-
-    async def delete_person_profile(
-        self,
-        *,
-        person_id: str,
-        actor_username: str | None = None,
-    ) -> bool:
-        async with get_session() as session:
-            existing = await ai_person_profile_service.get_profile_by_id(
-                session,
-                person_id=person_id,
-            )
-            deleted = await ai_person_profile_service.delete_profile(
-                session,
-                person_id=person_id,
-            )
-            if deleted:
-                await session.commit()
-                record_ai_admin_audit(
-                    "ai_person_profile_deleted",
-                    actor_username=actor_username,
-                    detail=(
-                        f"{existing.person_id} {existing.person_name}"
-                        if existing is not None
-                        else person_id
-                    ),
-                )
-            return deleted
 
     def list_tools(self, policy: "AIToolPolicy | None" = None) -> list["AIToolSpec"]:
         return ai_tool_service.list_tool_specs(policy)
