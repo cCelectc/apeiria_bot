@@ -11,7 +11,7 @@ from nonebot.log import logger
 from nonebot_plugin_orm import get_session
 
 from apeiria.app.ai.config import get_ai_plugin_config
-from apeiria.app.ai.conversation.service import ChatMessageCreate, chat_session_service
+from apeiria.app.ai.conversation.service import chat_session_service
 from apeiria.app.ai.future_task import ai_future_task_service
 from apeiria.app.ai.reply_strategy import (
     ReplyStrategyDecision,
@@ -21,7 +21,6 @@ from apeiria.app.ai.reply_strategy import (
 from apeiria.app.ai.reply_strategy.models import WakeContext
 from apeiria.app.ai.reply_strategy.wake_gate import evaluate_wake
 from apeiria.app.ai.retention import ai_retention_service
-from apeiria.app.ai.runtime.context_window_steps import build_and_store_context_window
 from apeiria.app.ai.runtime.generation_steps import (
     gather_reply_inputs,
     generate_reply,
@@ -33,6 +32,7 @@ from apeiria.app.ai.runtime.observation import (
     build_message_observation,
     finalize_observation,
 )
+from apeiria.app.ai.runtime.persistence_steps import persist_reply
 from apeiria.app.ai.runtime.reply_strategy_steps import decide_whether_to_speak
 from apeiria.app.ai.skills.service import ai_skill_service
 from apeiria.app.runtime import SendResult
@@ -263,56 +263,15 @@ class AIRuntimeService:
             )
             return None
 
-        await chat_session_service.append_message(
+        await persist_reply(
             session,
-            identity,
-            ChatMessageCreate(
-                author_role="assistant",
-                author_id=request.sender_id,
-                text_content=response.content.strip(),
-                meta={
-                    "trace_id": trace_id,
-                    "source_id": response.source_id,
-                    "model_name": response.model_name,
-                    "task_class": (
-                        gen.post_tool_task_class
-                        if gen.skill_runtime.turns
-                        else prep.pre_tool_task_class
-                    ),
-                    "recalled_memory_count": len(inputs.recalled_memories),
-                    "tool_observation_count": len(gen.skill_runtime.turns),
-                    "social_action": social_decision.action,
-                    "social_tool_mode": social_decision.tool_mode,
-                    "social_reason_text": social_decision.reason_text,
-                    "social_reason_codes": list(social_decision.reason_codes),
-                    "social_policy_source": social_decision.evidence.get(
-                        "policy_source"
-                    ),
-                    "runtime_mode": request.runtime_mode,
-                    "future_task_id": (
-                        request.future_task.task_id if request.future_task else None
-                    ),
-                    "future_task_status": (
-                        request.future_task.status if request.future_task else None
-                    ),
-                    "delivery_channel": (
-                        gen.delivery_result.channel if gen.delivery_result else None
-                    ),
-                    "delivery_delivered": (
-                        gen.delivery_result.delivered if gen.delivery_result else None
-                    ),
-                    "delivery_error": (
-                        gen.delivery_result.error if gen.delivery_result else None
-                    ),
-                    "delivery_remote_message_id": (
-                        gen.delivery_result.remote_message_id
-                        if gen.delivery_result
-                        else None
-                    ),
-                },
-            ),
+            request=request,
+            inputs=inputs,
+            social_decision=social_decision,
+            prep=prep,
+            gen=gen,
+            trace_id=trace_id,
         )
-        await build_and_store_context_window(session, identity=identity)
         await session.commit()
         # Only count as "replied" when the reply was actually delivered.
         # For regular messages delivery_result is None (plugin handler sends).
