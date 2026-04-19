@@ -34,7 +34,10 @@ from apeiria.app.ai.runtime.context_window_steps import (
     build_and_store_context_window,
     record_context_usage,
 )
-from apeiria.app.ai.runtime.generation_steps import gather_reply_inputs
+from apeiria.app.ai.runtime.generation_steps import (
+    gather_reply_inputs,
+    prepare_generation,
+)
 from apeiria.app.ai.runtime.memory_steps import store_extracted_memories
 from apeiria.app.ai.runtime.observation import (
     build_future_task_observation,
@@ -43,10 +46,7 @@ from apeiria.app.ai.runtime.observation import (
 )
 from apeiria.app.ai.runtime.persona_steps import build_model_binding_target
 from apeiria.app.ai.runtime.reply_strategy_steps import decide_whether_to_speak
-from apeiria.app.ai.runtime.routing import (
-    select_post_tool_reply_task_class,
-    select_pre_tool_reply_task_class,
-)
+from apeiria.app.ai.runtime.routing import select_post_tool_reply_task_class
 from apeiria.app.ai.runtime.tool_steps import append_tool_observation_turns
 from apeiria.app.ai.skills.service import ai_skill_service
 from apeiria.app.ai.tools.gateway import (
@@ -290,9 +290,6 @@ class AIRuntimeService:
     ) -> AIRuntimeReplyResult | None:
         current_time = datetime.now(timezone.utc)
         identity = request.identity
-        tool_execution_timeout_seconds = (
-            get_ai_plugin_config().tool_execution_timeout_seconds
-        )
 
         inputs = await gather_reply_inputs(session, request, current_time)
 
@@ -313,46 +310,16 @@ class AIRuntimeService:
         if _should_skip_generation(social_decision):
             await session.commit()
             return None
-        skill_runtime = await tool_gateway.prepare(
+        prep = await prepare_generation(
             session,
-            ToolGatewayRequest(
-                session_id=identity.session_id,
-                source_message_id=request.source_message_id,
-                trace_id=trace_id,
-                message_text=request.message_text,
-                policy=inputs.tool_policy,
-                recalled_memories=tuple(inputs.recalled_memories),
-                relationship_context=inputs.relationship_context,
-                current_time=current_time,
-                tool_mode=social_decision.tool_mode,
-                execution_timeout_seconds=tool_execution_timeout_seconds,
-            ),
+            request=request,
+            inputs=inputs,
+            social_decision=social_decision,
+            current_time=current_time,
+            trace_id=trace_id,
         )
-        pre_tool_task_class = select_pre_tool_reply_task_class(
-            has_tools=bool(skill_runtime.available_tools),
-        )
-        selected = await model_gateway.select_model(
-            session,
-            query=AIModelRouteQuery(task_class=pre_tool_task_class),
-            target=inputs.model_target,
-        )
-        await session.commit()
-        if selected is None:
-            logger.debug(
-                "AI trace {} skipped reply: no model selected for session {}",
-                trace_id,
-                identity.session_id,
-            )
+        if prep is None:
             return None
-
-        # Resolve prompt-only/workflow skills once before the first compose
-        # pass. Later compose/refinement passes reuse the activation text
-        # stored on state instead of re-running selection.
-        skill_selection = await ai_skill_service.select_skills(
-            session,
-            message_text=request.message_text,
-            conversation_summary=inputs.conversation_summary,
-        )
 
         (
             response,
@@ -363,8 +330,8 @@ class AIRuntimeService:
             session,
             AIRuntimeReplyState(
                 request=request,
-                selected=selected,
-                skill_runtime=skill_runtime,
+                selected=prep.selected,
+                skill_runtime=prep.skill_runtime,
                 recalled_memories=inputs.recalled_memories,
                 person_profile=inputs.person_profile,
                 relationship_context=inputs.relationship_context,
@@ -375,7 +342,7 @@ class AIRuntimeService:
                 social_decision=social_decision,
                 current_time=current_time,
                 trace_id=trace_id,
-                skill_activation=skill_selection.activation_prompt,
+                skill_activation=prep.skill_activation,
             ),
         )
         if response is None or not response.content.strip():
@@ -400,7 +367,7 @@ class AIRuntimeService:
                     "task_class": (
                         post_tool_task_class
                         if skill_runtime.turns
-                        else pre_tool_task_class
+                        else prep.pre_tool_task_class
                     ),
                     "recalled_memory_count": len(inputs.recalled_memories),
                     "tool_observation_count": len(skill_runtime.turns),
