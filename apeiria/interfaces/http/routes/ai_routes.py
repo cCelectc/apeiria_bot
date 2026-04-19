@@ -356,50 +356,6 @@ async def list_ai_model_bindings(
     return [to_ai_model_binding_item(item) for item in bindings]
 
 
-@router.get("/personas", response_model=list[AIPersonaItem])
-async def list_ai_personas(
-    _: Annotated[Any, Depends(require_control_panel)],
-) -> list[AIPersonaItem]:
-    personas = await ai_admin_service.list_personas()
-    return [to_ai_persona_item(item) for item in personas]
-
-
-@router.put("/personas", response_model=AIPersonaItem | None)
-async def upsert_ai_persona(
-    payload: AIPersonaUpsertRequest,
-    session: Annotated[AuthSession, Depends(require_control_panel)],
-) -> AIPersonaItem | None:
-    persona = (
-        await ai_admin_service.update_persona(
-            persona_id=payload.persona_id,
-            name=payload.name,
-            description=payload.description,
-            system_prompt=payload.system_prompt,
-            style_prompt=payload.style_prompt,
-            enabled=payload.enabled,
-            actor_username=_actor_username_from_claims(session),
-        )
-        if payload.persona_id
-        else await ai_admin_service.create_persona(
-            name=payload.name,
-            description=payload.description,
-            system_prompt=payload.system_prompt,
-            style_prompt=payload.style_prompt,
-            enabled=payload.enabled,
-            actor_username=_actor_username_from_claims(session),
-        )
-    )
-    return to_ai_persona_item(persona) if persona is not None else None
-
-
-@router.get("/persona-bindings", response_model=list[AIPersonaBindingItem])
-async def list_ai_persona_bindings(
-    _: Annotated[Any, Depends(require_control_panel)],
-) -> list[AIPersonaBindingItem]:
-    bindings = await ai_admin_service.list_persona_bindings()
-    return [to_ai_persona_binding_item(item) for item in bindings]
-
-
 @router.get("/memories", response_model=list[AIMemoryItem])
 async def list_ai_memories(  # noqa: PLR0913
     _: Annotated[Any, Depends(require_control_panel)],
@@ -556,147 +512,7 @@ async def get_ai_scene_prompt_preview(
     return to_ai_session_prompt_preview_item(preview)
 
 
-@router.get("/future-tasks", response_model=list[AIFutureTaskItem])
-async def list_ai_future_tasks(
-    _: Annotated[Any, Depends(require_control_panel)],
-    limit: Annotated[int, Query(ge=1, le=100)] = 20,
-) -> list[AIFutureTaskItem]:
-    tasks = await ai_admin_service.list_future_tasks(limit=limit)
-    return [to_ai_future_task_item(item) for item in tasks]
 
-
-@router.delete("/future-tasks", response_model=AIFutureTaskItem | None)
-async def cancel_ai_future_task(
-    session: Annotated[AuthSession, Depends(require_control_panel)],
-    task_id: Annotated[str, Query(min_length=1)],
-) -> AIFutureTaskItem | None:
-    task = await ai_admin_service.cancel_future_task(
-        task_id=task_id,
-        actor_username=_actor_username_from_claims(session),
-    )
-    if task is None:
-        return None
-    return to_ai_future_task_item(task)
-
-
-@router.get("/relationships/list", response_model=list[AIRelationshipStateItem])
-async def list_ai_relationships(
-    _: Annotated[Any, Depends(require_control_panel)],
-    limit: Annotated[int, Query(ge=1, le=200)] = 50,
-) -> list[AIRelationshipStateItem]:
-    states = await ai_admin_service.list_relationships(limit=limit)
-    return [to_ai_relationship_state_item(state) for state in states]
-
-
-@router.get("/relationships", response_model=AIRelationshipStateItem)
-async def get_ai_relationship_state(
-    _: Annotated[Any, Depends(require_control_panel)],
-    platform: Annotated[str, Query(min_length=1)],
-    user_id: Annotated[str, Query(min_length=1)],
-    group_id: Annotated[str | None, Query()] = None,
-) -> AIRelationshipStateItem:
-    state = await ai_admin_service.get_relationship_state(
-        platform=platform,
-        group_id=group_id,
-        user_id=user_id,
-    )
-    return to_ai_relationship_state_item(state)
-
-
-@router.get("/relationships/events", response_model=list[AIRelationshipEventItem])
-async def list_ai_relationship_events(
-    _: Annotated[Any, Depends(require_control_panel)],
-    platform: Annotated[str, Query(min_length=1)],
-    user_id: Annotated[str, Query(min_length=1)],
-    group_id: Annotated[str | None, Query()] = None,
-    limit: Annotated[int, Query(ge=1, le=100)] = 20,
-) -> list[AIRelationshipEventItem]:
-    events = await ai_admin_service.list_relationship_events(
-        platform=platform,
-        group_id=group_id,
-        user_id=user_id,
-        limit=limit,
-    )
-    return [to_ai_relationship_event_item(item) for item in events]
-
-
-@router.patch("/relationships", response_model=AIRelationshipStateItem)
-async def update_ai_relationship_score(
-    payload: AIRelationshipScoreUpdateRequest,
-    session: Annotated[AuthSession, Depends(require_control_panel)],
-) -> AIRelationshipStateItem:
-    state = await ai_admin_service.set_relationship_score(
-        platform=payload.platform,
-        group_id=payload.group_id,
-        user_id=payload.user_id,
-        score=payload.score,
-        actor_username=_actor_username_from_claims(session),
-    )
-    return to_ai_relationship_state_item(state)
-
-
-@router.get("/person-profiles", response_model=list[AIPersonProfileItem])
-async def list_ai_person_profiles(
-    _: Annotated[Any, Depends(require_control_panel)],
-    limit: Annotated[int, Query(ge=1, le=200)] = 50,
-) -> list[AIPersonProfileItem]:
-    profiles = await ai_admin_service.list_person_profiles(limit=limit)
-    return [to_ai_person_profile_item(item) for item in profiles]
-
-
-@router.get("/person-profiles/detail", response_model=AIPersonProfileItem | None)
-async def get_ai_person_profile(
-    _: Annotated[Any, Depends(require_control_panel)],
-    platform: Annotated[str, Query(min_length=1)],
-    user_id: Annotated[str, Query(min_length=1)],
-) -> AIPersonProfileItem | None:
-    profile = await ai_admin_service.get_person_profile(
-        platform=platform,
-        user_id=user_id,
-    )
-    return to_ai_person_profile_item(profile) if profile is not None else None
-
-
-@router.patch("/person-profiles", response_model=AIPersonProfileItem | None)
-async def update_ai_person_profile(
-    payload: AIPersonProfileUpdateRequest,
-    session: Annotated[AuthSession, Depends(require_control_panel)],
-) -> AIPersonProfileItem | None:
-    from apeiria.app.ai.person.models import (
-        AIPersonMemoryPoint,
-        AIPersonMemoryPointCategory,
-    )
-
-    memory_points = None
-    if payload.memory_points is not None:
-        memory_points = tuple(
-            AIPersonMemoryPoint(
-                category=cast("AIPersonMemoryPointCategory", point.category),
-                content=point.content,
-                confidence=point.confidence,
-                source_message_id=point.source_message_id,
-            )
-            for point in payload.memory_points
-        )
-    profile = await ai_admin_service.update_person_profile(
-        person_id=payload.person_id,
-        person_name=payload.person_name,
-        nickname=payload.nickname,
-        memory_points=memory_points,
-        actor_username=_actor_username_from_claims(session),
-    )
-    return to_ai_person_profile_item(profile) if profile is not None else None
-
-
-@router.delete("/person-profiles", response_model=bool)
-async def delete_ai_person_profile(
-    session: Annotated[AuthSession, Depends(require_control_panel)],
-    person_id: Annotated[str, Query(min_length=1)],
-) -> bool:
-    return await ai_admin_service.delete_person_profile(
-        person_id=person_id,
-        actor_username=_actor_username_from_claims(session),
-    )
 
 
 @router.get("/tools", response_model=list[AIToolItem])
@@ -895,3 +711,15 @@ async def list_ai_skill_executions_debug(
         session_id=scene_id,
     )
     return [to_ai_tool_execution_item(item) for item in rows]
+
+
+
+from apeiria.interfaces.http.routes.ai_future_tasks_routes import router as _future_tasks_router
+from apeiria.interfaces.http.routes.ai_person_profiles_routes import router as _person_profiles_router
+from apeiria.interfaces.http.routes.ai_personas_routes import router as _personas_router
+from apeiria.interfaces.http.routes.ai_relationships_routes import router as _relationships_router
+
+router.include_router(_future_tasks_router)
+router.include_router(_person_profiles_router)
+router.include_router(_personas_router)
+router.include_router(_relationships_router)
