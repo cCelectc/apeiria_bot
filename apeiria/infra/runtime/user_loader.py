@@ -73,7 +73,6 @@ def _apply_user_module(module: ModuleType, driver: object) -> None:
 
 def load_user_setup(user_bot: Path | None = None) -> None:
     """Load local user setup hooks and configured adapters."""
-    inject_plugin_site_packages()
     target = user_bot or _project_root() / "user_bot.py"
     module = _load_user_module(target)
     if module is not None:
@@ -83,5 +82,8 @@ def load_user_setup(user_bot: Path | None = None) -> None:
 
 def load_user_plugins() -> None:
     """Load project plugins from the managed plugin config after bootstrap."""
+    # Re-inject extension site-packages defensively: framework plugin load in
+    # between may have altered sys.path, and user plugins are the first code
+    # to rely on extension venv packages.
     inject_plugin_site_packages()
     plugin_config_service.load_project_plugins()
