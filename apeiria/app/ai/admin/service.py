@@ -8,9 +8,18 @@ import wave
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Literal, cast
 
-from nonebot.log import logger
 from nonebot_plugin_orm import get_session
 
+from apeiria.app.ai.admin.audit import record_ai_admin_audit
+from apeiria.app.ai.admin.errors import (
+    AIAdminModelNotFoundError,
+    AISourceDeleteBlockedError,
+    AISourceModelDeleteBlockedError,
+    AISourceModelFetchConfigError,
+    AISourceModelFetchUpstreamError,
+    AISourceModelTestConfigError,
+    AISourceModelTestUpstreamError,
+)
 from apeiria.app.ai.admin.models import (
     AIRecentTarget,
     AISessionPromptChannels,
@@ -98,7 +107,6 @@ from apeiria.app.ai.tools.policy import (
 )
 from apeiria.app.ai.tools.service import ai_tool_service
 from apeiria.app.groups import group_service
-from apeiria.infra.webui_auth.secrets import record_security_audit_event
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -262,74 +270,6 @@ def _to_prompt_channel_preview(
         response_rules=channels.response_rules,
         instruction=channels.instruction,
     )
-
-
-class AIAdminModelNotFoundError(ValueError):
-    """Raised when one requested source-backed model cannot be found."""
-
-
-class AISourceModelFetchConfigError(ValueError):
-    """Raised when source model discovery lacks required runtime config."""
-
-    MISSING_PRESET = "请先选择接入方式。"
-    MISSING_API_BASE = "请先填写接口地址。"
-    MISSING_API_KEY = "未找到可用的 API 密钥。"
-
-    def __init__(self, detail: str = MISSING_API_KEY) -> None:
-        super().__init__(detail)
-
-
-class AISourceModelFetchUpstreamError(RuntimeError):
-    """Raised when upstream source discovery fails."""
-
-    def __init__(self, detail: str) -> None:
-        super().__init__(detail)
-
-
-class AISourceModelTestConfigError(ValueError):
-    """Raised when source model test lacks required runtime config."""
-
-    MISSING_MODEL_IDENTIFIER = "请先选择需要测试的模型。"
-
-    def __init__(self, detail: str) -> None:
-        super().__init__(detail)
-
-
-class AISourceModelTestUpstreamError(RuntimeError):
-    """Raised when upstream source model test fails."""
-
-    def __init__(self, detail: str) -> None:
-        super().__init__(detail)
-
-
-class AISourceDeleteBlockedError(ValueError):
-    """Raised when deleting one source would leave dependent rows behind."""
-
-    def __init__(
-        self,
-        *,
-        model_count: int,
-        model_labels: tuple[str, ...] = (),
-    ) -> None:
-        suffix = f"：{', '.join(model_labels)}" if model_labels else ""
-        super().__init__(
-            f"当前接入仍绑定 {model_count} 个模型，请先删除相关模型{suffix}。"
-        )
-
-
-class AISourceModelDeleteBlockedError(ValueError):
-    """Raised when deleting one source model would leave profiles behind."""
-
-    def __init__(
-        self,
-        *,
-        profile_count: int,
-        profile_labels: tuple[str, ...] = (),
-    ) -> None:
-        suffix = f"：{', '.join(profile_labels)}" if profile_labels else ""
-        super().__init__(
-            f"当前模型仍被 {profile_count} 个模型档案引用，请先调整模型档案{suffix}。"
-        )
 
 
 MODEL_TEST_PROMPT = "Reply with exactly OK."
@@ -504,28 +444,6 @@ def _normalize_required_memory_kind(
     raise ValueError(msg)
 
 
-def _record_ai_admin_audit(
-    event_type: str,
-    *,
-    actor_username: str | None = None,
-    detail: str | None = None,
-) -> None:
-    if not actor_username:
-        return
-    try:
-        record_security_audit_event(
-            event_type,
-            actor_username=actor_username,
-            detail=detail,
-        )
-    except Exception as exc:  # noqa: BLE001
-        logger.opt(exception=exc).warning(
-            "AI admin audit logging failed event_type={} actor={}",
-            event_type,
-            actor_username,
-        )
-
-
 class AIAdminService:
     """Read and basic override operations for AI admin routes."""
 
@@ -570,7 +488,7 @@ class AIAdminService:
             )
             await session.commit()
             created = (await ai_source_service.list_sources(session))[-1]
-            _record_ai_admin_audit(
+            record_ai_admin_audit(
                 "ai_source_created",
                 actor_username=actor_username,
                 detail=f"{created.source_id} {created.name}",
@@ -620,7 +538,7 @@ class AIAdminService:
                 None,
             )
             if updated is not None:
-                _record_ai_admin_audit(
+                record_ai_admin_audit(
                     "ai_source_updated",
                     actor_username=actor_username,
                     detail=f"{updated.source_id} {updated.name}",
@@ -650,7 +568,7 @@ class AIAdminService:
             )
             if deleted:
                 await session.commit()
-                _record_ai_admin_audit(
+                record_ai_admin_audit(
                     "ai_source_deleted",
                     actor_username=actor_username,
                     detail=(
@@ -689,7 +607,7 @@ class AIAdminService:
             await ai_model_profile_service.create_profile(session, create_input)
             await session.commit()
             created = (await ai_model_profile_service.list_profiles(session))[-1]
-            _record_ai_admin_audit(
+            record_ai_admin_audit(
                 "ai_model_profile_created",
                 actor_username=actor_username,
                 detail=f"{created.profile_id} {created.name}",
@@ -732,7 +650,7 @@ class AIAdminService:
                 None,
             )
             if updated is not None:
-                _record_ai_admin_audit(
+                record_ai_admin_audit(
                     "ai_model_profile_updated",
                     actor_username=actor_username,
                     detail=f"{updated.profile_id} {updated.name}",
@@ -827,7 +745,7 @@ class AIAdminService:
             await session.commit()
             models = await self.list_source_models(source_id=source_id)
             created = models[0]
-            _record_ai_admin_audit(
+            record_ai_admin_audit(
                 "ai_source_model_created",
                 actor_username=actor_username,
                 detail=f"{created.model_id} {created.display_name}",
@@ -867,7 +785,7 @@ class AIAdminService:
             models = await self.list_source_models(source_id=source_id)
             updated = next((item for item in models if item.model_id == model_id), None)
             if updated is not None:
-                _record_ai_admin_audit(
+                record_ai_admin_audit(
                     "ai_source_model_updated",
                     actor_username=actor_username,
                     detail=f"{updated.model_id} {updated.display_name}",
@@ -931,7 +849,7 @@ class AIAdminService:
                         break
             if deleted:
                 await session.commit()
-                _record_ai_admin_audit(
+                record_ai_admin_audit(
                     "ai_source_model_deleted",
                     actor_username=actor_username,
                     detail=existing_label,
@@ -1365,7 +1283,7 @@ class AIAdminService:
             created = next(
                 item for item in personas if item.persona_id == row.persona_id
             )
-            _record_ai_admin_audit(
+            record_ai_admin_audit(
                 "ai_persona_created",
                 actor_username=actor_username,
                 detail=f"{created.persona_id} {created.name}",
@@ -1404,7 +1322,7 @@ class AIAdminService:
                 None,
             )
             if updated is not None:
-                _record_ai_admin_audit(
+                record_ai_admin_audit(
                     "ai_persona_updated",
                     actor_username=actor_username,
                     detail=f"{updated.persona_id} {updated.name}",
@@ -1510,7 +1428,7 @@ class AIAdminService:
                 include_ignored=True,
             )
             created = next(item for item in memories if item.memory_id == row.memory_id)
-            _record_ai_admin_audit(
+            record_ai_admin_audit(
                 "ai_memory_created",
                 actor_username=actor_username,
                 detail=f"{created.memory_id} {created.anchor_type}:{created.anchor_id}",
@@ -1531,7 +1449,7 @@ class AIAdminService:
             )
             await session.commit()
             if deleted:
-                _record_ai_admin_audit(
+                record_ai_admin_audit(
                     "ai_memory_deleted",
                     actor_username=actor_username,
                     detail=(
@@ -1588,7 +1506,7 @@ class AIAdminService:
                 None,
             )
             if updated is not None:
-                _record_ai_admin_audit(
+                record_ai_admin_audit(
                     "ai_memory_updated",
                     actor_username=actor_username,
                     detail=(
@@ -1610,7 +1528,7 @@ class AIAdminService:
             )
             if result is not None:
                 await session.commit()
-                _record_ai_admin_audit(
+                record_ai_admin_audit(
                     "ai_memory_ignored_toggled",
                     actor_username=actor_username,
                     detail=f"{result.memory_id} ignored={result.is_ignored}",
@@ -1630,7 +1548,7 @@ class AIAdminService:
             )
             await session.commit()
             if count > 0:
-                _record_ai_admin_audit(
+                record_ai_admin_audit(
                     "ai_memory_bulk_deleted",
                     actor_username=actor_username,
                     detail=f"count={count}",
@@ -1652,7 +1570,7 @@ class AIAdminService:
             )
             await session.commit()
             if count > 0:
-                _record_ai_admin_audit(
+                record_ai_admin_audit(
                     "ai_memory_bulk_ignored_set",
                     actor_username=actor_username,
                     detail=f"count={count} ignored={ignored}",
@@ -1780,7 +1698,7 @@ class AIAdminService:
             task = await ai_future_task_service.cancel_task(session, task_id=task_id)
             if task is not None:
                 await session.commit()
-                _record_ai_admin_audit(
+                record_ai_admin_audit(
                     "ai_future_task_cancelled",
                     actor_username=actor_username,
                     detail=f"{task.task_id} {task.title}",
@@ -2183,7 +2101,7 @@ class AIAdminService:
                 score=score,
             )
             await session.commit()
-            _record_ai_admin_audit(
+            record_ai_admin_audit(
                 "ai_relationship_score_updated",
                 actor_username=actor_username,
                 detail=(
@@ -2232,7 +2150,7 @@ class AIAdminService:
             )
             if result is not None:
                 await session.commit()
-                _record_ai_admin_audit(
+                record_ai_admin_audit(
                     "ai_person_profile_updated",
                     actor_username=actor_username,
                     detail=f"{result.person_id} {result.person_name}",
@@ -2256,7 +2174,7 @@ class AIAdminService:
             )
             if deleted:
                 await session.commit()
-                _record_ai_admin_audit(
+                record_ai_admin_audit(
                     "ai_person_profile_deleted",
                     actor_username=actor_username,
                     detail=(
@@ -2332,7 +2250,7 @@ class AIAdminService:
                 allow_read_only_tools=row.allow_read_only_tools,
                 capability_mode=row.capability_mode,  # type: ignore[arg-type]
             )
-            _record_ai_admin_audit(
+            record_ai_admin_audit(
                 "ai_tool_policy_binding_created",
                 actor_username=actor_username,
                 detail=f"{created.binding_id} {created.scope_type}:{created.scope_id}",
@@ -2364,7 +2282,7 @@ class AIAdminService:
                 allow_read_only_tools=row.allow_read_only_tools,
                 capability_mode=row.capability_mode,  # type: ignore[arg-type]
             )
-            _record_ai_admin_audit(
+            record_ai_admin_audit(
                 "ai_tool_policy_binding_updated",
                 actor_username=actor_username,
                 detail=f"{updated.binding_id} {updated.scope_type}:{updated.scope_id}",
@@ -2384,7 +2302,7 @@ class AIAdminService:
             )
             if deleted:
                 await session.commit()
-                _record_ai_admin_audit(
+                record_ai_admin_audit(
                     "ai_tool_policy_binding_deleted",
                     actor_username=actor_username,
                     detail=binding_id,
