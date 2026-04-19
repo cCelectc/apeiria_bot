@@ -10,11 +10,22 @@ from nonebot.log import logger
 from apeiria.app.ai.config import get_ai_plugin_config
 from apeiria.app.ai.model import AIModelRouteQuery
 from apeiria.app.ai.model.gateway import model_gateway
-from apeiria.app.ai.runtime.context_window_steps import build_and_store_context_window
+from apeiria.app.ai.reply_strategy import summarize_reply_strategy_decision
+from apeiria.app.ai.runtime.composer import (
+    AIRuntimeComposeInput,
+    build_runtime_prompt_channels,
+    compose_pre_tool_reply_prompt,
+    compose_roleplay_reply_prompt,
+)
+from apeiria.app.ai.runtime.context_window_steps import (
+    build_and_store_context_window,
+    record_context_usage,
+)
 from apeiria.app.ai.runtime.memory_steps import (
     load_person_profile_for_prompt,
     recall_memories,
 )
+from apeiria.app.ai.runtime.message_builder import build_chat_messages
 from apeiria.app.ai.runtime.persona_steps import (
     build_model_binding_target,
     load_persona_bundle,
@@ -25,8 +36,14 @@ from apeiria.app.ai.runtime.relationship_steps import (
     update_relationship_state,
 )
 from apeiria.app.ai.runtime.reply_strategy_steps import resolve_initiative_bias
-from apeiria.app.ai.runtime.routing import select_pre_tool_reply_task_class
-from apeiria.app.ai.runtime.tool_steps import resolve_tool_policy
+from apeiria.app.ai.runtime.routing import (
+    select_post_tool_reply_task_class,
+    select_pre_tool_reply_task_class,
+)
+from apeiria.app.ai.runtime.tool_steps import (
+    append_tool_observation_turns,
+    resolve_tool_policy,
+)
 from apeiria.app.ai.skills.service import ai_skill_service
 from apeiria.app.ai.tools.gateway import (
     ToolGatewayRequest,
@@ -34,6 +51,8 @@ from apeiria.app.ai.tools.gateway import (
     tool_gateway,
 )
 from apeiria.app.ai.tools.service import ai_tool_service
+from apeiria.app.message_delivery import delivery_gateway
+from apeiria.app.runtime import DeliveryTarget, SendResult
 
 if TYPE_CHECKING:
     from datetime import datetime
@@ -41,8 +60,13 @@ if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
     from apeiria.app.ai.conversation.models import ChatContextMessageView
+    from apeiria.app.ai.future_task.models import AIFutureTaskDefinition
     from apeiria.app.ai.memory.models import AIMemoryDefinition
     from apeiria.app.ai.model import AIModelBindingTarget
+    from apeiria.app.ai.model.adapter import (
+        AIModelGenerateResponse,
+        AIModelToolDefinition,
+    )
     from apeiria.app.ai.model.selection import AISelectedModel
     from apeiria.app.ai.reply_strategy import ReplyStrategyDecision
     from apeiria.app.ai.runtime.prompting import AIPersonaPromptBundleLike
@@ -76,6 +100,28 @@ class ReplyPreparation:
     selected: "AISelectedModel"
     skill_activation: str | None
     pre_tool_task_class: str
+
+
+@dataclass(frozen=True)
+class ReplyGeneration:
+    """Final model response plus outbound delivery outcome for this turn."""
+
+    response: "AIModelGenerateResponse | None"
+    skill_runtime: ToolGatewayResult
+    post_tool_task_class: str | None
+    delivery_result: SendResult | None
+
+
+@dataclass(frozen=True)
+class _GenerationRequest:
+    """One model generation request with trace metadata."""
+
+    selected: "AISelectedModel"
+    prompt: str
+    trace_id: str
+    session_id: str
+    tools: tuple["AIModelToolDefinition", ...]
+    failure_stage: str
 
 
 async def gather_reply_inputs(
@@ -205,3 +251,294 @@ async def prepare_generation(
         skill_activation=skill_selection.activation_prompt,
         pre_tool_task_class=pre_tool_task_class,
     )
+
+
+async def generate_reply(
+    session: "AsyncSession",
+    *,
+    request: "AIRuntimeReplyRequest",
+    inputs: ReplyInputs,
+    social_decision: "ReplyStrategyDecision",
+    prep: ReplyPreparation,
+    current_time: "datetime",
+    trace_id: str,
+) -> ReplyGeneration:
+    """Generate a reply via direct or tool-loop path and deliver it if needed."""
+
+    if prep.skill_runtime.available_tools:
+        return await _generate_with_tool_loop(
+            session,
+            request=request,
+            inputs=inputs,
+            social_decision=social_decision,
+            prep=prep,
+            current_time=current_time,
+            trace_id=trace_id,
+        )
+    return await _generate_direct(
+        session,
+        request=request,
+        inputs=inputs,
+        social_decision=social_decision,
+        prep=prep,
+        trace_id=trace_id,
+    )
+
+
+async def _generate_direct(
+    session: "AsyncSession",
+    *,
+    request: "AIRuntimeReplyRequest",
+    inputs: ReplyInputs,
+    social_decision: "ReplyStrategyDecision",
+    prep: ReplyPreparation,
+    trace_id: str,
+) -> ReplyGeneration:
+    """Single-shot generation path (no tool loop)."""
+
+    del session  # unused but kept for signature symmetry
+    response = await _safe_generate(
+        _GenerationRequest(
+            selected=prep.selected,
+            prompt=compose_pre_tool_reply_prompt(
+                _build_compose_input(
+                    request=request,
+                    inputs=inputs,
+                    social_decision=social_decision,
+                    skill_runtime=prep.skill_runtime,
+                    skill_activation=prep.skill_activation,
+                ),
+                has_tools=False,
+            ),
+            trace_id=trace_id,
+            session_id=request.identity.session_id,
+            tools=(),
+            failure_stage="reply generation failed",
+        )
+    )
+    if response is None:
+        return ReplyGeneration(
+            response=None,
+            skill_runtime=prep.skill_runtime,
+            post_tool_task_class=None,
+            delivery_result=None,
+        )
+
+    record_context_usage(
+        request.identity.session_id,
+        response=response,
+        message_count=len(inputs.turns),
+    )
+    delivery_result = await _deliver_generated_reply(
+        request,
+        response.content.strip() if response.content else "",
+    )
+    return ReplyGeneration(
+        response=response,
+        skill_runtime=prep.skill_runtime,
+        post_tool_task_class=None,
+        delivery_result=delivery_result,
+    )
+
+
+async def _generate_with_tool_loop(  # noqa: PLR0913
+    session: "AsyncSession",
+    *,
+    request: "AIRuntimeReplyRequest",
+    inputs: ReplyInputs,
+    social_decision: "ReplyStrategyDecision",
+    prep: ReplyPreparation,
+    current_time: "datetime",
+    trace_id: str,
+) -> ReplyGeneration:
+    """Messages-based multi-round tool calling flow with optional refinement."""
+
+    compose_input = _build_compose_input(
+        request=request,
+        inputs=inputs,
+        social_decision=social_decision,
+        skill_runtime=prep.skill_runtime,
+        skill_activation=prep.skill_activation,
+    )
+    channels = build_runtime_prompt_channels(
+        compose_input, mode="planner", include_tool_policy=True
+    )
+    messages = list(build_chat_messages(channels, inputs.turns))
+
+    tool_request = ToolGatewayRequest(
+        session_id=request.identity.session_id,
+        source_message_id=request.source_message_id,
+        trace_id=trace_id,
+        message_text=request.message_text,
+        policy=inputs.tool_policy,
+        recalled_memories=tuple(inputs.recalled_memories),
+        relationship_context=inputs.relationship_context,
+        current_time=current_time,
+        tool_mode=social_decision.tool_mode,
+        execution_timeout_seconds=get_ai_plugin_config().tool_execution_timeout_seconds,
+    )
+    skill_runtime = await tool_gateway.run_tool_loop(
+        session,
+        tool_request,
+        messages=messages,
+        tools=prep.skill_runtime.available_tools,
+        selected=prep.selected,
+    )
+    response = skill_runtime.final_response
+    post_tool_task_class: str | None = None
+
+    if response is not None:
+        record_context_usage(
+            request.identity.session_id,
+            response=response,
+            message_count=len(inputs.turns),
+        )
+
+    if skill_runtime.turns:
+        await append_tool_observation_turns(
+            session,
+            identity=request.identity,
+            trace_id=trace_id,
+            tool_turns=skill_runtime.turns,
+        )
+        await session.commit()
+        post_tool_task_class = select_post_tool_reply_task_class()
+
+        if response is not None and response.content.strip():
+            roleplay_selected = await model_gateway.select_model(
+                session,
+                query=AIModelRouteQuery(task_class=post_tool_task_class),
+                target=build_model_binding_target(
+                    request.identity,
+                    request.user_id,
+                ),
+            )
+            refinement = await _safe_generate(
+                _GenerationRequest(
+                    selected=roleplay_selected or prep.selected,
+                    prompt=compose_roleplay_reply_prompt(
+                        AIRuntimeComposeInput(
+                            persona=inputs.persona,
+                            scene_type=request.identity.scene_type,
+                            person_profile=inputs.person_profile,
+                            relationship=inputs.relationship_context,
+                            tool_policy=skill_runtime.policy_text,
+                            tool_results=skill_runtime.result_lines,
+                            memories=inputs.recalled_memories,
+                            conversation_summary=inputs.conversation_summary,
+                            social_policy_summary=(
+                                summarize_reply_strategy_decision(social_decision)
+                            ),
+                            future_task_context=_build_future_task_context(
+                                request.future_task
+                            ),
+                            turns=inputs.turns,
+                        )
+                    ),
+                    trace_id=trace_id,
+                    session_id=request.identity.session_id,
+                    tools=(),
+                    failure_stage="reply generation failed after tool calls",
+                )
+            )
+            if refinement is not None:
+                response = refinement
+
+    if response is None:
+        return ReplyGeneration(
+            response=None,
+            skill_runtime=skill_runtime,
+            post_tool_task_class=post_tool_task_class,
+            delivery_result=None,
+        )
+    delivery_result = await _deliver_generated_reply(
+        request,
+        response.content.strip() if response.content else "",
+    )
+    return ReplyGeneration(
+        response=response,
+        skill_runtime=skill_runtime,
+        post_tool_task_class=post_tool_task_class,
+        delivery_result=delivery_result,
+    )
+
+
+def _build_compose_input(
+    *,
+    request: "AIRuntimeReplyRequest",
+    inputs: ReplyInputs,
+    social_decision: "ReplyStrategyDecision",
+    skill_runtime: ToolGatewayResult,
+    skill_activation: str | None,
+) -> AIRuntimeComposeInput:
+    return AIRuntimeComposeInput(
+        persona=inputs.persona,
+        scene_type=request.identity.scene_type,
+        person_profile=inputs.person_profile,
+        relationship=inputs.relationship_context,
+        tool_policy=skill_runtime.policy_text,
+        tool_results=skill_runtime.result_lines,
+        memories=inputs.recalled_memories,
+        conversation_summary=inputs.conversation_summary,
+        social_policy_summary=summarize_reply_strategy_decision(social_decision),
+        future_task_context=_build_future_task_context(request.future_task),
+        skill_activation=skill_activation,
+        turns=inputs.turns,
+    )
+
+
+def _build_future_task_context(
+    task: "AIFutureTaskDefinition | None",
+) -> str | None:
+    if task is None:
+        return None
+    return "\n".join(
+        (
+            f"task_id={task.task_id}",
+            f"title={task.title}",
+            f"description={task.description}",
+            f"trigger_at={task.trigger_at.isoformat()}",
+            f"status={task.status}",
+        )
+    )
+
+
+async def _deliver_generated_reply(
+    request: "AIRuntimeReplyRequest",
+    reply_text: str,
+) -> SendResult | None:
+    if request.runtime_mode != "future_task" or not reply_text.strip():
+        return None
+    return await delivery_gateway.send(
+        target=DeliveryTarget(
+            platform=request.identity.platform,
+            bot_id=request.identity.bot_id,
+            scope_kind=request.identity.scene_type,
+            scope_id=request.identity.scene_id,
+            user_id=request.identity.subject_id or request.user_id,
+            route_facts={"source": "ai_runtime.future_task"},
+        ),
+        text=reply_text,
+        origin="ai_runtime.future_task_delivery",
+    )
+
+
+async def _safe_generate(
+    request: _GenerationRequest,
+) -> "AIModelGenerateResponse | None":
+    try:
+        return await model_gateway.generate_native(
+            selected=request.selected,
+            prompt=request.prompt,
+            tools=request.tools,
+            trace_id=request.trace_id,
+            origin="ai_runtime.reply_generation",
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.opt(exception=exc).warning(
+            "AI trace {} {} for session {}",
+            request.trace_id,
+            request.failure_stage,
+            request.session_id,
+        )
+        return None
