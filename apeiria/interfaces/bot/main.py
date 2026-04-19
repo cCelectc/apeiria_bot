@@ -4,10 +4,9 @@ import nonebot
 
 from apeiria.infra.runtime.bootstrap import initialize_nonebot
 
-initialize_nonebot()
-
 
 def run() -> None:
+    initialize_nonebot()
     nonebot.run()
 
 
