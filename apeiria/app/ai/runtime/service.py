@@ -14,7 +14,6 @@ from apeiria.app.ai.config import get_ai_plugin_config
 from apeiria.app.ai.conversation.service import chat_session_service
 from apeiria.app.ai.future_task import ai_future_task_service
 from apeiria.app.ai.reply_strategy import (
-    ReplyStrategyDecision,
     build_wake_context,
     reply_strategy_service,
 )
@@ -67,10 +66,6 @@ class AIRuntimeReplyResult:
 
     reply_text: str
     delivery_result: SendResult | None = None
-
-
-def _should_skip_generation(decision: ReplyStrategyDecision) -> bool:
-    return not decision.should_speak
 
 
 class AIRuntimeService:
@@ -231,7 +226,7 @@ class AIRuntimeService:
             current_time=current_time,
             trace_id=trace_id,
         )
-        if _should_skip_generation(social_decision):
+        if not social_decision.should_speak:
             await session.commit()
             return None
         prep = await prepare_generation(
