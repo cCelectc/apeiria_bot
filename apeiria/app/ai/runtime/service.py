@@ -34,44 +34,26 @@ from apeiria.app.ai.runtime.context_window_steps import (
     build_and_store_context_window,
     record_context_usage,
 )
-from apeiria.app.ai.runtime.memory_steps import (
-    load_person_profile_for_prompt,
-    recall_memories,
-    store_extracted_memories,
-)
+from apeiria.app.ai.runtime.generation_steps import gather_reply_inputs
+from apeiria.app.ai.runtime.memory_steps import store_extracted_memories
 from apeiria.app.ai.runtime.observation import (
     build_future_task_observation,
     build_message_observation,
     finalize_observation,
 )
-from apeiria.app.ai.runtime.persona_steps import (
-    build_model_binding_target,
-    load_persona_bundle,
-)
-from apeiria.app.ai.runtime.relationship_steps import (
-    build_relationship_target,
-    load_relationship_context,
-    update_relationship_state,
-)
-from apeiria.app.ai.runtime.reply_strategy_steps import (
-    decide_whether_to_speak,
-    resolve_initiative_bias,
-)
+from apeiria.app.ai.runtime.persona_steps import build_model_binding_target
+from apeiria.app.ai.runtime.reply_strategy_steps import decide_whether_to_speak
 from apeiria.app.ai.runtime.routing import (
     select_post_tool_reply_task_class,
     select_pre_tool_reply_task_class,
 )
-from apeiria.app.ai.runtime.tool_steps import (
-    append_tool_observation_turns,
-    resolve_tool_policy,
-)
+from apeiria.app.ai.runtime.tool_steps import append_tool_observation_turns
 from apeiria.app.ai.skills.service import ai_skill_service
 from apeiria.app.ai.tools.gateway import (
     ToolGatewayRequest,
     ToolGatewayResult,
     tool_gateway,
 )
-from apeiria.app.ai.tools.service import ai_tool_service
 from apeiria.app.message_delivery import delivery_gateway
 from apeiria.app.runtime import DeliveryTarget, SendResult
 
@@ -312,62 +294,19 @@ class AIRuntimeService:
             get_ai_plugin_config().tool_execution_timeout_seconds
         )
 
-        turns, conversation_summary = await build_and_store_context_window(
-            session,
-            identity=identity,
-        )
-        relationship_target = build_relationship_target(identity, request.user_id)
-        model_target = build_model_binding_target(identity, request.user_id)
-        tool_policy = await resolve_tool_policy(
-            session,
-            identity,
-            is_tome=request.is_tome,
-        )
-        persona = await load_persona_bundle(
-            session,
-            request=request,
-            current_time=current_time,
-            turns=turns,
-        )
-        if request.runtime_mode == "message" and request.sentiment is not None:
-            await update_relationship_state(
-                session,
-                target=relationship_target,
-                sentiment=request.sentiment,
-                is_tome=request.is_tome,
-            )
-        recalled_memories = await recall_memories(
-            session,
-            identity=identity,
-            user_id=request.user_id,
-            query_text=request.message_text,
-        )
-        relationship_context = await load_relationship_context(
-            session,
-            target=relationship_target,
-        )
-        person_profile = await load_person_profile_for_prompt(
-            session,
-            identity=identity,
-            user_id=request.user_id,
-        )
-        allowed_tools = ai_tool_service.list_allowed_tools(tool_policy)
+        inputs = await gather_reply_inputs(session, request, current_time)
 
-        initiative_bias = await resolve_initiative_bias(
-            session,
-            relationship_target=relationship_target,
-        )
         social_decision = await decide_whether_to_speak(
             session,
             request=request,
             wake_context=wake_context,
-            turns=turns,
-            conversation_summary=conversation_summary,
-            relationship_context=relationship_context,
-            persona=persona,
-            allowed_tools=tuple(allowed_tools),
-            initiative_bias=initiative_bias,
-            model_target=model_target,
+            turns=inputs.turns,
+            conversation_summary=inputs.conversation_summary,
+            relationship_context=inputs.relationship_context,
+            persona=inputs.persona,
+            allowed_tools=inputs.allowed_tools,
+            initiative_bias=inputs.initiative_bias,
+            model_target=inputs.model_target,
             current_time=current_time,
             trace_id=trace_id,
         )
@@ -381,9 +320,9 @@ class AIRuntimeService:
                 source_message_id=request.source_message_id,
                 trace_id=trace_id,
                 message_text=request.message_text,
-                policy=tool_policy,
-                recalled_memories=tuple(recalled_memories),
-                relationship_context=relationship_context,
+                policy=inputs.tool_policy,
+                recalled_memories=tuple(inputs.recalled_memories),
+                relationship_context=inputs.relationship_context,
                 current_time=current_time,
                 tool_mode=social_decision.tool_mode,
                 execution_timeout_seconds=tool_execution_timeout_seconds,
@@ -395,7 +334,7 @@ class AIRuntimeService:
         selected = await model_gateway.select_model(
             session,
             query=AIModelRouteQuery(task_class=pre_tool_task_class),
-            target=model_target,
+            target=inputs.model_target,
         )
         await session.commit()
         if selected is None:
@@ -412,7 +351,7 @@ class AIRuntimeService:
         skill_selection = await ai_skill_service.select_skills(
             session,
             message_text=request.message_text,
-            conversation_summary=conversation_summary,
+            conversation_summary=inputs.conversation_summary,
         )
 
         (
@@ -426,13 +365,13 @@ class AIRuntimeService:
                 request=request,
                 selected=selected,
                 skill_runtime=skill_runtime,
-                recalled_memories=recalled_memories,
-                person_profile=person_profile,
-                relationship_context=relationship_context,
-                conversation_summary=conversation_summary,
-                persona=persona,
-                turns=turns,
-                tool_policy=tool_policy,
+                recalled_memories=inputs.recalled_memories,
+                person_profile=inputs.person_profile,
+                relationship_context=inputs.relationship_context,
+                conversation_summary=inputs.conversation_summary,
+                persona=inputs.persona,
+                turns=inputs.turns,
+                tool_policy=inputs.tool_policy,
                 social_decision=social_decision,
                 current_time=current_time,
                 trace_id=trace_id,
@@ -463,7 +402,7 @@ class AIRuntimeService:
                         if skill_runtime.turns
                         else pre_tool_task_class
                     ),
-                    "recalled_memory_count": len(recalled_memories),
+                    "recalled_memory_count": len(inputs.recalled_memories),
                     "tool_observation_count": len(skill_runtime.turns),
                     "social_action": social_decision.action,
                     "social_tool_mode": social_decision.tool_mode,
@@ -509,7 +448,7 @@ class AIRuntimeService:
             identity.session_id,
             response.source_id,
             response.model_name,
-            len(recalled_memories),
+            len(inputs.recalled_memories),
             len(skill_runtime.turns),
         )
         return AIRuntimeReplyResult(
