@@ -2,12 +2,10 @@
 
 from nonebot.adapters import Event
 from nonebot.matcher import Matcher
-from nonebot.message import run_postprocessor
 
 from apeiria.app.statistics import statistics_service
 
 
-@run_postprocessor
 async def stats_hook(
     matcher: Matcher,
     exception: Exception | None,

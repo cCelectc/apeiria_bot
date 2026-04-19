@@ -165,5 +165,9 @@ def load_framework() -> None:
             continue
         nonebot.load_plugin(plugin)
 
-    import_module("apeiria.interfaces.bot.hooks.schema")
-    import_module("apeiria.interfaces.bot.hooks")
+    # Deferred import: hook modules transitively import nonebot_plugin_orm,
+    # which must be loaded by NoneBot's plugin loader first so it registers
+    # under the correct caller-plugin context.
+    from apeiria.interfaces.bot.hooks import register_bot_hooks
+
+    register_bot_hooks()

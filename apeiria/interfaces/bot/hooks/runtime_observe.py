@@ -2,12 +2,10 @@
 
 from nonebot.adapters import Bot, Event
 from nonebot.matcher import Matcher
-from nonebot.message import run_postprocessor, run_preprocessor
 
 from apeiria.app.runtime import runtime_matcher_observer
 
 
-@run_preprocessor
 async def runtime_observe_pre(
     matcher: Matcher,
     event: Event,
@@ -18,7 +16,6 @@ async def runtime_observe_pre(
     runtime_matcher_observer.observe_pre_run(matcher, bot, event)
 
 
-@run_postprocessor
 async def runtime_observe_post(
     matcher: Matcher,
     exception: Exception | None,

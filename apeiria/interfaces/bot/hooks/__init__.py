@@ -1,8 +1,3 @@
-from . import (  # noqa: F401
-    auth,
-    error,
-    plugin_sync,
-    runtime_observe,
-    schema,
-    statistics,
-)
+from apeiria.interfaces.bot.hooks.registry import register_bot_hooks
+
+__all__ = ["register_bot_hooks"]

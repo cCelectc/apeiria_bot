@@ -3,7 +3,6 @@
 from nonebot.adapters import Bot, Event
 from nonebot.log import logger
 from nonebot.matcher import Matcher
-from nonebot.message import run_postprocessor
 
 from apeiria.app.message_delivery import delivery_gateway
 from apeiria.app.runtime.diagnostics import runtime_diagnostic_recorder
@@ -11,7 +10,6 @@ from apeiria.app.runtime.observer import current_request_id
 from apeiria.infra.config.bot_config import get_error_message
 
 
-@run_postprocessor
 async def error_hook(
     matcher: Matcher,
     exception: Exception | None,

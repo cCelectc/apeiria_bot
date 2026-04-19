@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import nonebot
-from nonebot import get_driver
 from nonebot.log import logger
 
 from apeiria.app.runtime.diagnostics import runtime_diagnostic_recorder
@@ -15,7 +14,6 @@ from apeiria.infra.plugin_metadata.builders import (
 from apeiria.shared.i18n import t
 
 
-@get_driver().on_startup
 async def sync_plugins() -> None:
     """Iterate all loaded plugins, parse metadata, upsert into PluginInfo table."""
     from nonebot_plugin_orm import get_session
