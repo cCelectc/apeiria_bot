@@ -4,14 +4,14 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from pathlib import Path
+from pathlib import Path
 
 BUILD_META_FILENAME = ".build-meta.json"
 BUILD_META_VERSION = 1
+FRONTEND_DIR_ENV_VAR = "APEIRIA_WEBUI_FRONTEND_DIR"
+DEFAULT_FRONTEND_DIRS = ("web",)
 
 
 @dataclass(frozen=True)
@@ -24,11 +24,36 @@ class FrontendBuildStatus:
 
 
 def web_dir(project_root: Path) -> Path:
-    return project_root / "web"
+    return frontend_workspace_dir(project_root)
 
 
 def dist_dir(project_root: Path) -> Path:
     return web_dir(project_root) / "dist"
+
+
+def frontend_workspace_dir(project_root: Path) -> Path:
+    configured = _configured_frontend_dir(project_root)
+    if configured is not None:
+        return configured
+    for name in DEFAULT_FRONTEND_DIRS:
+        candidate = project_root / name
+        if (candidate / "package.json").is_file():
+            return candidate
+    return project_root / DEFAULT_FRONTEND_DIRS[-1]
+
+
+def frontend_workspace_name(project_root: Path) -> str:
+    return frontend_workspace_dir(project_root).name
+
+
+def serving_dist_dir(project_root: Path) -> Path | None:
+    selected = frontend_workspace_dir(project_root)
+    candidates = [selected, *(project_root / name for name in DEFAULT_FRONTEND_DIRS)]
+    for candidate in candidates:
+        dist = candidate / "dist"
+        if dist.is_dir():
+            return dist
+    return None
 
 
 def build_meta_path(project_root: Path) -> Path:
@@ -113,6 +138,9 @@ def _fingerprint_inputs(root: Path) -> tuple[Path, ...]:
         root / "package.json",
         root / "pnpm-lock.yaml",
         root / "vite.config.mts",
+        root / "vite.config.ts",
+        root / "tailwind.config.ts",
+        root / "postcss.config.js",
     )
 
 
@@ -125,3 +153,13 @@ def _update_digest_for_file(
     digest.update(b"\0")
     digest.update(path.read_bytes())
     digest.update(b"\0")
+
+
+def _configured_frontend_dir(project_root: Path) -> Path | None:
+    raw = os.environ.get(FRONTEND_DIR_ENV_VAR, "").strip()
+    if not raw:
+        return None
+    candidate = Path(raw)
+    if not candidate.is_absolute():
+        candidate = project_root / candidate
+    return candidate

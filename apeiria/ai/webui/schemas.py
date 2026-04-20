@@ -92,6 +92,13 @@ class AISourcePresetItem(BaseModel):
     description: str
 
 
+class AIBootstrapResponse(BaseModel):
+    source_presets: list["AISourcePresetItem"] = []
+    scope_types: list[str] = []
+    capability_modes: list[str] = []
+    task_classes: list[str] = []
+
+
 class AISourceItem(BaseModel):
     source_id: str
     name: str

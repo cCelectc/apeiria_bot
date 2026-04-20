@@ -9,6 +9,7 @@ from nonebot.plugin import PluginMetadata
 
 from apeiria.config.plugins import plugin_config_service
 from apeiria.config.webui_config import WebUIConfig
+from apeiria.environment.frontend_build import serving_dist_dir
 from apeiria.i18n import load_locales, t
 from apeiria.plugins.metadata.api import (
     ConfigExtra,
@@ -51,9 +52,6 @@ __plugin_meta__ = PluginMetadata(
         required_plugins=["nonebot_plugin_localstore", "nonebot_plugin_orm"],
     ).to_dict(),
 )
-
-_WEB_DIR = Path(__file__).parent.parent.parent.parent / "web"
-_DIST_DIR = _WEB_DIR / "dist"
 
 
 def _web_ui_url() -> str:
@@ -100,18 +98,19 @@ def _mount_routes() -> None:
     )
     access_logger.addHandler(file_handler)
 
-    if _DIST_DIR.is_dir():
+    dist_dir = serving_dist_dir(Path(__file__).parent.parent.parent.parent)
+    if dist_dir is not None:
         from fastapi.staticfiles import StaticFiles
         from starlette.responses import FileResponse
 
         @app.get("/{path:path}", include_in_schema=False)
         async def _spa_fallback(path: str) -> FileResponse:
-            file = _DIST_DIR / path
+            file = dist_dir / path
             if file.is_file():
                 return FileResponse(file)
-            return FileResponse(_DIST_DIR / "index.html")
+            return FileResponse(dist_dir / "index.html")
 
-        assets_dir = _DIST_DIR / "assets"
+        assets_dir = dist_dir / "assets"
         if assets_dir.is_dir():
             app.mount(
                 "/assets",
@@ -131,7 +130,7 @@ def _mount_routes() -> None:
         )
     else:
         logger.warning("{}", t("web_ui.startup.build_disabled"))
-        logger.debug("Web UI frontend assets not found in {}", _DIST_DIR)
+        logger.debug("Web UI frontend assets not found in any configured dist dir")
 
 
 def _warm_plugin_management_caches() -> None:

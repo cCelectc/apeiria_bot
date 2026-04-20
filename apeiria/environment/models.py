@@ -37,6 +37,7 @@ class EnvironmentSnapshot:
     node_available: bool
     pnpm_available: bool
     npm_available: bool
+    frontend_workspace_name: str
     frontend_workspace_exists: bool
     frontend_dist_exists: bool
     frontend_build_is_built: bool

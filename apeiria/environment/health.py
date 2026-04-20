@@ -50,7 +50,7 @@ _CHECK_MESSAGES: dict[tuple[str, str], tuple[str, str | None]] = {
     ("frontend_workspace", "present"): ("Frontend workspace is present.", None),
     ("frontend_workspace", "missing"): (
         "Frontend workspace is missing.",
-        "Restore the `web/` directory if you need the Web UI.",
+        "Restore the selected frontend workspace if you need the Web UI.",
     ),
     ("frontend_toolchain", "missing"): (
         "No frontend package manager was found.",
@@ -59,7 +59,7 @@ _CHECK_MESSAGES: dict[tuple[str, str], tuple[str, str | None]] = {
     ("frontend_build", "current"): ("Web UI build artifacts are up to date.", None),
     ("frontend_build", "dist_missing"): (
         "Web UI build artifacts are missing.",
-        "Run `apeiria run --build` or `cd web && pnpm build`.",
+        "Run `apeiria run --build` or build the selected frontend workspace.",
     ),
     ("frontend_build", "build_meta_missing"): (
         "Web UI build metadata is missing.",

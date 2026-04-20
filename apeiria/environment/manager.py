@@ -16,6 +16,8 @@ from apeiria.environment.extension_project import (
     find_uv_executable,
 )
 from apeiria.environment.frontend_build import (
+    frontend_workspace_dir,
+    frontend_workspace_name,
     read_frontend_build_status,
     write_frontend_build_meta,
 )
@@ -131,7 +133,7 @@ class EnvironmentService:
 
     def get_environment_snapshot(self) -> EnvironmentSnapshot:
         root = self._project_root
-        web_dir = root / "web"
+        frontend_dir = frontend_workspace_dir(root)
         build_status = read_frontend_build_status(root)
         build_tool = shutil.which("pnpm") or shutil.which("npm")
         return EnvironmentSnapshot(
@@ -150,8 +152,9 @@ class EnvironmentService:
             node_available=shutil.which("node") is not None,
             pnpm_available=shutil.which("pnpm") is not None,
             npm_available=shutil.which("npm") is not None,
-            frontend_workspace_exists=(web_dir / "package.json").is_file(),
-            frontend_dist_exists=(web_dir / "dist").is_dir(),
+            frontend_workspace_name=frontend_workspace_name(root),
+            frontend_workspace_exists=(frontend_dir / "package.json").is_file(),
+            frontend_dist_exists=(frontend_dir / "dist").is_dir(),
             frontend_build_is_built=build_status.is_built,
             frontend_build_is_stale=build_status.is_stale,
             frontend_build_detail=build_status.detail,
@@ -364,9 +367,10 @@ class EnvironmentService:
             if status.build_tool == "pnpm"
             else ["npm", "run", "build"]
         )
+        frontend_dir = frontend_workspace_dir(self._project_root)
         process = await asyncio.create_subprocess_exec(
             *command,
-            cwd=str(self._project_root / "web"),
+            cwd=str(frontend_dir),
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
@@ -399,9 +403,10 @@ class EnvironmentService:
             if status.build_tool == "pnpm"
             else ["npm", "run", "build"]
         )
+        frontend_dir = frontend_workspace_dir(self._project_root)
         process = await asyncio.create_subprocess_exec(
             *command,
-            cwd=str(self._project_root / "web"),
+            cwd=str(frontend_dir),
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.STDOUT,
         )

@@ -10,17 +10,20 @@ from fastapi.responses import FileResponse
 
 from apeiria.exceptions import ResourceNotFoundError
 from apeiria.i18n import t
-from apeiria.plugins import plugin_governance_service
+from apeiria.plugins import config_query_service, plugin_governance_service
 from apeiria.plugins.store.update_check import (
     plugin_update_check_service,
     supports_plugin_update_check,
 )
 from apeiria.webui.auth import require_control_panel, require_owner
 from apeiria.webui.routes.plugin_support import (
+    raise_settings_error,
     to_orphan_plugin_config_response,
     to_plugin_item_response,
     to_plugin_readme_response,
+    to_plugin_toggle_preview_response,
     to_plugin_update_check_item,
+    to_plugin_workspace_settings_summary,
 )
 from apeiria.webui.schemas.models import (
     OrphanPluginConfigResponse,
@@ -28,6 +31,7 @@ from apeiria.webui.schemas.models import (
     PluginReadmeResponse,
     PluginUpdateCheckItem,
     PluginUpdateCheckRequest,
+    PluginWorkspaceResponse,
 )
 
 router = APIRouter()
@@ -108,6 +112,58 @@ async def list_plugins(
         )
         for plugin in plugins
     ]
+
+
+@router.get("/{module_name}/workspace", response_model=PluginWorkspaceResponse)
+async def get_plugin_workspace(
+    module_name: str,
+    _: Annotated[Any, Depends(require_control_panel)],
+) -> PluginWorkspaceResponse:
+    plugin = await plugin_governance_service.get_plugin(module_name)
+    if plugin is None:
+        raise HTTPException(status_code=404, detail=t("web_ui.plugins.not_found"))
+
+    plugin_item = to_plugin_item_response(
+        plugin,
+        can_package_update=(
+            plugin.governance_state.can_uninstall
+            and bool(plugin.package_binding.installed_package)
+            and supports_plugin_update_check(plugin.package_binding.installed_package)
+        ),
+    )
+    enable_preview = None
+    disable_preview = None
+    if plugin_item.can_enable_disable:
+        enable_preview = to_plugin_toggle_preview_response(
+            await plugin_governance_service.preview_toggle_plugin(
+                module_name,
+                enabled=True,
+            )
+        )
+        disable_preview = to_plugin_toggle_preview_response(
+            await plugin_governance_service.preview_toggle_plugin(
+                module_name,
+                enabled=False,
+            )
+        )
+
+    settings = None
+    if plugin_item.can_edit_config:
+        try:
+            settings = to_plugin_workspace_settings_summary(
+                config_query_service.get_plugin_view(module_name)
+            )
+        except Exception as exc:
+            raise_settings_error(exc)
+            raise AssertionError("unreachable") from exc
+
+    return PluginWorkspaceResponse(
+        plugin=plugin_item,
+        enable_preview=enable_preview,
+        disable_preview=disable_preview,
+        settings=settings,
+        readme_available=plugin_item.can_view_readme,
+    )
 
 
 @router.post("/update-checks", response_model=list[PluginUpdateCheckItem])

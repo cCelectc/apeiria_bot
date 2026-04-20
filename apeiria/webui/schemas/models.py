@@ -21,6 +21,19 @@ class WebUIPrincipalResponse(BaseModel):
     capabilities: list[str] = []
 
 
+class WebUILocaleItem(BaseModel):
+    code: str
+    label: str
+
+
+class WebUIBootstrapResponse(BaseModel):
+    principal: WebUIPrincipalResponse
+    account: "WebUIAccountItem"
+    locales: list[WebUILocaleItem] = []
+    preferred_home: str = "/dashboard"
+    frontend_workspace: str | None = None
+
+
 class LoginResponse(BaseModel):
     """Successful login response."""
 
@@ -231,6 +244,22 @@ class PluginToggleResponse(BaseModel):
     module_name: str
     enabled: bool
     affected_modules: list[str] = []
+
+
+class PluginWorkspaceSettingsSummary(BaseModel):
+    module_name: str
+    section: str
+    config_source: str
+    has_config_model: bool
+    field_count: int
+
+
+class PluginWorkspaceResponse(BaseModel):
+    plugin: "PluginItem"
+    enable_preview: PluginTogglePreviewResponse | None = None
+    disable_preview: PluginTogglePreviewResponse | None = None
+    settings: PluginWorkspaceSettingsSummary | None = None
+    readme_available: bool = False
 
 
 class PluginReadmeResponse(BaseModel):

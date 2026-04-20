@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import TYPE_CHECKING, Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
@@ -20,6 +21,7 @@ from apeiria.access.webui_auth.service import (
     AuthSessionContext,
     auth_session_service,
 )
+from apeiria.environment.frontend_build import frontend_workspace_name
 from apeiria.i18n import t
 from apeiria.webui.auth import (
     create_auth_session_token,
@@ -42,6 +44,8 @@ from apeiria.webui.schemas.models import (
     SecurityAuditEventItem,
     SessionRefreshResponse,
     WebUIAccountItem,
+    WebUIBootstrapResponse,
+    WebUILocaleItem,
     WebUIPrincipalResponse,
 )
 
@@ -52,6 +56,7 @@ else:
     Principal = Any
 
 router = APIRouter()
+_PROJECT_ROOT = Path(__file__).resolve().parents[3]
 
 
 def _to_webui_principal_response(principal: Principal) -> WebUIPrincipalResponse:
@@ -127,6 +132,35 @@ async def get_current_user(
             detail=t("web_ui.auth.permission_denied"),
         )
     return _to_webui_principal_response(session.principal)
+
+
+@router.get("/bootstrap", response_model=WebUIBootstrapResponse)
+async def get_webui_bootstrap(
+    session: Annotated[AuthSession, Depends(require_control_panel)],
+) -> WebUIBootstrapResponse:
+    account = get_account_by_id(session.user_id)
+    if account is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=t("web_ui.auth.account_not_found"),
+        )
+    return WebUIBootstrapResponse(
+        principal=_to_webui_principal_response(session.principal),
+        account=WebUIAccountItem(
+            user_id=account.user_id,
+            username=account.username,
+            role=account.role,
+            is_disabled=account.is_disabled,
+            last_login_at=account.last_login_at,
+            password_changed_at=account.password_changed_at,
+        ),
+        locales=[
+            WebUILocaleItem(code="zh_CN", label="中文"),
+            WebUILocaleItem(code="en_US", label="English"),
+        ],
+        preferred_home="/dashboard",
+        frontend_workspace=frontend_workspace_name(_PROJECT_ROOT),
+    )
 
 
 @router.get("/me/account")

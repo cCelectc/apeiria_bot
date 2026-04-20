@@ -159,6 +159,6 @@ apeiria.drivers.toml
 .apeiria/
 
 # Frontend artifacts
-web/dist/
-web/node_modules/
-web/.vite/
+**/dist/
+**/node_modules/
+**/.vite/

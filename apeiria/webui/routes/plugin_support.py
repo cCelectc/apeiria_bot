@@ -41,6 +41,7 @@ from apeiria.webui.schemas.models import (
     PluginTogglePreviewResponse,
     PluginToggleResponse,
     PluginUpdateCheckItem,
+    PluginWorkspaceSettingsSummary,
 )
 
 
@@ -252,6 +253,18 @@ def to_plugin_toggle_preview_response(preview: Any) -> PluginTogglePreviewRespon
         requires_disable=preview.requires_disable,
         protected_dependents=preview.protected_dependents,
         missing_dependencies=preview.missing_dependencies,
+    )
+
+
+def to_plugin_workspace_settings_summary(
+    state: ConfigView,
+) -> PluginWorkspaceSettingsSummary:
+    return PluginWorkspaceSettingsSummary(
+        module_name=state.module_name,
+        section=state.section,
+        config_source=state.config_source,
+        has_config_model=state.has_config_model,
+        field_count=len(state.fields),
     )
 
 
