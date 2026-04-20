@@ -1,59 +1,64 @@
 # Apeiria Agent Guide
 
-This file is the contributor and agent navigation hub. Keep it short. Put detailed standards and procedures in `docs/*.md` or subsystem `README.md` files.
+Apeiria is a project-layer on top of [NoneBot 2](https://nonebot.dev/). It adds project-managed config, runtime bootstrap, a Web UI, a host-side CLI, and a set of builtin plugins.
 
-## Start here
+## Top-level layout
 
-- Project overview and quick start: [`README.md`](README.md)
-- Repo navigation and first-pass workflow: [`docs/agent-quickstart.md`](docs/agent-quickstart.md)
-- Architecture and ownership map: [`docs/architecture-map.md`](docs/architecture-map.md)
-- Backend engineering rules: [`docs/backend-guidelines.md`](docs/backend-guidelines.md)
-- Frontend engineering rules: [`docs/frontend-guidelines.md`](docs/frontend-guidelines.md)
-- Quality, verification, and review expectations: [`docs/code-quality.md`](docs/code-quality.md)
+```
+apeiria/
+├── bootstrap.py              # NoneBot bootstrap: config → init → framework → user plugins
+├── bot/                      # NoneBot entry + system-level hooks
+├── config/                   # 4 TOML file services (project/plugins/adapters/drivers)
+├── db/                       # Schema + migrations + ORM models
+├── access/                   # Permissions, rules, principal, audit, webui auth
+├── plugins/                  # Plugin governance (catalog/policy/install/settings/store)
+├── environment/              # uv envs + health + frontend build
+├── scheduler.py              # APScheduler facade
+├── log.py                    # Loguru sinks + in-memory ring
+├── webui/                    # FastAPI backend (auth + routes + schemas)
+├── chat/                     # Web Chat platform (NoneBot Adapter implementation)
+├── ai/                       # AI feature (conversation / memory / persona / tools / skills ...)
+├── builtin_plugins/          # Builtin NoneBot plugins (admin / help / render / ai / web_ui)
+├── cli/                      # Host CLI (env / plugin / adapter / driver / webui)
+├── i18n/                     # i18n runtime (dot-path keys, {prefix} substitution)
+├── utils/                    # Cross-cutting helpers (files / json / time / plugin_introspection)
+├── exceptions.py             # Domain exceptions
+└── _framework_loader.py, _user_loader.py   # Bootstrap helpers
+```
 
-## Directory map
+## Principles
 
-| Path | Responsibility | Read first |
-| --- | --- | --- |
-| `apeiria/app/` | Application services for plugins, access, chat, dashboard | [`docs/architecture-map.md`](docs/architecture-map.md) |
-| `apeiria/app/operations/` | Operations Plane services for environment, package, store, health | [`docs/architecture-map.md`](docs/architecture-map.md) |
-| `apeiria/infra/` | Config, runtime bootstrap, logging, scheduler, auth, metadata | [`docs/backend-guidelines.md`](docs/backend-guidelines.md) |
-| `apeiria/interfaces/` | CLI, HTTP, bot-facing entrypoints | [`docs/backend-guidelines.md`](docs/backend-guidelines.md) |
-| `apeiria/builtin_plugins/` | Built-in NoneBot plugins | [`docs/architecture-map.md`](docs/architecture-map.md) |
-| `web/` | Vue 3 + Vuetify Web UI | [`docs/frontend-guidelines.md`](docs/frontend-guidelines.md) |
-| `docs/` | Detailed contributor and agent docs | This directory |
-| `apeiria.*.toml` | Project-managed config files | [`README.md`](README.md) |
-| `user_bot.py` | Local user customization hook | [`README.md`](README.md) |
+- **Concern-oriented, not layer-oriented.** Each top-level directory is one functional domain.
+- **Do not re-wrap NoneBot.** Use `bot.send(event, text)`, `run_preprocessor`, `on_startup`, etc. directly.
+- **Files ≤ 400 lines by default, 500 ceiling** (schema + migrations exempt).
+- **One concern per module.** Service singletons live in the domain; helpers have role names (`registry.py`, `policy.py`, `catalog.py`), not `*_service.py` suffixes.
+- **No lazy `__getattr__` exports.** Import explicitly.
 
-## Task routing
+## Key runtime path
 
-- If you are changing runtime/bootstrap/config loading, read [`docs/architecture-map.md`](docs/architecture-map.md) and [`docs/backend-guidelines.md`](docs/backend-guidelines.md).
-- If you are changing environment init, package/store operations, or health checks, read [`docs/architecture-map.md`](docs/architecture-map.md) first and start in `apeiria/app/operations/`.
-- If you are changing HTTP routes, auth, or Web UI backend behavior, read [`docs/backend-guidelines.md`](docs/backend-guidelines.md) first.
-- If you are changing Vue components or frontend interaction patterns, read [`docs/frontend-guidelines.md`](docs/frontend-guidelines.md) first.
-- If you are changing shared standards, linting expectations, or verification steps, read [`docs/code-quality.md`](docs/code-quality.md).
-- If you are documenting a builtin plugin, prefer the plugin-local `README.md` as the canonical detailed home.
+1. `bot.py` → `apeiria.bot.entry.run()`
+2. `apeiria.bootstrap.initialize_nonebot()`
+3. `_framework_loader.load_framework()` loads framework deps + builtin plugins + runs DB schema ensure + registers bot hooks
+4. `_user_loader.load_user_plugins()` loads plugins declared in `apeiria.plugins.toml`
 
-## Detailed guides
+## Verification
 
-- [`docs/agent-quickstart.md`](docs/agent-quickstart.md)
-- [`docs/architecture-map.md`](docs/architecture-map.md)
-- [`docs/backend-guidelines.md`](docs/backend-guidelines.md)
-- [`docs/frontend-guidelines.md`](docs/frontend-guidelines.md)
-- [`docs/code-quality.md`](docs/code-quality.md)
+```bash
+./.venv/bin/apeiria status
+./.venv/bin/apeiria check
+./.venv/bin/apeiria run
 
-## Local module docs
+ruff check .
+ruff format .
+pyright
+```
 
-- Web UI plugin: [`apeiria/builtin_plugins/web_ui/README.md`](apeiria/builtin_plugins/web_ui/README.md)
-- Render plugin: [`apeiria/builtin_plugins/render/README.md`](apeiria/builtin_plugins/render/README.md)
-- Help plugin: [`apeiria/builtin_plugins/help/README.md`](apeiria/builtin_plugins/help/README.md)
-- Admin plugin: [`apeiria/builtin_plugins/admin/README.md`](apeiria/builtin_plugins/admin/README.md)
-- Web component docs: [`web/src/components/README.md`](web/src/components/README.md)
-- Web plugin docs: [`web/src/plugins/README.md`](web/src/plugins/README.md)
-- Web style docs: [`web/src/styles/README.md`](web/src/styles/README.md)
+## Config files
 
-## Maintenance rule
+Copy the `*.example.toml` templates and edit:
 
-- `AGENTS.md` is an index, not a handbook.
-- Put long-form instructions in `docs/*.md`.
-- Keep one canonical home per topic and replace duplication with links.
+- `apeiria.config.toml`
+- `apeiria.plugins.toml`
+- `apeiria.adapters.toml`
+- `apeiria.drivers.toml`
+- `user_bot.py` (project-local hooks; git-ignored)
