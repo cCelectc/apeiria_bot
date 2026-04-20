@@ -12,14 +12,14 @@ from nonebot.matcher import matchers
 from nonebot.rule import CommandRule
 
 from apeiria.builtin_plugins.help.utils import find_plugin_icon
-from apeiria.shared.command_prefix import get_command_prefix
-from apeiria.shared.i18n import t
-from apeiria.shared.plugin_introspection import (
+from apeiria.i18n import t
+from apeiria.plugins.metadata.api import CommandDeclaration, PluginType
+from apeiria.utils.command_prefix import get_command_prefix
+from apeiria.utils.plugin_introspection import (
     get_plugin_extra,
     get_plugin_name,
     get_plugin_source,
 )
-from apeiria.shared.plugin_metadata import CommandDeclaration, PluginType
 
 if TYPE_CHECKING:
     from apeiria.builtin_plugins.help.config import (

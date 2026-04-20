@@ -9,7 +9,7 @@ from nonebot.log import logger
 from nonebot_plugin_alconna import Alconna, Match, on_alconna
 from nonebot_plugin_alconna.uniseg import UniMessage
 
-from apeiria.app.access import access_service
+from apeiria.access.service import access_service
 from apeiria.builtin_plugins.help.config import HelpConfig, get_help_config
 from apeiria.builtin_plugins.help.generator import (
     HelpViewRole,
@@ -17,8 +17,8 @@ from apeiria.builtin_plugins.help.generator import (
     find_plugin_by_name,
     generate_help_list,
 )
-from apeiria.shared.command_prefix import get_command_prefix
-from apeiria.shared.i18n import t
+from apeiria.i18n import t
+from apeiria.utils.command_prefix import get_command_prefix
 
 _help = on_alconna(
     Alconna(

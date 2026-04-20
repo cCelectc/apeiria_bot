@@ -6,9 +6,9 @@ from arclet.alconna import CommandMeta
 from nonebot.adapters import Event  # noqa: TC002
 from nonebot_plugin_alconna import Alconna, on_alconna
 
-from apeiria.app.dashboard import dashboard_service
-from apeiria.shared.i18n import t
-from apeiria.shared.time_format import format_duration
+from apeiria.environment.dashboard import dashboard_service
+from apeiria.i18n import t
+from apeiria.utils.time_format import format_duration
 
 from .presenter import render_block
 from .utils import ensure_owner_message

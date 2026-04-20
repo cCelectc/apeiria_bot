@@ -23,10 +23,10 @@ dependencies = [
 ]
 
 [project.scripts]
-apeiria = "apeiria.interfaces.cli.main:main"
+apeiria = "apeiria.cli.main:main"
 
 [project.entry-points."nb_scripts"]
-apeiria = "apeiria.interfaces.cli.main:main"
+apeiria = "apeiria.cli.main:main"
 
 [tool.nonebot]
 plugin_dirs = []

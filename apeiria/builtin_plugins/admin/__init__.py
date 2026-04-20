@@ -5,8 +5,8 @@ from pathlib import Path
 from nonebot import require
 from nonebot.plugin import PluginMetadata, inherit_supported_adapters
 
-from apeiria.shared.i18n import load_locales, t
-from apeiria.shared.plugin_metadata import PluginExtraData, PluginType, UiExtra
+from apeiria.i18n import load_locales, t
+from apeiria.plugins.metadata.api import PluginExtraData, PluginType, UiExtra
 
 require("nonebot_plugin_alconna")
 require("nonebot_plugin_orm")

@@ -4,7 +4,7 @@ from typing import Literal, TypeVar
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from apeiria.infra.config import project_config_service
+from apeiria.config import project_config_service
 
 ModelT = TypeVar("ModelT", bound=BaseModel)
 

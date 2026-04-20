@@ -6,8 +6,8 @@ from arclet.alconna import CommandMeta
 from nonebot.adapters import Event  # noqa: TC002
 from nonebot_plugin_alconna import Alconna, on_alconna
 
-from apeiria.app.dashboard import dashboard_service
-from apeiria.shared.i18n import t
+from apeiria.environment.dashboard import dashboard_service
+from apeiria.i18n import t
 
 from .utils import ensure_owner_message
 

@@ -9,14 +9,14 @@ from arclet.alconna import CommandMeta
 from nonebot.adapters import Event  # noqa: TC002
 from nonebot_plugin_alconna import Alconna, on_alconna
 
-from apeiria.app.plugins import config_query_service
-from apeiria.shared.i18n import t
+from apeiria.i18n import t
+from apeiria.plugins import config_query_service
 
 from .presenter import render_block, render_list_block
 from .utils import ensure_owner_message
 
 if TYPE_CHECKING:
-    from apeiria.app.plugins.registration_service import DriverConfigStatus
+    from apeiria.plugins.registry import DriverConfigStatus
 
 _drivers = on_alconna(
     Alconna("drivers", meta=CommandMeta(description=t("admin.command.drivers"))),

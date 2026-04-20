@@ -1,0 +1,30 @@
+"""Core HTTP router aggregation (plugin-provided routers are added separately)."""
+
+from fastapi import APIRouter
+
+from apeiria.webui.routes.access import router as permission_router
+from apeiria.webui.routes.auth import router as auth_router
+from apeiria.webui.routes.chat import router as chat_router
+from apeiria.webui.routes.dashboard import router as dashboard_router
+from apeiria.webui.routes.logs import router as log_router
+from apeiria.webui.routes.plugin_catalog import router as plugin_catalog_router
+from apeiria.webui.routes.plugin_config import router as plugin_config_router
+from apeiria.webui.routes.plugin_management import router as plugin_management_router
+from apeiria.webui.routes.plugin_store import router as plugin_store_router
+
+router = APIRouter()
+router.include_router(auth_router, prefix="/auth", tags=["auth"])
+router.include_router(dashboard_router, prefix="/dashboard", tags=["dashboard"])
+router.include_router(
+    plugin_store_router,
+    prefix="/plugins/store",
+    tags=["plugin-store"],
+)
+router.include_router(plugin_catalog_router, prefix="/plugins", tags=["plugins"])
+router.include_router(plugin_config_router, prefix="/plugins", tags=["plugins"])
+router.include_router(plugin_management_router, prefix="/plugins", tags=["plugins"])
+router.include_router(permission_router, prefix="/permissions", tags=["permissions"])
+router.include_router(log_router, prefix="/logs", tags=["logs"])
+router.include_router(chat_router, prefix="/chat", tags=["chat"])
+
+__all__ = ["router"]

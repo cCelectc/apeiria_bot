@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from apeiria.shared.i18n import t
+from apeiria.i18n import t
 
 if TYPE_CHECKING:
     from collections.abc import Iterable

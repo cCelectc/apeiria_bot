@@ -6,7 +6,7 @@ from arclet.alconna import CommandMeta
 from nonebot.adapters import Bot, Event  # noqa: TC002
 from nonebot_plugin_alconna import Alconna, on_alconna
 
-from apeiria.shared.i18n import t
+from apeiria.i18n import t
 
 from .presenter import render_block
 from .utils import ensure_owner_message

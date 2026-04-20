@@ -16,7 +16,7 @@ from apeiria.builtin_plugins.help.utils import (
     resolve_data_file,
 )
 from apeiria.builtin_plugins.render import template_to_pic
-from apeiria.shared.i18n import t
+from apeiria.i18n import t
 
 if TYPE_CHECKING:
     from .config import HelpConfig

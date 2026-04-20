@@ -7,14 +7,14 @@ from typing import TYPE_CHECKING
 import nonebot
 from nonebot.adapters import Event  # noqa: TC002
 
-from apeiria.app.plugins import plugin_governance_service
-from apeiria.shared.i18n import t
-from apeiria.shared.plugin_introspection import get_plugin_name
+from apeiria.i18n import t
+from apeiria.plugins import plugin_governance_service
+from apeiria.utils.plugin_introspection import get_plugin_name
 
 if TYPE_CHECKING:
     from nonebot.plugin import Plugin
 
-    from apeiria.app.plugins import PluginCatalogEntry
+    from apeiria.plugins import PluginCatalogEntry
 
 
 def resolve_plugin_query(

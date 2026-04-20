@@ -7,17 +7,17 @@ from nonebot import require
 from nonebot.log import logger
 from nonebot.plugin import PluginMetadata
 
-from apeiria.infra.config.plugins import plugin_config_service
-from apeiria.infra.config.webui_config import WebUIConfig
-from apeiria.shared.i18n import load_locales, t
-from apeiria.shared.plugin_introspection import prewarm_plugin_module_caches
-from apeiria.shared.plugin_metadata import (
+from apeiria.config.plugins import plugin_config_service
+from apeiria.config.webui_config import WebUIConfig
+from apeiria.i18n import load_locales, t
+from apeiria.plugins.metadata.api import (
     ConfigExtra,
     PluginExtraData,
     PluginType,
     RegisterConfig,
     UiExtra,
 )
+from apeiria.utils.plugin_introspection import prewarm_plugin_module_caches
 
 require("nonebot_plugin_localstore")
 require("nonebot_plugin_orm")
@@ -75,9 +75,18 @@ def _mount_routes() -> None:
     app = nonebot.get_app()
     from nonebot_plugin_localstore import get_plugin_data_dir
 
-    from apeiria.interfaces.http.routes.router import router
+    from apeiria.webui.plugin_routers import iter_plugin_routers
+    from apeiria.webui.routes.router import router
 
     app.include_router(router, prefix="/api")
+
+    # Plugin-owned HTTP routers (only present when the owning plugin loaded).
+    for binding in iter_plugin_routers():
+        app.include_router(
+            binding.router,
+            prefix=f"/api{binding.prefix}",
+            tags=list(binding.tags),
+        )
 
     # Redirect uvicorn access logs to file instead of console
     access_logger = logging.getLogger("uvicorn.access")
@@ -114,7 +123,7 @@ def _mount_routes() -> None:
             t("web_ui.startup.ready", url=_web_ui_url()),
         )
 
-        from apeiria.infra.webui_auth.secrets import get_secret_file_path
+        from apeiria.access.webui_auth.secrets import get_secret_file_path
 
         logger.info(
             "{}",

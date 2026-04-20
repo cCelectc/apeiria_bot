@@ -17,9 +17,8 @@ from apeiria.builtin_plugins.help.renderer import (
     build_render_cache_key,
     cleanup_stale_disk_cache,
 )
-from apeiria.shared.command_prefix import get_command_prefix
-from apeiria.shared.i18n import load_locales, t
-from apeiria.shared.plugin_metadata import (
+from apeiria.i18n import load_locales, t
+from apeiria.plugins.metadata.api import (
     ConfigExtra,
     HelpExtra,
     PluginExtraData,
@@ -27,6 +26,7 @@ from apeiria.shared.plugin_metadata import (
     RegisterConfig,
     UiExtra,
 )
+from apeiria.utils.command_prefix import get_command_prefix
 
 require("nonebot_plugin_alconna")
 require("nonebot_plugin_localstore")

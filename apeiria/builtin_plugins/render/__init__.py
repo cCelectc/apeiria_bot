@@ -9,8 +9,8 @@ from markdown_it import MarkdownIt
 from nonebot import get_driver
 from nonebot.plugin import PluginMetadata
 
-from apeiria.shared.i18n import load_locales, t
-from apeiria.shared.plugin_metadata import (
+from apeiria.i18n import load_locales, t
+from apeiria.plugins.metadata.api import (
     ConfigExtra,
     PluginExtraData,
     PluginType,

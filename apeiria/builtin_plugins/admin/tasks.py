@@ -7,8 +7,8 @@ from arclet.alconna import Args, CommandMeta
 from nonebot.adapters import Event  # noqa: TC002
 from nonebot_plugin_alconna import Alconna, Match, on_alconna
 
-from apeiria.infra.scheduler.service import scheduler_service
-from apeiria.shared.i18n import t
+from apeiria.i18n import t
+from apeiria.scheduler import scheduler_service
 
 from .presenter import render_block, render_list_block
 from .utils import ensure_owner_message
