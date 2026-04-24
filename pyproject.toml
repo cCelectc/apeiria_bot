@@ -127,3 +127,15 @@ extraPaths = ["."]
 exclude = ["**/__pycache__", "**/.*", ".venv", ".apeiria", "data", "web", "**/node_modules"]
 venvPath = "."
 venv = ".venv"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+norecursedirs = [
+    ".venv",
+    ".apeiria",
+    "data",
+    "web",
+    "node_modules",
+    "dist",
+]
