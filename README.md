@@ -52,15 +52,27 @@ Apeiria 提供这些核心能力：
 ```text
 .
 ├── apeiria/
-│   ├── app/                # 应用层服务：插件、权限、聊天、仪表盘
-│   ├── builtin_plugins/    # 内置 NoneBot 插件
-│   ├── infra/              # 基础设施：配置、运行时、数据库、日志、认证
-│   ├── interfaces/         # 对外入口：CLI、HTTP、Bot
-│   └── shared/             # 共享类型、工具与 i18n
-├── web/                    # Vue 3 + Vuetify Web UI
-├── bot.py                  # Bot 运行入口
-├── user_bot.example.py     # 本地自定义启动扩展示例
-└── apeiria.*.example.toml  # 配置模板
+│   ├── bootstrap.py              # NoneBot 启动编排：配置 → 框架 → 用户插件
+│   ├── bot/                      # Bot 入口与系统级钩子
+│   ├── config/                   # 项目 / 插件 / 适配器 / 驱动 TOML 服务
+│   ├── db/                       # ORM、迁移与运行期数据库预检
+│   ├── access/                   # 权限、规则、审计、Web UI 认证
+│   ├── plugins/                  # 插件治理、目录、安装、配置、商店
+│   ├── environment/              # `uv` 环境、健康检查、前端构建
+│   ├── webui/                    # FastAPI 管理后端与 Schema
+│   ├── chat/                     # Web Chat 平台适配层
+│   ├── ai/                       # AI 能力域（会话 / 记忆 / 工具 / Persona）
+│   ├── builtin_plugins/          # 内置 NoneBot 插件
+│   ├── cli/                      # 宿主机 CLI
+│   ├── i18n/                     # 国际化运行时
+│   ├── utils/                    # 跨领域工具
+│   ├── _framework_loader.py      # 框架层加载辅助
+│   └── _user_loader.py           # 用户插件加载辅助
+├── web/                          # 默认 Vue 3 + Vuetify Web UI 工作区
+├── tests/                        # Python 测试
+├── bot.py                        # Bot 运行入口
+├── user_bot.example.py           # 本地自定义启动扩展示例
+└── apeiria.*.example.toml        # 配置模板
 ```
 
 ## 快速开始
@@ -249,6 +261,8 @@ docker compose up -d --build
 ## 前端开发
 
 Web UI 使用 Vue 3 + Vuetify。
+
+默认前端工作区为 `web/`。如需切换到其他实验性前端目录，可设置环境变量 `APEIRIA_WEBUI_FRONTEND_DIR=<目录名>`。
 
 ```bash
 cd web

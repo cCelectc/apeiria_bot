@@ -147,6 +147,19 @@ class HealthService:
                 ),
                 detail=environment.frontend_build_detail or "unknown",
             ),
+            self._build_check(
+                key="database_revision",
+                ok=(
+                    not database_status.is_legacy and not database_status.needs_upgrade
+                ),
+                detail=(
+                    "legacy"
+                    if database_status.is_legacy
+                    else "upgrade_needed"
+                    if database_status.needs_upgrade
+                    else "current"
+                ),
+            ),
         ]
         status = "ok" if all(check.ok for check in checks) else "warning"
         return HealthSnapshot(

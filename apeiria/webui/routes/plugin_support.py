@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any, TypeVar
 
 from fastapi import HTTPException
 
@@ -43,6 +43,11 @@ from apeiria.webui.schemas.models import (
     PluginUpdateCheckItem,
     PluginWorkspaceSettingsSummary,
 )
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+_ResultT = TypeVar("_ResultT")
 
 
 def to_orphan_plugin_config_response(
@@ -183,6 +188,19 @@ def raise_settings_error(exc: Exception) -> None:
     if isinstance(exc, ValueError):
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     raise exc
+
+
+def run_settings_action(
+    action: "Callable[..., _ResultT]",
+    /,
+    *args: object,
+    **kwargs: object,
+) -> _ResultT:
+    try:
+        return action(*args, **kwargs)
+    except Exception as exc:
+        raise_settings_error(exc)
+        raise AssertionError("unreachable") from exc
 
 
 def to_plugin_item_response(

@@ -17,7 +17,7 @@ from apeiria.plugins.store.update_check import (
 )
 from apeiria.webui.auth import require_control_panel, require_owner
 from apeiria.webui.routes.plugin_support import (
-    raise_settings_error,
+    run_settings_action,
     to_orphan_plugin_config_response,
     to_plugin_item_response,
     to_plugin_readme_response,
@@ -149,13 +149,9 @@ async def get_plugin_workspace(
 
     settings = None
     if plugin_item.can_edit_config:
-        try:
-            settings = to_plugin_workspace_settings_summary(
-                config_query_service.get_plugin_view(module_name)
-            )
-        except Exception as exc:
-            raise_settings_error(exc)
-            raise AssertionError("unreachable") from exc
+        settings = to_plugin_workspace_settings_summary(
+            run_settings_action(config_query_service.get_plugin_view, module_name)
+        )
 
     return PluginWorkspaceResponse(
         plugin=plugin_item,

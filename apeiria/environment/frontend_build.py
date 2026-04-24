@@ -23,12 +23,8 @@ class FrontendBuildStatus:
     detail: str
 
 
-def web_dir(project_root: Path) -> Path:
-    return frontend_workspace_dir(project_root)
-
-
 def dist_dir(project_root: Path) -> Path:
-    return web_dir(project_root) / "dist"
+    return frontend_workspace_dir(project_root) / "dist"
 
 
 def frontend_workspace_dir(project_root: Path) -> Path:
@@ -61,7 +57,7 @@ def build_meta_path(project_root: Path) -> Path:
 
 
 def compute_frontend_fingerprint(project_root: Path) -> str:
-    root = web_dir(project_root)
+    root = frontend_workspace_dir(project_root)
     digest = hashlib.sha256()
     for path in _fingerprint_inputs(root):
         if not path.exists():

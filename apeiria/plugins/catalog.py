@@ -80,225 +80,87 @@ class _PluginItemFacts:
     dependent_plugins: list[str]
 
 
+@dataclass(frozen=True)
+class _PluginCatalogState:
+    context: _PluginListContext
+    loaded_plugins: dict[str, Plugin]
+    explicit_modules: set[str]
+    disabled_modules: set[str]
+    required_by_module: dict[str, list[str]]
+    display_name_by_module: dict[str, str]
+    dependency_modules: set[str]
+    candidate_modules: set[str]
+
+
 class PluginGovernanceService:
     """List and mutate governance-facing plugin state."""
 
-    async def list_plugins(self) -> list[PluginCatalogEntry]:  # noqa: C901, PLR0915
-        enabled_map = await plugin_catalog_repository.get_enabled_map()
-        info_map = await plugin_catalog_repository.get_plugin_info_map()
+    async def list_plugins(self) -> list[PluginCatalogEntry]:
         policy_map = await plugin_catalog_repository.get_plugin_policy_map()
-        project_plugin_config = plugin_config_service.read_project_plugin_config()
-        explicit_modules = set(project_plugin_config["modules"])
-        builtin_modules = set(iter_builtin_plugin_modules())
-        package_bindings = project_plugin_config["packages"]
-        pending_uninstall_modules = get_pending_uninstall_plugin_modules()
-        loaded_plugins = {
-            plugin.module_name: plugin for plugin in nonebot.get_loaded_plugins()
-        }
-        loaded_modules = set(loaded_plugins)
-
-        required_by_module: dict[str, list[str]] = {}
-        display_name_by_module: dict[str, str] = {}
-
-        for module_name, plugin in loaded_plugins.items():
-            required_by_module[module_name] = get_plugin_required_plugins(plugin)
-            display_name_by_module[module_name] = get_plugin_name(plugin)
-
-        pending_uninstall_modules = self._expand_pending_uninstall_modules(
-            loaded_plugins=loaded_plugins,
-            explicit_modules=explicit_modules,
-            seed_modules=pending_uninstall_modules,
-            required_by_module=required_by_module,
-        )
-        top_level_packages = packages_distributions()
-        disabled_modules = await get_disabled_plugin_modules()
-        build_context = _PluginListContext(
-            enabled_map=enabled_map,
-            info_map=info_map,
-            package_bindings=package_bindings,
-            pending_uninstall_modules=pending_uninstall_modules,
-            top_level_packages=top_level_packages,
-        )
-
-        unloaded_declared_modules = (
-            explicit_modules | builtin_modules
-        ) - loaded_modules
-        for module_name in sorted(unloaded_declared_modules):
-            required_by_module[module_name] = get_module_required_plugins(module_name)
-            display_name_by_module.setdefault(module_name, module_name)
-
-        dependency_modules = {
-            dependency
-            for dependencies in required_by_module.values()
-            for dependency in dependencies
-        }
-        importable_modules = {
-            module_name
-            for module_name in (dependency_modules | explicit_modules)
-            if is_module_importable(module_name)
-        }
-        visible_dependency_modules = {
-            module_name
-            for module_name in dependency_modules
-            if module_name in importable_modules
-        }
-        candidate_modules = (
-            loaded_modules
-            | explicit_modules
-            | builtin_modules
-            | visible_dependency_modules
-        )
-
-        dependent_name_map: dict[str, set[str]] = {
-            module_name: set() for module_name in candidate_modules
-        }
-        for owner_module, dependencies in required_by_module.items():
-            if owner_module in pending_uninstall_modules:
-                continue
-            if owner_module in disabled_modules:
-                continue
-            owner_name = display_name_by_module.get(owner_module, owner_module)
-            for dependency in dependencies:
-                if dependency not in dependent_name_map:
-                    dependent_name_map[dependency] = set()
-                dependent_name_map[dependency].add(owner_name)
+        catalog = await self._build_catalog_state()
+        dependent_name_map = self._build_dependent_name_map(catalog)
 
         items: list[PluginCatalogEntry] = []
-        for module_name in sorted(candidate_modules):
-            is_loaded = module_name in loaded_plugins
-            is_explicit = module_name in explicit_modules
-            is_dependency = module_name in dependency_modules
-            required_plugins = required_by_module.get(module_name, [])
-            dependent_plugins = sorted(dependent_name_map.get(module_name, set()))
-            facts = _PluginItemFacts(
-                is_explicit=is_explicit,
-                is_dependency=is_dependency,
-                required_plugins=required_plugins,
-                dependent_plugins=dependent_plugins,
+        for module_name in sorted(catalog.candidate_modules):
+            facts = self._build_plugin_facts(
+                module_name,
+                catalog=catalog,
+                dependent_plugins=sorted(dependent_name_map.get(module_name, set())),
+            )
+            plugin = catalog.loaded_plugins.get(module_name)
+            access_mode = (
+                policy_map[module_name].access_mode
+                if module_name in policy_map
+                else "default_allow"
             )
 
-            if is_loaded:
-                policy = policy_map.get(module_name)
+            if plugin is not None:
                 plugin_item = self._build_loaded_plugin_entry(
-                    plugin=loaded_plugins[module_name],
-                    context=build_context,
+                    plugin=plugin,
+                    context=catalog.context,
                     facts=facts,
-                    access_mode=policy.access_mode if policy else "default_allow",
+                    access_mode=access_mode,
                 )
                 if plugin_item is not None:
                     items.append(plugin_item)
                 continue
 
-            policy = policy_map.get(module_name)
             plugin_item = self._build_unloaded_plugin_entry(
                 module_name=module_name,
-                context=build_context,
+                context=catalog.context,
                 facts=facts,
-                access_mode=policy.access_mode if policy else "default_allow",
+                access_mode=access_mode,
             )
             if plugin_item is not None:
                 items.append(plugin_item)
         return self._collapse_child_plugins(items)
 
     async def get_plugin(self, module_name: str) -> PluginCatalogEntry | None:
-        enabled_map = await plugin_catalog_repository.get_enabled_map()
-        info_map = await plugin_catalog_repository.get_plugin_info_map()
-        policy = await plugin_catalog_repository.get_plugin_policy(module_name)
-        project_plugin_config = plugin_config_service.read_project_plugin_config()
-        explicit_modules = set(project_plugin_config["modules"])
-        builtin_modules = set(iter_builtin_plugin_modules())
-        package_bindings = project_plugin_config["packages"]
-        pending_uninstall_modules = get_pending_uninstall_plugin_modules()
-        loaded_plugins = {
-            plugin.module_name: plugin for plugin in nonebot.get_loaded_plugins()
-        }
-        required_by_module: dict[str, list[str]] = {}
-        display_name_by_module: dict[str, str] = {}
-
-        for loaded_module_name, plugin in loaded_plugins.items():
-            required_by_module[loaded_module_name] = get_plugin_required_plugins(plugin)
-            display_name_by_module[loaded_module_name] = get_plugin_name(plugin)
-
-        pending_uninstall_modules = self._expand_pending_uninstall_modules(
-            loaded_plugins=loaded_plugins,
-            explicit_modules=explicit_modules,
-            seed_modules=pending_uninstall_modules,
-            required_by_module=required_by_module,
-        )
-        disabled_modules = await get_disabled_plugin_modules()
-
-        loaded_modules = set(loaded_plugins)
-        unloaded_declared_modules = (
-            explicit_modules | builtin_modules
-        ) - loaded_modules
-        for unloaded_module_name in unloaded_declared_modules:
-            required_by_module[unloaded_module_name] = get_module_required_plugins(
-                unloaded_module_name
-            )
-            display_name_by_module.setdefault(
-                unloaded_module_name,
-                unloaded_module_name,
-            )
-
-        dependency_modules = {
-            dependency
-            for dependencies in required_by_module.values()
-            for dependency in dependencies
-        }
-        importable_modules = {
-            candidate_module
-            for candidate_module in (dependency_modules | explicit_modules)
-            if is_module_importable(candidate_module)
-        }
-        visible_dependency_modules = {
-            dependency
-            for dependency in dependency_modules
-            if dependency in importable_modules
-        }
-        candidate_modules = (
-            loaded_modules
-            | explicit_modules
-            | builtin_modules
-            | visible_dependency_modules
-        )
-        if module_name not in candidate_modules:
+        catalog = await self._build_catalog_state()
+        if module_name not in catalog.candidate_modules:
             return None
 
-        dependent_plugins = sorted(
-            {
-                display_name_by_module.get(owner_module, owner_module)
-                for owner_module, dependencies in required_by_module.items()
-                if owner_module not in pending_uninstall_modules
-                if owner_module not in disabled_modules
-                if module_name in dependencies
-            }
+        facts = self._build_plugin_facts(
+            module_name,
+            catalog=catalog,
+            dependent_plugins=sorted(
+                self._build_dependent_name_map(catalog).get(module_name, set())
+            ),
         )
-        facts = _PluginItemFacts(
-            is_explicit=module_name in explicit_modules,
-            is_dependency=module_name in dependency_modules,
-            required_plugins=required_by_module.get(module_name, []),
-            dependent_plugins=dependent_plugins,
-        )
-        build_context = _PluginListContext(
-            enabled_map=enabled_map,
-            info_map=info_map,
-            package_bindings=package_bindings,
-            pending_uninstall_modules=pending_uninstall_modules,
-            top_level_packages=packages_distributions(),
-        )
+        policy = await plugin_catalog_repository.get_plugin_policy(module_name)
         access_mode = policy.access_mode if policy else "default_allow"
 
-        plugin = loaded_plugins.get(module_name)
+        plugin = catalog.loaded_plugins.get(module_name)
         if plugin is not None:
             return self._build_loaded_plugin_entry(
                 plugin=plugin,
-                context=build_context,
+                context=catalog.context,
                 facts=facts,
                 access_mode=access_mode,
             )
         return self._build_unloaded_plugin_entry(
             module_name=module_name,
-            context=build_context,
+            context=catalog.context,
             facts=facts,
             access_mode=access_mode,
         )
@@ -414,6 +276,104 @@ class PluginGovernanceService:
 
     async def cleanup_orphan_plugin_configs(self) -> list[OrphanPluginConfigItem]:
         return await plugin_config_cleanup_service.cleanup_orphan_plugin_configs()
+
+    async def _build_catalog_state(self) -> _PluginCatalogState:
+        enabled_map = await plugin_catalog_repository.get_enabled_map()
+        info_map = await plugin_catalog_repository.get_plugin_info_map()
+        project_plugin_config = plugin_config_service.read_project_plugin_config()
+        explicit_modules = set(project_plugin_config["modules"])
+        builtin_modules = set(iter_builtin_plugin_modules())
+        loaded_plugins = {
+            plugin.module_name: plugin for plugin in nonebot.get_loaded_plugins()
+        }
+        required_by_module: dict[str, list[str]] = {}
+        display_name_by_module: dict[str, str] = {}
+
+        for loaded_module_name, plugin in loaded_plugins.items():
+            required_by_module[loaded_module_name] = get_plugin_required_plugins(plugin)
+            display_name_by_module[loaded_module_name] = get_plugin_name(plugin)
+
+        pending_uninstall_modules = self._expand_pending_uninstall_modules(
+            loaded_plugins=loaded_plugins,
+            explicit_modules=explicit_modules,
+            seed_modules=get_pending_uninstall_plugin_modules(),
+            required_by_module=required_by_module,
+        )
+        loaded_modules = set(loaded_plugins)
+        unloaded_declared_modules = (
+            explicit_modules | builtin_modules
+        ) - loaded_modules
+        for unloaded_module_name in sorted(unloaded_declared_modules):
+            required_by_module[unloaded_module_name] = get_module_required_plugins(
+                unloaded_module_name
+            )
+            display_name_by_module.setdefault(
+                unloaded_module_name,
+                unloaded_module_name,
+            )
+
+        dependency_modules = {
+            dependency
+            for dependencies in required_by_module.values()
+            for dependency in dependencies
+        }
+        visible_dependency_modules = {
+            dependency
+            for dependency in dependency_modules
+            if is_module_importable(dependency)
+        }
+        return _PluginCatalogState(
+            context=_PluginListContext(
+                enabled_map=enabled_map,
+                info_map=info_map,
+                package_bindings=project_plugin_config["packages"],
+                pending_uninstall_modules=pending_uninstall_modules,
+                top_level_packages=packages_distributions(),
+            ),
+            loaded_plugins=loaded_plugins,
+            explicit_modules=explicit_modules,
+            disabled_modules=await get_disabled_plugin_modules(),
+            required_by_module=required_by_module,
+            display_name_by_module=display_name_by_module,
+            dependency_modules=dependency_modules,
+            candidate_modules=(
+                loaded_modules
+                | explicit_modules
+                | builtin_modules
+                | visible_dependency_modules
+            ),
+        )
+
+    def _build_dependent_name_map(
+        self,
+        catalog: _PluginCatalogState,
+    ) -> dict[str, set[str]]:
+        dependent_name_map: dict[str, set[str]] = {
+            module_name: set() for module_name in catalog.candidate_modules
+        }
+        for owner_module, dependencies in catalog.required_by_module.items():
+            if owner_module in catalog.context.pending_uninstall_modules:
+                continue
+            if owner_module in catalog.disabled_modules:
+                continue
+            owner_name = catalog.display_name_by_module.get(owner_module, owner_module)
+            for dependency in dependencies:
+                dependent_name_map.setdefault(dependency, set()).add(owner_name)
+        return dependent_name_map
+
+    def _build_plugin_facts(
+        self,
+        module_name: str,
+        *,
+        catalog: _PluginCatalogState,
+        dependent_plugins: list[str],
+    ) -> _PluginItemFacts:
+        return _PluginItemFacts(
+            is_explicit=module_name in catalog.explicit_modules,
+            is_dependency=module_name in catalog.dependency_modules,
+            required_plugins=catalog.required_by_module.get(module_name, []),
+            dependent_plugins=dependent_plugins,
+        )
 
     def _resolve_listed_installed_package(
         self,

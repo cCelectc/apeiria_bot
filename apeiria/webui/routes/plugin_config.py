@@ -12,7 +12,7 @@ from apeiria.plugins import (
 )
 from apeiria.webui.auth import require_control_panel
 from apeiria.webui.routes.plugin_support import (
-    raise_settings_error,
+    run_settings_action,
     to_adapter_config_response,
     to_driver_config_response,
     to_plugin_config_response,
@@ -110,14 +110,11 @@ async def update_core_settings(
     payload: PluginSettingsUpdateRequest,
     _: Annotated[Any, Depends(require_control_panel)],
 ) -> PluginSettingsResponse:
-    try:
-        state = config_mutation_service.update_core_view(
-            payload.values,
-            payload.clear,
-        )
-    except Exception as exc:
-        raise_settings_error(exc)
-        raise AssertionError("unreachable") from exc
+    state = run_settings_action(
+        config_mutation_service.update_core_view,
+        payload.values,
+        payload.clear,
+    )
     return to_plugin_settings_response(state)
 
 
@@ -126,11 +123,7 @@ async def update_core_settings_raw(
     payload: PluginSettingsRawUpdateRequest,
     _: Annotated[Any, Depends(require_control_panel)],
 ) -> PluginRawSettingsResponse:
-    try:
-        state = config_mutation_service.update_core_text(payload.text)
-    except Exception as exc:
-        raise_settings_error(exc)
-        raise AssertionError("unreachable") from exc
+    state = run_settings_action(config_mutation_service.update_core_text, payload.text)
     return to_plugin_raw_settings_response(state)
 
 
@@ -152,11 +145,7 @@ async def get_plugin_settings(
     module_name: str,
     _: Annotated[Any, Depends(require_control_panel)],
 ) -> PluginSettingsResponse:
-    try:
-        state = config_query_service.get_plugin_view(module_name)
-    except Exception as exc:
-        raise_settings_error(exc)
-        raise AssertionError("unreachable") from exc
+    state = run_settings_action(config_query_service.get_plugin_view, module_name)
     return to_plugin_settings_response(state)
 
 
@@ -165,11 +154,7 @@ async def get_plugin_settings_raw(
     module_name: str,
     _: Annotated[Any, Depends(require_control_panel)],
 ) -> PluginRawSettingsResponse:
-    try:
-        state = config_query_service.get_plugin_text(module_name)
-    except Exception as exc:
-        raise_settings_error(exc)
-        raise AssertionError("unreachable") from exc
+    state = run_settings_action(config_query_service.get_plugin_text, module_name)
     return to_plugin_raw_settings_response(state)
 
 
@@ -179,15 +164,12 @@ async def update_plugin_settings(
     payload: PluginSettingsUpdateRequest,
     _: Annotated[Any, Depends(require_control_panel)],
 ) -> PluginSettingsResponse:
-    try:
-        state = config_mutation_service.update_plugin_view(
-            module_name,
-            payload.values,
-            payload.clear,
-        )
-    except Exception as exc:
-        raise_settings_error(exc)
-        raise AssertionError("unreachable") from exc
+    state = run_settings_action(
+        config_mutation_service.update_plugin_view,
+        module_name,
+        payload.values,
+        payload.clear,
+    )
     return to_plugin_settings_response(state)
 
 
@@ -197,14 +179,11 @@ async def update_plugin_settings_raw(
     payload: PluginSettingsRawUpdateRequest,
     _: Annotated[Any, Depends(require_control_panel)],
 ) -> PluginRawSettingsResponse:
-    try:
-        state = config_mutation_service.update_plugin_text(
-            module_name,
-            payload.text,
-        )
-    except Exception as exc:
-        raise_settings_error(exc)
-        raise AssertionError("unreachable") from exc
+    state = run_settings_action(
+        config_mutation_service.update_plugin_text,
+        module_name,
+        payload.text,
+    )
     return to_plugin_raw_settings_response(state)
 
 
@@ -217,12 +196,9 @@ async def validate_plugin_settings_raw(
     payload: PluginSettingsRawUpdateRequest,
     _: Annotated[Any, Depends(require_control_panel)],
 ) -> PluginSettingsRawValidationResponse:
-    try:
-        state = config_mutation_service.validate_plugin_text(
-            module_name,
-            payload.text,
-        )
-    except Exception as exc:
-        raise_settings_error(exc)
-        raise AssertionError("unreachable") from exc
+    state = run_settings_action(
+        config_mutation_service.validate_plugin_text,
+        module_name,
+        payload.text,
+    )
     return to_raw_validation_response(state)
