@@ -2,7 +2,7 @@
 
 ## Project Structure & Module Organization
 
-`apeiria/` is the main Python package. Keep work organized by concern: `access/`, `ai/`, `bot/`, `cli/`, `config/`, `db/`, `environment/`, `plugins/`, and `webui/` each own a functional domain. `bootstrap.py`, `_framework_loader.py`, and `_user_loader.py` define the runtime startup path. `web/` contains the Vue + Vuetify Web UI, `tests/` holds pytest coverage, and `data/` stores runtime data and planning docs. Root-level `apeiria.*.example.toml` and `user_bot.example.py` are the templates contributors should copy for local setup.
+`apeiria/` is the main Python package. Keep work organized by concern: `access/`, `ai/`, `bot/`, `cli/`, `config/`, `db/`, `environment/`, `plugins/`, `runtime/`, and `webui/` each own a functional domain. `bootstrap.py` remains the compatibility entrypoint, but new project-level startup and orchestration logic should prefer `apeiria/runtime/*`. Put project entry normalization in `apeiria/runtime/entries.py`. For management-facing behavior, prefer `ApeiriaControlPlane` over route-local service wiring when that behavior is already represented as runtime-level coordination; current usage is especially on read-side paths. `web/` contains the Vue + Vuetify Web UI, and `tests/` holds pytest coverage. Root-level `apeiria.*.example.toml` and `user_bot.example.py` are the templates contributors should copy for local setup.
 
 ## Build, Test, and Development Commands
 
@@ -23,7 +23,7 @@ Target Python 3.10+, 4-space indentation, and Ruff’s 88-character line length.
 
 ## Testing Guidelines
 
-Place backend tests under `tests/` using `test_*.py` names. Current suites cover `cli/` and `db/`; extend nearby files when possible. Use targeted runs like `uv run pytest tests/db/test_runtime_preflight.py -q` during development, then finish with `uv run pytest`, `uv run ruff check .`, and `uv run pyright`.
+Place backend tests under `tests/` using `test_*.py` names. Current suites cover `cli/`, `db/`, and `runtime/`; extend nearby files when possible. Use targeted runs like `uv run pytest tests/db/test_runtime_preflight.py -q` during development, then finish with `uv run pytest`, `uv run ruff check .`, and `uv run pyright`.
 
 ## Commit & Pull Request Guidelines
 

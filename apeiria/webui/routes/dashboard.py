@@ -10,6 +10,7 @@ from fastapi.responses import StreamingResponse
 from apeiria.environment import environment_service
 from apeiria.environment.dashboard import dashboard_service
 from apeiria.i18n import t
+from apeiria.runtime.context import get_current_runtime
 from apeiria.webui.auth import require_control_panel
 from apeiria.webui.schemas.models import (
     DashboardEventItem,
@@ -21,6 +22,17 @@ from apeiria.webui.schemas.models import (
 )
 
 router = APIRouter()
+_RUNTIME_UNAVAILABLE_DETAIL = "Apeiria runtime control plane is unavailable."
+
+
+def _require_runtime_control_plane() -> Any:
+    runtime = get_current_runtime()
+    if runtime is None or runtime.control_plane is None:
+        raise HTTPException(
+            status_code=503,
+            detail=_RUNTIME_UNAVAILABLE_DETAIL,
+        )
+    return runtime.control_plane
 
 
 @router.get("/status", response_model=StatusResponse)
@@ -28,7 +40,7 @@ async def get_status(
     _: Annotated[Any, Depends(require_control_panel)],
 ) -> StatusResponse:
     """Return the current dashboard status snapshot."""
-    snapshot = await dashboard_service.get_status_snapshot()
+    snapshot = await _require_runtime_control_plane().get_dashboard_status()
     return StatusResponse(
         status=snapshot.status,
         uptime=snapshot.uptime,

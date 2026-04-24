@@ -1,13 +1,10 @@
 from __future__ import annotations
 
-import nonebot
-
-from apeiria.bootstrap import initialize_nonebot
+from apeiria.runtime.bootstrapper import ApeiriaBootstrapper
 
 
 def run() -> None:
-    initialize_nonebot()
-    nonebot.run()
+    ApeiriaBootstrapper().run()
 
 
 if __name__ == "__main__":

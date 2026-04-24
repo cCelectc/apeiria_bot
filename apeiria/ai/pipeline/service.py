@@ -29,6 +29,10 @@ from apeiria.ai.reply_strategy import (
 from apeiria.ai.reply_strategy.wake_gate import evaluate_wake
 from apeiria.ai.retention import ai_retention_service
 from apeiria.ai.skills.service import ai_skill_service
+from apeiria.runtime.entries import (
+    ApeiriaEntry,
+    build_ai_trace_entry,
+)
 
 if TYPE_CHECKING:
     from nonebot.adapters import Bot, Event
@@ -110,6 +114,7 @@ class AIRuntimeService:
             result = await self._run_reply_pipeline(
                 session,
                 trace_id=f"ai_trace_{uuid4().hex}",
+                entry=build_ai_trace_entry("message", event=event),
                 request=AIRuntimeReplyRequest(
                     identity=identity,
                     message_text=message_text,
@@ -147,6 +152,7 @@ class AIRuntimeService:
             return await self._run_reply_pipeline(
                 session,
                 trace_id=f"ai_trace_{uuid4().hex}",
+                entry=build_ai_trace_entry("future_task"),
                 request=AIRuntimeReplyRequest(
                     identity=identity,
                     message_text=task.description,
@@ -163,6 +169,7 @@ class AIRuntimeService:
         session: "AsyncSession",
         *,
         trace_id: str,
+        entry: ApeiriaEntry,
         request: AIRuntimeReplyRequest,
         wake_context: WakeContext | None = None,
     ) -> AIRuntimeReplyResult | None:
@@ -211,9 +218,12 @@ class AIRuntimeService:
         response = gen.response
         if response is None or not response.content.strip():
             logger.debug(
-                "AI trace {} skipped reply: empty model response for session {}",
+                "AI trace {} skipped reply: empty model response for session {} "
+                "entry_kind={} entry_trigger={}",
                 trace_id,
                 identity.session_id,
+                entry.kind,
+                entry.trigger,
             )
             return None
 
@@ -234,7 +244,8 @@ class AIRuntimeService:
             reply_strategy_service.notify_replied(identity.session_id)
         logger.info(
             "AI trace {} generated {} reply for session {} with source={} "
-            "model={} memories={} tool_observations={}",
+            "model={} memories={} tool_observations={} entry_kind={} "
+            "entry_trigger={}",
             trace_id,
             request.runtime_mode,
             identity.session_id,
@@ -242,13 +253,13 @@ class AIRuntimeService:
             response.model_name,
             len(inputs.recalled_memories),
             len(gen.skill_runtime.turns),
+            entry.kind,
+            entry.trigger,
         )
         return AIRuntimeReplyResult(
             reply_text=response.content.strip(),
             delivery_result=gen.delivery_result,
         )
-
-
 ai_runtime_service = AIRuntimeService()
 
 __all__ = ["AIRuntimeService", "ai_runtime_service"]

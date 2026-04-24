@@ -2,69 +2,37 @@ from __future__ import annotations
 
 """Top-level NoneBot bootstrap used by bot.py and CLI entrypoints."""
 
-from typing import Any, cast
-
-import nonebot
-
-from apeiria._framework_loader import load_framework
 from apeiria._user_loader import load_user_plugins, load_user_setup
-from apeiria.config import driver_config_service, project_config_service
-from apeiria.environment.extension_project import (
-    inject_plugin_site_packages,
-    process_pending_plugin_module_uninstalls,
-    process_pending_plugin_requirement_removals,
+from apeiria.runtime.bootstrapper import ApeiriaBootstrapper
+from apeiria.runtime.phases.config import (
+    resolve_driver_kwargs as _resolve_driver_kwargs,
 )
-from apeiria.plugins.config_bootstrap import bootstrap_plugin_configs
+from apeiria.runtime.phases.config import run_config_phase as _run_config_phase
+from apeiria.runtime.phases.environment import (
+    run_environment_phase as _run_environment_phase,
+)
+from apeiria.runtime.phases.framework import run_framework_phase as _run_framework_phase
 
 
 def resolve_driver_kwargs(config_kwargs: dict[str, object]) -> dict[str, object]:
-    """Resolve driver kwargs with the runtime precedence used by the project.
+    """Compatibility export for config-phase driver resolution."""
+    return _resolve_driver_kwargs(config_kwargs)
 
-    Project-managed driver config wins over values loaded from config files.
-    If the project does not pin a driver, fall back to env-derived config so
-    existing NoneBot behavior remains intact.
-    """
-    project_driver_kwargs = driver_config_service.get_project_driver_kwargs()
 
-    if project_driver_kwargs.get("driver"):
-        config_kwargs.pop("driver", None)
-        return cast("dict[str, object]", project_driver_kwargs)
-    if "driver" in config_kwargs:
-        return {}
-
-    env_config = project_config_service.read_env_config()
-    env_driver = env_config.get("driver")
-    if isinstance(env_driver, str) and env_driver:
-        return {"driver": env_driver}
-    return {}
+def _initialize_nonebot_legacy() -> None:
+    """Compatibility wrapper while startup logic moves into explicit phases."""
+    _run_environment_phase()
+    _run_config_phase()
+    load_user_setup()
+    _run_framework_phase()
+    load_user_plugins()
 
 
 def initialize_nonebot() -> None:
-    """Initialize NoneBot and load all project-managed runtime layers."""
-    process_pending_plugin_requirement_removals()
-    process_pending_plugin_module_uninstalls()
-    inject_plugin_site_packages()
-    # Plugin config bootstrap must run after extension site-packages are exposed,
-    # otherwise plugins installed only in `.apeiria/extensions` cannot be scanned.
-    bootstrap_plugin_configs()
-
-    config_kwargs = project_config_service.get_project_config_kwargs()
-    driver_kwargs = resolve_driver_kwargs(config_kwargs)
-
-    nonebot.init(
-        **cast("dict[str, Any]", config_kwargs),
-        **cast("dict[str, Any]", driver_kwargs),
-    )
-    nonebot.load_from_toml(
-        str(project_config_service.default_config_path().with_name("pyproject.toml"))
-    )
-
-    load_user_setup()
-    load_framework()
-    load_user_plugins()
+    """Initialize NoneBot through the runtime bootstrapper."""
+    ApeiriaBootstrapper().initialize_nonebot()
 
 
 def run() -> None:
     """Convenience entrypoint for CLI-style execution."""
-    initialize_nonebot()
-    nonebot.run()
+    ApeiriaBootstrapper().run()
