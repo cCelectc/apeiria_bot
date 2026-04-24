@@ -45,6 +45,7 @@ include = ["apeiria*"]
 
 [dependency-groups]
 dev = [
+    "pytest",
     "pyright[nodejs]",
     "ruff",
 ]
