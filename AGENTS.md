@@ -1,64 +1,34 @@
-# Apeiria Agent Guide
+# Repository Guidelines
 
-Apeiria is a project-layer on top of [NoneBot 2](https://nonebot.dev/). It adds project-managed config, runtime bootstrap, a Web UI, a host-side CLI, and a set of builtin plugins.
+## Project Structure & Module Organization
 
-## Top-level layout
+`apeiria/` is the main Python package. Keep work organized by concern: `access/`, `ai/`, `bot/`, `cli/`, `config/`, `db/`, `environment/`, `plugins/`, and `webui/` each own a functional domain. `bootstrap.py`, `_framework_loader.py`, and `_user_loader.py` define the runtime startup path. `web/` contains the Vue + Vuetify Web UI, `tests/` holds pytest coverage, and `data/` stores runtime data and planning docs. Root-level `apeiria.*.example.toml` and `user_bot.example.py` are the templates contributors should copy for local setup.
 
-```
-apeiria/
-├── bootstrap.py              # NoneBot bootstrap: config → init → framework → user plugins
-├── bot/                      # NoneBot entry + system-level hooks
-├── config/                   # 4 TOML file services (project/plugins/adapters/drivers)
-├── db/                       # Schema + migrations + ORM models
-├── access/                   # Permissions, rules, principal, audit, webui auth
-├── plugins/                  # Plugin governance (catalog/policy/install/settings/store)
-├── environment/              # uv envs + health + frontend build
-├── scheduler.py              # APScheduler facade
-├── log.py                    # Loguru sinks + in-memory ring
-├── webui/                    # FastAPI backend (auth + routes + schemas)
-├── chat/                     # Web Chat platform (NoneBot Adapter implementation)
-├── ai/                       # AI feature (conversation / memory / persona / tools / skills ...)
-├── builtin_plugins/          # Builtin NoneBot plugins (admin / help / render / ai / web_ui)
-├── cli/                      # Host CLI (env / plugin / adapter / driver / webui)
-├── i18n/                     # i18n runtime (dot-path keys, {prefix} substitution)
-├── utils/                    # Cross-cutting helpers (files / json / time / plugin_introspection)
-├── exceptions.py             # Domain exceptions
-└── _framework_loader.py, _user_loader.py   # Bootstrap helpers
-```
+## Build, Test, and Development Commands
 
-## Principles
+Use `uv` for backend setup and `pnpm` for the frontend.
 
-- **Concern-oriented, not layer-oriented.** Each top-level directory is one functional domain.
-- **Do not re-wrap NoneBot.** Use `bot.send(event, text)`, `run_preprocessor`, `on_startup`, etc. directly.
-- **Files ≤ 400 lines by default, 500 ceiling** (schema + migrations exempt).
-- **One concern per module.** Service singletons live in the domain; helpers have role names (`registry.py`, `policy.py`, `catalog.py`), not `*_service.py` suffixes.
-- **No lazy `__getattr__` exports.** Import explicitly.
+- `uv sync --group dev`: install backend and dev dependencies into `.venv`.
+- `./.venv/bin/apeiria env init`: create runtime files and the extension environment.
+- `./.venv/bin/apeiria run` or `./.venv/bin/python bot.py`: start the bot locally.
+- `./.venv/bin/apeiria check` and `./.venv/bin/apeiria status`: project health checks.
+- `uv run ruff check .` and `uv run ruff format . --check`: backend lint and format validation.
+- `uv run pyright`: advisory static type check.
+- `uv run pytest`: run the Python test suite.
+- `cd web && pnpm install && pnpm lint && pnpm build`: install, lint, and build the Web UI.
 
-## Key runtime path
+## Coding Style & Naming Conventions
 
-1. `bot.py` → `apeiria.bot.entry.run()`
-2. `apeiria.bootstrap.initialize_nonebot()`
-3. `_framework_loader.load_framework()` loads framework deps + builtin plugins + runs DB schema ensure + registers bot hooks
-4. `_user_loader.load_user_plugins()` loads plugins declared in `apeiria.plugins.toml`
+Target Python 3.10+, 4-space indentation, and Ruff’s 88-character line length. Prefer explicit imports; do not add lazy `__getattr__` exports. Follow the repo’s concern-oriented structure and keep one concern per module. New helper modules should use descriptive role names such as `registry.py`, `policy.py`, or `catalog.py`, not generic `*_service.py`. For Vue and TypeScript in `web/`, match the existing 2-space indentation and keep composables in `web/src/composables/`.
 
-## Verification
+## Testing Guidelines
 
-```bash
-./.venv/bin/apeiria status
-./.venv/bin/apeiria check
-./.venv/bin/apeiria run
+Place backend tests under `tests/` using `test_*.py` names. Current suites cover `cli/` and `db/`; extend nearby files when possible. Use targeted runs like `uv run pytest tests/db/test_runtime_preflight.py -q` during development, then finish with `uv run pytest`, `uv run ruff check .`, and `uv run pyright`.
 
-ruff check .
-ruff format .
-pyright
-```
+## Commit & Pull Request Guidelines
 
-## Config files
+Recent history follows Conventional Commit style such as `feat(webui): ...`, `refactor(db): ...`, and `chore: ...`. Keep subjects imperative and scoped when the area is clear. PRs should summarize behavior changes, note config or migration impact, list the verification commands you ran, and include screenshots for `web/` UI changes.
 
-Copy the `*.example.toml` templates and edit:
+## Security & Configuration Tips
 
-- `apeiria.config.toml`
-- `apeiria.plugins.toml`
-- `apeiria.adapters.toml`
-- `apeiria.drivers.toml`
-- `user_bot.py` (project-local hooks; git-ignored)
+Do not commit local secrets or machine-specific overrides. Start from `apeiria.config.example.toml`, `apeiria.plugins.example.toml`, `apeiria.adapters.example.toml`, `apeiria.drivers.example.toml`, and `user_bot.example.py`, then keep real values in local copies and `.env*` files.
