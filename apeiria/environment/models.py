@@ -56,6 +56,14 @@ class EnvironmentRepairPlan:
 
 
 @dataclass(frozen=True)
+class ProjectConfigBootstrapResult:
+    """Created/skipped project config summary for first-run setup."""
+
+    created: list[str] = field(default_factory=list)
+    skipped: list[str] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
 class FrontendBuildSnapshot:
     """Current Web UI frontend build status."""
 

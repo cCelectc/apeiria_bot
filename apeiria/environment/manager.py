@@ -27,6 +27,7 @@ from apeiria.environment.models import (
     FrontendBuildRunResult,
     FrontendBuildSnapshot,
     FrontendBuildStreamEvent,
+    ProjectConfigBootstrapResult,
 )
 
 if TYPE_CHECKING:
@@ -206,6 +207,44 @@ class EnvironmentService:
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_text("", encoding="utf-8")
 
+    def _project_config_templates(self) -> tuple[tuple[Path, Path], ...]:
+        return (
+            (
+                self._project_root / "apeiria.config.example.toml",
+                self._project_root / "apeiria.config.toml",
+            ),
+            (
+                self._project_root / "apeiria.plugins.example.toml",
+                self._project_root / "apeiria.plugins.toml",
+            ),
+            (
+                self._project_root / "apeiria.adapters.example.toml",
+                self._project_root / "apeiria.adapters.toml",
+            ),
+            (
+                self._project_root / "apeiria.drivers.example.toml",
+                self._project_root / "apeiria.drivers.toml",
+            ),
+        )
+
+    def ensure_project_config_files(self) -> ProjectConfigBootstrapResult:
+        created: list[str] = []
+        skipped: list[str] = []
+
+        for source, destination in self._project_config_templates():
+            if destination.exists():
+                skipped.append(destination.name)
+                continue
+            if not source.exists():
+                msg = f"missing config template: {source.name}"
+                raise RuntimeError(msg)
+
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(source, destination)
+            created.append(destination.name)
+
+        return ProjectConfigBootstrapResult(created=created, skipped=skipped)
+
     def run_uv_for_main_project(self, *args: str) -> None:
         executable = find_uv_executable()
         cache_dir = self.uv_cache_dir()
@@ -267,14 +306,20 @@ class EnvironmentService:
             args.append("--no-dev")
         self.run_uv_for_main_project(*args)
 
-    def initialize_user_environment(self, *, no_dev: bool = False) -> None:
+    def initialize_user_environment(
+        self,
+        *,
+        no_dev: bool = False,
+    ) -> ProjectConfigBootstrapResult:
+        result = self.ensure_project_config_files()
         self.ensure_runtime_env_files()
         self.sync_main_project(no_dev=no_dev)
         self.ensure_plugin_project()
         self.sync_plugin_project(locked=True)
+        return result
 
-    def repair_user_environment(self) -> None:
-        self.initialize_user_environment()
+    def repair_user_environment(self) -> ProjectConfigBootstrapResult:
+        return self.initialize_user_environment()
 
     def validate_database_schema(self) -> None:
         from apeiria.bootstrap import initialize_nonebot

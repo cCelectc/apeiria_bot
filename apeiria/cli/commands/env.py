@@ -3,11 +3,15 @@ from __future__ import annotations
 import subprocess
 import sys
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import click
 
 from apeiria.cli.i18n import _
 from apeiria.environment import environment_service, health_service
+
+if TYPE_CHECKING:
+    from apeiria.environment.models import ProjectConfigBootstrapResult
 
 
 def project_root() -> Path:
@@ -19,8 +23,11 @@ def main_config_path(root: Path | None = None) -> Path:
     return environment_service.main_config_path()
 
 
-def initialize_user_environment(*, no_dev: bool = False) -> None:
-    environment_service.initialize_user_environment(no_dev=no_dev)
+def initialize_user_environment(
+    *,
+    no_dev: bool = False,
+) -> "ProjectConfigBootstrapResult":
+    return environment_service.initialize_user_environment(no_dev=no_dev)
 
 
 def repair_user_environment() -> None:
@@ -106,10 +113,19 @@ def env() -> None:
 def env_init(*, no_dev: bool) -> None:
     check_system_dependencies()
     try:
-        initialize_user_environment(no_dev=no_dev)
+        result = initialize_user_environment(no_dev=no_dev)
     except RuntimeError as exc:
         raise_click_runtime_error(exc)
+    for filename in result.created:
+        click.echo(_("created config: {filename}").format(filename=filename))
+    for filename in result.skipped:
+        click.echo(_("skipped config: {filename}").format(filename=filename))
     click.echo(_("initialized environment"))
+    click.echo(
+        _(
+            "hint: if you need local startup customization, see user_bot.example.py"
+        )
+    )
 
 
 @env.command("repair", help=_("Repair Apeiria user environment with uv."))
@@ -212,7 +228,7 @@ def _startup_check_hint(error_text: str) -> str | None:
         file_name in normalized for file_name in config_files
     ):
         return _(
-            "create project config files from examples, then run `apeiria env init`"
+            "run `apeiria env init`"
         )
 
     rules: tuple[tuple[str, str], ...] = (

@@ -86,9 +86,7 @@ MESSAGES_ZH_CN = {
     "startup check failed: {error}\nnext step: {hint}": (
         "启动校验失败：{error}\n下一步：{hint}"
     ),
-    "create project config files from examples, then run `apeiria env init`": (
-        "先从示例创建项目配置文件，再执行 `apeiria env init`"
-    ),
+    "run `apeiria env init`": "执行 `apeiria env init`",
     "check plugin config conflicts in project plugins and rerun check": (
         "检查项目插件配置冲突后，重新执行校验"
     ),
@@ -132,7 +130,12 @@ MESSAGES_ZH_CN = {
     "Search registered plugin config only.": "仅搜索已登记插件配置。",
     "Search registered adapter config only.": "仅搜索已登记适配器配置。",
     "initialized: {target}": "已初始化：{target}",
+    "created config: {filename}": "已创建配置：{filename}",
+    "skipped config: {filename}": "已跳过配置：{filename}",
     "initialized environment": "已初始化用户环境",
+    "hint: if you need local startup customization, see user_bot.example.py": (
+        "提示：如需本地启动自定义，可参考 user_bot.example.py"
+    ),
     "repaired environment": "已修复用户环境",
     "exported files: {count}": "已导出文件：{count}",
     "export target: {target}": "导出目标：{target}",

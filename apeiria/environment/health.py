@@ -17,22 +17,22 @@ _CHECK_MESSAGES: dict[tuple[str, str], tuple[str, str | None]] = {
     ("main_config", "present"): ("Project config file is present.", None),
     ("main_config", "missing"): (
         "Missing `apeiria.config.toml`.",
-        "Copy `apeiria.config.example.toml` to `apeiria.config.toml`.",
+        "Run `apeiria env init`.",
     ),
     ("plugin_config", "present"): ("Plugin config file is present.", None),
     ("plugin_config", "missing"): (
         "Missing `apeiria.plugins.toml`.",
-        "Copy `apeiria.plugins.example.toml` to `apeiria.plugins.toml`.",
+        "Run `apeiria env init`.",
     ),
     ("adapter_config", "present"): ("Adapter config file is present.", None),
     ("adapter_config", "missing"): (
         "Missing `apeiria.adapters.toml`.",
-        "Copy `apeiria.adapters.example.toml` to `apeiria.adapters.toml`.",
+        "Run `apeiria env init`.",
     ),
     ("driver_config", "present"): ("Driver config file is present.", None),
     ("driver_config", "missing"): (
         "Missing `apeiria.drivers.toml`.",
-        "Copy `apeiria.drivers.example.toml` to `apeiria.drivers.toml`.",
+        "Run `apeiria env init`.",
     ),
     ("main_venv", "present"): ("Main Python environment is present.", None),
     ("main_venv", "missing"): (
@@ -146,19 +146,6 @@ class HealthService:
                     and not environment.frontend_build_is_stale
                 ),
                 detail=environment.frontend_build_detail or "unknown",
-            ),
-            self._build_check(
-                key="database_revision",
-                ok=(
-                    not database_status.is_legacy and not database_status.needs_upgrade
-                ),
-                detail=(
-                    "legacy"
-                    if database_status.is_legacy
-                    else "upgrade_needed"
-                    if database_status.needs_upgrade
-                    else "current"
-                ),
             ),
         ]
         status = "ok" if all(check.ok for check in checks) else "warning"

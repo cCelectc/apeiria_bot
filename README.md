@@ -13,24 +13,14 @@
 
 ## 快速开始
 
-### 1. 准备配置文件
-
-```bash
-cp apeiria.config.example.toml apeiria.config.toml
-cp apeiria.plugins.example.toml apeiria.plugins.toml
-cp apeiria.adapters.example.toml apeiria.adapters.toml
-cp apeiria.drivers.example.toml apeiria.drivers.toml
-cp user_bot.example.py user_bot.py
-```
-
-### 2. 初始化环境
+### 1. 初始化环境
 
 ```bash
 uv sync
 ./.venv/bin/apeiria env init
 ```
 
-### 3. 启动项目
+### 2. 启动项目
 
 ```bash
 ./.venv/bin/apeiria run
