@@ -11,6 +11,7 @@ from apeiria.ai.model.source import AISourceCreateInput, ai_source_service
 from apeiria.ai.model.sources import (
     AISourcePresetType,
     UnsupportedAISourcePresetError,
+    resolve_capability_type_for_preset,
     resolve_client_type_for_preset,
 )
 
@@ -55,14 +56,14 @@ class SourcesAdminMixin:
         extra_config: dict[str, object],
         actor_username: str | None = None,
     ) -> "AISourceDefinition":
+        _ = capability_type
+        coerced_preset_type = coerce_source_preset_type(preset_type)
         created = await ai_source_service.create_source(
             AISourceCreateInput(
                 name=name,
-                capability_type=capability_type,  # type: ignore[arg-type]
-                client_type=resolve_client_type_for_preset(
-                    coerce_source_preset_type(preset_type)
-                ),
-                preset_type=coerce_source_preset_type(preset_type),
+                capability_type=resolve_capability_type_for_preset(coerced_preset_type),
+                client_type=resolve_client_type_for_preset(coerced_preset_type),
+                preset_type=coerced_preset_type,
                 api_base=api_base,
                 api_key_env_name=api_key_env_name,
                 enabled=enabled,
@@ -93,15 +94,15 @@ class SourcesAdminMixin:
         extra_config: dict[str, object],
         actor_username: str | None = None,
     ) -> "AISourceDefinition | None":
+        _ = capability_type
+        coerced_preset_type = coerce_source_preset_type(preset_type)
         updated = await ai_source_service.update_source(
             source_id=source_id,
             create_input=AISourceCreateInput(
                 name=name,
-                capability_type=capability_type,  # type: ignore[arg-type]
-                client_type=resolve_client_type_for_preset(
-                    coerce_source_preset_type(preset_type)
-                ),
-                preset_type=coerce_source_preset_type(preset_type),
+                capability_type=resolve_capability_type_for_preset(coerced_preset_type),
+                client_type=resolve_client_type_for_preset(coerced_preset_type),
+                preset_type=coerced_preset_type,
                 api_base=api_base,
                 api_key_env_name=api_key_env_name,
                 enabled=enabled,

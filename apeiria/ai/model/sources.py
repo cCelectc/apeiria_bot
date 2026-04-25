@@ -115,3 +115,12 @@ def resolve_client_type_for_preset(
         if item.preset_type == preset_type:
             return item.client_type
     raise UnsupportedAISourcePresetError
+
+
+def resolve_capability_type_for_preset(
+    preset_type: AISourcePresetType,
+) -> AISourceCapabilityType:
+    for item in SOURCE_PRESETS:
+        if item.preset_type == preset_type:
+            return item.capability_type
+    raise UnsupportedAISourcePresetError

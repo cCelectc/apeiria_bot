@@ -121,3 +121,47 @@ def test_source_delete_is_blocked_when_source_models_exist(
         ]
 
     asyncio.run(run())
+
+
+def test_source_admin_normalizes_capability_type_from_preset(
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    from apeiria.ai.admin.sources import SourcesAdminMixin
+
+    monkeypatch.setattr(database_runtime, "_project_root", tmp_path)
+    database_runtime.ensure_ready()
+    admin = SourcesAdminMixin()
+
+    async def run() -> None:
+        created = await admin.create_source(
+            name="Embedding Source",
+            capability_type="chat_completion",
+            preset_type="openai_compatible_embedding",
+            api_base="https://api.example.test/v1",
+            api_key_env_name="OPENAI_API_KEY",
+            enabled=True,
+            timeout_seconds=30,
+            custom_headers={},
+            extra_config={},
+        )
+        assert created.capability_type == "embedding"
+        assert created.client_type == "openai"
+
+        updated = await admin.update_source(
+            source_id=created.source_id,
+            name="Rerank Source",
+            capability_type="text_to_speech",
+            preset_type="generic_rerank_api",
+            api_base="https://api.example.test/rerank",
+            api_key_env_name="RERANK_API_KEY",
+            enabled=True,
+            timeout_seconds=15,
+            custom_headers={},
+            extra_config={},
+        )
+        assert updated is not None
+        assert updated.capability_type == "rerank"
+        assert updated.client_type == "generic_rerank"
+
+    asyncio.run(run())
