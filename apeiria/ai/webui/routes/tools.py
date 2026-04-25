@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Annotated, Any
 
 from fastapi import APIRouter, Depends, Query
 
-from apeiria.ai.admin.service import ai_admin_service
+from apeiria.ai.admin.control_service import ai_control_admin_service
 from apeiria.ai.tools.models import AIToolPolicy
 from apeiria.ai.webui.schemas import (
     AICapabilityItem,
@@ -61,7 +61,7 @@ async def list_ai_tools(
         if allowed_only
         else None
     )
-    tools = ai_admin_service.list_tools(policy=policy)
+    tools = ai_control_admin_service.list_tools(policy=policy)
     return [to_ai_tool_item(item) for item in tools]
 
 
@@ -81,7 +81,7 @@ async def list_ai_skills(
         if allowed_only
         else None
     )
-    skills = ai_admin_service.list_skills(policy=policy)
+    skills = ai_control_admin_service.list_skills(policy=policy)
     return [to_ai_skill_item(item) for item in skills]
 
 
@@ -90,7 +90,7 @@ async def preview_ai_tool_policy(
     payload: AIToolPolicyPreviewRequest,
     _: Annotated[Any, Depends(require_control_panel)],
 ) -> AIToolPolicyPreviewItem:
-    policy = ai_admin_service.preview_tool_policy(
+    policy = ai_control_admin_service.preview_tool_policy(
         scope_type=payload.scope_type,
         is_tome=payload.is_tome,
         allow_read_only_tools=payload.allow_read_only_tools,
@@ -104,7 +104,7 @@ async def preview_ai_tool_intents(
     payload: AIToolIntentPreviewRequest,
     _: Annotated[Any, Depends(require_control_panel)],
 ) -> list[AIToolIntentPreviewItem]:
-    intents = await ai_admin_service.preview_tool_intents(
+    intents = await ai_control_admin_service.preview_tool_intents(
         message_text=payload.message_text,
         scope_type=payload.scope_type,
         is_tome=payload.is_tome,
@@ -121,7 +121,7 @@ async def preview_ai_skill_policy_debug(
 ) -> AIToolPolicyPreviewItem:
     """Advanced debug alias retained during the boundary-freeze phase."""
 
-    policy = ai_admin_service.preview_tool_policy(
+    policy = ai_control_admin_service.preview_tool_policy(
         scope_type=payload.scope_type,
         is_tome=payload.is_tome,
         allow_read_only_tools=payload.allow_read_only_tools,
@@ -134,7 +134,7 @@ async def preview_ai_skill_policy_debug(
 async def list_ai_tool_policy_bindings(
     _: Annotated[Any, Depends(require_control_panel)],
 ) -> list[AIToolPolicyBindingItem]:
-    rows = await ai_admin_service.list_tool_policy_bindings()
+    rows = await ai_control_admin_service.list_tool_policy_bindings()
     return [to_ai_tool_policy_binding_item(item) for item in rows]
 
 
@@ -143,7 +143,7 @@ async def create_ai_tool_policy_binding(
     payload: AIToolPolicyBindingCreateRequest,
     session: Annotated["AuthSession", Depends(require_control_panel)],
 ) -> AIToolPolicyBindingItem:
-    item = await ai_admin_service.create_tool_policy_binding(
+    item = await ai_control_admin_service.create_tool_policy_binding(
         scope_type=payload.scope_type,
         scope_id=payload.scope_id,
         allow_read_only_tools=payload.allow_read_only_tools,
@@ -158,7 +158,7 @@ async def update_ai_tool_policy_binding(
     payload: AIToolPolicyBindingUpdateRequest,
     session: Annotated["AuthSession", Depends(require_control_panel)],
 ) -> AIToolPolicyBindingItem | None:
-    item = await ai_admin_service.update_tool_policy_binding(
+    item = await ai_control_admin_service.update_tool_policy_binding(
         binding_id=payload.binding_id,
         allow_read_only_tools=payload.allow_read_only_tools,
         capability_mode=payload.capability_mode,
@@ -174,7 +174,7 @@ async def delete_ai_tool_policy_binding(
     session: Annotated["AuthSession", Depends(require_control_panel)],
     binding_id: Annotated[str, Query(min_length=1)],
 ) -> dict[str, bool]:
-    deleted = await ai_admin_service.delete_tool_policy_binding(
+    deleted = await ai_control_admin_service.delete_tool_policy_binding(
         binding_id=binding_id,
         actor_username=_actor_username_from_claims(session),
     )
@@ -186,7 +186,7 @@ async def preview_ai_capability(
     payload: AICapabilityPreviewRequest,
     _: Annotated[Any, Depends(require_control_panel)],
 ) -> AICapabilityPreviewItem:
-    preview = ai_admin_service.preview_capability(
+    preview = ai_control_admin_service.preview_capability(
         capability_name=payload.capability_name,
         scope_type=payload.scope_type,
         is_tome=payload.is_tome,
@@ -203,7 +203,7 @@ async def preview_ai_skill_capability_debug(
 ) -> AICapabilityPreviewItem:
     """Advanced debug alias retained during the boundary-freeze phase."""
 
-    preview = ai_admin_service.preview_capability(
+    preview = ai_control_admin_service.preview_capability(
         capability_name=payload.capability_name,
         scope_type=payload.scope_type,
         is_tome=payload.is_tome,
@@ -217,7 +217,7 @@ async def preview_ai_skill_capability_debug(
 async def list_ai_capabilities(
     _: Annotated[Any, Depends(require_control_panel)],
 ) -> list[AICapabilityItem]:
-    rows = ai_admin_service.list_capabilities()
+    rows = ai_control_admin_service.list_capabilities()
     return [to_ai_capability_item(item) for item in rows]
 
 
@@ -226,7 +226,7 @@ async def list_ai_tool_executions(
     _: Annotated[Any, Depends(require_control_panel)],
     scene_id: Annotated[str, Query(min_length=1)],
 ) -> list[AIToolExecutionItem]:
-    rows = await ai_admin_service.list_tool_executions(
+    rows = await ai_control_admin_service.list_tool_executions(
         session_id=scene_id,
     )
     return [to_ai_tool_execution_item(item) for item in rows]
@@ -239,7 +239,7 @@ async def list_ai_skill_executions_debug(
 ) -> list[AIToolExecutionItem]:
     """Advanced debug alias retained during the boundary-freeze phase."""
 
-    rows = await ai_admin_service.list_tool_executions(
+    rows = await ai_control_admin_service.list_tool_executions(
         session_id=scene_id,
     )
     return [to_ai_tool_execution_item(item) for item in rows]

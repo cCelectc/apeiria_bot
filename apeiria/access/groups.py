@@ -10,7 +10,7 @@ from apeiria.utils.group_state import decode_disabled_plugins
 from apeiria.utils.plugin_introspection import get_plugin_protection_reason
 
 if TYPE_CHECKING:
-    from apeiria.db.models.group import GroupConsole
+    from apeiria.access.groups_repository import GroupStateRow
 
 
 @dataclass(frozen=True)
@@ -36,7 +36,7 @@ class GroupService:
         rows = await group_repository.list_groups()
         return [self._to_record(row) for row in rows]
 
-    def _to_record(self, row: "GroupConsole") -> GroupRecord:
+    def _to_record(self, row: "GroupStateRow") -> GroupRecord:
         raw_disabled_plugins = getattr(row, "disabled_plugins", "[]")
         disabled_plugins = [
             module

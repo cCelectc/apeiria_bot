@@ -116,6 +116,7 @@ def env_init(*, no_dev: bool) -> None:
         result = initialize_user_environment(no_dev=no_dev)
     except RuntimeError as exc:
         raise_click_runtime_error(exc)
+        return
     for filename in result.created:
         click.echo(_("created config: {filename}").format(filename=filename))
     for filename in result.skipped:

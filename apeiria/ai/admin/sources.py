@@ -4,8 +4,6 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, cast
 
-from nonebot_plugin_orm import get_session
-
 from apeiria.ai.admin.audit import record_ai_admin_audit
 from apeiria.ai.admin.errors import AISourceDeleteBlockedError
 from apeiria.ai.model.source import AISourceCreateInput, ai_source_service
@@ -40,8 +38,7 @@ class SourcesAdminMixin:
         return ai_source_service.list_presets()
 
     async def list_sources(self) -> list["AISourceDefinition"]:
-        async with get_session() as session:
-            return await ai_source_service.list_sources(session)
+        return await ai_source_service.list_sources(None)
 
     async def create_source(  # noqa: PLR0913
         self,
@@ -57,32 +54,29 @@ class SourcesAdminMixin:
         extra_config: dict[str, object],
         actor_username: str | None = None,
     ) -> "AISourceDefinition":
-        async with get_session() as session:
-            await ai_source_service.create_source(
-                session,
-                AISourceCreateInput(
-                    name=name,
-                    capability_type=capability_type,  # type: ignore[arg-type]
-                    client_type=resolve_client_type_for_preset(
-                        coerce_source_preset_type(preset_type)
-                    ),
-                    preset_type=coerce_source_preset_type(preset_type),
-                    api_base=api_base,
-                    api_key_env_name=api_key_env_name,
-                    enabled=enabled,
-                    timeout_seconds=timeout_seconds,
-                    custom_headers=custom_headers,
-                    extra_config=extra_config,
+        created = await ai_source_service.create_source(
+            None,
+            AISourceCreateInput(
+                name=name,
+                capability_type=capability_type,  # type: ignore[arg-type]
+                client_type=resolve_client_type_for_preset(
+                    coerce_source_preset_type(preset_type)
                 ),
-            )
-            await session.commit()
-            created = (await ai_source_service.list_sources(session))[-1]
-            record_ai_admin_audit(
-                "ai_source_created",
-                actor_username=actor_username,
-                detail=f"{created.source_id} {created.name}",
-            )
-            return created
+                preset_type=coerce_source_preset_type(preset_type),
+                api_base=api_base,
+                api_key_env_name=api_key_env_name,
+                enabled=enabled,
+                timeout_seconds=timeout_seconds,
+                custom_headers=custom_headers,
+                extra_config=extra_config,
+            ),
+        )
+        record_ai_admin_audit(
+            "ai_source_created",
+            actor_username=actor_username,
+            detail=f"{created.source_id} {created.name}",
+        )
+        return created
 
     async def update_source(  # noqa: PLR0913
         self,
@@ -99,40 +93,31 @@ class SourcesAdminMixin:
         extra_config: dict[str, object],
         actor_username: str | None = None,
     ) -> "AISourceDefinition | None":
-        async with get_session() as session:
-            row = await ai_source_service.update_source(
-                session,
-                source_id=source_id,
-                create_input=AISourceCreateInput(
-                    name=name,
-                    capability_type=capability_type,  # type: ignore[arg-type]
-                    client_type=resolve_client_type_for_preset(
-                        coerce_source_preset_type(preset_type)
-                    ),
-                    preset_type=coerce_source_preset_type(preset_type),
-                    api_base=api_base,
-                    api_key_env_name=api_key_env_name,
-                    enabled=enabled,
-                    timeout_seconds=timeout_seconds,
-                    custom_headers=custom_headers,
-                    extra_config=extra_config,
+        updated = await ai_source_service.update_source(
+            None,
+            source_id=source_id,
+            create_input=AISourceCreateInput(
+                name=name,
+                capability_type=capability_type,  # type: ignore[arg-type]
+                client_type=resolve_client_type_for_preset(
+                    coerce_source_preset_type(preset_type)
                 ),
+                preset_type=coerce_source_preset_type(preset_type),
+                api_base=api_base,
+                api_key_env_name=api_key_env_name,
+                enabled=enabled,
+                timeout_seconds=timeout_seconds,
+                custom_headers=custom_headers,
+                extra_config=extra_config,
+            ),
+        )
+        if updated is not None:
+            record_ai_admin_audit(
+                "ai_source_updated",
+                actor_username=actor_username,
+                detail=f"{updated.source_id} {updated.name}",
             )
-            if row is None:
-                return None
-            await session.commit()
-            sources = await ai_source_service.list_sources(session)
-            updated = next(
-                (item for item in sources if item.source_id == source_id),
-                None,
-            )
-            if updated is not None:
-                record_ai_admin_audit(
-                    "ai_source_updated",
-                    actor_username=actor_username,
-                    detail=f"{updated.source_id} {updated.name}",
-                )
-            return updated
+        return updated
 
     async def delete_source(
         self,
@@ -140,33 +125,31 @@ class SourcesAdminMixin:
         source_id: str,
         actor_username: str | None = None,
     ) -> bool:
-        async with get_session() as session:
-            source = await ai_source_service.get_source(session, source_id=source_id)
-            dependency_report = await ai_source_service.build_delete_dependency_report(
-                session,
-                source_id=source_id,
+        source = await ai_source_service.get_source(None, source_id=source_id)
+        dependency_report = await ai_source_service.build_delete_dependency_report(
+            None,
+            source_id=source_id,
+        )
+        if dependency_report is not None:
+            raise AISourceDeleteBlockedError(
+                model_count=dependency_report.model_count,
+                model_labels=dependency_report.model_labels,
             )
-            if dependency_report is not None:
-                raise AISourceDeleteBlockedError(
-                    model_count=dependency_report.model_count,
-                    model_labels=dependency_report.model_labels,
-                )
-            deleted = await ai_source_service.delete_source(
-                session,
-                source_id=source_id,
+        deleted = await ai_source_service.delete_source(
+            None,
+            source_id=source_id,
+        )
+        if deleted:
+            record_ai_admin_audit(
+                "ai_source_deleted",
+                actor_username=actor_username,
+                detail=(
+                    f"{source.source_id} {source.name}"
+                    if source is not None
+                    else source_id
+                ),
             )
-            if deleted:
-                await session.commit()
-                record_ai_admin_audit(
-                    "ai_source_deleted",
-                    actor_username=actor_username,
-                    detail=(
-                        f"{source.source_id} {source.name}"
-                        if source is not None
-                        else source_id
-                    ),
-                )
-            return deleted
+        return deleted
 
 
 __all__ = ["SourcesAdminMixin", "coerce_source_preset_type"]

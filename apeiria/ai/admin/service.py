@@ -1,17 +1,11 @@
-"""Application-facing admin facade for AI domain inspection.
-
-This module composes all domain-scoped admin mixins into one `AIAdminService`
-singleton (`ai_admin_service`). Each domain lives in its own `*_admin.py`:
-sources / models / personas / memories / sessions / future_tasks /
-relationships / person_profiles / tools.
-
-Errors are re-exported at module scope so existing HTTP route imports from
-`apeiria.ai.admin.service` keep working after the split.
-"""
+"""Compatibility admin entrypoint for AI management surfaces."""
 
 from __future__ import annotations
 
-from apeiria.ai.admin.errors import (
+from importlib import import_module
+from typing import Any
+
+from apeiria.ai.admin.control_service import (
     AIAdminModelNotFoundError,
     AISourceDeleteBlockedError,
     AISourceModelDeleteBlockedError,
@@ -20,29 +14,30 @@ from apeiria.ai.admin.errors import (
     AISourceModelTestConfigError,
     AISourceModelTestUpstreamError,
 )
-from apeiria.ai.admin.future_tasks import FutureTasksAdminMixin
-from apeiria.ai.admin.memories import MemoriesAdminMixin
-from apeiria.ai.admin.models import ModelsAdminMixin
-from apeiria.ai.admin.person_profiles import PersonProfilesAdminMixin
-from apeiria.ai.admin.personas import PersonasAdminMixin
-from apeiria.ai.admin.relationships import RelationshipsAdminMixin
-from apeiria.ai.admin.sessions import SessionsAdminMixin
-from apeiria.ai.admin.sources import SourcesAdminMixin
-from apeiria.ai.admin.tools import ToolsAdminMixin
 
 
-class AIAdminService(
-    FutureTasksAdminMixin,
-    MemoriesAdminMixin,
-    ModelsAdminMixin,
-    PersonasAdminMixin,
-    PersonProfilesAdminMixin,
-    RelationshipsAdminMixin,
-    SessionsAdminMixin,
-    SourcesAdminMixin,
-    ToolsAdminMixin,
-):
-    """Read and basic override operations for AI admin routes."""
+def _control_service():
+    module = import_module("apeiria.ai.admin.control_service")
+    return module.ai_control_admin_service
+
+
+def _runtime_service():
+    module = import_module("apeiria.ai.admin.runtime_service")
+    return module.ai_runtime_admin_service
+
+
+class AIAdminService:
+    """Backward-compatible proxy over control-plane and runtime admin services."""
+
+    def __getattr__(self, name: str) -> Any:
+        control_service = _control_service()
+        if hasattr(control_service, name):
+            return getattr(control_service, name)
+        runtime_service = _runtime_service()
+        if hasattr(runtime_service, name):
+            return getattr(runtime_service, name)
+        msg = f"{type(self).__name__!r} has no attribute {name!r}"
+        raise AttributeError(msg)
 
 
 ai_admin_service = AIAdminService()

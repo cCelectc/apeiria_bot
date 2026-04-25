@@ -3,10 +3,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, cast
+from datetime import datetime, timezone
+from typing import TYPE_CHECKING
 from uuid import uuid4
-
-from sqlalchemy import select
 
 from apeiria.ai.tools.models import (
     AIToolCapabilityMode,
@@ -15,7 +14,7 @@ from apeiria.ai.tools.models import (
     AIToolSpec,
     AIToolTurnCreateInput,
 )
-from apeiria.db.models import AIToolPolicyBinding
+from apeiria.db.runtime import database_runtime
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -243,79 +242,111 @@ class AIToolPolicyBindingService:
 
     async def list_bindings(
         self,
-        session: "AsyncSession",
+        session: "AsyncSession | None",
     ) -> list[AIToolPolicyBindingSpec]:
-        result = await session.execute(
-            select(AIToolPolicyBinding).order_by(AIToolPolicyBinding.id.asc())
-        )
-        return [
-            AIToolPolicyBindingSpec(
-                binding_id=row.binding_id,
-                scope_type=row.scope_type,
-                scope_id=row.scope_id,
-                allow_read_only_tools=row.allow_read_only_tools,
-                capability_mode=cast("AIToolCapabilityMode", row.capability_mode),
-            )
-            for row in result.scalars().all()
-        ]
+        del session
+        return self._list_bindings_sync()
 
     async def create_binding(
         self,
-        session: "AsyncSession",
+        session: "AsyncSession | None",
         create_input: AIToolPolicyBindingCreateInput,
-    ) -> AIToolPolicyBinding:
-        row = AIToolPolicyBinding(
+    ) -> AIToolPolicyBindingSpec:
+        del session
+        binding = AIToolPolicyBindingSpec(
             binding_id=f"tool_policy_bind_{uuid4().hex}",
             scope_type=create_input.scope_type,
             scope_id=create_input.scope_id,
             allow_read_only_tools=create_input.allow_read_only_tools,
             capability_mode=create_input.capability_mode,
         )
-        session.add(row)
-        await session.flush()
-        return row
+        with database_runtime.connect_sync() as connection:
+            connection.execute(
+                """
+                INSERT INTO ai_tool_policy (
+                    binding_id,
+                    scope_type,
+                    scope_id,
+                    allow_read_only_tools,
+                    capability_mode,
+                    updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    binding.binding_id,
+                    binding.scope_type,
+                    binding.scope_id,
+                    1 if binding.allow_read_only_tools else 0,
+                    binding.capability_mode,
+                    _utcnow_text(),
+                ),
+            )
+        return binding
 
     async def update_binding(
         self,
-        session: "AsyncSession",
+        session: "AsyncSession | None",
         *,
         binding_id: str,
         allow_read_only_tools: bool,
         capability_mode: AIToolCapabilityMode,
-    ) -> AIToolPolicyBinding | None:
-        result = await session.execute(
-            select(AIToolPolicyBinding).where(
-                AIToolPolicyBinding.binding_id == binding_id
+    ) -> AIToolPolicyBindingSpec | None:
+        del session
+        with database_runtime.connect_sync() as connection:
+            row = connection.execute(
+                """
+                SELECT scope_type, scope_id
+                FROM ai_tool_policy
+                WHERE binding_id = ?
+                """,
+                (binding_id,),
+            ).fetchone()
+            if row is None:
+                return None
+            connection.execute(
+                """
+                UPDATE ai_tool_policy
+                SET
+                    allow_read_only_tools = ?,
+                    capability_mode = ?,
+                    updated_at = ?
+                WHERE binding_id = ?
+                """,
+                (
+                    1 if allow_read_only_tools else 0,
+                    capability_mode,
+                    _utcnow_text(),
+                    binding_id,
+                ),
             )
+        return AIToolPolicyBindingSpec(
+            binding_id=binding_id,
+            scope_type=str(row[0]),
+            scope_id=str(row[1]),
+            allow_read_only_tools=allow_read_only_tools,
+            capability_mode=capability_mode,
         )
-        row = result.scalar_one_or_none()
-        if row is None:
-            return None
-        row.allow_read_only_tools = allow_read_only_tools
-        row.capability_mode = capability_mode
-        await session.flush()
-        return row
 
     async def delete_binding(
         self,
-        session: "AsyncSession",
+        session: "AsyncSession | None",
         *,
         binding_id: str,
     ) -> bool:
-        result = await session.execute(
-            select(AIToolPolicyBinding).where(
-                AIToolPolicyBinding.binding_id == binding_id
+        del session
+        with database_runtime.connect_sync() as connection:
+            cursor = connection.execute(
+                """
+                DELETE FROM ai_tool_policy
+                WHERE binding_id = ?
+                """,
+                (binding_id,),
             )
-        )
-        row = result.scalar_one_or_none()
-        if row is None:
-            return False
-        await session.delete(row)
-        return True
+        return cursor.rowcount > 0
 
     async def resolve_scene_policy(
         self,
-        session: "AsyncSession",
+        session: "AsyncSession | None",
         *,
         scene_context: AIToolSceneContext,
         target: AIToolPolicyBindingTarget,
@@ -327,6 +358,31 @@ class AIToolPolicyBindingService:
             scene_context,
             profile or AIToolScenePolicyProfile(),
         )
+
+    def _list_bindings_sync(self) -> list[AIToolPolicyBindingSpec]:
+        with database_runtime.connect_sync() as connection:
+            rows = connection.execute(
+                """
+                SELECT
+                    binding_id,
+                    scope_type,
+                    scope_id,
+                    allow_read_only_tools,
+                    capability_mode
+                FROM ai_tool_policy
+                ORDER BY rowid ASC
+                """
+            ).fetchall()
+        return [
+            AIToolPolicyBindingSpec(
+                binding_id=str(row[0]),
+                scope_type=str(row[1]),
+                scope_id=str(row[2]),
+                allow_read_only_tools=bool(row[3]),
+                capability_mode=row[4],
+            )
+            for row in rows
+        ]
 
 
 ai_tool_policy_binding_service = AIToolPolicyBindingService()
@@ -348,3 +404,7 @@ __all__ = [
     "summarize_tool_policy",
     "tool_policy_binding_to_profile",
 ]
+
+
+def _utcnow_text() -> str:
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")

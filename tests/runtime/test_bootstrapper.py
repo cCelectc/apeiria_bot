@@ -12,6 +12,7 @@ def test_bootstrapper_exposes_explicit_phase_names() -> None:
     assert ApeiriaBootstrapper().phase_names() == (
         "environment",
         "config",
+        "database",
         "user_extensions",
         "framework",
         "runtime",
@@ -55,6 +56,11 @@ def test_bootstrapper_initialize_nonebot_runs_explicit_phases_in_order(
     )
     monkeypatch.setattr(
         bootstrapper,
+        "_run_database_phase",
+        lambda: calls.append("database"),
+    )
+    monkeypatch.setattr(
+        bootstrapper,
         "_run_framework_phase",
         lambda: calls.append("framework"),
     )
@@ -79,11 +85,28 @@ def test_bootstrapper_initialize_nonebot_runs_explicit_phases_in_order(
     assert calls == [
         "environment",
         "config",
+        "database",
         "user_extensions",
         "framework",
         "runtime",
         "user_plugins",
     ]
+
+
+def test_bootstrapper_database_phase_stores_bootstrapped_database(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    bootstrapper = ApeiriaBootstrapper()
+    database = object()
+
+    monkeypatch.setattr(
+        "apeiria.runtime.phases.database.run_database_phase",
+        lambda: database,
+    )
+
+    bootstrapper._run_database_phase()
+
+    assert bootstrapper.database is database
 
 
 def test_bootstrap_run_delegates_to_bootstrapper(monkeypatch: MonkeyPatch) -> None:

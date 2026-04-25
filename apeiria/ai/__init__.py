@@ -11,19 +11,25 @@ or no-op. Declare ``required_plugins=["apeiria.builtin_plugins.ai"]`` in your
 plugin metadata to enforce the dependency.
 """
 
-from apeiria.ai.conversation.service import chat_session_service
-from apeiria.ai.future_task.service import ai_future_task_service
-from apeiria.ai.memory.service import ai_memory_service
-from apeiria.ai.model.gateway import model_gateway
-from apeiria.ai.person.service import ai_person_profile_service
-from apeiria.ai.persona.service import ai_persona_service
-from apeiria.ai.relationship.service import ai_relationship_service
-from apeiria.ai.reply_strategy.service import reply_strategy_service
-from apeiria.ai.retention import ai_retention_service
-from apeiria.ai.service import AIService, AIServiceStatus, ai_service
-from apeiria.ai.skills.service import ai_skill_service
-from apeiria.ai.tools.gateway import tool_gateway
-from apeiria.ai.tools.service import ai_tool_service
+from __future__ import annotations
+
+from importlib import import_module
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from apeiria.ai.conversation.service import chat_session_service
+    from apeiria.ai.future_task.service import ai_future_task_service
+    from apeiria.ai.memory.service import ai_memory_service
+    from apeiria.ai.model.gateway import model_gateway
+    from apeiria.ai.person.service import ai_person_profile_service
+    from apeiria.ai.persona.service import ai_persona_service
+    from apeiria.ai.relationship.service import ai_relationship_service
+    from apeiria.ai.reply_strategy.service import reply_strategy_service
+    from apeiria.ai.retention import ai_retention_service
+    from apeiria.ai.service import AIService, AIServiceStatus, ai_service
+    from apeiria.ai.skills.service import ai_skill_service
+    from apeiria.ai.tools.gateway import tool_gateway
+    from apeiria.ai.tools.service import ai_tool_service
 
 __all__ = [
     "AIService",
@@ -42,3 +48,30 @@ __all__ = [
     "reply_strategy_service",
     "tool_gateway",
 ]
+
+_LAZY_MODULES = {
+    "AIService": "apeiria.ai.service",
+    "AIServiceStatus": "apeiria.ai.service",
+    "ai_future_task_service": "apeiria.ai.future_task.service",
+    "ai_memory_service": "apeiria.ai.memory.service",
+    "ai_person_profile_service": "apeiria.ai.person.service",
+    "ai_persona_service": "apeiria.ai.persona.service",
+    "ai_relationship_service": "apeiria.ai.relationship.service",
+    "ai_retention_service": "apeiria.ai.retention",
+    "ai_service": "apeiria.ai.service",
+    "ai_skill_service": "apeiria.ai.skills.service",
+    "ai_tool_service": "apeiria.ai.tools.service",
+    "chat_session_service": "apeiria.ai.conversation.service",
+    "model_gateway": "apeiria.ai.model.gateway",
+    "reply_strategy_service": "apeiria.ai.reply_strategy.service",
+    "tool_gateway": "apeiria.ai.tools.gateway",
+}
+
+
+def __getattr__(name: str) -> Any:
+    module_path = _LAZY_MODULES.get(name)
+    if module_path is not None:
+        module = import_module(module_path)
+        return getattr(module, name)
+    msg = f"module {__name__!r} has no attribute {name!r}"
+    raise AttributeError(msg)

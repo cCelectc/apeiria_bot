@@ -18,6 +18,7 @@ class ApeiriaRuntime:
     project_root: Path
     config: Any
     environment: Any
+    database: Any
     plugins: Any
     access: Any
     ai: Any

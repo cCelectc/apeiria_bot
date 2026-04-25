@@ -84,43 +84,21 @@ class DashboardService:
 
     async def get_status_snapshot(self) -> DashboardStatusSnapshot:
         """Collect the current dashboard metrics snapshot."""
-        from nonebot_plugin_orm import get_session
-        from sqlalchemy import func, select
-
-        from apeiria.db.models.access_policy import AccessPolicyEntry
-        from apeiria.db.models.group import GroupConsole
-        from apeiria.db.models.plugin_info import PluginInfo
+        from apeiria.access.groups_repository import group_repository
+        from apeiria.access.repository import access_repository
+        from apeiria.plugins.repository import plugin_catalog_repository
 
         adapters = list(nonebot.get_adapters().keys())
         plugins = nonebot.get_loaded_plugins()
-
-        async with get_session() as session:
-            disabled_plugins_count = (
-                await session.scalar(
-                    select(func.count())
-                    .select_from(PluginInfo)
-                    .where(PluginInfo.is_global_enabled.is_(False))
-                )
-                or 0
-            )
-            groups_count = (
-                await session.scalar(select(func.count()).select_from(GroupConsole))
-                or 0
-            )
-            disabled_groups_count = (
-                await session.scalar(
-                    select(func.count())
-                    .select_from(GroupConsole)
-                    .where(GroupConsole.bot_status.is_(False))
-                )
-                or 0
-            )
-            access_rules_count = (
-                await session.scalar(
-                    select(func.count()).select_from(AccessPolicyEntry)
-                )
-                or 0
-            )
+        enabled_map = await plugin_catalog_repository.get_enabled_map()
+        groups = await group_repository.list_groups()
+        access_rules = await access_repository.list_access_rules()
+        disabled_plugins_count = sum(
+            1 for enabled in enabled_map.values() if not enabled
+        )
+        groups_count = len(groups)
+        disabled_groups_count = sum(1 for group in groups if not group.bot_status)
+        access_rules_count = len(access_rules)
 
         return DashboardStatusSnapshot(
             status="running",

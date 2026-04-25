@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Annotated, Any, cast
 
 from fastapi import APIRouter, Depends, Query
 
-from apeiria.ai.admin.service import ai_admin_service
+from apeiria.ai.admin.runtime_service import ai_runtime_admin_service
 from apeiria.ai.webui.schemas import (
     AIPersonProfileItem,
     AIPersonProfileUpdateRequest,
@@ -31,7 +31,7 @@ async def list_ai_person_profiles(
     _: Annotated[Any, Depends(require_control_panel)],
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
 ) -> list[AIPersonProfileItem]:
-    profiles = await ai_admin_service.list_person_profiles(limit=limit)
+    profiles = await ai_runtime_admin_service.list_person_profiles(limit=limit)
     return [to_ai_person_profile_item(item) for item in profiles]
 
 
@@ -41,7 +41,7 @@ async def get_ai_person_profile(
     platform: Annotated[str, Query(min_length=1)],
     user_id: Annotated[str, Query(min_length=1)],
 ) -> AIPersonProfileItem | None:
-    profile = await ai_admin_service.get_person_profile(
+    profile = await ai_runtime_admin_service.get_person_profile(
         platform=platform,
         user_id=user_id,
     )
@@ -69,7 +69,7 @@ async def update_ai_person_profile(
             )
             for point in payload.memory_points
         )
-    profile = await ai_admin_service.update_person_profile(
+    profile = await ai_runtime_admin_service.update_person_profile(
         person_id=payload.person_id,
         person_name=payload.person_name,
         nickname=payload.nickname,
@@ -84,7 +84,7 @@ async def delete_ai_person_profile(
     session: Annotated["AuthSession", Depends(require_control_panel)],
     person_id: Annotated[str, Query(min_length=1)],
 ) -> bool:
-    return await ai_admin_service.delete_person_profile(
+    return await ai_runtime_admin_service.delete_person_profile(
         person_id=person_id,
         actor_username=_actor_username_from_claims(session),
     )

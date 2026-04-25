@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, Query
 
-from apeiria.ai.admin.service import ai_admin_service
+from apeiria.ai.admin.runtime_service import ai_runtime_admin_service
 from apeiria.ai.webui.schemas import (
     AIMemoryBulkActionRequest,
     AIMemoryBulkActionResult,
@@ -45,7 +45,7 @@ async def list_ai_memories(  # noqa: PLR0913
     memory_kind: Annotated[str | None, Query(max_length=32)] = None,
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
 ) -> list[AIMemoryItem]:
-    memories = await ai_admin_service.list_memories(
+    memories = await ai_runtime_admin_service.list_memories(
         anchor_type=anchor_type,
         anchor_id=anchor_id,
         query_text=query,
@@ -61,7 +61,7 @@ async def create_ai_memory(
     payload: AIMemoryCreateRequest,
     session: Annotated["AuthSession", Depends(require_control_panel)],
 ) -> AIMemoryItem:
-    memory = await ai_admin_service.create_memory(
+    memory = await ai_runtime_admin_service.create_memory(
         memory_layer=payload.memory_layer,
         memory_kind=payload.memory_kind,
         anchor_type=payload.anchor_type,
@@ -79,7 +79,7 @@ async def update_ai_memory(
     payload: AIMemoryUpdateRequest,
     session: Annotated["AuthSession", Depends(require_control_panel)],
 ) -> AIMemoryItem | None:
-    memory = await ai_admin_service.update_memory(
+    memory = await ai_runtime_admin_service.update_memory(
         memory_id=payload.memory_id,
         content=payload.content,
         salience=payload.salience,
@@ -95,7 +95,7 @@ async def delete_ai_memory(
     memory_id: Annotated[str, Query(min_length=1)],
 ) -> AIMemoryDeleteResult:
     return AIMemoryDeleteResult(
-        deleted=await ai_admin_service.delete_memory(
+        deleted=await ai_runtime_admin_service.delete_memory(
             memory_id=memory_id,
             actor_username=_actor_username_from_claims(session),
         )
@@ -107,7 +107,7 @@ async def toggle_ai_memory_ignored(
     payload: AIMemoryToggleIgnoredRequest,
     session: Annotated["AuthSession", Depends(require_control_panel)],
 ) -> AIMemoryItem | None:
-    memory = await ai_admin_service.toggle_memory_ignored(
+    memory = await ai_runtime_admin_service.toggle_memory_ignored(
         memory_id=payload.memory_id,
         actor_username=_actor_username_from_claims(session),
     )
@@ -119,7 +119,7 @@ async def bulk_delete_ai_memories(
     payload: AIMemoryBulkActionRequest,
     session: Annotated["AuthSession", Depends(require_control_panel)],
 ) -> AIMemoryBulkActionResult:
-    count = await ai_admin_service.bulk_delete_memories(
+    count = await ai_runtime_admin_service.bulk_delete_memories(
         memory_ids=payload.memory_ids,
         actor_username=_actor_username_from_claims(session),
     )
@@ -131,7 +131,7 @@ async def bulk_toggle_ai_memory_ignored(
     payload: AIMemoryBulkIgnoreRequest,
     session: Annotated["AuthSession", Depends(require_control_panel)],
 ) -> AIMemoryBulkActionResult:
-    count = await ai_admin_service.bulk_set_memories_ignored(
+    count = await ai_runtime_admin_service.bulk_set_memories_ignored(
         memory_ids=payload.memory_ids,
         ignored=payload.ignored,
         actor_username=_actor_username_from_claims(session),

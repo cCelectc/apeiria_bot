@@ -1,0 +1,77 @@
+from __future__ import annotations
+
+import asyncio
+import importlib
+import sys
+from typing import TYPE_CHECKING
+
+from apeiria.db.runtime import database_runtime
+
+if TYPE_CHECKING:
+    from pathlib import Path
+
+    from pytest import MonkeyPatch
+
+
+UPDATED_TIMEOUT_SECONDS = 45
+
+
+def test_import_ai_admin_sources_does_not_require_nonebot_runtime() -> None:
+    sys.modules.pop("apeiria.ai.admin.sources", None)
+
+    module = importlib.import_module("apeiria.ai.admin.sources")
+
+    assert module.__name__ == "apeiria.ai.admin.sources"
+
+
+def test_sources_admin_crud_uses_new_database(
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    from apeiria.ai.admin.sources import SourcesAdminMixin
+
+    monkeypatch.setattr(database_runtime, "_project_root", tmp_path)
+    database_runtime.ensure_ready()
+    admin = SourcesAdminMixin()
+
+    async def run() -> None:
+        created = await admin.create_source(
+            name="Primary",
+            capability_type="chat_completion",
+            preset_type="openai_compatible",
+            api_base="https://api.example.test/v1",
+            api_key_env_name="OPENAI_API_KEY",
+            enabled=True,
+            timeout_seconds=30,
+            custom_headers={"X-Test": "1"},
+            extra_config={"temperature": 0.2},
+        )
+        sources = await admin.list_sources()
+        assert len(sources) == 1
+        assert sources[0].source_id == created.source_id
+        assert sources[0].custom_headers == {"X-Test": "1"}
+
+        updated = await admin.update_source(
+            source_id=created.source_id,
+            name="Primary Updated",
+            capability_type="chat_completion",
+            preset_type="openai_compatible",
+            api_base="https://api.example.test/v2",
+            api_key_env_name="UPDATED_KEY",
+            enabled=False,
+            timeout_seconds=45,
+            custom_headers={"X-Test": "2"},
+            extra_config={"temperature": 0.3},
+        )
+        assert updated is not None
+        assert updated.name == "Primary Updated"
+        assert updated.enabled is False
+        assert updated.timeout_seconds == UPDATED_TIMEOUT_SECONDS
+        assert updated.custom_headers == {"X-Test": "2"}
+        assert updated.extra_config == {"temperature": 0.3}
+
+        deleted = await admin.delete_source(source_id=created.source_id)
+        assert deleted is True
+        assert await admin.list_sources() == []
+
+    asyncio.run(run())

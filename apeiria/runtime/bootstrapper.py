@@ -14,6 +14,7 @@ class ApeiriaBootstrapper:
     _PHASE_NAMES: tuple[str, ...] = (
         "environment",
         "config",
+        "database",
         "user_extensions",
         "framework",
         "runtime",
@@ -21,6 +22,7 @@ class ApeiriaBootstrapper:
     )
 
     def __init__(self) -> None:
+        self.database: object | None = None
         self.runtime: ApeiriaRuntime | None = None
 
     def phase_names(self) -> tuple[str, ...]:
@@ -35,6 +37,7 @@ class ApeiriaBootstrapper:
         try:
             self._run_environment_phase()
             self._run_config_phase()
+            self._run_database_phase()
             self._run_user_extensions_phase()
             self._run_framework_phase()
             self._run_runtime_phase()
@@ -53,6 +56,11 @@ class ApeiriaBootstrapper:
         from apeiria.runtime.phases.config import run_config_phase
 
         run_config_phase()
+
+    def _run_database_phase(self) -> None:
+        from apeiria.runtime.phases.database import run_database_phase
+
+        self.database = run_database_phase()
 
     def _run_framework_phase(self) -> None:
         from apeiria.runtime.phases.framework import run_framework_phase

@@ -8,12 +8,14 @@ import pytest
 from fastapi import HTTPException
 
 import apeiria.plugins as plugins_module
+from apeiria.db.runtime import database_runtime
 from apeiria.runtime import ApeiriaRuntime
 from apeiria.runtime.control_plane import ApeiriaControlPlane
 from apeiria.webui.routes import dashboard
 
 RUNTIME_UNAVAILABLE_STATUS = 503
 RUNTIME_UNAVAILABLE_DETAIL = "Apeiria runtime control plane is unavailable."
+EXPECTED_PLUGIN_COUNT = 2
 
 
 def _build_runtime(
@@ -25,6 +27,7 @@ def _build_runtime(
         project_root=Path("/tmp/runtime"),
         config=object(),
         environment=object(),
+        database=object(),
         plugins=plugins if plugins is not None else object(),
         access=object(),
         ai=object(),
@@ -104,6 +107,57 @@ def test_get_dashboard_status_uses_current_dashboard_service_snapshot(
     snapshot = asyncio.run(control_plane.get_dashboard_status())
 
     assert snapshot is expected_snapshot
+
+
+def test_dashboard_status_snapshot_reads_governance_state_from_new_database(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    from apeiria.access.groups_repository import GroupStateRow, group_repository
+    from apeiria.access.repository import access_repository
+    from apeiria.environment.dashboard import dashboard_service
+    from apeiria.plugins.repository import plugin_catalog_repository
+
+    monkeypatch.setattr(database_runtime, "_project_root", tmp_path)
+    database_runtime.ensure_ready()
+    monkeypatch.setattr(nonebot, "get_adapters", lambda: {"onebot": object()})
+    monkeypatch.setattr(nonebot, "get_loaded_plugins", lambda: {object(), object()})
+
+    async def seed() -> None:
+        await plugin_catalog_repository.ensure_plugin_record_by_module_name(
+            "plugins.alpha"
+        )
+        await plugin_catalog_repository.ensure_plugin_record_by_module_name(
+            "plugins.beta"
+        )
+        await plugin_catalog_repository.set_plugin_enabled(
+            "plugins.beta",
+            enabled=False,
+        )
+        await group_repository.save_group(
+            GroupStateRow(
+                group_id="group-1",
+                group_name="Group One",
+                bot_status=False,
+            )
+        )
+        await access_repository.upsert_access_rule(
+            subject_type="group",
+            subject_id="group-1",
+            plugin_module="plugins.beta",
+            effect="deny",
+        )
+
+    asyncio.run(seed())
+
+    snapshot = asyncio.run(dashboard_service.get_status_snapshot())
+
+    assert snapshot.plugins_count == EXPECTED_PLUGIN_COUNT
+    assert snapshot.disabled_plugins_count == 1
+    assert snapshot.groups_count == 1
+    assert snapshot.disabled_groups_count == 1
+    assert snapshot.access_rules_count == 1
+    assert snapshot.adapters == ["onebot"]
 
 
 def test_dashboard_status_route_reads_through_control_plane(

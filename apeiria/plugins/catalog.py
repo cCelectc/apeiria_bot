@@ -60,13 +60,13 @@ if TYPE_CHECKING:
 
     from nonebot.plugin import Plugin
 
-    from apeiria.db.models.plugin_info import PluginInfo
+    from apeiria.plugins.repository import PluginStateRow
 
 
 @dataclass(frozen=True)
 class _PluginListContext:
     enabled_map: dict[str, bool]
-    info_map: "Mapping[str, PluginInfo]"
+    info_map: "Mapping[str, PluginStateRow]"
     package_bindings: dict[str, list[str]]
     pending_uninstall_modules: set[str]
     top_level_packages: "Mapping[str, list[str]]"

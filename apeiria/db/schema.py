@@ -1,701 +1,401 @@
-"""Database schema bootstrap and version management."""
+"""Bootstrap and migrate the Apeiria SQLite control-plane schema."""
 
 from __future__ import annotations
 
-import asyncio
-from collections.abc import Awaitable, Callable
+import sqlite3
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
-from nonebot.log import logger
-
-CURRENT_SCHEMA_VERSION = 25
-MIN_SUPPORTED_SCHEMA_VERSION = 22
-
 if TYPE_CHECKING:
-    from sqlalchemy.ext.asyncio import AsyncConnection, AsyncSession
+    from pathlib import Path
 
-MigrationFunc = Callable[["AsyncSession"], Awaitable[None]]
+    from apeiria.db.runtime import ApeiriaDatabase
 
-MIGRATIONS: dict[int, MigrationFunc] = {}
-CORE_TABLE_NAMES = frozenset(
-    {
-        "ai_affinity",
-        "ai_chat_model",
-        "ai_embedding_model",
-        "ai_future_task",
-        "ai_memory_embedding",
-        "ai_memory_item",
-        "ai_model_binding",
-        "ai_model_profile",
-        "ai_person_profile",
-        "ai_persona",
-        "ai_persona_binding",
-        "ai_relationship_event",
-        "ai_rerank_model",
-        "ai_source",
-        "ai_stt_model",
-        "ai_tool_execution",
-        "ai_tool_policy_binding",
-        "ai_tts_model",
-        "chat_message",
-        "chat_session",
-        "apeiria_schema_meta",
-        "access_policy_entry",
-        "command_statistics",
-        "group_console",
-        "level_user",
-        "plugin_info",
-        "plugin_policy_entry",
-        "user_console",
-    }
-)
-LEGACY_CORE_TABLE_NAMES = frozenset(
-    {
-        "ban_console",
-        "command_statistics",
-        "group_console",
-        "level_user",
-        "plugin_info",
-        "user_console",
-    }
-)
-ADOPTABLE_CORE_TABLE_NAMES = frozenset(
-    (CORE_TABLE_NAMES - {"apeiria_schema_meta"}) | {"ban_console"}
-)
+CURRENT_SCHEMA_LINE = "apeiria_v1"
+CURRENT_SCHEMA_VERSION = 5
+SCHEMA_VERSION_WITH_GOVERNANCE = 2
+SCHEMA_VERSION_WITH_AI_CONTROL_PLANE = 3
+SCHEMA_VERSION_WITH_MODEL_ROUTING = 4
+SCHEMA_VERSION_WITH_SOURCE_MODELS = 5
 
 
-class SchemaBootstrapError(RuntimeError):
-    """Raised when database schema cannot be initialized or upgraded safely."""
+class DatabaseSchemaError(RuntimeError):
+    """Base error for Apeiria SQLite schema handling."""
+
+    @classmethod
+    def no_migration_path(
+        cls,
+        *,
+        from_version: int,
+        to_version: int,
+    ) -> "DatabaseSchemaError":
+        return cls(
+            f"no migration path from apeiria_v1/{from_version} to {to_version}"
+        )
+
+
+class IncompatibleDatabaseError(DatabaseSchemaError):
+    """Raised when the on-disk database is not compatible with apeiria_v1."""
+
+    @classmethod
+    def missing_schema_meta(cls) -> "IncompatibleDatabaseError":
+        return cls("database exists without apeiria_v1 schema metadata")
+
+    @classmethod
+    def wrong_schema_line(cls) -> "IncompatibleDatabaseError":
+        return cls("database schema line is not compatible with apeiria_v1")
+
+
+class NewerDatabaseError(DatabaseSchemaError):
+    """Raised when the on-disk database is newer than the current build."""
+
+    @classmethod
+    def current_build_too_old(cls) -> "NewerDatabaseError":
+        return cls("database schema version is newer than this Apeiria build")
 
 
 @dataclass(frozen=True)
-class SchemaStatus:
-    """Observed database schema state for Apeiria tables."""
+class SchemaMetaRecord:
+    """Observed metadata from ``apeiria_schema_meta``."""
 
-    existing_tables: frozenset[str]
-    schema_version: int | None
-
-    @property
-    def apeiria_tables(self) -> frozenset[str]:
-        return frozenset(self.existing_tables & CORE_TABLE_NAMES)
-
-    @property
-    def is_uninitialized(self) -> bool:
-        return not self.apeiria_tables
-
-    @property
-    def has_schema_meta(self) -> bool:
-        return "apeiria_schema_meta" in self.existing_tables
-
-    @property
-    def is_partially_initialized(self) -> bool:
-        return bool(self.apeiria_tables) and not self.has_schema_meta
-
-    @property
-    def can_adopt_legacy_schema(self) -> bool:
-        managed_tables = self.existing_tables & ADOPTABLE_CORE_TABLE_NAMES
-        return LEGACY_CORE_TABLE_NAMES <= managed_tables <= ADOPTABLE_CORE_TABLE_NAMES
+    schema_line: str
+    schema_version: int
 
 
-async def ensure_database_ready() -> None:
-    """Initialize a fresh database or verify/upgrade an existing schema."""
-    from nonebot_plugin_orm import Model, get_session
+def ensure_database_ready_sync(database: "ApeiriaDatabase | None" = None) -> None:
+    """Synchronously initialize or validate the Apeiria SQLite database."""
 
-    from apeiria.db import models as db_models  # noqa: F401
-    from apeiria.db.models import SchemaMeta
+    runtime = _coerce_database(database)
+    path = runtime.database_path()
+    runtime.ensure_parent_dir()
 
-    async with get_session() as session:
-        conn = await session.connection()
-        status = await _inspect_schema_status(conn)
-
-        if status.is_uninitialized:
-            await conn.run_sync(Model.metadata.create_all)
-            session.add(SchemaMeta(id=1, schema_version=CURRENT_SCHEMA_VERSION))
-            await session.commit()
-            logger.info(
-                "Apeiria database schema initialized automatically at version {}",
-                CURRENT_SCHEMA_VERSION,
-            )
+    with runtime.connect_sync() as connection:
+        existing_tables = _table_names(connection)
+        if not existing_tables:
+            _create_schema_v1(connection)
             return
 
-        if status.is_partially_initialized:
-            if status.can_adopt_legacy_schema:
-                await conn.run_sync(Model.metadata.create_all)
-                session.add(SchemaMeta(id=1, schema_version=CURRENT_SCHEMA_VERSION))
-                await session.commit()
-                logger.info(
-                    "Apeiria legacy database schema adopted at version {}",
-                    CURRENT_SCHEMA_VERSION,
-                )
-                return
+        if "apeiria_schema_meta" not in existing_tables:
+            raise IncompatibleDatabaseError.missing_schema_meta()
 
-            msg = (
-                "Detected partially initialized Apeiria database tables without "
-                "schema metadata. Refusing automatic bootstrap to avoid schema drift."
-            )
-            raise SchemaBootstrapError(msg)
-
-        schema_version = status.schema_version
-        if schema_version is None:
-            if (
-                status.apeiria_tables == CORE_TABLE_NAMES
-                or status.can_adopt_legacy_schema
-            ):
-                await conn.run_sync(Model.metadata.create_all)
-                session.add(SchemaMeta(id=1, schema_version=CURRENT_SCHEMA_VERSION))
-                await session.commit()
-                logger.info(
-                    "Apeiria schema metadata was repaired at version {}",
-                    CURRENT_SCHEMA_VERSION,
-                )
-                return
-
-            msg = "Apeiria schema metadata is missing a valid schema version."
-            raise SchemaBootstrapError(msg)
-        if schema_version > CURRENT_SCHEMA_VERSION:
-            msg = (
-                "Database schema version is newer than this Apeiria build "
-                f"({schema_version} > {CURRENT_SCHEMA_VERSION})."
-            )
-            raise SchemaBootstrapError(msg)
-        if schema_version < MIN_SUPPORTED_SCHEMA_VERSION:
-            msg = (
-                "Rebuild the database before running this Apeiria build "
-                f"(schema version {schema_version} < {MIN_SUPPORTED_SCHEMA_VERSION})."
-            )
-            raise SchemaBootstrapError(msg)
-        if schema_version < CURRENT_SCHEMA_VERSION:
-            await _apply_migrations(session, schema_version, CURRENT_SCHEMA_VERSION)
+        meta = _read_schema_meta(connection)
+        if meta is None or meta.schema_line != CURRENT_SCHEMA_LINE:
+            raise IncompatibleDatabaseError.wrong_schema_line()
+        if meta.schema_version > CURRENT_SCHEMA_VERSION:
+            raise NewerDatabaseError.current_build_too_old()
+        if meta.schema_version < CURRENT_SCHEMA_VERSION:
+            _backup_database(connection, path)
+            _migrate(connection, from_version=meta.schema_version)
 
 
-def ensure_database_ready_sync() -> None:
-    """Synchronous wrapper for startup-time schema readiness checks."""
-    asyncio.run(ensure_database_ready())
+async def ensure_database_ready(database: "ApeiriaDatabase | None" = None) -> None:
+    """Async wrapper for SQLite schema initialization and validation."""
+
+    ensure_database_ready_sync(database)
 
 
-async def _inspect_schema_status(conn: AsyncConnection) -> SchemaStatus:
-    from sqlalchemy import inspect as sa_inspect
-    from sqlalchemy import select
+def _coerce_database(database: "ApeiriaDatabase | None") -> "ApeiriaDatabase":
+    if database is not None:
+        return database
 
-    from apeiria.db.models.schema_meta import SchemaMeta
+    from apeiria.db.runtime import database_runtime
 
-    def _collect(sync_conn):  # noqa: ANN001
-        inspector = sa_inspect(sync_conn)
-        return set(inspector.get_table_names())
-
-    existing_tables = frozenset(await conn.run_sync(_collect))
-    if "apeiria_schema_meta" not in existing_tables:
-        return SchemaStatus(existing_tables=existing_tables, schema_version=None)
-
-    result = await conn.execute(
-        select(SchemaMeta.schema_version).order_by(SchemaMeta.id.desc()).limit(1)
-    )
-    schema_version = result.scalar_one_or_none()
-    return SchemaStatus(
-        existing_tables=existing_tables,
-        schema_version=schema_version,
-    )
+    return database_runtime
 
 
-async def _inspect_memory_schema_layout(
-    conn: AsyncConnection,
-) -> str | None:
-    from sqlalchemy import inspect as sa_inspect
-
-    def _collect(sync_conn):  # noqa: ANN001
-        inspector = sa_inspect(sync_conn)
-        table_names = set(inspector.get_table_names())
-        if "ai_memory_item" not in table_names:
-            return None
-        columns = {column["name"] for column in inspector.get_columns("ai_memory_item")}
-        current_columns = {
-            "anchor_type",
-            "anchor_id",
-            "memory_layer",
-            "memory_kind",
-            "is_editable",
-            "is_ignored",
-        }
-        legacy_columns = {
-            "memory_domain",
-            "memory_type",
-            "subject_type",
-            "subject_id",
-        }
-        if current_columns <= columns:
-            return "current_v21"
-        if legacy_columns <= columns:
-            return "legacy_v20"
-        return "unknown"
-
-    return await conn.run_sync(_collect)
+def _utcnow_text() -> str:
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
-async def _apply_migrations(
-    session: AsyncSession,
-    from_version: int,
-    to_version: int,
-) -> None:
-    from sqlalchemy import select
-
-    from apeiria.db.models.schema_meta import SchemaMeta
-
-    current_version = from_version
-    while current_version < to_version:
-        migration = MIGRATIONS.get(current_version)
-        if migration is None:
-            msg = (
-                "No schema migration path is available from version "
-                f"{current_version} to {current_version + 1}."
-            )
-            raise SchemaBootstrapError(msg)
-
-        await migration(session)
-        current_version += 1
-
-    result = await session.execute(
-        select(SchemaMeta).order_by(SchemaMeta.id.desc()).limit(1)
-    )
-    meta = result.scalar_one_or_none()
-    if meta is None:
-        meta = SchemaMeta(id=1, schema_version=current_version)
-        session.add(meta)
-    else:
-        meta.schema_version = current_version
-    await session.commit()
-    logger.info(
-        "Apeiria database schema upgraded from version {} to {}",
-        from_version,
-        current_version,
-    )
+def _table_names(connection: sqlite3.Connection) -> set[str]:
+    rows = connection.execute(
+        "SELECT name FROM sqlite_master WHERE type = 'table'"
+    ).fetchall()
+    return {str(row[0]) for row in rows}
 
 
-async def _migrate_v1_to_v2(session: AsyncSession) -> None:
-    from nonebot_plugin_orm import Model
-
-    conn = await session.connection()
-    await conn.run_sync(Model.metadata.create_all)
-
-
-MIGRATIONS[1] = _migrate_v1_to_v2
-
-
-async def _migrate_v2_to_v3(session: AsyncSession) -> None:
-    from sqlalchemy import text
-
-    await session.execute(text("DROP TABLE IF EXISTS ban_console"))
-    await session.commit()
-
-
-MIGRATIONS[2] = _migrate_v2_to_v3
-
-
-async def _migrate_v3_to_v4(session: AsyncSession) -> None:
-    from sqlalchemy import text
-
-    await session.execute(
-        text(
-            "ALTER TABLE plugin_policy_entry "
-            "ADD COLUMN access_mode VARCHAR(16) "
-            "NOT NULL DEFAULT 'default_allow'"
+def _create_schema_v1(connection: sqlite3.Connection) -> None:
+    timestamp = _utcnow_text()
+    connection.execute(
+        """
+        CREATE TABLE apeiria_schema_meta (
+            id INTEGER PRIMARY KEY,
+            schema_line TEXT NOT NULL,
+            schema_version INTEGER NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
         )
+        """
     )
-    await session.commit()
+    connection.execute(
+        """
+        INSERT INTO apeiria_schema_meta (
+            id,
+            schema_line,
+            schema_version,
+            created_at,
+            updated_at
+        ) VALUES (?, ?, ?, ?, ?)
+        """,
+        (1, CURRENT_SCHEMA_LINE, CURRENT_SCHEMA_VERSION, timestamp, timestamp),
+    )
+    _create_governance_tables(connection)
+    _create_ai_control_plane_tables(connection)
+    _create_model_routing_tables(connection)
+    _create_source_model_tables(connection)
 
 
-MIGRATIONS[3] = _migrate_v3_to_v4
+def _read_schema_meta(connection: sqlite3.Connection) -> SchemaMetaRecord | None:
+    row = connection.execute(
+        """
+        SELECT schema_line, schema_version
+        FROM apeiria_schema_meta
+        WHERE id = 1
+        """
+    ).fetchone()
+    if row is None:
+        return None
+    return SchemaMetaRecord(schema_line=str(row[0]), schema_version=int(row[1]))
 
 
-async def _migrate_v4_to_v5(session: AsyncSession) -> None:
-    from nonebot_plugin_orm import Model
-
-    conn = await session.connection()
-    await conn.run_sync(Model.metadata.create_all)
-
-
-MIGRATIONS[4] = _migrate_v4_to_v5
-
-
-async def _migrate_v5_to_v6(session: AsyncSession) -> None:
-    from nonebot_plugin_orm import Model
-
-    conn = await session.connection()
-    await conn.run_sync(Model.metadata.create_all)
-
-
-MIGRATIONS[5] = _migrate_v5_to_v6
-
-
-async def _migrate_v6_to_v7(session: AsyncSession) -> None:
-    from nonebot_plugin_orm import Model
-
-    conn = await session.connection()
-    await conn.run_sync(Model.metadata.create_all)
-
-
-MIGRATIONS[6] = _migrate_v6_to_v7
-
-
-async def _migrate_v7_to_v8(session: AsyncSession) -> None:
-    from nonebot_plugin_orm import Model
-
-    conn = await session.connection()
-    await conn.run_sync(Model.metadata.create_all)
-
-
-MIGRATIONS[7] = _migrate_v7_to_v8
-
-
-async def _migrate_v8_to_v9(session: AsyncSession) -> None:
-    from nonebot_plugin_orm import Model
-
-    conn = await session.connection()
-    await conn.run_sync(Model.metadata.create_all)
-
-
-MIGRATIONS[8] = _migrate_v8_to_v9
-
-
-async def _migrate_v9_to_v10(session: AsyncSession) -> None:
-    from sqlalchemy import inspect as sa_inspect
-    from sqlalchemy import text
-
-    conn = await session.connection()
-
-    def _has_scope_key(sync_conn):  # noqa: ANN001
-        inspector = sa_inspect(sync_conn)
-        columns = inspector.get_columns("ai_affinity")
-        return any(column["name"] == "scope_key" for column in columns)
-
+def _backup_database(connection: sqlite3.Connection, database_path: Path) -> None:
+    backup_dir = database_path.parent / "backups"
+    backup_dir.mkdir(parents=True, exist_ok=True)
+    backup_path = backup_dir / f"{database_path.stem}.pre-migrate.sqlite3"
+    backup_connection = sqlite3.connect(backup_path)
     try:
-        has_scope_key = await conn.run_sync(_has_scope_key)
-    except Exception:  # noqa: BLE001
-        has_scope_key = False
+        connection.backup(backup_connection)
+    finally:
+        backup_connection.close()
 
-    if not has_scope_key:
-        await session.execute(
-            text(
-                "ALTER TABLE ai_affinity "
-                "ADD COLUMN scope_key VARCHAR(160) NOT NULL DEFAULT 'private'"
+
+def _migrate(connection: sqlite3.Connection, *, from_version: int) -> None:
+    current_version = from_version
+    while current_version < CURRENT_SCHEMA_VERSION:
+        next_version = current_version + 1
+        if current_version == 1 and next_version == SCHEMA_VERSION_WITH_GOVERNANCE:
+            _create_governance_tables(connection)
+            connection.execute(
+                """
+                UPDATE apeiria_schema_meta
+                SET schema_version = ?, updated_at = ?
+                WHERE id = 1
+                """,
+                (SCHEMA_VERSION_WITH_GOVERNANCE, _utcnow_text()),
             )
-        )
-        await session.execute(
-            text(
-                "UPDATE ai_affinity "
-                "SET scope_key = CASE "
-                "WHEN group_id IS NULL THEN 'private' "
-                "ELSE 'group:' || group_id END"
+            current_version = next_version
+            continue
+        if (
+            current_version == SCHEMA_VERSION_WITH_GOVERNANCE
+            and next_version == SCHEMA_VERSION_WITH_AI_CONTROL_PLANE
+        ):
+            _create_ai_control_plane_tables(connection)
+            connection.execute(
+                """
+                UPDATE apeiria_schema_meta
+                SET schema_version = ?, updated_at = ?
+                WHERE id = 1
+                """,
+                (SCHEMA_VERSION_WITH_AI_CONTROL_PLANE, _utcnow_text()),
             )
-        )
-
-    await session.execute(
-        text(
-            "CREATE UNIQUE INDEX IF NOT EXISTS "
-            "uq_ai_affinity_scope_key_subject "
-            "ON ai_affinity (platform, scope_key, user_id)"
-        )
-    )
-    await session.commit()
-
-
-MIGRATIONS[9] = _migrate_v9_to_v10
-
-
-async def _migrate_v10_to_v11(session: AsyncSession) -> None:
-    from nonebot_plugin_orm import Model
-
-    conn = await session.connection()
-    await conn.run_sync(Model.metadata.create_all)
-
-
-MIGRATIONS[10] = _migrate_v10_to_v11
-
-
-async def _migrate_v11_to_v12(session: AsyncSession) -> None:
-    from nonebot_plugin_orm import Model
-
-    conn = await session.connection()
-    await conn.run_sync(Model.metadata.create_all)
-    await session.commit()
-
-
-MIGRATIONS[11] = _migrate_v11_to_v12
-
-
-async def _migrate_v12_to_v13(session: AsyncSession) -> None:
-    from nonebot_plugin_orm import Model
-
-    conn = await session.connection()
-    await conn.run_sync(Model.metadata.create_all)
-
-
-MIGRATIONS[12] = _migrate_v12_to_v13
-
-
-async def _migrate_v13_to_v14(session: AsyncSession) -> None:
-    from nonebot_plugin_orm import Model
-
-    conn = await session.connection()
-    await conn.run_sync(Model.metadata.create_all)
-    await session.commit()
-
-
-MIGRATIONS[13] = _migrate_v13_to_v14
-
-
-async def _migrate_v14_to_v15(session: AsyncSession) -> None:
-    from nonebot_plugin_orm import Model
-
-    conn = await session.connection()
-    await conn.run_sync(Model.metadata.create_all)
-
-
-MIGRATIONS[14] = _migrate_v14_to_v15
-
-
-async def _migrate_v15_to_v16(session: AsyncSession) -> None:
-    from nonebot_plugin_orm import Model
-
-    conn = await session.connection()
-    await conn.run_sync(Model.metadata.create_all)
-    await session.commit()
-
-
-MIGRATIONS[15] = _migrate_v15_to_v16
-
-
-async def _migrate_v16_to_v17(session: AsyncSession) -> None:
-    from nonebot_plugin_orm import Model
-    from sqlalchemy import inspect as sa_inspect
-    from sqlalchemy import text
-
-    conn = await session.connection()
-
-    def _has_memory_domain(sync_conn):  # noqa: ANN001
-        inspector = sa_inspect(sync_conn)
-        columns = inspector.get_columns("ai_memory_item")
-        return any(column["name"] == "memory_domain" for column in columns)
-
-    has_memory_domain = await conn.run_sync(_has_memory_domain)
-    if not has_memory_domain:
-        await session.execute(
-            text(
-                "ALTER TABLE ai_memory_item "
-                "ADD COLUMN memory_domain VARCHAR(32) NOT NULL DEFAULT 'social'"
+            current_version = next_version
+            continue
+        if (
+            current_version == SCHEMA_VERSION_WITH_AI_CONTROL_PLANE
+            and next_version == SCHEMA_VERSION_WITH_MODEL_ROUTING
+        ):
+            _create_model_routing_tables(connection)
+            connection.execute(
+                """
+                UPDATE apeiria_schema_meta
+                SET schema_version = ?, updated_at = ?
+                WHERE id = 1
+                """,
+                (SCHEMA_VERSION_WITH_MODEL_ROUTING, _utcnow_text()),
             )
-        )
-        await session.execute(
-            text(
-                "CREATE INDEX IF NOT EXISTS ix_ai_memory_item_memory_domain "
-                "ON ai_memory_item (memory_domain)"
+            current_version = next_version
+            continue
+        if (
+            current_version == SCHEMA_VERSION_WITH_MODEL_ROUTING
+            and next_version == SCHEMA_VERSION_WITH_SOURCE_MODELS
+        ):
+            _create_source_model_tables(connection)
+            connection.execute(
+                """
+                UPDATE apeiria_schema_meta
+                SET schema_version = ?, updated_at = ?
+                WHERE id = 1
+                """,
+                (SCHEMA_VERSION_WITH_SOURCE_MODELS, _utcnow_text()),
             )
+            current_version = next_version
+            continue
+        raise DatabaseSchemaError.no_migration_path(
+            from_version=current_version,
+            to_version=next_version,
         )
-    await conn.run_sync(Model.metadata.create_all)
-    await session.commit()
 
 
-MIGRATIONS[16] = _migrate_v16_to_v17
-
-
-async def _migrate_v17_to_v18(session: AsyncSession) -> None:
-    await _normalize_memory_types_to_note(session)
-    await session.commit()
-
-
-MIGRATIONS[17] = _migrate_v17_to_v18
-
-
-async def _migrate_v18_to_v19(session: AsyncSession) -> None:
-    from nonebot_plugin_orm import Model
-
-    conn = await session.connection()
-    await conn.run_sync(Model.metadata.create_all)
-    await session.commit()
-
-
-MIGRATIONS[18] = _migrate_v18_to_v19
-
-
-async def _migrate_v19_to_v20(session: AsyncSession) -> None:
-    from nonebot_plugin_orm import Model
-
-    conn = await session.connection()
-    await conn.run_sync(Model.metadata.create_all)
-    await session.commit()
-
-
-MIGRATIONS[19] = _migrate_v19_to_v20
-
-
-async def _migrate_v20_to_v21(session: AsyncSession) -> None:
-    from sqlalchemy import text
-
-    await session.execute(text("DROP TABLE IF EXISTS ai_memory_embedding"))
-    await session.execute(text("DROP TABLE IF EXISTS ai_memory_item"))
-    await session.execute(
-        text(
-            """
-            CREATE TABLE ai_memory_item (
-                id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
-                memory_id VARCHAR(64) NOT NULL UNIQUE,
-                anchor_type VARCHAR(32) NOT NULL,
-                anchor_id VARCHAR(128) NOT NULL,
-                memory_layer VARCHAR(32) NOT NULL,
-                memory_kind VARCHAR(32) NOT NULL,
-                content TEXT NOT NULL,
-                is_editable BOOLEAN NOT NULL DEFAULT 1,
-                is_ignored BOOLEAN NOT NULL DEFAULT 0,
-                source_message_id VARCHAR(64),
-                salience FLOAT NOT NULL DEFAULT 0.5,
-                confidence FLOAT NOT NULL DEFAULT 0.5,
-                last_recalled_at DATETIME,
-                created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
-            )
-            """
+def _create_governance_tables(connection: sqlite3.Connection) -> None:
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS plugin_state (
+            plugin_id TEXT PRIMARY KEY,
+            enabled INTEGER NOT NULL DEFAULT 1,
+            access_mode TEXT NOT NULL DEFAULT 'default_allow',
+            required_level INTEGER NOT NULL DEFAULT 0,
+            protection_mode TEXT NOT NULL DEFAULT 'normal',
+            ui_hidden_override INTEGER,
+            updated_at TEXT NOT NULL
         )
+        """
     )
-    await session.execute(
-        text(
-            """
-            CREATE INDEX IF NOT EXISTS ix_ai_memory_item_anchor_type
-            ON ai_memory_item (anchor_type)
-            """
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS access_rule (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            subject_type TEXT NOT NULL,
+            subject_id TEXT NOT NULL,
+            plugin_id TEXT NOT NULL,
+            effect TEXT NOT NULL,
+            note TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            UNIQUE(subject_type, subject_id, plugin_id)
         )
+        """
     )
-    await session.execute(
-        text(
-            """
-            CREATE INDEX IF NOT EXISTS ix_ai_memory_item_anchor_id
-            ON ai_memory_item (anchor_id)
-            """
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS group_state (
+            group_id TEXT PRIMARY KEY,
+            group_name TEXT,
+            bot_enabled INTEGER NOT NULL DEFAULT 1,
+            disabled_plugins_json TEXT NOT NULL DEFAULT '[]',
+            updated_at TEXT NOT NULL
         )
+        """
     )
-    await session.execute(
-        text(
-            """
-            CREATE INDEX IF NOT EXISTS ix_ai_memory_item_memory_layer
-            ON ai_memory_item (memory_layer)
-            """
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS user_level (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id TEXT NOT NULL,
+            group_id TEXT NOT NULL,
+            level INTEGER NOT NULL DEFAULT 0,
+            updated_at TEXT NOT NULL,
+            UNIQUE(user_id, group_id)
         )
+        """
     )
-    await session.execute(
-        text(
-            """
-            CREATE INDEX IF NOT EXISTS ix_ai_memory_item_memory_kind
-            ON ai_memory_item (memory_kind)
-            """
+
+
+def _create_ai_control_plane_tables(connection: sqlite3.Connection) -> None:
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS ai_source (
+            source_id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            capability_type TEXT NOT NULL,
+            client_type TEXT NOT NULL,
+            preset_type TEXT NOT NULL,
+            api_base TEXT,
+            api_key_env_name TEXT,
+            enabled INTEGER NOT NULL DEFAULT 1,
+            timeout_seconds INTEGER,
+            custom_headers_json TEXT NOT NULL DEFAULT '{}',
+            extra_config_json TEXT NOT NULL DEFAULT '{}',
+            updated_at TEXT NOT NULL
         )
+        """
     )
-    await session.execute(
-        text(
-            """
-            CREATE INDEX IF NOT EXISTS ix_ai_memory_item_anchor_layer_kind
-            ON ai_memory_item (anchor_type, anchor_id, memory_layer, memory_kind)
-            """
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS ai_persona (
+            persona_id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            description TEXT NOT NULL,
+            system_prompt TEXT NOT NULL,
+            style_prompt TEXT NOT NULL,
+            enabled INTEGER NOT NULL DEFAULT 1,
+            updated_at TEXT NOT NULL
         )
+        """
     )
-    await session.execute(
-        text(
-            """
-            CREATE TABLE ai_memory_embedding (
-                id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
-                memory_id VARCHAR(64) NOT NULL UNIQUE,
-                embedding_model VARCHAR(64) NOT NULL DEFAULT 'local_bigrams_v1',
-                vector_json TEXT NOT NULL,
-                updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY(memory_id)
-                    REFERENCES ai_memory_item (memory_id)
-                    ON DELETE CASCADE
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS ai_persona_binding (
+            binding_id TEXT PRIMARY KEY,
+            scope_type TEXT NOT NULL,
+            scope_id TEXT NOT NULL,
+            persona_id TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+        """
+    )
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS ai_tool_policy (
+            binding_id TEXT PRIMARY KEY,
+            scope_type TEXT NOT NULL,
+            scope_id TEXT NOT NULL,
+            allow_read_only_tools INTEGER NOT NULL DEFAULT 1,
+            capability_mode TEXT NOT NULL DEFAULT 'off',
+            updated_at TEXT NOT NULL
+        )
+        """
+    )
+
+
+def _create_model_routing_tables(connection: sqlite3.Connection) -> None:
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS ai_model_profile (
+            profile_id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            model_id TEXT NOT NULL,
+            task_class TEXT NOT NULL,
+            priority INTEGER NOT NULL,
+            enabled INTEGER NOT NULL DEFAULT 1,
+            fallback_profile_id TEXT,
+            updated_at TEXT NOT NULL
+        )
+        """
+    )
+
+
+def _create_source_model_tables(connection: sqlite3.Connection) -> None:
+    for table_name in (
+        "ai_chat_model",
+        "ai_embedding_model",
+        "ai_stt_model",
+        "ai_tts_model",
+        "ai_rerank_model",
+    ):
+        connection.execute(
+            f"""
+            CREATE TABLE IF NOT EXISTS {table_name} (
+                model_id TEXT PRIMARY KEY,
+                source_id TEXT NOT NULL,
+                model_identifier TEXT NOT NULL,
+                display_name TEXT NOT NULL,
+                enabled INTEGER NOT NULL DEFAULT 1,
+                is_default INTEGER NOT NULL DEFAULT 0,
+                extra_params_json TEXT NOT NULL DEFAULT '{{}}',
+                updated_at TEXT NOT NULL
             )
             """
         )
-    )
-    await session.execute(
-        text(
-            """
-            CREATE INDEX IF NOT EXISTS ix_ai_memory_embedding_memory_id
-            ON ai_memory_embedding (memory_id)
-            """
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS ai_model_binding (
+            binding_id TEXT PRIMARY KEY,
+            scope_type TEXT NOT NULL,
+            scope_id TEXT NOT NULL,
+            profile_id TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            UNIQUE(scope_type, scope_id)
         )
-    )
-    await session.commit()
-
-
-MIGRATIONS[20] = _migrate_v20_to_v21
-
-
-async def _migrate_v22_to_v23(session: AsyncSession) -> None:
-    from nonebot_plugin_orm import Model
-
-    conn = await session.connection()
-    await conn.run_sync(Model.metadata.create_all)
-    await session.commit()
-
-
-MIGRATIONS[22] = _migrate_v22_to_v23
-
-
-async def _migrate_v23_to_v24(session: AsyncSession) -> None:
-    from nonebot_plugin_orm import Model
-    from sqlalchemy import inspect as sa_inspect
-    from sqlalchemy import text
-
-    conn = await session.connection()
-
-    def _has_last_decay_at(sync_conn):  # noqa: ANN001
-        inspector = sa_inspect(sync_conn)
-        columns = inspector.get_columns("ai_affinity")
-        return any(column["name"] == "last_decay_at" for column in columns)
-
-    has_last_decay_at = await conn.run_sync(_has_last_decay_at)
-    if not has_last_decay_at:
-        await session.execute(
-            text("ALTER TABLE ai_affinity ADD COLUMN last_decay_at DATETIME")
-        )
-
-    await conn.run_sync(Model.metadata.create_all)
-    await session.commit()
-
-
-MIGRATIONS[23] = _migrate_v23_to_v24
-
-
-async def _migrate_v24_to_v25(session: AsyncSession) -> None:
-    from nonebot_plugin_orm import Model
-    from sqlalchemy import inspect as sa_inspect
-    from sqlalchemy import text
-
-    conn = await session.connection()
-
-    def _has_is_ui_hidden(sync_conn):  # noqa: ANN001
-        inspector = sa_inspect(sync_conn)
-        columns = inspector.get_columns("plugin_info")
-        return any(column["name"] == "is_ui_hidden" for column in columns)
-
-    has_is_ui_hidden = await conn.run_sync(_has_is_ui_hidden)
-    if not has_is_ui_hidden:
-        await session.execute(
-            text(
-                "ALTER TABLE plugin_info "
-                "ADD COLUMN is_ui_hidden BOOLEAN NOT NULL DEFAULT 0"
-            )
-        )
-
-    await conn.run_sync(Model.metadata.create_all)
-    await session.commit()
-
-
-MIGRATIONS[24] = _migrate_v24_to_v25
-
-
-async def _normalize_memory_types_to_note(session: AsyncSession) -> None:
-    from sqlalchemy import text
-
-    await session.execute(
-        text(
-            "UPDATE ai_memory_item "
-            "SET memory_type = 'note' "
-            "WHERE memory_type IN ('episode', 'summary', 'operator_note')"
-        )
+        """
     )

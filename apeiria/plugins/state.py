@@ -12,21 +12,15 @@ if TYPE_CHECKING:
 async def get_disabled_plugin_modules(
     module_names: Collection[str] | None = None,
 ) -> set[str]:
-    """Return globally disabled plugin modules recorded in PluginInfo."""
-    from nonebot_plugin_orm import get_session
-    from sqlalchemy import select
+    """Return globally disabled plugin modules recorded in plugin_state."""
+    from apeiria.plugins.repository import plugin_catalog_repository
 
-    from apeiria.db.models.plugin_info import PluginInfo
-
-    async with get_session() as session:
-        statement = select(PluginInfo.module_name).where(
-            PluginInfo.is_global_enabled.is_(False)
-        )
-        if module_names:
-            statement = statement.where(PluginInfo.module_name.in_(tuple(module_names)))
-        result = await session.execute(statement)
-        rows = result.scalars().all()
-    return set(rows)
+    enabled_map = await plugin_catalog_repository.get_enabled_map()
+    disabled = {module for module, enabled in enabled_map.items() if not enabled}
+    if module_names:
+        allowed_modules = set(module_names)
+        return {module for module in disabled if module in allowed_modules}
+    return disabled
 
 
 def get_disabled_plugin_modules_sync(

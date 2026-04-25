@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
+from datetime import datetime, timezone
+from json import dumps
 from typing import TYPE_CHECKING, Any, cast
 from uuid import uuid4
-
-from sqlalchemy import select
 
 from apeiria.ai.model.sources import (
     SOURCE_PRESETS,
@@ -17,7 +17,8 @@ from apeiria.ai.model.sources import (
     AISourcePresetDefinition,
     AISourcePresetType,
 )
-from apeiria.db.models import AISource
+from apeiria.db.runtime import database_runtime
+from apeiria.utils.json_utils import safe_json_loads
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -56,60 +57,68 @@ class AISourceService:
 
     async def list_sources(
         self,
-        session: "AsyncSession",
+        session: "AsyncSession | None" = None,
     ) -> list[AISourceDefinition]:
-        result = await session.execute(
-            select(AISource).order_by(AISource.name.asc(), AISource.id.asc())
-        )
-        return [
-            AISourceDefinition(
-                source_id=row.source_id,
-                name=row.name,
-                capability_type=cast("AISourceCapabilityType", row.capability_type),
-                client_type=cast("AISourceClientType", row.client_type),
-                preset_type=cast("AISourcePresetType", row.preset_type),
-                api_base=row.api_base,
-                api_key_env_name=row.api_key_env_name,
-                enabled=row.enabled,
-                timeout_seconds=row.timeout_seconds,
-                custom_headers=row.custom_headers_json or {},
-                extra_config=row.extra_config_json or {},
-            )
-            for row in result.scalars().all()
-        ]
+        del session
+        with database_runtime.connect_sync() as connection:
+            rows = connection.execute(
+                """
+                SELECT
+                    source_id,
+                    name,
+                    capability_type,
+                    client_type,
+                    preset_type,
+                    api_base,
+                    api_key_env_name,
+                    enabled,
+                    timeout_seconds,
+                    custom_headers_json,
+                    extra_config_json
+                FROM ai_source
+                ORDER BY name ASC, source_id ASC
+                """
+            ).fetchall()
+        return [self._row_to_definition(row) for row in rows]
 
     async def get_source(
         self,
-        session: "AsyncSession",
+        session: "AsyncSession | None" = None,
         *,
         source_id: str,
     ) -> AISourceDefinition | None:
-        result = await session.execute(
-            select(AISource).where(AISource.source_id == source_id)
-        )
-        row = result.scalar_one_or_none()
+        del session
+        with database_runtime.connect_sync() as connection:
+            row = connection.execute(
+                """
+                SELECT
+                    source_id,
+                    name,
+                    capability_type,
+                    client_type,
+                    preset_type,
+                    api_base,
+                    api_key_env_name,
+                    enabled,
+                    timeout_seconds,
+                    custom_headers_json,
+                    extra_config_json
+                FROM ai_source
+                WHERE source_id = ?
+                """,
+                (source_id,),
+            ).fetchone()
         if row is None:
             return None
-        return AISourceDefinition(
-            source_id=row.source_id,
-            name=row.name,
-            capability_type=cast("AISourceCapabilityType", row.capability_type),
-            client_type=cast("AISourceClientType", row.client_type),
-            preset_type=cast("AISourcePresetType", row.preset_type),
-            api_base=row.api_base,
-            api_key_env_name=row.api_key_env_name,
-            enabled=row.enabled,
-            timeout_seconds=row.timeout_seconds,
-            custom_headers=row.custom_headers_json or {},
-            extra_config=row.extra_config_json or {},
-        )
+        return self._row_to_definition(row)
 
     async def create_source(
         self,
-        session: "AsyncSession",
+        session: "AsyncSession | None",
         create_input: AISourceCreateInput,
-    ) -> AISource:
-        row = AISource(
+    ) -> AISourceDefinition:
+        del session
+        source = AISourceDefinition(
             source_id=f"source_{uuid4().hex}",
             name=create_input.name,
             capability_type=create_input.capability_type,
@@ -119,12 +128,43 @@ class AISourceService:
             api_key_env_name=create_input.api_key_env_name,
             enabled=create_input.enabled,
             timeout_seconds=create_input.timeout_seconds,
-            custom_headers_json=create_input.custom_headers or {},
-            extra_config_json=create_input.extra_config or {},
+            custom_headers=create_input.custom_headers or {},
+            extra_config=create_input.extra_config or {},
         )
-        session.add(row)
-        await session.flush()
-        return row
+        with database_runtime.connect_sync() as connection:
+            connection.execute(
+                """
+                INSERT INTO ai_source (
+                    source_id,
+                    name,
+                    capability_type,
+                    client_type,
+                    preset_type,
+                    api_base,
+                    api_key_env_name,
+                    enabled,
+                    timeout_seconds,
+                    custom_headers_json,
+                    extra_config_json,
+                    updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    source.source_id,
+                    source.name,
+                    source.capability_type,
+                    source.client_type,
+                    source.preset_type,
+                    source.api_base,
+                    source.api_key_env_name,
+                    1 if source.enabled else 0,
+                    source.timeout_seconds,
+                    dumps(source.custom_headers or {}, ensure_ascii=False),
+                    dumps(source.extra_config or {}, ensure_ascii=False),
+                    _utcnow_text(),
+                ),
+            )
+        return source
 
     @staticmethod
     def build_ephemeral_source(  # noqa: PLR0913
@@ -156,57 +196,90 @@ class AISourceService:
 
     async def update_source(
         self,
-        session: "AsyncSession",
+        session: "AsyncSession | None",
         *,
         source_id: str,
         create_input: AISourceCreateInput,
-    ) -> AISource | None:
-        result = await session.execute(
-            select(AISource).where(AISource.source_id == source_id)
-        )
-        row = result.scalar_one_or_none()
-        if row is None:
+    ) -> AISourceDefinition | None:
+        del session
+        existing = await self.get_source(None, source_id=source_id)
+        if existing is None:
             return None
-        row.name = create_input.name
-        row.capability_type = create_input.capability_type
-        row.client_type = create_input.client_type
-        row.preset_type = create_input.preset_type
-        row.api_base = create_input.api_base
-        row.api_key_env_name = create_input.api_key_env_name
-        row.enabled = create_input.enabled
-        row.timeout_seconds = create_input.timeout_seconds
-        row.custom_headers_json = create_input.custom_headers or {}
-        row.extra_config_json = create_input.extra_config or {}
-        await session.flush()
-        return row
+        updated = AISourceDefinition(
+            source_id=source_id,
+            name=create_input.name,
+            capability_type=create_input.capability_type,
+            client_type=create_input.client_type,
+            preset_type=create_input.preset_type,
+            api_base=create_input.api_base,
+            api_key_env_name=create_input.api_key_env_name,
+            enabled=create_input.enabled,
+            timeout_seconds=create_input.timeout_seconds,
+            custom_headers=create_input.custom_headers or {},
+            extra_config=create_input.extra_config or {},
+        )
+        with database_runtime.connect_sync() as connection:
+            connection.execute(
+                """
+                UPDATE ai_source
+                SET
+                    name = ?,
+                    capability_type = ?,
+                    client_type = ?,
+                    preset_type = ?,
+                    api_base = ?,
+                    api_key_env_name = ?,
+                    enabled = ?,
+                    timeout_seconds = ?,
+                    custom_headers_json = ?,
+                    extra_config_json = ?,
+                    updated_at = ?
+                WHERE source_id = ?
+                """,
+                (
+                    updated.name,
+                    updated.capability_type,
+                    updated.client_type,
+                    updated.preset_type,
+                    updated.api_base,
+                    updated.api_key_env_name,
+                    1 if updated.enabled else 0,
+                    updated.timeout_seconds,
+                    dumps(updated.custom_headers or {}, ensure_ascii=False),
+                    dumps(updated.extra_config or {}, ensure_ascii=False),
+                    _utcnow_text(),
+                    source_id,
+                ),
+            )
+        return updated
 
     async def delete_source(
         self,
-        session: "AsyncSession",
+        session: "AsyncSession | None",
         *,
         source_id: str,
     ) -> bool:
-        result = await session.execute(
-            select(AISource).where(AISource.source_id == source_id)
-        )
-        row = result.scalar_one_or_none()
-        if row is None:
-            return False
-        await session.delete(row)
-        await session.flush()
-        return True
+        del session
+        with database_runtime.connect_sync() as connection:
+            cursor = connection.execute(
+                "DELETE FROM ai_source WHERE source_id = ?",
+                (source_id,),
+            )
+        return cursor.rowcount > 0
 
     async def build_delete_dependency_report(
         self,
-        session: "AsyncSession",
+        session: "AsyncSession | None",
         *,
         source_id: str,
     ) -> AISourceDeleteDependencyReport | None:
+        if session is None:
+            return None
         from apeiria.ai.model.capability_registry import (
             SOURCE_MODEL_CAPABILITY_REGISTRY,
         )
 
-        source = await self.get_source(session, source_id=source_id)
+        source = await self.get_source(None, source_id=source_id)
         if source is None:
             return None
         entry = SOURCE_MODEL_CAPABILITY_REGISTRY[source.capability_type]
@@ -231,6 +304,32 @@ class AISourceService:
         value = os.getenv(source.api_key_env_name)
         return value.strip() if isinstance(value, str) and value.strip() else None
 
+    @staticmethod
+    def _row_to_definition(row: tuple[object, ...]) -> AISourceDefinition:
+        custom_headers = safe_json_loads(
+            str(row[9]) if row[9] is not None else None,
+            default={},
+        )
+        extra_config = safe_json_loads(
+            str(row[10]) if row[10] is not None else None,
+            default={},
+        )
+        return AISourceDefinition(
+            source_id=str(row[0]),
+            name=str(row[1]),
+            capability_type=cast("AISourceCapabilityType", str(row[2])),
+            client_type=cast("AISourceClientType", str(row[3])),
+            preset_type=cast("AISourcePresetType", str(row[4])),
+            api_base=str(row[5]) if row[5] is not None else None,
+            api_key_env_name=str(row[6]) if row[6] is not None else None,
+            enabled=bool(row[7]),
+            timeout_seconds=_coerce_optional_int(row[8]),
+            custom_headers=(
+                custom_headers if isinstance(custom_headers, dict) else {}
+            ),
+            extra_config=extra_config if isinstance(extra_config, dict) else {},
+        )
+
 
 ai_source_service = AISourceService()
 
@@ -243,4 +342,18 @@ def _extract_inline_api_key(source: AISourceDefinition) -> str | None:
     for value in raw_api_keys:
         if isinstance(value, str) and value.strip():
             return value.strip()
+    return None
+
+
+def _utcnow_text() -> str:
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+def _coerce_optional_int(value: object) -> int | None:
+    if value is None:
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str) and value.strip():
+        return int(value.strip())
     return None

@@ -3,17 +3,15 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING, cast
 from uuid import uuid4
-
-from sqlalchemy import select
 
 from apeiria.ai.model.bindings import (
     AIModelBindingSpec,
     AIModelBindingTarget,
     resolve_model_binding,
 )
-from apeiria.ai.model.chat_model import ai_chat_model_service
 from apeiria.ai.model.models import (
     AIModelProfileDefinition,
     AIModelRouteQuery,
@@ -29,7 +27,7 @@ from apeiria.ai.model.selection import (
     resolve_source_selected_model_with_fallback,
 )
 from apeiria.ai.model.source import ai_source_service
-from apeiria.db.models import AIModelBinding, AIModelProfile
+from apeiria.db.runtime import database_runtime
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -52,50 +50,69 @@ class AIModelProfileService:
 
     async def list_profiles(
         self,
-        session: "AsyncSession",
+        session: "AsyncSession | None",
     ) -> list[AIModelProfileDefinition]:
-        result = await session.execute(
-            select(AIModelProfile).order_by(
-                AIModelProfile.priority.asc(),
-                AIModelProfile.id.asc(),
-            )
-        )
+        del session
+        with database_runtime.connect_sync() as connection:
+            rows = connection.execute(
+                """
+                SELECT
+                    profile_id,
+                    name,
+                    model_id,
+                    task_class,
+                    priority,
+                    enabled,
+                    fallback_profile_id
+                FROM ai_model_profile
+                ORDER BY priority ASC, profile_id ASC
+                """
+            ).fetchall()
         return [
             AIModelProfileDefinition(
-                profile_id=row.profile_id,
-                name=row.name,
-                model_id=row.model_id or "",
-                task_class=cast("AIModelTaskClass", row.task_class),
-                priority=row.priority,
-                enabled=row.enabled,
-                fallback_profile_id=row.fallback_profile_id,
+                profile_id=str(row[0]),
+                name=str(row[1]),
+                model_id=str(row[2]),
+                task_class=cast("AIModelTaskClass", str(row[3])),
+                priority=int(row[4]),
+                enabled=bool(row[5]),
+                fallback_profile_id=(
+                    str(row[6]) if row[6] is not None else None
+                ),
             )
-            for row in result.scalars().all()
+            for row in rows
         ]
 
     async def list_bindings(
         self,
-        session: "AsyncSession",
+        session: "AsyncSession | None",
     ) -> list[AIModelBindingSpec]:
-        result = await session.execute(
-            select(AIModelBinding).order_by(AIModelBinding.id.asc())
-        )
+        del session
+        with database_runtime.connect_sync() as connection:
+            rows = connection.execute(
+                """
+                SELECT binding_id, scope_type, scope_id, profile_id
+                FROM ai_model_binding
+                ORDER BY binding_id ASC
+                """
+            ).fetchall()
         return [
             AIModelBindingSpec(
-                binding_id=row.binding_id,
-                scope_type=row.scope_type,
-                scope_id=row.scope_id,
-                profile_id=row.profile_id,
+                binding_id=str(row[0]),
+                scope_type=str(row[1]),
+                scope_id=str(row[2]),
+                profile_id=str(row[3]),
             )
-            for row in result.scalars().all()
+            for row in rows
         ]
 
     async def create_profile(
         self,
-        session: "AsyncSession",
+        session: "AsyncSession | None",
         create_input: AIModelProfileCreateInput,
-    ) -> AIModelProfile:
-        row = AIModelProfile(
+    ) -> AIModelProfileDefinition:
+        del session
+        profile = AIModelProfileDefinition(
             profile_id=f"profile_{uuid4().hex}",
             name=create_input.name,
             model_id=create_input.model_id,
@@ -104,35 +121,90 @@ class AIModelProfileService:
             enabled=create_input.enabled,
             fallback_profile_id=create_input.fallback_profile_id,
         )
-        session.add(row)
-        await session.flush()
-        return row
+        with database_runtime.connect_sync() as connection:
+            connection.execute(
+                """
+                INSERT INTO ai_model_profile (
+                    profile_id,
+                    name,
+                    model_id,
+                    task_class,
+                    priority,
+                    enabled,
+                    fallback_profile_id,
+                    updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    profile.profile_id,
+                    profile.name,
+                    profile.model_id,
+                    profile.task_class,
+                    profile.priority,
+                    1 if profile.enabled else 0,
+                    profile.fallback_profile_id,
+                    _utcnow_text(),
+                ),
+            )
+        return profile
 
     async def update_profile(
         self,
-        session: "AsyncSession",
+        session: "AsyncSession | None",
         *,
         profile_id: str,
         create_input: AIModelProfileCreateInput,
-    ) -> AIModelProfile | None:
-        result = await session.execute(
-            select(AIModelProfile).where(AIModelProfile.profile_id == profile_id)
+    ) -> AIModelProfileDefinition | None:
+        del session
+        existing = next(
+            (
+                item
+                for item in await self.list_profiles(None)
+                if item.profile_id == profile_id
+            ),
+            None,
         )
-        row = result.scalar_one_or_none()
-        if row is None:
+        if existing is None:
             return None
-        row.name = create_input.name
-        row.model_id = create_input.model_id
-        row.task_class = create_input.task_class
-        row.priority = create_input.priority
-        row.enabled = create_input.enabled
-        row.fallback_profile_id = create_input.fallback_profile_id
-        await session.flush()
-        return row
+        updated = AIModelProfileDefinition(
+            profile_id=profile_id,
+            name=create_input.name,
+            model_id=create_input.model_id,
+            task_class=create_input.task_class,
+            priority=create_input.priority,
+            enabled=create_input.enabled,
+            fallback_profile_id=create_input.fallback_profile_id,
+        )
+        with database_runtime.connect_sync() as connection:
+            connection.execute(
+                """
+                UPDATE ai_model_profile
+                SET
+                    name = ?,
+                    model_id = ?,
+                    task_class = ?,
+                    priority = ?,
+                    enabled = ?,
+                    fallback_profile_id = ?,
+                    updated_at = ?
+                WHERE profile_id = ?
+                """,
+                (
+                    updated.name,
+                    updated.model_id,
+                    updated.task_class,
+                    updated.priority,
+                    1 if updated.enabled else 0,
+                    updated.fallback_profile_id,
+                    _utcnow_text(),
+                    profile_id,
+                ),
+            )
+        return updated
 
     async def resolve_profile(
         self,
-        session: "AsyncSession",
+        session: "AsyncSession | None",
         query: AIModelRouteQuery,
     ) -> AIModelProfileDefinition | None:
         profiles = await self.list_profiles(session)
@@ -140,7 +212,7 @@ class AIModelProfileService:
 
     async def resolve_profile_for_target(
         self,
-        session: "AsyncSession",
+        session: "AsyncSession | None",
         *,
         target: AIModelBindingTarget,
     ) -> AIModelProfileDefinition | None:
@@ -161,18 +233,20 @@ class AIModelProfileService:
         *,
         target: AIModelBindingTarget | None = None,
     ) -> AISelectedModel | None:
-        profiles = await self.list_profiles(session)
+        from apeiria.ai.model.chat_model import ai_chat_model_service
+
+        profiles = await self.list_profiles(None)
         candidate_profiles: list[AIModelProfileDefinition] = []
         if target is not None:
             bound_profile = await self.resolve_profile_for_target(
-                session,
+                None,
                 target=target,
             )
             if bound_profile is not None:
                 candidate_profiles.append(bound_profile)
         if query is not None:
             candidate_profiles.extend(list_model_profile_candidates(profiles, query))
-        sources = await ai_source_service.list_sources(session)
+        sources = await ai_source_service.list_sources(None)
         source_models = await ai_chat_model_service.list_all_models(session)
         deduped_candidates = list(
             {profile.profile_id: profile for profile in candidate_profiles}.values()
@@ -194,3 +268,7 @@ class AIModelProfileService:
 
 
 ai_model_profile_service = AIModelProfileService()
+
+
+def _utcnow_text() -> str:
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")

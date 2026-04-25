@@ -6,10 +6,14 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
-from sqlalchemy import select
-
+from apeiria.ai.model.source_model_storage import (
+    create_source_model,
+    delete_source_model,
+    get_source_model,
+    list_source_models,
+    update_source_model,
+)
 from apeiria.ai.model.source_models import AITextToSpeechModelDefinition
-from apeiria.db.models import AITTSModel
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -32,126 +36,81 @@ class AITTSModelService:
 
     async def get_model(
         self,
-        session: "AsyncSession",
+        session: "AsyncSession | None",
         *,
         model_id: str,
     ) -> AITextToSpeechModelDefinition | None:
-        result = await session.execute(
-            select(AITTSModel).where(AITTSModel.model_id == model_id)
-        )
-        row = result.scalar_one_or_none()
-        if row is None:
-            return None
-        return AITextToSpeechModelDefinition(
-            model_id=row.model_id,
-            source_id=row.source_id,
-            model_identifier=row.model_identifier,
-            display_name=row.display_name,
-            enabled=row.enabled,
-            is_default=row.is_default,
-            extra_params=row.extra_params_json or {},
+        del session
+        record = get_source_model("ai_tts_model", model_id=model_id)
+        return (
+            None
+            if record is None
+            else AITextToSpeechModelDefinition(**record.__dict__)
         )
 
     async def list_models(
         self,
-        session: "AsyncSession",
+        session: "AsyncSession | None",
         *,
         source_id: str,
     ) -> list[AITextToSpeechModelDefinition]:
-        result = await session.execute(
-            select(AITTSModel)
-            .where(AITTSModel.source_id == source_id)
-            .order_by(
-                AITTSModel.is_default.desc(),
-                AITTSModel.display_name.asc(),
-                AITTSModel.id.asc(),
-            )
-        )
+        del session
         return [
-            AITextToSpeechModelDefinition(
-                model_id=row.model_id,
-                source_id=row.source_id,
-                model_identifier=row.model_identifier,
-                display_name=row.display_name,
-                enabled=row.enabled,
-                is_default=row.is_default,
-                extra_params=row.extra_params_json or {},
-            )
-            for row in result.scalars().all()
+            AITextToSpeechModelDefinition(**row.__dict__)
+            for row in list_source_models("ai_tts_model", source_id=source_id)
         ]
 
     async def create_model(
         self,
-        session: "AsyncSession",
+        session: "AsyncSession | None",
         create_input: AITTSModelCreateInput,
-    ) -> AITTSModel:
-        if create_input.is_default:
-            await self._clear_default(session, source_id=create_input.source_id)
-        row = AITTSModel(
-            model_id=f"tts_model_{uuid4().hex}",
+    ) -> AITextToSpeechModelDefinition:
+        del session
+        return AITextToSpeechModelDefinition(
+            **create_source_model(
+                "ai_tts_model",
+                model_id=f"tts_model_{uuid4().hex}",
+                source_id=create_input.source_id,
+                model_identifier=create_input.model_identifier,
+                display_name=create_input.display_name,
+                enabled=create_input.enabled,
+                is_default=create_input.is_default,
+                extra_params=create_input.extra_params,
+            ).__dict__
+        )
+
+    async def update_model(
+        self,
+        session: "AsyncSession | None",
+        *,
+        model_id: str,
+        create_input: AITTSModelCreateInput,
+    ) -> AITextToSpeechModelDefinition | None:
+        del session
+        record = update_source_model(
+            "ai_tts_model",
+            model_id=model_id,
             source_id=create_input.source_id,
             model_identifier=create_input.model_identifier,
             display_name=create_input.display_name,
             enabled=create_input.enabled,
             is_default=create_input.is_default,
-            extra_params_json=create_input.extra_params or {},
+            extra_params=create_input.extra_params,
         )
-        session.add(row)
-        await session.flush()
-        return row
-
-    async def update_model(
-        self,
-        session: "AsyncSession",
-        *,
-        model_id: str,
-        create_input: AITTSModelCreateInput,
-    ) -> AITTSModel | None:
-        result = await session.execute(
-            select(AITTSModel).where(AITTSModel.model_id == model_id)
+        return (
+            None
+            if record is None
+            else AITextToSpeechModelDefinition(**record.__dict__)
         )
-        row = result.scalar_one_or_none()
-        if row is None:
-            return None
-        if create_input.is_default:
-            await self._clear_default(session, source_id=create_input.source_id)
-        row.source_id = create_input.source_id
-        row.model_identifier = create_input.model_identifier
-        row.display_name = create_input.display_name
-        row.enabled = create_input.enabled
-        row.is_default = create_input.is_default
-        row.extra_params_json = create_input.extra_params or {}
-        await session.flush()
-        return row
 
     async def delete_model(
         self,
-        session: "AsyncSession",
+        session: "AsyncSession | None",
         *,
         model_id: str,
     ) -> bool:
-        result = await session.execute(
-            select(AITTSModel).where(AITTSModel.model_id == model_id)
-        )
-        row = result.scalar_one_or_none()
-        if row is None:
-            return False
-        await session.delete(row)
-        await session.flush()
-        return True
-
-    async def _clear_default(
-        self,
-        session: "AsyncSession",
-        *,
-        source_id: str,
-    ) -> None:
-        result = await session.execute(
-            select(AITTSModel).where(AITTSModel.source_id == source_id)
-        )
-        for row in result.scalars().all():
-            row.is_default = False
-        await session.flush()
+        del session
+        return delete_source_model("ai_tts_model", model_id=model_id)
 
 
 ai_tts_model_service = AITTSModelService()
