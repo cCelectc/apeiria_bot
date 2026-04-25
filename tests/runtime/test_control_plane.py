@@ -266,9 +266,7 @@ def test_migrated_routes_raise_controlled_http_exception_when_runtime_unavailabl
     runtime: ApeiriaRuntime | None,
 ) -> None:
     module = (
-        dashboard
-        if module_name == "dashboard"
-        else _load_plugin_catalog(monkeypatch)
+        dashboard if module_name == "dashboard" else _load_plugin_catalog(monkeypatch)
     )
     route_func = getattr(module, route_name)
     monkeypatch.setattr(module, "get_current_runtime", lambda: runtime)

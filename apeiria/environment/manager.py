@@ -6,12 +6,13 @@ import asyncio
 import json
 import os
 import shutil
+import sqlite3
 import subprocess
 from importlib import import_module
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from apeiria.db.schema import ensure_database_ready
+from apeiria.db import ApeiriaDatabase, ensure_database_ready
 from apeiria.environment.extension_project import (
     find_uv_executable,
 )
@@ -322,15 +323,14 @@ class EnvironmentService:
         return self.initialize_user_environment()
 
     def validate_database_schema(self) -> None:
-        from apeiria.bootstrap import initialize_nonebot
-
-        initialize_nonebot()
-        asyncio.run(ensure_database_ready())
+        database = ApeiriaDatabase(project_root=self._project_root)
+        asyncio.run(ensure_database_ready(database))
 
     def repair_database_schema(self) -> None:
         self.validate_database_schema()
 
     def runtime_export_targets(self) -> list[tuple[Path, Path]]:
+        database_path = ApeiriaDatabase(project_root=self._project_root).database_path()
         return [
             (self.main_config_path(), Path("apeiria.config.toml")),
             (self._project_root / "apeiria.plugins.toml", Path("apeiria.plugins.toml")),
@@ -350,7 +350,28 @@ class EnvironmentService:
                 self.plugin_project_lock_path(),
                 Path(".apeiria/extensions/uv.lock"),
             ),
+            (
+                database_path,
+                Path("data/db/apeiria.sqlite3"),
+            ),
         ]
+
+    def _database_path(self) -> Path:
+        return ApeiriaDatabase(project_root=self._project_root).database_path()
+
+    def _copy_runtime_export_target(self, source: Path, destination: Path) -> None:
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        if source == self._database_path():
+            source_connection = sqlite3.connect(source)
+            destination_connection = sqlite3.connect(destination)
+            try:
+                source_connection.backup(destination_connection)
+            finally:
+                destination_connection.close()
+                source_connection.close()
+            shutil.copystat(source, destination)
+            return
+        shutil.copy2(source, destination)
 
     def export_runtime_state(self, output_dir: Path | None = None) -> tuple[Path, int]:
         target_root = (
@@ -363,8 +384,7 @@ class EnvironmentService:
             if not source.exists():
                 continue
             destination = target_root / relative_path
-            destination.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(source, destination)
+            self._copy_runtime_export_target(source, destination)
             copied += 1
         return target_root, copied
 
@@ -378,6 +398,8 @@ class EnvironmentService:
         for destination, relative_path in self.runtime_export_targets():
             source = source_root / relative_path
             if not source.exists():
+                if destination == self._database_path():
+                    continue
                 if destination.exists():
                     destination.unlink()
                 continue

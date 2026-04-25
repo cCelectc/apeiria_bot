@@ -31,7 +31,6 @@ from apeiria.plugins.metadata.api import (
 from apeiria.webui.plugin_routers import register_plugin_router
 
 require("nonebot_plugin_alconna")
-require("nonebot_plugin_orm")
 
 __plugin_meta__ = PluginMetadata(
     name="AI Plugin",
@@ -108,7 +107,7 @@ __plugin_meta__ = PluginMetadata(
             ]
         ),
         commands=["ai-status"],
-        required_plugins=["nonebot_plugin_alconna", "nonebot_plugin_orm"],
+        required_plugins=["nonebot_plugin_alconna"],
     ).to_dict(),
 )
 

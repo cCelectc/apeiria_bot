@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING
 from uuid import uuid4
 
 from apeiria.ai.tools.models import (
@@ -15,9 +14,6 @@ from apeiria.ai.tools.models import (
     AIToolTurnCreateInput,
 )
 from apeiria.db.runtime import database_runtime
-
-if TYPE_CHECKING:
-    from sqlalchemy.ext.asyncio import AsyncSession
 
 
 @dataclass(frozen=True)
@@ -242,17 +238,13 @@ class AIToolPolicyBindingService:
 
     async def list_bindings(
         self,
-        session: "AsyncSession | None",
     ) -> list[AIToolPolicyBindingSpec]:
-        del session
         return self._list_bindings_sync()
 
     async def create_binding(
         self,
-        session: "AsyncSession | None",
         create_input: AIToolPolicyBindingCreateInput,
     ) -> AIToolPolicyBindingSpec:
-        del session
         binding = AIToolPolicyBindingSpec(
             binding_id=f"tool_policy_bind_{uuid4().hex}",
             scope_type=create_input.scope_type,
@@ -285,13 +277,11 @@ class AIToolPolicyBindingService:
 
     async def update_binding(
         self,
-        session: "AsyncSession | None",
         *,
         binding_id: str,
         allow_read_only_tools: bool,
         capability_mode: AIToolCapabilityMode,
     ) -> AIToolPolicyBindingSpec | None:
-        del session
         with database_runtime.connect_sync() as connection:
             row = connection.execute(
                 """
@@ -329,11 +319,9 @@ class AIToolPolicyBindingService:
 
     async def delete_binding(
         self,
-        session: "AsyncSession | None",
         *,
         binding_id: str,
     ) -> bool:
-        del session
         with database_runtime.connect_sync() as connection:
             cursor = connection.execute(
                 """
@@ -346,12 +334,11 @@ class AIToolPolicyBindingService:
 
     async def resolve_scene_policy(
         self,
-        session: "AsyncSession | None",
         *,
         scene_context: AIToolSceneContext,
         target: AIToolPolicyBindingTarget,
     ) -> AIToolPolicy:
-        bindings = await self.list_bindings(session)
+        bindings = await self.list_bindings()
         binding = resolve_tool_policy_binding(bindings, target)
         profile = tool_policy_binding_to_profile(binding)
         return resolve_default_tool_policy(

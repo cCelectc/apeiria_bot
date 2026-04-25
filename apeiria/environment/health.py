@@ -2,11 +2,22 @@
 
 from __future__ import annotations
 
+import sqlite3
+from typing import TYPE_CHECKING
+
+from apeiria.db import (
+    CURRENT_SCHEMA_LINE,
+    CURRENT_SCHEMA_VERSION,
+    ApeiriaDatabase,
+)
 from apeiria.environment.manager import (
     EnvironmentService,
     environment_service,
 )
 from apeiria.environment.models import HealthCheck, HealthSnapshot
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 _CHECK_MESSAGES: dict[tuple[str, str], tuple[str, str | None]] = {
     ("uv", "available"): ("uv is available.", None),
@@ -46,6 +57,24 @@ _CHECK_MESSAGES: dict[tuple[str, str], tuple[str, str | None]] = {
     ("extension_project", "missing"): (
         "Managed extension project is missing.",
         "Run `apeiria env init` to create `.apeiria/extensions`.",
+    ),
+    ("database", "missing"): (
+        "Apeiria database has not been initialized yet.",
+        "Run `apeiria check` or start Apeiria once to create it.",
+    ),
+    ("database", "current"): ("Apeiria database schema is current.", None),
+    ("database", "unsupported"): (
+        "Apeiria database schema version is not supported by this build.",
+        "Move the current local database aside, then run `apeiria check` "
+        "to recreate it.",
+    ),
+    ("database", "incompatible"): (
+        "Apeiria database schema is incompatible.",
+        "Restore a compatible database backup or move the current database aside.",
+    ),
+    ("database", "unreadable"): (
+        "Apeiria database cannot be read.",
+        "Check file permissions or restore a valid database backup.",
     ),
     ("frontend_workspace", "present"): ("Frontend workspace is present.", None),
     ("frontend_workspace", "missing"): (
@@ -124,6 +153,7 @@ class HealthService:
                 ok=environment.plugin_project_exists,
                 detail="present" if environment.plugin_project_exists else "missing",
             ),
+            self._build_database_check(),
             self._build_check(
                 key="frontend_workspace",
                 ok=environment.frontend_workspace_exists,
@@ -184,6 +214,63 @@ class HealthService:
         if message := _CHECK_MESSAGES.get((key, detail)):
             return message
         return (f"Check `{key}` is {detail}.", None)
+
+    def _build_database_check(self) -> HealthCheck:
+        database = ApeiriaDatabase(project_root=self._environment.project_root)
+        database_path = database.database_path()
+        if not database_path.exists():
+            detail = "missing"
+            ok = True
+        else:
+            detail, ok = self._inspect_database_schema(database_path)
+        return self._build_check(key="database", ok=ok, detail=detail)
+
+    def _inspect_database_schema(self, database_path: "Path") -> tuple[str, bool]:
+        try:
+            connection = sqlite3.connect(f"file:{database_path}?mode=ro", uri=True)
+            try:
+                row = connection.execute(
+                    """
+                    SELECT schema_line, schema_version
+                    FROM apeiria_schema_meta
+                    WHERE id = 1
+                    """
+                ).fetchone()
+            finally:
+                connection.close()
+        except sqlite3.OperationalError as exc:
+            if "no such table" in str(exc).lower():
+                detail = "incompatible"
+            else:
+                detail = "unreadable"
+            ok = False
+        except sqlite3.DatabaseError:
+            detail = "unreadable"
+            ok = False
+        else:
+            detail, ok = self._classify_database_schema_row(row)
+        return detail, ok
+
+    @staticmethod
+    def _classify_database_schema_row(row: object | None) -> tuple[str, bool]:
+        detail = "current"
+        ok = True
+        if row is None:
+            return "incompatible", False
+        try:
+            schema_line = str(row[0])  # type: ignore[index]
+            schema_version = int(row[1])  # type: ignore[index]
+        except (IndexError, TypeError, ValueError):
+            detail = "incompatible"
+            ok = False
+        else:
+            if schema_line != CURRENT_SCHEMA_LINE:
+                detail = "incompatible"
+                ok = False
+            elif schema_version != CURRENT_SCHEMA_VERSION:
+                detail = "unsupported"
+                ok = False
+        return detail, ok
 
 
 health_service = HealthService()

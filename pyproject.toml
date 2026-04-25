@@ -13,7 +13,6 @@ dependencies = [
     "nonebot-plugin-apscheduler>=0.5.0",
     "nonebot-plugin-localstore>=0.7.4",
     "nonebot-plugin-alconna>=0.61.1",
-    "nonebot-plugin-orm[default]>=0.8.3",
     "playwright>=1.54.0",
     "pydantic>=2.0,<3.0",
     "PyJWT>=2.10.1",

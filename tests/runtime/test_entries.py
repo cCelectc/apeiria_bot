@@ -108,8 +108,9 @@ def test_build_ai_trace_entry_maps_webchat_message_to_webchat_conversation() -> 
     assert entry.trigger is ApeiriaEntryTrigger.WEB_CHAT_MESSAGE
 
 
-def test_build_ai_trace_entry_maps_other_message_events_to_nonebot_conversation(
-) -> None:
+def test_build_ai_trace_entry_maps_other_message_events_to_nonebot_conversation() -> (
+    None
+):
     entry = build_ai_trace_entry("message", event=FakeMessageEvent())
 
     assert entry.kind is ApeiriaEntryKind.CONVERSATION

@@ -18,8 +18,6 @@ from apeiria.ai.reply_strategy.models import WakeContext
 if TYPE_CHECKING:
     from datetime import datetime
 
-    from sqlalchemy.ext.asyncio import AsyncSession
-
     from apeiria.ai.conversation.models import ChatContextMessageView
     from apeiria.ai.model import AIModelBindingTarget
     from apeiria.ai.pipeline.prompting import AIPersonaPromptBundleLike
@@ -30,14 +28,12 @@ if TYPE_CHECKING:
 
 
 async def resolve_initiative_bias(
-    session: "AsyncSession",
     *,
     relationship_target: "AIRelationshipTarget",
 ) -> float:
     """Project the relationship state into an initiative bias."""
 
     projection = await ai_relationship_service.project_state(
-        session,
         platform=relationship_target.platform,
         group_id=relationship_target.group_id,
         user_id=relationship_target.user_id,
@@ -62,7 +58,6 @@ def build_fallback_wake_context(
 
 
 async def decide_whether_to_speak(  # noqa: PLR0913
-    session: "AsyncSession",
     *,
     request: "AIRuntimeReplyRequest",
     wake_context: WakeContext | None,
@@ -82,7 +77,6 @@ async def decide_whether_to_speak(  # noqa: PLR0913
     if wake_context is None:
         wake_context = build_fallback_wake_context(request)
     decision = await reply_strategy_service.evaluate(
-        session,
         wake_context=wake_context,
         session_id=identity.session_id,
         scene_type=identity.scene_type,

@@ -37,8 +37,7 @@ def test_plugin_repository_persists_enabled_state_and_policy(
         )
         assert changed is True
         assert (
-            await plugin_catalog_repository.get_plugin_enabled("plugins.alpha")
-            is False
+            await plugin_catalog_repository.get_plugin_enabled("plugins.alpha") is False
         )
 
         await plugin_catalog_repository.ensure_plugin_policy(

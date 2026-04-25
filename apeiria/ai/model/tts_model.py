@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from typing import Any
 from uuid import uuid4
 
 from apeiria.ai.model.source_model_storage import (
@@ -14,9 +14,6 @@ from apeiria.ai.model.source_model_storage import (
     update_source_model,
 )
 from apeiria.ai.model.source_models import AITextToSpeechModelDefinition
-
-if TYPE_CHECKING:
-    from sqlalchemy.ext.asyncio import AsyncSession
 
 
 @dataclass(frozen=True)
@@ -36,25 +33,19 @@ class AITTSModelService:
 
     async def get_model(
         self,
-        session: "AsyncSession | None",
         *,
         model_id: str,
     ) -> AITextToSpeechModelDefinition | None:
-        del session
         record = get_source_model("ai_tts_model", model_id=model_id)
         return (
-            None
-            if record is None
-            else AITextToSpeechModelDefinition(**record.__dict__)
+            None if record is None else AITextToSpeechModelDefinition(**record.__dict__)
         )
 
     async def list_models(
         self,
-        session: "AsyncSession | None",
         *,
         source_id: str,
     ) -> list[AITextToSpeechModelDefinition]:
-        del session
         return [
             AITextToSpeechModelDefinition(**row.__dict__)
             for row in list_source_models("ai_tts_model", source_id=source_id)
@@ -62,10 +53,8 @@ class AITTSModelService:
 
     async def create_model(
         self,
-        session: "AsyncSession | None",
         create_input: AITTSModelCreateInput,
     ) -> AITextToSpeechModelDefinition:
-        del session
         return AITextToSpeechModelDefinition(
             **create_source_model(
                 "ai_tts_model",
@@ -81,12 +70,10 @@ class AITTSModelService:
 
     async def update_model(
         self,
-        session: "AsyncSession | None",
         *,
         model_id: str,
         create_input: AITTSModelCreateInput,
     ) -> AITextToSpeechModelDefinition | None:
-        del session
         record = update_source_model(
             "ai_tts_model",
             model_id=model_id,
@@ -98,18 +85,14 @@ class AITTSModelService:
             extra_params=create_input.extra_params,
         )
         return (
-            None
-            if record is None
-            else AITextToSpeechModelDefinition(**record.__dict__)
+            None if record is None else AITextToSpeechModelDefinition(**record.__dict__)
         )
 
     async def delete_model(
         self,
-        session: "AsyncSession | None",
         *,
         model_id: str,
     ) -> bool:
-        del session
         return delete_source_model("ai_tts_model", model_id=model_id)
 
 

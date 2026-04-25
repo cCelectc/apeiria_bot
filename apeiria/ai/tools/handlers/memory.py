@@ -91,10 +91,7 @@ async def handle_memory_update(
             status="error",
         )
 
-    existing = await ai_memory_service.get_memory(
-        context.session,
-        memory_id=memory_id,
-    )
+    existing = await ai_memory_service.get_memory(memory_id=memory_id)
     if existing is None:
         return AIToolResult(
             summary=f"- [memory.update] failed: memory {memory_id} was not found",
@@ -116,7 +113,6 @@ async def handle_memory_update(
         )
 
     row = await ai_memory_service.update_memory_content(
-        context.session,
         memory_id=memory_id,
         update_input=AIMemoryUpdateWriteInput(
             content=updated_content,
@@ -134,7 +130,6 @@ async def handle_memory_update(
 
     if row.memory_layer == "knowledge":
         await ai_memory_service.upsert_memory_embedding(
-            context.session,
             memory_id=row.memory_id,
             content=row.content,
         )

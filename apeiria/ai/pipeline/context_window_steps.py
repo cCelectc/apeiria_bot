@@ -15,8 +15,6 @@ from apeiria.ai.conversation.summary import (
 )
 
 if TYPE_CHECKING:
-    from sqlalchemy.ext.asyncio import AsyncSession
-
     from apeiria.ai.conversation.models import (
         ChatContextMessageView,
         ChatSessionIdentity,
@@ -25,14 +23,12 @@ if TYPE_CHECKING:
 
 
 async def build_and_store_context_window(
-    session: "AsyncSession",
     *,
     identity: "ChatSessionIdentity",
 ) -> tuple[list["ChatContextMessageView"], str | None]:
     """Fetch messages, split via dynamic window, compress overflow, store summary."""
 
     all_recent = await chat_session_service.list_recent_messages(
-        session,
         identity,
         max_messages=MAX_FETCH_MESSAGES,
     )
@@ -44,7 +40,6 @@ async def build_and_store_context_window(
 
     if window.needs_compression:
         existing_summary = await chat_session_service.load_session_summary(
-            session,
             identity,
         )
         conversation_summary = await compress_conversation_history(
@@ -56,7 +51,6 @@ async def build_and_store_context_window(
         conversation_summary = build_short_conversation_summary(turns)
 
     await chat_session_service.store_summary_text(
-        session,
         identity,
         summary=conversation_summary,
     )

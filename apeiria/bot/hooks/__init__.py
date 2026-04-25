@@ -1,3 +1,7 @@
-from apeiria.bot.hooks.registry import register_bot_hooks
+"""Bot hook modules.
 
-__all__ = ["register_bot_hooks"]
+Import concrete hook modules directly so package import stays side-effect free
+before NoneBot has initialized.
+"""
+
+__all__: list[str] = []

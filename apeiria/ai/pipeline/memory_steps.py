@@ -24,8 +24,6 @@ from apeiria.ai.model.models import AIModelRouteQuery
 from apeiria.ai.person import ai_person_profile_service
 
 if TYPE_CHECKING:
-    from sqlalchemy.ext.asyncio import AsyncSession
-
     from apeiria.ai.conversation.models import ChatSessionIdentity
     from apeiria.ai.memory.models import (
         AIMemoryAnchorType,
@@ -147,7 +145,6 @@ def apply_memory_budget(
 
 
 async def recall_memories(
-    session: "AsyncSession",
     *,
     identity: "ChatSessionIdentity",
     user_id: str,
@@ -161,14 +158,12 @@ async def recall_memories(
     for memory_layer in _RECALL_LAYER_ORDER:
         if memory_layer == "knowledge":
             layer_rows = await ai_memory_service.retrieve_knowledge_memories(
-                session,
                 targets=_build_knowledge_targets(identity, user_id),
                 query_text=query_text,
                 limit=_LAYER_RECALL_LIMITS[memory_layer],
             )
         else:
             layer_rows = await _collect_layer_memories(
-                session,
                 identity=identity,
                 user_id=user_id,
                 query_text=query_text,
@@ -186,7 +181,6 @@ async def recall_memories(
 
 
 async def load_person_profile_for_prompt(
-    session: "AsyncSession",
     *,
     identity: "ChatSessionIdentity",
     user_id: str,
@@ -194,7 +188,6 @@ async def load_person_profile_for_prompt(
     """Load prompt-ready person profile lines for the active user."""
 
     profile = await ai_person_profile_service.build_prompt_profile(
-        session,
         platform=identity.platform,
         user_id=identity.subject_id or user_id,
         group_id=identity.scene_id if identity.scene_type == "group" else None,
@@ -205,7 +198,6 @@ async def load_person_profile_for_prompt(
 
 
 async def retrieve_memories_for_preview(
-    session: "AsyncSession",
     *,
     identity: "ChatSessionIdentity",
     user_id: str,
@@ -219,14 +211,12 @@ async def retrieve_memories_for_preview(
     for memory_layer in _RECALL_LAYER_ORDER:
         if memory_layer == "knowledge":
             layer_rows = await ai_memory_service.retrieve_knowledge_memories(
-                session,
                 targets=_build_knowledge_targets(identity, user_id),
                 query_text=query_text,
                 limit=_LAYER_RECALL_LIMITS[memory_layer],
             )
         else:
             layer_rows = await _collect_layer_memories(
-                session,
                 identity=identity,
                 user_id=user_id,
                 query_text=query_text,
@@ -243,8 +233,7 @@ async def retrieve_memories_for_preview(
     return recalled
 
 
-async def _collect_layer_memories(  # noqa: PLR0913
-    session: "AsyncSession",
+async def _collect_layer_memories(
     *,
     identity: "ChatSessionIdentity",
     user_id: str,
@@ -263,9 +252,9 @@ async def _collect_layer_memories(  # noqa: PLR0913
             memory_layer=memory_layer,
         )
         rows = (
-            await ai_memory_service.recall_memories(session, query)
+            await ai_memory_service.recall_memories(query)
             if mutate_recall
-            else await ai_memory_service.retrieve_memories(session, query)
+            else await ai_memory_service.retrieve_memories(query)
         )
         for row in rows:
             if row.memory_id in seen_ids:
@@ -293,7 +282,6 @@ _DEFAULT_EXTRACTION_RESULT = AIMemoryExtractionResult(
 
 
 async def store_extracted_memories(
-    session: "AsyncSession",
     *,
     identity: "ChatSessionIdentity",
     user_id: str,
@@ -310,7 +298,6 @@ async def store_extracted_memories(
     seen_memory_ids: set[str] = set()
     for anchor in write_anchors:
         rows = await ai_memory_service.list_memories(
-            session,
             anchor_type=anchor.anchor_type,
             anchor_id=anchor.anchor_id,
             memory_layer="long_term",
@@ -323,7 +310,6 @@ async def store_extracted_memories(
 
     extraction_result = _DEFAULT_EXTRACTION_RESULT
     selected = await model_gateway.select_model(
-        session,
         query=AIModelRouteQuery(task_class="memory_extraction"),
     )
     if selected is not None:
@@ -343,7 +329,6 @@ async def store_extracted_memories(
 
     candidates = extraction_result.candidates
     await ai_person_profile_service.ingest_message(
-        session,
         platform=identity.platform,
         user_id=identity.subject_id or user_id,
         source_message_id=source_message_id,
@@ -353,14 +338,12 @@ async def store_extracted_memories(
     if candidates:
         for anchor in write_anchors:
             await ai_memory_service.remember_candidates(
-                session,
                 anchor_type=anchor.anchor_type,
                 anchor_id=anchor.anchor_id,
                 source_message_id=source_message_id,
                 candidates=candidates,
             )
             await ai_memory_service.consolidate_anchor_summary(
-                session,
                 anchor_type=anchor.anchor_type,
                 anchor_id=anchor.anchor_id,
             )

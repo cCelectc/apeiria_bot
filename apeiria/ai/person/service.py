@@ -8,8 +8,6 @@ from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
-from sqlalchemy import select
-
 from apeiria.ai.memory.extraction import select_person_profile_candidates
 from apeiria.ai.person.models import (
     AIPersonMemoryPoint,
@@ -18,11 +16,9 @@ from apeiria.ai.person.models import (
     AIPersonPromptProfile,
 )
 from apeiria.ai.relationship.service import ai_relationship_service
-from apeiria.db.models import AIPersonProfile
+from apeiria.db.runtime import database_runtime
 
 if TYPE_CHECKING:
-    from sqlalchemy.ext.asyncio import AsyncSession
-
     from apeiria.ai.memory.models import AIMemoryExtractionCandidate
 
 _MAX_STORED_MEMORY_POINTS = 12
@@ -36,8 +32,21 @@ _PROMPT_CATEGORY_LABELS: dict[AIPersonMemoryPointCategory, str] = {
 }
 
 
-def _utcnow_naive() -> datetime:
-    return datetime.now(timezone.utc).replace(tzinfo=None)
+@dataclass
+class _PersonProfileRow:
+    id: int
+    person_id: str
+    platform: str
+    user_id: str
+    person_name: str | None
+    nickname: str | None
+    name_reason: str | None
+    memory_points_json: str
+    is_known: bool
+    know_since: datetime | None
+    last_interaction: datetime
+    created_at: datetime
+    updated_at: datetime
 
 
 @dataclass(frozen=True)
@@ -47,94 +56,122 @@ class _ProfileDraft:
     memory_points: tuple[AIPersonMemoryPoint, ...]
 
 
+def _utcnow() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _datetime_to_text(value: datetime | None) -> str | None:
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc).isoformat(timespec="seconds")
+
+
+def _datetime_from_text(value: object) -> datetime:
+    parsed = datetime.fromisoformat(str(value))
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=timezone.utc)
+    return parsed
+
+
+def _optional_datetime_from_text(value: object | None) -> datetime | None:
+    return None if value is None else _datetime_from_text(value)
+
+
 class AIPersonProfileService:
     """Persistence and prompt assembly for known-user profiles."""
 
     async def get_profile_by_id(
         self,
-        session: "AsyncSession",
         *,
         person_id: str,
     ) -> AIPersonProfileDefinition | None:
-        result = await session.execute(
-            select(AIPersonProfile).where(AIPersonProfile.person_id == person_id)
-        )
-        row = result.scalar_one_or_none()
+        row = self._get_profile_row_by_id(person_id=person_id)
         if row is None:
             return None
         return self._to_definition(row)
 
     async def get_profile(
         self,
-        session: "AsyncSession",
         *,
         platform: str,
         user_id: str,
     ) -> AIPersonProfileDefinition | None:
-        result = await session.execute(
-            select(AIPersonProfile).where(
-                AIPersonProfile.platform == platform,
-                AIPersonProfile.user_id == user_id,
-            )
-        )
-        row = result.scalar_one_or_none()
+        row = self._get_profile_row(platform=platform, user_id=user_id)
         if row is None:
             return None
         return self._to_definition(row)
 
     async def ensure_profile(
         self,
-        session: "AsyncSession",
         *,
         platform: str,
         user_id: str,
-    ) -> AIPersonProfile:
-        result = await session.execute(
-            select(AIPersonProfile).where(
-                AIPersonProfile.platform == platform,
-                AIPersonProfile.user_id == user_id,
+    ) -> _PersonProfileRow:
+        row = self._get_profile_row(platform=platform, user_id=user_id)
+        if row is not None:
+            return row
+
+        now = _utcnow()
+        with database_runtime.connect_sync() as connection:
+            cursor = connection.execute(
+                """
+                INSERT INTO ai_person_profile (
+                    person_id,
+                    platform,
+                    user_id,
+                    memory_points_json,
+                    is_known,
+                    last_interaction,
+                    created_at,
+                    updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    f"person_{uuid4().hex}",
+                    platform,
+                    user_id,
+                    "[]",
+                    0,
+                    _datetime_to_text(now),
+                    _datetime_to_text(now),
+                    _datetime_to_text(now),
+                ),
             )
-        )
-        row = result.scalar_one_or_none()
-        if row is None:
-            row = AIPersonProfile(
-                person_id=f"person_{uuid4().hex}",
-                platform=platform,
-                user_id=user_id,
-                memory_points_json="[]",
-                is_known=False,
-                last_interaction=_utcnow_naive(),
-            )
-            session.add(row)
-            await session.flush()
-        return row
+            row_id = int(cursor.lastrowid or 0)
+            inserted = connection.execute(
+                _SELECT_PROFILE_FIELDS + " WHERE id = ?",
+                (row_id,),
+            ).fetchone()
+        assert inserted is not None
+        return _row_to_person_profile(inserted)
 
     async def list_profiles(
         self,
-        session: "AsyncSession",
         *,
         limit: int = 50,
     ) -> list[AIPersonProfileDefinition]:
-        result = await session.execute(
-            select(AIPersonProfile)
-            .order_by(AIPersonProfile.last_interaction.desc())
-            .limit(limit)
-        )
-        return [self._to_definition(row) for row in result.scalars().all()]
+        with database_runtime.connect_sync() as connection:
+            rows = connection.execute(
+                _SELECT_PROFILE_FIELDS
+                + """
+                ORDER BY last_interaction DESC, id DESC
+                LIMIT ?
+                """,
+                (limit,),
+            ).fetchall()
+        return [self._to_definition(_row_to_person_profile(row)) for row in rows]
 
     async def update_profile(
         self,
-        session: "AsyncSession",
         *,
         person_id: str,
         person_name: str | None = None,
         nickname: str | None = None,
         memory_points: tuple[AIPersonMemoryPoint, ...] | None = None,
     ) -> AIPersonProfileDefinition | None:
-        result = await session.execute(
-            select(AIPersonProfile).where(AIPersonProfile.person_id == person_id)
-        )
-        row = result.scalar_one_or_none()
+        row = self._get_profile_row_by_id(person_id=person_id)
         if row is None:
             return None
         if person_name is not None:
@@ -143,28 +180,24 @@ class AIPersonProfileService:
             row.nickname = nickname or None
         if memory_points is not None:
             row.memory_points_json = self._serialize_memory_points(memory_points)
-        await session.flush()
+        row.updated_at = _utcnow()
+        self._update_profile_row(row)
         return self._to_definition(row)
 
     async def delete_profile(
         self,
-        session: "AsyncSession",
         *,
         person_id: str,
     ) -> bool:
-        row = await session.execute(
-            select(AIPersonProfile).where(AIPersonProfile.person_id == person_id)
-        )
-        target = row.scalar_one_or_none()
-        if target is None:
-            return False
-        await session.delete(target)
-        await session.flush()
-        return True
+        with database_runtime.connect_sync() as connection:
+            cursor = connection.execute(
+                "DELETE FROM ai_person_profile WHERE person_id = ?",
+                (person_id,),
+            )
+            return int(cursor.rowcount or 0) > 0
 
-    async def ingest_message(  # noqa: PLR0913
+    async def ingest_message(
         self,
-        session: "AsyncSession",
         *,
         platform: str,
         user_id: str,
@@ -178,8 +211,7 @@ class AIPersonProfileService:
             self_introduction_name=self_introduction_name,
         )
         has_profile_signal = _has_profile_signal(draft)
-        row = await self._get_profile_row(
-            session,
+        row = self._get_profile_row(
             platform=platform,
             user_id=user_id,
         )
@@ -187,15 +219,15 @@ class AIPersonProfileService:
             return None
         if row is None:
             row = await self.ensure_profile(
-                session,
                 platform=platform,
                 user_id=user_id,
             )
 
-        now = _utcnow_naive()
+        now = _utcnow()
         row.last_interaction = now
+        row.updated_at = now
         if not has_profile_signal:
-            await session.flush()
+            self._update_profile_row(row)
             return self._to_definition(row)
 
         row.is_known = True
@@ -208,34 +240,42 @@ class AIPersonProfileService:
         row.memory_points_json = self._serialize_memory_points(
             _merge_memory_points(existing_points, draft.memory_points)
         )
-        await session.flush()
+        self._update_profile_row(row)
         return self._to_definition(row)
 
-    async def _get_profile_row(
+    def _get_profile_row(
         self,
-        session: "AsyncSession",
         *,
         platform: str,
         user_id: str,
-    ) -> AIPersonProfile | None:
-        result = await session.execute(
-            select(AIPersonProfile).where(
-                AIPersonProfile.platform == platform,
-                AIPersonProfile.user_id == user_id,
-            )
-        )
-        return result.scalar_one_or_none()
+    ) -> _PersonProfileRow | None:
+        with database_runtime.connect_sync() as connection:
+            row = connection.execute(
+                _SELECT_PROFILE_FIELDS + " WHERE platform = ? AND user_id = ?",
+                (platform, user_id),
+            ).fetchone()
+        return None if row is None else _row_to_person_profile(row)
+
+    def _get_profile_row_by_id(
+        self,
+        *,
+        person_id: str,
+    ) -> _PersonProfileRow | None:
+        with database_runtime.connect_sync() as connection:
+            row = connection.execute(
+                _SELECT_PROFILE_FIELDS + " WHERE person_id = ?",
+                (person_id,),
+            ).fetchone()
+        return None if row is None else _row_to_person_profile(row)
 
     async def build_prompt_profile(
         self,
-        session: "AsyncSession",
         *,
         platform: str,
         user_id: str,
         group_id: str | None,
     ) -> AIPersonPromptProfile | None:
         profile = await self.get_profile(
-            session,
             platform=platform,
             user_id=user_id,
         )
@@ -251,7 +291,6 @@ class AIPersonProfileService:
             relationship_score,
             mood_tags,
         ) = await ai_relationship_service.get_state_snapshot(
-            session,
             platform=platform,
             group_id=group_id,
             user_id=user_id,
@@ -332,27 +371,37 @@ class AIPersonProfileService:
             )
         return tuple(points)
 
-    def _to_definition(self, row: AIPersonProfile) -> AIPersonProfileDefinition:
-        created_at = (
-            row.created_at.replace(tzinfo=timezone.utc)
-            if row.created_at.tzinfo is None
-            else row.created_at
-        )
-        updated_at = (
-            row.updated_at.replace(tzinfo=timezone.utc)
-            if row.updated_at.tzinfo is None
-            else row.updated_at
-        )
-        know_since = (
-            row.know_since.replace(tzinfo=timezone.utc)
-            if row.know_since is not None and row.know_since.tzinfo is None
-            else row.know_since
-        )
-        last_interaction = (
-            row.last_interaction.replace(tzinfo=timezone.utc)
-            if row.last_interaction.tzinfo is None
-            else row.last_interaction
-        )
+    @staticmethod
+    def _update_profile_row(row: _PersonProfileRow) -> None:
+        with database_runtime.connect_sync() as connection:
+            connection.execute(
+                """
+                UPDATE ai_person_profile
+                SET
+                    person_name = ?,
+                    nickname = ?,
+                    name_reason = ?,
+                    memory_points_json = ?,
+                    is_known = ?,
+                    know_since = ?,
+                    last_interaction = ?,
+                    updated_at = ?
+                WHERE person_id = ?
+                """,
+                (
+                    row.person_name,
+                    row.nickname,
+                    row.name_reason,
+                    row.memory_points_json,
+                    1 if row.is_known else 0,
+                    _datetime_to_text(row.know_since),
+                    _datetime_to_text(row.last_interaction),
+                    _datetime_to_text(row.updated_at),
+                    row.person_id,
+                ),
+            )
+
+    def _to_definition(self, row: _PersonProfileRow) -> AIPersonProfileDefinition:
         return AIPersonProfileDefinition(
             person_id=row.person_id,
             platform=row.platform,
@@ -362,11 +411,48 @@ class AIPersonProfileService:
             name_reason=row.name_reason,
             memory_points=self._deserialize_memory_points(row.memory_points_json),
             is_known=row.is_known,
-            know_since=know_since,
-            last_interaction=last_interaction,
-            created_at=created_at,
-            updated_at=updated_at,
+            know_since=row.know_since,
+            last_interaction=row.last_interaction,
+            created_at=row.created_at,
+            updated_at=row.updated_at,
         )
+
+
+_SELECT_PROFILE_FIELDS = """
+SELECT
+    id,
+    person_id,
+    platform,
+    user_id,
+    person_name,
+    nickname,
+    name_reason,
+    memory_points_json,
+    is_known,
+    know_since,
+    last_interaction,
+    created_at,
+    updated_at
+FROM ai_person_profile
+"""
+
+
+def _row_to_person_profile(row: tuple[object, ...]) -> _PersonProfileRow:
+    return _PersonProfileRow(
+        id=int(str(row[0])),
+        person_id=str(row[1]),
+        platform=str(row[2]),
+        user_id=str(row[3]),
+        person_name=str(row[4]) if row[4] is not None else None,
+        nickname=str(row[5]) if row[5] is not None else None,
+        name_reason=str(row[6]) if row[6] is not None else None,
+        memory_points_json=str(row[7] or "[]"),
+        is_known=bool(row[8]),
+        know_since=_optional_datetime_from_text(row[9]),
+        last_interaction=_datetime_from_text(row[10]),
+        created_at=_datetime_from_text(row[11]),
+        updated_at=_datetime_from_text(row[12]),
+    )
 
 
 def _build_profile_draft(

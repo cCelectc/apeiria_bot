@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from types import SimpleNamespace
+import sys
+from types import ModuleType, SimpleNamespace
 from typing import TYPE_CHECKING
 
 from click.testing import CliRunner
@@ -12,6 +13,10 @@ if TYPE_CHECKING:
     import pathlib
 
     import pytest
+
+
+class UnexpectedNoneBotInitError(AssertionError):
+    """Raised if database validation leaks into NoneBot startup."""
 
 
 def _write_text(path: pathlib.Path, text: str) -> None:
@@ -102,3 +107,68 @@ def test_env_init_reports_created_and_skipped_configs(
     assert "skipped config: apeiria.drivers.toml" in result.output
     assert "initialized environment" in result.output
     assert "user_bot.example.py" in result.output
+
+
+def test_validate_database_schema_uses_project_database_without_nonebot(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: pathlib.Path,
+) -> None:
+    bootstrap = ModuleType("apeiria.bootstrap")
+
+    def unexpected_initialize_nonebot() -> None:
+        raise UnexpectedNoneBotInitError
+
+    bootstrap.initialize_nonebot = unexpected_initialize_nonebot  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "apeiria.bootstrap", bootstrap)
+    service = EnvironmentService(project_root=tmp_path)
+
+    service.validate_database_schema()
+
+    assert (tmp_path / "data" / "db" / "apeiria.sqlite3").is_file()
+
+
+def test_runtime_export_includes_sqlite_database(tmp_path: pathlib.Path) -> None:
+    service = EnvironmentService(project_root=tmp_path)
+    service.validate_database_schema()
+
+    target_root, copied = service.export_runtime_state(tmp_path / "bundle")
+
+    assert copied == 1
+    assert target_root == (tmp_path / "bundle").resolve()
+    assert (target_root / "data" / "db" / "apeiria.sqlite3").is_file()
+
+
+def test_runtime_import_keeps_existing_database_when_bundle_has_no_database(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: pathlib.Path,
+) -> None:
+    source_root = tmp_path / "bundle"
+    source_root.mkdir()
+    service = EnvironmentService(project_root=tmp_path / "project")
+    service.validate_database_schema()
+    database_path = tmp_path / "project" / "data" / "db" / "apeiria.sqlite3"
+    monkeypatch.setattr(service, "initialize_user_environment", lambda: None)
+
+    _source_root, copied = service.import_runtime_state(source_root)
+
+    assert copied == 0
+    assert database_path.is_file()
+
+
+def test_runtime_import_restores_sqlite_database(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: pathlib.Path,
+) -> None:
+    source_root = tmp_path / "bundle"
+    source_database = source_root / "data" / "db" / "apeiria.sqlite3"
+    source_database.parent.mkdir(parents=True)
+    source_database.write_bytes(b"sqlite bundle")
+    service = EnvironmentService(project_root=tmp_path / "project")
+    monkeypatch.setattr(service, "initialize_user_environment", lambda: None)
+
+    _source_root, copied = service.import_runtime_state(source_root)
+
+    assert copied == 1
+    assert (
+        tmp_path / "project" / "data" / "db" / "apeiria.sqlite3"
+    ).read_bytes() == b"sqlite bundle"

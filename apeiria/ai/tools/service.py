@@ -5,12 +5,11 @@ from __future__ import annotations
 import asyncio
 import json
 from dataclasses import asdict, dataclass, is_dataclass
-from datetime import timezone
-from typing import TYPE_CHECKING, Any
+from datetime import datetime, timezone
+from typing import Any
 from uuid import uuid4
 
 from nonebot.log import logger
-from sqlalchemy import select
 
 from apeiria.ai.tools.bridge import AINoneBotSkillBridge
 from apeiria.ai.tools.capabilities import register_builtin_capabilities
@@ -36,13 +35,17 @@ from apeiria.ai.tools.models import (
 from apeiria.ai.tools.policy import evaluate_tool_policy
 from apeiria.ai.tools.registry import AIToolRegistry
 from apeiria.ai.tools.selection import build_tool_planning_prompt
-from apeiria.db.models import AIToolExecution
-
-if TYPE_CHECKING:
-    from sqlalchemy.ext.asyncio import AsyncSession
-
+from apeiria.db.runtime import database_runtime
 
 MAX_CONSECUTIVE_FAILURES = 3
+
+
+def _utcnow_text() -> str:
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+def _parse_datetime(value: str) -> datetime:
+    return datetime.fromisoformat(value)
 
 
 @dataclass(frozen=True)
@@ -107,11 +110,9 @@ class AIToolService:
 
     async def observe_read_only_tools(
         self,
-        session: AsyncSession,
         request: AIToolObservationRequest,
     ) -> list[AIToolObservationResult]:
         intents = await self._plan_tool_intents_with_model(
-            session=session,
             message_text=request.message_text,
             policy=request.policy,
             recalled_memory_ids=request.recalled_memory_ids,
@@ -119,15 +120,13 @@ class AIToolService:
             relationship_context=request.relationship_context,
         )
         return await self.execute_tool_intents(
-            session,
             request=request,
             intents=intents,
         )
 
-    async def preview_tool_intents(  # noqa: PLR0913
+    async def preview_tool_intents(
         self,
         *,
-        session: AsyncSession,
         message_text: str,
         policy: AIToolPolicy,
         recalled_memory_ids: tuple[str, ...] = (),
@@ -135,7 +134,6 @@ class AIToolService:
         relationship_context: str | None = None,
     ) -> list[AIToolIntentPreview]:
         intents = await self._plan_tool_intents_with_model(
-            session=session,
             message_text=message_text,
             policy=policy,
             recalled_memory_ids=recalled_memory_ids,
@@ -152,10 +150,9 @@ class AIToolService:
             for intent in intents
         ]
 
-    async def _plan_tool_intents_with_model(  # noqa: PLR0913
+    async def _plan_tool_intents_with_model(
         self,
         *,
-        session: AsyncSession,
         message_text: str,
         policy: AIToolPolicy,
         recalled_memory_ids: tuple[str, ...],
@@ -170,7 +167,6 @@ class AIToolService:
             return []
 
         selected = await model_gateway.select_model(
-            session,
             query=AIModelRouteQuery(task_class="tool_orchestration"),
         )
         if selected is None:
@@ -202,7 +198,6 @@ class AIToolService:
 
     async def execute_tool_intents(
         self,
-        session: AsyncSession,
         *,
         request: AIToolObservationRequest,
         intents: list[AIToolIntent],
@@ -227,7 +222,8 @@ class AIToolService:
                 break
 
             observation = await self._execute_single_intent(
-                session, request=request, intent=intent
+                request=request,
+                intent=intent,
             )
             observations.append(observation)
 
@@ -238,7 +234,6 @@ class AIToolService:
 
         for observation in observations:
             await self.record_execution(
-                session,
                 AIToolExecutionCreateInput(
                     session_id=request.session_id,
                     tool_name=observation.tool_name,
@@ -253,7 +248,6 @@ class AIToolService:
 
     async def _execute_single_intent(
         self,
-        session: AsyncSession,
         *,
         request: AIToolObservationRequest,
         intent: AIToolIntent,
@@ -274,7 +268,6 @@ class AIToolService:
             )
 
         context = AIToolExecutionContext(
-            session=session,
             session_id=request.session_id,
             source_message_id=request.source_message_id,
             trace_id=request.trace_id,
@@ -397,74 +390,106 @@ class AIToolService:
 
     async def record_execution(
         self,
-        session: AsyncSession,
         create_input: AIToolExecutionCreateInput,
-    ) -> AIToolExecution:
-        row = AIToolExecution(
-            execution_id=f"tool_exec_{uuid4().hex}",
+    ) -> AIToolExecutionView:
+        execution_id = f"tool_exec_{uuid4().hex}"
+        created_at_text = _utcnow_text()
+        input_json = (
+            json.dumps(
+                _to_jsonable_payload(
+                    {
+                        "trace_id": create_input.trace_id,
+                        "payload": create_input.input_payload,
+                    }
+                ),
+                ensure_ascii=False,
+                sort_keys=True,
+                default=str,
+            )
+            if create_input.input_payload is not None
+            else None
+        )
+        output_json = (
+            json.dumps(
+                _to_jsonable_payload(
+                    {
+                        "trace_id": create_input.trace_id,
+                        "payload": create_input.output_payload,
+                    }
+                ),
+                ensure_ascii=False,
+                sort_keys=True,
+                default=str,
+            )
+            if create_input.output_payload is not None
+            else None
+        )
+
+        with database_runtime.connect_sync() as connection:
+            connection.execute(
+                """
+                INSERT INTO ai_tool_execution (
+                    execution_id,
+                    session_id,
+                    tool_name,
+                    status,
+                    input_json,
+                    output_json,
+                    created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    execution_id,
+                    create_input.session_id,
+                    create_input.tool_name,
+                    create_input.status,
+                    input_json,
+                    output_json,
+                    created_at_text,
+                ),
+            )
+
+        return AIToolExecutionView(
+            execution_id=execution_id,
             session_id=create_input.session_id,
             tool_name=create_input.tool_name,
             status=create_input.status,
-            input_json=(
-                json.dumps(
-                    _to_jsonable_payload(
-                        {
-                            "trace_id": create_input.trace_id,
-                            "payload": create_input.input_payload,
-                        }
-                    ),
-                    ensure_ascii=False,
-                    sort_keys=True,
-                    default=str,
-                )
-                if create_input.input_payload is not None
-                else None
-            ),
-            output_json=(
-                json.dumps(
-                    _to_jsonable_payload(
-                        {
-                            "trace_id": create_input.trace_id,
-                            "payload": create_input.output_payload,
-                        }
-                    ),
-                    ensure_ascii=False,
-                    sort_keys=True,
-                    default=str,
-                )
-                if create_input.output_payload is not None
-                else None
-            ),
+            input_json=input_json,
+            output_json=output_json,
+            created_at=_parse_datetime(created_at_text),
         )
-        session.add(row)
-        await session.flush()
-        return row
 
     async def list_executions(
         self,
-        session: AsyncSession,
         *,
         session_id: str,
     ) -> list[AIToolExecutionView]:
-        result = await session.execute(
-            select(AIToolExecution)
-            .where(AIToolExecution.session_id == session_id)
-            .order_by(AIToolExecution.created_at.asc(), AIToolExecution.id.asc())
-        )
-        rows = result.scalars().all()
+        with database_runtime.connect_sync() as connection:
+            rows = connection.execute(
+                """
+                SELECT
+                    execution_id,
+                    session_id,
+                    tool_name,
+                    status,
+                    input_json,
+                    output_json,
+                    created_at
+                FROM ai_tool_execution
+                WHERE session_id = ?
+                ORDER BY created_at ASC, id ASC
+                """,
+                (session_id,),
+            ).fetchall()
         return [
             AIToolExecutionView(
-                execution_id=row.execution_id,
-                session_id=row.session_id,
-                tool_name=row.tool_name,
-                status=row.status,
-                input_json=row.input_json,
-                output_json=row.output_json,
-                created_at=(
-                    row.created_at.replace(tzinfo=timezone.utc)
-                    if row.created_at.tzinfo is None
-                    else row.created_at
-                ),
+                execution_id=str(row[0]),
+                session_id=str(row[1]),
+                tool_name=str(row[2]),
+                status=str(row[3]),
+                input_json=None if row[4] is None else str(row[4]),
+                output_json=None if row[5] is None else str(row[5]),
+                created_at=_parse_datetime(str(row[6])),
             )
             for row in rows
         ]

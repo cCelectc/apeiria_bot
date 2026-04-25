@@ -56,8 +56,6 @@ async def compress_conversation_history(
     if not overflow_messages:
         return existing_summary
 
-    from nonebot_plugin_orm import get_session
-
     from apeiria.ai.model.gateway import model_gateway
     from apeiria.ai.model.models import AIModelRouteQuery
 
@@ -67,11 +65,9 @@ async def compress_conversation_history(
         scene_type=scene_type,
     )
 
-    async with get_session() as session:
-        selected = await model_gateway.select_model(
-            session,
-            query=AIModelRouteQuery(task_class="planner_light"),
-        )
+    selected = await model_gateway.select_model(
+        query=AIModelRouteQuery(task_class="planner_light"),
+    )
 
     if selected is None:
         logger.debug("context compression skipped: no model for planner_light")

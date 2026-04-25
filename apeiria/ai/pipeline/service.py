@@ -8,7 +8,6 @@ from typing import TYPE_CHECKING, Literal
 from uuid import uuid4
 
 from nonebot.log import logger
-from nonebot_plugin_orm import get_session
 
 from apeiria.ai.config import get_ai_plugin_config
 from apeiria.ai.conversation.service import chat_session_service
@@ -36,7 +35,6 @@ from apeiria.runtime.entries import (
 
 if TYPE_CHECKING:
     from nonebot.adapters import Bot, Event
-    from sqlalchemy.ext.asyncio import AsyncSession
 
     from apeiria.ai.conversation.models import ChatSessionIdentity
     from apeiria.ai.future_task.models import AIFutureTaskDefinition
@@ -91,43 +89,39 @@ class AIRuntimeService:
         message_text = wake_context.message_text
         ai_retention_service.maybe_schedule_cleanup(config=config)
 
-        async with get_session() as session:
-            ingested = await chat_session_service.ingest_event(
-                session,
-                bot,
-                event,
-                persist_raw_data=config.persist_raw_event_payloads,
-            )
-            if ingested is None:
-                return None
+        ingested = await chat_session_service.ingest_event(
+            bot,
+            event,
+            persist_raw_data=config.persist_raw_event_payloads,
+        )
+        if ingested is None:
+            return None
 
-            identity, turn = ingested
-            user_id = str(event.get_user_id())
-            is_tome = bool(hasattr(event, "is_tome") and event.is_tome())
-            extraction_result = await store_extracted_memories(
-                session,
+        identity, turn = ingested
+        user_id = str(event.get_user_id())
+        is_tome = bool(hasattr(event, "is_tome") and event.is_tome())
+        extraction_result = await store_extracted_memories(
+            identity=identity,
+            user_id=user_id,
+            message_text=message_text,
+            source_message_id=turn.message_id,
+        )
+        result = await self._run_reply_pipeline(
+            trace_id=f"ai_trace_{uuid4().hex}",
+            entry=build_ai_trace_entry("message", event=event),
+            request=AIRuntimeReplyRequest(
                 identity=identity,
-                user_id=user_id,
                 message_text=message_text,
                 source_message_id=turn.message_id,
-            )
-            result = await self._run_reply_pipeline(
-                session,
-                trace_id=f"ai_trace_{uuid4().hex}",
-                entry=build_ai_trace_entry("message", event=event),
-                request=AIRuntimeReplyRequest(
-                    identity=identity,
-                    message_text=message_text,
-                    source_message_id=turn.message_id,
-                    user_id=user_id,
-                    sender_id=str(bot.self_id),
-                    runtime_mode="message",
-                    is_tome=is_tome,
-                    sentiment=extraction_result.sentiment,
-                ),
-                wake_context=wake_context,
-            )
-            return result.reply_text if result is not None else None
+                user_id=user_id,
+                sender_id=str(bot.self_id),
+                runtime_mode="message",
+                is_tome=is_tome,
+                sentiment=extraction_result.sentiment,
+            ),
+            wake_context=wake_context,
+        )
+        return result.reply_text if result is not None else None
 
     async def handle_future_task(
         self,
@@ -140,33 +134,29 @@ class AIRuntimeService:
         if task is None or task.status != "running":
             return None
 
-        async with get_session() as session:
-            identity = await chat_session_service.get_session_identity(
-                session,
-                session_id=task.session_id,
-            )
-            if identity is None:
-                return None
+        identity = await chat_session_service.get_session_identity(
+            session_id=task.session_id,
+        )
+        if identity is None:
+            return None
 
-            user_id = identity.subject_id or task.user_id or identity.scene_id
-            return await self._run_reply_pipeline(
-                session,
-                trace_id=f"ai_trace_{uuid4().hex}",
-                entry=build_ai_trace_entry("future_task"),
-                request=AIRuntimeReplyRequest(
-                    identity=identity,
-                    message_text=task.description,
-                    source_message_id=task.source_message_id,
-                    user_id=user_id,
-                    sender_id=identity.bot_id,
-                    runtime_mode="future_task",
-                    future_task=task,
-                ),
-            )
+        user_id = identity.subject_id or task.user_id or identity.scene_id
+        return await self._run_reply_pipeline(
+            trace_id=f"ai_trace_{uuid4().hex}",
+            entry=build_ai_trace_entry("future_task"),
+            request=AIRuntimeReplyRequest(
+                identity=identity,
+                message_text=task.description,
+                source_message_id=task.source_message_id,
+                user_id=user_id,
+                sender_id=identity.bot_id,
+                runtime_mode="future_task",
+                future_task=task,
+            ),
+        )
 
     async def _run_reply_pipeline(
         self,
-        session: "AsyncSession",
         *,
         trace_id: str,
         entry: ApeiriaEntry,
@@ -176,10 +166,9 @@ class AIRuntimeService:
         current_time = datetime.now(timezone.utc)
         identity = request.identity
 
-        inputs = await gather_reply_inputs(session, request, current_time)
+        inputs = await gather_reply_inputs(request, current_time)
 
         social_decision = await decide_whether_to_speak(
-            session,
             request=request,
             wake_context=wake_context,
             turns=inputs.turns,
@@ -193,10 +182,8 @@ class AIRuntimeService:
             trace_id=trace_id,
         )
         if not social_decision.should_speak:
-            await session.commit()
             return None
         prep = await prepare_generation(
-            session,
             request=request,
             inputs=inputs,
             social_decision=social_decision,
@@ -207,7 +194,6 @@ class AIRuntimeService:
             return None
 
         gen = await generate_reply(
-            session,
             request=request,
             inputs=inputs,
             social_decision=social_decision,
@@ -228,7 +214,6 @@ class AIRuntimeService:
             return None
 
         await persist_reply(
-            session,
             request=request,
             inputs=inputs,
             social_decision=social_decision,
@@ -236,7 +221,6 @@ class AIRuntimeService:
             gen=gen,
             trace_id=trace_id,
         )
-        await session.commit()
         # Only count as "replied" when the reply was actually delivered.
         # For regular messages delivery_result is None (plugin handler sends).
         # For future_tasks delivery happens internally and may fail.

@@ -9,7 +9,6 @@ from apeiria.i18n import load_locales, t
 from apeiria.plugins.metadata.api import PluginExtraData, PluginType, UiExtra
 
 require("nonebot_plugin_alconna")
-require("nonebot_plugin_orm")
 require("nonebot_plugin_apscheduler")
 
 # Register plugin locales
@@ -44,7 +43,6 @@ __plugin_meta__ = PluginMetadata(
         ],
         required_plugins=[
             "nonebot_plugin_alconna",
-            "nonebot_plugin_orm",
             "nonebot_plugin_apscheduler",
         ],
     ).to_dict(),

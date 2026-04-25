@@ -4,8 +4,6 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Literal, cast
 
-from nonebot_plugin_orm import get_session
-
 from apeiria.ai.admin.audit import record_ai_admin_audit
 from apeiria.ai.memory.service import (
     AIMemoryCreateInput,
@@ -90,28 +88,25 @@ class MemoriesAdminMixin:
         normalized_layer = _normalize_optional_memory_layer(memory_layer)
         normalized_kind = _normalize_optional_memory_kind(memory_kind)
         normalized_anchor_type = _normalize_memory_anchor_type(anchor_type)
-        async with get_session() as session:
-            if query_text.strip():
-                return await ai_memory_service.retrieve_memories(
-                    session,
-                    AIMemoryQuery(
-                        anchor_type=normalized_anchor_type,
-                        anchor_id=anchor_id,
-                        query_text=query_text,
-                        limit=limit,
-                        memory_layer=normalized_layer,
-                        memory_kind=normalized_kind,
-                    ),
-                )
-            memories = await ai_memory_service.list_memories(
-                session,
-                anchor_type=normalized_anchor_type,
-                anchor_id=anchor_id,
-                memory_layer=normalized_layer,
-                memory_kind=normalized_kind,
-                include_ignored=True,
+        if query_text.strip():
+            return await ai_memory_service.retrieve_memories(
+                AIMemoryQuery(
+                    anchor_type=normalized_anchor_type,
+                    anchor_id=anchor_id,
+                    query_text=query_text,
+                    limit=limit,
+                    memory_layer=normalized_layer,
+                    memory_kind=normalized_kind,
+                ),
             )
-            return memories[:limit]
+        memories = await ai_memory_service.list_memories(
+            anchor_type=normalized_anchor_type,
+            anchor_id=anchor_id,
+            memory_layer=normalized_layer,
+            memory_kind=normalized_kind,
+            include_ignored=True,
+        )
+        return memories[:limit]
 
     async def create_memory(  # noqa: PLR0913
         self,
@@ -134,54 +129,42 @@ class MemoriesAdminMixin:
             _normalize_required_memory_kind(memory_kind),
         )
         normalized_anchor_type = _normalize_memory_anchor_type(anchor_type)
-        async with get_session() as session:
-            create_input = AIMemoryCreateInput(
-                anchor_type=normalized_anchor_type,
-                anchor_id=anchor_id,
-                memory_layer=normalized_layer,
-                memory_kind=normalized_kind,
-                content=content,
-                is_editable=(normalized_layer != "summary"),
-                salience=salience,
-                confidence=confidence,
-            )
-            if normalized_layer == "summary":
-                msg = (
-                    "summary memories are system-managed and cannot be created manually"
-                )
-                raise ValueError(msg)
-            if normalized_layer == "knowledge":
-                row = await ai_memory_service.create_knowledge_memory(
-                    session,
+        create_input = AIMemoryCreateInput(
+            anchor_type=normalized_anchor_type,
+            anchor_id=anchor_id,
+            memory_layer=normalized_layer,
+            memory_kind=normalized_kind,
+            content=content,
+            is_editable=(normalized_layer != "summary"),
+            salience=salience,
+            confidence=confidence,
+        )
+        if normalized_layer == "summary":
+            msg = "summary memories are system-managed and cannot be created manually"
+            raise ValueError(msg)
+        if normalized_layer == "knowledge":
+            row = await ai_memory_service.create_knowledge_memory(create_input)
+        else:
+            row = await ai_memory_service.create_memory_if_absent(create_input)
+            if row is None:
+                existing = await ai_memory_service.get_memory_by_identity(
                     create_input,
                 )
-            else:
-                row = await ai_memory_service.create_memory_if_absent(
-                    session,
-                    create_input,
-                )
-                if row is None:
-                    existing = await ai_memory_service.get_memory_by_identity(
-                        session,
-                        create_input,
-                    )
-                    assert existing is not None
-                    row = existing
-            await session.commit()
-            memories = await ai_memory_service.list_memories(
-                session,
-                anchor_type=normalized_anchor_type,
-                anchor_id=anchor_id,
-                memory_layer=normalized_layer,
-                include_ignored=True,
-            )
-            created = next(item for item in memories if item.memory_id == row.memory_id)
-            record_ai_admin_audit(
-                "ai_memory_created",
-                actor_username=actor_username,
-                detail=f"{created.memory_id} {created.anchor_type}:{created.anchor_id}",
-            )
-            return created
+                assert existing is not None
+                row = existing
+        memories = await ai_memory_service.list_memories(
+            anchor_type=normalized_anchor_type,
+            anchor_id=anchor_id,
+            memory_layer=normalized_layer,
+            include_ignored=True,
+        )
+        created = next(item for item in memories if item.memory_id == row.memory_id)
+        record_ai_admin_audit(
+            "ai_memory_created",
+            actor_username=actor_username,
+            detail=f"{created.memory_id} {created.anchor_type}:{created.anchor_id}",
+        )
+        return created
 
     async def delete_memory(
         self,
@@ -189,24 +172,21 @@ class MemoriesAdminMixin:
         memory_id: str,
         actor_username: str | None = None,
     ) -> bool:
-        async with get_session() as session:
-            existing = await ai_memory_service.get_memory(session, memory_id=memory_id)
-            deleted = await ai_memory_service.delete_memory(
-                session,
-                memory_id=memory_id,
+        existing = await ai_memory_service.get_memory(memory_id=memory_id)
+        deleted = await ai_memory_service.delete_memory(
+            memory_id=memory_id,
+        )
+        if deleted:
+            record_ai_admin_audit(
+                "ai_memory_deleted",
+                actor_username=actor_username,
+                detail=(
+                    f"{memory_id} {existing.anchor_type}:{existing.anchor_id}"
+                    if existing is not None
+                    else memory_id
+                ),
             )
-            await session.commit()
-            if deleted:
-                record_ai_admin_audit(
-                    "ai_memory_deleted",
-                    actor_username=actor_username,
-                    detail=(
-                        f"{memory_id} {existing.anchor_type}:{existing.anchor_id}"
-                        if existing is not None
-                        else memory_id
-                    ),
-                )
-            return deleted
+        return deleted
 
     async def update_memory(
         self,
@@ -217,51 +197,43 @@ class MemoriesAdminMixin:
         confidence: float,
         actor_username: str | None = None,
     ) -> "AIMemoryDefinition | None":
-        async with get_session() as session:
-            existing = await ai_memory_service.get_memory(session, memory_id=memory_id)
-            if existing is None:
-                return None
-            if not existing.is_editable or existing.memory_layer == "summary":
-                return None
-            row = await ai_memory_service.update_memory_content(
-                session,
-                memory_id=memory_id,
-                update_input=AIMemoryUpdateInput(
-                    content=content,
-                    salience=salience,
-                    confidence=confidence,
-                    source_message_id=None,
-                ),
+        existing = await ai_memory_service.get_memory(memory_id=memory_id)
+        if existing is None:
+            return None
+        if not existing.is_editable or existing.memory_layer == "summary":
+            return None
+        row = await ai_memory_service.update_memory_content(
+            memory_id=memory_id,
+            update_input=AIMemoryUpdateInput(
+                content=content,
+                salience=salience,
+                confidence=confidence,
+                source_message_id=None,
+            ),
+        )
+        if row is None:
+            return None
+        if row.memory_layer == "knowledge":
+            await ai_memory_service.upsert_memory_embedding(
+                memory_id=row.memory_id,
+                content=row.content,
             )
-            if row is None:
-                return None
-            if row.memory_layer == "knowledge":
-                await ai_memory_service.upsert_memory_embedding(
-                    session,
-                    memory_id=row.memory_id,
-                    content=row.content,
-                )
-            await session.commit()
-            memories = await ai_memory_service.list_memories(
-                session,
-                anchor_type=cast("AIMemoryAnchorType", row.anchor_type),
-                anchor_id=row.anchor_id,
-                memory_layer=cast("AIMemoryLayer", row.memory_layer),
-                include_ignored=True,
+        memories = await ai_memory_service.list_memories(
+            anchor_type=cast("AIMemoryAnchorType", row.anchor_type),
+            anchor_id=row.anchor_id,
+            memory_layer=cast("AIMemoryLayer", row.memory_layer),
+            include_ignored=True,
+        )
+        updated = next(
+            (item for item in memories if item.memory_id == row.memory_id),
+        )
+        if updated is not None:
+            record_ai_admin_audit(
+                "ai_memory_updated",
+                actor_username=actor_username,
+                detail=f"{updated.memory_id} {updated.anchor_type}:{updated.anchor_id}",
             )
-            updated = next(
-                (item for item in memories if item.memory_id == row.memory_id),
-                None,
-            )
-            if updated is not None:
-                record_ai_admin_audit(
-                    "ai_memory_updated",
-                    actor_username=actor_username,
-                    detail=(
-                        f"{updated.memory_id} {updated.anchor_type}:{updated.anchor_id}"
-                    ),
-                )
-            return updated
+        return updated
 
     async def toggle_memory_ignored(
         self,
@@ -269,19 +241,16 @@ class MemoriesAdminMixin:
         memory_id: str,
         actor_username: str | None = None,
     ) -> "AIMemoryDefinition | None":
-        async with get_session() as session:
-            result = await ai_memory_service.toggle_memory_ignored(
-                session,
-                memory_id=memory_id,
+        result = await ai_memory_service.toggle_memory_ignored(
+            memory_id=memory_id,
+        )
+        if result is not None:
+            record_ai_admin_audit(
+                "ai_memory_ignored_toggled",
+                actor_username=actor_username,
+                detail=f"{result.memory_id} ignored={result.is_ignored}",
             )
-            if result is not None:
-                await session.commit()
-                record_ai_admin_audit(
-                    "ai_memory_ignored_toggled",
-                    actor_username=actor_username,
-                    detail=f"{result.memory_id} ignored={result.is_ignored}",
-                )
-            return result
+        return result
 
     async def bulk_delete_memories(
         self,
@@ -289,19 +258,16 @@ class MemoriesAdminMixin:
         memory_ids: list[str],
         actor_username: str | None = None,
     ) -> int:
-        async with get_session() as session:
-            count = await ai_memory_service.bulk_delete_memories(
-                session,
-                memory_ids=memory_ids,
+        count = await ai_memory_service.bulk_delete_memories(
+            memory_ids=memory_ids,
+        )
+        if count > 0:
+            record_ai_admin_audit(
+                "ai_memory_bulk_deleted",
+                actor_username=actor_username,
+                detail=f"count={count}",
             )
-            await session.commit()
-            if count > 0:
-                record_ai_admin_audit(
-                    "ai_memory_bulk_deleted",
-                    actor_username=actor_username,
-                    detail=f"count={count}",
-                )
-            return count
+        return count
 
     async def bulk_set_memories_ignored(
         self,
@@ -310,20 +276,17 @@ class MemoriesAdminMixin:
         ignored: bool,
         actor_username: str | None = None,
     ) -> int:
-        async with get_session() as session:
-            count = await ai_memory_service.bulk_set_ignored(
-                session,
-                memory_ids=memory_ids,
-                ignored=ignored,
+        count = await ai_memory_service.bulk_set_ignored(
+            memory_ids=memory_ids,
+            ignored=ignored,
+        )
+        if count > 0:
+            record_ai_admin_audit(
+                "ai_memory_bulk_ignored_set",
+                actor_username=actor_username,
+                detail=f"count={count} ignored={ignored}",
             )
-            await session.commit()
-            if count > 0:
-                record_ai_admin_audit(
-                    "ai_memory_bulk_ignored_set",
-                    actor_username=actor_username,
-                    detail=f"count={count} ignored={ignored}",
-                )
-            return count
+        return count
 
 
 __all__ = ["MemoriesAdminMixin"]

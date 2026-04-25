@@ -10,8 +10,6 @@ from apeiria.ai.relationship.service import ai_relationship_service
 from apeiria.ai.relationship.signals import derive_relationship_delta
 
 if TYPE_CHECKING:
-    from sqlalchemy.ext.asyncio import AsyncSession
-
     from apeiria.ai.conversation.models import ChatSessionIdentity
     from apeiria.ai.memory.models import AIMessageSentiment
     from apeiria.ai.relationship.models import (
@@ -71,26 +69,22 @@ def format_relationship_context(
 
 
 async def load_relationship_context(
-    session: "AsyncSession",
     *,
     target: AIRelationshipTarget,
 ) -> str | None:
     """Load prompt-ready relationship context for the current target."""
 
     state = await ai_relationship_service.get_state(
-        session,
         platform=target.platform,
         group_id=target.group_id,
         user_id=target.user_id,
     )
     effective_state = await ai_relationship_service.get_effective_state(
-        session,
         platform=target.platform,
         group_id=target.group_id,
         user_id=target.user_id,
     )
     events = await ai_relationship_service.list_events(
-        session,
         affinity_id=state.affinity_id,
         limit=3,
     )
@@ -101,7 +95,6 @@ async def load_relationship_context(
 
 
 async def update_relationship_state(
-    session: "AsyncSession",
     *,
     target: AIRelationshipTarget,
     sentiment: "AIMessageSentiment",
@@ -118,7 +111,6 @@ async def update_relationship_state(
         return
 
     await ai_relationship_service.apply_delta(
-        session,
         platform=target.platform,
         group_id=target.group_id,
         user_id=target.user_id,

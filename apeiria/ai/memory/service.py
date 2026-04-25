@@ -2,15 +2,16 @@
 
 from __future__ import annotations
 
-import json
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, cast
 from uuid import uuid4
 
-from sqlalchemy import select, update
-
 from apeiria.ai.memory.actions import build_memory_write_plans
+from apeiria.ai.memory.embedding_store import (
+    AIMemoryEmbeddingRecord,
+    ai_memory_embedding_store,
+)
 from apeiria.ai.memory.embeddings import (
     EMBEDDING_MODEL_NAME,
     cosine_similarity,
@@ -28,10 +29,10 @@ from apeiria.ai.memory.ranking import rank_memory_items
 from apeiria.ai.memory.summary import build_summary_memory_content
 from apeiria.ai.model.service import ai_model_facade
 from apeiria.ai.model.source import ai_source_service
-from apeiria.db.models import AIMemoryEmbedding, AIMemoryItem
+from apeiria.db.runtime import database_runtime
 
 if TYPE_CHECKING:
-    from sqlalchemy.ext.asyncio import AsyncSession
+    from sqlite3 import Connection
 
 
 @dataclass(frozen=True)
@@ -60,6 +61,47 @@ class AIMemoryUpdateInput:
     source_message_id: str | None
 
 
+@dataclass
+class _MemoryRow:
+    id: int
+    memory_id: str
+    anchor_type: str
+    anchor_id: str
+    memory_layer: str
+    memory_kind: str
+    content: str
+    is_editable: bool
+    is_ignored: bool
+    source_message_id: str | None
+    salience: float
+    confidence: float
+    last_recalled_at: datetime | None
+    created_at: datetime
+
+
+def _utcnow() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _datetime_to_text(value: datetime | None) -> str | None:
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc).isoformat(timespec="seconds")
+
+
+def _datetime_from_text(value: object) -> datetime:
+    parsed = datetime.fromisoformat(str(value))
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=timezone.utc)
+    return parsed
+
+
+def _optional_datetime_from_text(value: object | None) -> datetime | None:
+    return None if value is None else _datetime_from_text(value)
+
+
 class AIMemoryService:
     """Long-term memory CRUD and retrieval service."""
 
@@ -70,13 +112,90 @@ class AIMemoryService:
 
     async def create_memory(
         self,
-        session: AsyncSession,
         create_input: AIMemoryCreateInput,
-    ) -> AIMemoryItem:
+    ) -> AIMemoryDefinition:
         """Create one structured memory item."""
+        with database_runtime.transaction_sync() as connection:
+            row = self._insert_memory_row(
+                connection,
+                create_input,
+                ignore_existing=False,
+            )
+        assert row is not None
+        return self._to_definition(row)
 
-        memory = AIMemoryItem(
-            memory_id=f"mem_{uuid4().hex}",
+    async def create_memory_if_absent(
+        self,
+        create_input: AIMemoryCreateInput,
+    ) -> AIMemoryDefinition | None:
+        """Create one memory item only when an identical item does not exist."""
+        with database_runtime.transaction_sync() as connection:
+            row = self._insert_memory_row(
+                connection,
+                create_input,
+                ignore_existing=True,
+            )
+        if row is None:
+            return None
+        return self._to_definition(row)
+
+    @staticmethod
+    def _insert_memory_row(
+        connection: "Connection",
+        create_input: AIMemoryCreateInput,
+        *,
+        ignore_existing: bool,
+    ) -> _MemoryRow | None:
+        now = _utcnow()
+        memory_id = f"mem_{uuid4().hex}"
+        conflict_clause = (
+            """
+            ON CONFLICT(anchor_type, anchor_id, memory_layer, memory_kind, content)
+            DO NOTHING
+            """
+            if ignore_existing
+            else ""
+        )
+        cursor = connection.execute(
+            f"""
+            INSERT INTO ai_memory_item (
+                memory_id,
+                anchor_type,
+                anchor_id,
+                memory_layer,
+                memory_kind,
+                content,
+                is_editable,
+                is_ignored,
+                source_message_id,
+                salience,
+                confidence,
+                last_recalled_at,
+                created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            {conflict_clause}
+            """,
+            (
+                memory_id,
+                create_input.anchor_type,
+                create_input.anchor_id,
+                create_input.memory_layer,
+                create_input.memory_kind,
+                create_input.content,
+                1 if create_input.is_editable else 0,
+                1 if create_input.is_ignored else 0,
+                create_input.source_message_id,
+                create_input.salience,
+                create_input.confidence,
+                None,
+                _datetime_to_text(now),
+            ),
+        )
+        if cursor.rowcount == 0:
+            return None
+        return _MemoryRow(
+            id=int(cursor.lastrowid or 0),
+            memory_id=memory_id,
             anchor_type=create_input.anchor_type,
             anchor_id=create_input.anchor_id,
             memory_layer=create_input.memory_layer,
@@ -87,106 +206,105 @@ class AIMemoryService:
             source_message_id=create_input.source_message_id,
             salience=create_input.salience,
             confidence=create_input.confidence,
+            last_recalled_at=None,
+            created_at=now,
         )
-        session.add(memory)
-        await session.flush()
-        return memory
-
-    async def create_memory_if_absent(
-        self,
-        session: AsyncSession,
-        create_input: AIMemoryCreateInput,
-    ) -> AIMemoryItem | None:
-        """Create one memory item only when an identical item does not exist."""
-
-        result = await session.execute(
-            select(AIMemoryItem).where(
-                AIMemoryItem.anchor_type == create_input.anchor_type,
-                AIMemoryItem.anchor_id == create_input.anchor_id,
-                AIMemoryItem.memory_layer == create_input.memory_layer,
-                AIMemoryItem.memory_kind == create_input.memory_kind,
-                AIMemoryItem.content == create_input.content,
-            )
-        )
-        existing = result.scalar_one_or_none()
-        if existing is not None:
-            return None
-        return await self.create_memory(session, create_input)
 
     async def get_memory_by_identity(
         self,
-        session: AsyncSession,
         create_input: AIMemoryCreateInput,
-    ) -> AIMemoryItem | None:
+    ) -> AIMemoryDefinition | None:
         """Load one exact memory row for the given identity tuple."""
-
-        result = await session.execute(
-            select(AIMemoryItem).where(
-                AIMemoryItem.anchor_type == create_input.anchor_type,
-                AIMemoryItem.anchor_id == create_input.anchor_id,
-                AIMemoryItem.memory_layer == create_input.memory_layer,
-                AIMemoryItem.memory_kind == create_input.memory_kind,
-                AIMemoryItem.content == create_input.content,
-            )
-        )
-        return result.scalar_one_or_none()
+        with database_runtime.connect_sync() as connection:
+            row = connection.execute(
+                _SELECT_MEMORY_FIELDS
+                + """
+                WHERE
+                    anchor_type = ?
+                    AND anchor_id = ?
+                    AND memory_layer = ?
+                    AND memory_kind = ?
+                    AND content = ?
+                """,
+                (
+                    create_input.anchor_type,
+                    create_input.anchor_id,
+                    create_input.memory_layer,
+                    create_input.memory_kind,
+                    create_input.content,
+                ),
+            ).fetchone()
+        if row is None:
+            return None
+        return self._to_definition(_row_to_memory(row))
 
     async def get_memory(
         self,
-        session: AsyncSession,
         *,
         memory_id: str,
-    ) -> AIMemoryItem | None:
+    ) -> AIMemoryDefinition | None:
         """Load one memory row by stable id."""
-
-        result = await session.execute(
-            select(AIMemoryItem).where(AIMemoryItem.memory_id == memory_id)
-        )
-        return result.scalar_one_or_none()
+        row = self._get_memory_row(memory_id=memory_id)
+        if row is None:
+            return None
+        return self._to_definition(row)
 
     async def update_memory_content(
         self,
-        session: AsyncSession,
         *,
         memory_id: str,
         update_input: AIMemoryUpdateInput,
-    ) -> AIMemoryItem | None:
+    ) -> AIMemoryDefinition | None:
         """Update one existing memory item in place."""
-
-        row = await self.get_memory(session, memory_id=memory_id)
+        row = self._get_memory_row(memory_id=memory_id)
         if row is None:
             return None
         row.content = update_input.content
         row.salience = update_input.salience
         row.confidence = update_input.confidence
         row.source_message_id = update_input.source_message_id
-        await session.flush()
-        return row
+        with database_runtime.connect_sync() as connection:
+            connection.execute(
+                """
+                UPDATE ai_memory_item
+                SET
+                    content = ?,
+                    salience = ?,
+                    confidence = ?,
+                    source_message_id = ?
+                WHERE memory_id = ?
+                """,
+                (
+                    row.content,
+                    row.salience,
+                    row.confidence,
+                    row.source_message_id,
+                    memory_id,
+                ),
+            )
+        return self._to_definition(row)
 
     async def remember_candidates(
         self,
-        session: AsyncSession,
         *,
         anchor_type: AIMemoryAnchorType,
         anchor_id: str,
         source_message_id: str | None,
         candidates: list[AIMemoryExtractionCandidate],
-    ) -> list[AIMemoryItem]:
+    ) -> list[AIMemoryDefinition]:
         """Persist extracted long-term memory candidates while avoiding duplicates."""
 
         existing_memories = await self.list_memories(
-            session,
             anchor_type=anchor_type,
             anchor_id=anchor_id,
             memory_layer="long_term",
         )
         plans = build_memory_write_plans(existing_memories, candidates)
-        created: list[AIMemoryItem] = []
+        created: list[AIMemoryDefinition] = []
         for plan in plans:
             candidate = plan.candidate
             if plan.action == "update" and plan.target_memory_id is not None:
                 row = await self.update_memory_content(
-                    session,
                     memory_id=plan.target_memory_id,
                     update_input=AIMemoryUpdateInput(
                         content=candidate.content,
@@ -199,7 +317,6 @@ class AIMemoryService:
                     created.append(row)
                 continue
             row = await self.create_memory_if_absent(
-                session,
                 AIMemoryCreateInput(
                     anchor_type=anchor_type,
                     anchor_id=anchor_id,
@@ -216,9 +333,8 @@ class AIMemoryService:
                 created.append(row)
         return created
 
-    async def list_memories(  # noqa: PLR0913
+    async def list_memories(
         self,
-        session: AsyncSession,
         *,
         anchor_type: AIMemoryAnchorType,
         anchor_id: str,
@@ -227,31 +343,35 @@ class AIMemoryService:
         include_ignored: bool = False,
     ) -> list[AIMemoryDefinition]:
         """List all memories for one anchor boundary."""
-
-        query = select(AIMemoryItem).where(
-            AIMemoryItem.anchor_type == anchor_type,
-            AIMemoryItem.anchor_id == anchor_id,
-        )
+        conditions = ["anchor_type = ?", "anchor_id = ?"]
+        params: list[object] = [anchor_type, anchor_id]
         if memory_layer is not None:
-            query = query.where(AIMemoryItem.memory_layer == memory_layer)
+            conditions.append("memory_layer = ?")
+            params.append(memory_layer)
         if memory_kind is not None:
-            query = query.where(AIMemoryItem.memory_kind == memory_kind)
+            conditions.append("memory_kind = ?")
+            params.append(memory_kind)
         if not include_ignored:
-            query = query.where(AIMemoryItem.is_ignored.is_(False))
-        result = await session.execute(
-            query.order_by(AIMemoryItem.created_at.asc(), AIMemoryItem.id.asc())
-        )
-        return [self._to_definition(row) for row in result.scalars().all()]
+            conditions.append("is_ignored = 0")
+
+        with database_runtime.connect_sync() as connection:
+            rows = connection.execute(
+                _SELECT_MEMORY_FIELDS
+                + f"""
+                WHERE {" AND ".join(conditions)}
+                ORDER BY created_at ASC, id ASC
+                """,
+                tuple(params),
+            ).fetchall()
+        return [self._to_definition(_row_to_memory(row)) for row in rows]
 
     async def retrieve_memories(
         self,
-        session: AsyncSession,
         query: AIMemoryQuery,
     ) -> list[AIMemoryDefinition]:
         """Retrieve relevance-ranked memories for one query."""
 
         memories = await self.list_memories(
-            session,
             anchor_type=query.anchor_type,
             anchor_id=query.anchor_id,
             memory_layer=query.memory_layer,
@@ -261,18 +381,16 @@ class AIMemoryService:
 
     async def create_knowledge_memory(
         self,
-        session: AsyncSession,
         create_input: AIMemoryCreateInput,
-    ) -> AIMemoryItem:
+    ) -> AIMemoryDefinition:
         """Create one knowledge memory and persist its embedding."""
 
-        memory = await self.create_memory_if_absent(session, create_input)
+        memory = await self.create_memory_if_absent(create_input)
         if memory is None:
-            existing = await self.get_memory_by_identity(session, create_input)
+            existing = await self.get_memory_by_identity(create_input)
             assert existing is not None
             memory = existing
         await self.upsert_memory_embedding(
-            session,
             memory_id=memory.memory_id,
             content=memory.content,
         )
@@ -280,38 +398,23 @@ class AIMemoryService:
 
     async def upsert_memory_embedding(
         self,
-        session: AsyncSession,
         *,
         memory_id: str,
         content: str,
-    ) -> AIMemoryEmbedding:
-        """Create or update one stored memory embedding."""
+    ) -> AIMemoryEmbeddingRecord:
+        """Create or update one file-backed memory embedding."""
 
-        result = await session.execute(
-            select(AIMemoryEmbedding).where(AIMemoryEmbedding.memory_id == memory_id)
-        )
-        row = result.scalar_one_or_none()
         embedding_model, vector = await self._build_knowledge_embedding_vector(
-            session,
             content=content,
         )
-        vector_json = json.dumps(vector)
-        if row is None:
-            row = AIMemoryEmbedding(
-                memory_id=memory_id,
-                embedding_model=embedding_model,
-                vector_json=vector_json,
-            )
-            session.add(row)
-        else:
-            row.embedding_model = embedding_model
-            row.vector_json = vector_json
-        await session.flush()
-        return row
+        return ai_memory_embedding_store.upsert(
+            memory_id=memory_id,
+            embedding_model=embedding_model,
+            vector=vector,
+        )
 
     async def retrieve_knowledge_memories(
         self,
-        session: AsyncSession,
         *,
         targets: list[tuple[AIMemoryAnchorType, str]],
         query_text: str,
@@ -326,7 +429,6 @@ class AIMemoryService:
             query_embedding_model,
             query_vector,
         ) = await self._build_knowledge_embedding_vector(
-            session,
             content=query_text,
         )
         scored: list[tuple[float, AIMemoryDefinition]] = []
@@ -334,7 +436,6 @@ class AIMemoryService:
 
         for anchor_type, anchor_id in targets:
             memories = await self.list_memories(
-                session,
                 anchor_type=anchor_type,
                 anchor_id=anchor_id,
                 memory_layer="knowledge",
@@ -343,40 +444,24 @@ class AIMemoryService:
                 if memory.memory_id in seen_memory_ids:
                     continue
                 seen_memory_ids.add(memory.memory_id)
-                result = await session.execute(
-                    select(AIMemoryEmbedding).where(
-                        AIMemoryEmbedding.memory_id == memory.memory_id
-                    )
+                embedding_row = ai_memory_embedding_store.get(
+                    memory_id=memory.memory_id
                 )
-                embedding_row = result.scalar_one_or_none()
                 if (
                     embedding_row is None
                     or embedding_row.embedding_model != query_embedding_model
                 ):
                     embedding_row = await self.upsert_memory_embedding(
-                        session,
                         memory_id=memory.memory_id,
                         content=memory.content,
                     )
-                try:
-                    memory_vector = json.loads(embedding_row.vector_json)
-                except json.JSONDecodeError:
-                    continue
-                if not isinstance(memory_vector, list):
-                    continue
-                numeric_vector = [
-                    float(value)
-                    for value in memory_vector
-                    if isinstance(value, (int, float))
-                ]
-                if not numeric_vector:
-                    continue
-                scored.append((cosine_similarity(query_vector, numeric_vector), memory))
+                scored.append(
+                    (cosine_similarity(query_vector, embedding_row.vector), memory)
+                )
 
         scored.sort(key=lambda item: item[0], reverse=True)
         dense_ranked = [memory for _, memory in scored]
         return await self._rerank_knowledge_memories(
-            session,
             query_text=query_text,
             memories=dense_ranked,
             limit=limit,
@@ -384,12 +469,10 @@ class AIMemoryService:
 
     async def _build_knowledge_embedding_vector(
         self,
-        session: "AsyncSession",
         *,
         content: str,
     ) -> tuple[str, list[float]]:
         selected = await ai_model_facade.select_capability_model(
-            session,
             capability_type="embedding",
         )
         if selected is None:
@@ -415,7 +498,6 @@ class AIMemoryService:
 
     async def _rerank_knowledge_memories(  # noqa: PLR0911
         self,
-        session: "AsyncSession",
         *,
         query_text: str,
         memories: list[AIMemoryDefinition],
@@ -425,7 +507,6 @@ class AIMemoryService:
             return []
 
         selected = await ai_model_facade.select_capability_model(
-            session,
             capability_type="rerank",
         )
         if selected is None:
@@ -479,108 +560,95 @@ class AIMemoryService:
 
     async def recall_memories(
         self,
-        session: AsyncSession,
         query: AIMemoryQuery,
     ) -> list[AIMemoryDefinition]:
         """Retrieve memories for live AI use and stamp recall time."""
 
-        recalled = await self.retrieve_memories(session, query)
+        recalled = await self.retrieve_memories(query)
         if not recalled:
             return []
 
-        recalled_at = datetime.now(timezone.utc)
+        recalled_at = _utcnow()
         await self._mark_memories_recalled(
-            session,
             memory_ids=[memory.memory_id for memory in recalled],
             recalled_at=recalled_at,
         )
-        return [
-            AIMemoryDefinition(
-                memory_id=memory.memory_id,
-                anchor_type=memory.anchor_type,
-                anchor_id=memory.anchor_id,
-                memory_layer=memory.memory_layer,
-                memory_kind=memory.memory_kind,
-                content=memory.content,
-                is_editable=memory.is_editable,
-                is_ignored=memory.is_ignored,
-                source_message_id=memory.source_message_id,
-                salience=memory.salience,
-                confidence=memory.confidence,
-                last_recalled_at=recalled_at,
-                created_at=memory.created_at,
-            )
-            for memory in recalled
-        ]
+        return [replace(memory, last_recalled_at=recalled_at) for memory in recalled]
 
     async def delete_memory(
         self,
-        session: AsyncSession,
         *,
         memory_id: str,
     ) -> bool:
         """Delete one memory item by stable id."""
-
-        memory = await self.get_memory(session, memory_id=memory_id)
+        memory = self._get_memory_row(memory_id=memory_id)
         if memory is None:
             return False
-        result = await session.execute(
-            select(AIMemoryEmbedding).where(AIMemoryEmbedding.memory_id == memory_id)
-        )
-        embedding = result.scalar_one_or_none()
-        if embedding is not None:
-            await session.delete(embedding)
-        await session.delete(memory)
-        return True
+        ai_memory_embedding_store.delete(memory_id=memory_id)
+        with database_runtime.connect_sync() as connection:
+            cursor = connection.execute(
+                "DELETE FROM ai_memory_item WHERE memory_id = ?",
+                (memory_id,),
+            )
+        return int(cursor.rowcount or 0) > 0
 
     async def toggle_memory_ignored(
         self,
-        session: AsyncSession,
         *,
         memory_id: str,
     ) -> AIMemoryDefinition | None:
         """Toggle the is_ignored flag on one memory item."""
-
-        memory = await self.get_memory(session, memory_id=memory_id)
-        if memory is None:
+        row = self._get_memory_row(memory_id=memory_id)
+        if row is None:
             return None
-        memory.is_ignored = not memory.is_ignored
-        await session.flush()
-        return self._to_definition(memory)
+        row.is_ignored = not row.is_ignored
+        with database_runtime.connect_sync() as connection:
+            connection.execute(
+                """
+                UPDATE ai_memory_item
+                SET is_ignored = ?
+                WHERE memory_id = ?
+                """,
+                (1 if row.is_ignored else 0, memory_id),
+            )
+        return self._to_definition(row)
 
     async def bulk_delete_memories(
         self,
-        session: AsyncSession,
         *,
         memory_ids: list[str],
     ) -> int:
         """Delete multiple memory items by stable id. Returns count deleted."""
 
         deleted = 0
-        for mid in memory_ids:
-            if await self.delete_memory(session, memory_id=mid):
+        for memory_id in memory_ids:
+            if await self.delete_memory(memory_id=memory_id):
                 deleted += 1
         return deleted
 
     async def bulk_set_ignored(
         self,
-        session: AsyncSession,
         *,
         memory_ids: list[str],
         ignored: bool,
     ) -> int:
         """Set is_ignored on multiple memories. Returns count updated."""
-
-        result = await session.execute(
-            update(AIMemoryItem)
-            .where(AIMemoryItem.memory_id.in_(memory_ids))
-            .values(is_ignored=ignored)
-        )
-        return result.rowcount  # type: ignore[return-value]
+        if not memory_ids:
+            return 0
+        placeholders = ",".join("?" for _ in memory_ids)
+        with database_runtime.connect_sync() as connection:
+            cursor = connection.execute(
+                f"""
+                UPDATE ai_memory_item
+                SET is_ignored = ?
+                WHERE memory_id IN ({placeholders})
+                """,
+                (1 if ignored else 0, *memory_ids),
+            )
+        return int(cursor.rowcount or 0)
 
     async def consolidate_anchor_summary(
         self,
-        session: AsyncSession,
         *,
         anchor_type: AIMemoryAnchorType,
         anchor_id: str,
@@ -588,7 +656,6 @@ class AIMemoryService:
         """Build or refresh one deterministic summary memory for the anchor."""
 
         memories = await self.list_memories(
-            session,
             anchor_type=anchor_type,
             anchor_id=anchor_id,
             include_ignored=True,
@@ -600,19 +667,17 @@ class AIMemoryService:
                 for memory in memories
                 if memory.memory_layer == self.SUMMARY_MEMORY_LAYER
             ),
-            None,
         )
 
         if summary_content is None:
             if existing_summary is not None:
-                await self.delete_memory(session, memory_id=existing_summary.memory_id)
+                await self.delete_memory(memory_id=existing_summary.memory_id)
             return
 
         if existing_summary is not None:
             if existing_summary.content == summary_content:
                 return
             await self.update_memory_content(
-                session,
                 memory_id=existing_summary.memory_id,
                 update_input=AIMemoryUpdateInput(
                     content=summary_content,
@@ -624,7 +689,6 @@ class AIMemoryService:
             return
 
         await self.create_memory(
-            session,
             AIMemoryCreateInput(
                 anchor_type=anchor_type,
                 anchor_id=anchor_id,
@@ -639,7 +703,6 @@ class AIMemoryService:
 
     async def _mark_memories_recalled(
         self,
-        session: AsyncSession,
         *,
         memory_ids: list[str],
         recalled_at: datetime,
@@ -647,27 +710,28 @@ class AIMemoryService:
         if not memory_ids:
             return
 
-        await session.execute(
-            update(AIMemoryItem)
-            .where(AIMemoryItem.memory_id.in_(memory_ids))
-            .values(last_recalled_at=recalled_at.replace(tzinfo=None))
-        )
-        await session.flush()
+        placeholders = ",".join("?" for _ in memory_ids)
+        with database_runtime.connect_sync() as connection:
+            connection.execute(
+                f"""
+                UPDATE ai_memory_item
+                SET last_recalled_at = ?
+                WHERE memory_id IN ({placeholders})
+                """,
+                (_datetime_to_text(recalled_at), *memory_ids),
+            )
 
     @staticmethod
-    def _to_definition(row: AIMemoryItem) -> AIMemoryDefinition:
-        created_at = (
-            row.created_at.replace(tzinfo=timezone.utc)
-            if row.created_at.tzinfo is None
-            else row.created_at
-        )
-        last_recalled_at = None
-        if row.last_recalled_at is not None:
-            last_recalled_at = (
-                row.last_recalled_at.replace(tzinfo=timezone.utc)
-                if row.last_recalled_at.tzinfo is None
-                else row.last_recalled_at
-            )
+    def _get_memory_row(*, memory_id: str) -> _MemoryRow | None:
+        with database_runtime.connect_sync() as connection:
+            row = connection.execute(
+                _SELECT_MEMORY_FIELDS + " WHERE memory_id = ?",
+                (memory_id,),
+            ).fetchone()
+        return None if row is None else _row_to_memory(row)
+
+    @staticmethod
+    def _to_definition(row: _MemoryRow) -> AIMemoryDefinition:
         return AIMemoryDefinition(
             memory_id=row.memory_id,
             anchor_type=cast("AIMemoryAnchorType", row.anchor_type),
@@ -680,9 +744,48 @@ class AIMemoryService:
             source_message_id=row.source_message_id,
             salience=row.salience,
             confidence=row.confidence,
-            last_recalled_at=last_recalled_at,
-            created_at=created_at,
+            last_recalled_at=row.last_recalled_at,
+            created_at=row.created_at,
         )
+
+
+_SELECT_MEMORY_FIELDS = """
+SELECT
+    id,
+    memory_id,
+    anchor_type,
+    anchor_id,
+    memory_layer,
+    memory_kind,
+    content,
+    is_editable,
+    is_ignored,
+    source_message_id,
+    salience,
+    confidence,
+    last_recalled_at,
+    created_at
+FROM ai_memory_item
+"""
+
+
+def _row_to_memory(row: tuple[object, ...]) -> _MemoryRow:
+    return _MemoryRow(
+        id=int(str(row[0])),
+        memory_id=str(row[1]),
+        anchor_type=str(row[2]),
+        anchor_id=str(row[3]),
+        memory_layer=str(row[4]),
+        memory_kind=str(row[5]),
+        content=str(row[6]),
+        is_editable=bool(row[7]),
+        is_ignored=bool(row[8]),
+        source_message_id=str(row[9]) if row[9] is not None else None,
+        salience=float(str(row[10])),
+        confidence=float(str(row[11])),
+        last_recalled_at=_optional_datetime_from_text(row[12]),
+        created_at=_datetime_from_text(row[13]),
+    )
 
 
 ai_memory_service = AIMemoryService()

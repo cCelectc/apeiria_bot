@@ -12,8 +12,6 @@ from apeiria.ai.model.selection import (
 from apeiria.ai.model.source import ai_source_service
 
 if TYPE_CHECKING:
-    from sqlalchemy.ext.asyncio import AsyncSession
-
     from apeiria.ai.model.sources import AISourceCapabilityType
 
 
@@ -22,18 +20,17 @@ class AIModelCapabilitySelectionService:
 
     async def select_default_model(
         self,
-        session: "AsyncSession",
         *,
         capability_type: "AISourceCapabilityType",
         preferred_source_id: str | None = None,
     ) -> AISelectedCapabilityModel | None:
         entry = SOURCE_MODEL_CAPABILITY_REGISTRY[capability_type]
-        sources = await ai_source_service.list_sources(session)
+        sources = await ai_source_service.list_sources()
         source_models = []
         for source in sources:
             if source.capability_type != capability_type or not source.enabled:
                 continue
-            source_models.extend(await entry.list_models(session, source.source_id))
+            source_models.extend(await entry.list_models(source.source_id))
         return resolve_capability_selected_model(
             sources,
             source_models,

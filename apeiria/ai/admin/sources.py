@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sqlite3
 from typing import TYPE_CHECKING, cast
 
 from apeiria.ai.admin.audit import record_ai_admin_audit
@@ -38,7 +39,7 @@ class SourcesAdminMixin:
         return ai_source_service.list_presets()
 
     async def list_sources(self) -> list["AISourceDefinition"]:
-        return await ai_source_service.list_sources(None)
+        return await ai_source_service.list_sources()
 
     async def create_source(  # noqa: PLR0913
         self,
@@ -55,7 +56,6 @@ class SourcesAdminMixin:
         actor_username: str | None = None,
     ) -> "AISourceDefinition":
         created = await ai_source_service.create_source(
-            None,
             AISourceCreateInput(
                 name=name,
                 capability_type=capability_type,  # type: ignore[arg-type]
@@ -94,7 +94,6 @@ class SourcesAdminMixin:
         actor_username: str | None = None,
     ) -> "AISourceDefinition | None":
         updated = await ai_source_service.update_source(
-            None,
             source_id=source_id,
             create_input=AISourceCreateInput(
                 name=name,
@@ -125,9 +124,8 @@ class SourcesAdminMixin:
         source_id: str,
         actor_username: str | None = None,
     ) -> bool:
-        source = await ai_source_service.get_source(None, source_id=source_id)
+        source = await ai_source_service.get_source(source_id=source_id)
         dependency_report = await ai_source_service.build_delete_dependency_report(
-            None,
             source_id=source_id,
         )
         if dependency_report is not None:
@@ -135,10 +133,24 @@ class SourcesAdminMixin:
                 model_count=dependency_report.model_count,
                 model_labels=dependency_report.model_labels,
             )
-        deleted = await ai_source_service.delete_source(
-            None,
-            source_id=source_id,
-        )
+        try:
+            deleted = await ai_source_service.delete_source(
+                source_id=source_id,
+            )
+        except sqlite3.IntegrityError:
+            dependency_report = await ai_source_service.build_delete_dependency_report(
+                source_id=source_id,
+            )
+            raise AISourceDeleteBlockedError(
+                model_count=dependency_report.model_count
+                if dependency_report is not None
+                else 1,
+                model_labels=(
+                    dependency_report.model_labels
+                    if dependency_report is not None
+                    else ()
+                ),
+            ) from None
         if deleted:
             record_ai_admin_audit(
                 "ai_source_deleted",

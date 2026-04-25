@@ -5,6 +5,8 @@ import importlib
 import sys
 from typing import TYPE_CHECKING
 
+from pytest import raises
+
 from apeiria.db.runtime import database_runtime
 
 if TYPE_CHECKING:
@@ -73,5 +75,49 @@ def test_sources_admin_crud_uses_new_database(
         deleted = await admin.delete_source(source_id=created.source_id)
         assert deleted is True
         assert await admin.list_sources() == []
+
+    asyncio.run(run())
+
+
+def test_source_delete_is_blocked_when_source_models_exist(
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    from apeiria.ai.admin.errors import AISourceDeleteBlockedError
+    from apeiria.ai.admin.models import ModelsAdminMixin
+    from apeiria.ai.admin.sources import SourcesAdminMixin
+
+    monkeypatch.setattr(database_runtime, "_project_root", tmp_path)
+    database_runtime.ensure_ready()
+    sources = SourcesAdminMixin()
+    models = ModelsAdminMixin()
+
+    async def run() -> None:
+        source = await sources.create_source(
+            name="Primary",
+            capability_type="chat_completion",
+            preset_type="openai_compatible",
+            api_base="https://api.example.test/v1",
+            api_key_env_name="OPENAI_API_KEY",
+            enabled=True,
+            timeout_seconds=30,
+            custom_headers={},
+            extra_config={},
+        )
+        await models.create_source_model(
+            source_id=source.source_id,
+            model_identifier="gpt-test",
+            display_name="GPT Test",
+            enabled=True,
+            is_default=True,
+            extra_params={},
+        )
+
+        with raises(AISourceDeleteBlockedError):
+            await sources.delete_source(source_id=source.source_id)
+
+        assert [item.source_id for item in await sources.list_sources()] == [
+            source.source_id
+        ]
 
     asyncio.run(run())

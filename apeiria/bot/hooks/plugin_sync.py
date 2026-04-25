@@ -1,4 +1,4 @@
-"""Plugin sync hook — sync loaded plugins to PluginInfo table on startup."""
+"""Plugin sync hook - ensure loaded plugins have governance state."""
 
 from __future__ import annotations
 
@@ -10,77 +10,20 @@ from apeiria.plugins.metadata.builders import plugin_descriptor_builder
 
 
 async def sync_plugins() -> None:
-    """Iterate all loaded plugins, parse metadata, upsert into PluginInfo table."""
-    from nonebot_plugin_orm import get_session
-    from sqlalchemy import select
-
-    from apeiria.db.models.plugin_info import PluginInfo
-    from apeiria.db.models.plugin_policy import PluginPolicyEntry
+    """Iterate loaded plugins and ensure a SQLite governance row exists."""
     from apeiria.plugins.protection import get_default_protection_mode
+    from apeiria.plugins.repository import plugin_catalog_repository
 
     plugins = nonebot.get_loaded_plugins()
     logger.info("{}", t("plugin_sync.syncing", count=len(plugins)))
 
-    async with get_session() as session:
-        for plugin in plugins:
-            descriptor = plugin_descriptor_builder.build(plugin)
-            module_name = descriptor.module_name
-            meta = plugin.metadata
-            usage = meta.usage if meta else None
-
-            result = await session.execute(
-                select(PluginInfo).where(PluginInfo.module_name == module_name)
-            )
-            record = result.scalar_one_or_none()
-            if record is not None:
-                record.name = descriptor.name
-                record.description = descriptor.description
-                record.usage = usage
-                record.plugin_type = descriptor.plugin_type
-                record.is_ui_hidden = descriptor.is_ui_hidden
-                record.admin_level = descriptor.admin_level
-                record.author = descriptor.author
-                record.version = descriptor.version
-            else:
-                session.add(
-                    PluginInfo(
-                        module_name=module_name,
-                        name=descriptor.name,
-                        description=descriptor.description,
-                        usage=usage,
-                        plugin_type=descriptor.plugin_type,
-                        is_ui_hidden=descriptor.is_ui_hidden,
-                        admin_level=descriptor.admin_level,
-                        author=descriptor.author,
-                        version=descriptor.version,
-                    )
-                )
-
-            policy_result = await session.execute(
-                select(PluginPolicyEntry).where(
-                    PluginPolicyEntry.plugin_module == module_name
-                )
-            )
-            policy_record = policy_result.scalar_one_or_none()
-            protection_mode = get_default_protection_mode(module_name)
-            if policy_record is None:
-                session.add(
-                    PluginPolicyEntry(
-                        plugin_module=module_name,
-                        access_mode="default_allow",
-                        required_level=descriptor.admin_level,
-                        protection_mode=protection_mode,
-                    )
-                )
-            else:
-                if policy_record.required_level == 0 and descriptor.admin_level > 0:
-                    policy_record.required_level = descriptor.admin_level
-                if (
-                    policy_record.protection_mode == "normal"
-                    and protection_mode != "normal"
-                ):
-                    policy_record.protection_mode = protection_mode
-
-        await session.commit()
+    for plugin in plugins:
+        descriptor = plugin_descriptor_builder.build(plugin)
+        module_name = descriptor.module_name
+        await plugin_catalog_repository.ensure_plugin_policy(
+            module_name,
+            required_level=descriptor.admin_level,
+            protection_mode=get_default_protection_mode(module_name),
+        )
 
     logger.info("{}", t("plugin_sync.complete", count=len(plugins)))

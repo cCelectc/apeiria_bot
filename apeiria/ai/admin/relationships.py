@@ -4,8 +4,6 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from nonebot_plugin_orm import get_session
-
 from apeiria.ai.admin.audit import record_ai_admin_audit
 from apeiria.ai.relationship.service import ai_relationship_service
 
@@ -24,8 +22,7 @@ class RelationshipsAdminMixin:
         *,
         limit: int = 50,
     ) -> list["AIRelationshipState"]:
-        async with get_session() as session:
-            return await ai_relationship_service.list_states(session, limit=limit)
+        return await ai_relationship_service.list_states(limit=limit)
 
     async def get_relationship_state(
         self,
@@ -34,13 +31,11 @@ class RelationshipsAdminMixin:
         user_id: str,
         group_id: str | None = None,
     ) -> "AIRelationshipState":
-        async with get_session() as session:
-            return await ai_relationship_service.get_state(
-                session,
-                platform=platform,
-                group_id=group_id,
-                user_id=user_id,
-            )
+        return await ai_relationship_service.get_state(
+            platform=platform,
+            group_id=group_id,
+            user_id=user_id,
+        )
 
     async def list_relationship_events(
         self,
@@ -50,14 +45,12 @@ class RelationshipsAdminMixin:
         group_id: str | None = None,
         limit: int = 20,
     ) -> list["AIRelationshipEvent"]:
-        async with get_session() as session:
-            return await ai_relationship_service.list_events_for_target(
-                session,
-                platform=platform,
-                group_id=group_id,
-                user_id=user_id,
-                limit=limit,
-            )
+        return await ai_relationship_service.list_events_for_target(
+            platform=platform,
+            group_id=group_id,
+            user_id=user_id,
+            limit=limit,
+        )
 
     async def set_relationship_score(
         self,
@@ -68,23 +61,18 @@ class RelationshipsAdminMixin:
         group_id: str | None = None,
         actor_username: str | None = None,
     ) -> "AIRelationshipState":
-        async with get_session() as session:
-            state = await ai_relationship_service.set_manual_score(
-                session,
-                platform=platform,
-                group_id=group_id,
-                user_id=user_id,
-                score=score,
-            )
-            await session.commit()
-            record_ai_admin_audit(
-                "ai_relationship_score_updated",
-                actor_username=actor_username,
-                detail=(
-                    f"{platform}:{group_id or '__private__'}:{user_id} score={score}"
-                ),
-            )
-            return state
+        state = await ai_relationship_service.set_manual_score(
+            platform=platform,
+            group_id=group_id,
+            user_id=user_id,
+            score=score,
+        )
+        record_ai_admin_audit(
+            "ai_relationship_score_updated",
+            actor_username=actor_username,
+            detail=f"{platform}:{group_id or '__private__'}:{user_id} score={score}",
+        )
+        return state
 
 
 __all__ = ["RelationshipsAdminMixin"]

@@ -14,24 +14,6 @@ if TYPE_CHECKING:
     import pytest
 
 
-def _ensure_tool_policy_binding_table() -> None:
-    database_runtime.ensure_ready()
-    with database_runtime.connect_sync() as connection:
-        connection.execute(
-            """
-            CREATE TABLE IF NOT EXISTS ai_tool_policy (
-                binding_id TEXT NOT NULL UNIQUE,
-                scope_type TEXT NOT NULL,
-                scope_id TEXT NOT NULL,
-                allow_read_only_tools INTEGER NOT NULL DEFAULT 1,
-                capability_mode TEXT NOT NULL DEFAULT 'off',
-                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                UNIQUE(scope_type, scope_id)
-            )
-            """
-        )
-
-
 def test_tool_policy_admin_import_is_safe_without_nonebot_plugin_orm(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -57,12 +39,53 @@ def test_tool_policy_admin_import_is_safe_without_nonebot_plugin_orm(
     assert module.__name__ == "apeiria.ai.admin.tools"
 
 
+def test_preview_tool_intents_does_not_open_orm_session(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    stub_nonebot_plugin_orm = type(sys)("nonebot_plugin_orm")
+
+    def unexpected_get_session() -> None:
+        raise AssertionError
+
+    stub_nonebot_plugin_orm.get_session = unexpected_get_session  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "nonebot_plugin_orm", stub_nonebot_plugin_orm)
+
+    from apeiria.ai.admin import tools as admin_tools
+    from apeiria.ai.tools import service as tool_service_module
+
+    captured_kwargs: list[dict[str, object]] = []
+
+    async def fake_preview_tool_intents(**kwargs: object) -> list[object]:
+        captured_kwargs.append(dict(kwargs))
+        return []
+
+    monkeypatch.setattr(
+        tool_service_module.ai_tool_service,
+        "preview_tool_intents",
+        fake_preview_tool_intents,
+    )
+
+    class _Admin(admin_tools.ToolsAdminMixin):
+        pass
+
+    result = asyncio.run(
+        _Admin().preview_tool_intents(
+            message_text="hello",
+            scope_type="private",
+            is_tome=False,
+        )
+    )
+
+    assert result == []
+    assert "session" not in captured_kwargs[0]
+
+
 def test_tool_policy_bindings_use_control_plane_sqlite(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
     monkeypatch.setattr(database_runtime, "_project_root", tmp_path)
-    _ensure_tool_policy_binding_table()
+    database_runtime.ensure_ready()
 
     from apeiria.ai.admin import tools as admin_tools
     from apeiria.ai.tools.policy import (
@@ -119,15 +142,14 @@ def test_tool_policy_bindings_use_control_plane_sqlite(
         updated_global = await admin.update_tool_policy_binding(
             binding_id=global_binding.binding_id,
             allow_read_only_tools=True,
-            capability_mode="private_and_tome",
+            capability_mode="direct_only",
             actor_username="alice",
         )
 
         assert updated_global is not None
-        assert updated_global.capability_mode == "private_and_tome"
+        assert updated_global.capability_mode == "direct_only"
 
         user_policy = await ai_tool_policy_binding_service.resolve_scene_policy(
-            None,
             scene_context=AIToolSceneContext(scope_type="private", is_tome=False),
             target=AIToolPolicyBindingTarget(
                 conversation_id="conv-1",
@@ -148,7 +170,6 @@ def test_tool_policy_bindings_use_control_plane_sqlite(
         assert deleted is True
 
         group_policy = await ai_tool_policy_binding_service.resolve_scene_policy(
-            None,
             scene_context=AIToolSceneContext(scope_type="private", is_tome=False),
             target=AIToolPolicyBindingTarget(
                 conversation_id="conv-1",

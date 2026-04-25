@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
 from nonebot.log import logger
 
 from apeiria.access.level import extract_group_id
+from apeiria.db.runtime import database_runtime
 
 if TYPE_CHECKING:
     from nonebot.adapters import Event
@@ -20,6 +22,10 @@ class StatsContext:
 
     user_id: str
     group_id: str | None
+
+
+def _utcnow_text() -> str:
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
 class StatisticsService:
@@ -43,21 +49,27 @@ class StatisticsService:
         command = self._extract_command_name(matcher) or plugin.name
 
         try:
-            from nonebot_plugin_orm import get_session
-
-            from apeiria.db.models.statistics import CommandStatistics
-
-            async with get_session() as session:
-                session.add(
-                    CommandStatistics(
-                        plugin_name=plugin.module_name,
-                        command=command,
-                        user_id=context.user_id,
-                        group_id=context.group_id,
-                        success=success,
-                    )
+            with database_runtime.connect_sync() as connection:
+                connection.execute(
+                    """
+                    INSERT INTO command_statistics (
+                        plugin_name,
+                        command,
+                        user_id,
+                        group_id,
+                        called_at,
+                        success
+                    ) VALUES (?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        plugin.module_name,
+                        command,
+                        context.user_id,
+                        context.group_id,
+                        _utcnow_text(),
+                        1 if success else 0,
+                    ),
                 )
-                await session.commit()
         except Exception:  # noqa: BLE001
             logger.debug("Failed to record command statistics")
 

@@ -9,8 +9,6 @@ if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
     from datetime import datetime
 
-    from sqlalchemy.ext.asyncio import AsyncSession
-
 AIToolRiskLevel = Literal["low", "medium", "high"]
 AIToolOrigin = Literal["builtin", "plugin", "skill"]
 AIToolIntentKind = Literal[
@@ -57,7 +55,6 @@ class AIToolResult:
 class AIToolExecutionContext:
     """Unified context injected into every declarative tool handler."""
 
-    session: AsyncSession
     session_id: str
     source_message_id: str | None
     trace_id: str | None

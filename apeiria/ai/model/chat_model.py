@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from typing import Any
 from uuid import uuid4
 
 from apeiria.ai.model.chat_models import AIChatModelDefinition
@@ -15,9 +15,6 @@ from apeiria.ai.model.source_model_storage import (
     list_source_models,
     update_source_model,
 )
-
-if TYPE_CHECKING:
-    from sqlalchemy.ext.asyncio import AsyncSession
 
 
 @dataclass(frozen=True)
@@ -37,11 +34,9 @@ class AIChatModelService:
 
     async def get_model(
         self,
-        session: "AsyncSession | None",
         *,
         model_id: str,
     ) -> AIChatModelDefinition | None:
-        del session
         record = get_source_model("ai_chat_model", model_id=model_id)
         return (
             None
@@ -59,9 +54,7 @@ class AIChatModelService:
 
     async def list_all_models(
         self,
-        session: "AsyncSession | None",
     ) -> list[AIChatModelDefinition]:
-        del session
         return [
             AIChatModelDefinition(
                 model_id=row.model_id,
@@ -77,11 +70,9 @@ class AIChatModelService:
 
     async def list_models(
         self,
-        session: "AsyncSession | None",
         *,
         source_id: str,
     ) -> list[AIChatModelDefinition]:
-        del session
         return [
             AIChatModelDefinition(
                 model_id=row.model_id,
@@ -97,10 +88,8 @@ class AIChatModelService:
 
     async def create_model(
         self,
-        session: "AsyncSession | None",
         create_input: AIChatModelCreateInput,
     ) -> AIChatModelDefinition:
-        del session
         return AIChatModelDefinition(
             **create_source_model(
                 "ai_chat_model",
@@ -116,12 +105,10 @@ class AIChatModelService:
 
     async def update_model(
         self,
-        session: "AsyncSession | None",
         *,
         model_id: str,
         create_input: AIChatModelCreateInput,
     ) -> AIChatModelDefinition | None:
-        del session
         record = update_source_model(
             "ai_chat_model",
             model_id=model_id,
@@ -136,11 +123,9 @@ class AIChatModelService:
 
     async def delete_model(
         self,
-        session: "AsyncSession | None",
         *,
         model_id: str,
     ) -> bool:
-        del session
         return delete_source_model("ai_chat_model", model_id=model_id)
 
 

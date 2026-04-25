@@ -1,4 +1,4 @@
-"""Bootstrap and migrate the Apeiria SQLite control-plane schema."""
+"""Bootstrap and validate the Apeiria SQLite schema."""
 
 from __future__ import annotations
 
@@ -8,31 +8,22 @@ from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from pathlib import Path
-
     from apeiria.db.runtime import ApeiriaDatabase
 
 CURRENT_SCHEMA_LINE = "apeiria_v1"
-CURRENT_SCHEMA_VERSION = 5
-SCHEMA_VERSION_WITH_GOVERNANCE = 2
-SCHEMA_VERSION_WITH_AI_CONTROL_PLANE = 3
-SCHEMA_VERSION_WITH_MODEL_ROUTING = 4
-SCHEMA_VERSION_WITH_SOURCE_MODELS = 5
+CURRENT_SCHEMA_VERSION = 1
+
+SOURCE_MODEL_TABLE_NAMES: tuple[str, ...] = (
+    "ai_chat_model",
+    "ai_embedding_model",
+    "ai_stt_model",
+    "ai_tts_model",
+    "ai_rerank_model",
+)
 
 
 class DatabaseSchemaError(RuntimeError):
     """Base error for Apeiria SQLite schema handling."""
-
-    @classmethod
-    def no_migration_path(
-        cls,
-        *,
-        from_version: int,
-        to_version: int,
-    ) -> "DatabaseSchemaError":
-        return cls(
-            f"no migration path from apeiria_v1/{from_version} to {to_version}"
-        )
 
 
 class IncompatibleDatabaseError(DatabaseSchemaError):
@@ -47,12 +38,21 @@ class IncompatibleDatabaseError(DatabaseSchemaError):
         return cls("database schema line is not compatible with apeiria_v1")
 
 
-class NewerDatabaseError(DatabaseSchemaError):
-    """Raised when the on-disk database is newer than the current build."""
+class UnsupportedDatabaseVersionError(DatabaseSchemaError):
+    """Raised when an old in-development SQLite schema is encountered."""
 
     @classmethod
-    def current_build_too_old(cls) -> "NewerDatabaseError":
-        return cls("database schema version is newer than this Apeiria build")
+    def unsupported_schema_version(
+        cls,
+        *,
+        observed: int,
+        expected: int,
+    ) -> "UnsupportedDatabaseVersionError":
+        return cls(
+            "database schema version "
+            f"{observed} is not supported by this Apeiria build; "
+            f"recreate the local database at apeiria_v1/{expected}"
+        )
 
 
 @dataclass(frozen=True)
@@ -67,13 +67,12 @@ def ensure_database_ready_sync(database: "ApeiriaDatabase | None" = None) -> Non
     """Synchronously initialize or validate the Apeiria SQLite database."""
 
     runtime = _coerce_database(database)
-    path = runtime.database_path()
     runtime.ensure_parent_dir()
 
     with runtime.connect_sync() as connection:
         existing_tables = _table_names(connection)
         if not existing_tables:
-            _create_schema_v1(connection)
+            _create_current_schema(connection)
             return
 
         if "apeiria_schema_meta" not in existing_tables:
@@ -82,11 +81,11 @@ def ensure_database_ready_sync(database: "ApeiriaDatabase | None" = None) -> Non
         meta = _read_schema_meta(connection)
         if meta is None or meta.schema_line != CURRENT_SCHEMA_LINE:
             raise IncompatibleDatabaseError.wrong_schema_line()
-        if meta.schema_version > CURRENT_SCHEMA_VERSION:
-            raise NewerDatabaseError.current_build_too_old()
-        if meta.schema_version < CURRENT_SCHEMA_VERSION:
-            _backup_database(connection, path)
-            _migrate(connection, from_version=meta.schema_version)
+        if meta.schema_version != CURRENT_SCHEMA_VERSION:
+            raise UnsupportedDatabaseVersionError.unsupported_schema_version(
+                observed=meta.schema_version,
+                expected=CURRENT_SCHEMA_VERSION,
+            )
 
 
 async def ensure_database_ready(database: "ApeiriaDatabase | None" = None) -> None:
@@ -115,14 +114,47 @@ def _table_names(connection: sqlite3.Connection) -> set[str]:
     return {str(row[0]) for row in rows}
 
 
-def _create_schema_v1(connection: sqlite3.Connection) -> None:
+def _read_schema_meta(connection: sqlite3.Connection) -> SchemaMetaRecord | None:
+    row = connection.execute(
+        """
+        SELECT schema_line, schema_version
+        FROM apeiria_schema_meta
+        WHERE id = 1
+        """
+    ).fetchone()
+    if row is None:
+        return None
+    return SchemaMetaRecord(schema_line=str(row[0]), schema_version=int(row[1]))
+
+
+def _sqlite_supports_json_valid(connection: sqlite3.Connection) -> bool:
+    try:
+        row = connection.execute("SELECT json_valid(?)", ("{}",)).fetchone()
+    except sqlite3.DatabaseError:
+        return False
+    return bool(row and row[0] == 1)
+
+
+def _json_check(connection: sqlite3.Connection, column_name: str) -> str:
+    if _sqlite_supports_json_valid(connection):
+        return f"json_valid({column_name})"
+    return "1"
+
+
+def _optional_json_check(connection: sqlite3.Connection, column_name: str) -> str:
+    if _sqlite_supports_json_valid(connection):
+        return f"{column_name} IS NULL OR json_valid({column_name})"
+    return "1"
+
+
+def _create_current_schema(connection: sqlite3.Connection) -> None:
     timestamp = _utcnow_text()
     connection.execute(
         """
         CREATE TABLE apeiria_schema_meta (
             id INTEGER PRIMARY KEY,
-            schema_line TEXT NOT NULL,
-            schema_version INTEGER NOT NULL,
+            schema_line TEXT NOT NULL CHECK(length(schema_line) > 0),
+            schema_version INTEGER NOT NULL CHECK(schema_version > 0),
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL
         )
@@ -142,123 +174,42 @@ def _create_schema_v1(connection: sqlite3.Connection) -> None:
     )
     _create_governance_tables(connection)
     _create_ai_control_plane_tables(connection)
-    _create_model_routing_tables(connection)
     _create_source_model_tables(connection)
-
-
-def _read_schema_meta(connection: sqlite3.Connection) -> SchemaMetaRecord | None:
-    row = connection.execute(
-        """
-        SELECT schema_line, schema_version
-        FROM apeiria_schema_meta
-        WHERE id = 1
-        """
-    ).fetchone()
-    if row is None:
-        return None
-    return SchemaMetaRecord(schema_line=str(row[0]), schema_version=int(row[1]))
-
-
-def _backup_database(connection: sqlite3.Connection, database_path: Path) -> None:
-    backup_dir = database_path.parent / "backups"
-    backup_dir.mkdir(parents=True, exist_ok=True)
-    backup_path = backup_dir / f"{database_path.stem}.pre-migrate.sqlite3"
-    backup_connection = sqlite3.connect(backup_path)
-    try:
-        connection.backup(backup_connection)
-    finally:
-        backup_connection.close()
-
-
-def _migrate(connection: sqlite3.Connection, *, from_version: int) -> None:
-    current_version = from_version
-    while current_version < CURRENT_SCHEMA_VERSION:
-        next_version = current_version + 1
-        if current_version == 1 and next_version == SCHEMA_VERSION_WITH_GOVERNANCE:
-            _create_governance_tables(connection)
-            connection.execute(
-                """
-                UPDATE apeiria_schema_meta
-                SET schema_version = ?, updated_at = ?
-                WHERE id = 1
-                """,
-                (SCHEMA_VERSION_WITH_GOVERNANCE, _utcnow_text()),
-            )
-            current_version = next_version
-            continue
-        if (
-            current_version == SCHEMA_VERSION_WITH_GOVERNANCE
-            and next_version == SCHEMA_VERSION_WITH_AI_CONTROL_PLANE
-        ):
-            _create_ai_control_plane_tables(connection)
-            connection.execute(
-                """
-                UPDATE apeiria_schema_meta
-                SET schema_version = ?, updated_at = ?
-                WHERE id = 1
-                """,
-                (SCHEMA_VERSION_WITH_AI_CONTROL_PLANE, _utcnow_text()),
-            )
-            current_version = next_version
-            continue
-        if (
-            current_version == SCHEMA_VERSION_WITH_AI_CONTROL_PLANE
-            and next_version == SCHEMA_VERSION_WITH_MODEL_ROUTING
-        ):
-            _create_model_routing_tables(connection)
-            connection.execute(
-                """
-                UPDATE apeiria_schema_meta
-                SET schema_version = ?, updated_at = ?
-                WHERE id = 1
-                """,
-                (SCHEMA_VERSION_WITH_MODEL_ROUTING, _utcnow_text()),
-            )
-            current_version = next_version
-            continue
-        if (
-            current_version == SCHEMA_VERSION_WITH_MODEL_ROUTING
-            and next_version == SCHEMA_VERSION_WITH_SOURCE_MODELS
-        ):
-            _create_source_model_tables(connection)
-            connection.execute(
-                """
-                UPDATE apeiria_schema_meta
-                SET schema_version = ?, updated_at = ?
-                WHERE id = 1
-                """,
-                (SCHEMA_VERSION_WITH_SOURCE_MODELS, _utcnow_text()),
-            )
-            current_version = next_version
-            continue
-        raise DatabaseSchemaError.no_migration_path(
-            from_version=current_version,
-            to_version=next_version,
-        )
+    _create_model_routing_tables(connection)
+    _create_command_statistics_tables(connection)
+    _create_conversation_tables(connection)
+    _create_tool_execution_tables(connection)
+    _create_relationship_person_tables(connection)
+    _create_memory_item_tables(connection)
 
 
 def _create_governance_tables(connection: sqlite3.Connection) -> None:
+    disabled_plugins_check = _json_check(connection, "disabled_plugins_json")
     connection.execute(
         """
-        CREATE TABLE IF NOT EXISTS plugin_state (
+        CREATE TABLE plugin_state (
             plugin_id TEXT PRIMARY KEY,
-            enabled INTEGER NOT NULL DEFAULT 1,
-            access_mode TEXT NOT NULL DEFAULT 'default_allow',
-            required_level INTEGER NOT NULL DEFAULT 0,
-            protection_mode TEXT NOT NULL DEFAULT 'normal',
-            ui_hidden_override INTEGER,
+            enabled INTEGER NOT NULL DEFAULT 1 CHECK(enabled IN (0, 1)),
+            access_mode TEXT NOT NULL DEFAULT 'default_allow'
+                CHECK(access_mode IN ('default_allow', 'default_deny')),
+            required_level INTEGER NOT NULL DEFAULT 0 CHECK(required_level >= 0),
+            protection_mode TEXT NOT NULL DEFAULT 'normal'
+                CHECK(protection_mode IN ('normal', 'required')),
+            ui_hidden_override INTEGER CHECK(
+                ui_hidden_override IS NULL OR ui_hidden_override IN (0, 1)
+            ),
             updated_at TEXT NOT NULL
         )
         """
     )
     connection.execute(
         """
-        CREATE TABLE IF NOT EXISTS access_rule (
+        CREATE TABLE access_rule (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            subject_type TEXT NOT NULL,
+            subject_type TEXT NOT NULL CHECK(subject_type IN ('user', 'group')),
             subject_id TEXT NOT NULL,
             plugin_id TEXT NOT NULL,
-            effect TEXT NOT NULL,
+            effect TEXT NOT NULL CHECK(effect IN ('allow', 'deny')),
             note TEXT,
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL,
@@ -267,23 +218,24 @@ def _create_governance_tables(connection: sqlite3.Connection) -> None:
         """
     )
     connection.execute(
-        """
-        CREATE TABLE IF NOT EXISTS group_state (
+        f"""
+        CREATE TABLE group_state (
             group_id TEXT PRIMARY KEY,
             group_name TEXT,
-            bot_enabled INTEGER NOT NULL DEFAULT 1,
-            disabled_plugins_json TEXT NOT NULL DEFAULT '[]',
+            bot_enabled INTEGER NOT NULL DEFAULT 1 CHECK(bot_enabled IN (0, 1)),
+            disabled_plugins_json TEXT NOT NULL DEFAULT '[]'
+                CHECK({disabled_plugins_check}),
             updated_at TEXT NOT NULL
         )
         """
     )
     connection.execute(
         """
-        CREATE TABLE IF NOT EXISTS user_level (
+        CREATE TABLE user_level (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id TEXT NOT NULL,
             group_id TEXT NOT NULL,
-            level INTEGER NOT NULL DEFAULT 0,
+            level INTEGER NOT NULL DEFAULT 0 CHECK(level >= 0),
             updated_at TEXT NOT NULL,
             UNIQUE(user_id, group_id)
         )
@@ -292,110 +244,475 @@ def _create_governance_tables(connection: sqlite3.Connection) -> None:
 
 
 def _create_ai_control_plane_tables(connection: sqlite3.Connection) -> None:
+    custom_headers_check = _json_check(connection, "custom_headers_json")
+    extra_config_check = _json_check(connection, "extra_config_json")
     connection.execute(
-        """
-        CREATE TABLE IF NOT EXISTS ai_source (
+        f"""
+        CREATE TABLE ai_source (
             source_id TEXT PRIMARY KEY,
             name TEXT NOT NULL,
-            capability_type TEXT NOT NULL,
-            client_type TEXT NOT NULL,
-            preset_type TEXT NOT NULL,
+            capability_type TEXT NOT NULL CHECK(
+                capability_type IN (
+                    'chat_completion',
+                    'embedding',
+                    'speech_to_text',
+                    'text_to_speech',
+                    'rerank'
+                )
+            ),
+            client_type TEXT NOT NULL CHECK(
+                client_type IN ('openai', 'anthropic', 'generic_rerank')
+            ),
+            preset_type TEXT NOT NULL CHECK(
+                preset_type IN (
+                    'openai_compatible',
+                    'openai_compatible_embedding',
+                    'openai_compatible_stt',
+                    'openai_compatible_tts',
+                    'generic_rerank_api',
+                    'anthropic_compatible'
+                )
+            ),
             api_base TEXT,
             api_key_env_name TEXT,
-            enabled INTEGER NOT NULL DEFAULT 1,
-            timeout_seconds INTEGER,
-            custom_headers_json TEXT NOT NULL DEFAULT '{}',
-            extra_config_json TEXT NOT NULL DEFAULT '{}',
+            enabled INTEGER NOT NULL DEFAULT 1 CHECK(enabled IN (0, 1)),
+            timeout_seconds INTEGER CHECK(
+                timeout_seconds IS NULL OR timeout_seconds > 0
+            ),
+            custom_headers_json TEXT NOT NULL DEFAULT '{{}}'
+                CHECK({custom_headers_check}),
+            extra_config_json TEXT NOT NULL DEFAULT '{{}}'
+                CHECK({extra_config_check}),
             updated_at TEXT NOT NULL
         )
         """
     )
     connection.execute(
         """
-        CREATE TABLE IF NOT EXISTS ai_persona (
+        CREATE TABLE ai_persona (
             persona_id TEXT PRIMARY KEY,
             name TEXT NOT NULL,
             description TEXT NOT NULL,
             system_prompt TEXT NOT NULL,
             style_prompt TEXT NOT NULL,
-            enabled INTEGER NOT NULL DEFAULT 1,
+            enabled INTEGER NOT NULL DEFAULT 1 CHECK(enabled IN (0, 1)),
             updated_at TEXT NOT NULL
         )
         """
     )
     connection.execute(
         """
-        CREATE TABLE IF NOT EXISTS ai_persona_binding (
+        CREATE TABLE ai_persona_binding (
             binding_id TEXT PRIMARY KEY,
-            scope_type TEXT NOT NULL,
-            scope_id TEXT NOT NULL,
+            scope_type TEXT NOT NULL CHECK(
+                scope_type IN ('global', 'group', 'user', 'conversation')
+            ),
+            scope_id TEXT NOT NULL CHECK(length(scope_id) > 0),
             persona_id TEXT NOT NULL,
-            updated_at TEXT NOT NULL
+            updated_at TEXT NOT NULL,
+            CHECK(scope_type != 'global' OR scope_id = '__global__'),
+            UNIQUE(scope_type, scope_id),
+            FOREIGN KEY(persona_id)
+                REFERENCES ai_persona(persona_id)
+                ON DELETE CASCADE
         )
         """
     )
     connection.execute(
         """
-        CREATE TABLE IF NOT EXISTS ai_tool_policy (
+        CREATE TABLE ai_tool_policy (
             binding_id TEXT PRIMARY KEY,
-            scope_type TEXT NOT NULL,
-            scope_id TEXT NOT NULL,
-            allow_read_only_tools INTEGER NOT NULL DEFAULT 1,
-            capability_mode TEXT NOT NULL DEFAULT 'off',
-            updated_at TEXT NOT NULL
-        )
-        """
-    )
-
-
-def _create_model_routing_tables(connection: sqlite3.Connection) -> None:
-    connection.execute(
-        """
-        CREATE TABLE IF NOT EXISTS ai_model_profile (
-            profile_id TEXT PRIMARY KEY,
-            name TEXT NOT NULL,
-            model_id TEXT NOT NULL,
-            task_class TEXT NOT NULL,
-            priority INTEGER NOT NULL,
-            enabled INTEGER NOT NULL DEFAULT 1,
-            fallback_profile_id TEXT,
-            updated_at TEXT NOT NULL
+            scope_type TEXT NOT NULL CHECK(
+                scope_type IN ('global', 'group', 'user', 'conversation')
+            ),
+            scope_id TEXT NOT NULL CHECK(length(scope_id) > 0),
+            allow_read_only_tools INTEGER NOT NULL DEFAULT 1
+                CHECK(allow_read_only_tools IN (0, 1)),
+            capability_mode TEXT NOT NULL DEFAULT 'off'
+                CHECK(
+                    capability_mode IN (
+                        'off',
+                        'private_only',
+                        'direct_only'
+                    )
+            ),
+            updated_at TEXT NOT NULL,
+            CHECK(scope_type != 'global' OR scope_id = '__global__'),
+            UNIQUE(scope_type, scope_id)
         )
         """
     )
 
 
 def _create_source_model_tables(connection: sqlite3.Connection) -> None:
-    for table_name in (
-        "ai_chat_model",
-        "ai_embedding_model",
-        "ai_stt_model",
-        "ai_tts_model",
-        "ai_rerank_model",
-    ):
+    extra_params_check = _json_check(connection, "extra_params_json")
+    for table_name in SOURCE_MODEL_TABLE_NAMES:
         connection.execute(
             f"""
-            CREATE TABLE IF NOT EXISTS {table_name} (
+            CREATE TABLE {table_name} (
                 model_id TEXT PRIMARY KEY,
                 source_id TEXT NOT NULL,
                 model_identifier TEXT NOT NULL,
                 display_name TEXT NOT NULL,
-                enabled INTEGER NOT NULL DEFAULT 1,
-                is_default INTEGER NOT NULL DEFAULT 0,
-                extra_params_json TEXT NOT NULL DEFAULT '{{}}',
-                updated_at TEXT NOT NULL
+                enabled INTEGER NOT NULL DEFAULT 1 CHECK(enabled IN (0, 1)),
+                is_default INTEGER NOT NULL DEFAULT 0 CHECK(is_default IN (0, 1)),
+                extra_params_json TEXT NOT NULL DEFAULT '{{}}'
+                    CHECK({extra_params_check}),
+                updated_at TEXT NOT NULL,
+                UNIQUE(source_id, model_identifier),
+                FOREIGN KEY(source_id)
+                    REFERENCES ai_source(source_id)
+                    ON DELETE RESTRICT
             )
             """
         )
+        connection.execute(
+            f"""
+            CREATE UNIQUE INDEX idx_{table_name}_one_default_per_source
+            ON {table_name}(source_id)
+            WHERE is_default = 1
+            """
+        )
+
+
+def _create_model_routing_tables(connection: sqlite3.Connection) -> None:
     connection.execute(
         """
-        CREATE TABLE IF NOT EXISTS ai_model_binding (
+        CREATE TABLE ai_model_profile (
+            profile_id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            model_id TEXT NOT NULL,
+            task_class TEXT NOT NULL CHECK(
+                task_class IN (
+                    'planner_light',
+                    'reply_default',
+                    'reply_roleplay',
+                    'reasoning_heavy',
+                    'memory_extraction',
+                    'tool_orchestration'
+                )
+            ),
+            priority INTEGER NOT NULL,
+            enabled INTEGER NOT NULL DEFAULT 1 CHECK(enabled IN (0, 1)),
+            fallback_profile_id TEXT,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY(model_id)
+                REFERENCES ai_chat_model(model_id)
+                ON DELETE RESTRICT,
+            FOREIGN KEY(fallback_profile_id)
+                REFERENCES ai_model_profile(profile_id)
+                ON DELETE SET NULL
+        )
+        """
+    )
+    connection.execute(
+        """
+        CREATE TABLE ai_model_binding (
             binding_id TEXT PRIMARY KEY,
-            scope_type TEXT NOT NULL,
-            scope_id TEXT NOT NULL,
+            scope_type TEXT NOT NULL CHECK(
+                scope_type IN ('global', 'group', 'user', 'conversation')
+            ),
+            scope_id TEXT NOT NULL CHECK(length(scope_id) > 0),
             profile_id TEXT NOT NULL,
             updated_at TEXT NOT NULL,
-            UNIQUE(scope_type, scope_id)
+            CHECK(scope_type != 'global' OR scope_id = '__global__'),
+            UNIQUE(scope_type, scope_id),
+            FOREIGN KEY(profile_id)
+                REFERENCES ai_model_profile(profile_id)
+                ON DELETE CASCADE
         )
+        """
+    )
+
+
+def _create_command_statistics_tables(connection: sqlite3.Connection) -> None:
+    connection.execute(
+        """
+        CREATE TABLE command_statistics (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            plugin_name TEXT NOT NULL,
+            command TEXT NOT NULL,
+            user_id TEXT NOT NULL,
+            group_id TEXT,
+            called_at TEXT NOT NULL,
+            success INTEGER NOT NULL DEFAULT 1 CHECK(success IN (0, 1))
+        )
+        """
+    )
+    connection.execute(
+        """
+        CREATE INDEX idx_command_statistics_plugin
+        ON command_statistics(plugin_name)
+        """
+    )
+    connection.execute(
+        """
+        CREATE INDEX idx_command_statistics_called_at
+        ON command_statistics(called_at)
+        """
+    )
+
+
+def _create_conversation_tables(connection: sqlite3.Connection) -> None:
+    extra_json_check = _optional_json_check(connection, "extra_json")
+    content_json_check = _optional_json_check(connection, "content_json")
+    meta_json_check = _optional_json_check(connection, "meta_json")
+    raw_data_json_check = _optional_json_check(connection, "raw_data_json")
+    connection.execute(
+        f"""
+        CREATE TABLE chat_session (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_id TEXT NOT NULL UNIQUE,
+            platform TEXT NOT NULL,
+            bot_id TEXT NOT NULL,
+            scene_type TEXT NOT NULL CHECK(scene_type IN ('group', 'private')),
+            scene_id TEXT NOT NULL,
+            subject_id TEXT,
+            title TEXT,
+            summary_text TEXT,
+            extra_json TEXT CHECK({extra_json_check}),
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            last_message_at TEXT NOT NULL,
+            UNIQUE(platform, bot_id, scene_type, scene_id)
+        )
+        """
+    )
+    connection.execute(
+        """
+        CREATE INDEX idx_chat_session_last_message_at
+        ON chat_session(last_message_at)
+        """
+    )
+    connection.execute(
+        f"""
+        CREATE TABLE chat_message (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            message_id TEXT NOT NULL UNIQUE,
+            session_pk INTEGER NOT NULL,
+            platform_message_id TEXT,
+            reply_to_message_id TEXT,
+            platform_reply_id TEXT,
+            author_role TEXT NOT NULL CHECK(
+                author_role IN ('user', 'assistant', 'system', 'tool')
+            ),
+            author_id TEXT NOT NULL,
+            author_name TEXT,
+            message_kind TEXT NOT NULL CHECK(
+                message_kind IN ('text', 'mixed', 'media', 'system', 'tool')
+            ),
+            directed_to_bot INTEGER NOT NULL DEFAULT 0
+                CHECK(directed_to_bot IN (0, 1)),
+            mentions_bot INTEGER NOT NULL DEFAULT 0 CHECK(mentions_bot IN (0, 1)),
+            has_media INTEGER NOT NULL DEFAULT 0 CHECK(has_media IN (0, 1)),
+            text_content TEXT NOT NULL,
+            content_json TEXT CHECK({content_json_check}),
+            meta_json TEXT CHECK({meta_json_check}),
+            raw_data_json TEXT CHECK({raw_data_json_check}),
+            created_at TEXT NOT NULL,
+            FOREIGN KEY(session_pk)
+                REFERENCES chat_session(id)
+                ON DELETE CASCADE
+        )
+        """
+    )
+    connection.execute(
+        """
+        CREATE INDEX idx_chat_message_session_pk
+        ON chat_message(session_pk)
+        """
+    )
+    connection.execute(
+        """
+        CREATE INDEX idx_chat_message_author
+        ON chat_message(author_role, author_id)
+        """
+    )
+    connection.execute(
+        """
+        CREATE INDEX idx_chat_message_created_at
+        ON chat_message(created_at)
+        """
+    )
+
+
+def _create_tool_execution_tables(connection: sqlite3.Connection) -> None:
+    input_json_check = _optional_json_check(connection, "input_json")
+    output_json_check = _optional_json_check(connection, "output_json")
+    connection.execute(
+        f"""
+        CREATE TABLE ai_tool_execution (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            execution_id TEXT NOT NULL UNIQUE,
+            session_id TEXT NOT NULL,
+            tool_name TEXT NOT NULL,
+            status TEXT NOT NULL CHECK(status IN ('success', 'error', 'timeout')),
+            input_json TEXT CHECK({input_json_check}),
+            output_json TEXT CHECK({output_json_check}),
+            created_at TEXT NOT NULL,
+            FOREIGN KEY(session_id)
+                REFERENCES chat_session(session_id)
+                ON DELETE CASCADE
+        )
+        """
+    )
+    connection.execute(
+        """
+        CREATE INDEX idx_ai_tool_execution_session
+        ON ai_tool_execution(session_id)
+        """
+    )
+    connection.execute(
+        """
+        CREATE INDEX idx_ai_tool_execution_created_at
+        ON ai_tool_execution(created_at)
+        """
+    )
+
+
+def _create_relationship_person_tables(connection: sqlite3.Connection) -> None:
+    memory_points_check = _json_check(connection, "memory_points_json")
+    mood_tags_check = _json_check(connection, "mood_tags_json")
+    connection.execute(
+        f"""
+        CREATE TABLE ai_person_profile (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            person_id TEXT NOT NULL UNIQUE,
+            platform TEXT NOT NULL,
+            user_id TEXT NOT NULL,
+            person_name TEXT,
+            nickname TEXT,
+            name_reason TEXT,
+            memory_points_json TEXT NOT NULL DEFAULT '[]'
+                CHECK({memory_points_check}),
+            is_known INTEGER NOT NULL DEFAULT 0 CHECK(is_known IN (0, 1)),
+            know_since TEXT,
+            last_interaction TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            UNIQUE(platform, user_id)
+        )
+        """
+    )
+    connection.execute(
+        """
+        CREATE INDEX idx_ai_person_profile_last_interaction
+        ON ai_person_profile(last_interaction)
+        """
+    )
+    connection.execute(
+        f"""
+        CREATE TABLE ai_affinity (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            affinity_id TEXT NOT NULL UNIQUE,
+            platform TEXT NOT NULL,
+            group_id TEXT,
+            scope_key TEXT NOT NULL,
+            user_id TEXT NOT NULL,
+            score REAL NOT NULL DEFAULT 0.0 CHECK(score BETWEEN -1.0 AND 1.0),
+            mood_tags_json TEXT NOT NULL DEFAULT '[]' CHECK({mood_tags_check}),
+            last_event_at TEXT NOT NULL,
+            last_decay_at TEXT,
+            UNIQUE(platform, scope_key, user_id)
+        )
+        """
+    )
+    connection.execute(
+        """
+        CREATE INDEX idx_ai_affinity_scope
+        ON ai_affinity(platform, scope_key, user_id)
+        """
+    )
+    connection.execute(
+        """
+        CREATE TABLE ai_relationship_event (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            event_id TEXT NOT NULL UNIQUE,
+            affinity_id TEXT NOT NULL,
+            platform TEXT NOT NULL,
+            group_id TEXT,
+            user_id TEXT NOT NULL,
+            event_type TEXT NOT NULL CHECK(
+                event_type IN ('message', 'manual', 'absence_decay')
+            ),
+            score_delta REAL NOT NULL,
+            score_after REAL NOT NULL CHECK(score_after BETWEEN -1.0 AND 1.0),
+            mood_tag TEXT,
+            reason TEXT,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY(affinity_id)
+                REFERENCES ai_affinity(affinity_id)
+                ON DELETE CASCADE
+        )
+        """
+    )
+    connection.execute(
+        """
+        CREATE INDEX idx_ai_relationship_event_affinity
+        ON ai_relationship_event(affinity_id)
+        """
+    )
+    connection.execute(
+        """
+        CREATE INDEX idx_ai_relationship_event_created_at
+        ON ai_relationship_event(created_at)
+        """
+    )
+
+
+def _create_memory_item_tables(connection: sqlite3.Connection) -> None:
+    connection.execute(
+        """
+        CREATE TABLE ai_memory_item (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            memory_id TEXT NOT NULL UNIQUE,
+            anchor_type TEXT NOT NULL CHECK(
+                anchor_type IN ('scene', 'participant', 'user')
+            ),
+            anchor_id TEXT NOT NULL,
+            memory_layer TEXT NOT NULL CHECK(
+                memory_layer IN ('summary', 'long_term', 'knowledge', 'operator')
+            ),
+            memory_kind TEXT NOT NULL CHECK(
+                memory_kind IN (
+                    'fact',
+                    'preference',
+                    'relationship',
+                    'note',
+                    'impression'
+                )
+            ),
+            content TEXT NOT NULL,
+            is_editable INTEGER NOT NULL DEFAULT 1 CHECK(is_editable IN (0, 1)),
+            is_ignored INTEGER NOT NULL DEFAULT 0 CHECK(is_ignored IN (0, 1)),
+            source_message_id TEXT,
+            salience REAL NOT NULL DEFAULT 0.5 CHECK(salience BETWEEN 0.0 AND 1.0),
+            confidence REAL NOT NULL DEFAULT 0.5
+                CHECK(confidence BETWEEN 0.0 AND 1.0),
+            last_recalled_at TEXT,
+            created_at TEXT NOT NULL,
+            UNIQUE(anchor_type, anchor_id, memory_layer, memory_kind, content),
+            FOREIGN KEY(source_message_id)
+                REFERENCES chat_message(message_id)
+                ON DELETE SET NULL
+        )
+        """
+    )
+    connection.execute(
+        """
+        CREATE INDEX idx_ai_memory_item_anchor_layer_kind
+        ON ai_memory_item(anchor_type, anchor_id, memory_layer, memory_kind)
+        """
+    )
+    connection.execute(
+        """
+        CREATE INDEX idx_ai_memory_item_memory_id
+        ON ai_memory_item(memory_id)
+        """
+    )
+    connection.execute(
+        """
+        CREATE INDEX idx_ai_memory_item_created_at
+        ON ai_memory_item(created_at)
         """
     )

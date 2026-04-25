@@ -9,8 +9,6 @@ from typing import TYPE_CHECKING, Literal
 from nonebot.log import logger
 
 if TYPE_CHECKING:
-    from sqlalchemy.ext.asyncio import AsyncSession
-
     from apeiria.ai.model.selection import AISelectedModel
     from apeiria.ai.skills.parser import AISkillFileDefinition
 
@@ -158,7 +156,6 @@ class AISkillRuntime:
 
     async def select_skills_for_message(
         self,
-        session: AsyncSession,
         *,
         message_text: str,
         conversation_summary: str | None,
@@ -183,7 +180,6 @@ class AISkillRuntime:
 
         catalog_prompt = self._build_catalog_prompt(file_entries)
         selected_names = await self._ask_model_for_skills(
-            session,
             message_text=message_text,
             conversation_summary=conversation_summary,
             catalog_prompt=catalog_prompt,
@@ -205,7 +201,6 @@ class AISkillRuntime:
 
     async def _ask_model_for_skills(
         self,
-        session: AsyncSession,
         *,
         message_text: str,
         conversation_summary: str | None,
@@ -218,7 +213,6 @@ class AISkillRuntime:
         from apeiria.ai.model.models import AIModelRouteQuery
 
         selected: AISelectedModel | None = await model_gateway.select_model(
-            session,
             query=AIModelRouteQuery(task_class="planner_light"),
         )
         if selected is None:

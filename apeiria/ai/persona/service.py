@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING, cast
+from typing import cast
 
 from apeiria.ai.persona.models import (
     AIPersonaBindingSpec,
@@ -15,9 +15,6 @@ from apeiria.ai.persona.models import (
 )
 from apeiria.ai.persona.resolver import resolve_persona_binding
 from apeiria.db.runtime import database_runtime
-
-if TYPE_CHECKING:
-    from sqlalchemy.ext.asyncio import AsyncSession
 
 
 @dataclass(frozen=True)
@@ -56,13 +53,10 @@ class AIPersonaService:
 
     async def list_personas(
         self,
-        session: "AsyncSession | None",
         *,
         include_disabled: bool = True,
     ) -> list[AIPersonaDefinition]:
         """List personas from storage."""
-
-        del session
         with database_runtime.connect_sync() as connection:
             rows = connection.execute(
                 """
@@ -92,11 +86,8 @@ class AIPersonaService:
 
     async def list_bindings(
         self,
-        session: "AsyncSession | None",
     ) -> list[AIPersonaBindingSpec]:
         """List persona bindings from storage."""
-
-        del session
         with database_runtime.connect_sync() as connection:
             rows = connection.execute(
                 """
@@ -117,15 +108,14 @@ class AIPersonaService:
 
     async def resolve_persona(
         self,
-        session: "AsyncSession | None",
         *,
         target: AIPersonaBindingTarget,
     ) -> AIPersonaDefinition | None:
         """Resolve the effective persona definition for one AI scene."""
 
-        personas = await self.list_personas(session, include_disabled=False)
+        personas = await self.list_personas(include_disabled=False)
         persona_map = {persona.persona_id: persona for persona in personas}
-        bindings = await self.list_bindings(session)
+        bindings = await self.list_bindings()
         binding = resolve_persona_binding(bindings, target)
         if binding is None:
             return None
@@ -133,10 +123,8 @@ class AIPersonaService:
 
     async def create_persona(
         self,
-        session: "AsyncSession | None",
         create_input: AIPersonaCreateInput,
     ) -> AIPersonaDefinition:
-        del session
         persona = AIPersonaDefinition(
             persona_id=f"persona_{__import__('uuid').uuid4().hex}",
             name=create_input.name,
@@ -172,7 +160,6 @@ class AIPersonaService:
 
     async def update_persona(
         self,
-        session: "AsyncSession | None",
         *,
         persona_id: str,
         create_input: AIPersonaCreateInput,
@@ -180,10 +167,9 @@ class AIPersonaService:
         existing_persona = next(
             (
                 persona
-                for persona in await self.list_personas(session, include_disabled=True)
+                for persona in await self.list_personas(include_disabled=True)
                 if persona.persona_id == persona_id
             ),
-            None,
         )
         if existing_persona is None:
             return None
@@ -222,14 +208,13 @@ class AIPersonaService:
 
     async def build_persona_prompt_bundle(
         self,
-        session: "AsyncSession | None",
         *,
         target: AIPersonaBindingTarget,
         render_context: AIPersonaRenderContext | None = None,
     ) -> AIPersonaPromptBundle | None:
         """Build the persona-only prompt bundle for later assembly."""
 
-        persona = await self.resolve_persona(session, target=target)
+        persona = await self.resolve_persona(target=target)
         if persona is None:
             return None
         return AIPersonaPromptBundle(

@@ -6,7 +6,7 @@ import os
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from json import dumps
-from typing import TYPE_CHECKING, Any, cast
+from typing import Any, cast
 from uuid import uuid4
 
 from apeiria.ai.model.sources import (
@@ -19,9 +19,6 @@ from apeiria.ai.model.sources import (
 )
 from apeiria.db.runtime import database_runtime
 from apeiria.utils.json_utils import safe_json_loads
-
-if TYPE_CHECKING:
-    from sqlalchemy.ext.asyncio import AsyncSession
 
 
 @dataclass(frozen=True)
@@ -55,11 +52,7 @@ class AISourceService:
     def list_presets() -> tuple[AISourcePresetDefinition, ...]:
         return SOURCE_PRESETS
 
-    async def list_sources(
-        self,
-        session: "AsyncSession | None" = None,
-    ) -> list[AISourceDefinition]:
-        del session
+    async def list_sources(self) -> list[AISourceDefinition]:
         with database_runtime.connect_sync() as connection:
             rows = connection.execute(
                 """
@@ -83,11 +76,9 @@ class AISourceService:
 
     async def get_source(
         self,
-        session: "AsyncSession | None" = None,
         *,
         source_id: str,
     ) -> AISourceDefinition | None:
-        del session
         with database_runtime.connect_sync() as connection:
             row = connection.execute(
                 """
@@ -114,10 +105,8 @@ class AISourceService:
 
     async def create_source(
         self,
-        session: "AsyncSession | None",
         create_input: AISourceCreateInput,
     ) -> AISourceDefinition:
-        del session
         source = AISourceDefinition(
             source_id=f"source_{uuid4().hex}",
             name=create_input.name,
@@ -196,13 +185,11 @@ class AISourceService:
 
     async def update_source(
         self,
-        session: "AsyncSession | None",
         *,
         source_id: str,
         create_input: AISourceCreateInput,
     ) -> AISourceDefinition | None:
-        del session
-        existing = await self.get_source(None, source_id=source_id)
+        existing = await self.get_source(source_id=source_id)
         if existing is None:
             return None
         updated = AISourceDefinition(
@@ -255,11 +242,9 @@ class AISourceService:
 
     async def delete_source(
         self,
-        session: "AsyncSession | None",
         *,
         source_id: str,
     ) -> bool:
-        del session
         with database_runtime.connect_sync() as connection:
             cursor = connection.execute(
                 "DELETE FROM ai_source WHERE source_id = ?",
@@ -269,21 +254,18 @@ class AISourceService:
 
     async def build_delete_dependency_report(
         self,
-        session: "AsyncSession | None",
         *,
         source_id: str,
     ) -> AISourceDeleteDependencyReport | None:
-        if session is None:
-            return None
         from apeiria.ai.model.capability_registry import (
             SOURCE_MODEL_CAPABILITY_REGISTRY,
         )
 
-        source = await self.get_source(None, source_id=source_id)
+        source = await self.get_source(source_id=source_id)
         if source is None:
             return None
         entry = SOURCE_MODEL_CAPABILITY_REGISTRY[source.capability_type]
-        models = await entry.list_models(session, source_id)
+        models = await entry.list_models(source_id)
         if not models:
             return None
         labels = tuple(
@@ -324,9 +306,7 @@ class AISourceService:
             api_key_env_name=str(row[6]) if row[6] is not None else None,
             enabled=bool(row[7]),
             timeout_seconds=_coerce_optional_int(row[8]),
-            custom_headers=(
-                custom_headers if isinstance(custom_headers, dict) else {}
-            ),
+            custom_headers=(custom_headers if isinstance(custom_headers, dict) else {}),
             extra_config=extra_config if isinstance(extra_config, dict) else {},
         )
 

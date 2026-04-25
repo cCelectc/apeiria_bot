@@ -48,10 +48,10 @@ def test_model_profile_service_uses_new_database(
 
     monkeypatch.setattr(database_runtime, "_project_root", tmp_path)
     database_runtime.ensure_ready()
+    _seed_chat_models_for_profiles()
 
     async def run() -> None:
         created = await ai_model_profile_service.create_profile(
-            None,
             AIModelProfileCreateInput(
                 name="Reply Default",
                 model_id="model_chat_primary",
@@ -60,12 +60,10 @@ def test_model_profile_service_uses_new_database(
                 enabled=True,
             ),
         )
-        profiles = await ai_model_profile_service.list_profiles(None)
-        assert len(profiles) == 1
-        assert profiles[0].profile_id == created.profile_id
+        profiles = await ai_model_profile_service.list_profiles()
+        assert created.profile_id in {item.profile_id for item in profiles}
 
         updated = await ai_model_profile_service.update_profile(
-            None,
             profile_id=created.profile_id,
             create_input=AIModelProfileCreateInput(
                 name="Reply Primary",
@@ -101,19 +99,17 @@ def test_model_profile_service_uses_new_database(
                 ),
             )
 
-        bindings = await ai_model_profile_service.list_bindings(None)
+        bindings = await ai_model_profile_service.list_bindings()
         assert len(bindings) == 1
         assert bindings[0].binding_id == "binding-1"
 
         resolved = await ai_model_profile_service.resolve_profile(
-            None,
             AIModelRouteQuery(task_class="reply_default"),
         )
         assert resolved is not None
         assert resolved.profile_id == created.profile_id
 
         bound = await ai_model_profile_service.resolve_profile_for_target(
-            None,
             target=AIModelBindingTarget(
                 conversation_id="conversation-1",
                 group_id=None,
@@ -153,8 +149,7 @@ def test_models_admin_profile_and_binding_methods_use_new_database(
         *args: object,
         **kwargs: object,
     ) -> AIModelProfileCreateInput:
-        session = args[1]
-        assert session is None
+        assert len(args) == 1
         return AIModelProfileCreateInput(
             name=str(kwargs["name"]),
             model_id=str(kwargs["model_id"]),
@@ -174,6 +169,7 @@ def test_models_admin_profile_and_binding_methods_use_new_database(
 
     monkeypatch.setattr(database_runtime, "_project_root", tmp_path)
     database_runtime.ensure_ready()
+    _seed_chat_models_for_profiles()
     monkeypatch.setattr(
         TestAdmin,
         "_build_profile_create_input",
@@ -194,7 +190,7 @@ def test_models_admin_profile_and_binding_methods_use_new_database(
         assert created.name == "Reply Default"
 
         listed_profiles = await admin.list_model_profiles()
-        assert [item.profile_id for item in listed_profiles] == [created.profile_id]
+        assert listed_profiles[0].profile_id == created.profile_id
 
         updated = await admin.update_model_profile(
             profile_id=created.profile_id,
@@ -236,14 +232,12 @@ def test_models_admin_profile_and_binding_methods_use_new_database(
 
         profile_service = admin_models.ai_model_profile_service
         resolved = await profile_service.resolve_profile(
-            None,
             AIModelRouteQuery(task_class="reply_default"),
         )
         assert resolved is not None
         assert resolved.profile_id == created.profile_id
 
         bound = await profile_service.resolve_profile_for_target(
-            None,
             target=AIModelBindingTarget(
                 conversation_id="conversation-1",
                 group_id=None,
@@ -254,3 +248,83 @@ def test_models_admin_profile_and_binding_methods_use_new_database(
         assert bound.profile_id == created.profile_id
 
     asyncio.run(run())
+
+
+def _seed_chat_models_for_profiles() -> None:
+    with database_runtime.connect_sync() as connection:
+        connection.execute(
+            """
+            INSERT INTO ai_source (
+                source_id,
+                name,
+                capability_type,
+                client_type,
+                preset_type,
+                enabled,
+                custom_headers_json,
+                extra_config_json,
+                updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "source_profile_tests",
+                "Profile Source",
+                "chat_completion",
+                "openai",
+                "openai_compatible",
+                1,
+                "{}",
+                "{}",
+                "2026-04-25T00:00:00",
+            ),
+        )
+        for model_id, identifier in (
+            ("model_chat_primary", "gpt-primary"),
+            ("model_chat_fallback", "gpt-fallback"),
+        ):
+            connection.execute(
+                """
+                INSERT INTO ai_chat_model (
+                    model_id,
+                    source_id,
+                    model_identifier,
+                    display_name,
+                    enabled,
+                    is_default,
+                    extra_params_json,
+                    updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    model_id,
+                    "source_profile_tests",
+                    identifier,
+                    identifier,
+                    1,
+                    0,
+                    "{}",
+                    "2026-04-25T00:00:00",
+                ),
+            )
+        connection.execute(
+            """
+            INSERT INTO ai_model_profile (
+                profile_id,
+                name,
+                model_id,
+                task_class,
+                priority,
+                enabled,
+                updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "fallback_profile",
+                "Fallback",
+                "model_chat_fallback",
+                "reply_default",
+                99,
+                1,
+                "2026-04-25T00:00:00",
+            ),
+        )

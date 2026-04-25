@@ -28,8 +28,6 @@ from apeiria.ai.model.sources import (
 )
 
 if TYPE_CHECKING:
-    from sqlalchemy.ext.asyncio import AsyncSession
-
     from apeiria.ai.model import (
         AIModelBindingSpec,
         AIModelCatalogItem,
@@ -151,7 +149,7 @@ class ModelsAdminMixin:
     """Admin CRUD and test hooks for model profiles, bindings, and source models."""
 
     async def list_model_profiles(self) -> list["AIModelProfileDefinition"]:
-        return await ai_model_profile_service.list_profiles(None)
+        return await ai_model_profile_service.list_profiles()
 
     async def create_model_profile(  # noqa: PLR0913
         self,
@@ -165,7 +163,6 @@ class ModelsAdminMixin:
         actor_username: str | None = None,
     ) -> "AIModelProfileDefinition":
         create_input = await self._build_profile_create_input(
-            None,
             name=name,
             model_id=model_id,
             task_class=task_class,
@@ -173,7 +170,7 @@ class ModelsAdminMixin:
             enabled=enabled,
             fallback_profile_id=fallback_profile_id,
         )
-        created = await ai_model_profile_service.create_profile(None, create_input)
+        created = await ai_model_profile_service.create_profile(create_input)
         record_ai_admin_audit(
             "ai_model_profile_created",
             actor_username=actor_username,
@@ -194,7 +191,6 @@ class ModelsAdminMixin:
         actor_username: str | None = None,
     ) -> "AIModelProfileDefinition | None":
         create_input = await self._build_profile_create_input(
-            None,
             name=name,
             model_id=model_id,
             task_class=task_class,
@@ -203,7 +199,6 @@ class ModelsAdminMixin:
             fallback_profile_id=fallback_profile_id,
         )
         updated = await ai_model_profile_service.update_profile(
-            None,
             profile_id=profile_id,
             create_input=create_input,
         )
@@ -216,18 +211,17 @@ class ModelsAdminMixin:
         return updated
 
     async def list_model_bindings(self) -> list["AIModelBindingSpec"]:
-        return await ai_model_profile_service.list_bindings(None)
+        return await ai_model_profile_service.list_bindings()
 
     async def list_source_models(
         self,
         *,
         source_id: str,
     ) -> list["AISourceModelDefinition"]:
-        source = await ai_source_service.get_source(None, source_id=source_id)
+        source = await ai_source_service.get_source(source_id=source_id)
         if source is None:
             return []
         return await self._list_managed_models(
-            None,
             source=source,
             source_id=source_id,
         )
@@ -246,10 +240,9 @@ class ModelsAdminMixin:
 
         stored_source = None
         if source_id:
-            sources = await ai_source_service.list_sources(None)
+            sources = await ai_source_service.list_sources()
             stored_source = next(
                 (item for item in sources if item.source_id == source_id),
-                None,
             )
         source = self._resolve_source_for_model_fetch(
             stored_source=stored_source,
@@ -285,11 +278,10 @@ class ModelsAdminMixin:
         extra_params: dict[str, object],
         actor_username: str | None = None,
     ) -> "AISourceModelDefinition":
-        source = await ai_source_service.get_source(None, source_id=source_id)
+        source = await ai_source_service.get_source(source_id=source_id)
         if source is None:
             raise AIAdminModelNotFoundError
         created = await self._create_managed_model(
-            None,
             source=source,
             source_id=source_id,
             model_identifier=model_identifier,
@@ -317,11 +309,10 @@ class ModelsAdminMixin:
         extra_params: dict[str, object],
         actor_username: str | None = None,
     ) -> "AISourceModelDefinition | None":
-        source = await ai_source_service.get_source(None, source_id=source_id)
+        source = await ai_source_service.get_source(source_id=source_id)
         if source is None:
             return None
         updated = await self._update_managed_model(
-            None,
             source=source,
             model_id=model_id,
             source_id=source_id,
@@ -347,17 +338,14 @@ class ModelsAdminMixin:
         actor_username: str | None = None,
     ) -> bool:
         capability_type = await self._resolve_model_capability_type(
-            None,
             model_id=model_id,
             source_id=source_id,
         )
         existing_label = await self._build_source_model_audit_label(
-            None,
             capability_type=capability_type,
             model_id=model_id,
         )
         dependent_profiles = await self._list_dependent_chat_model_profiles(
-            None,
             capability_type=capability_type,
             model_id=model_id,
         )
@@ -369,23 +357,20 @@ class ModelsAdminMixin:
             )
         deleted = False
         if source_id:
-            source = await ai_source_service.get_source(None, source_id=source_id)
+            source = await ai_source_service.get_source(source_id=source_id)
             if source is not None:
                 deleted = await self._delete_managed_model(
-                    None,
                     capability_type=source.capability_type,
                     model_id=model_id,
                 )
             else:
                 deleted = await self._delete_managed_model(
-                    None,
                     capability_type="chat_completion",
                     model_id=model_id,
                 )
         if not deleted:
             for capability_type in _get_source_model_capability_fallback_order():
                 deleted = await self._delete_managed_model(
-                    None,
                     capability_type=capability_type,
                     model_id=model_id,
                 )
@@ -401,7 +386,6 @@ class ModelsAdminMixin:
 
     async def _build_source_model_audit_label(
         self,
-        session: "AsyncSession | None",
         *,
         capability_type: "AISourceCapabilityType | None",
         model_id: str,
@@ -410,21 +394,20 @@ class ModelsAdminMixin:
 
         if capability_type != "chat_completion":
             return model_id
-        existing = await ai_chat_model_service.get_model(session, model_id=model_id)
+        existing = await ai_chat_model_service.get_model(model_id=model_id)
         if existing is None:
             return model_id
         return f"{existing.model_id} {existing.display_name}"
 
     async def _list_dependent_chat_model_profiles(
         self,
-        session: "AsyncSession | None",
         *,
         capability_type: "AISourceCapabilityType | None",
         model_id: str,
     ) -> list["AIModelProfileDefinition"]:
         if capability_type != "chat_completion":
             return []
-        profiles = await ai_model_profile_service.list_profiles(session)
+        profiles = await ai_model_profile_service.list_profiles()
         return [profile for profile in profiles if profile.model_id == model_id]
 
     async def test_source_model(  # noqa: PLR0913
@@ -448,10 +431,9 @@ class ModelsAdminMixin:
 
         stored_source = None
         if source_id:
-            sources = await ai_source_service.list_sources(None)
+            sources = await ai_source_service.list_sources()
             stored_source = next(
                 (item for item in sources if item.source_id == source_id),
-                None,
             )
         source = self._resolve_source_for_model_fetch(
             stored_source=stored_source,
@@ -512,22 +494,19 @@ class ModelsAdminMixin:
                 )
             if source.capability_type == "text_to_speech":
                 tts_voice = (
-                    _coerce_optional_string(source.extra_config, "tts_voice")
-                    or "alloy"
+                    _coerce_optional_string(source.extra_config, "tts_voice") or "alloy"
                 )
                 tts_response_format = _coerce_response_format(
                     source.extra_config,
                     "tts_response_format",
                 )
-                speech_response = (
-                    await ai_model_facade.synthesize_speech_for_source(
-                        source=source,
-                        api_key=resolved_api_key,
-                        model_name=resolved_model_identifier,
-                        text=TTS_TEST_TEXT,
-                        voice=tts_voice,
-                        response_format=tts_response_format,
-                    )
+                speech_response = await ai_model_facade.synthesize_speech_for_source(
+                    source=source,
+                    api_key=resolved_api_key,
+                    model_name=resolved_model_identifier,
+                    text=TTS_TEST_TEXT,
+                    voice=tts_voice,
+                    response_format=tts_response_format,
                 )
                 return (
                     resolved_model_identifier,
@@ -581,7 +560,6 @@ class ModelsAdminMixin:
 
     async def _build_profile_create_input(  # noqa: PLR0913
         self,
-        session: "AsyncSession | None",
         *,
         name: str,
         model_id: str,
@@ -590,7 +568,6 @@ class ModelsAdminMixin:
         enabled: bool,
         fallback_profile_id: str | None,
     ) -> AIModelProfileCreateInput:
-        del session
         if not model_id.strip():
             raise AIAdminModelNotFoundError
         return AIModelProfileCreateInput(
@@ -681,7 +658,6 @@ class ModelsAdminMixin:
 
     async def _create_managed_model(  # noqa: PLR0913
         self,
-        session: "AsyncSession | None",
         *,
         source: "AISourceDefinition",
         source_id: str,
@@ -693,7 +669,6 @@ class ModelsAdminMixin:
     ) -> "AISourceModelDefinition":
         entry = self._get_model_capability_entry(source.capability_type)
         return await entry.create_model(
-            session,
             source_id,
             model_identifier,
             display_name,
@@ -704,7 +679,6 @@ class ModelsAdminMixin:
 
     async def _update_managed_model(  # noqa: PLR0913
         self,
-        session: "AsyncSession | None",
         *,
         source: "AISourceDefinition",
         model_id: str,
@@ -717,7 +691,6 @@ class ModelsAdminMixin:
     ) -> "AISourceModelDefinition | None":
         entry = self._get_model_capability_entry(source.capability_type)
         return await entry.update_model(
-            session,
             model_id,
             source_id,
             model_identifier,
@@ -729,30 +702,26 @@ class ModelsAdminMixin:
 
     async def _list_managed_models(
         self,
-        session: "AsyncSession | None",
         *,
         source: "AISourceDefinition",
         source_id: str,
     ) -> list["AISourceModelDefinition"]:
         entry = self._get_model_capability_entry(source.capability_type)
         return await entry.list_models(
-            session,
             source_id,
         )
 
     async def _delete_managed_model(
         self,
-        session: "AsyncSession | None",
         *,
         capability_type: "AISourceCapabilityType",
         model_id: str,
     ) -> bool:
         entry = self._get_model_capability_entry(capability_type)
-        return await entry.delete_model(session, model_id)
+        return await entry.delete_model(model_id)
 
     async def _resolve_model_capability_type(
         self,
-        session: "AsyncSession | None",
         *,
         model_id: str,
         source_id: str | None = None,
@@ -764,7 +733,7 @@ class ModelsAdminMixin:
         from apeiria.ai.model.tts_model import ai_tts_model_service
 
         if source_id:
-            source = await ai_source_service.get_source(session, source_id=source_id)
+            source = await ai_source_service.get_source(source_id=source_id)
             if source is not None:
                 return source.capability_type
 
@@ -791,7 +760,7 @@ class ModelsAdminMixin:
             ),
         )
         for capability_type, get_model in lookups:
-            if await get_model(session, model_id=model_id) is not None:
+            if await get_model(model_id=model_id) is not None:
                 return cast("AISourceCapabilityType", capability_type)
         return None
 

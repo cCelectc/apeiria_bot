@@ -47,6 +47,13 @@ class ApeiriaDatabase:
         finally:
             connection.close()
 
+    @contextmanager
+    def transaction_sync(self) -> Iterator[sqlite3.Connection]:
+        """Open one SQLite transaction for a logical write operation."""
+
+        with self.connect_sync() as connection:
+            yield connection
+
     def ensure_ready(self) -> None:
         from apeiria.db.schema import ensure_database_ready_sync
 

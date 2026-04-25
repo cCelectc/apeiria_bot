@@ -139,8 +139,10 @@ def test_bootstrapper_runtime_phase_builds_and_installs_runtime(
     )
     monkeypatch.setattr(
         "apeiria.runtime.control_plane.ApeiriaControlPlane",
-        lambda attached_runtime: attached_control_planes.append(attached_runtime)
-        or SimpleNamespace(runtime=attached_runtime),
+        lambda attached_runtime: (
+            attached_control_planes.append(attached_runtime)
+            or SimpleNamespace(runtime=attached_runtime)
+        ),
     )
 
     try:
@@ -184,6 +186,7 @@ def test_initialize_nonebot_rolls_back_runtime_when_user_plugins_phase_fails(
 
     monkeypatch.setattr(bootstrapper, "_run_environment_phase", lambda: None)
     monkeypatch.setattr(bootstrapper, "_run_config_phase", lambda: None)
+    monkeypatch.setattr(bootstrapper, "_run_database_phase", lambda: None)
     monkeypatch.setattr(bootstrapper, "_run_user_extensions_phase", lambda: None)
     monkeypatch.setattr(bootstrapper, "_run_framework_phase", lambda: None)
 

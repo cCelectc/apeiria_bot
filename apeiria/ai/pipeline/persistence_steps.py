@@ -8,8 +8,6 @@ from apeiria.ai.conversation.service import ChatMessageCreate, chat_session_serv
 from apeiria.ai.pipeline.context_window_steps import build_and_store_context_window
 
 if TYPE_CHECKING:
-    from sqlalchemy.ext.asyncio import AsyncSession
-
     from apeiria.ai.pipeline.generation_steps import (
         ReplyGeneration,
         ReplyInputs,
@@ -20,7 +18,6 @@ if TYPE_CHECKING:
 
 
 async def persist_reply(  # noqa: PLR0913
-    session: "AsyncSession",
     *,
     request: "AIRuntimeReplyRequest",
     inputs: "ReplyInputs",
@@ -39,7 +36,6 @@ async def persist_reply(  # noqa: PLR0913
     identity = request.identity
     delivery = gen.delivery_result
     await chat_session_service.append_message(
-        session,
         identity,
         ChatMessageCreate(
             author_role="assistant",
@@ -75,4 +71,4 @@ async def persist_reply(  # noqa: PLR0913
             },
         ),
     )
-    await build_and_store_context_window(session, identity=identity)
+    await build_and_store_context_window(identity=identity)

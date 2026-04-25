@@ -83,7 +83,6 @@ def test_personas_admin_and_service_use_new_database(
             )
 
         resolved = await ai_persona_service.resolve_persona(
-            None,
             target=AIPersonaBindingTarget(
                 conversation_id="conversation-1",
                 group_id=None,
@@ -94,7 +93,6 @@ def test_personas_admin_and_service_use_new_database(
         assert resolved.persona_id == created.persona_id
 
         bundle = await ai_persona_service.build_persona_prompt_bundle(
-            None,
             target=AIPersonaBindingTarget(
                 conversation_id="conversation-1",
                 group_id=None,

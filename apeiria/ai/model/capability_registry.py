@@ -30,24 +30,19 @@ from apeiria.ai.model.tts_model import (
 )
 
 if TYPE_CHECKING:
-    from sqlalchemy.ext.asyncio import AsyncSession
-
     from apeiria.ai.model.sources import AISourceCapabilityType
 
 
-ModelListFn = Callable[
-    ["AsyncSession | None", str],
-    Awaitable[list[AISourceModelDefinition]],
-]
+ModelListFn = Callable[[str], Awaitable[list[AISourceModelDefinition]]]
 ModelCreateFn = Callable[
-    ["AsyncSession | None", str, str, str, bool, bool, dict[str, object]],
+    [str, str, str, bool, bool, dict[str, object]],
     Awaitable[AISourceModelDefinition],
 ]
 ModelUpdateFn = Callable[
-    ["AsyncSession | None", str, str, str, str, bool, bool, dict[str, object]],
+    [str, str, str, str, bool, bool, dict[str, object]],
     Awaitable[AISourceModelDefinition | None],
 ]
-ModelDeleteFn = Callable[["AsyncSession | None", str], Awaitable[bool]]
+ModelDeleteFn = Callable[[str], Awaitable[bool]]
 
 
 @dataclass(frozen=True)
@@ -62,14 +57,12 @@ class AICapabilityModelRegistryEntry:
 
 
 async def _list_chat_models(
-    session: "AsyncSession | None",
     source_id: str,
 ) -> list[AISourceModelDefinition]:
-    return list(await ai_chat_model_service.list_models(session, source_id=source_id))
+    return list(await ai_chat_model_service.list_models(source_id=source_id))
 
 
 async def _create_chat_model(
-    session: "AsyncSession | None",
     source_id: str,
     model_identifier: str,
     display_name: str,
@@ -78,7 +71,6 @@ async def _create_chat_model(
     extra_params: dict[str, object],
 ) -> AISourceModelDefinition:
     return await ai_chat_model_service.create_model(
-        session,
         AIChatModelCreateInput(
             source_id=source_id,
             model_identifier=model_identifier,
@@ -91,7 +83,6 @@ async def _create_chat_model(
 
 
 async def _update_chat_model(
-    session: "AsyncSession | None",
     model_id: str,
     source_id: str,
     model_identifier: str,
@@ -101,7 +92,6 @@ async def _update_chat_model(
     extra_params: dict[str, object],
 ) -> AISourceModelDefinition | None:
     return await ai_chat_model_service.update_model(
-        session,
         model_id=model_id,
         create_input=AIChatModelCreateInput(
             source_id=source_id,
@@ -114,21 +104,17 @@ async def _update_chat_model(
     )
 
 
-async def _delete_chat_model(session: "AsyncSession | None", model_id: str) -> bool:
-    return await ai_chat_model_service.delete_model(session, model_id=model_id)
+async def _delete_chat_model(model_id: str) -> bool:
+    return await ai_chat_model_service.delete_model(model_id=model_id)
 
 
 async def _list_embedding_models(
-    session: "AsyncSession | None",
     source_id: str,
 ) -> list[AISourceModelDefinition]:
-    return list(
-        await ai_embedding_model_service.list_models(session, source_id=source_id)
-    )
+    return list(await ai_embedding_model_service.list_models(source_id=source_id))
 
 
 async def _create_embedding_model(
-    session: "AsyncSession | None",
     source_id: str,
     model_identifier: str,
     display_name: str,
@@ -137,7 +123,6 @@ async def _create_embedding_model(
     extra_params: dict[str, object],
 ) -> AISourceModelDefinition:
     return await ai_embedding_model_service.create_model(
-        session,
         AIEmbeddingModelCreateInput(
             source_id=source_id,
             model_identifier=model_identifier,
@@ -150,7 +135,6 @@ async def _create_embedding_model(
 
 
 async def _update_embedding_model(
-    session: "AsyncSession | None",
     model_id: str,
     source_id: str,
     model_identifier: str,
@@ -160,7 +144,6 @@ async def _update_embedding_model(
     extra_params: dict[str, object],
 ) -> AISourceModelDefinition | None:
     return await ai_embedding_model_service.update_model(
-        session,
         model_id=model_id,
         create_input=AIEmbeddingModelCreateInput(
             source_id=source_id,
@@ -174,21 +157,18 @@ async def _update_embedding_model(
 
 
 async def _delete_embedding_model(
-    session: "AsyncSession | None",
     model_id: str,
 ) -> bool:
-    return await ai_embedding_model_service.delete_model(session, model_id=model_id)
+    return await ai_embedding_model_service.delete_model(model_id=model_id)
 
 
 async def _list_stt_models(
-    session: "AsyncSession | None",
     source_id: str,
 ) -> list[AISourceModelDefinition]:
-    return list(await ai_stt_model_service.list_models(session, source_id=source_id))
+    return list(await ai_stt_model_service.list_models(source_id=source_id))
 
 
 async def _create_stt_model(
-    session: "AsyncSession | None",
     source_id: str,
     model_identifier: str,
     display_name: str,
@@ -197,7 +177,6 @@ async def _create_stt_model(
     extra_params: dict[str, object],
 ) -> AISourceModelDefinition:
     return await ai_stt_model_service.create_model(
-        session,
         AISTTModelCreateInput(
             source_id=source_id,
             model_identifier=model_identifier,
@@ -210,7 +189,6 @@ async def _create_stt_model(
 
 
 async def _update_stt_model(
-    session: "AsyncSession | None",
     model_id: str,
     source_id: str,
     model_identifier: str,
@@ -220,7 +198,6 @@ async def _update_stt_model(
     extra_params: dict[str, object],
 ) -> AISourceModelDefinition | None:
     return await ai_stt_model_service.update_model(
-        session,
         model_id=model_id,
         create_input=AISTTModelCreateInput(
             source_id=source_id,
@@ -233,19 +210,17 @@ async def _update_stt_model(
     )
 
 
-async def _delete_stt_model(session: "AsyncSession | None", model_id: str) -> bool:
-    return await ai_stt_model_service.delete_model(session, model_id=model_id)
+async def _delete_stt_model(model_id: str) -> bool:
+    return await ai_stt_model_service.delete_model(model_id=model_id)
 
 
 async def _list_tts_models(
-    session: "AsyncSession | None",
     source_id: str,
 ) -> list[AISourceModelDefinition]:
-    return list(await ai_tts_model_service.list_models(session, source_id=source_id))
+    return list(await ai_tts_model_service.list_models(source_id=source_id))
 
 
 async def _create_tts_model(
-    session: "AsyncSession | None",
     source_id: str,
     model_identifier: str,
     display_name: str,
@@ -254,7 +229,6 @@ async def _create_tts_model(
     extra_params: dict[str, object],
 ) -> AISourceModelDefinition:
     return await ai_tts_model_service.create_model(
-        session,
         AITTSModelCreateInput(
             source_id=source_id,
             model_identifier=model_identifier,
@@ -267,7 +241,6 @@ async def _create_tts_model(
 
 
 async def _update_tts_model(
-    session: "AsyncSession | None",
     model_id: str,
     source_id: str,
     model_identifier: str,
@@ -277,7 +250,6 @@ async def _update_tts_model(
     extra_params: dict[str, object],
 ) -> AISourceModelDefinition | None:
     return await ai_tts_model_service.update_model(
-        session,
         model_id=model_id,
         create_input=AITTSModelCreateInput(
             source_id=source_id,
@@ -290,19 +262,17 @@ async def _update_tts_model(
     )
 
 
-async def _delete_tts_model(session: "AsyncSession | None", model_id: str) -> bool:
-    return await ai_tts_model_service.delete_model(session, model_id=model_id)
+async def _delete_tts_model(model_id: str) -> bool:
+    return await ai_tts_model_service.delete_model(model_id=model_id)
 
 
 async def _list_rerank_models(
-    session: "AsyncSession | None",
     source_id: str,
 ) -> list[AISourceModelDefinition]:
-    return list(await ai_rerank_model_service.list_models(session, source_id=source_id))
+    return list(await ai_rerank_model_service.list_models(source_id=source_id))
 
 
 async def _create_rerank_model(
-    session: "AsyncSession | None",
     source_id: str,
     model_identifier: str,
     display_name: str,
@@ -311,7 +281,6 @@ async def _create_rerank_model(
     extra_params: dict[str, object],
 ) -> AISourceModelDefinition:
     return await ai_rerank_model_service.create_model(
-        session,
         AIRerankModelCreateInput(
             source_id=source_id,
             model_identifier=model_identifier,
@@ -324,7 +293,6 @@ async def _create_rerank_model(
 
 
 async def _update_rerank_model(
-    session: "AsyncSession | None",
     model_id: str,
     source_id: str,
     model_identifier: str,
@@ -334,7 +302,6 @@ async def _update_rerank_model(
     extra_params: dict[str, object],
 ) -> AISourceModelDefinition | None:
     return await ai_rerank_model_service.update_model(
-        session,
         model_id=model_id,
         create_input=AIRerankModelCreateInput(
             source_id=source_id,
@@ -348,10 +315,9 @@ async def _update_rerank_model(
 
 
 async def _delete_rerank_model(
-    session: "AsyncSession | None",
     model_id: str,
 ) -> bool:
-    return await ai_rerank_model_service.delete_model(session, model_id=model_id)
+    return await ai_rerank_model_service.delete_model(model_id=model_id)
 
 
 SOURCE_MODEL_CAPABILITY_REGISTRY: dict[

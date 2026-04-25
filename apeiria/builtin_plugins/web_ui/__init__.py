@@ -21,7 +21,6 @@ from apeiria.plugins.metadata.api import (
 from apeiria.utils.plugin_introspection import prewarm_plugin_module_caches
 
 require("nonebot_plugin_localstore")
-require("nonebot_plugin_orm")
 
 load_locales(Path(__file__).parent / "locales")
 
@@ -49,7 +48,7 @@ __plugin_meta__ = PluginMetadata(
                 )
             ]
         ),
-        required_plugins=["nonebot_plugin_localstore", "nonebot_plugin_orm"],
+        required_plugins=["nonebot_plugin_localstore"],
     ).to_dict(),
 )
 

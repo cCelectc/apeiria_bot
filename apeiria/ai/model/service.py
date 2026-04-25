@@ -20,8 +20,6 @@ from apeiria.ai.model.profile import ai_model_profile_service
 from apeiria.ai.model.source import ai_source_service
 
 if TYPE_CHECKING:
-    from sqlalchemy.ext.asyncio import AsyncSession
-
     from apeiria.ai.model.adapter import (
         AIModelCatalogItem,
         AIModelEmbeddingResponse,
@@ -49,15 +47,13 @@ class AIModelFacade:
 
     async def list_profiles(
         self,
-        session: "AsyncSession",
     ) -> list["AIModelProfileDefinition"]:
-        return await ai_model_profile_service.list_profiles(session)
+        return await ai_model_profile_service.list_profiles()
 
     async def list_bindings(
         self,
-        session: "AsyncSession",
     ) -> list["AIModelBindingSpec"]:
-        return await ai_model_profile_service.list_bindings(session)
+        return await ai_model_profile_service.list_bindings()
 
     async def list_source_models(
         self,
@@ -73,26 +69,22 @@ class AIModelFacade:
 
     async def select_model(
         self,
-        session: "AsyncSession",
         query: "AIModelRouteQuery | None" = None,
         *,
         target: "AIModelBindingTarget | None" = None,
     ) -> "AISelectedModel | None":
         return await ai_model_profile_service.select_model(
-            session,
             query=query,
             target=target,
         )
 
     async def select_capability_model(
         self,
-        session: "AsyncSession",
         *,
         capability_type: "AISourceCapabilityType",
         preferred_source_id: str | None = None,
     ) -> "AISelectedCapabilityModel | None":
         return await ai_model_capability_selection_service.select_default_model(
-            session,
             capability_type=capability_type,
             preferred_source_id=preferred_source_id,
         )

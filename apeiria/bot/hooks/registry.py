@@ -23,7 +23,7 @@ def register_bot_hooks() -> None:
     Ordering:
     - Pre-run: auth first (so denied requests short-circuit).
     - Post-run: error + stats (log exceptions, record command stats).
-    - Driver startup: plugin_sync fills PluginInfo / PluginPolicyEntry.
+    - Driver startup: plugin_sync ensures plugin governance state.
     """
     driver = get_driver()
 

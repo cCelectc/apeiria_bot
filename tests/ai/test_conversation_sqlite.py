@@ -1,0 +1,223 @@
+from __future__ import annotations
+
+import asyncio
+import sys
+from datetime import datetime, timedelta, timezone
+from typing import TYPE_CHECKING
+
+from apeiria.db.runtime import database_runtime
+
+if TYPE_CHECKING:
+    from pathlib import Path
+
+    import pytest
+
+OLD_MESSAGE_DAYS = 5
+RETENTION_DAYS = 1
+
+
+def test_conversation_service_uses_sqlite(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setattr(database_runtime, "_project_root", tmp_path)
+    database_runtime.ensure_ready()
+
+    from apeiria.ai.conversation.models import ChatSessionIdentity
+    from apeiria.ai.conversation.service import (
+        ChatMessageCreate,
+        chat_session_service,
+    )
+
+    identity = ChatSessionIdentity(
+        session_id="onebot:bot-1:private:user-1",
+        platform="onebot",
+        bot_id="bot-1",
+        scene_type="private",
+        scene_id="user-1",
+        subject_id="user-1",
+    )
+
+    async def scenario() -> None:
+        user_message = await chat_session_service.append_message(
+            identity,
+            ChatMessageCreate(
+                author_role="user",
+                author_id="user-1",
+                text_content="hello",
+                raw_data={"message_id": 1},
+            ),
+        )
+        await chat_session_service.append_message(
+            identity,
+            ChatMessageCreate(
+                author_role="assistant",
+                author_id="bot-1",
+                text_content="hi",
+            ),
+        )
+        await chat_session_service.store_summary_text(
+            identity,
+            summary="User greeted the bot.",
+        )
+
+        turns = await chat_session_service.list_recent_messages(
+            identity,
+            max_messages=10,
+        )
+        assert [turn.text_content for turn in turns] == ["hello", "hi"]
+        assert turns[0].message_id == user_message.message_id
+
+        sessions = await chat_session_service.list_recent_sessions(limit=10)
+        assert [session.session_id for session in sessions] == [identity.session_id]
+        assert sessions[0].summary_text == "User greeted the bot."
+
+        user_ids = await chat_session_service.list_recent_user_ids_for_session(
+            session_id=identity.session_id,
+        )
+        assert user_ids == ["user-1"]
+
+    asyncio.run(scenario())
+
+
+def test_session_admin_does_not_open_orm_session(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setattr(database_runtime, "_project_root", tmp_path)
+    database_runtime.ensure_ready()
+
+    stub_nonebot_plugin_orm = type(sys)("nonebot_plugin_orm")
+
+    def unexpected_get_session() -> None:
+        raise AssertionError
+
+    stub_nonebot_plugin_orm.get_session = unexpected_get_session  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "nonebot_plugin_orm", stub_nonebot_plugin_orm)
+
+    from apeiria.ai.admin.sessions import SessionsAdminMixin
+    from apeiria.ai.conversation.models import ChatSessionIdentity
+    from apeiria.ai.conversation.service import (
+        ChatMessageCreate,
+        chat_session_service,
+    )
+
+    class _Admin(SessionsAdminMixin):
+        pass
+
+    identity = ChatSessionIdentity(
+        session_id="onebot:bot-1:private:user-1",
+        platform="onebot",
+        bot_id="bot-1",
+        scene_type="private",
+        scene_id="user-1",
+        subject_id="user-1",
+    )
+
+    async def scenario() -> None:
+        await chat_session_service.append_message(
+            identity,
+            ChatMessageCreate(
+                author_role="user",
+                author_id="user-1",
+                text_content="hello",
+            ),
+        )
+        sessions = await _Admin().list_recent_sessions(limit=10)
+        turns = await _Admin().list_scene_turns(scene_id=identity.session_id)
+        assert [session.session_id for session in sessions] == [identity.session_id]
+        assert [turn.text_content for turn in turns] == ["hello"]
+
+    asyncio.run(scenario())
+
+
+def test_conversation_retention_deletes_sqlite_rows(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setattr(database_runtime, "_project_root", tmp_path)
+    database_runtime.ensure_ready()
+
+    from apeiria.ai.retention import AIRetentionService
+
+    old_time = (
+        datetime.now(timezone.utc) - timedelta(days=OLD_MESSAGE_DAYS)
+    ).isoformat(timespec="seconds")
+    new_time = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    with database_runtime.connect_sync() as connection:
+        connection.execute(
+            """
+            INSERT INTO chat_session (
+                session_id,
+                platform,
+                bot_id,
+                scene_type,
+                scene_id,
+                created_at,
+                updated_at,
+                last_message_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "session-old",
+                "onebot",
+                "bot-1",
+                "private",
+                "user-1",
+                old_time,
+                old_time,
+                old_time,
+            ),
+        )
+        session_pk = connection.execute(
+            "SELECT id FROM chat_session WHERE session_id = ?",
+            ("session-old",),
+        ).fetchone()[0]
+        connection.execute(
+            """
+            INSERT INTO chat_message (
+                message_id,
+                session_pk,
+                author_role,
+                author_id,
+                message_kind,
+                text_content,
+                raw_data_json,
+                created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            ("msg-old", session_pk, "user", "user-1", "text", "old", "{}", old_time),
+        )
+        connection.execute(
+            """
+            INSERT INTO chat_message (
+                message_id,
+                session_pk,
+                author_role,
+                author_id,
+                message_kind,
+                text_content,
+                raw_data_json,
+                created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            ("msg-new", session_pk, "user", "user-1", "text", "new", "{}", new_time),
+        )
+
+    result = AIRetentionService().cleanup_conversations(
+        conversation_retention_days=RETENTION_DAYS,
+        raw_event_retention_days=RETENTION_DAYS,
+    )
+
+    with database_runtime.connect_sync() as connection:
+        rows = connection.execute(
+            """
+            SELECT message_id, raw_data_json
+            FROM chat_message
+            ORDER BY message_id
+            """
+        ).fetchall()
+    assert result.deleted_messages == 1
+    assert result.deleted_sessions == 0
+    assert result.cleared_raw_payloads == 0
+    assert rows == [("msg-new", "{}")]

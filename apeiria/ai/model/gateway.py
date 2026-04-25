@@ -7,8 +7,6 @@ from typing import TYPE_CHECKING
 from .service import ai_model_facade
 
 if TYPE_CHECKING:
-    from sqlalchemy.ext.asyncio import AsyncSession
-
     from .adapter import (
         AIModelGenerateResponse,
         AIModelMessage,
@@ -24,12 +22,11 @@ class ModelGateway:
 
     async def select_model(
         self,
-        session: "AsyncSession",
         *,
         query: "AIModelRouteQuery | None" = None,
         target: "AIModelBindingTarget | None" = None,
     ) -> "AISelectedModel | None":
-        return await ai_model_facade.select_model(session, query=query, target=target)
+        return await ai_model_facade.select_model(query=query, target=target)
 
     @staticmethod
     def resolve_model_ref(selected: "AISelectedModel") -> str:

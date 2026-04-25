@@ -123,9 +123,7 @@ def env_init(*, no_dev: bool) -> None:
         click.echo(_("skipped config: {filename}").format(filename=filename))
     click.echo(_("initialized environment"))
     click.echo(
-        _(
-            "hint: if you need local startup customization, see user_bot.example.py"
-        )
+        _("hint: if you need local startup customization, see user_bot.example.py")
     )
 
 
@@ -228,9 +226,7 @@ def _startup_check_hint(error_text: str) -> str | None:
     if "no such file" in normalized and any(
         file_name in normalized for file_name in config_files
     ):
-        return _(
-            "run `apeiria env init`"
-        )
+        return _("run `apeiria env init`")
 
     rules: tuple[tuple[str, str], ...] = (
         (
@@ -246,12 +242,8 @@ def _startup_check_hint(error_text: str) -> str | None:
             "run `apeiria env repair` to reconcile Apeiria database metadata",
         ),
         (
-            "database schema version is newer than this apeiria build",
-            "use a matching Apeiria version or restore a compatible database backup",
-        ),
-        (
-            "no schema migration path is available",
-            "upgrade with a compatible Apeiria release or add the required migration",
+            "is not supported by this apeiria build",
+            "move the current local database aside and rerun check to recreate it",
         ),
         (
             "web_ui auth storage is corrupted",

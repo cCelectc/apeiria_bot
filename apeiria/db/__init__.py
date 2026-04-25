@@ -6,7 +6,7 @@ from .schema import (
     CURRENT_SCHEMA_VERSION,
     DatabaseSchemaError,
     IncompatibleDatabaseError,
-    NewerDatabaseError,
+    UnsupportedDatabaseVersionError,
     ensure_database_ready,
     ensure_database_ready_sync,
 )
@@ -17,7 +17,7 @@ __all__ = [
     "ApeiriaDatabase",
     "DatabaseSchemaError",
     "IncompatibleDatabaseError",
-    "NewerDatabaseError",
+    "UnsupportedDatabaseVersionError",
     "database_runtime",
     "ensure_database_ready",
     "ensure_database_ready_sync",

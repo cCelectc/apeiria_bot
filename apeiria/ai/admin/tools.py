@@ -59,23 +59,20 @@ class ToolsAdminMixin:
         capability_mode: str = "off",
     ) -> list["AIToolIntentPreview"]:
         from apeiria.ai.tools.service import ai_tool_service
+
         policy = self.preview_tool_policy(
             scope_type=scope_type,
             is_tome=is_tome,
             allow_read_only_tools=allow_read_only_tools,
             capability_mode=capability_mode,
         )
-        from nonebot_plugin_orm import get_session
-
-        async with get_session() as session:
-            return await ai_tool_service.preview_tool_intents(
-                session=session,
-                message_text=message_text,
-                policy=policy,
-            )
+        return await ai_tool_service.preview_tool_intents(
+            message_text=message_text,
+            policy=policy,
+        )
 
     async def list_tool_policy_bindings(self) -> list[AIToolPolicyBindingSpec]:
-        return await ai_tool_policy_binding_service.list_bindings(None)
+        return await ai_tool_policy_binding_service.list_bindings()
 
     async def create_tool_policy_binding(
         self,
@@ -87,7 +84,6 @@ class ToolsAdminMixin:
         actor_username: str | None = None,
     ) -> AIToolPolicyBindingSpec:
         created = await ai_tool_policy_binding_service.create_binding(
-            None,
             AIToolPolicyBindingCreateInput(
                 scope_type=scope_type,
                 scope_id=scope_id,
@@ -111,7 +107,6 @@ class ToolsAdminMixin:
         actor_username: str | None = None,
     ) -> AIToolPolicyBindingSpec | None:
         updated = await ai_tool_policy_binding_service.update_binding(
-            None,
             binding_id=binding_id,
             allow_read_only_tools=allow_read_only_tools,
             capability_mode=capability_mode,  # type: ignore[arg-type]
@@ -132,7 +127,6 @@ class ToolsAdminMixin:
         actor_username: str | None = None,
     ) -> bool:
         deleted = await ai_tool_policy_binding_service.delete_binding(
-            None,
             binding_id=binding_id,
         )
         if deleted:
@@ -172,6 +166,7 @@ class ToolsAdminMixin:
         capability_mode: str = "off",
     ) -> "AICapabilityPreview":
         from apeiria.ai.tools.service import ai_tool_service
+
         policy = self.preview_tool_policy(
             scope_type=scope_type,
             is_tome=is_tome,
@@ -188,15 +183,9 @@ class ToolsAdminMixin:
         *,
         session_id: str,
     ) -> list["AIToolExecutionView"]:
-        from nonebot_plugin_orm import get_session
-
         from apeiria.ai.tools.service import ai_tool_service
 
-        async with get_session() as session:
-            return await ai_tool_service.list_executions(
-                session,
-                session_id=session_id,
-            )
+        return await ai_tool_service.list_executions(session_id=session_id)
 
 
 __all__ = ["ToolsAdminMixin"]

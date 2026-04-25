@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import ast
 from functools import lru_cache
-from importlib import import_module
 from importlib.util import find_spec
 from pathlib import Path
 
@@ -11,7 +10,6 @@ import nonebot
 FRAMEWORK_PLUGIN_MODULES = (
     "nonebot_plugin_apscheduler",
     "nonebot_plugin_localstore",
-    "nonebot_plugin_orm",
     "nonebot_plugin_alconna",
 )
 
@@ -153,7 +151,6 @@ def load_framework() -> None:
     for plugin in FRAMEWORK_PLUGIN_MODULES:
         nonebot.load_plugin(plugin)
 
-    import_module("apeiria.db.models")
     ensure_database_ready_sync()
 
     disabled_builtin_modules = get_disabled_plugin_modules_sync(
@@ -165,9 +162,6 @@ def load_framework() -> None:
             continue
         nonebot.load_plugin(plugin)
 
-    # Deferred import: hook modules transitively import nonebot_plugin_orm,
-    # which must be loaded by NoneBot's plugin loader first so it registers
-    # under the correct caller-plugin context.
-    from apeiria.bot.hooks import register_bot_hooks
+    from apeiria.bot.hooks.registry import register_bot_hooks
 
     register_bot_hooks()

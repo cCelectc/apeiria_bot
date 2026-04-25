@@ -15,8 +15,6 @@ from apeiria.ai.persona.service import (
 if TYPE_CHECKING:
     from datetime import datetime
 
-    from sqlalchemy.ext.asyncio import AsyncSession
-
     from apeiria.ai.conversation.models import (
         ChatContextMessageView,
         ChatSessionIdentity,
@@ -100,7 +98,6 @@ async def build_persona_render_context_for_reply(
 
 
 async def load_persona_bundle(
-    session: "AsyncSession",
     *,
     request: "AIRuntimeReplyRequest",
     current_time: "datetime",
@@ -115,7 +112,6 @@ async def load_persona_bundle(
         turns=turns,
     )
     return await ai_persona_service.build_persona_prompt_bundle(
-        session,
         target=target,
         render_context=render_context,
     )

@@ -1,7 +1,6 @@
 """Plugin application-facing services.
 
-Lazy exports keep the CLI usable before ``nonebot.init(...)`` has run, since
-some submodules (e.g. repository) import ``nonebot_plugin_orm`` at top level.
+Lazy exports keep the CLI usable before ``nonebot.init(...)`` has run.
 """
 
 from __future__ import annotations

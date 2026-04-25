@@ -10,19 +10,16 @@ from typing import TYPE_CHECKING
 
 from nonebot.log import logger
 
-if TYPE_CHECKING:
-    from sqlalchemy.ext.asyncio import AsyncSession
+from apeiria.db.runtime import database_runtime
 
+if TYPE_CHECKING:
     from apeiria.ai.config import AIPluginConfig
 
 
-def _utcnow_naive() -> datetime:
-    return datetime.now(timezone.utc).replace(tzinfo=None)
-
-
-def _result_rowcount(result: object) -> int:
-    value = getattr(result, "rowcount", 0)
-    return int(value or 0)
+def _iso_cutoff(days: int) -> str:
+    return (datetime.now(timezone.utc) - timedelta(days=max(days, 1))).isoformat(
+        timespec="seconds"
+    )
 
 
 @dataclass(frozen=True)
@@ -76,22 +73,18 @@ class AIRetentionService:
         *,
         config: "AIPluginConfig",
     ) -> None:
-        from nonebot_plugin_orm import get_session
-
         try:
-            async with get_session() as session:
-                result = await self.cleanup(session, config=config)
-                if result.total_changes > 0:
-                    await session.commit()
-                    logger.info(
-                        "AI retention cleanup changed messages={} sessions={} "
-                        "raw_payloads={} tool_executions={} memories={}",
-                        result.deleted_messages,
-                        result.deleted_sessions,
-                        result.cleared_raw_payloads,
-                        result.deleted_tool_executions,
-                        result.deleted_memories,
-                    )
+            result = await self.cleanup(config=config)
+            if result.total_changes > 0:
+                logger.info(
+                    "AI retention cleanup changed messages={} sessions={} "
+                    "raw_payloads={} tool_executions={} memories={}",
+                    result.deleted_messages,
+                    result.deleted_sessions,
+                    result.cleared_raw_payloads,
+                    result.deleted_tool_executions,
+                    result.deleted_memories,
+                )
         except Exception as exc:  # noqa: BLE001
             logger.opt(exception=exc).warning("AI retention cleanup failed")
         finally:
@@ -99,67 +92,108 @@ class AIRetentionService:
 
     async def cleanup(
         self,
-        session: "AsyncSession",
         *,
         config: "AIPluginConfig",
     ) -> AIRetentionCleanupResult:
-        from sqlalchemy import delete, exists, select, update
-
-        from apeiria.db.models import (
-            AIMemoryItem,
-            AIToolExecution,
-            ChatMessage,
-            ChatSession,
+        conversation_result = self.cleanup_conversations(
+            conversation_retention_days=config.conversation_retention_days,
+            raw_event_retention_days=config.raw_event_retention_days,
         )
-
-        now = _utcnow_naive()
-        message_cutoff = now - timedelta(
-            days=max(config.conversation_retention_days, 1)
+        deleted_tool_execution_count = self.cleanup_tool_executions(
+            retention_days=config.tool_execution_retention_days
         )
-        raw_cutoff = now - timedelta(days=max(config.raw_event_retention_days, 1))
-        tool_cutoff = now - timedelta(days=max(config.tool_execution_retention_days, 1))
-        ignored_memory_cutoff = now - timedelta(
-            days=max(config.ignored_memory_retention_days, 1)
+        deleted_memory_count = self.cleanup_ignored_memories(
+            retention_days=config.ignored_memory_retention_days
         )
-
-        deleted_messages = await session.execute(
-            delete(ChatMessage).where(ChatMessage.created_at < message_cutoff)
-        )
-        deleted_sessions = await session.execute(
-            delete(ChatSession).where(
-                ~exists(
-                    select(ChatMessage.id).where(
-                        ChatMessage.session_pk == ChatSession.id
-                    )
-                )
-            )
-        )
-        cleared_raw_payloads = await session.execute(
-            update(ChatMessage)
-            .where(
-                ChatMessage.raw_data_json.is_not(None),
-                ChatMessage.created_at < raw_cutoff,
-            )
-            .values(raw_data_json=None)
-        )
-        deleted_tool_executions = await session.execute(
-            delete(AIToolExecution).where(AIToolExecution.created_at < tool_cutoff)
-        )
-        deleted_memories = await session.execute(
-            delete(AIMemoryItem).where(
-                AIMemoryItem.created_at < ignored_memory_cutoff,
-                AIMemoryItem.is_ignored.is_(True),
-            )
-        )
-
-        await session.flush()
         return AIRetentionCleanupResult(
-            deleted_messages=_result_rowcount(deleted_messages),
-            deleted_sessions=_result_rowcount(deleted_sessions),
-            cleared_raw_payloads=_result_rowcount(cleared_raw_payloads),
-            deleted_tool_executions=_result_rowcount(deleted_tool_executions),
-            deleted_memories=_result_rowcount(deleted_memories),
+            deleted_messages=conversation_result.deleted_messages,
+            deleted_sessions=conversation_result.deleted_sessions,
+            cleared_raw_payloads=conversation_result.cleared_raw_payloads,
+            deleted_tool_executions=deleted_tool_execution_count,
+            deleted_memories=deleted_memory_count,
         )
+
+    def cleanup_conversations(
+        self,
+        *,
+        conversation_retention_days: int,
+        raw_event_retention_days: int,
+    ) -> AIRetentionCleanupResult:
+        """Delete old SQLite-backed conversation rows and raw payloads."""
+
+        with database_runtime.connect_sync() as connection:
+            deleted_messages = connection.execute(
+                """
+                DELETE FROM chat_message
+                WHERE created_at < ?
+                """,
+                (_iso_cutoff(conversation_retention_days),),
+            )
+            deleted_sessions = connection.execute(
+                """
+                DELETE FROM chat_session
+                WHERE NOT EXISTS (
+                    SELECT 1
+                    FROM chat_message
+                    WHERE chat_message.session_pk = chat_session.id
+                )
+                """
+            )
+            cleared_raw_payloads = connection.execute(
+                """
+                UPDATE chat_message
+                SET raw_data_json = NULL
+                WHERE raw_data_json IS NOT NULL AND created_at < ?
+                """,
+                (_iso_cutoff(raw_event_retention_days),),
+            )
+        return AIRetentionCleanupResult(
+            deleted_messages=int(deleted_messages.rowcount or 0),
+            deleted_sessions=int(deleted_sessions.rowcount or 0),
+            cleared_raw_payloads=int(cleared_raw_payloads.rowcount or 0),
+        )
+
+    def cleanup_tool_executions(self, *, retention_days: int) -> int:
+        """Delete old SQLite-backed tool execution audit rows."""
+
+        with database_runtime.connect_sync() as connection:
+            cursor = connection.execute(
+                """
+                DELETE FROM ai_tool_execution
+                WHERE created_at < ?
+                """,
+                (_iso_cutoff(retention_days),),
+            )
+            return int(cursor.rowcount or 0)
+
+    def cleanup_ignored_memories(self, *, retention_days: int) -> int:
+        """Delete old ignored SQLite-backed memory rows and embeddings."""
+
+        from apeiria.ai.memory.embedding_store import ai_memory_embedding_store
+
+        cutoff = _iso_cutoff(retention_days)
+        with database_runtime.connect_sync() as connection:
+            rows = connection.execute(
+                """
+                SELECT memory_id
+                FROM ai_memory_item
+                WHERE created_at < ? AND is_ignored = 1
+                """,
+                (cutoff,),
+            ).fetchall()
+            memory_ids = [str(row[0]) for row in rows]
+            if not memory_ids:
+                return 0
+            cursor = connection.execute(
+                """
+                DELETE FROM ai_memory_item
+                WHERE created_at < ? AND is_ignored = 1
+                """,
+                (cutoff,),
+            )
+        for memory_id in memory_ids:
+            ai_memory_embedding_store.delete(memory_id=memory_id)
+        return int(cursor.rowcount or 0)
 
 
 ai_retention_service = AIRetentionService()

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING, cast
+from typing import cast
 from uuid import uuid4
 
 from apeiria.ai.model.bindings import (
@@ -29,9 +29,6 @@ from apeiria.ai.model.selection import (
 from apeiria.ai.model.source import ai_source_service
 from apeiria.db.runtime import database_runtime
 
-if TYPE_CHECKING:
-    from sqlalchemy.ext.asyncio import AsyncSession
-
 
 @dataclass(frozen=True)
 class AIModelProfileCreateInput:
@@ -50,9 +47,7 @@ class AIModelProfileService:
 
     async def list_profiles(
         self,
-        session: "AsyncSession | None",
     ) -> list[AIModelProfileDefinition]:
-        del session
         with database_runtime.connect_sync() as connection:
             rows = connection.execute(
                 """
@@ -76,18 +71,14 @@ class AIModelProfileService:
                 task_class=cast("AIModelTaskClass", str(row[3])),
                 priority=int(row[4]),
                 enabled=bool(row[5]),
-                fallback_profile_id=(
-                    str(row[6]) if row[6] is not None else None
-                ),
+                fallback_profile_id=(str(row[6]) if row[6] is not None else None),
             )
             for row in rows
         ]
 
     async def list_bindings(
         self,
-        session: "AsyncSession | None",
     ) -> list[AIModelBindingSpec]:
-        del session
         with database_runtime.connect_sync() as connection:
             rows = connection.execute(
                 """
@@ -108,10 +99,8 @@ class AIModelProfileService:
 
     async def create_profile(
         self,
-        session: "AsyncSession | None",
         create_input: AIModelProfileCreateInput,
     ) -> AIModelProfileDefinition:
-        del session
         profile = AIModelProfileDefinition(
             profile_id=f"profile_{uuid4().hex}",
             name=create_input.name,
@@ -150,16 +139,14 @@ class AIModelProfileService:
 
     async def update_profile(
         self,
-        session: "AsyncSession | None",
         *,
         profile_id: str,
         create_input: AIModelProfileCreateInput,
     ) -> AIModelProfileDefinition | None:
-        del session
         existing = next(
             (
                 item
-                for item in await self.list_profiles(None)
+                for item in await self.list_profiles()
                 if item.profile_id == profile_id
             ),
             None,
@@ -204,20 +191,18 @@ class AIModelProfileService:
 
     async def resolve_profile(
         self,
-        session: "AsyncSession | None",
         query: AIModelRouteQuery,
     ) -> AIModelProfileDefinition | None:
-        profiles = await self.list_profiles(session)
+        profiles = await self.list_profiles()
         return resolve_model_profile(profiles, query)
 
     async def resolve_profile_for_target(
         self,
-        session: "AsyncSession | None",
         *,
         target: AIModelBindingTarget,
     ) -> AIModelProfileDefinition | None:
-        profiles = await self.list_profiles(session)
-        bindings = await self.list_bindings(session)
+        profiles = await self.list_profiles()
+        bindings = await self.list_bindings()
         binding = resolve_model_binding(bindings, target)
         if binding is None:
             return None
@@ -228,26 +213,24 @@ class AIModelProfileService:
 
     async def select_model(
         self,
-        session: "AsyncSession",
         query: AIModelRouteQuery | None = None,
         *,
         target: AIModelBindingTarget | None = None,
     ) -> AISelectedModel | None:
         from apeiria.ai.model.chat_model import ai_chat_model_service
 
-        profiles = await self.list_profiles(None)
+        profiles = await self.list_profiles()
         candidate_profiles: list[AIModelProfileDefinition] = []
         if target is not None:
             bound_profile = await self.resolve_profile_for_target(
-                None,
                 target=target,
             )
             if bound_profile is not None:
                 candidate_profiles.append(bound_profile)
         if query is not None:
             candidate_profiles.extend(list_model_profile_candidates(profiles, query))
-        sources = await ai_source_service.list_sources(None)
-        source_models = await ai_chat_model_service.list_all_models(session)
+        sources = await ai_source_service.list_sources()
+        source_models = await ai_chat_model_service.list_all_models()
         deduped_candidates = list(
             {profile.profile_id: profile for profile in candidate_profiles}.values()
         )

@@ -55,8 +55,6 @@ from apeiria.ai.tools.service import ai_tool_service
 if TYPE_CHECKING:
     from datetime import datetime
 
-    from sqlalchemy.ext.asyncio import AsyncSession
-
     from apeiria.ai.conversation.models import ChatContextMessageView
     from apeiria.ai.future_task.models import AIFutureTaskDefinition
     from apeiria.ai.memory.models import AIMemoryDefinition
@@ -131,7 +129,6 @@ class _GenerationRequest:
 
 
 async def gather_reply_inputs(
-    session: "AsyncSession",
     request: "AIRuntimeReplyRequest",
     current_time: "datetime",
 ) -> ReplyInputs:
@@ -140,47 +137,39 @@ async def gather_reply_inputs(
     identity = request.identity
 
     turns, conversation_summary = await build_and_store_context_window(
-        session,
         identity=identity,
     )
     relationship_target = build_relationship_target(identity, request.user_id)
     model_target = build_model_binding_target(identity, request.user_id)
     tool_policy = await resolve_tool_policy(
-        session,
         identity,
         is_tome=request.is_tome,
     )
     persona = await load_persona_bundle(
-        session,
         request=request,
         current_time=current_time,
         turns=turns,
     )
     if request.runtime_mode == "message" and request.sentiment is not None:
         await update_relationship_state(
-            session,
             target=relationship_target,
             sentiment=request.sentiment,
             is_tome=request.is_tome,
         )
     recalled_memories = await recall_memories(
-        session,
         identity=identity,
         user_id=request.user_id,
         query_text=request.message_text,
     )
     relationship_context = await load_relationship_context(
-        session,
         target=relationship_target,
     )
     person_profile = await load_person_profile_for_prompt(
-        session,
         identity=identity,
         user_id=request.user_id,
     )
     allowed_tools = tuple(ai_tool_service.list_allowed_tools(tool_policy))
     initiative_bias = await resolve_initiative_bias(
-        session,
         relationship_target=relationship_target,
     )
     return ReplyInputs(
@@ -198,8 +187,7 @@ async def gather_reply_inputs(
     )
 
 
-async def prepare_generation(  # noqa: PLR0913
-    session: "AsyncSession",
+async def prepare_generation(
     *,
     request: "AIRuntimeReplyRequest",
     inputs: ReplyInputs,
@@ -215,7 +203,6 @@ async def prepare_generation(  # noqa: PLR0913
     )
 
     skill_runtime = await tool_gateway.prepare(
-        session,
         ToolGatewayRequest(
             session_id=identity.session_id,
             source_message_id=request.source_message_id,
@@ -233,11 +220,9 @@ async def prepare_generation(  # noqa: PLR0913
         has_tools=bool(skill_runtime.available_tools),
     )
     selected = await model_gateway.select_model(
-        session,
         query=AIModelRouteQuery(task_class=pre_tool_task_class),
         target=inputs.model_target,
     )
-    await session.commit()
     if selected is None:
         logger.debug(
             "AI trace {} skipped reply: no model selected for session {}",
@@ -247,7 +232,6 @@ async def prepare_generation(  # noqa: PLR0913
         return None
 
     skill_selection = await ai_skill_service.select_skills(
-        session,
         message_text=request.message_text,
         conversation_summary=inputs.conversation_summary,
     )
@@ -260,7 +244,6 @@ async def prepare_generation(  # noqa: PLR0913
 
 
 async def generate_reply(  # noqa: PLR0913
-    session: "AsyncSession",
     *,
     request: "AIRuntimeReplyRequest",
     inputs: ReplyInputs,
@@ -273,7 +256,6 @@ async def generate_reply(  # noqa: PLR0913
 
     if prep.skill_runtime.available_tools:
         return await _generate_with_tool_loop(
-            session,
             request=request,
             inputs=inputs,
             social_decision=social_decision,
@@ -282,7 +264,6 @@ async def generate_reply(  # noqa: PLR0913
             trace_id=trace_id,
         )
     return await _generate_direct(
-        session,
         request=request,
         inputs=inputs,
         social_decision=social_decision,
@@ -291,8 +272,7 @@ async def generate_reply(  # noqa: PLR0913
     )
 
 
-async def _generate_direct(  # noqa: PLR0913
-    session: "AsyncSession",
+async def _generate_direct(
     *,
     request: "AIRuntimeReplyRequest",
     inputs: ReplyInputs,
@@ -301,8 +281,6 @@ async def _generate_direct(  # noqa: PLR0913
     trace_id: str,
 ) -> ReplyGeneration:
     """Single-shot generation path (no tool loop)."""
-
-    del session  # unused but kept for signature symmetry
     response = await _safe_generate(
         _GenerationRequest(
             selected=prep.selected,
@@ -348,7 +326,6 @@ async def _generate_direct(  # noqa: PLR0913
 
 
 async def _generate_with_tool_loop(  # noqa: PLR0913
-    session: "AsyncSession",
     *,
     request: "AIRuntimeReplyRequest",
     inputs: ReplyInputs,
@@ -384,7 +361,6 @@ async def _generate_with_tool_loop(  # noqa: PLR0913
         execution_timeout_seconds=get_ai_plugin_config().tool_execution_timeout_seconds,
     )
     skill_runtime = await tool_gateway.run_tool_loop(
-        session,
         tool_request,
         messages=messages,
         tools=prep.skill_runtime.available_tools,
@@ -402,17 +378,14 @@ async def _generate_with_tool_loop(  # noqa: PLR0913
 
     if skill_runtime.turns:
         await append_tool_observation_turns(
-            session,
             identity=request.identity,
             trace_id=trace_id,
             tool_turns=skill_runtime.turns,
         )
-        await session.commit()
         post_tool_task_class = select_post_tool_reply_task_class()
 
         if response is not None and response.content.strip():
             roleplay_selected = await model_gateway.select_model(
-                session,
                 query=AIModelRouteQuery(task_class=post_tool_task_class),
                 target=build_model_binding_target(
                     request.identity,

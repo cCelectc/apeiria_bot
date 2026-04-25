@@ -44,7 +44,6 @@ async def handle_future_task(  # noqa: PLR0913
     from apeiria.ai.conversation.service import chat_session_service
 
     identity = await chat_session_service.get_session_identity(
-        context.session,
         session_id=context.session_id,
     )
     if identity is None:

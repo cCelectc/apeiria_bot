@@ -19,8 +19,6 @@ from apeiria.ai.skills.runtime import ai_skill_runtime
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from sqlalchemy.ext.asyncio import AsyncSession
-
     from apeiria.ai.skills.catalog import AISkillDefinition
     from apeiria.ai.skills.parser import AISkillFileDefinition
     from apeiria.ai.skills.runtime import (
@@ -118,7 +116,6 @@ class AISkillService:
 
     async def select_skills(
         self,
-        session: "AsyncSession",
         *,
         message_text: str,
         conversation_summary: str | None,
@@ -127,7 +124,6 @@ class AISkillService:
 
         self.ensure_initialized()
         return await ai_skill_runtime.select_skills_for_message(
-            session,
             message_text=message_text,
             conversation_summary=conversation_summary,
         )

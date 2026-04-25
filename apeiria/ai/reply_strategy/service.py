@@ -28,8 +28,6 @@ from apeiria.ai.reply_strategy.wake_gate import evaluate_wake
 if TYPE_CHECKING:
     from datetime import datetime
 
-    from sqlalchemy.ext.asyncio import AsyncSession
-
     from apeiria.ai.model import AIModelBindingTarget
 
 _MAX_TRACKED_SESSIONS = 500
@@ -88,7 +86,6 @@ class ReplyStrategyService:
 
     async def evaluate(  # noqa: PLR0913
         self,
-        session: "AsyncSession",
         *,
         wake_context: WakeContext,
         session_id: str,
@@ -162,7 +159,6 @@ class ReplyStrategyService:
             consecutive_silence_count=state.consecutive_silence,
         )
         judgment = await evaluate_social_judgment(
-            session,
             judgment_input=judgment_input,
             target=target,
         )

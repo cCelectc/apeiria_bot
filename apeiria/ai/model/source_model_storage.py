@@ -5,9 +5,21 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from json import dumps
+from typing import TYPE_CHECKING
 
 from apeiria.db.runtime import database_runtime
+from apeiria.db.schema import SOURCE_MODEL_TABLE_NAMES
 from apeiria.utils.json_utils import safe_json_loads
+
+if TYPE_CHECKING:
+    from sqlite3 import Connection
+
+
+class UnsupportedSourceModelTableError(ValueError):
+    """Raised when source model storage is asked to use an unknown table."""
+
+    def __init__(self, table_name: str) -> None:
+        super().__init__(f"unsupported source model table: {table_name}")
 
 
 @dataclass(frozen=True)
@@ -24,6 +36,7 @@ class SourceModelRecord:
 
 
 def get_source_model(table_name: str, *, model_id: str) -> SourceModelRecord | None:
+    table_name = _coerce_table_name(table_name)
     with database_runtime.connect_sync() as connection:
         row = connection.execute(
             f"""
@@ -48,6 +61,7 @@ def list_source_models(
     *,
     source_id: str,
 ) -> list[SourceModelRecord]:
+    table_name = _coerce_table_name(table_name)
     with database_runtime.connect_sync() as connection:
         rows = connection.execute(
             f"""
@@ -69,6 +83,7 @@ def list_source_models(
 
 
 def list_all_source_models(table_name: str) -> list[SourceModelRecord]:
+    table_name = _coerce_table_name(table_name)
     with database_runtime.connect_sync() as connection:
         rows = connection.execute(
             f"""
@@ -98,9 +113,10 @@ def create_source_model(  # noqa: PLR0913
     is_default: bool,
     extra_params: dict[str, object] | None,
 ) -> SourceModelRecord:
-    if is_default:
-        clear_default_source_model(table_name, source_id=source_id)
-    with database_runtime.connect_sync() as connection:
+    table_name = _coerce_table_name(table_name)
+    with database_runtime.transaction_sync() as connection:
+        if is_default:
+            _clear_default_source_model(connection, table_name, source_id=source_id)
         connection.execute(
             f"""
             INSERT INTO {table_name} (
@@ -147,12 +163,16 @@ def update_source_model(  # noqa: PLR0913
     is_default: bool,
     extra_params: dict[str, object] | None,
 ) -> SourceModelRecord | None:
-    existing = get_source_model(table_name, model_id=model_id)
-    if existing is None:
-        return None
-    if is_default:
-        clear_default_source_model(table_name, source_id=source_id)
-    with database_runtime.connect_sync() as connection:
+    table_name = _coerce_table_name(table_name)
+    with database_runtime.transaction_sync() as connection:
+        existing = connection.execute(
+            f"SELECT model_id FROM {table_name} WHERE model_id = ?",
+            (model_id,),
+        ).fetchone()
+        if existing is None:
+            return None
+        if is_default:
+            _clear_default_source_model(connection, table_name, source_id=source_id)
         connection.execute(
             f"""
             UPDATE {table_name}
@@ -189,6 +209,7 @@ def update_source_model(  # noqa: PLR0913
 
 
 def delete_source_model(table_name: str, *, model_id: str) -> bool:
+    table_name = _coerce_table_name(table_name)
     with database_runtime.connect_sync() as connection:
         cursor = connection.execute(
             f"DELETE FROM {table_name} WHERE model_id = ?",
@@ -198,15 +219,9 @@ def delete_source_model(table_name: str, *, model_id: str) -> bool:
 
 
 def clear_default_source_model(table_name: str, *, source_id: str) -> None:
-    with database_runtime.connect_sync() as connection:
-        connection.execute(
-            f"""
-            UPDATE {table_name}
-            SET is_default = 0, updated_at = ?
-            WHERE source_id = ?
-            """,
-            (_utcnow_text(), source_id),
-        )
+    table_name = _coerce_table_name(table_name)
+    with database_runtime.transaction_sync() as connection:
+        _clear_default_source_model(connection, table_name, source_id=source_id)
 
 
 def _row_to_record(row: tuple[object, ...] | None) -> SourceModelRecord | None:
@@ -225,6 +240,28 @@ def _row_to_record(row: tuple[object, ...] | None) -> SourceModelRecord | None:
         is_default=bool(row[5]),
         extra_params=extra_params if isinstance(extra_params, dict) else {},
     )
+
+
+def _clear_default_source_model(
+    connection: "Connection",
+    table_name: str,
+    *,
+    source_id: str,
+) -> None:
+    connection.execute(
+        f"""
+        UPDATE {table_name}
+        SET is_default = 0, updated_at = ?
+        WHERE source_id = ?
+        """,
+        (_utcnow_text(), source_id),
+    )
+
+
+def _coerce_table_name(table_name: str) -> str:
+    if table_name not in SOURCE_MODEL_TABLE_NAMES:
+        raise UnsupportedSourceModelTableError(table_name)
+    return table_name
 
 
 def _utcnow_text() -> str:

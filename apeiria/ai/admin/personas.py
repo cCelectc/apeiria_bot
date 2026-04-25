@@ -36,10 +36,10 @@ class PersonasAdminMixin:
     """Admin CRUD for AI personas and their scope bindings."""
 
     async def list_personas(self) -> list["AIPersonaDefinition"]:
-        return await ai_persona_service.list_personas(None)
+        return await ai_persona_service.list_personas()
 
     async def list_persona_bindings(self) -> list["AIPersonaBindingSpec"]:
-        return await ai_persona_service.list_bindings(None)
+        return await ai_persona_service.list_bindings()
 
     async def create_persona(  # noqa: PLR0913
         self,
@@ -52,7 +52,6 @@ class PersonasAdminMixin:
         actor_username: str | None = None,
     ) -> "AIPersonaDefinition":
         created = await ai_persona_service.create_persona(
-            None,
             _build_persona_create_input(
                 name=name,
                 description=description,
@@ -80,7 +79,6 @@ class PersonasAdminMixin:
         actor_username: str | None = None,
     ) -> "AIPersonaDefinition | None":
         updated = await ai_persona_service.update_persona(
-            None,
             persona_id=persona_id,
             create_input=_build_persona_create_input(
                 name=name,

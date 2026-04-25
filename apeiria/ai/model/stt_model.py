@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from typing import Any
 from uuid import uuid4
 
 from apeiria.ai.model.source_model_storage import (
@@ -14,9 +14,6 @@ from apeiria.ai.model.source_model_storage import (
     update_source_model,
 )
 from apeiria.ai.model.source_models import AISpeechToTextModelDefinition
-
-if TYPE_CHECKING:
-    from sqlalchemy.ext.asyncio import AsyncSession
 
 
 @dataclass(frozen=True)
@@ -36,25 +33,19 @@ class AISTTModelService:
 
     async def get_model(
         self,
-        session: "AsyncSession | None",
         *,
         model_id: str,
     ) -> AISpeechToTextModelDefinition | None:
-        del session
         record = get_source_model("ai_stt_model", model_id=model_id)
         return (
-            None
-            if record is None
-            else AISpeechToTextModelDefinition(**record.__dict__)
+            None if record is None else AISpeechToTextModelDefinition(**record.__dict__)
         )
 
     async def list_models(
         self,
-        session: "AsyncSession | None",
         *,
         source_id: str,
     ) -> list[AISpeechToTextModelDefinition]:
-        del session
         return [
             AISpeechToTextModelDefinition(**row.__dict__)
             for row in list_source_models("ai_stt_model", source_id=source_id)
@@ -62,10 +53,8 @@ class AISTTModelService:
 
     async def create_model(
         self,
-        session: "AsyncSession | None",
         create_input: AISTTModelCreateInput,
     ) -> AISpeechToTextModelDefinition:
-        del session
         return AISpeechToTextModelDefinition(
             **create_source_model(
                 "ai_stt_model",
@@ -81,12 +70,10 @@ class AISTTModelService:
 
     async def update_model(
         self,
-        session: "AsyncSession | None",
         *,
         model_id: str,
         create_input: AISTTModelCreateInput,
     ) -> AISpeechToTextModelDefinition | None:
-        del session
         record = update_source_model(
             "ai_stt_model",
             model_id=model_id,
@@ -103,11 +90,9 @@ class AISTTModelService:
 
     async def delete_model(
         self,
-        session: "AsyncSession | None",
         *,
         model_id: str,
     ) -> bool:
-        del session
         return delete_source_model("ai_stt_model", model_id=model_id)
 
 

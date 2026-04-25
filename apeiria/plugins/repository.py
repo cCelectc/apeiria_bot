@@ -84,9 +84,7 @@ class PluginCatalogRepository:
                 access_mode=str(row[2]),
                 required_level=int(row[3]),
                 protection_mode=str(row[4]),
-                ui_hidden_override=(
-                    None if row[5] is None else bool(row[5])
-                ),
+                ui_hidden_override=(None if row[5] is None else bool(row[5])),
             )
             for row in rows
         }

@@ -12,14 +12,11 @@ from apeiria.ai.tools.policy import (
 )
 
 if TYPE_CHECKING:
-    from sqlalchemy.ext.asyncio import AsyncSession
-
     from apeiria.ai.conversation.models import ChatSessionIdentity
     from apeiria.ai.tools.models import AIToolPolicy, AIToolTurnCreateInput
 
 
 async def resolve_tool_policy(
-    session: "AsyncSession",
     identity: "ChatSessionIdentity",
     *,
     is_tome: bool,
@@ -27,7 +24,6 @@ async def resolve_tool_policy(
     """Resolve the scene-scoped tool policy for the current conversation."""
 
     return await ai_tool_policy_binding_service.resolve_scene_policy(
-        session,
         scene_context=AIToolSceneContext(
             scope_type=identity.scene_type,
             is_tome=is_tome,
@@ -41,7 +37,6 @@ async def resolve_tool_policy(
 
 
 async def append_tool_observation_turns(
-    session: "AsyncSession",
     *,
     identity: "ChatSessionIdentity",
     trace_id: str,
@@ -51,7 +46,6 @@ async def append_tool_observation_turns(
 
     for index, turn in enumerate(tool_turns):
         await chat_session_service.append_message(
-            session,
             identity,
             ChatMessageCreate(
                 author_role="tool",

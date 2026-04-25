@@ -1,9 +1,7 @@
 """Access control — permissions, rules, principal, audit, and WebUI auth.
 
-Only re-export lightweight types at package import time. Service singletons
-that require an initialized NoneBot runtime (via nonebot_plugin_orm) must be
-imported from their concrete submodules — e.g. ``from apeiria.access.permission
-import permission_service``.
+Only re-export lightweight types at package import time. Runtime-facing service
+singletons should still be imported from their concrete submodules.
 """
 
 from apeiria.access.audit import AuditActor, AuditEvent, AuditEventKind

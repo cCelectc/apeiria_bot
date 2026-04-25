@@ -18,8 +18,6 @@ from apeiria.ai.reply_strategy.prompt import (
 )
 
 if TYPE_CHECKING:
-    from sqlalchemy.ext.asyncio import AsyncSession
-
     from apeiria.ai.model import AIModelBindingTarget
 
 _SOCIAL_JUDGMENT_TASK_CLASS = "planner_light"
@@ -60,7 +58,6 @@ def build_fallback_judgment(
 
 
 async def evaluate_social_judgment(
-    session: "AsyncSession",
     *,
     judgment_input: SocialJudgmentInput,
     target: "AIModelBindingTarget | None" = None,
@@ -70,7 +67,6 @@ async def evaluate_social_judgment(
     fallback = build_fallback_judgment(judgment_input)
 
     selected = await model_gateway.select_model(
-        session,
         query=AIModelRouteQuery(task_class=_SOCIAL_JUDGMENT_TASK_CLASS),
         target=target,
     )

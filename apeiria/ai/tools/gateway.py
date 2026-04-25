@@ -20,8 +20,6 @@ from apeiria.ai.tools.service import ai_tool_service
 if TYPE_CHECKING:
     from datetime import datetime
 
-    from sqlalchemy.ext.asyncio import AsyncSession
-
     from apeiria.ai.memory.models import AIMemoryDefinition
     from apeiria.ai.model.adapter import (
         AIModelGenerateResponse,
@@ -83,7 +81,6 @@ class ToolGateway:
 
     async def prepare(
         self,
-        _session: "AsyncSession",
         request: ToolGatewayRequest,
     ) -> ToolGatewayResult:
         allowed_tools = ai_tool_service.list_allowed_tools(request.policy)
@@ -104,14 +101,12 @@ class ToolGateway:
 
     async def execute_tool_calls(
         self,
-        session: "AsyncSession",
         request: ToolGatewayRequest,
         *,
         tool_calls: tuple["AIModelToolCall", ...],
     ) -> ToolGatewayResult:
         intents = build_intents_from_tool_calls(tool_calls)
         observations = await ai_tool_service.execute_tool_intents(
-            session,
             request=self._build_observation_request(request),
             intents=intents,
         )
@@ -127,9 +122,8 @@ class ToolGateway:
             available_tools=(),
         )
 
-    async def run_tool_loop(  # noqa: PLR0913
+    async def run_tool_loop(
         self,
-        session: "AsyncSession",
         request: ToolGatewayRequest,
         *,
         messages: list[AIModelMessage],
@@ -168,7 +162,6 @@ class ToolGateway:
 
             intents = build_intents_from_tool_calls(response.tool_calls)
             observations = await ai_tool_service.execute_tool_intents(
-                session,
                 request=self._build_observation_request(request),
                 intents=intents,
             )
