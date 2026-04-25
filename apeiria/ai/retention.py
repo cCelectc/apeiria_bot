@@ -33,7 +33,6 @@ class AIRetentionCleanupResult:
     deleted_sessions: int = 0
     cleared_raw_payloads: int = 0
     deleted_tool_executions: int = 0
-    deleted_future_tasks: int = 0
     deleted_memories: int = 0
 
     @property
@@ -43,7 +42,6 @@ class AIRetentionCleanupResult:
             + self.deleted_sessions
             + self.cleared_raw_payloads
             + self.deleted_tool_executions
-            + self.deleted_future_tasks
             + self.deleted_memories
         )
 
@@ -87,13 +85,11 @@ class AIRetentionService:
                     await session.commit()
                     logger.info(
                         "AI retention cleanup changed messages={} sessions={} "
-                        "raw_payloads={} tool_executions={} future_tasks={} "
-                        "memories={}",
+                        "raw_payloads={} tool_executions={} memories={}",
                         result.deleted_messages,
                         result.deleted_sessions,
                         result.cleared_raw_payloads,
                         result.deleted_tool_executions,
-                        result.deleted_future_tasks,
                         result.deleted_memories,
                     )
         except Exception as exc:  # noqa: BLE001
@@ -110,7 +106,6 @@ class AIRetentionService:
         from sqlalchemy import delete, exists, select, update
 
         from apeiria.db.models import (
-            AIFutureTask,
             AIMemoryItem,
             AIToolExecution,
             ChatMessage,
@@ -123,9 +118,6 @@ class AIRetentionService:
         )
         raw_cutoff = now - timedelta(days=max(config.raw_event_retention_days, 1))
         tool_cutoff = now - timedelta(days=max(config.tool_execution_retention_days, 1))
-        future_task_cutoff = now - timedelta(
-            days=max(config.future_task_retention_days, 1)
-        )
         ignored_memory_cutoff = now - timedelta(
             days=max(config.ignored_memory_retention_days, 1)
         )
@@ -153,12 +145,6 @@ class AIRetentionService:
         deleted_tool_executions = await session.execute(
             delete(AIToolExecution).where(AIToolExecution.created_at < tool_cutoff)
         )
-        deleted_future_tasks = await session.execute(
-            delete(AIFutureTask).where(
-                AIFutureTask.updated_at < future_task_cutoff,
-                AIFutureTask.status.in_(("sent", "cancelled", "failed")),
-            )
-        )
         deleted_memories = await session.execute(
             delete(AIMemoryItem).where(
                 AIMemoryItem.created_at < ignored_memory_cutoff,
@@ -172,7 +158,6 @@ class AIRetentionService:
             deleted_sessions=_result_rowcount(deleted_sessions),
             cleared_raw_payloads=_result_rowcount(cleared_raw_payloads),
             deleted_tool_executions=_result_rowcount(deleted_tool_executions),
-            deleted_future_tasks=_result_rowcount(deleted_future_tasks),
             deleted_memories=_result_rowcount(deleted_memories),
         )
 

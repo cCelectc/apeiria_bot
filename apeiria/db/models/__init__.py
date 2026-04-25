@@ -4,7 +4,6 @@ from .access_policy import AccessPolicyEntry
 from .ai_affinity import AIAffinity
 from .ai_chat_model import AIChatModel
 from .ai_embedding_model import AIEmbeddingModel
-from .ai_future_task import AIFutureTask
 from .ai_memory_embedding import AIMemoryEmbedding
 from .ai_memory_item import AIMemoryItem
 from .ai_model_binding import AIModelBinding
@@ -33,7 +32,6 @@ __all__ = [
     "AIAffinity",
     "AIChatModel",
     "AIEmbeddingModel",
-    "AIFutureTask",
     "AIMemoryEmbedding",
     "AIMemoryItem",
     "AIModelBinding",

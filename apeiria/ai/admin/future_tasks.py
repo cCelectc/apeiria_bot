@@ -4,8 +4,6 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from nonebot_plugin_orm import get_session
-
 from apeiria.ai.admin.audit import record_ai_admin_audit
 from apeiria.ai.future_task import ai_future_task_service
 
@@ -21,8 +19,7 @@ class FutureTasksAdminMixin:
         *,
         limit: int = 20,
     ) -> list["AIFutureTaskDefinition"]:
-        async with get_session() as session:
-            return await ai_future_task_service.list_tasks(session, limit=limit)
+        return await ai_future_task_service.list_tasks(limit=limit)
 
     async def cancel_future_task(
         self,
@@ -30,16 +27,15 @@ class FutureTasksAdminMixin:
         task_id: str,
         actor_username: str | None = None,
     ) -> "AIFutureTaskDefinition | None":
-        async with get_session() as session:
-            task = await ai_future_task_service.cancel_task(session, task_id=task_id)
-            if task is not None:
-                await session.commit()
-                record_ai_admin_audit(
-                    "ai_future_task_cancelled",
-                    actor_username=actor_username,
-                    detail=f"{task.task_id} {task.title}",
-                )
+        task = await ai_future_task_service.cancel_task(task_id=task_id)
+        if task is not None:
+            record_ai_admin_audit(
+                "ai_future_task_cancelled",
+                actor_username=actor_username,
+                detail=f"{task.task_id} {task.title}",
+            )
             return task
+        return None
 
 
 __all__ = ["FutureTasksAdminMixin"]

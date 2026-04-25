@@ -136,11 +136,11 @@ class AIRuntimeService:
         """Handle one due future task by running the normal reply pipeline."""
 
         ai_retention_service.maybe_schedule_cleanup(config=get_ai_plugin_config())
-        async with get_session() as session:
-            task = await ai_future_task_service.get_task(session, task_id=task_id)
-            if task is None or task.status != "running":
-                return None
+        task = await ai_future_task_service.get_task(task_id=task_id)
+        if task is None or task.status != "running":
+            return None
 
+        async with get_session() as session:
             identity = await chat_session_service.get_session_identity(
                 session,
                 session_id=task.session_id,
@@ -260,6 +260,8 @@ class AIRuntimeService:
             reply_text=response.content.strip(),
             delivery_result=gen.delivery_result,
         )
+
+
 ai_runtime_service = AIRuntimeService()
 
 __all__ = ["AIRuntimeService", "ai_runtime_service"]

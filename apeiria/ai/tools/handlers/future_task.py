@@ -87,7 +87,6 @@ async def _create_action(
         )
 
     result = await ai_future_task_service.create_task(
-        context.session,
         AIFutureTaskCreateInput(
             session_id=identity.session_id,
             platform=identity.platform,
@@ -123,15 +122,13 @@ async def _cancel_action(
     if task_id is None:
         return _error_result("cancel", "task_id is required for cancel")
 
-    existing = await ai_future_task_service.get_task(context.session, task_id=task_id)
+    existing = await ai_future_task_service.get_task(task_id=task_id)
     if existing is None:
         return _error_result("cancel", f"task {task_id} was not found")
     if existing.session_id != context.session_id:
         return _error_result("cancel", "task does not belong to the current session")
 
-    cancelled = await ai_future_task_service.cancel_task(
-        context.session, task_id=task_id
-    )
+    cancelled = await ai_future_task_service.cancel_task(task_id=task_id)
     if cancelled is None:
         return _error_result("cancel", f"task {task_id} was not found")
 
@@ -151,7 +148,6 @@ async def _list_action(
     from apeiria.ai.future_task import ai_future_task_service
 
     tasks = await ai_future_task_service.list_tasks(
-        context.session,
         limit=max(1, min(limit or 5, 10)),
         session_id=context.session_id,
     )

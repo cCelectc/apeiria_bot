@@ -1,35 +1,42 @@
-"""Future-task persistence and scheduling service."""
+"""Future-task runtime scheduling service."""
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING, cast
+from threading import RLock
+from typing import TYPE_CHECKING
 from uuid import uuid4
 from zoneinfo import ZoneInfo
 
 from nonebot.log import logger
-from nonebot_plugin_orm import get_session
-from sqlalchemy import select
 
 from apeiria.ai.future_task.models import (
     AIFutureTaskCreateInput,
     AIFutureTaskDefinition,
     AIFutureTaskStatus,
 )
-from apeiria.db.models import AIFutureTask
-from apeiria.scheduler import scheduler_service
 
 if TYPE_CHECKING:
-    from sqlalchemy.ext.asyncio import AsyncSession
-
-    from apeiria.ai.conversation.models import SceneType
+    from apeiria.scheduler import SchedulerService
 
 _DISPLAY_TIMEZONE = ZoneInfo("Asia/Shanghai")
 
 
-def _utcnow_naive() -> datetime:
-    return datetime.now(timezone.utc).replace(tzinfo=None)
+def _utcnow() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _coerce_utc(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
+
+
+def _get_scheduler_service() -> "SchedulerService":
+    from apeiria.scheduler import scheduler_service
+
+    return scheduler_service
 
 
 @dataclass(frozen=True)
@@ -41,15 +48,19 @@ class AIFutureTaskCreateResult:
 
 
 class AIFutureTaskService:
-    """Persistence and minimal scheduling for AI future tasks."""
+    """In-memory scheduling state for AI future tasks."""
+
+    def __init__(self) -> None:
+        self._tasks: dict[str, AIFutureTaskDefinition] = {}
+        self._lock = RLock()
 
     async def create_task(
         self,
-        session: "AsyncSession",
         create_input: AIFutureTaskCreateInput,
     ) -> AIFutureTaskCreateResult:
         task_id = f"future_task_{uuid4().hex}"
-        row = AIFutureTask(
+        now = _utcnow()
+        task = AIFutureTaskDefinition(
             task_id=task_id,
             session_id=create_input.session_id,
             platform=create_input.platform,
@@ -58,32 +69,42 @@ class AIFutureTaskService:
             user_id=create_input.user_id,
             title=create_input.title,
             description=create_input.description,
-            trigger_at=create_input.trigger_at.astimezone(timezone.utc).replace(
-                tzinfo=None
-            ),
+            trigger_at=_coerce_utc(create_input.trigger_at),
             status="pending",
             source_message_id=create_input.source_message_id,
+            scheduler_job_id=None,
+            last_error=None,
+            created_at=now,
+            updated_at=now,
         )
-        session.add(row)
-        await session.flush()
+        with self._lock:
+            self._tasks[task_id] = task
 
-        scheduler_job_id = self.schedule_task(task_id, create_input.trigger_at)
+        scheduler_job_id = self.schedule_task(task_id, task.trigger_at)
         if scheduler_job_id is None:
-            row.status = "failed"
-            row.last_error = "Failed to schedule future task"
-            row.updated_at = _utcnow_naive()
+            task = replace(
+                task,
+                status="failed",
+                last_error="Failed to schedule future task",
+                updated_at=_utcnow(),
+            )
         else:
-            row.scheduler_job_id = scheduler_job_id
-        await session.flush()
+            task = replace(
+                task,
+                scheduler_job_id=scheduler_job_id,
+                updated_at=_utcnow(),
+            )
+        with self._lock:
+            self._tasks[task_id] = task
 
         return AIFutureTaskCreateResult(
-            task=self._to_definition(row),
+            task=task,
             scheduler_job_id=scheduler_job_id,
         )
 
     def schedule_task(self, task_id: str, trigger_at: datetime) -> str | None:
         try:
-            return scheduler_service.add_job(
+            return _get_scheduler_service().add_job(
                 execute_future_task,
                 "date",
                 run_date=trigger_at,
@@ -101,108 +122,79 @@ class AIFutureTaskService:
 
     async def list_tasks(
         self,
-        session: "AsyncSession",
         *,
         limit: int,
         session_id: str | None = None,
     ) -> list[AIFutureTaskDefinition]:
-        query = select(AIFutureTask)
+        with self._lock:
+            tasks = list(self._tasks.values())
         if session_id is not None:
-            query = query.where(AIFutureTask.session_id == session_id)
-        query = query.order_by(AIFutureTask.created_at.desc(), AIFutureTask.id.desc())
-        result = await session.execute(query.limit(limit))
-        return [self._to_definition(row) for row in result.scalars().all()]
+            tasks = [task for task in tasks if task.session_id == session_id]
+        tasks.sort(key=lambda item: item.created_at, reverse=True)
+        return tasks[:limit]
 
     async def get_task(
         self,
-        session: "AsyncSession",
         *,
         task_id: str,
     ) -> AIFutureTaskDefinition | None:
-        result = await session.execute(
-            select(AIFutureTask).where(AIFutureTask.task_id == task_id)
-        )
-        row = result.scalar_one_or_none()
-        if row is None:
-            return None
-        return self._to_definition(row)
+        with self._lock:
+            return self._tasks.get(task_id)
 
     async def cancel_task(
         self,
-        session: "AsyncSession",
         *,
         task_id: str,
     ) -> AIFutureTaskDefinition | None:
-        result = await session.execute(
-            select(AIFutureTask).where(AIFutureTask.task_id == task_id)
-        )
-        row = result.scalar_one_or_none()
-        if row is None:
+        task = await self.get_task(task_id=task_id)
+        if task is None:
             return None
-        row.status = "cancelled"
-        row.updated_at = _utcnow_naive()
-        if row.scheduler_job_id:
+        task = replace(task, status="cancelled", updated_at=_utcnow())
+        if task.scheduler_job_id:
             try:
-                scheduler_service.remove_job(row.scheduler_job_id)
+                _get_scheduler_service().remove_job(task.scheduler_job_id)
             except Exception:  # noqa: BLE001
-                logger.debug("Future task job already absent: {}", row.scheduler_job_id)
-        await session.flush()
-        return self._to_definition(row)
+                logger.debug(
+                    "Future task job already absent: {}",
+                    task.scheduler_job_id,
+                )
+        with self._lock:
+            self._tasks[task_id] = task
+        return task
 
     async def mark_task_running(
         self,
-        session: "AsyncSession",
         *,
         task_id: str,
     ) -> AIFutureTaskDefinition | None:
-        result = await session.execute(
-            select(AIFutureTask).where(AIFutureTask.task_id == task_id)
+        return self._update_task_status(
+            task_id=task_id,
+            status="running",
+            last_error=None,
         )
-        row = result.scalar_one_or_none()
-        if row is None:
-            return None
-        row.status = "running"
-        row.last_error = None
-        row.updated_at = _utcnow_naive()
-        await session.flush()
-        return self._to_definition(row)
 
     async def mark_task_sent(
         self,
-        session: "AsyncSession",
         *,
         task_id: str,
     ) -> AIFutureTaskDefinition | None:
-        result = await session.execute(
-            select(AIFutureTask).where(AIFutureTask.task_id == task_id)
+        return self._update_task_status(
+            task_id=task_id,
+            status="sent",
+            last_error=None,
         )
-        row = result.scalar_one_or_none()
-        if row is None:
-            return None
-        row.status = "sent"
-        row.last_error = None
-        row.updated_at = _utcnow_naive()
-        await session.flush()
-        return self._to_definition(row)
 
     async def mark_task_failed(
         self,
-        session: "AsyncSession",
         *,
         task_id: str,
         error: str,
     ) -> AIFutureTaskDefinition | None:
-        result = await session.execute(
-            select(AIFutureTask).where(AIFutureTask.task_id == task_id)
+        return self._update_task_status(
+            task_id=task_id,
+            status="failed",
+            last_error=error,
         )
-        row = result.scalar_one_or_none()
-        if row is None:
-            return None
-        row.status = "failed"
-        row.last_error = error
-        row.updated_at = _utcnow_naive()
-        await session.flush()
-        return self._to_definition(row)
 
     @staticmethod
     def build_confirmation_message(task: AIFutureTaskDefinition) -> str:
@@ -213,97 +205,73 @@ class AIFutureTaskService:
     def build_schedule_failed_message(task: AIFutureTaskDefinition) -> str:
         return f"我记下了这个提醒，但这次没有成功安排任务：{task.description}"
 
-    @staticmethod
-    def _to_definition(row: AIFutureTask) -> AIFutureTaskDefinition:
-        trigger_at = (
-            row.trigger_at.replace(tzinfo=timezone.utc)
-            if row.trigger_at.tzinfo is None
-            else row.trigger_at
-        )
-        created_at = (
-            row.created_at.replace(tzinfo=timezone.utc)
-            if row.created_at.tzinfo is None
-            else row.created_at
-        )
-        updated_at = (
-            row.updated_at.replace(tzinfo=timezone.utc)
-            if row.updated_at.tzinfo is None
-            else row.updated_at
-        )
-        return AIFutureTaskDefinition(
-            task_id=row.task_id,
-            session_id=row.session_id,
-            platform=row.platform,
-            scene_type=cast("SceneType", row.scene_type),
-            scene_id=row.scene_id,
-            user_id=row.user_id,
-            title=row.title,
-            description=row.description,
-            trigger_at=trigger_at,
-            status=cast("AIFutureTaskStatus", row.status),
-            source_message_id=row.source_message_id,
-            scheduler_job_id=row.scheduler_job_id,
-            last_error=row.last_error,
-            created_at=created_at,
-            updated_at=updated_at,
-        )
+    def _update_task_status(
+        self,
+        *,
+        task_id: str,
+        status: AIFutureTaskStatus,
+        last_error: str | None,
+    ) -> AIFutureTaskDefinition | None:
+        with self._lock:
+            task = self._tasks.get(task_id)
+            if task is None:
+                return None
+            task = replace(
+                task,
+                status=status,
+                last_error=last_error,
+                updated_at=_utcnow(),
+            )
+            self._tasks[task_id] = task
+            return task
 
 
 async def execute_future_task(task_id: str) -> None:
     """Wake the AI runtime for one due future task."""
 
-    async with get_session() as session:
-        task = await ai_future_task_service.get_task(session, task_id=task_id)
-        if task is None or task.status != "pending":
-            return
-        await ai_future_task_service.mark_task_running(session, task_id=task_id)
-        await session.commit()
+    task = await ai_future_task_service.get_task(task_id=task_id)
+    if task is None or task.status != "pending":
+        return
+    await ai_future_task_service.mark_task_running(task_id=task_id)
 
     try:
         from apeiria.ai.pipeline.service import ai_runtime_service
 
         runtime_result = await ai_runtime_service.handle_future_task(task_id)
     except Exception as exc:  # noqa: BLE001
-        async with get_session() as session:
-            await ai_future_task_service.mark_task_failed(
-                session,
-                task_id=task_id,
-                error=str(exc),
-            )
-            await session.commit()
+        await ai_future_task_service.mark_task_failed(
+            task_id=task_id,
+            error=str(exc),
+        )
         logger.opt(exception=exc).warning(
             "Failed to execute AI future task {}",
             task_id,
         )
         return
 
-    async with get_session() as session:
-        task = await ai_future_task_service.get_task(session, task_id=task_id)
-        if task is None or task.status != "running":
-            return
-        if runtime_result is None:
-            await ai_future_task_service.mark_task_failed(
-                session,
-                task_id=task_id,
-                error="future task runtime produced no reply",
-            )
-        elif (
-            runtime_result.delivery_result is None
-            or not runtime_result.delivery_result.delivered
-        ):
-            await ai_future_task_service.mark_task_failed(
-                session,
-                task_id=task_id,
-                error=(
-                    runtime_result.delivery_result.error
-                    if runtime_result.delivery_result is not None
-                    and runtime_result.delivery_result.error
-                    else "future task delivery failed"
-                ),
-            )
-        else:
-            await ai_future_task_service.mark_task_sent(session, task_id=task_id)
-        await session.commit()
+    task = await ai_future_task_service.get_task(task_id=task_id)
+    if task is None or task.status != "running":
+        return
+    if runtime_result is None:
+        await ai_future_task_service.mark_task_failed(
+            task_id=task_id,
+            error="future task runtime produced no reply",
+        )
+    elif (
+        runtime_result.delivery_result is None
+        or not runtime_result.delivery_result.delivered
+    ):
+        await ai_future_task_service.mark_task_failed(
+            task_id=task_id,
+            error=(
+                runtime_result.delivery_result.error
+                if runtime_result.delivery_result is not None
+                and runtime_result.delivery_result.error
+                else "future task delivery failed"
+            ),
+        )
+    else:
+        await ai_future_task_service.mark_task_sent(task_id=task_id)
 
 
 ai_future_task_service = AIFutureTaskService()

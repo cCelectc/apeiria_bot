@@ -100,12 +100,6 @@ __plugin_meta__ = PluginMetadata(
                     type=int,
                 ),
                 RegisterConfig(
-                    key="future_task_retention_days",
-                    default=30,
-                    help="Retention window for terminal AI future task rows.",
-                    type=int,
-                ),
-                RegisterConfig(
                     key="ignored_memory_retention_days",
                     default=30,
                     help="Retention window for ignored AI memory rows.",
