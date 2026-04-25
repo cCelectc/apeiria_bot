@@ -52,6 +52,7 @@ class ApeiriaDatabase:
         """Open one SQLite transaction for a logical write operation."""
 
         with self.connect_sync() as connection:
+            connection.execute("BEGIN IMMEDIATE")
             yield connection
 
     def ensure_ready(self) -> None:

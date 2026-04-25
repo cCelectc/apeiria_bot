@@ -80,6 +80,92 @@ def test_conversation_service_uses_sqlite(
     asyncio.run(scenario())
 
 
+def test_session_upsert_uses_scene_identity_and_cascades_session_id_updates(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setattr(database_runtime, "_project_root", tmp_path)
+    database_runtime.ensure_ready()
+
+    from apeiria.ai.conversation.models import ChatSessionIdentity
+    from apeiria.ai.conversation.service import chat_session_service
+
+    old_time = "2026-04-25T00:00:00"
+    with database_runtime.connect_sync() as connection:
+        connection.execute(
+            """
+            INSERT INTO chat_session (
+                session_id,
+                platform,
+                bot_id,
+                scene_type,
+                scene_id,
+                created_at,
+                updated_at,
+                last_message_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "session-old",
+                "onebot",
+                "bot-1",
+                "private",
+                "user-1",
+                old_time,
+                old_time,
+                old_time,
+            ),
+        )
+        connection.execute(
+            """
+            INSERT INTO ai_tool_execution (
+                execution_id,
+                session_id,
+                tool_name,
+                status,
+                created_at
+            ) VALUES (?, ?, ?, ?, ?)
+            """,
+            ("exec-1", "session-old", "tool.test", "success", old_time),
+        )
+
+    identity = ChatSessionIdentity(
+        session_id="session-new",
+        platform="onebot",
+        bot_id="bot-1",
+        scene_type="private",
+        scene_id="user-1",
+        subject_id="user-1",
+    )
+
+    async def scenario() -> None:
+        row = await chat_session_service.ensure_session(identity)
+        assert row.session_id == "session-new"
+
+    asyncio.run(scenario())
+
+    with database_runtime.connect_sync() as connection:
+        session_rows = connection.execute(
+            """
+            SELECT session_id
+            FROM chat_session
+            WHERE platform = ? AND bot_id = ? AND scene_type = ? AND scene_id = ?
+            """,
+            ("onebot", "bot-1", "private", "user-1"),
+        ).fetchall()
+        execution_session_id = connection.execute(
+            """
+            SELECT session_id
+            FROM ai_tool_execution
+            WHERE execution_id = ?
+            """,
+            ("exec-1",),
+        ).fetchone()
+
+    assert session_rows == [("session-new",)]
+    assert execution_session_id == ("session-new",)
+
+
 def test_session_admin_does_not_open_orm_session(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

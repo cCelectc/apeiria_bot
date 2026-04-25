@@ -117,6 +117,12 @@ def test_database_schema_declares_foreign_keys_and_delete_rules(
             "session_id",
             "session_id",
             "CASCADE",
+        ) in _foreign_key_update_actions(connection, "ai_tool_execution")
+        assert (
+            "chat_session",
+            "session_id",
+            "session_id",
+            "CASCADE",
         ) in _foreign_keys(connection, "ai_tool_execution")
         assert (
             "chat_session",
@@ -249,6 +255,16 @@ def _foreign_keys(
 ) -> set[tuple[str, str, str, str]]:
     return {
         (str(row[2]), str(row[3]), str(row[4]), str(row[6]))
+        for row in connection.execute(f"PRAGMA foreign_key_list({table_name})")
+    }
+
+
+def _foreign_key_update_actions(
+    connection: "Connection",
+    table_name: str,
+) -> set[tuple[str, str, str, str]]:
+    return {
+        (str(row[2]), str(row[3]), str(row[4]), str(row[5]))
         for row in connection.execute(f"PRAGMA foreign_key_list({table_name})")
     }
 

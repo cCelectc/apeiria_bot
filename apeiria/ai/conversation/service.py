@@ -275,11 +275,8 @@ class ChatSessionService:
                 updated_at,
                 last_message_at
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(session_id) DO UPDATE SET
-                platform = excluded.platform,
-                bot_id = excluded.bot_id,
-                scene_type = excluded.scene_type,
-                scene_id = excluded.scene_id,
+            ON CONFLICT(platform, bot_id, scene_type, scene_id) DO UPDATE SET
+                session_id = excluded.session_id,
                 subject_id = excluded.subject_id,
                 updated_at = excluded.updated_at,
                 last_message_at = excluded.last_message_at
@@ -297,8 +294,20 @@ class ChatSessionService:
             ),
         )
         row = connection.execute(
-            _SELECT_CHAT_SESSION_FIELDS + " WHERE session_id = ?",
-            (identity.session_id,),
+            _SELECT_CHAT_SESSION_FIELDS
+            + """
+            WHERE
+                platform = ?
+                AND bot_id = ?
+                AND scene_type = ?
+                AND scene_id = ?
+            """,
+            (
+                identity.platform,
+                identity.bot_id,
+                identity.scene_type,
+                identity.scene_id,
+            ),
         ).fetchone()
         assert row is not None
         return _row_to_chat_session(row)

@@ -552,6 +552,7 @@ def _create_tool_execution_tables(connection: sqlite3.Connection) -> None:
             created_at TEXT NOT NULL,
             FOREIGN KEY(session_id)
                 REFERENCES chat_session(session_id)
+                ON UPDATE CASCADE
                 ON DELETE CASCADE
         )
         """
