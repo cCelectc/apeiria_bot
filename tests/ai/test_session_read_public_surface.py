@@ -15,14 +15,14 @@ PROMPT_PREVIEW_TURN_LIMIT = 9
 
 def test_import_apeiria_ai_session_read_exposes_public_surface() -> None:
     for module_name in (
-        "apeiria.ai.session_read",
-        "apeiria.ai.session_read.facade",
+        "apeiria.app.ai.session_read",
+        "apeiria.app.ai.session_read.facade",
     ):
         sys.modules.pop(module_name, None)
 
-    module = importlib.import_module("apeiria.ai.session_read")
+    module = importlib.import_module("apeiria.app.ai.session_read")
 
-    assert module.__name__ == "apeiria.ai.session_read"
+    assert module.__name__ == "apeiria.app.ai.session_read"
     assert module.__all__ == [
         "AIRecentTarget",
         "AISessionPromptChannels",
@@ -30,6 +30,18 @@ def test_import_apeiria_ai_session_read_exposes_public_surface() -> None:
         "AISessionReadService",
         "ai_session_read_service",
     ]
+
+
+def test_legacy_ai_session_read_package_is_gone() -> None:
+    for module_name in (
+        "apeiria.ai.session_read",
+        "apeiria.ai.session_read.facade",
+        "apeiria.ai.session_read.targets",
+    ):
+        sys.modules.pop(module_name, None)
+
+    with pytest.raises(ModuleNotFoundError):
+        importlib.import_module("apeiria.ai.session_read")
 
 
 def test_ai_runtime_admin_service_no_longer_owns_session_reads() -> None:
@@ -57,7 +69,7 @@ def test_legacy_ai_admin_types_module_is_gone() -> None:
 
 def test_import_session_read_targets_stays_lightweight() -> None:
     for module_name in (
-        "apeiria.ai.session_read.targets",
+        "apeiria.app.ai.session_read.targets",
         "apeiria.ai.model.service",
         "apeiria.ai.persona.service",
         "apeiria.ai.pipeline.composer",
@@ -65,9 +77,9 @@ def test_import_session_read_targets_stays_lightweight() -> None:
     ):
         sys.modules.pop(module_name, None)
 
-    module = importlib.import_module("apeiria.ai.session_read.targets")
+    module = importlib.import_module("apeiria.app.ai.session_read.targets")
 
-    assert module.__name__ == "apeiria.ai.session_read.targets"
+    assert module.__name__ == "apeiria.app.ai.session_read.targets"
     assert "apeiria.ai.model.service" not in sys.modules
     assert "apeiria.ai.persona.service" not in sys.modules
     assert "apeiria.ai.pipeline.composer" not in sys.modules

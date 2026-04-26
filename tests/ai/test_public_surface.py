@@ -88,6 +88,7 @@ def test_ai_service_status_reports_active_runtime() -> None:
 @pytest.mark.parametrize(
     "module_name",
     [
+        "apeiria.ai.conversation",
         "apeiria.ai.conversation.identity",
         "apeiria.ai.conversation.models",
         "apeiria.ai.conversation.service",

@@ -6,7 +6,6 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Query
 
-from apeiria.ai.session_read import ai_session_read_service
 from apeiria.ai.webui.schemas import (
     AIChatMessageItem,
     AIRecentTargetItem,
@@ -19,6 +18,7 @@ from apeiria.ai.webui.session_support import (
     to_ai_session_item,
     to_ai_session_prompt_preview_item,
 )
+from apeiria.app.ai.session_read import ai_session_read_service
 from apeiria.webui.auth import require_control_panel
 
 router = APIRouter()

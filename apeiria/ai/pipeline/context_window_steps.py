@@ -4,11 +4,11 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from apeiria.ai.conversation.context_window import (
+from apeiria.app.ai.conversation_context.context_window import (
     MAX_FETCH_MESSAGES,
     context_window_service,
 )
-from apeiria.ai.conversation.summary import (
+from apeiria.app.ai.conversation_context.summary import (
     build_short_conversation_summary,
     compress_conversation_history,
 )

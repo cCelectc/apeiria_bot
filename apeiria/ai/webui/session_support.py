@@ -14,7 +14,7 @@ from apeiria.ai.webui.schemas import (
 from apeiria.ai.webui.support import to_ai_memory_item
 
 if TYPE_CHECKING:
-    from apeiria.ai.session_read.models import (
+    from apeiria.app.ai.session_read.models import (
         AIRecentTarget,
         AISessionPromptChannels,
         AISessionPromptPreview,

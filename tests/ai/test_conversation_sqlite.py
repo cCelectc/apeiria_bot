@@ -181,7 +181,7 @@ def test_session_read_service_does_not_open_orm_session(
     stub_nonebot_plugin_orm.get_session = unexpected_get_session  # type: ignore[attr-defined]
     monkeypatch.setitem(sys.modules, "nonebot_plugin_orm", stub_nonebot_plugin_orm)
 
-    from apeiria.ai.session_read import ai_session_read_service
+    from apeiria.app.ai.session_read import ai_session_read_service
     from apeiria.conversation.models import ChatSessionIdentity
     from apeiria.conversation.service import (
         ChatMessageCreate,
