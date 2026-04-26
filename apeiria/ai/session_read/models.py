@@ -1,4 +1,4 @@
-"""Admin-only AI workbench view models."""
+"""AI session read models for browsing and workbench preview surfaces."""
 
 from __future__ import annotations
 
@@ -78,7 +78,7 @@ class AISessionPromptPreview:
     social_reason_codes: tuple[str, ...]
     social_policy_source: str | None
     tool_results: tuple[str, ...]
-    memories: tuple[AIMemoryDefinition, ...]
+    memories: tuple["AIMemoryDefinition", ...]
     operator_memory_count: int
     summary_memory_count: int
     long_term_memory_count: int

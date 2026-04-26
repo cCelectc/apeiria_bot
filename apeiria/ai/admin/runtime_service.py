@@ -6,7 +6,6 @@ from apeiria.ai.admin.future_tasks import FutureTasksAdminMixin
 from apeiria.ai.admin.memories import MemoriesAdminMixin
 from apeiria.ai.admin.person_profiles import PersonProfilesAdminMixin
 from apeiria.ai.admin.relationships import RelationshipsAdminMixin
-from apeiria.ai.admin.sessions import SessionsAdminMixin
 
 
 class AIRuntimeAdminService(
@@ -14,7 +13,6 @@ class AIRuntimeAdminService(
     MemoriesAdminMixin,
     PersonProfilesAdminMixin,
     RelationshipsAdminMixin,
-    SessionsAdminMixin,
 ):
     """Read and mutation operations for AI runtime-state surfaces."""
 

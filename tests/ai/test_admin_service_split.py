@@ -68,7 +68,7 @@ def test_control_plane_route_files_import_control_service() -> None:
         "apeiria/ai/webui/routes/memories.py": "ai_runtime_admin_service",
         "apeiria/ai/webui/routes/person_profiles.py": "ai_runtime_admin_service",
         "apeiria/ai/webui/routes/relationships.py": "ai_runtime_admin_service",
-        "apeiria/ai/webui/routes/sessions.py": "ai_runtime_admin_service",
+        "apeiria/ai/webui/routes/sessions.py": "ai_session_read_service",
     }
 
     for relative_path, symbol in expected.items():

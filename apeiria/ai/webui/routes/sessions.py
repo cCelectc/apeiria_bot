@@ -6,14 +6,14 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Query
 
-from apeiria.ai.admin.runtime_service import ai_runtime_admin_service
+from apeiria.ai.session_read import ai_session_read_service
 from apeiria.ai.webui.schemas import (
     AIChatMessageItem,
     AIRecentTargetItem,
     AISessionItem,
     AISessionPromptPreviewItem,
 )
-from apeiria.ai.webui.support import (
+from apeiria.ai.webui.session_support import (
     to_ai_chat_message_item,
     to_ai_recent_target_item,
     to_ai_session_item,
@@ -29,7 +29,7 @@ async def list_ai_recent_targets(
     _: Annotated[Any, Depends(require_control_panel)],
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
 ) -> list[AIRecentTargetItem]:
-    targets = await ai_runtime_admin_service.list_recent_targets(limit=limit)
+    targets = await ai_session_read_service.list_recent_targets(limit=limit)
     return [to_ai_recent_target_item(item) for item in targets]
 
 
@@ -38,7 +38,7 @@ async def list_ai_scenes(
     _: Annotated[Any, Depends(require_control_panel)],
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
 ) -> list[AISessionItem]:
-    conversations = await ai_runtime_admin_service.list_recent_sessions(limit=limit)
+    conversations = await ai_session_read_service.list_recent_sessions(limit=limit)
     return [to_ai_session_item(item) for item in conversations]
 
 
@@ -48,7 +48,7 @@ async def list_ai_scene_turns(
     scene_id: Annotated[str, Query(min_length=1)],
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
 ) -> list[AIChatMessageItem]:
-    turns = await ai_runtime_admin_service.list_scene_turns(
+    turns = await ai_session_read_service.list_scene_turns(
         scene_id=scene_id,
         limit=limit,
     )
@@ -64,7 +64,7 @@ async def get_ai_scene_prompt_preview(
     scene_id: Annotated[str, Query(min_length=1)],
     turn_limit: Annotated[int, Query(ge=1, le=200)] = 50,
 ) -> AISessionPromptPreviewItem | None:
-    preview = await ai_runtime_admin_service.build_scene_prompt_preview(
+    preview = await ai_session_read_service.build_scene_prompt_preview(
         scene_id=scene_id,
         turn_limit=turn_limit,
     )

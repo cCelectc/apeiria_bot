@@ -166,7 +166,7 @@ def test_session_upsert_uses_scene_identity_and_cascades_session_id_updates(
     assert execution_session_id == ("session-new",)
 
 
-def test_session_admin_does_not_open_orm_session(
+def test_session_read_service_does_not_open_orm_session(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -181,15 +181,12 @@ def test_session_admin_does_not_open_orm_session(
     stub_nonebot_plugin_orm.get_session = unexpected_get_session  # type: ignore[attr-defined]
     monkeypatch.setitem(sys.modules, "nonebot_plugin_orm", stub_nonebot_plugin_orm)
 
-    from apeiria.ai.admin.sessions import SessionsAdminMixin
+    from apeiria.ai.session_read import ai_session_read_service
     from apeiria.conversation.models import ChatSessionIdentity
     from apeiria.conversation.service import (
         ChatMessageCreate,
         chat_session_service,
     )
-
-    class _Admin(SessionsAdminMixin):
-        pass
 
     identity = ChatSessionIdentity(
         session_id="onebot:bot-1:private:user-1",
@@ -209,8 +206,10 @@ def test_session_admin_does_not_open_orm_session(
                 text_content="hello",
             ),
         )
-        sessions = await _Admin().list_recent_sessions(limit=10)
-        turns = await _Admin().list_scene_turns(scene_id=identity.session_id)
+        sessions = await ai_session_read_service.list_recent_sessions(limit=10)
+        turns = await ai_session_read_service.list_scene_turns(
+            scene_id=identity.session_id
+        )
         assert [session.session_id for session in sessions] == [identity.session_id]
         assert [turn.text_content for turn in turns] == ["hello"]
 
