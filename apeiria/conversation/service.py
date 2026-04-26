@@ -3,16 +3,13 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any, cast
 from uuid import uuid4
 
-from apeiria.conversation.identity import (
-    build_chat_session_identity_from_event,
-    trim_message_window,
-)
+from apeiria.conversation.identity import trim_message_window
+from apeiria.conversation.ingest import build_ingested_chat_event
 from apeiria.conversation.models import (
     AuthorRole,
     ChatContextMessageView,
@@ -30,9 +27,6 @@ if TYPE_CHECKING:
     from nonebot.adapters import Bot, Event
 
     from apeiria.conversation.models import SceneType
-
-
-_MEDIA_TYPES = {"image", "img", "audio", "record", "video", "file"}
 
 
 @dataclass
@@ -321,46 +315,32 @@ class ChatSessionService:
     ) -> tuple[ChatSessionIdentity, _ChatMessageRow] | None:
         """Convert one runtime event into a canonical chat message."""
 
-        identity = build_chat_session_identity_from_event(bot, event)
-        if identity is None:
+        ingested = build_ingested_chat_event(
+            bot,
+            event,
+            persist_raw_data=persist_raw_data,
+        )
+        if ingested is None:
             return None
 
-        raw_data = (
-            event.model_dump(mode="json") if hasattr(event, "model_dump") else None
-        )
-        text_content = event.get_plaintext()
-        mentions_bot = bool(hasattr(event, "is_tome") and event.is_tome())
-        author_id = str(event.get_user_id())
-        author_name = _extract_author_name(raw_data) or author_id
-        platform_message_id = _extract_platform_message_id(event, raw_data)
-        platform_reply_id = _extract_platform_reply_id(raw_data)
-        has_media = _detect_has_media(raw_data)
-        content = _build_normalized_content(
-            raw_data=raw_data, text_content=text_content
-        )
-        message_kind = _resolve_message_kind(
-            text_content=text_content, has_media=has_media
-        )
         message = await self.append_message(
-            identity,
+            ingested.identity,
             ChatMessageCreate(
                 author_role="user",
-                author_id=author_id,
-                author_name=author_name,
-                text_content=text_content,
-                message_kind=message_kind,
-                directed_to_bot=(identity.scene_type == "private" or mentions_bot),
-                mentions_bot=mentions_bot,
-                has_media=has_media,
-                platform_message_id=platform_message_id,
-                platform_reply_id=platform_reply_id,
-                content=content,
-                raw_data=(
-                    _build_debug_raw_payload(raw_data) if persist_raw_data else None
-                ),
+                author_id=ingested.author_id,
+                author_name=ingested.author_name,
+                text_content=ingested.text_content,
+                message_kind=ingested.message_kind,
+                directed_to_bot=ingested.directed_to_bot,
+                mentions_bot=ingested.mentions_bot,
+                has_media=ingested.has_media,
+                platform_message_id=ingested.platform_message_id,
+                platform_reply_id=ingested.platform_reply_id,
+                content=ingested.content,
+                raw_data=ingested.raw_data,
             ),
         )
-        return identity, message
+        return ingested.identity, message
 
     async def list_recent_messages(
         self,
@@ -647,189 +627,3 @@ def _row_to_chat_message(row: tuple[object, ...]) -> _ChatMessageRow:
 
 
 chat_session_service = ChatSessionService()
-
-
-def _extract_platform_message_id(
-    event: "Event", raw_data: dict[str, Any] | None
-) -> str | None:
-    getter = getattr(event, "get_message_id", None)
-    if callable(getter):
-        try:
-            value = getter()
-            if value is not None:
-                return str(value)
-        except Exception:  # noqa: BLE001
-            pass
-    if not raw_data:
-        return None
-    for key in ("message_id", "id"):
-        value = raw_data.get(key)
-        if value is not None:
-            return str(value)
-    return None
-
-
-def _extract_platform_reply_id(raw_data: dict[str, Any] | None) -> str | None:
-    if not raw_data:
-        return None
-    reply = raw_data.get("reply")
-    if isinstance(reply, dict):
-        for key in ("message_id", "id"):
-            value = reply.get(key)
-            if value is not None:
-                return str(value)
-    return None
-
-
-def _extract_author_name(raw_data: dict[str, Any] | None) -> str | None:
-    if not raw_data:
-        return None
-    sender = raw_data.get("sender")
-    if isinstance(sender, dict):
-        for key in ("card", "nickname", "name"):
-            value = sender.get(key)
-            if isinstance(value, str) and value.strip():
-                return value.strip()
-    for key in ("user_name", "nickname", "name"):
-        value = raw_data.get(key)
-        if isinstance(value, str) and value.strip():
-            return value.strip()
-    return None
-
-
-def _detect_has_media(raw_data: dict[str, Any] | None) -> bool:
-    if not raw_data:
-        return False
-    message = raw_data.get("message")
-    if isinstance(message, list):
-        for segment in message:
-            if isinstance(segment, dict):
-                seg_type = segment.get("type")
-                if isinstance(seg_type, str) and seg_type in _MEDIA_TYPES:
-                    return True
-    return False
-
-
-def _resolve_message_kind(*, text_content: str, has_media: bool) -> MessageKind:
-    has_text = bool(text_content.strip())
-    if has_text and has_media:
-        return "mixed"
-    if has_media:
-        return "media"
-    return "text"
-
-
-def _build_normalized_content(  # noqa: C901, PLR0912
-    *,
-    raw_data: dict[str, Any] | None,
-    text_content: str,
-) -> dict[str, Any]:
-    segments: list[dict[str, Any]] = []
-    if text_content.strip():
-        segments.append({"type": "text", "text": text_content.strip()})
-
-    mentioned_user_ids: list[str] = []
-    quoted_text: str | None = None
-    if raw_data:
-        reply = raw_data.get("reply")
-        if isinstance(reply, dict):
-            for key in ("text", "message", "content"):
-                value = reply.get(key)
-                if isinstance(value, str) and value.strip():
-                    quoted_text = value.strip()
-                    break
-        message = raw_data.get("message")
-        if isinstance(message, list):
-            for segment in message:
-                if not isinstance(segment, dict):
-                    continue
-                seg_type = segment.get("type")
-                data = segment.get("data")
-                if not isinstance(seg_type, str):
-                    continue
-                if seg_type == "at" and isinstance(data, dict):
-                    qq = data.get("qq")
-                    if qq is not None:
-                        mentioned_user_ids.append(str(qq))
-                elif seg_type in _MEDIA_TYPES:
-                    segments.append({"type": seg_type})
-
-    payload: dict[str, Any] = {
-        "segments": segments,
-        "plain_text": text_content,
-        "mentioned_user_ids": mentioned_user_ids,
-    }
-    if quoted_text:
-        payload["quoted_text"] = quoted_text
-    return payload
-
-
-def _build_debug_raw_payload(
-    raw_data: dict[str, Any] | None,
-) -> dict[str, Any] | None:
-    if not raw_data:
-        return None
-
-    payload: dict[str, Any] = {}
-    for key in (
-        "message_id",
-        "id",
-        "time",
-        "self_id",
-        "user_id",
-        "group_id",
-        "post_type",
-        "message_type",
-        "sub_type",
-        "notice_type",
-        "request_type",
-    ):
-        value = raw_data.get(key)
-        if isinstance(value, (str, int, float, bool)):
-            payload[key] = value
-
-    sender = raw_data.get("sender")
-    sender_summary = _build_mapping_summary(
-        sender,
-        allowed_keys=("user_id", "nickname", "card", "name", "role"),
-    )
-    if sender_summary:
-        payload["sender"] = sender_summary
-
-    reply = raw_data.get("reply")
-    reply_summary = _build_mapping_summary(
-        reply,
-        allowed_keys=("message_id", "id", "user_id", "text"),
-    )
-    if reply_summary:
-        payload["reply"] = reply_summary
-
-    message = raw_data.get("message")
-    if isinstance(message, list):
-        segment_types = [
-            seg_type
-            for segment in message
-            if isinstance(segment, Mapping)
-            and isinstance((seg_type := segment.get("type")), str)
-            and seg_type.strip()
-        ]
-        if segment_types:
-            payload["message_segment_types"] = segment_types[:20]
-
-    return payload or None
-
-
-def _build_mapping_summary(
-    value: object,
-    *,
-    allowed_keys: tuple[str, ...],
-) -> dict[str, Any] | None:
-    if not isinstance(value, Mapping):
-        return None
-
-    summary = {
-        key: item
-        for key in allowed_keys
-        if isinstance((item := value.get(key)), (str, int, float, bool))
-    }
-    return summary or None
