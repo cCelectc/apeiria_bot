@@ -31,12 +31,12 @@ def test_tool_policy_admin_import_is_safe_without_nonebot_plugin_orm(
         return original_import(name, globalns, localns, fromlist, level)
 
     monkeypatch.setattr(builtins, "__import__", guarded_import)
-    sys.modules.pop("apeiria.ai.admin.tools", None)
+    sys.modules.pop("apeiria.app.ai.admin.tools", None)
     sys.modules.pop("apeiria.ai.tools.policy", None)
 
-    module = importlib.import_module("apeiria.ai.admin.tools")
+    module = importlib.import_module("apeiria.app.ai.admin.tools")
 
-    assert module.__name__ == "apeiria.ai.admin.tools"
+    assert module.__name__ == "apeiria.app.ai.admin.tools"
 
 
 def test_preview_tool_intents_does_not_open_orm_session(
@@ -50,8 +50,8 @@ def test_preview_tool_intents_does_not_open_orm_session(
     stub_nonebot_plugin_orm.get_session = unexpected_get_session  # type: ignore[attr-defined]
     monkeypatch.setitem(sys.modules, "nonebot_plugin_orm", stub_nonebot_plugin_orm)
 
-    from apeiria.ai.admin import tools as admin_tools
     from apeiria.ai.tools import service as tool_service_module
+    from apeiria.app.ai.admin import tools as admin_tools
 
     captured_kwargs: list[dict[str, object]] = []
 
@@ -87,12 +87,12 @@ def test_tool_policy_bindings_use_control_plane_sqlite(
     monkeypatch.setattr(database_runtime, "_project_root", tmp_path)
     database_runtime.ensure_ready()
 
-    from apeiria.ai.admin import tools as admin_tools
     from apeiria.ai.tools.policy import (
         AIToolPolicyBindingTarget,
         AIToolSceneContext,
         ai_tool_policy_binding_service,
     )
+    from apeiria.app.ai.admin import tools as admin_tools
 
     audit_events: list[tuple[str, str | None, str | None]] = []
     monkeypatch.setattr(

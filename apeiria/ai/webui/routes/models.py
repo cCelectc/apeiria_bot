@@ -6,14 +6,6 @@ from typing import TYPE_CHECKING, Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
-from apeiria.ai.admin.control_service import (
-    AISourceModelDeleteBlockedError,
-    AISourceModelFetchConfigError,
-    AISourceModelFetchUpstreamError,
-    AISourceModelTestConfigError,
-    AISourceModelTestUpstreamError,
-    ai_control_admin_service,
-)
 from apeiria.ai.webui.schemas import (
     AIModelBindingItem,
     AIModelCatalogItem,
@@ -30,6 +22,14 @@ from apeiria.ai.webui.support import (
     to_ai_model_catalog_item,
     to_ai_model_profile_item,
     to_ai_source_model_item,
+)
+from apeiria.app.ai.admin.control_service import (
+    AISourceModelDeleteBlockedError,
+    AISourceModelFetchConfigError,
+    AISourceModelFetchUpstreamError,
+    AISourceModelTestConfigError,
+    AISourceModelTestUpstreamError,
+    ai_control_admin_service,
 )
 from apeiria.webui.auth import require_control_panel
 

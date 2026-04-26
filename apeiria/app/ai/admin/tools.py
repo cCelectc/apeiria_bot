@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from apeiria.ai.admin.audit import record_ai_admin_audit
 from apeiria.ai.skills import ai_skill_service
 from apeiria.ai.tools import (
     AIToolPolicyBindingCreateInput,
@@ -15,6 +14,7 @@ from apeiria.ai.tools import (
     ai_tool_service,
     resolve_default_tool_policy,
 )
+from apeiria.app.ai.admin.audit import record_ai_admin_audit
 
 if TYPE_CHECKING:
     from apeiria.ai.skills import AISkillDefinition

@@ -19,18 +19,18 @@ UPDATED_TIMEOUT_SECONDS = 45
 
 
 def test_import_ai_admin_sources_does_not_require_nonebot_runtime() -> None:
-    sys.modules.pop("apeiria.ai.admin.sources", None)
+    sys.modules.pop("apeiria.app.ai.admin.sources", None)
 
-    module = importlib.import_module("apeiria.ai.admin.sources")
+    module = importlib.import_module("apeiria.app.ai.admin.sources")
 
-    assert module.__name__ == "apeiria.ai.admin.sources"
+    assert module.__name__ == "apeiria.app.ai.admin.sources"
 
 
 def test_sources_admin_crud_uses_new_database(
     tmp_path: Path,
     monkeypatch: MonkeyPatch,
 ) -> None:
-    from apeiria.ai.admin.sources import SourcesAdminMixin
+    from apeiria.app.ai.admin.sources import SourcesAdminMixin
 
     monkeypatch.setattr(database_runtime, "_project_root", tmp_path)
     database_runtime.ensure_ready()
@@ -83,9 +83,9 @@ def test_source_delete_is_blocked_when_source_models_exist(
     tmp_path: Path,
     monkeypatch: MonkeyPatch,
 ) -> None:
-    from apeiria.ai.admin.errors import AISourceDeleteBlockedError
-    from apeiria.ai.admin.models import ModelsAdminMixin
-    from apeiria.ai.admin.sources import SourcesAdminMixin
+    from apeiria.app.ai.admin.errors import AISourceDeleteBlockedError
+    from apeiria.app.ai.admin.models import ModelsAdminMixin
+    from apeiria.app.ai.admin.sources import SourcesAdminMixin
 
     monkeypatch.setattr(database_runtime, "_project_root", tmp_path)
     database_runtime.ensure_ready()
@@ -127,7 +127,7 @@ def test_source_admin_normalizes_capability_type_from_preset(
     tmp_path: Path,
     monkeypatch: MonkeyPatch,
 ) -> None:
-    from apeiria.ai.admin.sources import SourcesAdminMixin
+    from apeiria.app.ai.admin.sources import SourcesAdminMixin
 
     monkeypatch.setattr(database_runtime, "_project_root", tmp_path)
     database_runtime.ensure_ready()

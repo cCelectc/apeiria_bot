@@ -6,7 +6,6 @@ from typing import TYPE_CHECKING, Annotated, Any
 
 from fastapi import APIRouter, Depends, Query
 
-from apeiria.ai.admin.runtime_service import ai_runtime_admin_service
 from apeiria.ai.webui.schemas import (
     AIRelationshipEventItem,
     AIRelationshipScoreUpdateRequest,
@@ -16,6 +15,7 @@ from apeiria.ai.webui.support import (
     to_ai_relationship_event_item,
     to_ai_relationship_state_item,
 )
+from apeiria.app.ai.admin.runtime_service import ai_runtime_admin_service
 from apeiria.webui.auth import require_control_panel
 
 if TYPE_CHECKING:

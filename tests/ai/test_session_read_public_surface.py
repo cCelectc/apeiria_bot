@@ -45,7 +45,7 @@ def test_legacy_ai_session_read_package_is_gone() -> None:
 
 
 def test_ai_runtime_admin_service_no_longer_owns_session_reads() -> None:
-    module = importlib.import_module("apeiria.ai.admin.runtime_service")
+    module = importlib.import_module("apeiria.app.ai.admin.runtime_service")
 
     assert not hasattr(module.ai_runtime_admin_service, "list_recent_targets")
     assert not hasattr(module.ai_runtime_admin_service, "list_recent_sessions")

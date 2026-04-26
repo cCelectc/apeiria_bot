@@ -5,8 +5,6 @@ from __future__ import annotations
 import sqlite3
 from typing import TYPE_CHECKING, cast
 
-from apeiria.ai.admin.audit import record_ai_admin_audit
-from apeiria.ai.admin.errors import AISourceDeleteBlockedError
 from apeiria.ai.model import (
     AISourceCreateInput,
     AISourcePresetType,
@@ -15,6 +13,8 @@ from apeiria.ai.model import (
     resolve_capability_type_for_preset,
     resolve_client_type_for_preset,
 )
+from apeiria.app.ai.admin.audit import record_ai_admin_audit
+from apeiria.app.ai.admin.errors import AISourceDeleteBlockedError
 
 if TYPE_CHECKING:
     from apeiria.ai.model import (

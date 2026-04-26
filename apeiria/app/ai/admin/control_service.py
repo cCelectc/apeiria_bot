@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from apeiria.ai.admin.errors import (
+from apeiria.app.ai.admin.errors import (
     AIAdminModelNotFoundError,
     AISourceDeleteBlockedError,
     AISourceModelDeleteBlockedError,
@@ -11,10 +11,10 @@ from apeiria.ai.admin.errors import (
     AISourceModelTestConfigError,
     AISourceModelTestUpstreamError,
 )
-from apeiria.ai.admin.models import ModelsAdminMixin
-from apeiria.ai.admin.personas import PersonasAdminMixin
-from apeiria.ai.admin.sources import SourcesAdminMixin
-from apeiria.ai.admin.tools import ToolsAdminMixin
+from apeiria.app.ai.admin.models import ModelsAdminMixin
+from apeiria.app.ai.admin.personas import PersonasAdminMixin
+from apeiria.app.ai.admin.sources import SourcesAdminMixin
+from apeiria.app.ai.admin.tools import ToolsAdminMixin
 
 
 class AIControlAdminService(

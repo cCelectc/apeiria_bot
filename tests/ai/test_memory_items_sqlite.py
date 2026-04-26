@@ -99,7 +99,7 @@ def test_memory_admin_does_not_open_orm_session(
     stub_nonebot_plugin_orm.get_session = unexpected_get_session  # type: ignore[attr-defined]
     monkeypatch.setitem(sys.modules, "nonebot_plugin_orm", stub_nonebot_plugin_orm)
 
-    from apeiria.ai.admin.memories import MemoriesAdminMixin
+    from apeiria.app.ai.admin.memories import MemoriesAdminMixin
 
     class _Admin(MemoriesAdminMixin):
         pass

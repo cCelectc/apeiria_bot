@@ -6,11 +6,6 @@ from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
 from apeiria.access.groups import group_service
-from apeiria.ai.admin.workbench import (
-    extract_tool_result_lines,
-    select_latest_user_turn,
-    to_context_turns,
-)
 from apeiria.ai.model import AIModelBindingTarget, AIModelRouteQuery, ai_model_facade
 from apeiria.ai.persona import (
     AIPersonaBindingTarget,
@@ -41,6 +36,11 @@ from apeiria.ai.tools import (
     ai_tool_policy_binding_service,
     ai_tool_service,
     summarize_tool_policy,
+)
+from apeiria.app.ai.admin.workbench import (
+    extract_tool_result_lines,
+    select_latest_user_turn,
+    to_context_turns,
 )
 from apeiria.app.ai.reply_strategy import (
     count_recent_bot_turns,

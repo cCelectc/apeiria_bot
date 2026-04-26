@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from apeiria.ai.admin.audit import record_ai_admin_audit
 from apeiria.ai.future_task import ai_future_task_service
+from apeiria.app.ai.admin.audit import record_ai_admin_audit
 
 if TYPE_CHECKING:
     from apeiria.ai.future_task.models import AIFutureTaskDefinition

@@ -27,12 +27,12 @@ def test_import_ai_model_profile_service_does_not_require_nonebot_runtime() -> N
 
 
 def test_import_ai_admin_models_does_not_require_nonebot_plugin_orm() -> None:
-    sys.modules.pop("apeiria.ai.admin.models", None)
+    sys.modules.pop("apeiria.app.ai.admin.models", None)
     sys.modules.pop("nonebot_plugin_orm", None)
 
-    module = importlib.import_module("apeiria.ai.admin.models")
+    module = importlib.import_module("apeiria.app.ai.admin.models")
 
-    assert module.__name__ == "apeiria.ai.admin.models"
+    assert module.__name__ == "apeiria.app.ai.admin.models"
 
 
 def test_model_profile_service_uses_new_database(
@@ -130,7 +130,7 @@ def test_models_admin_profile_and_binding_methods_use_new_database(
     from apeiria.ai.model.models import AIModelRouteQuery
     from apeiria.ai.model.profile import AIModelProfileCreateInput
 
-    sys.modules.pop("apeiria.ai.admin.models", None)
+    sys.modules.pop("apeiria.app.ai.admin.models", None)
 
     stub_nonebot_plugin_orm = ModuleType("nonebot_plugin_orm")
 
@@ -140,7 +140,7 @@ def test_models_admin_profile_and_binding_methods_use_new_database(
     stub_nonebot_plugin_orm.get_session = unexpected_get_session  # type: ignore[attr-defined]
     monkeypatch.setitem(sys.modules, "nonebot_plugin_orm", stub_nonebot_plugin_orm)
 
-    admin_models = importlib.import_module("apeiria.ai.admin.models")
+    admin_models = importlib.import_module("apeiria.app.ai.admin.models")
 
     class TestAdmin(admin_models.ModelsAdminMixin):
         pass

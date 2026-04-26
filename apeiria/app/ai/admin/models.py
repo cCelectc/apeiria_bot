@@ -8,16 +8,6 @@ import wave
 from typing import TYPE_CHECKING, Literal, cast
 
 import apeiria.ai.model as ai_model
-from apeiria.ai.admin.audit import record_ai_admin_audit
-from apeiria.ai.admin.errors import (
-    AIAdminModelNotFoundError,
-    AISourceModelDeleteBlockedError,
-    AISourceModelFetchConfigError,
-    AISourceModelFetchUpstreamError,
-    AISourceModelTestConfigError,
-    AISourceModelTestUpstreamError,
-)
-from apeiria.ai.admin.sources import coerce_source_preset_type
 from apeiria.ai.model import (
     AIModelProfileCreateInput,
     AISourceCapabilityType,
@@ -30,6 +20,16 @@ from apeiria.ai.model import (
     ai_tts_model_service,
     resolve_client_type_for_preset,
 )
+from apeiria.app.ai.admin.audit import record_ai_admin_audit
+from apeiria.app.ai.admin.errors import (
+    AIAdminModelNotFoundError,
+    AISourceModelDeleteBlockedError,
+    AISourceModelFetchConfigError,
+    AISourceModelFetchUpstreamError,
+    AISourceModelTestConfigError,
+    AISourceModelTestUpstreamError,
+)
+from apeiria.app.ai.admin.sources import coerce_source_preset_type
 
 if TYPE_CHECKING:
     from apeiria.ai.model import (

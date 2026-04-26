@@ -6,7 +6,6 @@ from typing import TYPE_CHECKING, Annotated, Any
 
 from fastapi import APIRouter, Depends
 
-from apeiria.ai.admin.control_service import ai_control_admin_service
 from apeiria.ai.webui.schemas import (
     AIPersonaBindingItem,
     AIPersonaItem,
@@ -16,6 +15,7 @@ from apeiria.ai.webui.support import (
     to_ai_persona_binding_item,
     to_ai_persona_item,
 )
+from apeiria.app.ai.admin.control_service import ai_control_admin_service
 from apeiria.webui.auth import require_control_panel
 
 if TYPE_CHECKING:

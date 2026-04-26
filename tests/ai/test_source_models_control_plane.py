@@ -29,7 +29,7 @@ def test_source_model_admin_methods_use_new_database(
     tmp_path: Path,
     monkeypatch: MonkeyPatch,
 ) -> None:
-    from apeiria.ai.admin.sources import SourcesAdminMixin
+    from apeiria.app.ai.admin.sources import SourcesAdminMixin
 
     monkeypatch.setattr(database_runtime, "_project_root", tmp_path)
     database_runtime.ensure_ready()
@@ -52,7 +52,7 @@ def test_source_model_admin_methods_use_new_database(
 
     source_id = asyncio.run(seed_source())
 
-    sys.modules.pop("apeiria.ai.admin.models", None)
+    sys.modules.pop("apeiria.app.ai.admin.models", None)
     sys.modules.pop("nonebot_plugin_orm", None)
 
     stub_nonebot_plugin_orm = ModuleType("nonebot_plugin_orm")
@@ -63,7 +63,7 @@ def test_source_model_admin_methods_use_new_database(
     stub_nonebot_plugin_orm.get_session = unexpected_get_session  # type: ignore[attr-defined]
     monkeypatch.setitem(sys.modules, "nonebot_plugin_orm", stub_nonebot_plugin_orm)
 
-    admin_models = importlib.import_module("apeiria.ai.admin.models")
+    admin_models = importlib.import_module("apeiria.app.ai.admin.models")
 
     class TestAdmin(admin_models.ModelsAdminMixin):
         pass
@@ -110,7 +110,7 @@ def test_fetch_and_test_source_model_do_not_use_orm_session(
     tmp_path: Path,
     monkeypatch: MonkeyPatch,
 ) -> None:
-    from apeiria.ai.admin.sources import SourcesAdminMixin
+    from apeiria.app.ai.admin.sources import SourcesAdminMixin
 
     monkeypatch.setattr(database_runtime, "_project_root", tmp_path)
     database_runtime.ensure_ready()
@@ -133,7 +133,7 @@ def test_fetch_and_test_source_model_do_not_use_orm_session(
 
     source_id = asyncio.run(seed_source())
 
-    sys.modules.pop("apeiria.ai.admin.models", None)
+    sys.modules.pop("apeiria.app.ai.admin.models", None)
     sys.modules.pop("nonebot_plugin_orm", None)
 
     stub_nonebot_plugin_orm = ModuleType("nonebot_plugin_orm")
@@ -144,7 +144,7 @@ def test_fetch_and_test_source_model_do_not_use_orm_session(
     stub_nonebot_plugin_orm.get_session = unexpected_get_session  # type: ignore[attr-defined]
     monkeypatch.setitem(sys.modules, "nonebot_plugin_orm", stub_nonebot_plugin_orm)
 
-    admin_models = importlib.import_module("apeiria.ai.admin.models")
+    admin_models = importlib.import_module("apeiria.app.ai.admin.models")
     model_service = importlib.import_module("apeiria.ai.model.service")
     admin = admin_models.ModelsAdminMixin()
 

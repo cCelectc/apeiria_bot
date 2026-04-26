@@ -15,23 +15,23 @@ if TYPE_CHECKING:
 
 
 def test_import_ai_admin_personas_does_not_require_nonebot_runtime() -> None:
-    sys.modules.pop("apeiria.ai.admin.personas", None)
+    sys.modules.pop("apeiria.app.ai.admin.personas", None)
 
-    module = importlib.import_module("apeiria.ai.admin.personas")
+    module = importlib.import_module("apeiria.app.ai.admin.personas")
 
-    assert module.__name__ == "apeiria.ai.admin.personas"
+    assert module.__name__ == "apeiria.app.ai.admin.personas"
 
 
 def test_personas_admin_and_service_use_new_database(
     tmp_path: Path,
     monkeypatch: MonkeyPatch,
 ) -> None:
-    from apeiria.ai.admin.personas import PersonasAdminMixin
     from apeiria.ai.persona.models import AIPersonaBindingTarget
     from apeiria.ai.persona.service import (
         AIPersonaRenderContext,
         ai_persona_service,
     )
+    from apeiria.app.ai.admin.personas import PersonasAdminMixin
 
     monkeypatch.setattr(database_runtime, "_project_root", tmp_path)
     database_runtime.ensure_ready()

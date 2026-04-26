@@ -22,25 +22,34 @@ def test_import_ai_control_admin_service_is_safe_without_nonebot_plugin_orm() ->
             raise AssertionError(name)
         return original_import(name, globalns, localns, fromlist, level)
 
-    sys.modules.pop("apeiria.ai.admin.control_service", None)
+    sys.modules.pop("apeiria.app.ai.admin.control_service", None)
     builtins.__import__ = guarded_import
     try:
-        module = importlib.import_module("apeiria.ai.admin.control_service")
+        module = importlib.import_module("apeiria.app.ai.admin.control_service")
     finally:
         builtins.__import__ = original_import
 
-    assert module.__name__ == "apeiria.ai.admin.control_service"
+    assert module.__name__ == "apeiria.app.ai.admin.control_service"
 
 
-def test_legacy_ai_admin_service_module_is_gone() -> None:
-    sys.modules.pop("apeiria.ai.admin.service", None)
+@pytest.mark.parametrize(
+    "module_name",
+    [
+        "apeiria.ai.admin",
+        "apeiria.ai.admin.control_service",
+        "apeiria.ai.admin.runtime_service",
+        "apeiria.ai.admin.service",
+    ],
+)
+def test_legacy_ai_admin_modules_are_gone(module_name: str) -> None:
+    sys.modules.pop(module_name, None)
 
     with pytest.raises(ModuleNotFoundError):
-        importlib.import_module("apeiria.ai.admin.service")
+        importlib.import_module(module_name)
 
 
-def test_apeiria_ai_admin_package_no_longer_re_exports_legacy_service() -> None:
-    module = importlib.import_module("apeiria.ai.admin")
+def test_app_ai_admin_package_no_longer_re_exports_legacy_service() -> None:
+    module = importlib.import_module("apeiria.app.ai.admin")
 
     assert not hasattr(module, "AIAdminService")
     assert not hasattr(module, "ai_admin_service")

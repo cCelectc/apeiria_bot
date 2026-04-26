@@ -11,7 +11,6 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends
 
-from apeiria.ai.admin.control_service import ai_control_admin_service
 from apeiria.ai.webui.routes.future_tasks import (
     router as _future_tasks_router,
 )
@@ -37,6 +36,7 @@ from apeiria.ai.webui.routes.sources import (
 from apeiria.ai.webui.routes.tools import router as _tools_router
 from apeiria.ai.webui.schemas import AIBootstrapResponse
 from apeiria.ai.webui.support import to_ai_source_preset_item
+from apeiria.app.ai.admin.control_service import ai_control_admin_service
 from apeiria.webui.auth import require_control_panel
 
 router = APIRouter()
