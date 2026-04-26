@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from apeiria.ai.reply_strategy.models import WakeContext, WakeEngagement, WakeSignal
+from .models import WakeContext, WakeEngagement, WakeSignal
 
 if TYPE_CHECKING:
     from nonebot.adapters import Bot, Event

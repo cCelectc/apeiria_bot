@@ -7,12 +7,12 @@ from typing import TYPE_CHECKING
 
 from nonebot.log import logger
 
-from apeiria.ai.reply_strategy.initiative import (
+from .initiative import (
     check_initiative_budget,
     record_reply,
     record_silence,
 )
-from apeiria.ai.reply_strategy.models import (
+from .models import (
     InitiativeState,
     ReplyStrategyDecision,
     ReplyStrategyDecisionSource,
@@ -20,10 +20,10 @@ from apeiria.ai.reply_strategy.models import (
     WakeContext,
     judgment_to_decision,
 )
-from apeiria.ai.reply_strategy.social_judgment import (
+from .social_judgment import (
     evaluate_social_judgment,
 )
-from apeiria.ai.reply_strategy.wake_gate import evaluate_wake
+from .wake_gate import evaluate_wake
 
 if TYPE_CHECKING:
     from datetime import datetime

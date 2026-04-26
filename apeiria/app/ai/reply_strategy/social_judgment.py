@@ -7,11 +7,12 @@ from typing import TYPE_CHECKING
 from nonebot.log import logger
 
 from apeiria.ai.model import AIModelRouteQuery, model_gateway
-from apeiria.ai.reply_strategy.models import (
+
+from .models import (
     SocialJudgmentInput,
     SocialJudgmentResult,
 )
-from apeiria.ai.reply_strategy.prompt import (
+from .prompt import (
     build_social_judgment_prompt,
     parse_social_judgment_response,
 )

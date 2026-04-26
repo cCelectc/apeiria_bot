@@ -35,18 +35,18 @@ from apeiria.ai.pipeline.routing import (
     select_post_tool_reply_task_class,
     select_pre_tool_reply_task_class,
 )
-from apeiria.ai.reply_strategy import (
-    count_recent_bot_turns,
-    latest_bot_turn_at,
-    latest_user_turn_text,
-    summarize_reply_strategy_decision,
-)
 from apeiria.ai.tools import (
     AIToolPolicyBindingTarget,
     AIToolSceneContext,
     ai_tool_policy_binding_service,
     ai_tool_service,
     summarize_tool_policy,
+)
+from apeiria.app.ai.reply_strategy import (
+    count_recent_bot_turns,
+    latest_bot_turn_at,
+    latest_user_turn_text,
+    summarize_reply_strategy_decision,
 )
 from apeiria.conversation.service import chat_session_service
 
@@ -56,7 +56,7 @@ if TYPE_CHECKING:
     from collections.abc import Sequence
 
     from apeiria.ai.pipeline.prompting import AIReplyPromptChannels
-    from apeiria.ai.reply_strategy.models import (
+    from apeiria.app.ai.reply_strategy.models import (
         ReplyStrategyDecision,
         SocialJudgmentInput,
     )
@@ -78,7 +78,7 @@ def _build_prompt_preview_social_input(  # noqa: PLR0913
     allowed_tool_names: tuple[str, ...],
     context_turns: list["ChatContextMessageView"],
 ):
-    from apeiria.ai.reply_strategy.models import SocialJudgmentInput
+    from apeiria.app.ai.reply_strategy.models import SocialJudgmentInput
 
     decision_time = (
         latest_bot_turn_at(context_turns) or context_turns[-1].created_at
@@ -112,8 +112,8 @@ async def _evaluate_preview_social_judgment(
 ) -> "ReplyStrategyDecision":
     """Run social judgment for workbench preview and wrap as ReplyStrategyDecision."""
 
-    from apeiria.ai.reply_strategy.models import judgment_to_decision
-    from apeiria.ai.reply_strategy.social_judgment import (
+    from apeiria.app.ai.reply_strategy.models import judgment_to_decision
+    from apeiria.app.ai.reply_strategy.social_judgment import (
         evaluate_social_judgment,
     )
 

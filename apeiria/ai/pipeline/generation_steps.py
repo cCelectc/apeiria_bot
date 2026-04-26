@@ -42,7 +42,6 @@ from apeiria.ai.pipeline.tool_steps import (
     append_tool_observation_turns,
     resolve_tool_policy,
 )
-from apeiria.ai.reply_strategy import summarize_reply_strategy_decision
 from apeiria.ai.skills import ai_skill_service
 from apeiria.ai.tools import (
     ToolGatewayRequest,
@@ -50,6 +49,7 @@ from apeiria.ai.tools import (
     ai_tool_service,
     tool_gateway,
 )
+from apeiria.app.ai.reply_strategy import summarize_reply_strategy_decision
 
 if TYPE_CHECKING:
     from datetime import datetime
@@ -65,8 +65,8 @@ if TYPE_CHECKING:
     from apeiria.ai.pipeline.prompting import AIPersonaPromptBundleLike
     from apeiria.ai.pipeline.relationship_steps import AIRelationshipTarget
     from apeiria.ai.pipeline.service import AIRuntimeReplyRequest
-    from apeiria.ai.reply_strategy import ReplyStrategyDecision
     from apeiria.ai.tools import AIToolPolicy, AIToolSpec
+    from apeiria.app.ai.reply_strategy import ReplyStrategyDecision
     from apeiria.conversation.models import ChatContextMessageView
 
 

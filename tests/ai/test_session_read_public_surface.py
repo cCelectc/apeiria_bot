@@ -73,7 +73,7 @@ def test_import_session_read_targets_stays_lightweight() -> None:
         "apeiria.ai.model.service",
         "apeiria.ai.persona.service",
         "apeiria.ai.pipeline.composer",
-        "apeiria.ai.reply_strategy.social_judgment",
+        "apeiria.app.ai.reply_strategy.social_judgment",
     ):
         sys.modules.pop(module_name, None)
 
@@ -83,7 +83,7 @@ def test_import_session_read_targets_stays_lightweight() -> None:
     assert "apeiria.ai.model.service" not in sys.modules
     assert "apeiria.ai.persona.service" not in sys.modules
     assert "apeiria.ai.pipeline.composer" not in sys.modules
-    assert "apeiria.ai.reply_strategy.social_judgment" not in sys.modules
+    assert "apeiria.app.ai.reply_strategy.social_judgment" not in sys.modules
 
 
 def test_session_routes_delegate_to_ai_session_read_service(

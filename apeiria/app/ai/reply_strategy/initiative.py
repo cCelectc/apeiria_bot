@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import time
 
-from apeiria.ai.reply_strategy.models import (
+from .models import (
     InitiativeBudgetResult,
     InitiativeState,
 )

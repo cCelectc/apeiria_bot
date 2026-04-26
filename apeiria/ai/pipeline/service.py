@@ -20,13 +20,13 @@ from apeiria.ai.pipeline.generation_steps import (
 from apeiria.ai.pipeline.memory_steps import store_extracted_memories
 from apeiria.ai.pipeline.persistence_steps import persist_reply
 from apeiria.ai.pipeline.reply_strategy_steps import decide_whether_to_speak
-from apeiria.ai.reply_strategy import (
+from apeiria.ai.retention import ai_retention_service
+from apeiria.ai.skills import ai_skill_service
+from apeiria.app.ai.reply_strategy import (
     build_wake_context,
     reply_strategy_service,
 )
-from apeiria.ai.reply_strategy.wake_gate import evaluate_wake
-from apeiria.ai.retention import ai_retention_service
-from apeiria.ai.skills import ai_skill_service
+from apeiria.app.ai.reply_strategy.wake_gate import evaluate_wake
 from apeiria.conversation.service import chat_session_service
 from apeiria.runtime.entries import (
     ApeiriaEntry,
@@ -38,7 +38,7 @@ if TYPE_CHECKING:
 
     from apeiria.ai.future_task.models import AIFutureTaskDefinition
     from apeiria.ai.memory import AIMessageSentiment
-    from apeiria.ai.reply_strategy.models import WakeContext
+    from apeiria.app.ai.reply_strategy.models import WakeContext
     from apeiria.conversation.models import ChatSessionIdentity
 
 

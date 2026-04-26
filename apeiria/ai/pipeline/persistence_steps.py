@@ -14,7 +14,7 @@ if TYPE_CHECKING:
         ReplyPreparation,
     )
     from apeiria.ai.pipeline.service import AIRuntimeReplyRequest
-    from apeiria.ai.reply_strategy import ReplyStrategyDecision
+    from apeiria.app.ai.reply_strategy import ReplyStrategyDecision
 
 
 async def persist_reply(  # noqa: PLR0913

@@ -23,7 +23,6 @@ if TYPE_CHECKING:
     from apeiria.ai.person import ai_person_profile_service
     from apeiria.ai.persona import ai_persona_service
     from apeiria.ai.relationship import ai_relationship_service
-    from apeiria.ai.reply_strategy.service import reply_strategy_service
     from apeiria.ai.retention import ai_retention_service
     from apeiria.ai.service import AIService, AIServiceStatus, ai_service
     from apeiria.ai.skills import ai_skill_service
@@ -42,7 +41,6 @@ __all__ = [
     "ai_skill_service",
     "ai_tool_service",
     "model_gateway",
-    "reply_strategy_service",
     "tool_gateway",
 ]
 
@@ -59,7 +57,6 @@ _LAZY_MODULES = {
     "ai_skill_service": "apeiria.ai.skills",
     "ai_tool_service": "apeiria.ai.tools",
     "model_gateway": "apeiria.ai.model",
-    "reply_strategy_service": "apeiria.ai.reply_strategy.service",
     "tool_gateway": "apeiria.ai.tools",
 }
 

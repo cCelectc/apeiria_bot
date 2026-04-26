@@ -16,7 +16,7 @@ def test_import_apeiria_ai_does_not_eagerly_import_runtime_services() -> None:
         "apeiria.ai.person.service",
         "apeiria.ai.persona.service",
         "apeiria.ai.relationship.service",
-        "apeiria.ai.reply_strategy.service",
+        "apeiria.app.ai.reply_strategy.service",
         "apeiria.ai.retention",
         "apeiria.ai.service",
         "apeiria.ai.skills.service",
@@ -41,7 +41,6 @@ def test_import_apeiria_ai_does_not_eagerly_import_runtime_services() -> None:
         "ai_skill_service",
         "ai_tool_service",
         "model_gateway",
-        "reply_strategy_service",
         "tool_gateway",
     ]
 
@@ -53,7 +52,7 @@ def test_import_apeiria_ai_does_not_eagerly_import_runtime_services() -> None:
         "apeiria.ai.person.service",
         "apeiria.ai.persona.service",
         "apeiria.ai.relationship.service",
-        "apeiria.ai.reply_strategy.service",
+        "apeiria.app.ai.reply_strategy.service",
         "apeiria.ai.retention",
         "apeiria.ai.service",
         "apeiria.ai.skills.service",
@@ -71,6 +70,7 @@ def test_apeiria_ai_no_longer_re_exports_conversation_core() -> None:
     module = importlib.import_module("apeiria.ai")
 
     assert not hasattr(module, "chat_session_service")
+    assert not hasattr(module, "reply_strategy_service")
 
 
 def test_ai_service_status_reports_active_runtime() -> None:
