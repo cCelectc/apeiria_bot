@@ -8,13 +8,13 @@ from fastapi import APIRouter, Depends, HTTPException, WebSocket
 from fastapi.responses import FileResponse, RedirectResponse
 
 from apeiria.access.principal_roles import CAP_CONTROL_PANEL
-from apeiria.chat import (
+from apeiria.app.chat import (
     ChatAssetFileMissingError,
     ChatAssetNotFoundError,
     ChatAuthError,
     chat_gateway_service,
 )
-from apeiria.chat.transport import serve_chat_websocket
+from apeiria.app.chat.transport import serve_chat_websocket
 from apeiria.i18n import t
 from apeiria.webui.auth import (
     require_control_panel,

@@ -6,7 +6,7 @@ from types import SimpleNamespace
 import pytest
 from nonebot_plugin_alconna.uniseg.segment import Emoji, Text
 
-from apeiria.chat.alconna import WebChatMessageExporter
+from apeiria.app.chat.alconna import WebChatMessageExporter
 
 
 def test_webchat_exporter_non_event_send_is_explicitly_unsupported() -> None:

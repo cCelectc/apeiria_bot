@@ -15,6 +15,7 @@ def test_runtime_skeleton_exposes_core_handles(tmp_path: Path) -> None:
     environment = object()
     database = object()
     conversation = object()
+    chat = object()
     plugins = object()
     access = object()
     ai = object()
@@ -26,6 +27,7 @@ def test_runtime_skeleton_exposes_core_handles(tmp_path: Path) -> None:
         environment=environment,
         database=database,
         conversation=conversation,
+        chat=chat,
         plugins=plugins,
         access=access,
         ai=ai,
@@ -37,6 +39,7 @@ def test_runtime_skeleton_exposes_core_handles(tmp_path: Path) -> None:
     assert runtime.environment is environment
     assert runtime.database is database
     assert runtime.conversation is conversation
+    assert runtime.chat is chat
     assert runtime.plugins is plugins
     assert runtime.access is access
     assert runtime.ai is ai
@@ -47,6 +50,7 @@ def test_runtime_skeleton_exposes_core_handles(tmp_path: Path) -> None:
         "environment",
         "database",
         "conversation",
+        "chat",
         "plugins",
         "access",
         "ai",
@@ -61,6 +65,7 @@ def test_current_runtime_can_be_installed_and_retrieved(tmp_path: Path) -> None:
         environment=object(),
         database=object(),
         conversation=object(),
+        chat=object(),
         plugins=object(),
         access=object(),
         ai=object(),
@@ -90,6 +95,7 @@ def test_build_runtime_uses_existing_project_services(
     )()
     database_service = ApeiriaDatabase(project_root=project_root)
     conversation_service = object()
+    chat_service = object()
     plugin_governance_service = object()
     access_service = object()
     ai_runtime_service = object()
@@ -102,6 +108,7 @@ def test_build_runtime_uses_existing_project_services(
             environment_service,
             database_service,
             conversation_service,
+            chat_service,
             plugin_governance_service,
             access_service,
             ai_runtime_service,
@@ -116,6 +123,7 @@ def test_build_runtime_uses_existing_project_services(
         environment=environment_service,
         database=database_service,
         conversation=conversation_service,
+        chat=chat_service,
         plugins=plugin_governance_service,
         access=access_service,
         ai=ai_runtime_service,
@@ -133,6 +141,7 @@ def test_bootstrapper_runtime_phase_builds_and_installs_runtime(
         environment=object(),
         database=None,
         conversation=object(),
+        chat=object(),
         plugins=object(),
         access=object(),
         ai=object(),
@@ -175,6 +184,7 @@ def test_initialize_nonebot_rolls_back_runtime_when_user_plugins_phase_fails(
         environment=object(),
         database=None,
         conversation=object(),
+        chat=object(),
         plugins=object(),
         access=object(),
         ai=object(),
@@ -186,6 +196,7 @@ def test_initialize_nonebot_rolls_back_runtime_when_user_plugins_phase_fails(
         environment=object(),
         database=None,
         conversation=object(),
+        chat=object(),
         plugins=object(),
         access=object(),
         ai=object(),

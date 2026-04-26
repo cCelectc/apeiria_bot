@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 
 from fastapi import HTTPException
 
-from apeiria.chat.gateway_protocol import (
+from apeiria.app.chat.gateway_protocol import (
     AuthHelloPayload,
     ChatEnvelope,
     MessageSendPayload,
@@ -14,16 +14,16 @@ from apeiria.chat.gateway_protocol import (
     SessionDeletePayload,
     SessionSelectPayload,
 )
-from apeiria.chat.service import web_chat_service
+from apeiria.app.chat.service import web_chat_service
 from apeiria.i18n import t
 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
     from apeiria.access.principal import AuthSession
-    from apeiria.chat.assets import ChatAsset
-    from apeiria.chat.connection import WebChatConnection
-    from apeiria.chat.protocol import WebUIPrincipal
+    from apeiria.app.chat.assets import ChatAsset
+    from apeiria.app.chat.connection import WebChatConnection
+    from apeiria.app.chat.protocol import WebUIPrincipal
 
 
 class ChatAssetNotFoundError(ValueError):

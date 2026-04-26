@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import click
 
-from apeiria.bootstrap import initialize_nonebot
 from apeiria.cli.i18n import _
 from apeiria.cli.store_sources import default_store_source_id
 from apeiria.cli.support import (
@@ -26,6 +25,7 @@ from apeiria.cli.support import (
     update_resource_requirement,
 )
 from apeiria.environment.extension_project import ensure_plugin_project
+from apeiria.runtime.bootstrapper import ApeiriaBootstrapper
 
 
 @click.group(
@@ -340,7 +340,7 @@ def plugin_remove(
 )
 def plugin_diagnose() -> None:
     try:
-        initialize_nonebot()
+        ApeiriaBootstrapper().initialize_nonebot()
     except Exception as exc:
         raise click.ClickException(
             _("plugin diagnose failed: {error}").format(error=str(exc))

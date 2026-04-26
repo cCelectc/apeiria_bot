@@ -19,9 +19,11 @@ def _get_runtime_services() -> tuple[
     Any,
     Any,
     Any,
+    Any,
 ]:
     from apeiria.access.service import access_service
     from apeiria.app.ai.pipeline import ai_runtime_service
+    from apeiria.app.chat.service import web_chat_service
     from apeiria.config import project_config_service
     from apeiria.conversation.service import chat_session_service
     from apeiria.db.runtime import database_runtime
@@ -33,6 +35,7 @@ def _get_runtime_services() -> tuple[
         environment_service,
         database_runtime,
         chat_session_service,
+        web_chat_service,
         plugin_governance_service,
         access_service,
         ai_runtime_service,
@@ -45,6 +48,7 @@ def build_runtime() -> ApeiriaRuntime:
         environment_service,
         database_runtime,
         chat_session_service,
+        web_chat_service,
         plugin_governance_service,
         access_service,
         ai_runtime_service,
@@ -56,6 +60,7 @@ def build_runtime() -> ApeiriaRuntime:
         environment=environment_service,
         database=database_runtime,
         conversation=chat_session_service,
+        chat=web_chat_service,
         plugins=plugin_governance_service,
         access=access_service,
         ai=ai_runtime_service,

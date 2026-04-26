@@ -7,9 +7,9 @@ from typing import TYPE_CHECKING
 from fastapi import HTTPException
 
 from apeiria.access.principal import AuthSession, Principal, PrincipalRole
-from apeiria.chat.connection import WebChatConnection
-from apeiria.chat.gateway import ChatGatewayService
-from apeiria.chat.protocol import (
+from apeiria.app.chat.connection import WebChatConnection
+from apeiria.app.chat.gateway import ChatGatewayService
+from apeiria.app.chat.protocol import (
     ChatEnvelope,
     ChatSessionState,
     MessageReceivePayload,
@@ -20,9 +20,9 @@ from apeiria.chat.protocol import (
     TextSegment,
     WebUIPrincipal,
 )
-from apeiria.chat.session import ChatSession
-from apeiria.chat.state import WebChatStateManager
-from apeiria.chat.store import WebChatStore
+from apeiria.app.chat.session import ChatSession
+from apeiria.app.chat.state import WebChatStateManager
+from apeiria.app.chat.store import WebChatStore
 
 if TYPE_CHECKING:
     import pytest
@@ -214,11 +214,11 @@ def test_clear_history_emits_session_snapshot(
         return snapshot
 
     monkeypatch.setattr(
-        "apeiria.chat.gateway.web_chat_service.clear_history",
+        "apeiria.app.chat.gateway.web_chat_service.clear_history",
         clear_history,
     )
     monkeypatch.setattr(
-        "apeiria.chat.gateway.web_chat_service.emitter.build_session_snapshot",
+        "apeiria.app.chat.gateway.web_chat_service.emitter.build_session_snapshot",
         build_session_snapshot,
     )
 
@@ -263,7 +263,10 @@ def test_gateway_rejects_non_auth_frames_without_principal(
             type_=type_,
         )
 
-    monkeypatch.setattr("apeiria.chat.gateway.web_chat_service.emit_error", emit_error)
+    monkeypatch.setattr(
+        "apeiria.app.chat.gateway.web_chat_service.emit_error",
+        emit_error,
+    )
 
     result = asyncio.run(
         service.handle_frame(
@@ -309,7 +312,10 @@ def test_gateway_maps_http_auth_failures_to_auth_error(
         del token
         raise HTTPException(status_code=401, detail="token expired")
 
-    monkeypatch.setattr("apeiria.chat.gateway.web_chat_service.emit_error", emit_error)
+    monkeypatch.setattr(
+        "apeiria.app.chat.gateway.web_chat_service.emit_error",
+        emit_error,
+    )
 
     result = asyncio.run(
         service.handle_frame(
@@ -348,7 +354,7 @@ def test_auth_hello_emits_session_snapshot(
         return snapshot
 
     monkeypatch.setattr(
-        "apeiria.chat.gateway.web_chat_service.emitter.build_session_snapshot",
+        "apeiria.app.chat.gateway.web_chat_service.emitter.build_session_snapshot",
         build_session_snapshot,
     )
 

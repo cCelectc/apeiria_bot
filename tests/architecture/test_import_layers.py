@@ -7,6 +7,7 @@ from pathlib import Path
 
 from apeiria.runtime.package_map import (
     APP_PREFIXES,
+    PLANNED_APP_NAMESPACE_MOVES,
     STABLE_ROOT_BOUNDARY_EXCLUSIONS,
     STABLE_ROOT_PREFIXES,
     SURFACE_PREFIXES,
@@ -42,6 +43,21 @@ def test_app_packages_do_not_import_surfaces_or_runtime() -> None:
 
     assert not violations, _format_violations(
         "app packages importing surface/runtime modules",
+        violations,
+    )
+
+
+def test_surface_packages_do_not_import_retired_app_owned_namespaces() -> None:
+    violations = _collect_boundary_violations(
+        source_prefixes=SURFACE_PREFIXES,
+        forbidden_prefixes=tuple(
+            source_prefix
+            for source_prefix, _target_prefix in PLANNED_APP_NAMESPACE_MOVES
+        ),
+    )
+
+    assert not violations, _format_violations(
+        "surface packages importing retired app-owned namespaces",
         violations,
     )
 

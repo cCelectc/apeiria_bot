@@ -3,10 +3,10 @@ from datetime import datetime, timezone
 from nonebot.adapters import Event
 from pytest import raises
 
-from apeiria.chat.event import WebChatMessageEvent
-from apeiria.chat.message import WebChatMessage
-from apeiria.chat.protocol import SessionStatus, WebUIPrincipal
-from apeiria.chat.session import ChatSession
+from apeiria.app.chat.event import WebChatMessageEvent
+from apeiria.app.chat.message import WebChatMessage
+from apeiria.app.chat.protocol import SessionStatus, WebUIPrincipal
+from apeiria.app.chat.session import ChatSession
 from apeiria.runtime.entries import (
     ApeiriaEntryKind,
     ApeiriaEntryTrigger,

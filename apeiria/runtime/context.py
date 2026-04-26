@@ -20,6 +20,7 @@ class ApeiriaRuntime:
     environment: Any
     database: Any
     conversation: Any
+    chat: Any
     plugins: Any
     access: Any
     ai: Any

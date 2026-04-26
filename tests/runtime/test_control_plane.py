@@ -30,6 +30,7 @@ def _build_runtime(
         environment=object(),
         database=object(),
         conversation=conversation if conversation is not None else object(),
+        chat=object(),
         plugins=plugins if plugins is not None else object(),
         access=object(),
         ai=object(),

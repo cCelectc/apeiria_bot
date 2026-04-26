@@ -8,9 +8,9 @@ from fastapi import WebSocket, WebSocketDisconnect
 from nonebot.log import logger
 from pydantic import ValidationError
 
-from apeiria.chat.connection import WebChatConnection
-from apeiria.chat.gateway import chat_gateway_service
-from apeiria.chat.service import web_chat_service
+from apeiria.app.chat.connection import WebChatConnection
+from apeiria.app.chat.gateway import chat_gateway_service
+from apeiria.app.chat.service import web_chat_service
 from apeiria.i18n import t
 
 if TYPE_CHECKING:

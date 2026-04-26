@@ -1,15 +1,6 @@
-"""Web UI chat application services."""
+"""Application-facing re-export of WebChat protocol schemas."""
 
-from apeiria.chat.alconna import register_webchat_uninfo, register_webchat_uniseg
-from apeiria.chat.connection import WebChatConnection
-from apeiria.chat.gateway import (
-    ChatAssetFileMissingError,
-    ChatAssetNotFoundError,
-    ChatAuthError,
-    ChatGatewayService,
-    chat_gateway_service,
-)
-from apeiria.chat.gateway_protocol import (
+from apeiria.app.chat.protocol import (
     AuthHelloPayload,
     AuthOkPayload,
     CapabilitiesResponsePayload,
@@ -36,21 +27,13 @@ from apeiria.chat.gateway_protocol import (
     TextSegment,
     WebUIPrincipal,
 )
-from apeiria.chat.service import WebChatService, web_chat_service
-
-register_webchat_uniseg()
-register_webchat_uninfo()
 
 __all__ = [
     "AuthHelloPayload",
     "AuthOkPayload",
     "CapabilitiesResponsePayload",
-    "ChatAssetFileMissingError",
-    "ChatAssetNotFoundError",
-    "ChatAuthError",
     "ChatCapabilities",
     "ChatEnvelope",
-    "ChatGatewayService",
     "ChatSegment",
     "ChatSessionState",
     "EnvelopeVersion",
@@ -70,9 +53,5 @@ __all__ = [
     "SessionStatus",
     "SystemMessagePayload",
     "TextSegment",
-    "WebChatConnection",
-    "WebChatService",
     "WebUIPrincipal",
-    "chat_gateway_service",
-    "web_chat_service",
 ]
