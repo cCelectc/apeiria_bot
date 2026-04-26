@@ -118,10 +118,12 @@ class WebChatMessageExporter(MessageExporter[WebChatMessage]):
             assert hasattr(bot, "send")
         if isinstance(target, Event):
             return await bot.send(target, message, **kwargs)
-        raise NotImplementedError
+        raise NotImplementedError(
+            "WebChat exporter only supports sends through event contexts"
+        )
 
     async def recall(self, mid: Any, bot: Bot, context: Target | Event) -> None:
-        raise NotImplementedError
+        raise NotImplementedError("WebChat exporter does not support message recall")
 
     async def edit(
         self,
@@ -130,7 +132,7 @@ class WebChatMessageExporter(MessageExporter[WebChatMessage]):
         bot: Bot,
         context: Target | Event,
     ) -> None:
-        raise NotImplementedError
+        raise NotImplementedError("WebChat exporter does not support message editing")
 
     async def reaction(
         self,
@@ -140,7 +142,7 @@ class WebChatMessageExporter(MessageExporter[WebChatMessage]):
         context: Target | Event,
         delete: bool = False,  # noqa: FBT001, FBT002
     ) -> None:
-        raise NotImplementedError
+        raise NotImplementedError("WebChat exporter does not support reactions")
 
 
 def register_webchat_uniseg() -> None:
