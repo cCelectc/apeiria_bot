@@ -10,7 +10,7 @@ from apeiria.ai.tools import AIToolPolicy
 from apeiria.app.ai.admin.control_service import ai_control_admin_service
 from apeiria.webui.auth import require_control_panel
 
-from .schemas import (
+from .tools_schemas import (
     AICapabilityItem,
     AICapabilityPreviewItem,
     AICapabilityPreviewRequest,
@@ -24,8 +24,6 @@ from .schemas import (
     AIToolPolicyBindingUpdateRequest,
     AIToolPolicyPreviewItem,
     AIToolPolicyPreviewRequest,
-)
-from .support import (
     to_ai_capability_item,
     to_ai_capability_preview_item,
     to_ai_skill_item,

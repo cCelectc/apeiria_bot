@@ -1,17 +1,12 @@
-"""Session-specific mapping helpers for AI WebUI routes."""
+"""Schema models for AI session-read routes."""
 
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from .schemas import (
-    AIChatMessageItem,
-    AIRecentTargetItem,
-    AISessionItem,
-    AISessionPromptChannelsItem,
-    AISessionPromptPreviewItem,
-)
-from .support import to_ai_memory_item
+from pydantic import BaseModel
+
+from .memories_schemas import AIMemoryItem, to_ai_memory_item
 
 if TYPE_CHECKING:
     from apeiria.app.ai.session_read.models import (
@@ -19,10 +14,109 @@ if TYPE_CHECKING:
         AISessionPromptChannels,
         AISessionPromptPreview,
     )
-    from apeiria.conversation.models import (
-        ChatMessageDetailView,
-        ChatSessionAdminView,
-    )
+    from apeiria.conversation.models import ChatMessageDetailView, ChatSessionAdminView
+
+
+class AIRecentTargetItem(BaseModel):
+    target_type: str
+    anchor_type: str
+    anchor_id: str
+    title: str
+    subtitle: str | None = None
+    scene_id: str | None = None
+    platform: str | None = None
+    scope_type: str | None = None
+    scope_id: str | None = None
+    user_id: str | None = None
+    last_active_at: str | None = None
+
+
+class AISessionItem(BaseModel):
+    session_id: str
+    platform: str
+    bot_id: str
+    scene_type: str
+    scene_id: str
+    subject_id: str | None = None
+    summary_text: str | None = None
+    created_at: str
+    updated_at: str
+    last_message_at: str
+
+
+class AIChatMessageItem(BaseModel):
+    message_id: str
+    session_id: str
+    author_role: str
+    author_id: str
+    author_name: str | None = None
+    text_content: str
+    content: dict[str, object] | None = None
+    meta: dict[str, object] | None = None
+    raw_data: dict[str, object] | None = None
+    created_at: str
+    trace_id: str | None = None
+    source_id: str | None = None
+    model_name: str | None = None
+    recalled_memory_count: int | None = None
+    tool_observation_count: int | None = None
+
+
+class AISessionPromptChannelsItem(BaseModel):
+    mode: str
+    system_instructions: list[str] = []
+    persona: str
+    style: str | None = None
+    relationship: str | None = None
+    person_profile: list[str] = []
+    social_policy: str | None = None
+    tool_policy: str | None = None
+    future_task: str | None = None
+    tool_results: list[str] = []
+    operator_memories: list[str] = []
+    summary_memories: list[str] = []
+    long_term_memories: list[str] = []
+    knowledge_memories: list[str] = []
+    conversation_summary: str | None = None
+    context_priority: list[str] = []
+    conversation_messages: list[str] = []
+    response_rules: list[str] = []
+    instruction: str
+
+
+class AISessionPromptPreviewItem(BaseModel):
+    session_id: str
+    latest_user_message: str | None = None
+    planning_source_id: str | None = None
+    planning_profile_id: str | None = None
+    planning_model_name: str | None = None
+    planning_task_class: str | None = None
+    roleplay_source_id: str | None = None
+    roleplay_profile_id: str | None = None
+    roleplay_model_name: str | None = None
+    roleplay_task_class: str | None = None
+    source_id: str | None = None
+    profile_id: str | None = None
+    model_name: str | None = None
+    persona_id: str | None = None
+    conversation_summary: str | None = None
+    relationship_context: str | None = None
+    tool_policy: str | None = None
+    social_action: str | None = None
+    social_tool_mode: str | None = None
+    social_reason_text: str | None = None
+    social_reason_codes: list[str] = []
+    social_policy_source: str | None = None
+    tool_results: list[str] = []
+    memories: list[AIMemoryItem] = []
+    operator_memory_count: int = 0
+    summary_memory_count: int = 0
+    long_term_memory_count: int = 0
+    knowledge_memory_count: int = 0
+    planning_channels: AISessionPromptChannelsItem
+    roleplay_channels: AISessionPromptChannelsItem | None = None
+    rendered_roleplay_prompt: str | None = None
+    rendered_prompt: str
 
 
 def to_ai_recent_target_item(item: "AIRecentTarget") -> AIRecentTargetItem:

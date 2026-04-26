@@ -9,8 +9,7 @@ from fastapi import APIRouter, Depends, Query
 from apeiria.app.ai.admin.runtime_service import ai_runtime_admin_service
 from apeiria.webui.auth import require_control_panel
 
-from .schemas import AIFutureTaskItem
-from .support import to_ai_future_task_item
+from .future_tasks_schemas import AIFutureTaskItem, to_ai_future_task_item
 
 if TYPE_CHECKING:
     from apeiria.access.principal import AuthSession

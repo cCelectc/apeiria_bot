@@ -12,12 +12,10 @@ from apeiria.app.ai.admin.control_service import (
 )
 from apeiria.webui.auth import require_control_panel
 
-from .schemas import (
+from .sources_schemas import (
     AISourceItem,
     AISourcePresetItem,
     AISourceUpsertRequest,
-)
-from .support import (
     to_ai_source_item,
     to_ai_source_preset_item,
 )

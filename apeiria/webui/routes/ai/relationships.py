@@ -9,12 +9,10 @@ from fastapi import APIRouter, Depends, Query
 from apeiria.app.ai.admin.runtime_service import ai_runtime_admin_service
 from apeiria.webui.auth import require_control_panel
 
-from .schemas import (
+from .relationships_schemas import (
     AIRelationshipEventItem,
     AIRelationshipScoreUpdateRequest,
     AIRelationshipStateItem,
-)
-from .support import (
     to_ai_relationship_event_item,
     to_ai_relationship_state_item,
 )

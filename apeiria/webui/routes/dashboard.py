@@ -15,11 +15,11 @@ from apeiria.webui.auth import require_control_panel
 from apeiria.webui.schemas.models import (
     DashboardEventItem,
     DashboardEventsResponse,
-    OperationStatusResponse,
     StatusResponse,
     WebUIBuildRunResponse,
     WebUIBuildStatusResponse,
 )
+from apeiria.webui.schemas.operations import OperationStatusResponse
 
 router = APIRouter()
 _RUNTIME_UNAVAILABLE_DETAIL = "Apeiria runtime control plane is unavailable."

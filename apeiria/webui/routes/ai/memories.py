@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, Query
 from apeiria.app.ai.admin.runtime_service import ai_runtime_admin_service
 from apeiria.webui.auth import require_control_panel
 
-from .schemas import (
+from .memories_schemas import (
     AIMemoryBulkActionRequest,
     AIMemoryBulkActionResult,
     AIMemoryBulkIgnoreRequest,
@@ -18,8 +18,8 @@ from .schemas import (
     AIMemoryItem,
     AIMemoryToggleIgnoredRequest,
     AIMemoryUpdateRequest,
+    to_ai_memory_item,
 )
-from .support import to_ai_memory_item
 
 if TYPE_CHECKING:
     from apeiria.access.principal import AuthSession

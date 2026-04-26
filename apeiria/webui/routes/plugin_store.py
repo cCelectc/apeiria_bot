@@ -7,7 +7,7 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
-from apeiria.app.plugins.store.models import StoreInstallRequest, StoreItem, StoreQuery
+from apeiria.app.plugins.store.models import StoreInstallRequest, StoreQuery
 from apeiria.app.plugins.store.tasks import plugin_store_task_service
 from apeiria.environment import (
     PackageOperationRequest,
@@ -16,8 +16,8 @@ from apeiria.environment import (
 )
 from apeiria.i18n import t
 from apeiria.webui.auth import require_control_panel, require_owner
-from apeiria.webui.schemas.models import (
-    OperationStatusResponse,
+from apeiria.webui.schemas.operations import OperationStatusResponse
+from apeiria.webui.schemas.plugin_store import (
     PluginStoreCategoryItem,
     PluginStoreInstallRequest,
     PluginStoreItem,
@@ -25,6 +25,9 @@ from apeiria.webui.schemas.models import (
     PluginStoreRevertInstallRequest,
     PluginStoreSourceItem,
     PluginStoreTaskItem,
+    to_plugin_store_item,
+    to_plugin_store_source_item,
+    to_plugin_store_task_item,
 )
 
 router = APIRouter()
@@ -49,50 +52,11 @@ class PluginStoreRefreshRequest(BaseModel):
     source_id: str = ""
 
 
-def _build_plugin_store_item(item: StoreItem) -> PluginStoreItem:
-    return PluginStoreItem(
-        source_id=item.source_id,
-        source_name=item.source_name,
-        plugin_id=item.plugin_id,
-        name=item.name,
-        module_name=item.module_name,
-        package_name=item.package_name,
-        description=item.description,
-        project_link=item.project_link,
-        homepage=item.homepage,
-        author=item.author,
-        author_link=item.author_link,
-        version=item.version,
-        tags=item.tags,
-        is_official=item.is_official,
-        publish_time=item.publish_time,
-        extra=item.extra,
-        is_installed=item.is_installed,
-        is_registered=item.is_registered,
-        installed_package=item.installed_package,
-        installed_module_names=item.installed_module_names,
-        can_update=item.can_update,
-    )
-
-
 @router.get("/sources", response_model=list[PluginStoreSourceItem])
 async def list_plugin_store_sources(
     _: Annotated[Any, Depends(require_control_panel)],
 ) -> list[PluginStoreSourceItem]:
-    return [
-        PluginStoreSourceItem(
-            source_id=item.source_id,
-            name=item.name,
-            kind=item.kind,
-            enabled=item.enabled,
-            is_builtin=item.is_builtin,
-            is_official=item.is_official,
-            base_url=item.base_url,
-            last_synced_at=item.last_synced_at,
-            last_error=item.last_error,
-        )
-        for item in store_service.list_sources()
-    ]
+    return [to_plugin_store_source_item(item) for item in store_service.list_sources()]
 
 
 @router.get("/items", response_model=PluginStoreItemsResponse)
@@ -114,7 +78,7 @@ async def list_plugin_store_items(
         )
     )
     return PluginStoreItemsResponse(
-        items=[_build_plugin_store_item(item) for item in result.items],
+        items=[to_plugin_store_item(item) for item in result.items],
         categories=[
             PluginStoreCategoryItem(value=item.value, count=item.count)
             for item in result.categories
@@ -141,7 +105,7 @@ async def get_plugin_store_item(
             status_code=404,
             detail=t("web_ui.plugins.store_not_found"),
         )
-    return _build_plugin_store_item(item)
+    return to_plugin_store_item(item)
 
 
 @router.post("/refresh", response_model=list[PluginStoreSourceItem])
@@ -150,17 +114,7 @@ async def refresh_plugin_store_sources(
     _: Annotated[Any, Depends(require_control_panel)],
 ) -> list[PluginStoreSourceItem]:
     return [
-        PluginStoreSourceItem(
-            source_id=item.source_id,
-            name=item.name,
-            kind=item.kind,
-            enabled=item.enabled,
-            is_builtin=item.is_builtin,
-            is_official=item.is_official,
-            base_url=item.base_url,
-            last_synced_at=item.last_synced_at,
-            last_error=item.last_error,
-        )
+        to_plugin_store_source_item(item)
         for item in await store_service.refresh_sources(
             item_type="plugin",
             source_id=payload.source_id,
@@ -186,17 +140,7 @@ async def install_plugin_store_item(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    return PluginStoreTaskItem(
-        task_id=task.task_id,
-        title=task.title,
-        status=task.status,
-        logs=task.logs,
-        error=task.error,
-        result=task.result,
-        created_at=task.created_at,
-        started_at=task.started_at,
-        finished_at=task.finished_at,
-    )
+    return to_plugin_store_task_item(task)
 
 
 @router.post("/update", response_model=PluginStoreTaskItem)
@@ -217,17 +161,7 @@ async def update_plugin_store_item(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    return PluginStoreTaskItem(
-        task_id=task.task_id,
-        title=task.title,
-        status=task.status,
-        logs=task.logs,
-        error=task.error,
-        result=task.result,
-        created_at=task.created_at,
-        started_at=task.started_at,
-        finished_at=task.finished_at,
-    )
+    return to_plugin_store_task_item(task)
 
 
 @router.get("/tasks/{task_id}", response_model=PluginStoreTaskItem)
@@ -238,17 +172,7 @@ async def get_plugin_store_task(
     task = plugin_store_task_service.get_task(task_id)
     if task is None:
         raise HTTPException(status_code=404, detail=t("web_ui.tasks.not_found"))
-    return PluginStoreTaskItem(
-        task_id=task.task_id,
-        title=task.title,
-        status=task.status,
-        logs=task.logs,
-        error=task.error,
-        result=task.result,
-        created_at=task.created_at,
-        started_at=task.started_at,
-        finished_at=task.finished_at,
-    )
+    return to_plugin_store_task_item(task)
 
 
 @router.post("/revert-install")

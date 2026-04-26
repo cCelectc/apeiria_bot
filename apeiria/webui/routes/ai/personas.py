@@ -9,12 +9,10 @@ from fastapi import APIRouter, Depends
 from apeiria.app.ai.admin.control_service import ai_control_admin_service
 from apeiria.webui.auth import require_control_panel
 
-from .schemas import (
+from .personas_schemas import (
     AIPersonaBindingItem,
     AIPersonaItem,
     AIPersonaUpsertRequest,
-)
-from .support import (
     to_ai_persona_binding_item,
     to_ai_persona_item,
 )

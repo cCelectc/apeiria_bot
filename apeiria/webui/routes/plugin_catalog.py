@@ -17,23 +17,23 @@ from apeiria.i18n import t
 from apeiria.plugins import config_query_service, plugin_governance_service
 from apeiria.runtime.context import get_current_runtime
 from apeiria.webui.auth import require_control_panel, require_owner
-from apeiria.webui.routes.plugin_support import (
-    run_settings_action,
-    to_orphan_plugin_config_response,
-    to_plugin_item_response,
-    to_plugin_readme_response,
-    to_plugin_toggle_preview_response,
-    to_plugin_update_check_item,
-    to_plugin_workspace_settings_summary,
-)
-from apeiria.webui.schemas.models import (
+from apeiria.webui.schemas.plugin_catalog import (
     OrphanPluginConfigResponse,
     PluginItem,
     PluginReadmeResponse,
     PluginUpdateCheckItem,
     PluginUpdateCheckRequest,
     PluginWorkspaceResponse,
+    to_orphan_plugin_config_response,
+    to_plugin_item_response,
+    to_plugin_readme_response,
+    to_plugin_update_check_item,
 )
+from apeiria.webui.schemas.plugin_config import (
+    run_settings_action,
+    to_plugin_workspace_settings_summary,
+)
+from apeiria.webui.schemas.plugin_management import to_plugin_toggle_preview_response
 
 router = APIRouter()
 _RUNTIME_UNAVAILABLE_DETAIL = "Apeiria runtime control plane is unavailable."

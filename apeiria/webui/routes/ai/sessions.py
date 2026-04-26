@@ -9,13 +9,11 @@ from fastapi import APIRouter, Depends, Query
 from apeiria.app.ai.session_read import ai_session_read_service
 from apeiria.webui.auth import require_control_panel
 
-from .schemas import (
+from .sessions_schemas import (
     AIChatMessageItem,
     AIRecentTargetItem,
     AISessionItem,
     AISessionPromptPreviewItem,
-)
-from .session_support import (
     to_ai_chat_message_item,
     to_ai_recent_target_item,
     to_ai_session_item,

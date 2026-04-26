@@ -62,6 +62,42 @@ def test_surface_packages_do_not_import_retired_app_owned_namespaces() -> None:
     )
 
 
+def test_ai_routes_do_not_import_removed_catch_all_surface_modules() -> None:
+    violations = _collect_boundary_violations(
+        source_prefixes=("apeiria.webui.routes.ai",),
+        forbidden_prefixes=(
+            "apeiria.webui.routes.ai.schemas",
+            "apeiria.webui.routes.ai.support",
+            "apeiria.webui.routes.ai.session_support",
+        ),
+    )
+
+    assert not violations, _format_violations(
+        "AI routes importing removed catch-all surface modules",
+        violations,
+    )
+
+
+def test_plugin_routes_do_not_import_plugin_buckets_from_shared_models() -> None:
+    violations = _collect_boundary_violations(
+        source_prefixes=(
+            "apeiria.webui.routes.plugin_catalog",
+            "apeiria.webui.routes.plugin_config",
+            "apeiria.webui.routes.plugin_management",
+            "apeiria.webui.routes.plugin_store",
+        ),
+        forbidden_prefixes=(
+            "apeiria.webui.routes.plugin_support",
+            "apeiria.webui.schemas.models",
+        ),
+    )
+
+    assert not violations, _format_violations(
+        "plugin routes importing plugin DTO/helper buckets",
+        violations,
+    )
+
+
 def _collect_boundary_violations(
     *,
     source_prefixes: tuple[str, ...],
@@ -91,6 +127,12 @@ def _iter_python_modules(
     excluded_prefixes: tuple[str, ...],
 ) -> list[tuple[str, Path]]:
     source_path = REPO_ROOT / source_prefix.replace(".", "/")
+    module_file_path = source_path.with_suffix(".py")
+    if module_file_path.is_file():
+        module_name = source_prefix
+        if _matches_any(module_name, excluded_prefixes):
+            return []
+        return [(module_name, module_file_path)]
     if source_path.is_file():
         module_name = source_prefix.removesuffix(".py")
         if _matches_any(module_name, excluded_prefixes):

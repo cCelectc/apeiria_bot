@@ -9,11 +9,11 @@ from fastapi import APIRouter, Depends, Query
 from apeiria.app.ai.admin.runtime_service import ai_runtime_admin_service
 from apeiria.webui.auth import require_control_panel
 
-from .schemas import (
+from .person_profiles_schemas import (
     AIPersonProfileItem,
     AIPersonProfileUpdateRequest,
+    to_ai_person_profile_item,
 )
-from .support import to_ai_person_profile_item
 
 if TYPE_CHECKING:
     from apeiria.access.principal import AuthSession

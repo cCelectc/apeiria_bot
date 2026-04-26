@@ -16,7 +16,7 @@ from apeiria.app.ai.admin.control_service import (
 )
 from apeiria.webui.auth import require_control_panel
 
-from .schemas import (
+from .models_schemas import (
     AIModelBindingItem,
     AIModelCatalogItem,
     AIModelProfileItem,
@@ -26,8 +26,6 @@ from .schemas import (
     AISourceModelTestRequest,
     AISourceModelTestResult,
     AISourceModelUpsertRequest,
-)
-from .support import (
     to_ai_model_binding_item,
     to_ai_model_catalog_item,
     to_ai_model_profile_item,

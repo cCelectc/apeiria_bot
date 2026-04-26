@@ -11,16 +11,7 @@ from apeiria.plugins import (
     config_query_service,
 )
 from apeiria.webui.auth import require_control_panel
-from apeiria.webui.routes.plugin_support import (
-    run_settings_action,
-    to_adapter_config_response,
-    to_driver_config_response,
-    to_plugin_config_response,
-    to_plugin_raw_settings_response,
-    to_plugin_settings_response,
-    to_raw_validation_response,
-)
-from apeiria.webui.schemas.models import (
+from apeiria.webui.schemas.plugin_config import (
     AdapterConfigRequest,
     AdapterConfigResponse,
     DriverConfigRequest,
@@ -32,6 +23,13 @@ from apeiria.webui.schemas.models import (
     PluginSettingsRawValidationResponse,
     PluginSettingsResponse,
     PluginSettingsUpdateRequest,
+    run_settings_action,
+    to_adapter_config_response,
+    to_driver_config_response,
+    to_plugin_config_response,
+    to_plugin_raw_settings_response,
+    to_plugin_settings_response,
+    to_raw_validation_response,
 )
 
 router = APIRouter()

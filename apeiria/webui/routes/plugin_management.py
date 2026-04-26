@@ -13,19 +13,19 @@ from apeiria.exceptions import ProtectedPluginError, ResourceNotFoundError
 from apeiria.i18n import t
 from apeiria.plugins import plugin_governance_service
 from apeiria.webui.auth import require_control_panel, require_owner
-from apeiria.webui.routes.plugin_support import (
-    to_plugin_store_task_item,
-    to_plugin_toggle_preview_response,
-    to_plugin_toggle_response,
-)
-from apeiria.webui.schemas.models import (
-    OperationStatusResponse,
+from apeiria.webui.schemas.operations import OperationStatusResponse
+from apeiria.webui.schemas.plugin_management import (
     PluginManualInstallRequest,
     PluginPackageUpdateRequest,
-    PluginStoreTaskItem,
     PluginTogglePreviewResponse,
     PluginToggleResponse,
     PluginUninstallRequest,
+    to_plugin_toggle_preview_response,
+    to_plugin_toggle_response,
+)
+from apeiria.webui.schemas.plugin_store import (
+    PluginStoreTaskItem,
+    to_plugin_store_task_item,
 )
 
 router = APIRouter()

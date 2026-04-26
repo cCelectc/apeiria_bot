@@ -19,10 +19,9 @@ from .models import router as _models_router
 from .person_profiles import router as _person_profiles_router
 from .personas import router as _personas_router
 from .relationships import router as _relationships_router
-from .schemas import AIBootstrapResponse
 from .sessions import router as _sessions_router
 from .sources import router as _sources_router
-from .support import to_ai_source_preset_item
+from .sources_schemas import AIBootstrapResponse, to_ai_source_preset_item
 from .tools import router as _tools_router
 
 router = APIRouter()
