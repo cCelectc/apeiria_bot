@@ -44,652 +44,72 @@
           <template v-else>
             <v-row>
               <v-col cols="12" lg="4">
-                <div class="d-flex justify-space-between align-center mb-3">
-                  <div class="text-subtitle-1 font-weight-medium">
-                    {{ t('ai.sourcesTitle') }}
-                  </div>
-                  <v-btn color="primary" variant="tonal" @click="startCreateSource">
-                    {{ t('ai.createSource') }}
-                  </v-btn>
-                </div>
-                <v-sheet class="surface-gradient-card pa-2 source-list-panel" rounded="lg">
-                  <template v-if="sources.length > 0">
-                    <v-list class="bg-transparent" density="comfortable" lines="two">
-                      <v-list-item
-                        v-for="item in sources"
-                        :key="item.source_id"
-                        :active="item.source_id === sourceForm.source_id"
-                        class="source-list-item"
-                        rounded="lg"
-                        @click="selectSource(item)"
-                      >
-                        <template #prepend>
-                          <v-avatar class="source-list-item__avatar" color="primary" size="36" variant="tonal">
-                            {{ sourcePresetInitial(item.preset_type) }}
-                          </v-avatar>
-                        </template>
-                        <div class="source-list-item__body">
-                          <div class="source-list-item__header">
-                            <v-list-item-title>{{ item.name }}</v-list-item-title>
-                            <v-chip
-                              :color="item.enabled ? 'success' : 'default'"
-                              size="x-small"
-                              variant="tonal"
-                            >
-                              {{ item.enabled ? t('ai.enabled') : t('ai.disabled') }}
-                            </v-chip>
-                          </div>
-                          <v-list-item-subtitle class="source-list-item__subtitle">
-                            {{ item.api_base || t('common.none') }}
-                          </v-list-item-subtitle>
-                          <div class="source-list-item__meta">
-                            <v-chip color="primary" size="x-small" variant="tonal">
-                              {{ sourcePresetLabel(item.preset_type) }}
-                            </v-chip>
-                          </div>
-                        </div>
-                        <template #append>
-                          <v-btn
-                            color="error"
-                            icon="mdi-delete-outline"
-                            size="small"
-                            variant="text"
-                            @click.stop="selectSource(item); removeSource()"
-                          />
-                        </template>
-                      </v-list-item>
-                    </v-list>
-                  </template>
-                  <div v-else class="pa-4">
-                    <div class="empty-state-text">{{ t('ai.noSources') }}</div>
-                    <div class="empty-state-hint mt-2">{{ t('ai.noSourcesHint') }}</div>
-                  </div>
-                </v-sheet>
+                <AISourceListPanel
+                  :active-source-id="sourceForm.source_id"
+                  :remove-source-item="removeSourceItem"
+                  :select-source="selectSource"
+                  :source-preset-initial="sourcePresetInitial"
+                  :source-preset-label="sourcePresetLabel"
+                  :sources="sources"
+                  :start-create-source="startCreateSource"
+                />
               </v-col>
 
               <v-col cols="12" lg="8">
-                <v-sheet class="surface-gradient-card pa-4 mb-4 source-workspace" rounded="lg">
-                  <div class="d-flex flex-wrap justify-space-between align-start ga-3 mb-4">
-                    <div>
-                      <div class="text-h6 font-weight-medium">
-                        {{ sourceForm.name || t('ai.sourceConfigTitle') }}
-                      </div>
-                      <div class="text-body-2 text-medium-emphasis mt-1">
-                        {{ sourceForm.api_base || (isCreatingSource ? t('ai.sourceCreateHint') : t('ai.sourceConfigHint')) }}
-                      </div>
-                      <div class="source-summary-line mt-2">
-                        <span>{{ t('ai.sourcePreset') }}：</span>
-                        <strong>{{ sourcePresetLabel(sourceForm.preset_type) }}</strong>
-                      </div>
-                    </div>
-                    <div class="d-flex flex-wrap ga-2">
-                      <v-btn
-                        v-if="sourceForm.source_id"
-                        color="error"
-                        :loading="deletingSource"
-                        variant="tonal"
-                        @click="removeSource"
-                      >
-                        {{ t('common.delete') }}
-                      </v-btn>
-                      <v-btn color="primary" :disabled="!canSaveSource" :loading="savingSource" @click="saveSource">
-                        {{ t('ai.saveSourceConfig') }}
-                      </v-btn>
-                    </div>
-                  </div>
+                <AISourceWorkspace
+                  v-model:source-form="sourceForm"
+                  :can-save-source="canSaveSource"
+                  :deleting-source="deletingSource"
+                  :displayed-source-errors="displayedSourceErrors"
+                  :is-creating-source="isCreatingSource"
+                  :remove-source="removeSource"
+                  :save-source="saveSource"
+                  :saving-source="savingSource"
+                  :source-preset-label="sourcePresetLabel"
+                  :source-preset-options="sourcePresetOptions"
+                  :touch-source-field="touchSourceField"
+                />
 
-                  <div class="source-config-list">
-                    <div class="source-config-row">
-                      <div class="source-config-row__meta">
-                        <div class="source-config-row__label">{{ t('ai.sourceName') }}</div>
-                        <div class="source-config-row__hint">{{ t('ai.sourceConfigNameHint') }}</div>
-                      </div>
-                      <v-text-field
-                        v-model.trim="sourceForm.name"
-                        class="source-config-row__field"
-                        density="comfortable"
-                        :disabled="savingSource"
-                        :error-messages="displayedSourceErrors.name ? [displayedSourceErrors.name] : []"
-                        hide-details="auto"
-                        @blur="touchSourceField('name')"
-                      />
-                    </div>
-
-                    <div class="source-config-row">
-                      <div class="source-config-row__meta">
-                        <div class="source-config-row__label">{{ t('ai.sourcePreset') }}</div>
-                        <div class="source-config-row__hint">{{ t('ai.sourceConfigPresetHint') }}</div>
-                      </div>
-                      <v-select
-                        v-model="sourceForm.preset_type"
-                        class="source-config-row__field"
-                        density="comfortable"
-                        :disabled="savingSource"
-                        :error-messages="displayedSourceErrors.preset_type ? [displayedSourceErrors.preset_type] : []"
-                        hide-details="auto"
-                        :items="sourcePresetOptions"
-                        @blur="touchSourceField('preset_type')"
-                      />
-                    </div>
-
-                    <div class="source-config-row">
-                      <div class="source-config-row__meta">
-                        <div class="source-config-row__label">{{ t('ai.sourceApiKey') }}</div>
-                        <div class="source-config-row__hint">{{ t('ai.sourceConfigApiKeyHint') }}</div>
-                      </div>
-                      <div class="source-config-row__field source-api-key-field">
-                        <v-text-field
-                          density="comfortable"
-                          hide-details
-                          :model-value="sourcePrimaryApiKey"
-                          readonly
-                        />
-                        <v-btn
-                          class="source-api-key-field__action"
-                          color="primary"
-                          variant="tonal"
-                          @click="openSourceApiKeysEditor"
-                        >
-                          {{ t('ai.sourceApiKeyManage') }}
-                        </v-btn>
-                      </div>
-                    </div>
-
-                    <div class="source-config-row">
-                      <div class="source-config-row__meta">
-                        <div class="source-config-row__label">{{ t('ai.sourceApiBase') }}</div>
-                        <div class="source-config-row__hint">{{ t('ai.sourceConfigApiBaseHint') }}</div>
-                      </div>
-                      <v-text-field
-                        v-model.trim="sourceForm.api_base"
-                        class="source-config-row__field"
-                        density="comfortable"
-                        :disabled="savingSource"
-                        hide-details
-                      />
-                    </div>
-                  </div>
-
-                  <v-dialog
-                    v-model="sourceApiKeysDialog"
-                    max-width="760"
-                  >
-                    <v-card rounded="xl">
-                      <v-card-title class="text-h5 pt-6 px-6">
-                        {{ t('ai.sourceApiKeyManageTitle') }}
-                      </v-card-title>
-                      <v-card-text class="px-6">
-                        <div class="source-api-key-editor">
-                          <div class="source-api-key-editor__composer">
-                            <v-text-field
-                              v-model.trim="sourceApiKeyDraftInput"
-                              density="comfortable"
-                              hide-details
-                              :label="t('ai.sourceApiKeyNew')"
-                              @keydown.enter.prevent="appendSourceApiKeyDraft"
-                            />
-                            <v-btn
-                              color="primary"
-                              variant="tonal"
-                              @click="appendSourceApiKeyDraft"
-                            >
-                              {{ t('ai.sourceApiKeyAdd') }}
-                            </v-btn>
-                          </div>
-                          <div class="source-api-key-editor__list">
-                            <div
-                              v-for="(item, index) in sourceApiKeyDraft"
-                              :key="`${index}-${item}`"
-                              class="source-api-key-editor__item"
-                            >
-                              <div class="source-api-key-editor__value">
-                                {{ item }}
-                              </div>
-                              <v-btn
-                                color="error"
-                                icon="mdi-close"
-                                size="small"
-                                variant="text"
-                                @click="removeSourceApiKeyDraft(index)"
-                              />
-                            </div>
-                          </div>
-                        </div>
-                      </v-card-text>
-                      <v-card-actions class="px-6 pb-6">
-                        <v-spacer />
-                        <v-btn variant="text" @click="sourceApiKeysDialog = false">
-                          {{ t('common.cancel') }}
-                        </v-btn>
-                        <v-btn color="primary" variant="text" @click="applySourceApiKeyDraft">
-                          {{ t('common.confirm') }}
-                        </v-btn>
-                      </v-card-actions>
-                    </v-card>
-                  </v-dialog>
-
-                  <v-expansion-panels class="mt-3" variant="accordion">
-                    <v-expansion-panel>
-                      <v-expansion-panel-title>{{ t('ai.sourceAdvancedConfig') }}</v-expansion-panel-title>
-                      <v-expansion-panel-text>
-                        <div class="ai-binding-form pt-2">
-                          <v-text-field
-                            v-model.number="sourceForm.timeout_seconds"
-                            density="comfortable"
-                            :disabled="savingSource"
-                            hide-details
-                            :label="t('ai.sourceTimeoutSeconds')"
-                            type="number"
-                          />
-                          <v-switch
-                            v-model="sourceForm.enabled"
-                            color="primary"
-                            density="comfortable"
-                            :disabled="savingSource"
-                            hide-details
-                            :label="t('ai.sourceEnabled')"
-                          />
-                          <v-text-field
-                            v-model.trim="sourceForm.proxy"
-                            density="comfortable"
-                            :disabled="savingSource"
-                            hide-details
-                            :label="t('ai.sourceProxy')"
-                          />
-                          <v-text-field
-                            v-if="sourceForm.capability_type === 'embedding'"
-                            v-model.number="sourceForm.embedding_dimensions"
-                            density="comfortable"
-                            :disabled="savingSource"
-                            hide-details
-                            :label="t('ai.sourceEmbeddingDimensions')"
-                            type="number"
-                          />
-                          <v-text-field
-                            v-if="sourceForm.capability_type === 'speech_to_text'"
-                            v-model.trim="sourceForm.stt_language"
-                            density="comfortable"
-                            :disabled="savingSource"
-                            hide-details
-                            :label="t('ai.sourceSttLanguage')"
-                          />
-                          <v-text-field
-                            v-if="sourceForm.capability_type === 'text_to_speech'"
-                            v-model.trim="sourceForm.tts_voice"
-                            density="comfortable"
-                            :disabled="savingSource"
-                            hide-details
-                            :label="t('ai.sourceTtsVoice')"
-                          />
-                          <v-select
-                            v-if="sourceForm.capability_type === 'text_to_speech'"
-                            v-model="sourceForm.tts_response_format"
-                            density="comfortable"
-                            :disabled="savingSource"
-                            hide-details
-                            :items="ttsResponseFormatOptions"
-                            :label="t('ai.sourceTtsFormat')"
-                          />
-                          <v-text-field
-                            v-if="sourceForm.capability_type === 'rerank'"
-                            v-model.trim="sourceForm.rerank_api_suffix"
-                            density="comfortable"
-                            :disabled="savingSource"
-                            hide-details
-                            :label="t('ai.sourceRerankApiSuffix')"
-                          />
-                          <v-text-field
-                            v-if="sourceForm.capability_type === 'rerank'"
-                            v-model.number="sourceForm.rerank_top_n"
-                            density="comfortable"
-                            :disabled="savingSource"
-                            hide-details
-                            :label="t('ai.sourceRerankTopN')"
-                            type="number"
-                          />
-                        </div>
-                      </v-expansion-panel-text>
-                    </v-expansion-panel>
-                  </v-expansion-panels>
-                </v-sheet>
-
-                <v-sheet class="surface-gradient-card pa-4 source-models-panel" rounded="lg">
-                  <template v-if="!sourceForm.source_id">
-                    <div class="text-subtitle-1 font-weight-medium mb-3">{{ t('ai.sourceModelsTitle') }}</div>
-                    <div class="empty-state-text">{{ t('ai.selectSourceFirst') }}</div>
-                    <div class="empty-state-hint mt-2">{{ t('ai.selectSourceFirstHint') }}</div>
-                  </template>
-
-                  <template v-else>
-                    <div class="d-flex flex-wrap justify-space-between align-center ga-3 mb-4">
-                      <div class="text-subtitle-1 font-weight-medium">{{ t('ai.sourceModelsTitle') }}</div>
-                      <div class="d-flex flex-wrap ga-2">
-                        <v-btn
-                          :disabled="!canFetchSourceModels"
-                          :loading="fetchingSourceModels"
-                          variant="tonal"
-                          @click="pullSourceModels"
-                        >
-                          {{ t('ai.fetchModels') }}
-                        </v-btn>
-                        <v-btn
-                          color="primary"
-                          :disabled="!sourceForm.source_id"
-                          variant="tonal"
-                          @click="openCreateSourceModel"
-                        >
-                          {{ t('ai.customModel') }}
-                        </v-btn>
-                      </div>
-                    </div>
-
-                    <div class="d-flex flex-wrap justify-space-between align-center ga-3 mb-3">
-                      <div class="d-flex align-center ga-3 source-models-toolbar">
-                        <div class="text-subtitle-1 font-weight-medium">
-                          {{ t('ai.configuredModelsTitle') }}
-                        </div>
-                        <div class="text-body-2 text-medium-emphasis">
-                          {{ t('ai.availableModelsCount') }} {{ availableImportModelCount }}
-                        </div>
-                      </div>
-                      <div class="d-flex flex-wrap align-center ga-3">
-                        <v-text-field
-                          v-model.trim="sourceModelSearch"
-                          class="source-model-search"
-                          clearable
-                          density="comfortable"
-                          hide-details
-                          :label="t('ai.modelSearch')"
-                          prepend-inner-icon="mdi-magnify"
-                        />
-                        <div class="text-body-2 text-medium-emphasis">
-                          {{ t('ai.sourceModelsCount') }}：{{ unifiedSourceModels.length }}
-                        </div>
-                      </div>
-                    </div>
-
-                    <div v-if="loadingSourceModels" class="empty-state-hint py-6">
-                      {{ t('common.loading') }}
-                    </div>
-                    <div v-else class="source-model-list">
-                      <v-expansion-panels
-                        v-model="sourceModelEditorPanel"
-                        class="source-model-editor-inline"
-                        variant="accordion"
-                      >
-                        <v-expansion-panel rounded="xl">
-                          <v-expansion-panel-title>
-                            {{ isCreatingModel ? t('ai.createModel') : t('ai.editModel') }}
-                          </v-expansion-panel-title>
-                          <v-expansion-panel-text>
-                            <div class="ai-binding-form pt-2">
-                              <v-text-field
-                                v-model.trim="modelForm.model_identifier"
-                                density="comfortable"
-                                :disabled="savingModel"
-                                :error-messages="displayedModelErrors.model_identifier ? [displayedModelErrors.model_identifier] : []"
-                                :label="t('ai.modelIdentifier')"
-                                @blur="touchModelField('model_identifier')"
-                              />
-                              <v-text-field
-                                v-model.trim="modelForm.display_name"
-                                density="comfortable"
-                                :disabled="savingModel"
-                                :error-messages="displayedModelErrors.display_name ? [displayedModelErrors.display_name] : []"
-                                :label="t('ai.modelDisplayName')"
-                                @blur="touchModelField('display_name')"
-                              />
-                            </div>
-
-                            <div class="d-flex flex-wrap ga-4 mt-3">
-                              <v-switch
-                                v-model="modelForm.enabled"
-                                color="primary"
-                                density="comfortable"
-                                :disabled="savingModel"
-                                hide-details
-                                :label="t('ai.modelEnabled')"
-                              />
-                              <v-switch
-                                v-model="modelForm.is_default"
-                                color="primary"
-                                density="comfortable"
-                                :disabled="savingModel"
-                                hide-details
-                                :label="t('ai.modelDefault')"
-                              />
-                            </div>
-
-                            <div class="d-flex justify-end mt-4">
-                              <v-btn color="primary" :disabled="!canSaveModel" :loading="savingModel" @click="saveSourceModel">
-                                {{ t('common.save') }}
-                              </v-btn>
-                            </div>
-                          </v-expansion-panel-text>
-                        </v-expansion-panel>
-                      </v-expansion-panels>
-
-                      <template v-if="unifiedSourceModels.length > 0">
-                        <v-sheet
-                          v-for="item in unifiedSourceModels"
-                          :key="item.key"
-                          class="source-model-row px-4 py-3"
-                          :class="{
-                            'source-model-row--active': item.kind === 'configured' && item.model_id === modelForm.model_id,
-                            'source-model-row--importable': item.kind === 'importable',
-                          }"
-                          rounded="xl"
-                          @click="item.kind === 'configured' ? openEditSourceModel(item) : undefined"
-                        >
-                          <div class="source-model-row__body">
-                            <div class="source-model-row__title">
-                              {{ item.display_name }}
-                            </div>
-                            <div class="source-model-row__subtitle">
-                              {{ item.model_identifier }}
-                            </div>
-                          </div>
-                          <div v-if="item.kind === 'configured'" class="source-model-row__meta">
-                            <span
-                              class="source-model-row__flag"
-                              :class="{ 'source-model-row__flag--success': item.enabled }"
-                            >
-                              {{ item.enabled ? t('ai.enabled') : t('ai.disabled') }}
-                            </span>
-                            <span
-                              v-if="item.is_default"
-                              class="source-model-row__flag source-model-row__flag--primary"
-                            >
-                              {{ t('ai.modelDefault') }}
-                            </span>
-                          </div>
-                          <div class="source-model-row__actions">
-                            <template v-if="item.kind === 'configured'">
-                              <v-btn
-                                color="primary"
-                                icon="mdi-pencil-outline"
-                                size="small"
-                                variant="text"
-                                @click.stop="openEditSourceModel(item)"
-                              />
-                              <v-btn
-                                color="primary"
-                                icon="mdi-flask-outline"
-                                :loading="testingModelIdentifier === item.model_identifier"
-                                size="small"
-                                :title="t('ai.testModel')"
-                                variant="text"
-                                @click.stop="testSourceModel(item.model_identifier)"
-                              />
-                              <v-btn
-                                color="error"
-                                icon="mdi-delete-outline"
-                                :loading="deletingModelId === item.model_id"
-                                size="small"
-                                variant="text"
-                                @click.stop="requestRemoveSourceModel(item)"
-                              />
-                            </template>
-                            <template v-else>
-                              <v-btn
-                                color="primary"
-                                :loading="importingModelIdentifier === item.model_identifier"
-                                prepend-icon="mdi-plus"
-                                size="small"
-                                variant="tonal"
-                                @click.stop="importSourceModelCatalogItem({
-                                  id: item.model_identifier,
-                                  name: item.display_name,
-                                })"
-                              >
-                                {{ t('ai.importModel') }}
-                              </v-btn>
-                            </template>
-                          </div>
-                        </v-sheet>
-                      </template>
-                      <div v-else class="source-model-empty-state py-6">
-                        <div class="empty-state-text">{{ t('common.noData') }}</div>
-                      </div>
-                    </div>
-
-                    <v-dialog v-model="modelDeleteDialog" max-width="420">
-                      <v-card rounded="xl">
-                        <v-card-title class="text-h6 pt-6 px-6">
-                          {{ t('ai.deleteModelConfirmTitle') }}
-                        </v-card-title>
-                        <v-card-text class="px-6">
-                          {{ t('ai.deleteModelConfirmText', { name: pendingDeleteModel?.label || t('common.none') }) }}
-                        </v-card-text>
-                        <v-card-actions class="px-6 pb-6">
-                          <v-spacer />
-                          <v-btn variant="text" @click="modelDeleteDialog = false">
-                            {{ t('common.cancel') }}
-                          </v-btn>
-                          <v-btn color="error" variant="text" @click="confirmRemoveSourceModel">
-                            {{ t('common.confirm') }}
-                          </v-btn>
-                        </v-card-actions>
-                      </v-card>
-                    </v-dialog>
-
-                    <v-sheet
-                      v-if="isChatCapability"
-                      class="surface-gradient-card pa-4 mt-4"
-                      rounded="lg"
-                    >
-                      <div class="d-flex flex-wrap justify-space-between align-center ga-3 mb-4">
-                        <div class="d-flex flex-wrap ga-2">
-                          <v-chip color="primary" size="small" variant="tonal">
-                            {{ t('ai.modelProfiles') }}: {{ modelProfileCount }}
-                          </v-chip>
-                          <v-chip color="primary" size="small" variant="tonal">
-                            {{ isCreatingProfile ? t('ai.createModelProfile') : t('ai.editModel') }}
-                          </v-chip>
-                          <v-chip color="primary" size="small" variant="tonal">
-                            {{ t('ai.scopeBindings') }}: {{ selectedModelBindingCount }}
-                          </v-chip>
-                        </div>
-                        <v-btn color="primary" variant="tonal" @click="startCreateModelProfile">
-                          {{ t('ai.createModelProfile') }}
-                        </v-btn>
-                      </div>
-
-                      <div v-if="!sourceForm.source_id" class="empty-state-text">
-                        {{ t('ai.selectSourceFirst') }}
-                      </div>
-                      <div v-else-if="sourceModels.length === 0" class="empty-state-text">
-                        {{ t('ai.modelProfileRequiresModel') }}
-                      </div>
-                      <template v-else>
-                        <div v-if="filteredModelProfiles.length > 0" class="d-flex flex-column ga-3 mb-4">
-                          <v-sheet
-                            v-for="item in filteredModelProfiles"
-                            :key="item.profile_id"
-                            class="source-model-row px-4 py-3"
-                            :class="{ 'source-model-row--active': item.profile_id === profileForm.profile_id }"
-                            rounded="xl"
-                            @click="selectModelProfile(item)"
-                          >
-                            <div class="source-model-row__body">
-                              <div class="source-model-row__title">{{ item.name }}</div>
-                              <div class="source-model-row__subtitle">
-                                {{ item.task_class }} · {{ item.priority }}
-                              </div>
-                            </div>
-                            <div class="source-model-row__meta">
-                              <span
-                                class="source-model-row__flag"
-                                :class="{ 'source-model-row__flag--success': item.enabled }"
-                              >
-                                {{ item.enabled ? t('ai.enabled') : t('ai.disabled') }}
-                              </span>
-                            </div>
-                          </v-sheet>
-                        </div>
-                        <div v-else class="empty-state-text mb-4">
-                          {{ t('ai.noModelProfiles') }}
-                        </div>
-
-                        <div class="ai-binding-form">
-                          <v-text-field
-                            v-model.trim="profileForm.name"
-                            density="comfortable"
-                            :disabled="savingProfile"
-                            :error-messages="displayedProfileErrors.name ? [displayedProfileErrors.name] : []"
-                            :label="t('ai.modelProfileName')"
-                            @blur="touchProfileField('name')"
-                          />
-                          <v-select
-                            v-model="profileForm.model_id"
-                            density="comfortable"
-                            :disabled="savingProfile"
-                            :error-messages="displayedProfileErrors.model_id ? [displayedProfileErrors.model_id] : []"
-                            :items="profileModelOptions"
-                            :label="t('ai.modelName')"
-                            @blur="touchProfileField('model_id')"
-                          />
-                          <v-select
-                            v-model="profileForm.task_class"
-                            density="comfortable"
-                            :disabled="savingProfile"
-                            :items="taskClassOptions"
-                            :label="t('ai.modelTaskClass')"
-                          />
-                          <v-text-field
-                            v-model.number="profileForm.priority"
-                            density="comfortable"
-                            :disabled="savingProfile"
-                            :label="t('ai.modelProfilePriority')"
-                            type="number"
-                          />
-                          <v-select
-                            v-model="profileForm.fallback_profile_id"
-                            clearable
-                            density="comfortable"
-                            :disabled="savingProfile"
-                            :items="fallbackProfileOptions"
-                            :label="t('ai.modelProfileFallback')"
-                          />
-                          <v-switch
-                            v-model="profileForm.enabled"
-                            color="primary"
-                            density="comfortable"
-                            :disabled="savingProfile"
-                            hide-details
-                            :label="t('ai.modelProfileEnabled')"
-                          />
-                        </div>
-
-                        <div class="d-flex justify-end mt-4">
-                          <v-btn color="primary" :disabled="!canSaveProfile" :loading="savingProfile" @click="saveModelProfile">
-                            {{ t('common.save') }}
-                          </v-btn>
-                        </div>
-                      </template>
-                    </v-sheet>
-                  </template>
-                </v-sheet>
+                <AISourceModelsPanel
+                  v-model:model-form="modelForm"
+                  v-model:profile-form="profileForm"
+                  :can-fetch-source-models="canFetchSourceModels"
+                  :can-save-model="canSaveModel"
+                  :can-save-profile="canSaveProfile"
+                  :deleting-model-id="deletingModelId"
+                  :displayed-model-errors="displayedModelErrors"
+                  :displayed-profile-errors="displayedProfileErrors"
+                  :fallback-profile-options="fallbackProfileOptions"
+                  :fetched-source-models="fetchedSourceModels"
+                  :fetching-source-models="fetchingSourceModels"
+                  :filtered-model-profiles="filteredModelProfiles"
+                  :import-source-model-catalog-item="importSourceModelCatalogItem"
+                  :importing-model-identifier="importingModelIdentifier"
+                  :is-chat-capability="isChatCapability"
+                  :is-creating-model="isCreatingModel"
+                  :is-creating-profile="isCreatingProfile"
+                  :loading-source-models="loadingSourceModels"
+                  :model-profile-count="modelProfileCount"
+                  :profile-model-options="profileModelOptions"
+                  :pull-source-models="pullSourceModels"
+                  :remove-source-model="removeSourceModel"
+                  :save-model-profile="saveModelProfile"
+                  :save-source-model="saveSourceModel"
+                  :saving-model="savingModel"
+                  :saving-profile="savingProfile"
+                  :select-model-profile="selectModelProfile"
+                  :select-source-model="selectSourceModel"
+                  :selected-model-binding-count="selectedModelBindingCount"
+                  :source-form="sourceForm"
+                  :source-models="sourceModels"
+                  :start-create-model-profile="startCreateModelProfile"
+                  :start-create-source-model="startCreateSourceModel"
+                  :task-class-options="taskClassOptions"
+                  :test-source-model="testSourceModel"
+                  :testing-model-identifier="testingModelIdentifier"
+                  :touch-model-field="touchModelField"
+                  :touch-profile-field="touchProfileField"
+                />
               </v-col>
             </v-row>
           </template>
@@ -698,1458 +118,171 @@
 
       <template v-else-if="topTab === 'personas'">
         <v-card-text>
-          <v-row>
-            <v-col cols="12" lg="4">
-              <div class="d-flex justify-end mb-3">
-                <v-btn color="primary" variant="tonal" @click="startCreatePersona">
-                  {{ t('ai.createPersona') }}
-                </v-btn>
-              </div>
-              <v-sheet class="surface-gradient-card pa-2" rounded="lg">
-                <template v-if="personas.length > 0">
-                  <v-list class="bg-transparent" density="comfortable" lines="two">
-                    <v-list-item
-                      v-for="item in personas"
-                      :key="item.persona_id"
-                      :active="item.persona_id === personaForm.persona_id"
-                      rounded="lg"
-                      @click="selectPersona(item)"
-                    >
-                      <v-list-item-title>{{ item.name }}</v-list-item-title>
-                      <v-list-item-subtitle>{{ item.description || t('common.none') }}</v-list-item-subtitle>
-                      <template #append>
-                        <v-chip :color="item.enabled ? 'success' : 'default'" size="small" variant="tonal">
-                          {{ item.enabled ? t('ai.enabled') : t('ai.disabled') }}
-                        </v-chip>
-                      </template>
-                    </v-list-item>
-                  </v-list>
-                </template>
-                <div v-else class="pa-4">
-                  <div class="empty-state-text">{{ t('ai.noPersonas') }}</div>
-                  <div class="empty-state-hint mt-2">{{ t('ai.noPersonasHint') }}</div>
-                </div>
-              </v-sheet>
-            </v-col>
-
-            <v-col cols="12" lg="8">
-              <v-sheet class="surface-gradient-card pa-4" rounded="lg">
-                <div class="d-flex flex-wrap ga-2 mb-4">
-                  <v-chip color="primary" size="small" variant="tonal">
-                    {{ isCreatingPersona ? t('ai.creatingPersona') : t('ai.editingPersona') }}
-                  </v-chip>
-                  <v-chip color="primary" size="small" variant="tonal">
-                    {{ t('ai.scopeBindings') }}: {{ selectedPersonaBindingCount }}
-                  </v-chip>
-                </div>
-
-                <v-text-field
-                  v-model.trim="personaForm.name"
-                  density="comfortable"
-                  :disabled="savingPersona"
-                  :error-messages="displayedPersonaErrors.name ? [displayedPersonaErrors.name] : []"
-                  :label="t('ai.personaName')"
-                  @blur="touchPersonaField('name')"
-                />
-                <v-text-field
-                  v-model.trim="personaForm.description"
-                  class="mt-3"
-                  density="comfortable"
-                  :disabled="savingPersona"
-                  :error-messages="displayedPersonaErrors.description ? [displayedPersonaErrors.description] : []"
-                  :label="t('ai.personaDescription')"
-                  @blur="touchPersonaField('description')"
-                />
-                <v-textarea
-                  v-model.trim="personaForm.system_prompt"
-                  auto-grow
-                  class="mt-3"
-                  density="comfortable"
-                  :disabled="savingPersona"
-                  :error-messages="displayedPersonaErrors.system_prompt ? [displayedPersonaErrors.system_prompt] : []"
-                  :label="t('ai.personaSystemPrompt')"
-                  rows="5"
-                  @blur="touchPersonaField('system_prompt')"
-                />
-                <div class="mt-2 text-caption text-medium-emphasis">
-                  {{ t('ai.personaTemplateVariablesHint') }}
-                </div>
-                <v-textarea
-                  v-model.trim="personaForm.style_prompt"
-                  auto-grow
-                  class="mt-3"
-                  density="comfortable"
-                  :disabled="savingPersona"
-                  hide-details
-                  :label="t('ai.personaStylePrompt')"
-                  rows="4"
-                />
-                <div class="mt-2 text-caption text-medium-emphasis">
-                  {{ t('ai.personaTemplateVariablesHint') }}
-                </div>
-                <v-switch
-                  v-model="personaForm.enabled"
-                  class="mt-3"
-                  color="primary"
-                  density="comfortable"
-                  :disabled="savingPersona"
-                  hide-details
-                  :label="t('ai.personaEnabled')"
-                />
-                <div class="d-flex justify-end mt-4">
-                  <v-btn color="primary" :disabled="!canSavePersona" :loading="savingPersona" @click="savePersona">
-                    {{ t('common.save') }}
-                  </v-btn>
-                </div>
-              </v-sheet>
-            </v-col>
-          </v-row>
+          <AIPersonasPanel
+            v-model:persona-form="personaForm"
+            :can-save-persona="canSavePersona"
+            :displayed-persona-errors="displayedPersonaErrors"
+            :is-creating-persona="isCreatingPersona"
+            :persona-bindings="personaBindings"
+            :personas="personas"
+            :save-persona="savePersona"
+            :saving-persona="savingPersona"
+            :select-persona="selectPersona"
+            :start-create-persona="startCreatePersona"
+            :touch-persona-field="touchPersonaField"
+          />
         </v-card-text>
       </template>
 
       <template v-else-if="topTab === 'memories'">
         <v-card-text>
-          <v-row>
-            <v-col cols="12" lg="4">
-              <v-sheet class="surface-gradient-card pa-2" rounded="lg">
-                <div class="d-flex align-center justify-space-between px-2 py-2">
-                  <div class="text-body-2 text-medium-emphasis">{{ t('ai.recentTargets') }}</div>
-                  <v-btn
-                    icon="mdi-refresh"
-                    :loading="loadingRecentTargets"
-                    size="small"
-                    variant="text"
-                    @click="loadRecentTargets"
-                  />
-                </div>
-                <template v-if="recentTargets.length > 0">
-                  <v-list class="bg-transparent" density="comfortable" lines="two">
-                    <v-list-item
-                      v-for="item in recentTargets"
-                      :key="`${item.anchor_type}:${item.anchor_id}`"
-                      :active="selectedRecentTargetId === `${item.anchor_type}:${item.anchor_id}`"
-                      rounded="lg"
-                      @click="selectRecentTarget(item)"
-                    >
-                      <v-list-item-title>{{ item.title }}</v-list-item-title>
-                      <v-list-item-subtitle>{{ item.subtitle || item.anchor_id }}</v-list-item-subtitle>
-                      <template #append>
-                        <v-chip color="primary" size="small" variant="tonal">
-                          {{
-                            item.anchor_type === 'scene'
-                              ? t('ai.memoryAnchorScene')
-                              : item.anchor_type === 'participant'
-                                ? t('ai.scopeParticipant')
-                                : t('ai.scopeUser')
-                          }}
-                        </v-chip>
-                      </template>
-                    </v-list-item>
-                  </v-list>
-                </template>
-                <div v-else class="pa-4">
-                  <div class="empty-state-text">{{ t('ai.noRecentTargets') }}</div>
-                  <div class="empty-state-hint mt-2">{{ t('ai.noRecentTargetsHint') }}</div>
-                </div>
-              </v-sheet>
-            </v-col>
-
-            <v-col class="d-flex flex-column ga-4" cols="12" lg="8">
-              <v-expansion-panels variant="accordion">
-                <v-expansion-panel>
-                  <v-expansion-panel-title>{{ t('ai.advancedInput') }}</v-expansion-panel-title>
-                  <v-expansion-panel-text>
-                    <div class="ai-binding-form ai-memory-toolbar pt-2">
-                      <v-select
-                        v-model="memoryForm.anchor_type"
-                        density="comfortable"
-                        hide-details
-                        :items="memorySubjectOptions"
-                        :label="t('ai.memoryAnchorType')"
-                      />
-                      <v-select
-                        v-model="memoryForm.memory_layer"
-                        density="comfortable"
-                        hide-details
-                        :items="memoryDomainOptions"
-                        :label="t('ai.memoryLayer')"
-                      />
-                      <v-text-field
-                        v-model.trim="memoryForm.anchor_id"
-                        density="comfortable"
-                        hide-details
-                        :label="t('ai.memoryAnchorId')"
-                      />
-                      <v-text-field
-                        v-model.trim="memoryForm.query"
-                        density="comfortable"
-                        hide-details
-                        :label="t('ai.memoryQuery')"
-                      />
-                      <v-select
-                        v-model="memoryForm.memory_kind"
-                        density="comfortable"
-                        hide-details
-                        :items="memoryTypeFilterOptions"
-                        :label="t('ai.memoryKind')"
-                      />
-                      <v-select
-                        v-model="memoryForm.limit"
-                        density="comfortable"
-                        hide-details
-                        :items="memoryLimitOptions"
-                        :label="t('ai.memoryLimit')"
-                      />
-                    </div>
-                  </v-expansion-panel-text>
-                </v-expansion-panel>
-              </v-expansion-panels>
-
-              <div class="d-flex flex-wrap ga-2 justify-space-between align-center">
-                <div class="d-flex flex-wrap ga-2">
-                  <v-chip color="primary" size="small" variant="tonal">
-                    {{ t('ai.memoryTarget') }}: {{ memoryTargetLabel }}
-                  </v-chip>
-                  <v-chip color="primary" size="small" variant="tonal">
-                    {{ t('ai.memoryCount') }}: {{ memories.length }}
-                  </v-chip>
-                  <v-chip
-                    v-for="item in memoryTypeBreakdown"
-                    :key="item.memoryType"
-                    color="primary"
-                    size="small"
-                    variant="tonal"
-                  >
-                    {{ item.memoryType }}: {{ item.count }}
-                  </v-chip>
-                </div>
-
-                <v-btn
-                  color="primary"
-                  :disabled="!canLoadMemories"
-                  :loading="loadingMemories"
-                  @click="loadMemories"
-                >
-                  {{ t('ai.viewMemories') }}
-                </v-btn>
-              </div>
-
-              <div v-if="memories.length > 0" class="d-flex flex-wrap ga-2 align-center">
-                <v-btn size="small" variant="tonal" @click="toggleSelectAllMemories">
-                  {{ allMemoriesSelected ? t('ai.memoryDeselectAll') : t('ai.memorySelectAll') }}
-                </v-btn>
-                <template v-if="selectedMemoryCount > 0">
-                  <v-chip color="primary" size="small" variant="tonal">
-                    {{ t('ai.memorySelectedCount') }}: {{ selectedMemoryCount }}
-                  </v-chip>
-                  <v-btn
-                    color="error"
-                    :loading="bulkActionLoading"
-                    size="small"
-                    variant="tonal"
-                    @click="bulkDeleteMemories"
-                  >
-                    {{ t('ai.memoryBulkDelete') }}
-                  </v-btn>
-                  <v-btn
-                    :loading="bulkActionLoading"
-                    size="small"
-                    variant="tonal"
-                    @click="bulkSetMemoriesIgnored(true)"
-                  >
-                    {{ t('ai.memoryBulkIgnore') }}
-                  </v-btn>
-                  <v-btn
-                    :loading="bulkActionLoading"
-                    size="small"
-                    variant="tonal"
-                    @click="bulkSetMemoriesIgnored(false)"
-                  >
-                    {{ t('ai.memoryBulkUnignore') }}
-                  </v-btn>
-                  <v-btn size="small" variant="text" @click="clearMemorySelection">
-                    {{ t('common.cancel') }}
-                  </v-btn>
-                </template>
-              </div>
-
-              <v-sheet class="surface-gradient-card pa-4" rounded="lg">
-                <div class="ai-binding-form ai-memory-toolbar">
-                  <v-select
-                    v-model="memoryDraft.memory_layer"
-                    density="comfortable"
-                    hide-details
-                    :items="memoryDraftLayerOptions"
-                    :label="t('ai.memoryLayer')"
-                  />
-                  <v-select
-                    v-model="memoryDraft.memory_kind"
-                    density="comfortable"
-                    hide-details
-                    :items="memoryTypeOptions"
-                    :label="t('ai.memoryKind')"
-                  />
-                  <v-textarea
-                    v-model.trim="memoryDraft.content"
-                    auto-grow
-                    density="comfortable"
-                    hide-details
-                    :label="t('ai.memoryContent')"
-                    rows="2"
-                  />
-                  <v-btn
-                    color="primary"
-                    :disabled="!canSaveMemory"
-                    :loading="savingMemory"
-                    @click="saveMemory"
-                  >
-                    {{ t('ai.saveMemory') }}
-                  </v-btn>
-                </div>
-              </v-sheet>
-
-              <v-sheet class="surface-gradient-card pa-4" rounded="lg">
-                <div class="text-subtitle-2 font-weight-medium">
-                  {{ t('ai.memoryLayerWorking') }}
-                </div>
-                <div class="empty-state-hint mt-2">
-                  {{ t('ai.memoryWorkingHint') }}
-                </div>
-              </v-sheet>
-
-              <div v-if="memories.length > 0" class="d-flex flex-column ga-4">
-                <v-sheet
-                  v-for="section in memoryLayerSections"
-                  :key="section.layer"
-                  class="surface-gradient-card pa-4"
-                  rounded="lg"
-                >
-                  <div class="text-subtitle-2 font-weight-medium mb-3">
-                    {{ section.title }} · {{ section.items.length }}
-                  </div>
-
-                  <div v-if="section.items.length === 0" class="empty-state-hint">
-                    {{ t('ai.noMemories') }}
-                  </div>
-
-                  <div v-else class="memory-card-list">
-                    <v-sheet
-                      v-for="item in section.items"
-                      :key="item.memory_id"
-                      class="surface-gradient-card pa-4"
-                      rounded="lg"
-                    >
-                      <div class="d-flex flex-wrap justify-space-between ga-3">
-                        <div class="d-flex flex-wrap ga-2 align-center">
-                          <v-checkbox
-                            density="compact"
-                            hide-details
-                            :model-value="selectedMemoryIds.has(item.memory_id)"
-                            @update:model-value="toggleMemorySelection(item.memory_id)"
-                          />
-                          <v-chip color="primary" size="small" variant="tonal">
-                            {{ item.memory_kind }}
-                          </v-chip>
-                          <v-chip color="primary" size="small" variant="tonal">
-                            {{ item.memory_layer }}
-                          </v-chip>
-                          <v-chip v-if="!item.is_editable" color="warning" size="small" variant="tonal">
-                            {{ t('ai.memoryReadOnly') }}
-                          </v-chip>
-                          <v-chip v-if="item.is_ignored" color="error" size="small" variant="tonal">
-                            {{ t('ai.memoryIgnored') }}
-                          </v-chip>
-                          <v-chip color="primary" size="small" variant="tonal">
-                            {{ t('ai.memoryConfidence') }}: {{ formatMemoryScore(item.confidence) }}
-                          </v-chip>
-                          <v-chip color="primary" size="small" variant="tonal">
-                            {{ t('ai.memorySalience') }}: {{ formatMemoryScore(item.salience) }}
-                          </v-chip>
-                        </div>
-                        <div class="text-caption text-medium-emphasis">
-                          {{ t('ai.memoryCreatedAt') }}: {{ item.created_at }}
-                        </div>
-                      </div>
-
-                      <div class="text-body-1 mt-3 memory-content-text">{{ item.content }}</div>
-                      <div v-if="editingMemoryId === item.memory_id" class="d-flex flex-column ga-3 mt-3">
-                        <v-textarea
-                          v-model.trim="memoryEditDraft.content"
-                          auto-grow
-                          density="comfortable"
-                          hide-details
-                          :label="t('ai.memoryContent')"
-                          rows="3"
-                        />
-                        <div class="ai-binding-form">
-                          <v-text-field
-                            v-model.number="memoryEditDraft.salience"
-                            density="comfortable"
-                            hide-details
-                            :label="t('ai.memorySalience')"
-                            max="1"
-                            min="0"
-                            step="0.1"
-                            type="number"
-                          />
-                          <v-text-field
-                            v-model.number="memoryEditDraft.confidence"
-                            density="comfortable"
-                            hide-details
-                            :label="t('ai.memoryConfidence')"
-                            max="1"
-                            min="0"
-                            step="0.1"
-                            type="number"
-                          />
-                        </div>
-                      </div>
-
-                      <div class="d-flex flex-wrap ga-4 mt-3 text-caption text-medium-emphasis">
-                        <span>{{ t('ai.memoryLastRecalledAt') }}: {{ item.last_recalled_at || t('common.none') }}</span>
-                        <span>{{ t('ai.memorySourceTurn') }}: {{ formatMemorySourceTurn(item.source_message_id) }}</span>
-                      </div>
-
-                      <div class="d-flex justify-end mt-3">
-                        <v-btn
-                          :loading="togglingIgnoredId === item.memory_id"
-                          size="small"
-                          variant="text"
-                          @click="toggleMemoryIgnored(item.memory_id)"
-                        >
-                          {{ item.is_ignored ? t('ai.memoryUnignore') : t('ai.memoryIgnore') }}
-                        </v-btn>
-                        <v-btn
-                          v-if="editingMemoryId === item.memory_id"
-                          variant="text"
-                          @click="cancelEditMemory"
-                        >
-                          {{ t('common.cancel') }}
-                        </v-btn>
-                        <v-btn
-                          v-if="editingMemoryId === item.memory_id"
-                          color="primary"
-                          :disabled="!canSaveEditedMemory"
-                          :loading="savingEditedMemoryId === item.memory_id"
-                          size="small"
-                          variant="text"
-                          @click="saveEditedMemory"
-                        >
-                          {{ t('ai.updateMemory') }}
-                        </v-btn>
-                        <v-btn
-                          v-else
-                          color="primary"
-                          :disabled="!item.is_editable"
-                          size="small"
-                          variant="text"
-                          @click="startEditMemory(item)"
-                        >
-                          {{ t('common.edit') }}
-                        </v-btn>
-                        <v-btn
-                          color="error"
-                          :loading="deletingMemoryId === item.memory_id"
-                          size="small"
-                          variant="text"
-                          @click="removeMemory(item.memory_id)"
-                        >
-                          {{ t('common.delete') }}
-                        </v-btn>
-                      </div>
-                    </v-sheet>
-                  </div>
-                </v-sheet>
-              </div>
-
-              <v-sheet v-else class="surface-gradient-card pa-4" rounded="lg">
-                <div class="empty-state-text mb-3">
-                  {{ canLoadMemories ? t('ai.noMemories') : t('ai.selectMemoryTarget') }}
-                </div>
-                <div class="d-flex flex-wrap ga-3">
-                  <v-btn color="primary" variant="tonal" @click="openDebugConversations()">
-                    {{ t('ai.goToDebug') }}
-                  </v-btn>
-                  <v-btn variant="text" @click="openChatView()">
-                    {{ t('ai.goToChatView') }}
-                  </v-btn>
-                </div>
-              </v-sheet>
-            </v-col>
-          </v-row>
+          <AIMemoriesPanel
+            v-model:memory-draft="memoryDraft"
+            v-model:memory-edit-draft="memoryEditDraft"
+            v-model:memory-form="memoryForm"
+            :all-memories-selected="allMemoriesSelected"
+            :bulk-action-loading="bulkActionLoading"
+            :bulk-delete="bulkDeleteMemories"
+            :bulk-set-ignored="bulkSetMemoriesIgnored"
+            :can-load-memories="canLoadMemories"
+            :can-save-edited-memory="canSaveEditedMemory"
+            :can-save-memory="canSaveMemory"
+            :cancel-edit-memory="cancelEditMemory"
+            :clear-selection="clearMemorySelection"
+            :deleting-memory-id="deletingMemoryId"
+            :editing-memory-id="editingMemoryId"
+            :load-memories="loadMemories"
+            :load-recent-targets="loadRecentTargets"
+            :loading-memories="loadingMemories"
+            :loading-recent-targets="loadingRecentTargets"
+            :memories="memories"
+            :open-chat-view="openChatView"
+            :open-debug-conversations="openDebugConversations"
+            :recent-targets="recentTargets"
+            :remove-memory="removeMemory"
+            :save-edited-memory="saveEditedMemory"
+            :save-memory="saveMemory"
+            :saving-edited-memory-id="savingEditedMemoryId"
+            :saving-memory="savingMemory"
+            :select-recent-target="selectRecentTarget"
+            :selected-memory-count="selectedMemoryCount"
+            :selected-memory-ids="selectedMemoryIds"
+            :selected-recent-target-id="selectedRecentTargetId"
+            :start-edit-memory="startEditMemory"
+            :toggle-ignored="toggleMemoryIgnored"
+            :toggle-memory-selection="toggleMemorySelection"
+            :toggle-select-all="toggleSelectAllMemories"
+            :toggling-ignored-id="togglingIgnoredId"
+          />
         </v-card-text>
       </template>
 
       <template v-else-if="topTab === 'relationships'">
         <v-card-text>
-          <v-row>
-            <v-col cols="12" lg="4">
-              <v-sheet class="surface-gradient-card pa-2" rounded="lg">
-                <div class="d-flex align-center justify-space-between px-2 py-2">
-                  <div class="text-body-2 text-medium-emphasis">{{ t('ai.recentTargets') }}</div>
-                  <v-btn
-                    icon="mdi-refresh"
-                    :loading="loadingRecentTargets || loadingSelectedRelationship"
-                    size="small"
-                    variant="text"
-                    @click="loadRecentTargets"
-                  />
-                </div>
-                <template v-if="recentRelationshipTargets.length > 0">
-                  <v-list class="bg-transparent" density="comfortable" lines="two">
-                    <v-list-item
-                      v-for="item in recentRelationshipTargets"
-                      :key="`${item.anchor_type}:${item.anchor_id}`"
-                      rounded="lg"
-                      @click="loadRelationshipForTarget(item)"
-                    >
-                      <v-list-item-title>{{ item.title }}</v-list-item-title>
-                      <v-list-item-subtitle>{{ item.subtitle || item.anchor_id }}</v-list-item-subtitle>
-                    </v-list-item>
-                  </v-list>
-                </template>
-                <div v-else class="pa-4">
-                  <div class="empty-state-text">{{ t('ai.noRecentTargets') }}</div>
-                  <div class="empty-state-hint mt-2">{{ t('ai.noRecentTargetsHint') }}</div>
-                </div>
-              </v-sheet>
-            </v-col>
-
-            <v-col cols="12" lg="8">
-              <v-sheet class="surface-gradient-card pa-4" rounded="lg">
-                <div v-if="relationship" class="d-flex flex-column ga-4">
-                  <div class="d-flex flex-wrap ga-2">
-                    <v-chip color="primary" size="small" variant="tonal">
-                      {{ t('ai.relationshipTarget') }}: {{ relationshipSelectionLabel }}
-                    </v-chip>
-                    <v-chip color="primary" size="small" variant="tonal">
-                      {{ t('ai.relationshipPlatform') }}: {{ relationship.platform }}
-                    </v-chip>
-                    <v-chip color="primary" size="small" variant="tonal">
-                      {{ t('ai.relationshipGroupId') }}: {{ relationship.group_id || t('common.none') }}
-                    </v-chip>
-                  </div>
-
-                  <div class="relationship-meta-grid text-body-2">
-                    <div>
-                      <span class="text-medium-emphasis">{{ t('ai.relationshipScore') }}</span>
-                      <div class="mt-1">{{ relationship.effective_score.toFixed(1) }}</div>
-                    </div>
-                    <div>
-                      <span class="text-medium-emphasis">{{ t('ai.relationshipProjectedTone') }}</span>
-                      <div class="mt-1">{{ relationship.effective_projected_tone || t('common.none') }}</div>
-                    </div>
-                    <div>
-                      <span class="text-medium-emphasis">{{ t('ai.relationshipMoodTags') }}</span>
-                      <div class="mt-1">{{ relationshipMoodText }}</div>
-                    </div>
-                    <div>
-                      <span class="text-medium-emphasis">{{ t('ai.relationshipLastEventAt') }}</span>
-                      <div class="mt-1">{{ relationship.last_event_at || t('common.none') }}</div>
-                    </div>
-                    <div>
-                      <span class="text-medium-emphasis">{{ t('ai.relationshipLastDecayAt') }}</span>
-                      <div class="mt-1">{{ relationship.last_decay_at || t('common.none') }}</div>
-                    </div>
-                    <div>
-                      <span class="text-medium-emphasis">{{ t('ai.relationshipWarmthBias') }}</span>
-                      <div class="mt-1">{{ formatSignedRelationshipValue(relationship.effective_warmth_bias) }}</div>
-                    </div>
-                    <div>
-                      <span class="text-medium-emphasis">{{ t('ai.relationshipInitiativeBias') }}</span>
-                      <div class="mt-1">{{ formatSignedRelationshipValue(relationship.effective_initiative_bias) }}</div>
-                    </div>
-                  </div>
-
-                  <div>
-                    <div class="text-body-2 text-medium-emphasis mb-2">{{ t('ai.relationshipStyleModulation') }}</div>
-                    <div v-if="relationship.effective_style_modulation.length > 0" class="d-flex flex-wrap ga-2">
-                      <v-chip
-                        v-for="line in relationship.effective_style_modulation"
-                        :key="`${relationship.affinity_id}-${line}`"
-                        color="primary"
-                        size="small"
-                        variant="tonal"
-                      >
-                        {{ line }}
-                      </v-chip>
-                    </div>
-                    <div v-else class="empty-state-hint">
-                      {{ t('common.none') }}
-                    </div>
-                  </div>
-
-                  <div>
-                    <div class="text-body-2 text-medium-emphasis mb-2">{{ t('ai.relationshipScore') }}</div>
-                    <v-slider
-                      v-model="relationshipForm.score"
-                      color="primary"
-                      hide-details
-                      max="1"
-                      min="-1"
-                      step="0.1"
-                      thumb-label
-                    />
-                  </div>
-
-                  <div class="d-flex justify-end">
-                    <v-btn color="primary" :loading="savingRelationship" @click="saveRelationship">
-                      {{ t('ai.saveRelationship') }}
-                    </v-btn>
-                  </div>
-
-                  <div>
-                    <div class="d-flex align-center justify-space-between mb-2">
-                      <div class="text-body-2 text-medium-emphasis">{{ t('ai.relationshipEvents') }}</div>
-                      <v-btn
-                        icon="mdi-refresh"
-                        :loading="loadingRelationshipEvents"
-                        size="small"
-                        variant="text"
-                        @click="selectRelationship(relationship)"
-                      />
-                    </div>
-                    <v-list
-                      v-if="relationshipEvents.length > 0"
-                      class="bg-transparent relation-event-list"
-                      density="comfortable"
-                      lines="three"
-                    >
-                      <v-list-item
-                        v-for="event in relationshipEvents"
-                        :key="event.event_id"
-                        rounded="lg"
-                      >
-                        <v-list-item-title class="d-flex flex-wrap ga-2 align-center">
-                          <span>{{ formatRelationshipEventType(event.event_type) }}</span>
-                          <v-chip color="primary" size="x-small" variant="tonal">
-                            {{ formatSignedRelationshipValue(event.score_delta) }}
-                          </v-chip>
-                          <v-chip color="default" size="x-small" variant="tonal">
-                            {{ t('ai.relationshipScoreAfter') }}: {{ event.score_after.toFixed(2) }}
-                          </v-chip>
-                        </v-list-item-title>
-                        <v-list-item-subtitle class="mt-1">
-                          {{ event.reason || t('common.none') }}
-                        </v-list-item-subtitle>
-                        <template #append>
-                          <div class="text-caption text-medium-emphasis text-right">
-                            <div>{{ event.created_at }}</div>
-                            <div>{{ event.mood_tag || t('common.none') }}</div>
-                          </div>
-                        </template>
-                      </v-list-item>
-                    </v-list>
-                    <div v-else class="empty-state-hint">
-                      {{ loadingRelationshipEvents ? t('common.loading') : t('ai.noRelationshipEvents') }}
-                    </div>
-                  </div>
-                </div>
-                <div v-else>
-                  <div class="empty-state-text mb-3">
-                    {{ t('ai.selectRelationshipTarget') }}
-                  </div>
-                  <div class="d-flex flex-wrap ga-3">
-                    <v-btn color="primary" variant="tonal" @click="openDebugConversations()">
-                      {{ t('ai.goToDebug') }}
-                    </v-btn>
-                    <v-btn variant="text" @click="openChatView()">
-                      {{ t('ai.goToChatView') }}
-                    </v-btn>
-                  </div>
-                </div>
-              </v-sheet>
-            </v-col>
-          </v-row>
+          <AIRelationshipsPanel
+            v-model:relationship-form="relationshipForm"
+            :load-recent-targets="loadRecentTargets"
+            :load-relationship-for-target="loadRelationshipForTarget"
+            :loading-recent-targets="loadingRecentTargets"
+            :loading-relationship-events="loadingRelationshipEvents"
+            :loading-selected-relationship="loadingSelectedRelationship"
+            :open-chat-view="openChatView"
+            :open-debug-conversations="openDebugConversations"
+            :recent-targets="recentTargets"
+            :relationship="relationship"
+            :relationship-events="relationshipEvents"
+            :save-relationship="saveRelationship"
+            :saving-relationship="savingRelationship"
+            :select-relationship="selectRelationship"
+          />
         </v-card-text>
       </template>
 
       <template v-else-if="topTab === 'profiles'">
         <v-card-text>
-          <v-row>
-            <v-col cols="12" lg="4">
-              <div class="d-flex justify-space-between align-center mb-3">
-                <div class="text-subtitle-1 font-weight-medium">
-                  {{ t('ai.personProfileListTitle') }}
-                </div>
-                <v-btn
-                  icon="mdi-refresh"
-                  :loading="loadingPersonProfiles"
-                  size="small"
-                  variant="text"
-                  @click="loadPersonProfiles"
-                />
-              </div>
-              <v-sheet class="surface-gradient-card pa-2" rounded="lg">
-                <template v-if="personProfiles.length > 0">
-                  <v-list class="bg-transparent" density="comfortable" lines="two">
-                    <v-list-item
-                      v-for="item in personProfiles"
-                      :key="item.person_id"
-                      :active="selectedPersonId === item.person_id"
-                      rounded="lg"
-                      @click="selectPersonProfile(item)"
-                    >
-                      <v-list-item-title>
-                        {{ item.nickname || item.person_name || item.user_id }}
-                      </v-list-item-title>
-                      <v-list-item-subtitle>
-                        {{ item.platform }} · {{ item.user_id }}
-                      </v-list-item-subtitle>
-                      <template #append>
-                        <v-chip
-                          :color="item.is_known ? 'success' : 'default'"
-                          size="x-small"
-                          variant="tonal"
-                        >
-                          {{ item.is_known ? t('ai.personProfileKnown') : t('ai.personProfileUnknown') }}
-                        </v-chip>
-                      </template>
-                    </v-list-item>
-                  </v-list>
-                </template>
-                <div v-else class="pa-4">
-                  <div class="empty-state-text">{{ t('ai.personProfileEmpty') }}</div>
-                  <div class="empty-state-hint mt-2">{{ t('ai.personProfileEmptyHint') }}</div>
-                </div>
-              </v-sheet>
-            </v-col>
-
-            <v-col cols="12" lg="8">
-              <template v-if="selectedPersonProfile">
-                <v-sheet class="surface-gradient-card pa-4" rounded="lg">
-                  <div class="d-flex flex-wrap ga-2 mb-4">
-                    <v-chip color="primary" size="small" variant="tonal">
-                      {{ t('ai.personProfilePlatform') }}: {{ selectedPersonProfile.platform }}
-                    </v-chip>
-                    <v-chip color="primary" size="small" variant="tonal">
-                      {{ t('ai.personProfileUserId') }}: {{ selectedPersonProfile.user_id }}
-                    </v-chip>
-                    <v-chip v-if="selectedPersonProfile.know_since" color="primary" size="small" variant="tonal">
-                      {{ t('ai.personProfileKnowSince') }}: {{ selectedPersonProfile.know_since }}
-                    </v-chip>
-                    <v-chip color="primary" size="small" variant="tonal">
-                      {{ t('ai.personProfileLastInteraction') }}: {{ selectedPersonProfile.last_interaction }}
-                    </v-chip>
-                  </div>
-
-                  <div class="d-flex flex-column ga-3">
-                    <v-text-field
-                      v-model.trim="personProfileEditForm.person_name"
-                      density="comfortable"
-                      hide-details
-                      :label="t('ai.personProfileName')"
-                    />
-                    <v-text-field
-                      v-model.trim="personProfileEditForm.nickname"
-                      density="comfortable"
-                      hide-details
-                      :label="t('ai.personProfileNickname')"
-                    />
-                  </div>
-
-                  <div class="mt-4">
-                    <div class="d-flex justify-space-between align-center mb-3">
-                      <div class="text-subtitle-2 font-weight-medium">
-                        {{ t('ai.personProfileMemoryPoints') }} · {{ personProfileEditForm.memory_points.length }}
-                      </div>
-                      <v-btn color="primary" size="small" variant="tonal" @click="addPersonMemoryPoint">
-                        {{ t('ai.personProfileAddPoint') }}
-                      </v-btn>
-                    </div>
-
-                    <div v-if="personProfileEditForm.memory_points.length > 0" class="d-flex flex-column ga-3">
-                      <v-sheet
-                        v-for="(point, index) in personProfileEditForm.memory_points"
-                        :key="index"
-                        class="surface-gradient-card pa-3"
-                        rounded="lg"
-                      >
-                        <div class="d-flex ga-3 align-center">
-                          <v-select
-                            v-model="point.category"
-                            density="comfortable"
-                            hide-details
-                            :items="personProfilePointCategoryOptions"
-                            :label="t('ai.personProfilePointCategory')"
-                            style="max-width: 160px"
-                          />
-                          <v-text-field
-                            v-model.trim="point.content"
-                            density="comfortable"
-                            hide-details
-                            :label="t('ai.personProfilePointContent')"
-                          />
-                          <v-text-field
-                            v-model.number="point.confidence"
-                            density="comfortable"
-                            hide-details
-                            :label="t('ai.personProfilePointConfidence')"
-                            max="1"
-                            min="0"
-                            step="0.1"
-                            style="max-width: 100px"
-                            type="number"
-                          />
-                          <v-btn
-                            color="error"
-                            icon="mdi-delete-outline"
-                            size="small"
-                            variant="text"
-                            @click="removePersonMemoryPoint(index)"
-                          />
-                        </div>
-                      </v-sheet>
-                    </div>
-                    <div v-else class="empty-state-hint">
-                      {{ t('ai.personProfileNoPoints') }}
-                    </div>
-                  </div>
-
-                  <div class="d-flex justify-end ga-3 mt-4">
-                    <v-btn
-                      color="error"
-                      :loading="deletingPersonProfileId === selectedPersonProfile.person_id"
-                      variant="text"
-                      @click="removePersonProfile(selectedPersonProfile.person_id)"
-                    >
-                      {{ t('common.delete') }}
-                    </v-btn>
-                    <v-btn
-                      color="primary"
-                      :disabled="!canSavePersonProfile"
-                      :loading="savingPersonProfile"
-                      @click="savePersonProfile"
-                    >
-                      {{ t('common.save') }}
-                    </v-btn>
-                  </div>
-                </v-sheet>
-              </template>
-              <v-sheet v-else class="surface-gradient-card pa-4" rounded="lg">
-                <div class="empty-state-text">{{ t('ai.personProfileSelectHint') }}</div>
-              </v-sheet>
-            </v-col>
-          </v-row>
+          <AIPersonProfilesPanel
+            v-model:edit-form="personProfileEditForm"
+            :add-memory-point="addPersonMemoryPoint"
+            :can-save-profile="canSavePersonProfile"
+            :deleting-profile-id="deletingPersonProfileId"
+            :load-profiles="loadPersonProfiles"
+            :loading-profiles="loadingPersonProfiles"
+            :person-profile-point-category-options="personProfilePointCategoryOptions"
+            :profiles="personProfiles"
+            :remove-memory-point="removePersonMemoryPoint"
+            :remove-profile="removePersonProfile"
+            :save-profile="savePersonProfile"
+            :saving-profile="savingPersonProfile"
+            :select-profile="selectPersonProfile"
+            :selected-person-id="selectedPersonId"
+            :selected-profile="selectedPersonProfile"
+          />
         </v-card-text>
       </template>
 
       <template v-else-if="topTab === 'skills'">
-        <v-card-text class="d-flex flex-column ga-4">
-          <div class="d-flex flex-wrap ga-2">
-            <v-chip color="primary" size="small" variant="tonal">
-              {{ t('ai.skills') }}: {{ skills.length }}
-            </v-chip>
-            <v-chip color="primary" size="small" variant="tonal">
-              {{ t('ai.capabilities') }}: {{ skillCapabilities.length }}
-            </v-chip>
-            <v-chip color="primary" size="small" variant="tonal">
-              {{ t('ai.skillReadOnly') }}: {{ readonlySkillCount }}
-            </v-chip>
-          </div>
-
-          <div v-if="skills.length > 0" class="skill-card-grid">
-            <v-sheet
-              v-for="item in skills"
-              :key="item.name"
-              class="surface-gradient-card pa-4"
-              rounded="lg"
-            >
-              <div class="d-flex flex-wrap justify-space-between ga-3">
-                <div>
-                  <div class="text-subtitle-1 font-weight-medium">{{ item.display_name || item.name }}</div>
-                  <div class="text-body-2 text-medium-emphasis mt-1">
-                    {{ item.display_description || item.description || t('common.none') }}
-                  </div>
-                </div>
-                <v-chip color="primary" size="small" variant="tonal">
-                  {{ item.risk_label || item.risk_level }}
-                </v-chip>
-              </div>
-
-              <div class="d-flex flex-wrap ga-2 mt-3">
-                <v-chip :color="item.read_only ? 'success' : 'default'" size="small" variant="tonal">
-                  {{ t('ai.skillReadOnly') }}: {{ item.read_only ? t('ai.enabled') : t('ai.disabled') }}
-                </v-chip>
-                <v-chip :color="item.concurrency_safe ? 'success' : 'default'" size="small" variant="tonal">
-                  {{ t('ai.skillConcurrencySafe') }}: {{ item.concurrency_safe ? t('ai.enabled') : t('ai.disabled') }}
-                </v-chip>
-                <v-chip :color="item.is_capability_bridge ? 'success' : 'default'" size="small" variant="tonal">
-                  {{ t('ai.skillCapabilityBridge') }}: {{ item.is_capability_bridge ? t('ai.enabled') : t('ai.disabled') }}
-                </v-chip>
-              </div>
-
-              <div class="mt-4">
-                <div class="text-body-2 text-medium-emphasis mb-2">{{ t('ai.linkedCapabilities') }}</div>
-                <div v-if="skillCapabilitiesFor(item.name).length > 0" class="d-flex flex-wrap ga-2">
-                  <v-chip
-                    v-for="capability in skillCapabilitiesFor(item.name)"
-                    :key="`${item.name}-${capability}`"
-                    color="primary"
-                    size="small"
-                    variant="tonal"
-                  >
-                    {{ capability }}
-                  </v-chip>
-                </div>
-                <div v-else class="empty-state-text">
-                  {{ t('ai.noCapabilities') }}
-                </div>
-              </div>
-            </v-sheet>
-          </div>
-
-          <v-sheet v-else class="surface-gradient-card pa-4" rounded="lg">
-            <div class="empty-state-text">{{ t('ai.noSkills') }}</div>
-          </v-sheet>
+        <v-card-text>
+          <AISkillsPanel
+            :capabilities="skillCapabilities"
+            :skills="skills"
+          />
         </v-card-text>
       </template>
 
       <template v-else>
-        <v-card-text class="d-flex flex-column ga-4">
-          <v-tabs v-model="debugTab" color="primary">
-            <v-tab value="conversations">{{ t('ai.debugConversationTitle') }}</v-tab>
-            <v-tab value="futureTasks">{{ t('ai.futureTaskTab') }}</v-tab>
-            <v-tab value="tools">{{ t('ai.debugToolsTab') }}</v-tab>
-          </v-tabs>
-
-          <template v-if="debugTab === 'conversations'">
-            <div class="d-flex flex-column ga-5 pt-4">
-              <div class="ai-binding-form">
-                <v-text-field
-                  v-model.number="debugForm.limit"
-                  density="comfortable"
-                  hide-details
-                  :label="t('ai.workbenchConversationLimit')"
-                  min="1"
-                  type="number"
-                />
-                <v-text-field
-                  v-model.number="debugForm.turnLimit"
-                  density="comfortable"
-                  hide-details
-                  :label="t('ai.workbenchTurnLimit')"
-                  min="1"
-                  type="number"
-                />
-              </div>
-
-              <div class="d-flex flex-wrap justify-space-between align-center ga-3">
-                <div class="d-flex flex-wrap ga-2">
-                  <v-chip color="primary" size="small" variant="tonal">
-                    {{ t('ai.debugConversationTitle') }}: {{ conversations.length }}
-                  </v-chip>
-                  <v-chip color="primary" size="small" variant="tonal">
-                    {{ t('ai.debugMessageCount') }}: {{ turns.length }}
-                  </v-chip>
-                  <v-chip color="primary" size="small" variant="tonal">
-                    {{ t('ai.debugToolCallCount') }}: {{ toolExecutions.length }}
-                  </v-chip>
-                </div>
-                <v-btn color="primary" :loading="loadingDebug" @click="loadDebugData">
-                  {{ t('ai.loadWorkbench') }}
-                </v-btn>
-              </div>
-
-              <v-sheet v-if="conversations.length > 0" class="surface-gradient-card pa-4" rounded="lg">
-                <div v-if="selectedConversation" class="d-flex flex-column ga-2 text-body-2">
-                  <div>{{ t('ai.conversationId') }}: {{ selectedConversation.session_id }}</div>
-                  <div>{{ t('ai.scopeType') }}: {{ selectedConversation.scene_type }}</div>
-                  <div>{{ t('ai.scopeId') }}: {{ selectedConversation.scene_id }}</div>
-                  <div>{{ t('ai.scopeUser') }}: {{ selectedConversation.subject_id || t('common.none') }}</div>
-                  <div>{{ t('ai.conversationSummary') }}: {{ selectedConversation.summary_text || t('common.none') }}</div>
-                  <div>{{ t('ai.lastActiveAt') }}: {{ selectedConversation.last_message_at }}</div>
-                </div>
-                <div v-else class="empty-state-text">
-                  {{ t('ai.noConversationSelected') }}
-                </div>
-              </v-sheet>
-
-              <template v-if="conversations.length === 0 && !loadingDebug">
-                <v-sheet class="surface-gradient-card pa-4" rounded="lg">
-                  <div class="empty-state-text mb-3">{{ t('ai.noConversationSelected') }}</div>
-                  <div class="empty-state-hint mb-3">{{ t('ai.noConversationSelectedHint') }}</div>
-                  <div class="d-flex flex-wrap ga-3">
-                    <v-btn color="primary" variant="tonal" @click="openChatView()">
-                      {{ t('ai.goToChatView') }}
-                    </v-btn>
-                  </div>
-                </v-sheet>
-              </template>
-
-              <template v-else>
-                <v-row>
-                  <v-col cols="12" lg="5">
-                    <v-data-table
-                      class="page-table"
-                      density="compact"
-                      :headers="conversationHeaders"
-                      :items="conversations"
-                      :items-per-page-text="t('common.itemsPerPage')"
-                      :loading="loadingDebug"
-                      :no-data-text="t('common.noData')"
-                    >
-                      <template #item.session_id="{ item }">
-                        <v-btn
-                          color="primary"
-                          size="small"
-                          variant="text"
-                          @click="loadConversationDetails(item.session_id)"
-                        >
-                          {{ item.session_id.slice(0, 16) }}...
-                        </v-btn>
-                      </template>
-                    </v-data-table>
-                  </v-col>
-
-                  <v-col cols="12" lg="7">
-                    <v-sheet class="surface-gradient-card pa-4 mb-4" rounded="lg">
-                      <div v-if="traceIds.length > 0" class="d-flex flex-wrap ga-2">
-                        <v-chip
-                          v-for="traceId in traceIds"
-                          :key="traceId"
-                          color="primary"
-                          size="small"
-                          variant="tonal"
-                        >
-                          {{ traceId }}
-                        </v-chip>
-                      </div>
-                      <div v-else class="empty-state-text">
-                        {{ t('ai.noTraceIds') }}
-                      </div>
-                    </v-sheet>
-
-                    <v-sheet class="surface-gradient-card pa-4" rounded="lg">
-                      <div class="d-flex flex-wrap ga-2">
-                        <v-chip color="success" size="small" variant="tonal">
-                          {{ t('ai.toolStatusSuccess') }}: {{ toolExecutionStats.success }}
-                        </v-chip>
-                        <v-chip color="error" size="small" variant="tonal">
-                          {{ t('ai.toolStatusError') }}: {{ toolExecutionStats.error }}
-                        </v-chip>
-                        <v-chip color="warning" size="small" variant="tonal">
-                          {{ t('ai.toolStatusTimeout') }}: {{ toolExecutionStats.timeout }}
-                        </v-chip>
-                      </div>
-                    </v-sheet>
-
-                    <v-sheet class="surface-gradient-card pa-4 mt-4" rounded="lg">
-                      <div class="text-subtitle-2 font-weight-medium mb-3">
-                        {{ t('ai.finalReplyTitle') }}
-                      </div>
-                      <div v-if="latestAssistantTurn" class="d-flex flex-column ga-3 text-body-2">
-                        <div>{{ latestAssistantTurn.text_content }}</div>
-                        <div>{{ t('ai.finalReplyModel') }}: {{ latestAssistantTurn.model_name || t('common.none') }}</div>
-                        <div>{{ t('ai.finalReplySource') }}: {{ latestAssistantTurn.source_id || t('common.none') }}</div>
-                        <div>{{ t('ai.finalReplyTraceId') }}: {{ latestAssistantTurn.trace_id || t('common.none') }}</div>
-                      </div>
-                      <div v-else class="empty-state-text">
-                        {{ t('common.noData') }}
-                      </div>
-                    </v-sheet>
-                  </v-col>
-                </v-row>
-
-                <v-sheet class="surface-gradient-card pa-4" rounded="lg">
-                  <div v-if="promptPreview" class="d-flex flex-column ga-3 text-body-2">
-                    <div>{{ t('ai.latestUserMessage') }}: {{ promptPreview.latest_user_message || t('common.none') }}</div>
-                    <div>{{ t('ai.conversationId') }}: {{ promptPreview.session_id }}</div>
-                    <div>{{ t('ai.planningModel') }}: {{ promptPreview.planning_model_name || promptPreview.model_name || t('common.none') }}</div>
-                    <div>{{ t('ai.planningSource') }}: {{ promptPreview.planning_source_id || t('common.none') }}</div>
-                    <div>{{ t('ai.planningProfile') }}: {{ promptPreview.planning_profile_id || t('common.none') }}</div>
-                    <div>{{ t('ai.modelTaskClass') }}: {{ promptPreview.planning_task_class || t('common.none') }}</div>
-                    <div>{{ t('ai.roleplayModel') }}: {{ promptPreview.roleplay_model_name || t('common.none') }}</div>
-                    <div>{{ t('ai.roleplaySource') }}: {{ promptPreview.roleplay_source_id || t('common.none') }}</div>
-                    <div>{{ t('ai.roleplayProfile') }}: {{ promptPreview.roleplay_profile_id || t('common.none') }}</div>
-                    <div>{{ t('ai.modelTaskClass') }}: {{ promptPreview.roleplay_task_class || t('common.none') }}</div>
-                    <div>{{ t('ai.personaId') }}: {{ promptPreview.persona_id || t('common.none') }}</div>
-                    <div>{{ t('ai.relationshipStateTitle') }}: {{ promptPreview.relationship_context || t('common.none') }}</div>
-                    <div>{{ t('ai.toolPolicyTitle') }}: {{ promptPreview.tool_policy || t('common.none') }}</div>
-                    <div>{{ t('ai.socialAction') }}: {{ promptPreview.social_action || t('common.none') }}</div>
-                    <div>{{ t('ai.socialToolMode') }}: {{ promptPreview.social_tool_mode || t('common.none') }}</div>
-                    <div>{{ t('ai.socialReason') }}: {{ promptPreview.social_reason_text || t('common.none') }}</div>
-                    <div>{{ t('ai.socialReasonCodes') }}: {{ promptPreview.social_reason_codes.join(', ') || t('common.none') }}</div>
-                    <div>{{ t('ai.socialPolicySource') }}: {{ promptPreview.social_policy_source || t('common.none') }}</div>
-                    <div>{{ t('ai.conversationSummary') }}: {{ promptPreview.conversation_summary || t('common.none') }}</div>
-                    <div>{{ t('ai.memoryHits') }}: {{ promptPreview.memories.length }}</div>
-                    <div>{{ t('ai.memoryLayerOperator') }}: {{ promptPreview.operator_memory_count }}</div>
-                    <div>{{ t('ai.memoryLayerSummary') }}: {{ promptPreview.summary_memory_count }}</div>
-                    <div>{{ t('ai.memoryLayerLongTerm') }}: {{ promptPreview.long_term_memory_count }}</div>
-                    <div>{{ t('ai.memoryLayerKnowledge') }}: {{ promptPreview.knowledge_memory_count }}</div>
-                    <div>{{ t('ai.toolResultsTitle') }}: {{ promptPreview.tool_results.length }}</div>
-                    <div class="text-subtitle-2 font-weight-medium mt-2">{{ t('ai.promptPreviewPlanning') }}</div>
-                    <pre class="ai-prompt-preview">{{ promptPreview.rendered_prompt }}</pre>
-                    <v-expansion-panels class="mt-2" multiple variant="accordion">
-                      <v-expansion-panel
-                        v-for="section in planningPromptChannelSections"
-                        :key="`planning-${section.key}`"
-                      >
-                        <v-expansion-panel-title>
-                          <div class="d-flex align-center justify-space-between w-100">
-                            <span>{{ section.title }}</span>
-                            <v-chip color="primary" size="x-small" variant="tonal">
-                              {{ section.lines.length }}
-                            </v-chip>
-                          </div>
-                        </v-expansion-panel-title>
-                        <v-expansion-panel-text>
-                          <pre class="ai-prompt-preview">{{ section.lines.join('\n') }}</pre>
-                        </v-expansion-panel-text>
-                      </v-expansion-panel>
-                    </v-expansion-panels>
-                    <div class="text-subtitle-2 font-weight-medium mt-2">{{ t('ai.promptPreviewRoleplay') }}</div>
-                    <pre class="ai-prompt-preview">{{ promptPreview.rendered_roleplay_prompt || t('common.none') }}</pre>
-                    <v-expansion-panels
-                      v-if="roleplayPromptChannelSections.length > 0"
-                      class="mt-2"
-                      multiple
-                      variant="accordion"
-                    >
-                      <v-expansion-panel
-                        v-for="section in roleplayPromptChannelSections"
-                        :key="`roleplay-${section.key}`"
-                      >
-                        <v-expansion-panel-title>
-                          <div class="d-flex align-center justify-space-between w-100">
-                            <span>{{ section.title }}</span>
-                            <v-chip color="secondary" size="x-small" variant="tonal">
-                              {{ section.lines.length }}
-                            </v-chip>
-                          </div>
-                        </v-expansion-panel-title>
-                        <v-expansion-panel-text>
-                          <pre class="ai-prompt-preview">{{ section.lines.join('\n') }}</pre>
-                        </v-expansion-panel-text>
-                      </v-expansion-panel>
-                    </v-expansion-panels>
-                  </div>
-                  <div v-else class="empty-state-text">
-                    {{ t('ai.noPromptPreview') }}
-                  </div>
-                </v-sheet>
-
-                <v-sheet class="surface-gradient-card pa-4" rounded="lg">
-                  <div class="text-subtitle-2 font-weight-medium mb-3">
-                    {{ t('ai.memoryLayerOperator') }} · {{ promptPreviewOperatorMemories.length }}
-                  </div>
-                  <v-data-table
-                    class="page-table"
-                    density="compact"
-                    :headers="promptMemoryHeaders"
-                    :items="promptPreviewOperatorMemories"
-                    :items-per-page-text="t('common.itemsPerPage')"
-                    :no-data-text="t('common.noData')"
-                  />
-                </v-sheet>
-
-                <v-sheet class="surface-gradient-card pa-4" rounded="lg">
-                  <div class="text-subtitle-2 font-weight-medium mb-3">
-                    {{ t('ai.memoryLayerSummary') }} · {{ promptPreviewSummaryMemories.length }}
-                  </div>
-                  <v-data-table
-                    class="page-table"
-                    density="compact"
-                    :headers="promptMemoryHeaders"
-                    :items="promptPreviewSummaryMemories"
-                    :items-per-page-text="t('common.itemsPerPage')"
-                    :no-data-text="t('common.noData')"
-                  />
-                </v-sheet>
-
-                <v-sheet class="surface-gradient-card pa-4" rounded="lg">
-                  <div class="text-subtitle-2 font-weight-medium mb-3">
-                    {{ t('ai.memoryLayerLongTerm') }} · {{ promptPreviewLongTermMemories.length }}
-                  </div>
-                  <v-data-table
-                    class="page-table"
-                    density="compact"
-                    :headers="promptMemoryHeaders"
-                    :items="promptPreviewLongTermMemories"
-                    :items-per-page-text="t('common.itemsPerPage')"
-                    :no-data-text="t('common.noData')"
-                  />
-                </v-sheet>
-
-                <v-sheet class="surface-gradient-card pa-4" rounded="lg">
-                  <div class="text-subtitle-2 font-weight-medium mb-3">
-                    {{ t('ai.memoryLayerKnowledge') }} · {{ promptPreviewKnowledgeMemories.length }}
-                  </div>
-                  <v-data-table
-                    class="page-table"
-                    density="compact"
-                    :headers="promptMemoryHeaders"
-                    :items="promptPreviewKnowledgeMemories"
-                    :items-per-page-text="t('common.itemsPerPage')"
-                    :no-data-text="t('common.noData')"
-                  />
-                </v-sheet>
-
-                <v-data-table
-                  class="page-table"
-                  density="compact"
-                  :headers="turnHeaders"
-                  :items="turns"
-                  :items-per-page-text="t('common.itemsPerPage')"
-                  :loading="loadingTurns"
-                  :no-data-text="t('common.noData')"
-                >
-                  <template #item.text_content="{ value }">
-                    <span class="ai-turn-content">{{ value }}</span>
-                  </template>
-                  <template #item.meta="{ item }">
-                    <span class="text-medium-emphasis">{{ summarizeRawPayload(item.meta || item.raw_data) }}</span>
-                  </template>
-                </v-data-table>
-
-                <v-data-table
-                  class="page-table"
-                  density="compact"
-                  :headers="toolExecutionHeaders"
-                  :items="toolExecutions"
-                  :items-per-page-text="t('common.itemsPerPage')"
-                  :loading="loadingTurns"
-                  :no-data-text="t('common.noData')"
-                >
-                  <template #item.status="{ value }">
-                    <v-chip
-                      :color="value === 'success' ? 'success' : value === 'timeout' ? 'warning' : 'error'"
-                      size="x-small"
-                      variant="tonal"
-                    >
-                      {{ value }}
-                    </v-chip>
-                  </template>
-                  <template #item.input_json="{ value }">
-                    <span class="text-medium-emphasis">{{ summarizeJsonText(value) }}</span>
-                  </template>
-                  <template #item.output_json="{ value }">
-                    <span class="text-medium-emphasis">{{ summarizeJsonText(value) }}</span>
-                  </template>
-                </v-data-table>
-              </template>
-            </div>
-          </template>
-
-          <template v-else-if="debugTab === 'futureTasks'">
-            <div class="d-flex flex-column ga-4 pt-4">
-              <div class="d-flex justify-end">
-                <v-btn color="primary" :loading="loadingFutureTasks" @click="loadFutureTasks">
-                  {{ t('ai.loadFutureTasks') }}
-                </v-btn>
-              </div>
-
-              <v-data-table
-                class="page-table"
-                density="compact"
-                :headers="futureTaskHeaders"
-                :items="futureTasks"
-                :items-per-page-text="t('common.itemsPerPage')"
-                :loading="loadingFutureTasks"
-                :no-data-text="t('common.noData')"
-              >
-                <template #item.status="{ value }">
-                  <v-chip
-                    :color="value === 'pending' ? 'primary' : value === 'sent' ? 'success' : value === 'cancelled' ? 'default' : 'error'"
-                    size="x-small"
-                    variant="tonal"
-                  >
-                    {{ value }}
-                  </v-chip>
-                </template>
-                <template #item.actions="{ item }">
-                  <div class="d-flex justify-end">
-                    <v-btn
-                      v-if="item.status === 'pending'"
-                      color="error"
-                      :loading="cancellingTaskId === item.task_id"
-                      size="small"
-                      variant="text"
-                      @click="cancelFutureTask(item.task_id)"
-                    >
-                      {{ t('common.cancel') }}
-                    </v-btn>
-                  </div>
-                </template>
-              </v-data-table>
-            </div>
-          </template>
-
-          <template v-else>
-            <div class="d-flex flex-column ga-4 pt-4">
-              <div class="text-body-2 text-medium-emphasis">
-                {{ t('ai.advancedDebugHint') }}
-              </div>
-
-              <div class="ai-binding-form">
-                <v-select
-                  v-model="bindingForm.scope_type"
-                  density="comfortable"
-                  hide-details
-                  :items="scopeOptions"
-                  :label="t('ai.scopeType')"
-                />
-                <v-text-field
-                  v-model.trim="bindingForm.scope_id"
-                  density="comfortable"
-                  hide-details
-                  :label="t('ai.scopeId')"
-                />
-                <v-switch
-                  v-model="bindingForm.allow_read_only_tools"
-                  color="primary"
-                  density="comfortable"
-                  hide-details
-                  :label="t('ai.allowReadOnlyTools')"
-                />
-                <v-select
-                  v-model="bindingForm.capability_mode"
-                  density="comfortable"
-                  hide-details
-                  :items="capabilityModeOptions"
-                  :label="t('ai.capabilityMode')"
-                />
-              </div>
-
-              <div class="d-flex ga-3 justify-end">
-                <v-btn
-                  v-if="editingBindingId"
-                  :loading="saving"
-                  variant="text"
-                  @click="resetBindingForm"
-                >
-                  {{ t('common.cancel') }}
-                </v-btn>
-                <v-btn color="primary" :loading="saving" @click="submitBinding(() => loadData())">
-                  {{ editingBindingId ? t('ai.updateBinding') : t('ai.createBinding') }}
-                </v-btn>
-              </div>
-
-              <v-data-table
-                class="page-table"
-                density="compact"
-                :headers="bindingHeaders"
-                :items="bindings"
-                :items-per-page-text="t('common.itemsPerPage')"
-                :no-data-text="t('common.noData')"
-              >
-                <template #item.allow_read_only_tools="{ value }">
-                  <v-chip :color="value ? 'success' : 'default'" size="x-small" variant="tonal">
-                    {{ value ? t('ai.enabled') : t('ai.disabled') }}
-                  </v-chip>
-                </template>
-                <template #item.actions="{ item }">
-                  <div class="d-flex ga-2 justify-end">
-                    <v-btn
-                      color="primary"
-                      icon="mdi-pencil-outline"
-                      size="small"
-                      variant="text"
-                      @click="editBinding(item)"
-                    />
-                    <v-btn
-                      color="error"
-                      icon="mdi-delete-outline"
-                      size="small"
-                      variant="text"
-                      @click="removeBinding(item.binding_id, () => loadData())"
-                    />
-                  </div>
-                </template>
-              </v-data-table>
-
-              <div class="ai-binding-form">
-                <v-select
-                  v-model="previewForm.scope_type"
-                  density="comfortable"
-                  hide-details
-                  :items="scopeOptions"
-                  :label="t('ai.scopeType')"
-                />
-                <v-switch
-                  v-model="previewForm.is_tome"
-                  color="primary"
-                  density="comfortable"
-                  hide-details
-                  :label="t('ai.isTome')"
-                />
-                <v-switch
-                  v-model="previewForm.allow_read_only_tools"
-                  color="primary"
-                  density="comfortable"
-                  hide-details
-                  :label="t('ai.allowReadOnlyTools')"
-                />
-                <v-select
-                  v-model="previewForm.capability_mode"
-                  density="comfortable"
-                  hide-details
-                  :items="capabilityModeOptions"
-                  :label="t('ai.capabilityMode')"
-                />
-                <v-select
-                  v-model="capabilityPreviewName"
-                  density="comfortable"
-                  hide-details
-                  item-title="capability_name"
-                  item-value="capability_name"
-                  :items="debugCapabilities"
-                  :label="t('ai.capabilityName')"
-                />
-                <v-text-field
-                  v-model.trim="intentPreviewForm.message_text"
-                  density="comfortable"
-                  hide-details
-                  :label="t('ai.intentPreviewMessage')"
-                />
-              </div>
-
-              <div class="d-flex ga-3 justify-end">
-                <v-btn :loading="previewingPolicy" variant="tonal" @click="runPolicyPreview">
-                  {{ t('ai.previewPolicy') }}
-                </v-btn>
-                <v-btn :loading="previewingIntents" variant="tonal" @click="runIntentPreview">
-                  {{ t('ai.previewIntents') }}
-                </v-btn>
-                <v-btn color="primary" :loading="previewingCapability" @click="runCapabilityPreview">
-                  {{ t('ai.previewCapability') }}
-                </v-btn>
-              </div>
-
-              <v-sheet class="surface-gradient-card pa-4" rounded="lg">
-                <div v-if="policyPreview" class="d-flex flex-column ga-2 text-body-2">
-                  <div>{{ t('ai.executionEnabled') }}: {{ policyPreview.execution_enabled ? t('ai.enabled') : t('ai.disabled') }}</div>
-                  <div>{{ t('ai.allowCapabilityBridge') }}: {{ policyPreview.allow_capability_bridge ? t('ai.enabled') : t('ai.disabled') }}</div>
-                  <div>{{ t('ai.allowedTools') }}: {{ policyPreview.allowed_tool_names?.join(', ') || t('common.none') }}</div>
-                </div>
-                <div v-else class="empty-state-text">
-                  {{ t('ai.noPreviewYet') }}
-                </div>
-              </v-sheet>
-
-              <v-sheet class="surface-gradient-card pa-4" rounded="lg">
-                <div v-if="capabilityPreview" class="d-flex flex-column ga-2 text-body-2">
-                  <div>{{ t('ai.capabilityName') }}: {{ capabilityPreview.capability_name }}</div>
-                  <div>{{ t('ai.registered') }}: {{ capabilityPreview.registered ? t('ai.enabled') : t('ai.disabled') }}</div>
-                  <div>{{ t('ai.allowed') }}: {{ capabilityPreview.allowed ? t('ai.enabled') : t('ai.disabled') }}</div>
-                  <div>{{ t('ai.reason') }}: {{ capabilityPreview.reason }}</div>
-                </div>
-                <div v-else class="empty-state-text">
-                  {{ t('ai.noPreviewYet') }}
-                </div>
-              </v-sheet>
-
-              <v-data-table
-                class="page-table"
-                density="compact"
-                :headers="intentPreviewHeaders"
-                :items="intentPreview"
-                :items-per-page-text="t('common.itemsPerPage')"
-                :no-data-text="t('common.noData')"
-              />
-            </div>
-          </template>
-
+        <v-card-text>
+          <AIDebugPanel
+            v-model:binding-form="bindingForm"
+            v-model:capability-preview-name="capabilityPreviewName"
+            v-model:debug-form="debugForm"
+            v-model:debug-tab="debugTab"
+            v-model:intent-preview-form="intentPreviewForm"
+            v-model:preview-form="previewForm"
+            :bindings="bindings"
+            :cancel-future-task="cancelFutureTask"
+            :cancelling-task-id="cancellingTaskId"
+            :capabilities="debugCapabilities"
+            :capability-preview="capabilityPreview"
+            :conversations="conversations"
+            :edit-binding="editBinding"
+            :editing-binding-id="editingBindingId"
+            :future-tasks="futureTasks"
+            :intent-preview="intentPreview"
+            :latest-assistant-turn="latestAssistantTurn"
+            :load-conversation-details="loadConversationDetails"
+            :load-debug-data="loadDebugData"
+            :load-future-tasks="loadFutureTasks"
+            :loading-debug="loadingDebug"
+            :loading-future-tasks="loadingFutureTasks"
+            :loading-turns="loadingTurns"
+            :open-chat-view="openChatView"
+            :planning-prompt-channel-sections="planningPromptChannelSections"
+            :policy-preview="policyPreview"
+            :previewing-capability="previewingCapability"
+            :previewing-intents="previewingIntents"
+            :previewing-policy="previewingPolicy"
+            :prompt-preview="promptPreview"
+            :prompt-preview-knowledge-memories="promptPreviewKnowledgeMemories"
+            :prompt-preview-long-term-memories="promptPreviewLongTermMemories"
+            :prompt-preview-operator-memories="promptPreviewOperatorMemories"
+            :prompt-preview-summary-memories="promptPreviewSummaryMemories"
+            :reload-all="loadData"
+            :remove-binding="removeBinding"
+            :reset-binding-form="resetBindingForm"
+            :roleplay-prompt-channel-sections="roleplayPromptChannelSections"
+            :run-capability-preview="runCapabilityPreview"
+            :run-intent-preview="runIntentPreview"
+            :run-policy-preview="runPolicyPreview"
+            :saving="saving"
+            :selected-conversation="selectedConversation"
+            :submit-binding="submitBinding"
+            :summarize-json-text="summarizeJsonText"
+            :summarize-raw-payload="summarizeRawPayload"
+            :tool-execution-stats="toolExecutionStats"
+            :tool-executions="toolExecutions"
+            :trace-ids="traceIds"
+            :turns="turns"
+          />
         </v-card-text>
       </template>
 
@@ -2171,6 +304,16 @@
   import { useAIPersonProfilesTab } from '@/composables/useAIPersonProfilesTab'
   import { useAIRelationshipTab } from '@/composables/useAIRelationshipTab'
   import { useAISkillsTab } from '@/composables/useAISkillsTab'
+  import AIDebugPanel from '@/views/ai/AIDebugPanel.vue'
+  import AIMemoriesPanel from '@/views/ai/AIMemoriesPanel.vue'
+  import AIPersonasPanel from '@/views/ai/AIPersonasPanel.vue'
+  import AIPersonProfilesPanel from '@/views/ai/AIPersonProfilesPanel.vue'
+  import AIRelationshipsPanel from '@/views/ai/AIRelationshipsPanel.vue'
+  import AISkillsPanel from '@/views/ai/AISkillsPanel.vue'
+  import AISourceListPanel from '@/views/ai/AISourceListPanel.vue'
+  import AISourceModelsPanel from '@/views/ai/AISourceModelsPanel.vue'
+  import AISourceWorkspace from '@/views/ai/AISourceWorkspace.vue'
+  import '@/views/ai/panelShared.css'
 
   const { t } = useI18n()
   const router = useRouter()
@@ -2180,12 +323,6 @@
   const topTab = ref('sources')
   const debugTab = ref('conversations')
   const sourceCapabilityTab = ref('chat')
-  const sourceModelEditorPanel = ref<number | null>(null)
-  const sourceApiKeysDialog = ref(false)
-  const sourceApiKeyDraft = ref<string[]>([])
-  const sourceApiKeyDraftInput = ref('')
-  const modelDeleteDialog = ref(false)
-  const pendingDeleteModel = ref<{ modelId: string, label: string } | null>(null)
 
   const {
     conversations,
@@ -2253,7 +390,6 @@
     savePersona,
     savingPersona,
     selectPersona,
-    selectedPersona,
     startCreatePersona,
     touchPersonaField,
   } = useAIPersonasTab(t)
@@ -2319,15 +455,6 @@
     || sourceCapabilityTab.value === 'tts'
     || sourceCapabilityTab.value === 'rerank'
   ))
-
-  const ttsResponseFormatOptions = [
-    { title: 'wav', value: 'wav' },
-    { title: 'mp3', value: 'mp3' },
-    { title: 'opus', value: 'opus' },
-    { title: 'aac', value: 'aac' },
-    { title: 'flac', value: 'flac' },
-    { title: 'pcm', value: 'pcm' },
-  ]
 
   const {
     cancelFutureTask,
@@ -2404,70 +531,10 @@
     selectedProfile: selectedPersonProfile,
   } = useAIPersonProfilesTab(t)
 
-  const scopeOptions = computed(() => [
-    { title: t('ai.scopeConversation'), value: 'conversation' },
-    { title: t('ai.scopeUser'), value: 'user' },
-    { title: t('ai.scopeGroup'), value: 'group' },
-    { title: t('ai.scopeGlobal'), value: 'global' },
-  ])
-
-  const capabilityModeOptions = computed(() => [
-    { title: t('ai.capabilityModeOff'), value: 'off' },
-    { title: t('ai.capabilityModePrivateOnly'), value: 'private_only' },
-    { title: t('ai.capabilityModeDirectOnly'), value: 'direct_only' },
-  ])
-
-  const sourceModelSearch = ref('')
-
-  const filteredSourceModels = computed(() => {
-    const keyword = sourceModelSearch.value.trim().toLowerCase()
-    if (!keyword) {
-      return sourceModels.value
-    }
-    return sourceModels.value.filter(item => {
-      const haystack = `${item.display_name} ${item.model_identifier}`.toLowerCase()
-      return haystack.includes(keyword)
-    })
-  })
-
-  const configuredModelIdentifiers = computed(() => new Set(
-    sourceModels.value.map(item => item.model_identifier),
-  ))
-
-  const importableSourceModels = computed(() => fetchedSourceModels.value
-    .filter(item => !configuredModelIdentifiers.value.has(item.id))
-    .filter(item => {
-      const keyword = sourceModelSearch.value.trim().toLowerCase()
-      if (!keyword) {
-        return true
-      }
-      const haystack = `${item.name} ${item.id}`.toLowerCase()
-      return haystack.includes(keyword)
-    })
-    .map(item => ({
-      key: `importable-${item.id}`,
-      kind: 'importable' as const,
-      display_name: item.name,
-      model_identifier: item.id,
-    })))
-
-  const unifiedSourceModels = computed(() => [
-    ...filteredSourceModels.value.map(item => ({
-      key: `configured-${item.model_id}`,
-      kind: 'configured' as const,
-      ...item,
-    })),
-    ...importableSourceModels.value,
-  ])
-
-  const availableImportModelCount = computed(() => importableSourceModels.value.length)
-
   const sourcePresetOptions = computed(() => sourcePresets.value.map(item => ({
     title: item.display_name,
     value: item.preset_type,
   })))
-
-  const sourcePrimaryApiKey = computed(() => sourceForm.api_keys[0] ?? '')
 
   function sourcePresetLabel (value: string) {
     return sourcePresets.value.find(item => item.preset_type === value)?.display_name ?? value
@@ -2477,157 +544,10 @@
     return sourcePresetLabel(value).slice(0, 1).toUpperCase()
   }
 
-  function openSourceApiKeysEditor () {
-    sourceApiKeyDraft.value = [...sourceForm.api_keys]
-    sourceApiKeyDraftInput.value = ''
-    sourceApiKeysDialog.value = true
+  async function removeSourceItem (item: Parameters<typeof selectSource>[0]) {
+    await selectSource(item)
+    await removeSource()
   }
-
-  function appendSourceApiKeyDraft () {
-    const nextValue = sourceApiKeyDraftInput.value.trim()
-    if (!nextValue) {
-      return
-    }
-    sourceApiKeyDraft.value = [...sourceApiKeyDraft.value, nextValue]
-    sourceApiKeyDraftInput.value = ''
-  }
-
-  function removeSourceApiKeyDraft (index: number) {
-    sourceApiKeyDraft.value = sourceApiKeyDraft.value.filter((_, itemIndex) => itemIndex !== index)
-  }
-
-  function applySourceApiKeyDraft () {
-    sourceForm.api_keys = [...sourceApiKeyDraft.value]
-    sourceApiKeysDialog.value = false
-  }
-
-  function openCreateSourceModel () {
-    startCreateSourceModel()
-    sourceModelEditorPanel.value = 0
-  }
-
-  function openEditSourceModel (item: {
-    model_id: string
-    source_id: string
-    model_identifier: string
-    display_name: string
-    enabled: boolean
-    is_default: boolean
-    extra_params: Record<string, unknown>
-  }) {
-    selectSourceModel(item)
-    sourceModelEditorPanel.value = 0
-  }
-
-  function requestRemoveSourceModel (item: {
-    model_id: string
-    display_name: string
-    model_identifier: string
-  }) {
-    pendingDeleteModel.value = {
-      modelId: item.model_id,
-      label: item.display_name || item.model_identifier,
-    }
-    modelDeleteDialog.value = true
-  }
-
-  async function confirmRemoveSourceModel () {
-    if (!pendingDeleteModel.value) {
-      return
-    }
-    const target = pendingDeleteModel.value
-    modelDeleteDialog.value = false
-    pendingDeleteModel.value = null
-    await removeSourceModel(target.modelId)
-  }
-
-  const bindingHeaders = computed(() => [
-    { title: t('ai.scopeType'), key: 'scope_type', sortable: false },
-    { title: t('ai.scopeId'), key: 'scope_id', sortable: false },
-    { title: t('ai.allowReadOnlyTools'), key: 'allow_read_only_tools', sortable: false },
-    { title: t('ai.capabilityMode'), key: 'capability_mode', sortable: false },
-    { title: t('common.actions'), key: 'actions', sortable: false, align: 'end' as const },
-  ])
-
-  const intentPreviewHeaders = computed(() => [
-    { title: t('ai.toolName'), key: 'tool_name', sortable: false },
-    { title: t('ai.intentKind'), key: 'kind', sortable: false },
-    { title: t('ai.reason'), key: 'reason', sortable: false },
-  ])
-
-  const conversationHeaders = computed(() => [
-    { title: t('ai.conversationId'), key: 'session_id', sortable: false },
-    { title: t('ai.scopeType'), key: 'scene_type', sortable: false },
-    { title: t('ai.scopeId'), key: 'scene_id', sortable: false },
-    { title: t('ai.scopeUser'), key: 'subject_id', sortable: false },
-    { title: t('ai.conversationSummary'), key: 'summary_text', sortable: false },
-    { title: t('ai.lastActiveAt'), key: 'last_message_at', sortable: false },
-  ])
-
-  const turnHeaders = computed(() => [
-    { title: t('ai.turnSender'), key: 'author_role', sortable: false },
-    { title: t('ai.turnContent'), key: 'text_content', sortable: false },
-    { title: t('ai.traceId'), key: 'trace_id', sortable: false },
-    { title: t('ai.modelName'), key: 'model_name', sortable: false },
-    { title: t('ai.turnRawPayload'), key: 'meta', sortable: false },
-  ])
-
-  const toolExecutionHeaders = computed(() => [
-    { title: t('ai.toolName'), key: 'tool_name', sortable: false },
-    { title: t('ai.toolStatus'), key: 'status', sortable: false },
-    { title: t('ai.toolInput'), key: 'input_json', sortable: false },
-    { title: t('ai.toolOutput'), key: 'output_json', sortable: false },
-    { title: t('ai.createdAt'), key: 'created_at', sortable: false },
-  ])
-
-  const promptMemoryHeaders = computed(() => [
-    { title: t('ai.memoryLayer'), key: 'memory_layer', sortable: false },
-    { title: t('ai.memoryKind'), key: 'memory_kind', sortable: false },
-    { title: t('ai.memoryContent'), key: 'content', sortable: false },
-    { title: t('ai.memoryConfidence'), key: 'confidence', sortable: false },
-    { title: t('ai.memorySalience'), key: 'salience', sortable: false },
-  ])
-
-  const futureTaskHeaders = computed(() => [
-    { title: t('ai.futureTaskId'), key: 'task_id', sortable: false },
-    { title: t('ai.futureTaskTitle'), key: 'title', sortable: false },
-    { title: t('ai.futureTaskDescription'), key: 'description', sortable: false },
-    { title: t('ai.futureTaskTriggerAt'), key: 'trigger_at', sortable: false },
-    { title: t('ai.futureTaskStatus'), key: 'status', sortable: false },
-    { title: t('ai.createdAt'), key: 'created_at', sortable: false },
-    { title: t('common.actions'), key: 'actions', sortable: false, align: 'end' as const },
-  ])
-
-  const memorySubjectOptions = computed(() => [
-    { title: t('ai.memoryAnchorScene'), value: 'scene' },
-    { title: t('ai.scopeUser'), value: 'user' },
-    { title: t('ai.scopeParticipant'), value: 'participant' },
-  ])
-
-  const memoryDomainOptions = computed(() => [
-    { title: t('common.all'), value: '' },
-    { title: t('ai.memoryLayerOperator'), value: 'operator' },
-    { title: t('ai.memoryLayerSummary'), value: 'summary' },
-    { title: t('ai.memoryLayerLongTerm'), value: 'long_term' },
-    { title: t('ai.memoryLayerKnowledge'), value: 'knowledge' },
-  ])
-  const memoryDraftLayerOptions = computed(() => [
-    { title: t('ai.memoryLayerLongTerm'), value: 'long_term' },
-    { title: t('ai.memoryLayerKnowledge'), value: 'knowledge' },
-    { title: t('ai.memoryLayerOperator'), value: 'operator' },
-  ])
-  const memoryTypeOptions = computed(() => [
-    { title: 'fact', value: 'fact' },
-    { title: 'preference', value: 'preference' },
-    { title: 'relationship', value: 'relationship' },
-    { title: 'note', value: 'note' },
-  ])
-  const memoryTypeFilterOptions = computed(() => [
-    { title: t('common.all'), value: '' },
-    ...memoryTypeOptions.value,
-  ])
-
-  const memoryLimitOptions = [10, 20, 50, 100]
 
   const personProfilePointCategoryOptions = computed(() => [
     { title: t('ai.personProfileCategoryFact'), value: 'fact' },
@@ -2636,115 +556,6 @@
     { title: t('ai.personProfileCategoryImpression'), value: 'impression' },
   ])
 
-  const memoryTargetLabel = computed(() => {
-    if (!memoryForm.anchor_id.trim()) {
-      return t('ai.selectMemoryTarget')
-    }
-    const subjectLabel = memorySubjectOptions.value.find(item => item.value === memoryForm.anchor_type)?.title ?? memoryForm.anchor_type
-    return `${subjectLabel} · ${memoryForm.anchor_id}`
-  })
-
-  const memoryTypeBreakdown = computed(() => {
-    const counts = new Map<string, number>()
-    for (const item of memories.value) {
-      counts.set(item.memory_kind, (counts.get(item.memory_kind) ?? 0) + 1)
-    }
-    return Array.from(counts.entries()).map(([memoryType, count]) => ({ memoryType, count }))
-  })
-
-  const memoryLayerSections = computed(() => [
-    {
-      layer: 'summary',
-      title: t('ai.memoryLayerSummary'),
-      items: memories.value.filter(item => item.memory_layer === 'summary'),
-    },
-    {
-      layer: 'long_term',
-      title: t('ai.memoryLayerLongTerm'),
-      items: memories.value.filter(item => item.memory_layer === 'long_term'),
-    },
-    {
-      layer: 'knowledge',
-      title: t('ai.memoryLayerKnowledge'),
-      items: memories.value.filter(item => item.memory_layer === 'knowledge'),
-    },
-    {
-      layer: 'operator',
-      title: t('ai.memoryLayerOperator'),
-      items: memories.value.filter(item => item.memory_layer === 'operator'),
-    },
-  ])
-
-  const readonlySkillCount = computed(() => skills.value.filter(item => item.read_only).length)
-
-  const recentRelationshipTargets = computed(() => (
-    recentTargets.value.filter(item => (
-      (item.anchor_type === 'user' || item.anchor_type === 'participant')
-      && !!item.platform
-      && !!item.user_id
-    ))
-  ))
-
-  const relationshipSelectionLabel = computed(() => {
-    if (!relationship.value) {
-      return t('ai.selectRelationshipTarget')
-    }
-    return relationship.value.user_id
-  })
-
-  const skillCapabilitiesByTool = computed(() => {
-    const map = new Map<string, string[]>()
-    for (const item of skillCapabilities.value) {
-      const list = map.get(item.bound_tool_name) ?? []
-      list.push(item.capability_name)
-      map.set(item.bound_tool_name, list)
-    }
-    return map
-  })
-
-  const selectedPersonaBindingCount = computed(() => {
-    if (!selectedPersona.value) {
-      return 0
-    }
-    return personaBindings.value.filter(item => item.persona_id === selectedPersona.value?.persona_id).length
-  })
-
-  const relationshipMoodText = computed(() => {
-    const tags = relationship.value?.effective_mood_tags ?? []
-    if (tags.length === 0) {
-      return t('common.none')
-    }
-    return tags.join('、')
-  })
-
-  function formatSignedRelationshipValue (value: number) {
-    return `${value >= 0 ? '+' : ''}${value.toFixed(2)}`
-  }
-
-  function formatRelationshipEventType (value: string) {
-    if (value === 'message') {
-      return t('ai.relationshipEventMessage')
-    }
-    if (value === 'manual') {
-      return t('ai.relationshipEventManual')
-    }
-    if (value === 'absence_decay') {
-      return t('ai.relationshipEventDecay')
-    }
-    return value
-  }
-
-  function formatMemoryScore (value: number) {
-    return value.toFixed(2)
-  }
-
-  function formatMemorySourceTurn (sourceMessageId: string | null) {
-    if (!sourceMessageId) {
-      return t('common.none')
-    }
-    return `${sourceMessageId.slice(0, 12)}...`
-  }
-
   function openDebugConversations () {
     topTab.value = 'debug'
     debugTab.value = 'conversations'
@@ -2752,10 +563,6 @@
 
   async function openChatView () {
     await router.push({ name: 'chat' })
-  }
-
-  function skillCapabilitiesFor (toolName: string) {
-    return skillCapabilitiesByTool.value.get(toolName) ?? []
   }
 
   async function loadData () {
@@ -2786,309 +593,7 @@
 </script>
 
 <style scoped>
-.ai-binding-form {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
-}
-
-.relationship-meta-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 16px;
-}
-
-.empty-state-text {
-  color: rgba(var(--v-theme-on-surface), 0.68);
-  font-size: 0.95rem;
-}
-
-.empty-state-hint {
-  color: rgba(var(--v-theme-on-surface), 0.54);
-  font-size: 0.85rem;
-  line-height: 1.6;
-}
-
-.ai-memory-toolbar {
-  align-items: end;
-}
-
-.memory-card-list {
-  display: grid;
-  gap: 16px;
-}
-
-.memory-content-text {
-  line-height: 1.7;
-  white-space: pre-wrap;
-}
-
-.source-summary-line {
-  color: rgba(var(--v-theme-on-surface), 0.64);
-  font-size: 0.9rem;
-  line-height: 1.6;
-}
-
-.source-list-panel {
-  min-height: 100%;
-}
-
-.source-list-item {
-  margin-bottom: 6px;
-}
-
-.source-list-item__avatar {
-  flex-shrink: 0;
-}
-
-.source-list-item__body {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  min-width: 0;
-  width: 100%;
-}
-
-.source-list-item__header {
-  align-items: center;
-  display: flex;
-  gap: 8px;
-  justify-content: space-between;
-}
-
-.source-list-item__subtitle {
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  line-height: 1.5;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  word-break: break-all;
-}
-
-.source-list-item__meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.source-workspace,
-.source-models-panel {
-  border: 1px solid rgba(var(--v-theme-on-surface), 0.08);
-}
-
-.source-config-list {
-  display: grid;
-  gap: 14px;
-}
-
-.source-config-row {
-  align-items: center;
-  display: grid;
-  gap: 20px;
-  grid-template-columns: minmax(0, 220px) minmax(0, 1fr);
-}
-
-.source-config-row__meta {
-  min-width: 0;
-}
-
-.source-config-row__label {
-  font-size: 1rem;
-  font-weight: 600;
-  line-height: 1.5;
-}
-
-.source-config-row__hint {
-  color: rgba(var(--v-theme-on-surface), 0.54);
-  font-size: 0.85rem;
-  line-height: 1.5;
-  margin-top: 4px;
-}
-
-.source-config-row__field {
-  min-width: 0;
-}
-
-.source-model-list {
-  display: grid;
-  gap: 12px;
-}
-
-.source-model-editor-inline {
-  margin-bottom: 4px;
-}
-
-.source-model-row {
-  align-items: center;
-  border: 1px solid rgba(var(--v-theme-on-surface), 0.08);
-  cursor: pointer;
-  display: grid;
-  gap: 12px;
-  grid-template-columns: minmax(0, 1fr) auto auto;
-  transition: border-color 0.18s ease, background-color 0.18s ease;
-}
-
-.source-model-row:hover {
-  border-color: rgba(var(--v-theme-primary), 0.28);
-}
-
-.source-model-row--active {
-  border-color: rgba(var(--v-theme-primary), 0.42);
-  background: rgba(var(--v-theme-primary), 0.06);
-}
-
-.source-model-row--importable {
-  background: rgba(var(--v-theme-primary), 0.03);
-}
-
-.source-model-row__body {
-  min-width: 0;
-}
-
-.source-model-row__title {
-  font-size: 1rem;
-  font-weight: 600;
-  line-height: 1.5;
-}
-
-.source-model-row__subtitle {
-  color: rgba(var(--v-theme-on-surface), 0.58);
-  font-size: 0.9rem;
-  line-height: 1.5;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.source-model-row__meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  justify-content: flex-end;
-}
-
-.source-model-row__flag {
-  align-items: center;
-  background: rgba(var(--v-theme-on-surface), 0.06);
-  border-radius: 999px;
-  color: rgba(var(--v-theme-on-surface), 0.72);
-  display: inline-flex;
-  font-size: 0.76rem;
-  font-weight: 600;
-  line-height: 1;
-  min-height: 24px;
-  padding: 0 10px;
-}
-
-.source-model-row__flag--success {
-  background: rgba(var(--v-theme-success), 0.14);
-  color: rgb(var(--v-theme-success));
-}
-
-.source-model-row__flag--primary {
-  background: rgba(var(--v-theme-primary), 0.12);
-  color: rgb(var(--v-theme-primary));
-}
-
-.source-model-row__actions {
-  display: flex;
-  gap: 4px;
-  justify-content: flex-end;
-}
-
-.source-models-toolbar {
-  min-width: 240px;
-}
-
-.source-model-empty-state {
-  align-items: center;
-  display: flex;
-  min-height: 72px;
-}
-
-.source-api-key-field {
-  align-items: center;
-  display: grid;
-  gap: 12px;
-  grid-template-columns: minmax(0, 1fr) auto;
-}
-
-.source-api-key-field__action {
-  min-width: 112px;
-}
-
-.source-api-key-editor {
-  display: grid;
-  gap: 20px;
-}
-
-.source-api-key-editor__composer {
-  align-items: center;
-  display: grid;
-  gap: 12px;
-  grid-template-columns: minmax(0, 1fr) auto;
-}
-
-.source-api-key-editor__list {
-  display: grid;
-  gap: 12px;
-  max-height: 320px;
-  overflow-y: auto;
-}
-
-.source-api-key-editor__item {
-  align-items: center;
-  border-bottom: 1px solid rgba(var(--v-theme-on-surface), 0.08);
-  display: flex;
-  gap: 12px;
-  justify-content: space-between;
-  padding: 0 4px 12px;
-}
-
-.source-api-key-editor__value {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-:deep(.source-model-search) {
-  min-width: min(420px, 100%);
-}
-
 :deep(.page-table .v-data-table-footer__info) {
   display: none;
-}
-
-.skill-card-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 16px;
-}
-
-@media (max-width: 960px) {
-  .ai-binding-form,
-  .relationship-meta-grid,
-  .skill-card-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .source-model-row {
-    grid-template-columns: 1fr;
-  }
-
-  .source-config-row {
-    grid-template-columns: 1fr;
-  }
-
-  .source-model-row__meta,
-  .source-model-row__actions {
-    justify-content: flex-start;
-  }
-
-  .source-api-key-field,
-  .source-api-key-editor__composer {
-    grid-template-columns: 1fr;
-  }
 }
 </style>

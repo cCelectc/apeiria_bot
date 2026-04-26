@@ -1,0 +1,50 @@
+.ai-binding-form {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.relationship-meta-grid {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.empty-state-text {
+  color: rgba(var(--v-theme-on-surface), 0.68);
+  font-size: 0.95rem;
+}
+
+.empty-state-hint {
+  color: rgba(var(--v-theme-on-surface), 0.54);
+  font-size: 0.85rem;
+  line-height: 1.6;
+}
+
+.ai-memory-toolbar {
+  align-items: end;
+}
+
+.memory-card-list {
+  display: grid;
+  gap: 16px;
+}
+
+.memory-content-text {
+  line-height: 1.7;
+  white-space: pre-wrap;
+}
+
+.skill-card-grid {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+@media (max-width: 960px) {
+  .ai-binding-form,
+  .relationship-meta-grid,
+  .skill-card-grid {
+    grid-template-columns: 1fr;
+  }
+}
