@@ -48,6 +48,7 @@ def _load_plugin_catalog(monkeypatch: pytest.MonkeyPatch):
         get_plugin_config,
     )
     for name, value in {
+        "config_mutation_service": object(),
         "config_query_service": object(),
         "plugin_governance_service": object(),
         "AdapterConfigState": type("AdapterConfigState", (), {}),
@@ -95,7 +96,7 @@ def test_list_plugins_delegates_to_runtime_plugin_governance() -> None:
 def test_get_dashboard_status_uses_current_dashboard_service_snapshot(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from apeiria.environment.dashboard import dashboard_service
+    from apeiria.app.system.management import system_management_service
 
     expected_snapshot = object()
     runtime = _build_runtime()
@@ -104,7 +105,11 @@ def test_get_dashboard_status_uses_current_dashboard_service_snapshot(
     async def get_status_snapshot() -> object:
         return expected_snapshot
 
-    monkeypatch.setattr(dashboard_service, "get_status_snapshot", get_status_snapshot)
+    monkeypatch.setattr(
+        system_management_service,
+        "get_status_snapshot",
+        get_status_snapshot,
+    )
 
     snapshot = asyncio.run(control_plane.get_dashboard_status())
 
@@ -117,7 +122,7 @@ def test_dashboard_status_snapshot_reads_governance_state_from_new_database(
 ) -> None:
     from apeiria.access.groups_repository import GroupStateRow, group_repository
     from apeiria.access.repository import access_repository
-    from apeiria.environment.dashboard import dashboard_service
+    from apeiria.app.system.management import system_management_service
     from apeiria.plugins.repository import plugin_catalog_repository
 
     monkeypatch.setattr(database_runtime, "_project_root", tmp_path)
@@ -152,7 +157,7 @@ def test_dashboard_status_snapshot_reads_governance_state_from_new_database(
 
     asyncio.run(seed())
 
-    snapshot = asyncio.run(dashboard_service.get_status_snapshot())
+    snapshot = asyncio.run(system_management_service.get_status_snapshot())
 
     assert snapshot.plugins_count == EXPECTED_PLUGIN_COUNT
     assert snapshot.disabled_plugins_count == 1
@@ -197,7 +202,7 @@ def test_dashboard_status_route_reads_through_control_plane(
     assert response.adapters == snapshot.adapters
 
 
-def test_plugin_list_route_reads_through_control_plane(
+def test_plugin_list_route_reads_through_plugin_management_service(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     plugin_catalog = _load_plugin_catalog(monkeypatch)
@@ -209,18 +214,15 @@ def test_plugin_list_route_reads_through_control_plane(
     async def list_plugins() -> list[object]:
         return [plugin]
 
-    runtime = _build_runtime()
-    control_plane = ApeiriaControlPlane(runtime)
-    monkeypatch.setattr(control_plane, "list_plugins", list_plugins)
-    runtime.control_plane = control_plane
-
-    monkeypatch.setattr(plugin_catalog, "get_current_runtime", lambda: runtime)
     monkeypatch.setattr(
-        plugin_catalog,
-        "supports_plugin_update_check",
-        lambda installed_package: (
-            installed_package is plugin.package_binding.installed_package
-        ),
+        plugin_catalog.plugin_management_service,
+        "list_plugins",
+        list_plugins,
+    )
+    monkeypatch.setattr(
+        plugin_catalog.plugin_management_service,
+        "can_package_update",
+        lambda candidate: candidate is plugin,
     )
     monkeypatch.setattr(
         plugin_catalog,
@@ -247,16 +249,6 @@ def test_plugin_list_route_reads_through_control_plane(
         (
             "get_status",
             "dashboard",
-            _build_runtime(),
-        ),
-        (
-            "list_plugins",
-            "plugin_catalog",
-            None,
-        ),
-        (
-            "list_plugins",
-            "plugin_catalog",
             _build_runtime(),
         ),
     ],

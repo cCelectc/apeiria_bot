@@ -6,10 +6,9 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from apeiria.access.service import access_service
+from apeiria.app.access.management import access_management_service
 from apeiria.exceptions import ProtectedPluginError, ResourceNotFoundError
 from apeiria.i18n import t
-from apeiria.plugins import plugin_governance_service, plugin_policy_service
 from apeiria.webui.auth import require_control_panel
 from apeiria.webui.schemas.models import (
     AccessRuleCreateRequest,
@@ -23,19 +22,11 @@ from apeiria.webui.schemas.models import (
 router = APIRouter()
 
 
-async def _require_manageable_plugin(module_name: str) -> None:
-    plugin = await plugin_governance_service.get_plugin(module_name)
-    if plugin is None:
-        raise ResourceNotFoundError(module_name)
-    if plugin.governance_state.kind == "core":
-        raise ProtectedPluginError(module_name)
-
-
 @router.get("/users", response_model=list[UserLevelItem])
 async def list_users(
     _: Annotated[Any, Depends(require_control_panel)],
 ) -> list[UserLevelItem]:
-    rows = await access_service.list_user_levels()
+    rows = await access_management_service.list_user_levels()
     return [
         UserLevelItem(user_id=user_id, group_id=group_id, level=level)
         for r in rows
@@ -56,7 +47,7 @@ async def update_user_level(
             detail=t("web_ui.permissions.group_id_required"),
         )
 
-    await access_service.set_user_level(user_id, group_id, body.level)
+    await access_management_service.set_user_level(user_id, group_id, body.level)
     return {"status": "ok"}
 
 
@@ -64,7 +55,7 @@ async def update_user_level(
 async def list_access_rules(
     _: Annotated[Any, Depends(require_control_panel)],
 ) -> list[AccessRuleItem]:
-    rows = await access_service.list_access_rules()
+    rows = await access_management_service.list_access_rules()
     return [
         AccessRuleItem(
             subject_type=row.subject_type,
@@ -93,7 +84,13 @@ async def create_access_rule(
             detail=t("web_ui.permissions.invalid_effect"),
         )
     try:
-        await _require_manageable_plugin(body.plugin_module)
+        await access_management_service.upsert_access_rule(
+            subject_type=body.subject_type,
+            subject_id=body.subject_id,
+            plugin_module=body.plugin_module,
+            effect=body.effect,
+            note=body.note,
+        )
     except ResourceNotFoundError:
         raise HTTPException(
             status_code=404,
@@ -104,14 +101,6 @@ async def create_access_rule(
             status_code=400,
             detail=t("web_ui.plugins.protected", reason=body.plugin_module),
         ) from None
-
-    await access_service.upsert_access_rule(
-        subject_type=body.subject_type,
-        subject_id=body.subject_id,
-        plugin_module=body.plugin_module,
-        effect=body.effect,
-        note=body.note,
-    )
     return AccessRuleItem(
         subject_type=body.subject_type,
         subject_id=body.subject_id,
@@ -126,7 +115,7 @@ async def delete_access_rule(
     body: AccessRuleDeleteRequest,
     _: Annotated[Any, Depends(require_control_panel)],
 ) -> dict[str, str]:
-    deleted = await access_service.delete_access_rule(
+    deleted = await access_management_service.delete_access_rule(
         subject_type=body.subject_type,
         subject_id=body.subject_id,
         plugin_module=body.plugin_module,
@@ -151,7 +140,10 @@ async def update_plugin_access_mode(
             detail=t("web_ui.permissions.invalid_access_mode"),
         )
     try:
-        await _require_manageable_plugin(module_name)
+        await access_management_service.update_plugin_access_mode(
+            module_name,
+            access_mode=body.access_mode,
+        )
     except ResourceNotFoundError:
         raise HTTPException(
             status_code=404,
@@ -162,8 +154,4 @@ async def update_plugin_access_mode(
             status_code=400,
             detail=t("web_ui.plugins.protected", reason=module_name),
         ) from None
-    await plugin_policy_service.update_access_mode(
-        module_name,
-        access_mode=body.access_mode,
-    )
     return {"status": "ok"}

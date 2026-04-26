@@ -7,11 +7,11 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
+from apeiria.app.plugins.management import plugin_management_service
 from apeiria.app.plugins.store.tasks import plugin_store_task_service
 from apeiria.app.plugins.store.update_check import supports_plugin_update_check
 from apeiria.exceptions import ProtectedPluginError, ResourceNotFoundError
 from apeiria.i18n import t
-from apeiria.plugins import plugin_governance_service
 from apeiria.webui.auth import require_control_panel, require_owner
 from apeiria.webui.schemas.operations import OperationStatusResponse
 from apeiria.webui.schemas.plugin_management import (
@@ -44,7 +44,7 @@ async def update_plugin(
     cascade: bool = False,
 ) -> PluginToggleResponse:
     try:
-        result = await plugin_governance_service.apply_plugin_toggle(
+        result = await plugin_management_service.apply_plugin_toggle(
             module_name,
             enabled=enabled,
             cascade=cascade,
@@ -71,7 +71,7 @@ async def preview_toggle_plugin(
     _: Annotated[Any, Depends(require_control_panel)],
 ) -> PluginTogglePreviewResponse:
     try:
-        preview = await plugin_governance_service.preview_toggle_plugin(
+        preview = await plugin_management_service.preview_toggle_plugin(
             module_name,
             enabled=query.enabled,
         )
@@ -90,7 +90,7 @@ async def uninstall_plugin(
     _: Annotated[Any, Depends(require_owner)],
 ) -> OperationStatusResponse:
     try:
-        await plugin_governance_service.uninstall_plugin(
+        await plugin_management_service.uninstall_plugin(
             module_name,
             remove_config=payload.remove_config,
         )
@@ -130,7 +130,7 @@ async def update_plugin_package_task(
     payload: PluginPackageUpdateRequest,
     _: Annotated[Any, Depends(require_owner)],
 ) -> PluginStoreTaskItem:
-    plugin = await plugin_governance_service.get_plugin(module_name)
+    plugin = await plugin_management_service.get_plugin(module_name)
     if plugin is None:
         raise HTTPException(
             status_code=404,

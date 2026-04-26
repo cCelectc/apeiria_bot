@@ -2,21 +2,18 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import Any
 
 import nonebot
 from arclet.alconna import CommandMeta
 from nonebot.adapters import Event  # noqa: TC002
 from nonebot_plugin_alconna import Alconna, on_alconna
 
+from apeiria.app.plugins.management import plugin_management_service
 from apeiria.i18n import t
-from apeiria.plugins import config_query_service
 
 from .presenter import render_block, render_list_block
 from .utils import ensure_owner_message
-
-if TYPE_CHECKING:
-    from apeiria.plugins.registry import DriverConfigStatus
 
 _drivers = on_alconna(
     Alconna("drivers", meta=CommandMeta(description=t("admin.command.drivers"))),
@@ -33,7 +30,7 @@ async def handle_drivers(event: Event) -> None:
         await _drivers.finish(owner_error)
 
     driver = nonebot.get_driver()
-    state = config_query_service.get_driver_config()
+    state = plugin_management_service.get_driver_config()
     lines = [_format_driver_line(item) for item in state.builtin]
 
     await _drivers.finish(
@@ -57,7 +54,7 @@ async def handle_drivers(event: Event) -> None:
     )
 
 
-def _format_driver_line(item: DriverConfigStatus) -> str:
+def _format_driver_line(item: Any) -> str:
     status = (
         t("admin.drivers.active") if item.is_active else t("admin.drivers.inactive")
     )

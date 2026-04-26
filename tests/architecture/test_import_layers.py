@@ -98,6 +98,54 @@ def test_plugin_routes_do_not_import_plugin_buckets_from_shared_models() -> None
     )
 
 
+def test_management_webui_routes_do_not_import_displaced_management_services() -> None:
+    violations = _collect_boundary_violations(
+        source_prefixes=(
+            "apeiria.webui.routes.plugin_catalog",
+            "apeiria.webui.routes.plugin_config",
+            "apeiria.webui.routes.plugin_management",
+            "apeiria.webui.routes.access",
+            "apeiria.webui.routes.dashboard",
+        ),
+        forbidden_prefixes=(
+            "apeiria.plugins",
+            "apeiria.access",
+            "apeiria.environment",
+        ),
+    )
+
+    assert not violations, _format_violations(
+        "management webui routes importing displaced management services",
+        violations,
+    )
+
+
+def test_builtin_admin_surfaces_do_not_import_displaced_management_services() -> None:
+    violations = _collect_boundary_violations(
+        source_prefixes=(
+            "apeiria.builtin_plugins.admin.access_admin",
+            "apeiria.builtin_plugins.admin.adapters",
+            "apeiria.builtin_plugins.admin.config_view",
+            "apeiria.builtin_plugins.admin.drivers",
+            "apeiria.builtin_plugins.admin.overview",
+            "apeiria.builtin_plugins.admin.plugin_admin",
+            "apeiria.builtin_plugins.admin.restart",
+            "apeiria.builtin_plugins.admin.status",
+            "apeiria.builtin_plugins.admin.utils",
+        ),
+        forbidden_prefixes=(
+            "apeiria.plugins",
+            "apeiria.access",
+            "apeiria.environment",
+        ),
+    )
+
+    assert not violations, _format_violations(
+        "builtin admin surfaces importing displaced management services",
+        violations,
+    )
+
+
 def _collect_boundary_violations(
     *,
     source_prefixes: tuple[str, ...],

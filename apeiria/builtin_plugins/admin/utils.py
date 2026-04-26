@@ -2,19 +2,17 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import nonebot
 from nonebot.adapters import Event  # noqa: TC002
 
+from apeiria.app.plugins.management import plugin_management_service
 from apeiria.i18n import t
-from apeiria.plugins import plugin_governance_service
 from apeiria.utils.plugin_introspection import get_plugin_name
 
 if TYPE_CHECKING:
     from nonebot.plugin import Plugin
-
-    from apeiria.plugins import PluginCatalogEntry
 
 
 def resolve_plugin_query(
@@ -59,15 +57,15 @@ async def resolve_plugin_catalog_query(
     query: str,
     *,
     allow_fuzzy: bool,
-) -> tuple["PluginCatalogEntry | None", list[str]]:
+) -> tuple[Any | None, list[str]]:
     """Resolve one plugin query from the plugin catalog."""
     normalized = query.strip().lower()
     if not normalized:
         return None, []
 
-    exact_matches: list[PluginCatalogEntry] = []
-    fuzzy_matches: list[PluginCatalogEntry] = []
-    for item in await plugin_governance_service.list_plugins():
+    exact_matches: list[Any] = []
+    fuzzy_matches: list[Any] = []
+    for item in await plugin_management_service.list_plugins():
         candidates = [
             item.descriptor.module_name.lower(),
             item.descriptor.name.lower(),
@@ -78,7 +76,7 @@ async def resolve_plugin_catalog_query(
         if any(normalized in candidate for candidate in candidates):
             fuzzy_matches.append(item)
 
-    resolved: PluginCatalogEntry | None = None
+    resolved: Any | None = None
     candidates: list[str] = []
     if len(exact_matches) == 1:
         resolved = exact_matches[0]
@@ -120,7 +118,7 @@ def _format_plugin_candidate(plugin: Plugin) -> str:
     return f"{name} ({plugin.module_name})"
 
 
-def _format_catalog_candidates(plugins: list["PluginCatalogEntry"]) -> list[str]:
+def _format_catalog_candidates(plugins: list[Any]) -> list[str]:
     labels = {
         (
             item.descriptor.module_name

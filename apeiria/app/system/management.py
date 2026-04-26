@@ -1,4 +1,4 @@
-"""Dashboard application services."""
+"""Application-owned dashboard and system management workflows."""
 
 from __future__ import annotations
 
@@ -19,7 +19,7 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class DashboardStatusSnapshot:
-    """Status snapshot used by dashboard interfaces."""
+    """Status snapshot used by owner-facing dashboard surfaces."""
 
     status: str
     uptime: float
@@ -33,7 +33,7 @@ class DashboardStatusSnapshot:
 
 @dataclass(frozen=True)
 class DashboardEventSnapshot:
-    """Recent high-signal event shown on the dashboard."""
+    """Recent high-signal event shown on owner-facing dashboards."""
 
     timestamp: str
     level: str
@@ -43,7 +43,7 @@ class DashboardEventSnapshot:
 
 @dataclass(frozen=True)
 class WebUIBuildStatusSnapshot:
-    """Web UI frontend build status for dashboard actions."""
+    """Web UI frontend build status for owner-facing management surfaces."""
 
     is_built: bool
     is_stale: bool
@@ -74,8 +74,8 @@ class WebUIBuildStreamEvent:
     status: WebUIBuildStatusSnapshot | None = None
 
 
-class DashboardService:
-    """Provide dashboard data and runtime restart orchestration."""
+class SystemManagementService:
+    """Compose owner-facing runtime status and system operations."""
 
     def __init__(self) -> None:
         self._start_time = time.time()
@@ -116,7 +116,7 @@ class DashboardService:
         *,
         limit: int = 8,
     ) -> list[DashboardEventSnapshot]:
-        """Return the most recent warning/error events for the dashboard."""
+        """Return the most recent warning/error events for dashboards."""
         from apeiria.log import log_buffer
 
         high_signal_levels = {"WARNING", "ERROR", "CRITICAL"}
@@ -133,7 +133,7 @@ class DashboardService:
         return entries[-limit:][::-1]
 
     def get_web_ui_build_status(self) -> WebUIBuildStatusSnapshot:
-        """Return Web UI build state through Operations Plane."""
+        """Return Web UI build state for owner-facing surfaces."""
         status = environment_service.get_frontend_build_status()
         return WebUIBuildStatusSnapshot(
             is_built=status.is_built,
@@ -144,7 +144,7 @@ class DashboardService:
         )
 
     async def rebuild_web_ui(self) -> WebUIBuildRunSnapshot:
-        """Build frontend assets through Operations Plane."""
+        """Build frontend assets for owner-facing surfaces."""
         status = await environment_service.rebuild_frontend()
         return WebUIBuildRunSnapshot(
             is_built=status.is_built,
@@ -156,7 +156,7 @@ class DashboardService:
         )
 
     async def stream_web_ui_rebuild(self) -> AsyncIterator[bytes]:
-        """Stream frontend build logs through Operations Plane."""
+        """Stream frontend build logs for owner-facing surfaces."""
         async for event in environment_service.stream_frontend_rebuild():
             yield event
 
@@ -172,4 +172,4 @@ class DashboardService:
         os.execv(sys.executable, [sys.executable, *argv])
 
 
-dashboard_service = DashboardService()
+system_management_service = SystemManagementService()

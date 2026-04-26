@@ -6,11 +6,8 @@ from arclet.alconna import Args, CommandMeta
 from nonebot.adapters import Event  # noqa: TC002
 from nonebot_plugin_alconna import Alconna, Match, on_alconna
 
+from apeiria.app.plugins.management import plugin_management_service
 from apeiria.i18n import t
-from apeiria.plugins import (
-    PluginSettingsNotConfigurableError,
-    config_query_service,
-)
 
 from .presenter import render_list_block, summarize_value
 from .utils import ensure_owner_message, resolve_plugin_catalog_query
@@ -72,7 +69,7 @@ async def handle_config(
 
 
 def _render_core_settings() -> str:
-    state = config_query_service.get_core_view()
+    state = plugin_management_service.get_core_view()
     items = [
         f"- {field.key} = {summarize_value(field.key, field.current_value)} "
         f"({_source_label(field.value_source)})"
@@ -88,9 +85,7 @@ def _render_core_settings() -> str:
 
 def _render_plugin_settings(module_name: str, plugin_name: str) -> str:
     try:
-        state = config_query_service.get_plugin_view(module_name)
-    except PluginSettingsNotConfigurableError:
-        return t("admin.config.plugin_not_configurable", name=plugin_name)
+        state = plugin_management_service.get_plugin_view(module_name)
     except ValueError:
         return t("admin.config.plugin_not_configurable", name=plugin_name)
     if not state.has_config_model:

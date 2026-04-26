@@ -2,21 +2,18 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import Any
 
 import nonebot
 from arclet.alconna import CommandMeta
 from nonebot.adapters import Event  # noqa: TC002
 from nonebot_plugin_alconna import Alconna, on_alconna
 
+from apeiria.app.plugins.management import plugin_management_service
 from apeiria.i18n import t
-from apeiria.plugins import config_query_service
 
 from .presenter import render_list_block
 from .utils import ensure_owner_message
-
-if TYPE_CHECKING:
-    from apeiria.plugins.registry import AdapterConfigStatus
 
 _adapters = on_alconna(
     Alconna("adapters", meta=CommandMeta(description=t("admin.command.adapters"))),
@@ -32,7 +29,7 @@ async def handle_adapters(event: Event) -> None:
     if owner_error:
         await _adapters.finish(owner_error)
 
-    state = config_query_service.get_adapter_config()
+    state = plugin_management_service.get_adapter_config()
     loaded_runtime = sorted(nonebot.get_adapters().keys())
     lines = [_format_adapter_line(item) for item in state.modules]
     loaded_runtime_names = (
@@ -53,7 +50,7 @@ async def handle_adapters(event: Event) -> None:
     )
 
 
-def _format_adapter_line(item: AdapterConfigStatus) -> str:
+def _format_adapter_line(item: Any) -> str:
     load_status = (
         t("admin.adapters.loaded") if item.is_loaded else t("admin.adapters.not_loaded")
     )

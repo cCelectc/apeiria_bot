@@ -2,18 +2,15 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from arclet.alconna import Args, CommandMeta
 from nonebot.adapters import Event  # noqa: TC002
 from nonebot_plugin_alconna import Alconna, Match, on_alconna
 
+from apeiria.app.plugins.management import plugin_management_service
 from apeiria.exceptions import ProtectedPluginError, ResourceNotFoundError
 from apeiria.i18n import t
-from apeiria.plugins import (
-    PluginCatalogEntry,
-    PluginSettingsNotConfigurableError,
-    config_query_service,
-    plugin_governance_service,
-)
 
 from .config_view import render_plugin_settings_summary
 from .presenter import render_block, render_list_block
@@ -123,19 +120,16 @@ async def handle_plugin(
 
 
 async def _render_plugin_info(module_name: str) -> str:
-    item = await plugin_governance_service.get_plugin(module_name)
+    item = await plugin_management_service.get_plugin(module_name)
     if item is None:
         return t("admin.plugin.not_found", name=module_name)
 
     try:
-        settings = config_query_service.get_plugin_view(module_name)
+        settings = plugin_management_service.get_plugin_view(module_name)
         configurable = (
             t("admin.common.yes") if settings.has_config_model else t("admin.common.no")
         )
         section = settings.section
-    except PluginSettingsNotConfigurableError:
-        configurable = t("admin.common.no")
-        section = t("admin.common.none")
     except ValueError:
         configurable = t("admin.common.no")
         section = t("admin.common.none")
@@ -187,7 +181,7 @@ async def _render_plugin_info(module_name: str) -> str:
 
 
 async def _handle_plugin_toggle(
-    item: PluginCatalogEntry,
+    item: Any,
     *,
     selected_action: str,
     raw_query: str,
@@ -195,7 +189,7 @@ async def _handle_plugin_toggle(
     module_name = item.descriptor.module_name
     plugin_name = item.descriptor.name
     try:
-        changed = await plugin_governance_service.set_plugin_enabled(
+        changed = await plugin_management_service.set_plugin_enabled(
             module_name,
             enabled=selected_action == "enable",
         )
@@ -220,8 +214,8 @@ async def _handle_plugin_toggle(
     return t(key, name=plugin_name)
 
 
-async def _list_visible_plugins() -> list[PluginCatalogEntry]:
-    items = await plugin_governance_service.list_plugins()
+async def _list_visible_plugins() -> list[Any]:
+    items = await plugin_management_service.list_plugins()
     return sorted(
         items,
         key=lambda item: (
@@ -232,7 +226,7 @@ async def _list_visible_plugins() -> list[PluginCatalogEntry]:
     )
 
 
-def _format_plugin_summary_line(item: PluginCatalogEntry) -> str:
+def _format_plugin_summary_line(item: Any) -> str:
     status = (
         t("admin.common.enabled")
         if item.governance_state.is_global_enabled

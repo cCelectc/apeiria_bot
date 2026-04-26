@@ -6,7 +6,7 @@ from arclet.alconna import CommandMeta
 from nonebot.adapters import Event  # noqa: TC002
 from nonebot_plugin_alconna import Alconna, on_alconna
 
-from apeiria.environment.dashboard import dashboard_service
+from apeiria.app.system.management import system_management_service
 from apeiria.i18n import t
 
 from .utils import ensure_owner_message
@@ -25,5 +25,5 @@ async def handle_restart(event: Event) -> None:
     if owner_error:
         await _restart.finish(owner_error)
 
-    dashboard_service.schedule_restart()
+    system_management_service.schedule_restart()
     await _restart.finish(t("admin.restart.scheduled"))

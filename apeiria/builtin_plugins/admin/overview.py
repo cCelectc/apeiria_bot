@@ -6,7 +6,7 @@ from arclet.alconna import CommandMeta
 from nonebot.adapters import Event  # noqa: TC002
 from nonebot_plugin_alconna import Alconna, on_alconna
 
-from apeiria.environment.dashboard import dashboard_service
+from apeiria.app.system.management import system_management_service
 from apeiria.i18n import t
 from apeiria.utils.time_format import format_duration
 
@@ -27,7 +27,7 @@ async def handle_admin(event: Event) -> None:
     if owner_error:
         await _admin.finish(owner_error)
 
-    snapshot = await dashboard_service.get_status_snapshot()
+    snapshot = await system_management_service.get_status_snapshot()
     adapters = (
         ", ".join(snapshot.adapters)
         if snapshot.adapters

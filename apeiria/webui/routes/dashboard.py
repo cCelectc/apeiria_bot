@@ -7,8 +7,7 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 
-from apeiria.environment import environment_service
-from apeiria.environment.dashboard import dashboard_service
+from apeiria.app.system.management import system_management_service
 from apeiria.i18n import t
 from apeiria.runtime.context import get_current_runtime
 from apeiria.webui.auth import require_control_panel
@@ -66,7 +65,7 @@ async def get_events(
                 source=item.source,
                 message=item.message,
             )
-            for item in dashboard_service.get_recent_events()
+            for item in system_management_service.get_recent_events()
         ]
     )
 
@@ -75,7 +74,7 @@ async def get_events(
 async def get_webui_build_status(
     _: Annotated[Any, Depends(require_control_panel)],
 ) -> WebUIBuildStatusResponse:
-    status = environment_service.get_frontend_build_status()
+    status = system_management_service.get_web_ui_build_status()
     return WebUIBuildStatusResponse(
         is_built=status.is_built,
         is_stale=status.is_stale,
@@ -90,7 +89,7 @@ async def rebuild_webui(
     _: Annotated[Any, Depends(require_control_panel)],
 ) -> WebUIBuildRunResponse:
     try:
-        status = await environment_service.rebuild_frontend()
+        status = await system_management_service.rebuild_web_ui()
     except RuntimeError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return WebUIBuildRunResponse(
@@ -107,14 +106,14 @@ async def rebuild_webui(
 async def rebuild_webui_stream(
     _: Annotated[Any, Depends(require_control_panel)],
 ) -> StreamingResponse:
-    status = environment_service.get_frontend_build_status()
+    status = system_management_service.get_web_ui_build_status()
     if not status.can_build:
         raise HTTPException(
             status_code=400,
             detail=t("web_ui.dashboard.build_tool_unavailable"),
         )
     return StreamingResponse(
-        environment_service.stream_frontend_rebuild(),
+        system_management_service.stream_web_ui_rebuild(),
         media_type="application/x-ndjson",
     )
 
@@ -123,5 +122,5 @@ async def rebuild_webui_stream(
 async def restart_bot(
     _: Annotated[Any, Depends(require_control_panel)],
 ) -> OperationStatusResponse:
-    dashboard_service.schedule_restart()
+    system_management_service.schedule_restart()
     return OperationStatusResponse(detail=t("web_ui.dashboard.restart_scheduled"))

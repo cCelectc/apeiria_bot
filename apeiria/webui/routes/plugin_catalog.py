@@ -8,14 +8,9 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse
 
-from apeiria.app.plugins.store.update_check import (
-    plugin_update_check_service,
-    supports_plugin_update_check,
-)
+from apeiria.app.plugins.management import plugin_management_service
 from apeiria.exceptions import ResourceNotFoundError
 from apeiria.i18n import t
-from apeiria.plugins import config_query_service, plugin_governance_service
-from apeiria.runtime.context import get_current_runtime
 from apeiria.webui.auth import require_control_panel, require_owner
 from apeiria.webui.schemas.plugin_catalog import (
     OrphanPluginConfigResponse,
@@ -29,24 +24,10 @@ from apeiria.webui.schemas.plugin_catalog import (
     to_plugin_readme_response,
     to_plugin_update_check_item,
 )
-from apeiria.webui.schemas.plugin_config import (
-    run_settings_action,
-    to_plugin_workspace_settings_summary,
-)
+from apeiria.webui.schemas.plugin_config import to_plugin_workspace_settings_summary
 from apeiria.webui.schemas.plugin_management import to_plugin_toggle_preview_response
 
 router = APIRouter()
-_RUNTIME_UNAVAILABLE_DETAIL = "Apeiria runtime control plane is unavailable."
-
-
-def _require_runtime_control_plane() -> Any:
-    runtime = get_current_runtime()
-    if runtime is None or runtime.control_plane is None:
-        raise HTTPException(
-            status_code=503,
-            detail=_RUNTIME_UNAVAILABLE_DETAIL,
-        )
-    return runtime.control_plane
 
 
 @router.get("/{module_name}/readme", response_model=PluginReadmeResponse)
@@ -55,7 +36,7 @@ async def get_plugin_readme(
     _: Annotated[Any, Depends(require_control_panel)],
 ) -> PluginReadmeResponse:
     try:
-        state = await plugin_governance_service.get_plugin_readme(module_name)
+        state = await plugin_management_service.get_plugin_readme(module_name)
     except ResourceNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except FileNotFoundError:
@@ -75,7 +56,7 @@ async def get_plugin_readme_asset(
     _: Annotated[Any, Depends(require_control_panel)],
 ) -> FileResponse:
     try:
-        asset_path = await plugin_governance_service.get_plugin_readme_asset_path(
+        asset_path = await plugin_management_service.get_plugin_readme_asset_path(
             module_name,
             path,
         )
@@ -110,17 +91,11 @@ async def get_plugin_readme_asset(
 async def list_plugins(
     _: Annotated[Any, Depends(require_control_panel)],
 ) -> list[PluginItem]:
-    plugins = await _require_runtime_control_plane().list_plugins()
+    plugins = await plugin_management_service.list_plugins()
     return [
         to_plugin_item_response(
             plugin,
-            can_package_update=(
-                plugin.governance_state.can_uninstall
-                and bool(plugin.package_binding.installed_package)
-                and supports_plugin_update_check(
-                    plugin.package_binding.installed_package
-                )
-            ),
+            can_package_update=plugin_management_service.can_package_update(plugin),
         )
         for plugin in plugins
     ]
@@ -131,39 +106,29 @@ async def get_plugin_workspace(
     module_name: str,
     _: Annotated[Any, Depends(require_control_panel)],
 ) -> PluginWorkspaceResponse:
-    plugin = await plugin_governance_service.get_plugin(module_name)
-    if plugin is None:
+    workspace = await plugin_management_service.build_plugin_workspace(module_name)
+    if workspace is None:
         raise HTTPException(status_code=404, detail=t("web_ui.plugins.not_found"))
 
     plugin_item = to_plugin_item_response(
-        plugin,
-        can_package_update=(
-            plugin.governance_state.can_uninstall
-            and bool(plugin.package_binding.installed_package)
-            and supports_plugin_update_check(plugin.package_binding.installed_package)
-        ),
+        workspace.plugin,
+        can_package_update=workspace.can_package_update,
     )
-    enable_preview = None
-    disable_preview = None
-    if plugin_item.can_enable_disable:
-        enable_preview = to_plugin_toggle_preview_response(
-            await plugin_governance_service.preview_toggle_plugin(
-                module_name,
-                enabled=True,
-            )
-        )
-        disable_preview = to_plugin_toggle_preview_response(
-            await plugin_governance_service.preview_toggle_plugin(
-                module_name,
-                enabled=False,
-            )
-        )
-
-    settings = None
-    if plugin_item.can_edit_config:
-        settings = to_plugin_workspace_settings_summary(
-            run_settings_action(config_query_service.get_plugin_view, module_name)
-        )
+    enable_preview = (
+        to_plugin_toggle_preview_response(workspace.enable_preview)
+        if workspace.enable_preview is not None
+        else None
+    )
+    disable_preview = (
+        to_plugin_toggle_preview_response(workspace.disable_preview)
+        if workspace.disable_preview is not None
+        else None
+    )
+    settings = (
+        to_plugin_workspace_settings_summary(workspace.settings)
+        if workspace.settings is not None
+        else None
+    )
 
     return PluginWorkspaceResponse(
         plugin=plugin_item,
@@ -179,9 +144,7 @@ async def check_plugin_updates(
     payload: PluginUpdateCheckRequest,
     _: Annotated[Any, Depends(require_control_panel)],
 ) -> list[PluginUpdateCheckItem]:
-    plugins = await plugin_governance_service.list_plugins()
-    results = await plugin_update_check_service.check_plugins(
-        plugins,
+    results = await plugin_management_service.check_plugin_updates(
         force_refresh=payload.force_refresh,
     )
     return [to_plugin_update_check_item(item) for item in results]
@@ -191,7 +154,7 @@ async def check_plugin_updates(
 async def list_orphan_plugin_configs(
     _: Annotated[Any, Depends(require_owner)],
 ) -> OrphanPluginConfigResponse:
-    items = await plugin_governance_service.list_orphan_plugin_configs()
+    items = await plugin_management_service.list_orphan_plugin_configs()
     return to_orphan_plugin_config_response(items)
 
 
@@ -199,5 +162,5 @@ async def list_orphan_plugin_configs(
 async def cleanup_orphan_plugin_configs(
     _: Annotated[Any, Depends(require_owner)],
 ) -> OrphanPluginConfigResponse:
-    items = await plugin_governance_service.cleanup_orphan_plugin_configs()
+    items = await plugin_management_service.cleanup_orphan_plugin_configs()
     return to_orphan_plugin_config_response(items)

@@ -6,10 +6,9 @@ from arclet.alconna import Args, CommandMeta
 from nonebot.adapters import Event  # noqa: TC002
 from nonebot_plugin_alconna import Alconna, Match, on_alconna
 
-from apeiria.access.groups import group_service
-from apeiria.access.service import access_service
+from apeiria.app.access.management import access_management_service
+from apeiria.exceptions import ProtectedPluginError, ResourceNotFoundError
 from apeiria.i18n import t
-from apeiria.plugins import plugin_policy_service
 
 from .presenter import render_block
 from .utils import ensure_owner_message, resolve_plugin_catalog_query
@@ -103,57 +102,23 @@ async def _render_plugin_access(plugin_query: str) -> str:
         return t("admin.plugin.not_found", name=plugin_query)
 
     module_name = item.descriptor.module_name
-    spec = await plugin_policy_service.get_policy(module_name)
-    rules = [
-        rule
-        for rule in await access_service.list_access_rules()
-        if rule.plugin_module == module_name
-    ]
-    groups = await group_service.list_groups()
-    disabled_groups = [
-        group for group in groups if module_name in group.disabled_plugins
-    ]
+    try:
+        summary = await access_management_service.get_plugin_access_summary(module_name)
+    except ResourceNotFoundError:
+        return t("admin.plugin.not_found", name=plugin_query)
 
     return render_block(
         t("admin.access.plugin_title", name=item.descriptor.name),
         [
             (t("admin.plugin.field_module"), module_name),
             (t("admin.plugin.field_kind"), item.governance_state.kind),
-            (t("admin.access.field_access_mode"), spec.access_mode),
-            (t("admin.access.field_required_level"), spec.required_level),
-            (
-                t("admin.access.field_user_allow"),
-                sum(
-                    1
-                    for rule in rules
-                    if rule.subject_type == "user" and rule.effect == "allow"
-                ),
-            ),
-            (
-                t("admin.access.field_user_deny"),
-                sum(
-                    1
-                    for rule in rules
-                    if rule.subject_type == "user" and rule.effect == "deny"
-                ),
-            ),
-            (
-                t("admin.access.field_group_allow"),
-                sum(
-                    1
-                    for rule in rules
-                    if rule.subject_type == "group" and rule.effect == "allow"
-                ),
-            ),
-            (
-                t("admin.access.field_group_deny"),
-                sum(
-                    1
-                    for rule in rules
-                    if rule.subject_type == "group" and rule.effect == "deny"
-                ),
-            ),
-            (t("admin.access.field_disabled_groups"), len(disabled_groups)),
+            (t("admin.access.field_access_mode"), summary.access_mode),
+            (t("admin.access.field_required_level"), summary.required_level),
+            (t("admin.access.field_user_allow"), summary.user_allow_count),
+            (t("admin.access.field_user_deny"), summary.user_deny_count),
+            (t("admin.access.field_group_allow"), summary.group_allow_count),
+            (t("admin.access.field_group_deny"), summary.group_deny_count),
+            (t("admin.access.field_disabled_groups"), summary.disabled_group_count),
         ],
         summary=item.descriptor.description or t("admin.plugin.no_description"),
         footer=t(
@@ -172,9 +137,10 @@ async def _upsert_rule(
 ) -> str:
     normalized_effect = effect.strip().lower()
     normalized_subject_type = subject_type.strip().lower()
-    if normalized_effect not in {"allow", "deny"}:
-        return t("admin.access.rule_usage")
-    if normalized_subject_type not in {"user", "group"}:
+    if (
+        normalized_effect not in {"allow", "deny"}
+        or normalized_subject_type not in {"user", "group"}
+    ):
         return t("admin.access.rule_usage")
 
     item, candidates = await resolve_plugin_catalog_query(
@@ -190,12 +156,17 @@ async def _upsert_rule(
     if item is None:
         return t("admin.plugin.not_found", name=plugin_query)
 
-    await access_service.upsert_access_rule(
-        subject_type=normalized_subject_type,
-        subject_id=subject_id.strip(),
-        plugin_module=item.descriptor.module_name,
-        effect=normalized_effect,
-    )
+    try:
+        await access_management_service.upsert_access_rule(
+            subject_type=normalized_subject_type,
+            subject_id=subject_id.strip(),
+            plugin_module=item.descriptor.module_name,
+            effect=normalized_effect,
+        )
+    except ResourceNotFoundError:
+        return t("admin.plugin.not_found", name=plugin_query)
+    except ProtectedPluginError as exc:
+        return t("admin.plugin.protected", name=item.descriptor.name, reason=str(exc))
     return t(
         "admin.access.rule_updated",
         effect=normalized_effect,
@@ -228,7 +199,7 @@ async def _delete_rule(
     if item is None:
         return t("admin.plugin.not_found", name=plugin_query)
 
-    deleted = await access_service.delete_access_rule(
+    deleted = await access_management_service.delete_access_rule(
         subject_type=normalized_subject_type,
         subject_id=subject_id.strip(),
         plugin_module=item.descriptor.module_name,
@@ -256,7 +227,11 @@ async def _set_level(
     if parsed_level < 0:
         return t("admin.access.level_usage")
 
-    await access_service.set_user_level(user_id.strip(), group_id.strip(), parsed_level)
+    await access_management_service.set_user_level(
+        user_id.strip(),
+        group_id.strip(),
+        parsed_level,
+    )
     return t(
         "admin.access.level_updated",
         user_id=user_id.strip(),
