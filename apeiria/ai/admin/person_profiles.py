@@ -5,13 +5,10 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from apeiria.ai.admin.audit import record_ai_admin_audit
-from apeiria.ai.person.service import ai_person_profile_service
+from apeiria.ai.person import ai_person_profile_service
 
 if TYPE_CHECKING:
-    from apeiria.ai.person.models import (
-        AIPersonMemoryPoint,
-        AIPersonProfileDefinition,
-    )
+    from apeiria.ai.person import AIPersonMemoryPoint, AIPersonProfileDefinition
 
 
 class PersonProfilesAdminMixin:

@@ -5,14 +5,10 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from apeiria.ai.admin.audit import record_ai_admin_audit
-from apeiria.ai.persona.models import AIPersonaCreateInput
-from apeiria.ai.persona.service import ai_persona_service
+from apeiria.ai.persona import AIPersonaCreateInput, ai_persona_service
 
 if TYPE_CHECKING:
-    from apeiria.ai.persona.models import (
-        AIPersonaBindingSpec,
-        AIPersonaDefinition,
-    )
+    from apeiria.ai.persona import AIPersonaBindingSpec, AIPersonaDefinition
 
 
 def _build_persona_create_input(

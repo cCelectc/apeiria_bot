@@ -6,8 +6,8 @@ from typing import TYPE_CHECKING
 
 from apeiria.access.groups import group_service
 from apeiria.ai.model import AIModelBindingTarget
-from apeiria.ai.persona.models import AIPersonaBindingTarget
-from apeiria.ai.persona.service import (
+from apeiria.ai.persona import (
+    AIPersonaBindingTarget,
     ai_persona_service,
     build_persona_render_context,
 )
@@ -15,7 +15,7 @@ from apeiria.ai.persona.service import (
 if TYPE_CHECKING:
     from datetime import datetime
 
-    from apeiria.ai.persona.service import AIPersonaRenderContext
+    from apeiria.ai.persona import AIPersonaRenderContext
     from apeiria.ai.pipeline.prompting import AIPersonaPromptBundleLike
     from apeiria.ai.pipeline.service import AIRuntimeReplyRequest
     from apeiria.conversation.models import (

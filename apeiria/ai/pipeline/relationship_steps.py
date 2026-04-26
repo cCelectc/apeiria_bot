@@ -5,16 +5,16 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from apeiria.ai.relationship.scoring import TONE_LABEL, project_emotion
-from apeiria.ai.relationship.service import ai_relationship_service
-from apeiria.ai.relationship.signals import derive_relationship_delta
+from apeiria.ai.relationship import (
+    TONE_LABEL,
+    ai_relationship_service,
+    derive_relationship_delta,
+    project_emotion,
+)
 
 if TYPE_CHECKING:
-    from apeiria.ai.memory.models import AIMessageSentiment
-    from apeiria.ai.relationship.models import (
-        AIRelationshipEvent,
-        AIRelationshipState,
-    )
+    from apeiria.ai.memory import AIMessageSentiment
+    from apeiria.ai.relationship import AIRelationshipEvent, AIRelationshipState
     from apeiria.conversation.models import ChatSessionIdentity
 
 

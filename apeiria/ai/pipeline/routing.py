@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from apeiria.ai.model.models import AIModelTaskClass
+    from apeiria.ai.model import AIModelTaskClass
 
 
 def select_pre_tool_reply_task_class(*, has_tools: bool) -> AIModelTaskClass:

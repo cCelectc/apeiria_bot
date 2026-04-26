@@ -5,13 +5,10 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from apeiria.ai.admin.audit import record_ai_admin_audit
-from apeiria.ai.relationship.service import ai_relationship_service
+from apeiria.ai.relationship import ai_relationship_service
 
 if TYPE_CHECKING:
-    from apeiria.ai.relationship.models import (
-        AIRelationshipEvent,
-        AIRelationshipState,
-    )
+    from apeiria.ai.relationship import AIRelationshipEvent, AIRelationshipState
 
 
 class RelationshipsAdminMixin:

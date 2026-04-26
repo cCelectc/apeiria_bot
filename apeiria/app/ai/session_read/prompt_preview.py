@@ -11,10 +11,9 @@ from apeiria.ai.admin.workbench import (
     select_latest_user_turn,
     to_context_turns,
 )
-from apeiria.ai.model import AIModelBindingTarget, AIModelRouteQuery
-from apeiria.ai.model.service import ai_model_facade
-from apeiria.ai.persona.models import AIPersonaBindingTarget
-from apeiria.ai.persona.service import (
+from apeiria.ai.model import AIModelBindingTarget, AIModelRouteQuery, ai_model_facade
+from apeiria.ai.persona import (
+    AIPersonaBindingTarget,
     ai_persona_service,
     build_persona_render_context,
 )
@@ -42,13 +41,13 @@ from apeiria.ai.reply_strategy import (
     latest_user_turn_text,
     summarize_reply_strategy_decision,
 )
-from apeiria.ai.tools.policy import (
+from apeiria.ai.tools import (
     AIToolPolicyBindingTarget,
     AIToolSceneContext,
     ai_tool_policy_binding_service,
+    ai_tool_service,
     summarize_tool_policy,
 )
-from apeiria.ai.tools.service import ai_tool_service
 from apeiria.conversation.service import chat_session_service
 
 from .models import AISessionPromptChannels, AISessionPromptPreview

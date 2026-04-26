@@ -53,10 +53,7 @@ async def update_ai_person_profile(
     payload: AIPersonProfileUpdateRequest,
     session: Annotated["AuthSession", Depends(require_control_panel)],
 ) -> AIPersonProfileItem | None:
-    from apeiria.ai.person.models import (
-        AIPersonMemoryPoint,
-        AIPersonMemoryPointCategory,
-    )
+    from apeiria.ai.person import AIPersonMemoryPoint, AIPersonMemoryPointCategory
 
     memory_points = None
     if payload.memory_points is not None:

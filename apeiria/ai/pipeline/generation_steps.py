@@ -8,8 +8,7 @@ from typing import TYPE_CHECKING
 from nonebot.log import logger
 
 from apeiria.ai.config import get_ai_plugin_config
-from apeiria.ai.model import AIModelRouteQuery
-from apeiria.ai.model.gateway import model_gateway
+from apeiria.ai.model import AIModelRouteQuery, model_gateway
 from apeiria.ai.pipeline.composer import (
     AIRuntimeComposeInput,
     build_runtime_prompt_channels,
@@ -44,30 +43,29 @@ from apeiria.ai.pipeline.tool_steps import (
     resolve_tool_policy,
 )
 from apeiria.ai.reply_strategy import summarize_reply_strategy_decision
-from apeiria.ai.skills.service import ai_skill_service
-from apeiria.ai.tools.gateway import (
+from apeiria.ai.skills import ai_skill_service
+from apeiria.ai.tools import (
     ToolGatewayRequest,
     ToolGatewayResult,
+    ai_tool_service,
     tool_gateway,
 )
-from apeiria.ai.tools.service import ai_tool_service
 
 if TYPE_CHECKING:
     from datetime import datetime
 
     from apeiria.ai.future_task.models import AIFutureTaskDefinition
-    from apeiria.ai.memory.models import AIMemoryDefinition
-    from apeiria.ai.model import AIModelBindingTarget
+    from apeiria.ai.memory import AIMemoryDefinition
+    from apeiria.ai.model import AIModelBindingTarget, AISelectedModel
     from apeiria.ai.model.adapter import (
         AIModelGenerateResponse,
         AIModelToolDefinition,
     )
-    from apeiria.ai.model.selection import AISelectedModel
     from apeiria.ai.pipeline.prompting import AIPersonaPromptBundleLike
     from apeiria.ai.pipeline.relationship_steps import AIRelationshipTarget
     from apeiria.ai.pipeline.service import AIRuntimeReplyRequest
     from apeiria.ai.reply_strategy import ReplyStrategyDecision
-    from apeiria.ai.tools.models import AIToolPolicy, AIToolSpec
+    from apeiria.ai.tools import AIToolPolicy, AIToolSpec
     from apeiria.conversation.models import ChatContextMessageView
 
 

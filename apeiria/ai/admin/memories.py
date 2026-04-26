@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Literal, cast
 
 from apeiria.ai.admin.audit import record_ai_admin_audit
-from apeiria.ai.memory.service import (
+from apeiria.ai.memory import (
     AIMemoryCreateInput,
     AIMemoryQuery,
     AIMemoryUpdateInput,
@@ -13,7 +13,7 @@ from apeiria.ai.memory.service import (
 )
 
 if TYPE_CHECKING:
-    from apeiria.ai.memory.models import (
+    from apeiria.ai.memory import (
         AIMemoryAnchorType,
         AIMemoryDefinition,
         AIMemoryKind,

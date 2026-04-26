@@ -5,10 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
-from apeiria.ai.relationship.scoring import (
-    apply_inactivity_decay,
-    project_emotion,
-)
+from apeiria.ai.relationship import apply_inactivity_decay, project_emotion
 from apeiria.ai.webui.schemas import (
     AICapabilityItem,
     AICapabilityPreviewItem,
@@ -36,7 +33,7 @@ from apeiria.ai.webui.schemas import (
 
 if TYPE_CHECKING:
     from apeiria.ai.future_task.models import AIFutureTaskDefinition
-    from apeiria.ai.memory.models import AIMemoryDefinition
+    from apeiria.ai.memory import AIMemoryDefinition
     from apeiria.ai.model import (
         AIModelBindingSpec,
         AIModelProfileDefinition,
@@ -45,28 +42,18 @@ if TYPE_CHECKING:
         AISourcePresetDefinition,
     )
     from apeiria.ai.model import AIModelCatalogItem as DomainModelCatalogItem
-    from apeiria.ai.person.models import AIPersonProfileDefinition
-    from apeiria.ai.persona.models import (
-        AIPersonaBindingSpec,
-        AIPersonaDefinition,
-    )
-    from apeiria.ai.relationship.models import (
-        AIRelationshipEvent,
-        AIRelationshipState,
-    )
-    from apeiria.ai.skills.catalog import AISkillDefinition
-    from apeiria.ai.tools.debug import (
+    from apeiria.ai.person import AIPersonProfileDefinition
+    from apeiria.ai.persona import AIPersonaBindingSpec, AIPersonaDefinition
+    from apeiria.ai.relationship import AIRelationshipEvent, AIRelationshipState
+    from apeiria.ai.skills import AISkillDefinition
+    from apeiria.ai.tools import (
         AICapabilityDefinition,
         AICapabilityPreview,
-        AIToolIntentPreview,
-    )
-    from apeiria.ai.tools.models import (
         AIToolExecutionView,
+        AIToolIntentPreview,
         AIToolPolicy,
-        AIToolSpec,
-    )
-    from apeiria.ai.tools.policy import (
         AIToolPolicyBindingSpec,
+        AIToolSpec,
     )
 
 

@@ -23,6 +23,9 @@ from .sources import (
     AISourceDefinition,
     AISourcePresetDefinition,
     AISourcePresetType,
+    UnsupportedAISourcePresetError,
+    resolve_capability_type_for_preset,
+    resolve_client_type_for_preset,
 )
 
 if TYPE_CHECKING:
@@ -61,6 +64,7 @@ if TYPE_CHECKING:
         ai_embedding_model_service,
     )
     from .factory import UnsupportedAISourceClientTypeError, build_source_adapter
+    from .gateway import ModelGateway, model_gateway
     from .profile import (
         AIModelProfileCreateInput,
         AIModelProfileService,
@@ -137,8 +141,10 @@ __all__ = [
     "AITTSModelCreateInput",
     "AITTSModelService",
     "AITextToSpeechModelDefinition",
+    "ModelGateway",
     "UnknownAISourceError",
     "UnsupportedAISourceClientTypeError",
+    "UnsupportedAISourcePresetError",
     "ai_chat_model_service",
     "ai_embedding_model_service",
     "ai_model_capability_selection_service",
@@ -150,6 +156,9 @@ __all__ = [
     "ai_stt_model_service",
     "ai_tts_model_service",
     "build_source_adapter",
+    "model_gateway",
+    "resolve_capability_type_for_preset",
+    "resolve_client_type_for_preset",
     "resolve_model_profile",
 ]
 
@@ -178,6 +187,7 @@ _LAZY_EXPORTS = {
     "AIModelTranscriptionResponse": ".adapter",
     "AIModelAdapter": ".adapter",
     "AIModelCatalogItem": ".adapter",
+    "ModelGateway": ".gateway",
     "AITTSModelCreateInput": ".tts_model",
     "AITTSModelService": ".tts_model",
     "AISTTModelCreateInput": ".stt_model",
@@ -197,6 +207,7 @@ _LAZY_EXPORTS = {
     "ai_stt_model_service": ".stt_model",
     "ai_tts_model_service": ".tts_model",
     "build_source_adapter": ".factory",
+    "model_gateway": ".gateway",
 }
 
 
@@ -205,6 +216,4 @@ def __getattr__(name: str) -> Any:
     if module_name is None:
         raise AttributeError(name)
     module = import_module(module_name, __name__)
-    value = getattr(module, name)
-    globals()[name] = value
-    return value
+    return getattr(module, name)

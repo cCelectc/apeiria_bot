@@ -26,7 +26,7 @@ from apeiria.ai.reply_strategy import (
 )
 from apeiria.ai.reply_strategy.wake_gate import evaluate_wake
 from apeiria.ai.retention import ai_retention_service
-from apeiria.ai.skills.service import ai_skill_service
+from apeiria.ai.skills import ai_skill_service
 from apeiria.conversation.service import chat_session_service
 from apeiria.runtime.entries import (
     ApeiriaEntry,
@@ -37,7 +37,7 @@ if TYPE_CHECKING:
     from nonebot.adapters import Bot, Event
 
     from apeiria.ai.future_task.models import AIFutureTaskDefinition
-    from apeiria.ai.memory.models import AIMessageSentiment
+    from apeiria.ai.memory import AIMessageSentiment
     from apeiria.ai.reply_strategy.models import WakeContext
     from apeiria.conversation.models import ChatSessionIdentity
 

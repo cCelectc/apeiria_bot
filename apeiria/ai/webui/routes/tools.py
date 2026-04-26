@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Annotated, Any
 from fastapi import APIRouter, Depends, Query
 
 from apeiria.ai.admin.control_service import ai_control_admin_service
-from apeiria.ai.tools.models import AIToolPolicy
+from apeiria.ai.tools import AIToolPolicy
 from apeiria.ai.webui.schemas import (
     AICapabilityItem,
     AICapabilityPreviewItem,

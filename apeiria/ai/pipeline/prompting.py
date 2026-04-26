@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal, Protocol
 
 if TYPE_CHECKING:
-    from apeiria.ai.memory.models import AIMemoryDefinition
+    from apeiria.ai.memory import AIMemoryDefinition
     from apeiria.conversation.models import ChatContextMessageView
 
 AIPromptMode = Literal["planner", "roleplay"]

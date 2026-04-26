@@ -5,24 +5,24 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from apeiria.ai.admin.audit import record_ai_admin_audit
-from apeiria.ai.tools.policy import (
+from apeiria.ai.skills import ai_skill_service
+from apeiria.ai.tools import (
     AIToolPolicyBindingCreateInput,
     AIToolPolicyBindingSpec,
     AIToolSceneContext,
     AIToolScenePolicyProfile,
     ai_tool_policy_binding_service,
+    ai_tool_service,
     resolve_default_tool_policy,
 )
 
 if TYPE_CHECKING:
-    from apeiria.ai.skills.catalog import AISkillDefinition
-    from apeiria.ai.tools.debug import (
+    from apeiria.ai.skills import AISkillDefinition
+    from apeiria.ai.tools import (
         AICapabilityDefinition,
         AICapabilityPreview,
-        AIToolIntentPreview,
-    )
-    from apeiria.ai.tools.models import (
         AIToolExecutionView,
+        AIToolIntentPreview,
         AIToolPolicy,
         AIToolSpec,
     )
@@ -32,21 +32,15 @@ class ToolsAdminMixin:
     """Admin read/mutation for tools, skills, capabilities, policies, and executions."""
 
     def list_tools(self, policy: "AIToolPolicy | None" = None) -> list["AIToolSpec"]:
-        from apeiria.ai.tools.service import ai_tool_service
-
         return ai_tool_service.list_tool_specs(policy)
 
     def list_capabilities(self) -> list["AICapabilityDefinition"]:
-        from apeiria.ai.tools.service import ai_tool_service
-
         return ai_tool_service.list_capabilities()
 
     def list_skills(
         self,
         policy: "AIToolPolicy | None" = None,
     ) -> list["AISkillDefinition"]:
-        from apeiria.ai.skills.service import ai_skill_service
-
         return ai_skill_service.list_skills(policy)
 
     async def preview_tool_intents(
@@ -58,8 +52,6 @@ class ToolsAdminMixin:
         allow_read_only_tools: bool = True,
         capability_mode: str = "off",
     ) -> list["AIToolIntentPreview"]:
-        from apeiria.ai.tools.service import ai_tool_service
-
         policy = self.preview_tool_policy(
             scope_type=scope_type,
             is_tome=is_tome,
@@ -165,8 +157,6 @@ class ToolsAdminMixin:
         allow_read_only_tools: bool = True,
         capability_mode: str = "off",
     ) -> "AICapabilityPreview":
-        from apeiria.ai.tools.service import ai_tool_service
-
         policy = self.preview_tool_policy(
             scope_type=scope_type,
             is_tome=is_tome,
@@ -183,8 +173,6 @@ class ToolsAdminMixin:
         *,
         session_id: str,
     ) -> list["AIToolExecutionView"]:
-        from apeiria.ai.tools.service import ai_tool_service
-
         return await ai_tool_service.list_executions(session_id=session_id)
 
 

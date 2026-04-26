@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from apeiria.ai.tools.policy import (
+from apeiria.ai.tools import (
     AIToolPolicyBindingTarget,
     AIToolSceneContext,
     ai_tool_policy_binding_service,
@@ -12,7 +12,7 @@ from apeiria.ai.tools.policy import (
 from apeiria.conversation.service import ChatMessageCreate, chat_session_service
 
 if TYPE_CHECKING:
-    from apeiria.ai.tools.models import AIToolPolicy, AIToolTurnCreateInput
+    from apeiria.ai.tools import AIToolPolicy, AIToolTurnCreateInput
     from apeiria.conversation.models import ChatSessionIdentity
 
 

@@ -7,27 +7,23 @@ from typing import TYPE_CHECKING
 
 from nonebot.log import logger
 
-from apeiria.ai.memory.extraction import (
-    build_memory_extraction_prompt,
-    parse_memory_extraction_response,
-)
-from apeiria.ai.memory.models import (
+from apeiria.ai.memory import (
     AIMemoryExtractionResult,
     AIMemoryLayer,
     AIMemoryQuery,
     AIMessageSentiment,
+    ai_memory_service,
 )
-from apeiria.ai.memory.service import ai_memory_service
-from apeiria.ai.model.gateway import model_gateway
-from apeiria.ai.model.models import AIModelRouteQuery
+from apeiria.ai.memory.extraction import (
+    build_memory_extraction_prompt,
+    parse_memory_extraction_response,
+)
+from apeiria.ai.model import AIModelRouteQuery, model_gateway
 from apeiria.ai.person import ai_person_profile_service
 from apeiria.conversation.identity import build_participant_subject_id
 
 if TYPE_CHECKING:
-    from apeiria.ai.memory.models import (
-        AIMemoryAnchorType,
-        AIMemoryDefinition,
-    )
+    from apeiria.ai.memory import AIMemoryAnchorType, AIMemoryDefinition
     from apeiria.conversation.models import ChatSessionIdentity
 
 

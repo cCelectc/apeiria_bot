@@ -18,17 +18,16 @@ from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from apeiria.ai.future_task.service import ai_future_task_service
-    from apeiria.ai.memory.service import ai_memory_service
-    from apeiria.ai.model.gateway import model_gateway
-    from apeiria.ai.person.service import ai_person_profile_service
-    from apeiria.ai.persona.service import ai_persona_service
-    from apeiria.ai.relationship.service import ai_relationship_service
+    from apeiria.ai.memory import ai_memory_service
+    from apeiria.ai.model import model_gateway
+    from apeiria.ai.person import ai_person_profile_service
+    from apeiria.ai.persona import ai_persona_service
+    from apeiria.ai.relationship import ai_relationship_service
     from apeiria.ai.reply_strategy.service import reply_strategy_service
     from apeiria.ai.retention import ai_retention_service
     from apeiria.ai.service import AIService, AIServiceStatus, ai_service
-    from apeiria.ai.skills.service import ai_skill_service
-    from apeiria.ai.tools.gateway import tool_gateway
-    from apeiria.ai.tools.service import ai_tool_service
+    from apeiria.ai.skills import ai_skill_service
+    from apeiria.ai.tools import ai_tool_service, tool_gateway
 
 __all__ = [
     "AIService",
@@ -51,17 +50,17 @@ _LAZY_MODULES = {
     "AIService": "apeiria.ai.service",
     "AIServiceStatus": "apeiria.ai.service",
     "ai_future_task_service": "apeiria.ai.future_task.service",
-    "ai_memory_service": "apeiria.ai.memory.service",
-    "ai_person_profile_service": "apeiria.ai.person.service",
-    "ai_persona_service": "apeiria.ai.persona.service",
-    "ai_relationship_service": "apeiria.ai.relationship.service",
+    "ai_memory_service": "apeiria.ai.memory",
+    "ai_person_profile_service": "apeiria.ai.person",
+    "ai_persona_service": "apeiria.ai.persona",
+    "ai_relationship_service": "apeiria.ai.relationship",
     "ai_retention_service": "apeiria.ai.retention",
     "ai_service": "apeiria.ai.service",
-    "ai_skill_service": "apeiria.ai.skills.service",
-    "ai_tool_service": "apeiria.ai.tools.service",
-    "model_gateway": "apeiria.ai.model.gateway",
+    "ai_skill_service": "apeiria.ai.skills",
+    "ai_tool_service": "apeiria.ai.tools",
+    "model_gateway": "apeiria.ai.model",
     "reply_strategy_service": "apeiria.ai.reply_strategy.service",
-    "tool_gateway": "apeiria.ai.tools.gateway",
+    "tool_gateway": "apeiria.ai.tools",
 }
 
 

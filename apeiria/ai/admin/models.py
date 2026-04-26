@@ -7,6 +7,7 @@ import re
 import wave
 from typing import TYPE_CHECKING, Literal, cast
 
+import apeiria.ai.model as ai_model
 from apeiria.ai.admin.audit import record_ai_admin_audit
 from apeiria.ai.admin.errors import (
     AIAdminModelNotFoundError,
@@ -17,13 +18,16 @@ from apeiria.ai.admin.errors import (
     AISourceModelTestUpstreamError,
 )
 from apeiria.ai.admin.sources import coerce_source_preset_type
-from apeiria.ai.model.profile import (
+from apeiria.ai.model import (
     AIModelProfileCreateInput,
-    ai_model_profile_service,
-)
-from apeiria.ai.model.source import ai_source_service
-from apeiria.ai.model.sources import (
     AISourceCapabilityType,
+    ai_chat_model_service,
+    ai_embedding_model_service,
+    ai_model_profile_service,
+    ai_rerank_model_service,
+    ai_source_service,
+    ai_stt_model_service,
+    ai_tts_model_service,
     resolve_client_type_for_preset,
 )
 
@@ -236,8 +240,6 @@ class ModelsAdminMixin:
         api_key: str | None = None,
         extra_config: dict[str, object] | None = None,
     ) -> list["AIModelCatalogItem"]:
-        from apeiria.ai.model.service import ai_model_facade
-
         stored_source = None
         if source_id:
             sources = await ai_source_service.list_sources()
@@ -255,7 +257,7 @@ class ModelsAdminMixin:
         if not resolved_api_key:
             raise AISourceModelFetchConfigError
         try:
-            return await ai_model_facade.list_source_models(
+            return await ai_model.ai_model_facade.list_source_models(
                 source=source,
                 api_key=resolved_api_key,
             )
@@ -390,8 +392,6 @@ class ModelsAdminMixin:
         capability_type: "AISourceCapabilityType | None",
         model_id: str,
     ) -> str:
-        from apeiria.ai.model.chat_model import ai_chat_model_service
-
         if capability_type != "chat_completion":
             return model_id
         existing = await ai_chat_model_service.get_model(model_id=model_id)
@@ -421,8 +421,6 @@ class ModelsAdminMixin:
         extra_config: dict[str, object] | None = None,
         model_identifier: str,
     ) -> tuple[str, str, int]:
-        from apeiria.ai.model.service import ai_model_facade
-
         resolved_model_identifier = model_identifier.strip()
         if not resolved_model_identifier:
             raise AISourceModelTestConfigError(
@@ -449,11 +447,13 @@ class ModelsAdminMixin:
             )
         try:
             if source.capability_type == "embedding":
-                embedding_response = await ai_model_facade.embed_texts_for_source(
-                    source=source,
-                    api_key=resolved_api_key,
-                    model_name=resolved_model_identifier,
-                    texts=(EMBEDDING_TEST_TEXT,),
+                embedding_response = (
+                    await ai_model.ai_model_facade.embed_texts_for_source(
+                        source=source,
+                        api_key=resolved_api_key,
+                        model_name=resolved_model_identifier,
+                        texts=(EMBEDDING_TEST_TEXT,),
+                    )
                 )
                 dimensions = (
                     len(embedding_response.vectors[0])
@@ -474,7 +474,7 @@ class ModelsAdminMixin:
                     "stt_language",
                 )
                 transcription_response = (
-                    await ai_model_facade.transcribe_audio_for_source(
+                    await ai_model.ai_model_facade.transcribe_audio_for_source(
                         source=source,
                         api_key=resolved_api_key,
                         model_name=resolved_model_identifier,
@@ -500,13 +500,15 @@ class ModelsAdminMixin:
                     source.extra_config,
                     "tts_response_format",
                 )
-                speech_response = await ai_model_facade.synthesize_speech_for_source(
-                    source=source,
-                    api_key=resolved_api_key,
-                    model_name=resolved_model_identifier,
-                    text=TTS_TEST_TEXT,
-                    voice=tts_voice,
-                    response_format=tts_response_format,
+                speech_response = (
+                    await ai_model.ai_model_facade.synthesize_speech_for_source(
+                        source=source,
+                        api_key=resolved_api_key,
+                        model_name=resolved_model_identifier,
+                        text=TTS_TEST_TEXT,
+                        voice=tts_voice,
+                        response_format=tts_response_format,
+                    )
                 )
                 return (
                     resolved_model_identifier,
@@ -517,13 +519,15 @@ class ModelsAdminMixin:
                 rerank_top_n = (
                     _coerce_optional_int(source.extra_config, "rerank_top_n") or 2
                 )
-                rerank_response = await ai_model_facade.rerank_documents_for_source(
-                    source=source,
-                    api_key=resolved_api_key,
-                    model_name=resolved_model_identifier,
-                    query=RERANK_TEST_QUERY,
-                    documents=RERANK_TEST_DOCUMENTS,
-                    top_n=rerank_top_n,
+                rerank_response = (
+                    await ai_model.ai_model_facade.rerank_documents_for_source(
+                        source=source,
+                        api_key=resolved_api_key,
+                        model_name=resolved_model_identifier,
+                        query=RERANK_TEST_QUERY,
+                        documents=RERANK_TEST_DOCUMENTS,
+                        top_n=rerank_top_n,
+                    )
                 )
                 top_score = (
                     rerank_response.results[0].relevance_score
@@ -538,7 +542,7 @@ class ModelsAdminMixin:
                     f"rerank ok ({rerank_summary})",
                     0,
                 )
-            response = await ai_model_facade.generate_text_for_source(
+            response = await ai_model.ai_model_facade.generate_text_for_source(
                 source=source,
                 api_key=resolved_api_key,
                 model_name=resolved_model_identifier,
@@ -726,12 +730,6 @@ class ModelsAdminMixin:
         model_id: str,
         source_id: str | None = None,
     ) -> "AISourceCapabilityType | None":
-        from apeiria.ai.model.chat_model import ai_chat_model_service
-        from apeiria.ai.model.embedding_model import ai_embedding_model_service
-        from apeiria.ai.model.rerank_model import ai_rerank_model_service
-        from apeiria.ai.model.stt_model import ai_stt_model_service
-        from apeiria.ai.model.tts_model import ai_tts_model_service
-
         if source_id:
             source = await ai_source_service.get_source(source_id=source_id)
             if source is not None:

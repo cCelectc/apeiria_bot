@@ -38,8 +38,7 @@ async def compress_conversation_history(
     if not overflow_messages:
         return existing_summary
 
-    from apeiria.ai.model.gateway import model_gateway
-    from apeiria.ai.model.models import AIModelRouteQuery
+    from apeiria.ai.model import AIModelRouteQuery, model_gateway
 
     prompt = _build_compression_prompt(
         overflow_messages,

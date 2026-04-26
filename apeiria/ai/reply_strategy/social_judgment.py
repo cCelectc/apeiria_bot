@@ -6,8 +6,7 @@ from typing import TYPE_CHECKING
 
 from nonebot.log import logger
 
-from apeiria.ai.model import AIModelRouteQuery
-from apeiria.ai.model.gateway import model_gateway
+from apeiria.ai.model import AIModelRouteQuery, model_gateway
 from apeiria.ai.reply_strategy.models import (
     SocialJudgmentInput,
     SocialJudgmentResult,

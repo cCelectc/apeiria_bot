@@ -7,10 +7,11 @@ from typing import TYPE_CHECKING, cast
 
 from apeiria.ai.admin.audit import record_ai_admin_audit
 from apeiria.ai.admin.errors import AISourceDeleteBlockedError
-from apeiria.ai.model.source import AISourceCreateInput, ai_source_service
-from apeiria.ai.model.sources import (
+from apeiria.ai.model import (
+    AISourceCreateInput,
     AISourcePresetType,
     UnsupportedAISourcePresetError,
+    ai_source_service,
     resolve_capability_type_for_preset,
     resolve_client_type_for_preset,
 )
