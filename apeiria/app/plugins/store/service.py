@@ -5,9 +5,7 @@ from __future__ import annotations
 from dataclasses import replace
 from datetime import datetime
 
-from apeiria.config.plugins import plugin_config_service
-from apeiria.plugins.package_ids import normalize_package_id
-from apeiria.plugins.store.models import (
+from apeiria.app.plugins.store.models import (
     StoreCategoryCount,
     StoreInstallCandidate,
     StoreItem,
@@ -16,10 +14,12 @@ from apeiria.plugins.store.models import (
     StoreQuery,
     StoreSource,
 )
-from apeiria.plugins.store.sources import (
+from apeiria.app.plugins.store.sources import (
     StoreSourceAdapter,
     configured_store_sources,
 )
+from apeiria.config.plugins import plugin_config_service
+from apeiria.plugins.package_ids import normalize_package_id
 
 
 class StoreService:

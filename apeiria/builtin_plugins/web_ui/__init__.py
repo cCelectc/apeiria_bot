@@ -121,7 +121,7 @@ def _mount_routes() -> None:
             t("web_ui.startup.ready", url=_web_ui_url()),
         )
 
-        from apeiria.access.webui_auth.secrets import get_secret_file_path
+        from apeiria.app.access.webui_auth.secrets import get_secret_file_path
 
         logger.info(
             "{}",

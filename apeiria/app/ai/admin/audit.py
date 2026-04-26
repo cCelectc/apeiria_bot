@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from nonebot.log import logger
 
-from apeiria.access.webui_auth.secrets import record_security_audit_event
+from apeiria.app.access.webui_auth.secrets import record_security_audit_event
 
 
 def record_ai_admin_audit(

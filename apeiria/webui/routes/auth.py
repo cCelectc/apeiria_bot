@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Annotated, Any
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 from apeiria.access.principal_roles import can_access_control_panel
-from apeiria.access.webui_auth.secrets import (
+from apeiria.app.access.webui_auth.secrets import (
     get_account_by_id,
     list_security_audit_events,
     record_login_success,
@@ -17,7 +17,7 @@ from apeiria.access.webui_auth.secrets import (
     update_account_password,
     verify_account_password,
 )
-from apeiria.access.webui_auth.service import (
+from apeiria.app.access.webui_auth.service import (
     AuthSessionContext,
     auth_session_service,
 )

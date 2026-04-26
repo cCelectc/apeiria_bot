@@ -7,8 +7,8 @@ from dataclasses import dataclass
 from typing import Any
 
 from apeiria.access.principal_roles import ROLE_OWNER, normalize_supported_role
-from apeiria.access.webui_auth.audit import append_security_audit_event
-from apeiria.access.webui_auth.store import (
+from apeiria.app.access.webui_auth.audit import append_security_audit_event
+from apeiria.app.access.webui_auth.store import (
     auth_store,
     count_enabled_owner_accounts,
     ensure_supported_role,

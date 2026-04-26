@@ -8,13 +8,13 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse
 
-from apeiria.exceptions import ResourceNotFoundError
-from apeiria.i18n import t
-from apeiria.plugins import config_query_service, plugin_governance_service
-from apeiria.plugins.store.update_check import (
+from apeiria.app.plugins.store.update_check import (
     plugin_update_check_service,
     supports_plugin_update_check,
 )
+from apeiria.exceptions import ResourceNotFoundError
+from apeiria.i18n import t
+from apeiria.plugins import config_query_service, plugin_governance_service
 from apeiria.runtime.context import get_current_runtime
 from apeiria.webui.auth import require_control_panel, require_owner
 from apeiria.webui.routes.plugin_support import (

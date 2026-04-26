@@ -94,6 +94,8 @@ def test_list_plugins_delegates_to_runtime_plugin_governance() -> None:
 def test_get_dashboard_status_uses_current_dashboard_service_snapshot(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    from apeiria.environment.dashboard import dashboard_service
+
     expected_snapshot = object()
     runtime = _build_runtime()
     control_plane = ApeiriaControlPlane(runtime)
@@ -101,10 +103,7 @@ def test_get_dashboard_status_uses_current_dashboard_service_snapshot(
     async def get_status_snapshot() -> object:
         return expected_snapshot
 
-    monkeypatch.setattr(
-        "apeiria.environment.dashboard.dashboard_service.get_status_snapshot",
-        get_status_snapshot,
-    )
+    monkeypatch.setattr(dashboard_service, "get_status_snapshot", get_status_snapshot)
 
     snapshot = asyncio.run(control_plane.get_dashboard_status())
 

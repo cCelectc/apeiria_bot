@@ -1,4 +1,4 @@
-"""Access control — permissions, rules, principal, audit, and WebUI auth.
+"""Access control — permissions, rules, principal, and audit.
 
 Only re-export lightweight types at package import time. Runtime-facing service
 singletons should still be imported from their concrete submodules.

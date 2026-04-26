@@ -7,17 +7,17 @@ from dataclasses import replace
 from datetime import datetime, timezone
 from uuid import uuid4
 
+from apeiria.app.plugins.store.models import (
+    StoreInstallRequest,
+    StoreItem,
+    StoreTask,
+)
 from apeiria.environment import (
     PackageOperationRequest,
     package_service,
     store_service,
 )
 from apeiria.plugins.package_ids import normalize_package_id
-from apeiria.plugins.store.models import (
-    StoreInstallRequest,
-    StoreItem,
-    StoreTask,
-)
 
 
 def _format_task_error(exc: Exception) -> str:

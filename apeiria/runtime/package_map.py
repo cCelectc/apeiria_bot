@@ -158,12 +158,9 @@ SURFACE_PREFIXES: tuple[str, ...] = tuple(
     rule.prefix for rule in PACKAGE_RULES if rule.band == ApeiriaPackageBand.SURFACE
 )
 
-# These subtrees still live under stable-looking roots today, so boundary tests
-# skip them until their move batch lands and deletes the old path.
-STABLE_ROOT_BOUNDARY_EXCLUSIONS: tuple[str, ...] = (
-    "apeiria.access.webui_auth",
-    "apeiria.plugins.store",
-)
+# This stays available for migration batches that temporarily need exclusions,
+# but the current tree no longer carries any app-owned stable-root subpackages.
+STABLE_ROOT_BOUNDARY_EXCLUSIONS: tuple[str, ...] = ()
 
 PLANNED_APP_NAMESPACE_MOVES: tuple[tuple[str, str], ...] = (
     ("apeiria.ai.admin", "apeiria.app.ai.admin"),

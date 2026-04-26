@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from apeiria.access.webui_auth.store import auth_store, iso_now, persist_raw
+from apeiria.app.access.webui_auth.store import auth_store, iso_now, persist_raw
 
 
 @dataclass(frozen=True)

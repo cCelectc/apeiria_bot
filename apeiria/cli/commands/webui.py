@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import click
 
-from apeiria.access.webui_auth.secrets import (
+from apeiria.app.access.webui_auth.secrets import (
     create_account,
     create_registration_code,
     delete_account,

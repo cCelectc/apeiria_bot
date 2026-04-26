@@ -15,7 +15,7 @@ from apeiria.access.principal_roles import (
     ROLE_OWNER,
     normalize_role,
 )
-from apeiria.access.webui_auth.service import auth_session_service
+from apeiria.app.access.webui_auth.service import auth_session_service
 from apeiria.i18n import t
 
 if TYPE_CHECKING:

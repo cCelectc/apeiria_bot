@@ -1,5 +1,6 @@
 """Operations-plane application services."""
 
+from apeiria.app.plugins.store.service import StoreService, store_service
 from apeiria.environment.health import HealthService, health_service
 from apeiria.environment.manager import (
     EnvironmentService,
@@ -21,7 +22,6 @@ from apeiria.plugins.install import (
     StoreInstallError,
     package_service,
 )
-from apeiria.plugins.store.service import StoreService, store_service
 
 __all__ = [
     "EnvironmentRepairPlan",

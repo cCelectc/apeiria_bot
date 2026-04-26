@@ -7,11 +7,11 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
+from apeiria.app.plugins.store.tasks import plugin_store_task_service
+from apeiria.app.plugins.store.update_check import supports_plugin_update_check
 from apeiria.exceptions import ProtectedPluginError, ResourceNotFoundError
 from apeiria.i18n import t
 from apeiria.plugins import plugin_governance_service
-from apeiria.plugins.store.tasks import plugin_store_task_service
-from apeiria.plugins.store.update_check import supports_plugin_update_check
 from apeiria.webui.auth import require_control_panel, require_owner
 from apeiria.webui.routes.plugin_support import (
     to_plugin_store_task_item,

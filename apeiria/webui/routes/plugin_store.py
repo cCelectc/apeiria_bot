@@ -7,14 +7,14 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
+from apeiria.app.plugins.store.models import StoreInstallRequest, StoreItem, StoreQuery
+from apeiria.app.plugins.store.tasks import plugin_store_task_service
 from apeiria.environment import (
     PackageOperationRequest,
     package_service,
     store_service,
 )
 from apeiria.i18n import t
-from apeiria.plugins.store.models import StoreInstallRequest, StoreItem, StoreQuery
-from apeiria.plugins.store.tasks import plugin_store_task_service
 from apeiria.webui.auth import require_control_panel, require_owner
 from apeiria.webui.schemas.models import (
     OperationStatusResponse,

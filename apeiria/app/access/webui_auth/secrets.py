@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from apeiria.access.webui_auth.accounts import (
+from apeiria.app.access.webui_auth.accounts import (
     WebUIAccount,
     WebUIRegistrationCode,
     create_account,
@@ -23,12 +23,12 @@ from apeiria.access.webui_auth.accounts import (
     update_account_role,
     verify_account_password,
 )
-from apeiria.access.webui_auth.audit import (
+from apeiria.app.access.webui_auth.audit import (
     WebUISecurityAuditEvent,
     list_security_audit_events,
     record_security_audit_event,
 )
-from apeiria.access.webui_auth.store import (
+from apeiria.app.access.webui_auth.store import (
     get_secret_file_path,
     get_token_secret,
 )

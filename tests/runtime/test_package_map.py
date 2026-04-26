@@ -37,10 +37,7 @@ def test_runtime_package_map_exposes_boundary_prefix_sets() -> None:
     assert "apeiria.conversation" in STABLE_ROOT_PREFIXES
     assert "apeiria.app" in APP_PREFIXES
     assert "apeiria.webui" in SURFACE_PREFIXES
-    assert STABLE_ROOT_BOUNDARY_EXCLUSIONS == (
-        "apeiria.access.webui_auth",
-        "apeiria.plugins.store",
-    )
+    assert STABLE_ROOT_BOUNDARY_EXCLUSIONS == ()
 
 
 def test_runtime_package_map_tracks_planned_app_moves() -> None:

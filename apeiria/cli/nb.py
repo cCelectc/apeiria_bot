@@ -1,6 +1,6 @@
-"""Thin CLI compatibility exports for store discovery helpers."""
+"""CLI store discovery helper exports."""
 
-from apeiria.plugins.store.nb_cli import (
+from apeiria.app.plugins.store.nb_cli import (
     MODULE_TYPE,
     find_exact_store_package,
     find_exact_store_package_async,

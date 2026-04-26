@@ -10,9 +10,7 @@ from datetime import datetime, timezone
 from typing import cast
 from urllib.request import urlopen
 
-from apeiria.config import project_config_service
-from apeiria.i18n import t
-from apeiria.plugins.store.models import (
+from apeiria.app.plugins.store.models import (
     StoreInstallCandidate,
     StoreItem,
     StoreItemType,
@@ -20,7 +18,9 @@ from apeiria.plugins.store.models import (
     StoreQuery,
     StoreSource,
 )
-from apeiria.plugins.store.nb_cli import search_store_packages_async
+from apeiria.app.plugins.store.nb_cli import search_store_packages_async
+from apeiria.config import project_config_service
+from apeiria.i18n import t
 
 
 class StoreSourceAdapter(ABC):

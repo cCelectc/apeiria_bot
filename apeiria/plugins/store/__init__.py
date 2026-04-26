@@ -1,1 +1,0 @@
-"""Plugin store domain package."""

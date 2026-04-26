@@ -10,11 +10,11 @@ import jwt
 
 from apeiria.access.principal import AuthMethod, AuthSession
 from apeiria.access.principal_service import principal_service
-from apeiria.access.webui_auth.secrets import get_account_by_id, get_token_secret
+from apeiria.app.access.webui_auth.secrets import get_account_by_id, get_token_secret
 from apeiria.config.webui_config import get_web_ui_config
 
 if TYPE_CHECKING:
-    from apeiria.access.webui_auth.secrets import WebUIAccount
+    from apeiria.app.access.webui_auth.secrets import WebUIAccount
 
 
 @dataclass(frozen=True)
