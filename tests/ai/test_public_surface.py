@@ -73,6 +73,18 @@ def test_apeiria_ai_no_longer_re_exports_conversation_core() -> None:
     assert not hasattr(module, "chat_session_service")
 
 
+def test_ai_service_status_reports_active_runtime() -> None:
+    module = importlib.import_module("apeiria.ai.service")
+    status = module.ai_service.get_status()
+    expected_summary = (
+        "AI plugin is active across runtime messaging, memory, tools, "
+        "admin, and session-read surfaces."
+    )
+
+    assert status.phase == "runtime_active"
+    assert status.summary == expected_summary
+
+
 @pytest.mark.parametrize(
     "module_name",
     [

@@ -34,9 +34,9 @@ require("nonebot_plugin_alconna")
 
 __plugin_meta__ = PluginMetadata(
     name="AI Plugin",
-    description="Apeiria AI plugin rewrite skeleton",
+    description="Apeiria AI runtime and admin surfaces",
     homepage="https://github.com/Cccc-owo/apeiria_bot",
-    usage="Use /ai-status to verify that the AI plugin skeleton is loaded.",
+    usage="Use /ai-status to inspect the loaded AI runtime.",
     type="application",
     config=AIPluginConfig,
     supported_adapters=inherit_supported_adapters("nonebot_plugin_alconna"),
@@ -129,7 +129,7 @@ async def handle_ai_status() -> None:
 
 @ai_message.handle()
 async def handle_ai_message(bot: Bot, event: Event) -> None:
-    """Minimal working AI reply loop."""
+    """Run the AI reply loop for one incoming event."""
     reply = await ai_runtime_service.handle_message(bot, event)
     if reply:
         await bot.send(event, reply)

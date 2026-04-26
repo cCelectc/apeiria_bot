@@ -38,6 +38,12 @@ def test_initialize_nonebot_delegates_to_bootstrapper(
     assert calls == ["initialize_nonebot"]
 
 
+def test_bootstrap_no_longer_exposes_legacy_initialize_wrapper() -> None:
+    from apeiria import bootstrap
+
+    assert not hasattr(bootstrap, "_initialize_nonebot_legacy")
+
+
 def test_bootstrapper_initialize_nonebot_runs_explicit_phases_in_order(
     monkeypatch: MonkeyPatch,
 ) -> None:

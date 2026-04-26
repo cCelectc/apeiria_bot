@@ -5,6 +5,8 @@ import importlib
 import sys
 from pathlib import Path
 
+import pytest
+
 
 def test_import_ai_control_admin_service_is_safe_without_nonebot_plugin_orm() -> None:
     original_import = builtins.__import__
@@ -30,30 +32,18 @@ def test_import_ai_control_admin_service_is_safe_without_nonebot_plugin_orm() ->
     assert module.__name__ == "apeiria.ai.admin.control_service"
 
 
-def test_import_ai_admin_service_is_safe_and_proxies_control_service() -> None:
-    original_import = builtins.__import__
-
-    def guarded_import(
-        name: str,
-        globalns: dict[str, object] | None = None,
-        localns: dict[str, object] | None = None,
-        fromlist: tuple[str, ...] = (),
-        level: int = 0,
-    ) -> object:
-        if name == "nonebot_plugin_orm":
-            raise AssertionError(name)
-        return original_import(name, globalns, localns, fromlist, level)
-
+def test_legacy_ai_admin_service_module_is_gone() -> None:
     sys.modules.pop("apeiria.ai.admin.service", None)
-    builtins.__import__ = guarded_import
-    try:
-        module = importlib.import_module("apeiria.ai.admin.service")
-    finally:
-        builtins.__import__ = original_import
 
-    assert module.__name__ == "apeiria.ai.admin.service"
-    presets = module.ai_admin_service.list_source_presets()
-    assert len(presets) >= 1
+    with pytest.raises(ModuleNotFoundError):
+        importlib.import_module("apeiria.ai.admin.service")
+
+
+def test_apeiria_ai_admin_package_no_longer_re_exports_legacy_service() -> None:
+    module = importlib.import_module("apeiria.ai.admin")
+
+    assert not hasattr(module, "AIAdminService")
+    assert not hasattr(module, "ai_admin_service")
 
 
 def test_control_plane_route_files_import_control_service() -> None:

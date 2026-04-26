@@ -1,1 +1,1 @@
-"""Runtime bootstrap phase namespace placeholders for Task 2."""
+"""Runtime bootstrap phase namespace."""

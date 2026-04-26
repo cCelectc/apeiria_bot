@@ -11,7 +11,7 @@ if TYPE_CHECKING:
 
 
 class ApeiriaControlPlane:
-    """Minimal read-only runtime control plane."""
+    """Read-side runtime control plane."""
 
     def __init__(self, runtime: ApeiriaRuntime) -> None:
         self._runtime = runtime

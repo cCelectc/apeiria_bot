@@ -9,7 +9,7 @@ if TYPE_CHECKING:
 
 
 class ApeiriaBootstrapper:
-    """Minimal bootstrap façade for the explicit startup phases."""
+    """Bootstrap façade for the explicit startup phases."""
 
     _PHASE_NAMES: tuple[str, ...] = (
         "environment",
