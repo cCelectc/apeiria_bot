@@ -6,7 +6,7 @@ import hashlib
 import json
 from typing import TYPE_CHECKING
 
-from apeiria.ai.conversation.models import (
+from apeiria.conversation.models import (
     ChatContextMessageView,
     ChatSessionIdentity,
     SceneType,

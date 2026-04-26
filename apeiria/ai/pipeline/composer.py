@@ -14,9 +14,9 @@ from apeiria.ai.pipeline.prompting import (
 )
 
 if TYPE_CHECKING:
-    from apeiria.ai.conversation.models import ChatContextMessageView
     from apeiria.ai.memory.models import AIMemoryDefinition
     from apeiria.ai.pipeline.prompting import AIPersonaPromptBundleLike
+    from apeiria.conversation.models import ChatContextMessageView
 
 
 @dataclass(frozen=True)

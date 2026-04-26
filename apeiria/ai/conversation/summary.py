@@ -6,10 +6,11 @@ from typing import TYPE_CHECKING
 
 from nonebot.log import logger
 
-if TYPE_CHECKING:
-    from apeiria.ai.conversation.models import ChatContextMessageView
+from apeiria.conversation.summary import build_short_conversation_summary
 
-_MAX_SUMMARY_TURNS = 4
+if TYPE_CHECKING:
+    from apeiria.conversation.models import ChatContextMessageView
+
 _MAX_SUMMARY_LENGTH = 280
 
 _SPEAKER_MAP = {
@@ -20,25 +21,6 @@ _SPEAKER_MAP = {
 }
 
 _MAX_OVERFLOW_CHARS_FOR_PROMPT = 4000
-
-
-def build_short_conversation_summary(
-    messages: list["ChatContextMessageView"],
-) -> str | None:
-    """Build a compact summary from the latest non-empty messages."""
-
-    summary_lines = [
-        _format_summary_message(msg)
-        for msg in messages[-_MAX_SUMMARY_TURNS:]
-        if msg.text_content.strip()
-    ]
-    if not summary_lines:
-        return None
-
-    summary = " | ".join(summary_lines)
-    if len(summary) <= _MAX_SUMMARY_LENGTH:
-        return summary
-    return f"{summary[: _MAX_SUMMARY_LENGTH - 1].rstrip()}…"
 
 
 async def compress_conversation_history(

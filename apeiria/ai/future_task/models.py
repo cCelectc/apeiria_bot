@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Literal
 if TYPE_CHECKING:
     from datetime import datetime
 
-    from apeiria.ai.conversation.models import SceneType
+    from apeiria.conversation.models import SceneType
 
 AIFutureTaskStatus = Literal["pending", "running", "sent", "cancelled", "failed"]
 AIFutureTaskToolAction = Literal["create", "cancel", "list"]

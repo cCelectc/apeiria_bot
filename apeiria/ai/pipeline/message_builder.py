@@ -7,8 +7,8 @@ from typing import TYPE_CHECKING
 from apeiria.ai.model.adapter import AIModelMessage
 
 if TYPE_CHECKING:
-    from apeiria.ai.conversation.models import ChatContextMessageView
     from apeiria.ai.pipeline.prompting import AIReplyPromptChannels
+    from apeiria.conversation.models import ChatContextMessageView
 
 
 def build_system_message(channels: AIReplyPromptChannels) -> AIModelMessage:

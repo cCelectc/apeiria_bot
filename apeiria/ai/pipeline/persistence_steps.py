@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from apeiria.ai.conversation.service import ChatMessageCreate, chat_session_service
 from apeiria.ai.pipeline.context_window_steps import build_and_store_context_window
+from apeiria.conversation.service import ChatMessageCreate, chat_session_service
 
 if TYPE_CHECKING:
     from apeiria.ai.pipeline.generation_steps import (

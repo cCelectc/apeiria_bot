@@ -8,18 +8,18 @@ from apeiria.ai.conversation.context_window import (
     MAX_FETCH_MESSAGES,
     context_window_service,
 )
-from apeiria.ai.conversation.service import chat_session_service
 from apeiria.ai.conversation.summary import (
     build_short_conversation_summary,
     compress_conversation_history,
 )
+from apeiria.conversation.service import chat_session_service
 
 if TYPE_CHECKING:
-    from apeiria.ai.conversation.models import (
+    from apeiria.ai.model.adapter import AIModelGenerateResponse
+    from apeiria.conversation.models import (
         ChatContextMessageView,
         ChatSessionIdentity,
     )
-    from apeiria.ai.model.adapter import AIModelGenerateResponse
 
 
 async def build_and_store_context_window(

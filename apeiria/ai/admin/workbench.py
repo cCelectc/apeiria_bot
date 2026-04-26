@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from apeiria.ai.conversation.models import (
+from apeiria.conversation.models import (
     ChatContextMessageView,
     ChatMessageDetailView,
 )

@@ -55,7 +55,6 @@ from apeiria.ai.tools.service import ai_tool_service
 if TYPE_CHECKING:
     from datetime import datetime
 
-    from apeiria.ai.conversation.models import ChatContextMessageView
     from apeiria.ai.future_task.models import AIFutureTaskDefinition
     from apeiria.ai.memory.models import AIMemoryDefinition
     from apeiria.ai.model import AIModelBindingTarget
@@ -69,6 +68,7 @@ if TYPE_CHECKING:
     from apeiria.ai.pipeline.service import AIRuntimeReplyRequest
     from apeiria.ai.reply_strategy import ReplyStrategyDecision
     from apeiria.ai.tools.models import AIToolPolicy, AIToolSpec
+    from apeiria.conversation.models import ChatContextMessageView
 
 
 @dataclass(frozen=True)

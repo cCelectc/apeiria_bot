@@ -15,13 +15,13 @@ from apeiria.ai.persona.service import (
 if TYPE_CHECKING:
     from datetime import datetime
 
-    from apeiria.ai.conversation.models import (
-        ChatContextMessageView,
-        ChatSessionIdentity,
-    )
     from apeiria.ai.persona.service import AIPersonaRenderContext
     from apeiria.ai.pipeline.prompting import AIPersonaPromptBundleLike
     from apeiria.ai.pipeline.service import AIRuntimeReplyRequest
+    from apeiria.conversation.models import (
+        ChatContextMessageView,
+        ChatSessionIdentity,
+    )
 
 
 def build_persona_binding_target(

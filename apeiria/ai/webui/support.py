@@ -45,10 +45,6 @@ if TYPE_CHECKING:
         AISessionPromptChannels,
         AISessionPromptPreview,
     )
-    from apeiria.ai.conversation.models import (
-        ChatMessageDetailView,
-        ChatSessionAdminView,
-    )
     from apeiria.ai.future_task.models import AIFutureTaskDefinition
     from apeiria.ai.memory.models import AIMemoryDefinition
     from apeiria.ai.model import (
@@ -81,6 +77,10 @@ if TYPE_CHECKING:
     )
     from apeiria.ai.tools.policy import (
         AIToolPolicyBindingSpec,
+    )
+    from apeiria.conversation.models import (
+        ChatMessageDetailView,
+        ChatSessionAdminView,
     )
 
 

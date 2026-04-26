@@ -9,8 +9,8 @@ from apeiria.ai.tools.decorators import ai_tool
 from apeiria.ai.tools.models import AIToolExecutionContext, AIToolResult
 
 if TYPE_CHECKING:
-    from apeiria.ai.conversation.models import ChatSessionIdentity
     from apeiria.ai.future_task.models import AIFutureTaskDefinition
+    from apeiria.conversation.models import ChatSessionIdentity
 
 _FutureTaskAction = Literal["create", "cancel", "list"]
 
@@ -41,7 +41,7 @@ async def handle_future_task(  # noqa: PLR0913
 ) -> AIToolResult:
     """Manage scheduled reminder tasks."""
 
-    from apeiria.ai.conversation.service import chat_session_service
+    from apeiria.conversation.service import chat_session_service
 
     identity = await chat_session_service.get_session_identity(
         session_id=context.session_id,

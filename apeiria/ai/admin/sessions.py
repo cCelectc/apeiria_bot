@@ -16,8 +16,6 @@ from apeiria.ai.admin.workbench import (
     select_latest_user_turn,
     to_context_turns,
 )
-from apeiria.ai.conversation.identity import build_participant_subject_id
-from apeiria.ai.conversation.service import chat_session_service
 from apeiria.ai.model import AIModelBindingTarget, AIModelRouteQuery
 from apeiria.ai.model.service import ai_model_facade
 from apeiria.ai.persona.models import AIPersonaBindingTarget
@@ -56,20 +54,22 @@ from apeiria.ai.tools.policy import (
     summarize_tool_policy,
 )
 from apeiria.ai.tools.service import ai_tool_service
+from apeiria.conversation.identity import build_participant_subject_id
+from apeiria.conversation.service import chat_session_service
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
-    from apeiria.ai.conversation.models import (
-        ChatContextMessageView,
-        ChatMessageDetailView,
-        ChatSessionAdminView,
-        ChatSessionIdentity,
-    )
     from apeiria.ai.pipeline.prompting import AIReplyPromptChannels
     from apeiria.ai.reply_strategy.models import (
         ReplyStrategyDecision,
         SocialJudgmentInput,
+    )
+    from apeiria.conversation.models import (
+        ChatContextMessageView,
+        ChatMessageDetailView,
+        ChatSessionAdminView,
+        ChatSessionIdentity,
     )
 
 

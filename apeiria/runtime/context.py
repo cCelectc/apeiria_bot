@@ -13,12 +13,13 @@ if TYPE_CHECKING:
 
 @dataclass(slots=True)
 class ApeiriaRuntime:
-    """Minimal application runtime handles."""
+    """Minimal runtime kernel composed from owned domain handles."""
 
     project_root: Path
     config: Any
     environment: Any
     database: Any
+    conversation: Any
     plugins: Any
     access: Any
     ai: Any

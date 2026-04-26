@@ -9,11 +9,11 @@ from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any, cast
 from uuid import uuid4
 
-from apeiria.ai.conversation.identity import (
+from apeiria.conversation.identity import (
     build_chat_session_identity_from_event,
     trim_message_window,
 )
-from apeiria.ai.conversation.models import (
+from apeiria.conversation.models import (
     AuthorRole,
     ChatContextMessageView,
     ChatMessageDetailView,
@@ -21,7 +21,7 @@ from apeiria.ai.conversation.models import (
     ChatSessionIdentity,
     MessageKind,
 )
-from apeiria.ai.conversation.summary import build_short_conversation_summary
+from apeiria.conversation.summary import build_short_conversation_summary
 from apeiria.db.runtime import database_runtime
 
 if TYPE_CHECKING:
@@ -29,7 +29,7 @@ if TYPE_CHECKING:
 
     from nonebot.adapters import Bot, Event
 
-    from apeiria.ai.conversation.models import SceneType
+    from apeiria.conversation.models import SceneType
 
 
 _MEDIA_TYPES = {"image", "img", "audio", "record", "video", "file"}

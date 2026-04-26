@@ -23,8 +23,8 @@ def test_conversation_service_uses_sqlite(
     monkeypatch.setattr(database_runtime, "_project_root", tmp_path)
     database_runtime.ensure_ready()
 
-    from apeiria.ai.conversation.models import ChatSessionIdentity
-    from apeiria.ai.conversation.service import (
+    from apeiria.conversation.models import ChatSessionIdentity
+    from apeiria.conversation.service import (
         ChatMessageCreate,
         chat_session_service,
     )
@@ -87,8 +87,8 @@ def test_session_upsert_uses_scene_identity_and_cascades_session_id_updates(
     monkeypatch.setattr(database_runtime, "_project_root", tmp_path)
     database_runtime.ensure_ready()
 
-    from apeiria.ai.conversation.models import ChatSessionIdentity
-    from apeiria.ai.conversation.service import chat_session_service
+    from apeiria.conversation.models import ChatSessionIdentity
+    from apeiria.conversation.service import chat_session_service
 
     old_time = "2026-04-25T00:00:00"
     with database_runtime.connect_sync() as connection:
@@ -182,8 +182,8 @@ def test_session_admin_does_not_open_orm_session(
     monkeypatch.setitem(sys.modules, "nonebot_plugin_orm", stub_nonebot_plugin_orm)
 
     from apeiria.ai.admin.sessions import SessionsAdminMixin
-    from apeiria.ai.conversation.models import ChatSessionIdentity
-    from apeiria.ai.conversation.service import (
+    from apeiria.conversation.models import ChatSessionIdentity
+    from apeiria.conversation.service import (
         ChatMessageCreate,
         chat_session_service,
     )

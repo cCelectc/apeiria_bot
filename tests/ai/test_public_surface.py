@@ -3,11 +3,13 @@ from __future__ import annotations
 import importlib
 import sys
 
+import pytest
+
 
 def test_import_apeiria_ai_does_not_eagerly_import_runtime_services() -> None:
     for module_name in (
         "apeiria.ai",
-        "apeiria.ai.conversation.service",
+        "apeiria.conversation.service",
         "apeiria.ai.future_task.service",
         "apeiria.ai.memory.service",
         "apeiria.ai.model.gateway",
@@ -38,14 +40,13 @@ def test_import_apeiria_ai_does_not_eagerly_import_runtime_services() -> None:
         "ai_service",
         "ai_skill_service",
         "ai_tool_service",
-        "chat_session_service",
         "model_gateway",
         "reply_strategy_service",
         "tool_gateway",
     ]
 
     for module_name in (
-        "apeiria.ai.conversation.service",
+        "apeiria.conversation.service",
         "apeiria.ai.future_task.service",
         "apeiria.ai.memory.service",
         "apeiria.ai.model.gateway",
@@ -64,3 +65,24 @@ def test_import_apeiria_ai_does_not_eagerly_import_runtime_services() -> None:
     ai_service = module.ai_service
 
     assert ai_service is sys.modules["apeiria.ai.service"].ai_service
+
+
+def test_apeiria_ai_no_longer_re_exports_conversation_core() -> None:
+    module = importlib.import_module("apeiria.ai")
+
+    assert not hasattr(module, "chat_session_service")
+
+
+@pytest.mark.parametrize(
+    "module_name",
+    [
+        "apeiria.ai.conversation.identity",
+        "apeiria.ai.conversation.models",
+        "apeiria.ai.conversation.service",
+    ],
+)
+def test_legacy_ai_conversation_core_modules_are_removed(module_name: str) -> None:
+    sys.modules.pop(module_name, None)
+
+    with pytest.raises(ModuleNotFoundError):
+        importlib.import_module(module_name)

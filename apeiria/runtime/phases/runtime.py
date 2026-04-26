@@ -11,10 +11,19 @@ class _EnvironmentService(Protocol):
     def project_root(self) -> Path: ...
 
 
-def _get_runtime_services() -> tuple[Any, _EnvironmentService, Any, Any, Any, Any]:
+def _get_runtime_services() -> tuple[
+    Any,
+    _EnvironmentService,
+    Any,
+    Any,
+    Any,
+    Any,
+    Any,
+]:
     from apeiria.access.service import access_service
     from apeiria.ai.pipeline.service import ai_runtime_service
     from apeiria.config import project_config_service
+    from apeiria.conversation.service import chat_session_service
     from apeiria.db.runtime import database_runtime
     from apeiria.environment import environment_service
     from apeiria.plugins import plugin_governance_service
@@ -23,6 +32,7 @@ def _get_runtime_services() -> tuple[Any, _EnvironmentService, Any, Any, Any, An
         project_config_service,
         environment_service,
         database_runtime,
+        chat_session_service,
         plugin_governance_service,
         access_service,
         ai_runtime_service,
@@ -34,6 +44,7 @@ def build_runtime() -> ApeiriaRuntime:
         project_config_service,
         environment_service,
         database_runtime,
+        chat_session_service,
         plugin_governance_service,
         access_service,
         ai_runtime_service,
@@ -44,6 +55,7 @@ def build_runtime() -> ApeiriaRuntime:
         config=project_config_service,
         environment=environment_service,
         database=database_runtime,
+        conversation=chat_session_service,
         plugins=plugin_governance_service,
         access=access_service,
         ai=ai_runtime_service,

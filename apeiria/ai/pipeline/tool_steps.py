@@ -4,16 +4,16 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from apeiria.ai.conversation.service import ChatMessageCreate, chat_session_service
 from apeiria.ai.tools.policy import (
     AIToolPolicyBindingTarget,
     AIToolSceneContext,
     ai_tool_policy_binding_service,
 )
+from apeiria.conversation.service import ChatMessageCreate, chat_session_service
 
 if TYPE_CHECKING:
-    from apeiria.ai.conversation.models import ChatSessionIdentity
     from apeiria.ai.tools.models import AIToolPolicy, AIToolTurnCreateInput
+    from apeiria.conversation.models import ChatSessionIdentity
 
 
 async def resolve_tool_policy(

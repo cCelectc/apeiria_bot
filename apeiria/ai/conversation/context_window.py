@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from apeiria.ai.conversation.models import ChatContextMessageView
+    from apeiria.conversation.models import ChatContextMessageView
 
 # -- Tunable constants --
 DEFAULT_CONTEXT_TOKEN_LIMIT: int = 4096

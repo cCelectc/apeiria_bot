@@ -20,6 +20,7 @@ EXPECTED_PLUGIN_COUNT = 2
 
 def _build_runtime(
     *,
+    conversation: object | None = None,
     plugins: object | None = None,
     control_plane: ApeiriaControlPlane | None = None,
 ) -> ApeiriaRuntime:
@@ -28,6 +29,7 @@ def _build_runtime(
         config=object(),
         environment=object(),
         database=object(),
+        conversation=conversation if conversation is not None else object(),
         plugins=plugins if plugins is not None else object(),
         access=object(),
         ai=object(),

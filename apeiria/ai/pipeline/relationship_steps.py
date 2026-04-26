@@ -10,12 +10,12 @@ from apeiria.ai.relationship.service import ai_relationship_service
 from apeiria.ai.relationship.signals import derive_relationship_delta
 
 if TYPE_CHECKING:
-    from apeiria.ai.conversation.models import ChatSessionIdentity
     from apeiria.ai.memory.models import AIMessageSentiment
     from apeiria.ai.relationship.models import (
         AIRelationshipEvent,
         AIRelationshipState,
     )
+    from apeiria.conversation.models import ChatSessionIdentity
 
 
 @dataclass(frozen=True)
