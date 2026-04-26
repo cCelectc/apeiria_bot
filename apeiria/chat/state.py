@@ -14,8 +14,8 @@ from .protocol import (
     MessageReceivePayload,
     SessionCreatePayload,
     SessionDeletePayload,
+    SessionSelectPayload,
     SessionStatus,
-    SessionUpdatePayload,
     WebUIPrincipal,
 )
 from .session import ChatSession
@@ -55,22 +55,14 @@ class WebChatStateManager:
         self.persist()
         return session.to_state()
 
-    def update_session(
+    def select_session(
         self,
         principal: WebUIPrincipal,
-        payload: SessionUpdatePayload,
+        payload: SessionSelectPayload,
     ) -> ChatSessionState:
         session = self.get_session(payload.session_id)
         self.ensure_owner(session, principal)
-        if payload.target_user_id is not None:
-            resumed_session = self.find_session(principal.id, payload.target_user_id)
-            if resumed_session:
-                resumed_session.status = SessionStatus.READY
-                resumed_session.updated_at = datetime.now(timezone.utc)
-                self.persist()
-                return resumed_session.to_state()
-            session.target_user_id = payload.target_user_id
-            self._history[session.session_id] = []
+        session.status = SessionStatus.READY
         session.updated_at = datetime.now(timezone.utc)
         self.persist()
         return session.to_state()

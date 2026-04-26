@@ -329,10 +329,8 @@
     ImageSegment,
     MessageReceivePayload,
     SessionCreatePayload,
-    SessionDeletedPayload,
     SessionListItem,
-    SessionListPayload,
-    SessionStatePayload,
+    SessionSnapshotPayload,
     WebUIPrincipal,
   } from '@/types/chat'
   import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
@@ -472,9 +470,8 @@
     if (!authenticated.value) return
     if (activeSessionId.value === target.session.session_id) return
     draftSession.value = false
-    client.updateSession({
+    client.selectSession({
       session_id: target.session.session_id,
-      target_user_id: target.session.target_user_id,
     })
   }
 
@@ -500,6 +497,35 @@
     const date = new Date(value)
     if (Number.isNaN(date.getTime())) return ''
     return date.toLocaleString()
+  }
+
+  function applySessionSnapshot (payload: SessionSnapshotPayload) {
+    autoCreatingSession.value = false
+    draftSession.value = false
+    recentSessions.value = payload.sessions
+    session.value = payload.active_session ?? null
+    messages.value = payload.history
+    const repliedMessageStillVisible = pendingReply.value
+      ? payload.history.some(message => message.message_id === pendingReply.value?.message_id)
+      : false
+
+    if (!payload.active_session) {
+      clearPendingReply()
+    } else if (pendingReply.value && !repliedMessageStillVisible) {
+      clearPendingReply()
+    }
+
+    scrollToBottom()
+
+    if (pendingSessionMessage.value && payload.active_session) {
+      const pending = pendingSessionMessage.value
+      pendingSessionMessage.value = null
+      client.sendMessage({
+        session_id: payload.active_session.session_id,
+        message_id: pending.message_id,
+        segments: pending.segments,
+      })
+    }
   }
 
   const composerHasContent = computed(() => {
@@ -1195,51 +1221,14 @@
         authenticated.value = true
         principal.value = (event.payload as { principal: WebUIPrincipal }).principal
         client.requestCapabilities()
-        client.listSessions()
         break
       }
       case 'capabilities.response': {
         capabilities.value = (event.payload as CapabilitiesResponsePayload).capabilities
         break
       }
-      case 'session.list': {
-        recentSessions.value = (event.payload as SessionListPayload).sessions
-        break
-      }
-      case 'session.deleted': {
-        const payload = event.payload as SessionDeletedPayload
-        recentSessions.value = recentSessions.value.filter(
-          item => item.session.session_id !== payload.session_id,
-        )
-        if (activeSessionId.value === payload.session_id) {
-          resetActiveSessionState()
-        }
-        break
-      }
-      case 'session.state': {
-        const payload = event.payload as SessionStatePayload
-        autoCreatingSession.value = false
-        draftSession.value = false
-        session.value = payload.session
-        messages.value = payload.history
-        scrollToBottom()
-        if (pendingSessionMessage.value) {
-          const pending = pendingSessionMessage.value
-          pendingSessionMessage.value = null
-          client.sendMessage({
-            session_id: payload.session.session_id,
-            message_id: pending.message_id,
-            segments: pending.segments,
-          })
-        }
-        break
-      }
-      case 'session.history_cleared': {
-        const payload = event.payload as SessionStatePayload
-        session.value = payload.session
-        messages.value = payload.history
-        clearPendingReply()
-        scrollToBottom()
+      case 'session.snapshot': {
+        applySessionSnapshot(event.payload as SessionSnapshotPayload)
         break
       }
       case 'message.receive': {

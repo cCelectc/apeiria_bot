@@ -60,6 +60,7 @@ class WebChatMessageHandler:
                 detail=t("web_ui.sessions.owner_mismatch"),
             )
         self._state.ensure_owner(session, connection.principal)
+        connection.active_session_id = session.session_id
 
         await connection.send_envelope(
             "message.ack",

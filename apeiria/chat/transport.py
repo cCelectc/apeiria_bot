@@ -26,15 +26,13 @@ async def serve_chat_websocket(
     """Run the full websocket session loop for one browser connection."""
     await websocket.accept()
     connection = WebChatConnection(websocket)
-    active_session_id: str | None = None
 
     try:
         while True:
             frame = chat_gateway_service.parse_frame(await websocket.receive_json())
-            active_session_id = await chat_gateway_service.handle_frame(
+            await chat_gateway_service.handle_frame(
                 connection,
                 frame,
-                active_session_id,
                 token_verifier,
             )
     except ValidationError as exc:
@@ -45,8 +43,8 @@ async def serve_chat_websocket(
             type_="system.error",
         )
     except WebSocketDisconnect:
-        if active_session_id:
-            web_chat_service.close_session(active_session_id)
+        if connection.active_session_id:
+            web_chat_service.close_session(connection.active_session_id)
     except Exception as exc:  # noqa: BLE001
         logger.opt(exception=exc).error("Web UI chat websocket loop crashed")
         await web_chat_service.emit_error(

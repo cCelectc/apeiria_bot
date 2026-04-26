@@ -4,7 +4,7 @@ import type {
   MessageSendPayload,
   SessionCreatePayload,
   SessionDeletePayload,
-  SessionUpdatePayload,
+  SessionSelectPayload,
 } from '@/types/chat'
 
 type EnvelopeHandler = (event: ChatEnvelope) => void
@@ -104,8 +104,8 @@ export class ChatClient {
     return this.send('session.create', payload)
   }
 
-  updateSession (payload: SessionUpdatePayload) {
-    return this.send('session.update', payload)
+  selectSession (payload: SessionSelectPayload) {
+    return this.send('session.select', payload)
   }
 
   sendMessage (payload: MessageSendPayload) {

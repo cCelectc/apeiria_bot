@@ -14,10 +14,8 @@ from .protocol import (
     MentionSegment,
     MessageReceivePayload,
     ReplySegment,
-    SessionDeletedPayload,
     SessionListItem,
-    SessionListPayload,
-    SessionStatePayload,
+    SessionSnapshotPayload,
     SystemMessagePayload,
     TextSegment,
     WebUIPrincipal,
@@ -93,32 +91,37 @@ class WebChatEmitter:
             request_id=request_id,
         )
 
-    async def emit_session_state(
+    def build_session_snapshot(
         self,
-        connection: "WebChatConnection",
-        session: Any,
-        request_id: str | None = None,
-        *,
-        type_: str = "session.state",
-    ) -> None:
-        await connection.send_envelope(
-            type_,
-            SessionStatePayload(
-                session=session,
-                history=self._state.get_history(session.session_id),
-            ),
-            request_id=request_id,
+        principal: WebUIPrincipal,
+        active_session_id: str | None,
+    ) -> SessionSnapshotPayload:
+        active_session = None
+        history: list[MessageReceivePayload] = []
+        if active_session_id is not None:
+            for session in self._state.iter_sessions_for_principal(principal.id):
+                if session.session_id != active_session_id:
+                    continue
+                active_session = session.to_state()
+                history = self._state.get_history(session.session_id)
+                break
+        return SessionSnapshotPayload(
+            active_session=active_session,
+            sessions=self.list_sessions(principal),
+            history=history,
         )
 
-    async def emit_session_list(
+    async def emit_session_snapshot(
         self,
         connection: "WebChatConnection",
-        principal: WebUIPrincipal,
         request_id: str | None = None,
     ) -> None:
+        principal = connection.principal
+        if principal is None:
+            return
         await connection.send_envelope(
-            "session.list",
-            SessionListPayload(sessions=self.list_sessions(principal)),
+            "session.snapshot",
+            self.build_session_snapshot(principal, connection.active_session_id),
             request_id=request_id,
         )
 
@@ -141,6 +144,7 @@ class WebChatEmitter:
         self._state.append_history(payload)
         self.prune_assets()
         await connection.send_envelope("message.receive", payload)
+        await self.emit_session_snapshot(connection)
 
     async def emit_error(
         self,
@@ -154,18 +158,6 @@ class WebChatEmitter:
         await connection.send_envelope(
             type_,
             ErrorPayload(code=code, message=message),
-            request_id=request_id,
-        )
-
-    async def emit_session_deleted(
-        self,
-        connection: "WebChatConnection",
-        session_id: str,
-        request_id: str | None = None,
-    ) -> None:
-        await connection.send_envelope(
-            "session.deleted",
-            SessionDeletedPayload(session_id=session_id),
             request_id=request_id,
         )
 

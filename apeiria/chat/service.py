@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from .assets import AssetManager, ChatAsset
 from .codec import MessageCodec
@@ -15,7 +15,8 @@ from .protocol import (
     SessionCreatePayload,
     SessionDeletePayload,
     SessionListItem,
-    SessionUpdatePayload,
+    SessionSelectPayload,
+    SessionSnapshotPayload,
     WebUIPrincipal,
 )
 from .state import WebChatStateManager
@@ -61,14 +62,12 @@ class WebChatService:
     ) -> ChatSessionState:
         return self.state.create_session(principal, payload)
 
-    def update_session(
+    def select_session(
         self,
         principal: WebUIPrincipal,
-        payload: SessionUpdatePayload,
+        payload: SessionSelectPayload,
     ) -> ChatSessionState:
-        session = self.state.update_session(principal, payload)
-        self.emitter.prune_assets()
-        return session
+        return self.state.select_session(principal, payload)
 
     def get_asset(self, asset_id: str) -> ChatAsset | None:
         return self.assets.get(asset_id)
@@ -98,28 +97,22 @@ class WebChatService:
     ) -> None:
         await self.emitter.emit_capabilities(connection, request_id)
 
-    async def emit_session_state(
+    def build_session_snapshot(
         self,
-        connection: "WebChatConnection",
-        session: Any,
-        request_id: str | None = None,
-        *,
-        type_: str = "session.state",
-    ) -> None:
-        await self.emitter.emit_session_state(
-            connection,
-            session,
-            request_id,
-            type_=type_,
-        )
-
-    async def emit_session_list(
-        self,
-        connection: "WebChatConnection",
         principal: WebUIPrincipal,
+        active_session_id: str | None,
+    ) -> SessionSnapshotPayload:
+        return self.emitter.build_session_snapshot(principal, active_session_id)
+
+    async def emit_session_snapshot(
+        self,
+        connection: "WebChatConnection",
         request_id: str | None = None,
     ) -> None:
-        await self.emitter.emit_session_list(connection, principal, request_id)
+        await self.emitter.emit_session_snapshot(
+            connection,
+            request_id=request_id,
+        )
 
     async def emit_system_info(
         self,
@@ -172,14 +165,5 @@ class WebChatService:
         session_id = self.state.delete_session(principal, payload)
         self.emitter.prune_assets()
         return session_id
-
-    async def emit_session_deleted(
-        self,
-        connection: "WebChatConnection",
-        session_id: str,
-        request_id: str | None = None,
-    ) -> None:
-        await self.emitter.emit_session_deleted(connection, session_id, request_id)
-
 
 web_chat_service = WebChatService()

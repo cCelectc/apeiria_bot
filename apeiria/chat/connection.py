@@ -14,6 +14,7 @@ class WebChatConnection:
     def __init__(self, websocket: WebSocket) -> None:
         self.websocket = websocket
         self.principal: WebUIPrincipal | None = None
+        self.active_session_id: str | None = None
 
     async def send_envelope(
         self,

@@ -16,14 +16,12 @@ FRAME_AUTH_ERROR: Final = "auth.error"
 FRAME_CAPABILITIES_REQUEST: Final = "capabilities.request"
 FRAME_CAPABILITIES_RESPONSE: Final = "capabilities.response"
 FRAME_SESSION_CREATE: Final = "session.create"
-FRAME_SESSION_UPDATE: Final = "session.update"
+FRAME_SESSION_SELECT: Final = "session.select"
 FRAME_SESSION_DELETE: Final = "session.delete"
 FRAME_SESSION_CLOSE: Final = "session.close"
 FRAME_SESSION_CLEAR_HISTORY: Final = "session.clear_history"
-FRAME_SESSION_STATE: Final = "session.state"
+FRAME_SESSION_SNAPSHOT: Final = "session.snapshot"
 FRAME_SESSION_LIST: Final = "session.list"
-FRAME_SESSION_DELETED: Final = "session.deleted"
-FRAME_SESSION_HISTORY_CLEARED: Final = "session.history_cleared"
 FRAME_MESSAGE_SEND: Final = "message.send"
 FRAME_MESSAGE_ACK: Final = "message.ack"
 FRAME_MESSAGE_RECEIVE: Final = "message.receive"
@@ -36,7 +34,7 @@ CLIENT_FRAME_TYPES: Final[tuple[str, ...]] = (
     FRAME_AUTH_HELLO,
     FRAME_CAPABILITIES_REQUEST,
     FRAME_SESSION_CREATE,
-    FRAME_SESSION_UPDATE,
+    FRAME_SESSION_SELECT,
     FRAME_SESSION_DELETE,
     FRAME_SESSION_CLOSE,
     FRAME_SESSION_CLEAR_HISTORY,
@@ -48,10 +46,7 @@ SERVER_FRAME_TYPES: Final[tuple[str, ...]] = (
     FRAME_AUTH_OK,
     FRAME_AUTH_ERROR,
     FRAME_CAPABILITIES_RESPONSE,
-    FRAME_SESSION_STATE,
-    FRAME_SESSION_LIST,
-    FRAME_SESSION_DELETED,
-    FRAME_SESSION_HISTORY_CLEARED,
+    FRAME_SESSION_SNAPSHOT,
     FRAME_MESSAGE_ACK,
     FRAME_MESSAGE_RECEIVE,
     FRAME_MESSAGE_ERROR,
@@ -158,19 +153,12 @@ class SessionCreatePayload(BaseModel):
         return self
 
 
-class SessionUpdatePayload(BaseModel):
+class SessionSelectPayload(BaseModel):
     session_id: str
-    target_user_id: str | None = None
 
     @model_validator(mode="after")
-    def normalize_values(self) -> "SessionUpdatePayload":
+    def normalize_values(self) -> "SessionSelectPayload":
         self.session_id = self.session_id.strip()
-        if self.target_user_id is not None:
-            self.target_user_id = self.target_user_id.strip()
-            if not self.target_user_id:
-                raise ValueError("target_user_id cannot be empty")  # noqa: TRY003
-            if not self.target_user_id.isdigit():
-                raise ValueError("target_user_id must be numeric")  # noqa: TRY003
         if not self.session_id:
             raise ValueError("session_id is required")  # noqa: TRY003
         return self
@@ -187,24 +175,11 @@ class SessionDeletePayload(BaseModel):
         return self
 
 
-class SessionStatePayload(BaseModel):
-    session: ChatSessionState
-    history: list["MessageReceivePayload"] = Field(default_factory=list)
-
-
 class SessionListItem(BaseModel):
     session: ChatSessionState
     message_count: int = 0
     last_message: str | None = None
     last_message_at: datetime | None = None
-
-
-class SessionListPayload(BaseModel):
-    sessions: list[SessionListItem] = Field(default_factory=list)
-
-
-class SessionDeletedPayload(BaseModel):
-    session_id: str
 
 
 class MessageSendPayload(BaseModel):
@@ -230,6 +205,12 @@ class MessageReceivePayload(BaseModel):
 
 class SystemMessagePayload(BaseModel):
     message: str
+
+
+class SessionSnapshotPayload(BaseModel):
+    active_session: ChatSessionState | None = None
+    sessions: list[SessionListItem] = Field(default_factory=list)
+    history: list[MessageReceivePayload] = Field(default_factory=list)
 
 
 class CapabilitiesResponsePayload(BaseModel):

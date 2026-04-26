@@ -83,26 +83,18 @@ export interface SessionCreatePayload {
   target_user_id: string
 }
 
-export interface SessionUpdatePayload {
+export interface SessionSelectPayload {
   session_id: string
-  target_user_id?: string
 }
 
 export interface SessionDeletePayload {
   session_id: string
 }
 
-export interface SessionStatePayload {
-  session: ChatSessionState
-  history: MessageReceivePayload[]
-}
-
-export interface SessionListPayload {
+export interface SessionSnapshotPayload {
+  active_session?: ChatSessionState | null
   sessions: SessionListItem[]
-}
-
-export interface SessionDeletedPayload {
-  session_id: string
+  history: MessageReceivePayload[]
 }
 
 export interface MessageSendPayload {
