@@ -12,24 +12,6 @@ from apeiria.ai.persona import (
     ai_persona_service,
     build_persona_render_context,
 )
-from apeiria.ai.pipeline.composer import (
-    AIRuntimeComposeInput,
-    build_runtime_prompt_channels,
-    compose_pre_tool_reply_prompt,
-    compose_roleplay_reply_prompt,
-)
-from apeiria.ai.pipeline.memory_steps import (
-    load_person_profile_for_prompt,
-    retrieve_memories_for_preview,
-)
-from apeiria.ai.pipeline.relationship_steps import (
-    build_relationship_target,
-    load_relationship_context,
-)
-from apeiria.ai.pipeline.routing import (
-    select_post_tool_reply_task_class,
-    select_pre_tool_reply_task_class,
-)
 from apeiria.ai.tools import (
     AIToolPolicyBindingTarget,
     AIToolSceneContext,
@@ -42,12 +24,31 @@ from apeiria.app.ai.admin.workbench import (
     select_latest_user_turn,
     to_context_turns,
 )
+from apeiria.app.ai.pipeline.composer import (
+    AIRuntimeComposeInput,
+    build_runtime_prompt_channels,
+    compose_pre_tool_reply_prompt,
+    compose_roleplay_reply_prompt,
+)
+from apeiria.app.ai.pipeline.memory_steps import (
+    load_person_profile_for_prompt,
+    retrieve_memories_for_preview,
+)
+from apeiria.app.ai.pipeline.relationship_steps import (
+    build_relationship_target,
+    load_relationship_context,
+)
+from apeiria.app.ai.pipeline.routing import (
+    select_post_tool_reply_task_class,
+    select_pre_tool_reply_task_class,
+)
 from apeiria.app.ai.reply_strategy import (
     count_recent_bot_turns,
     latest_bot_turn_at,
     latest_user_turn_text,
     summarize_reply_strategy_decision,
 )
+from apeiria.app.ai.tooling import ensure_app_ai_tools_loaded
 from apeiria.conversation.service import chat_session_service
 
 from .models import AISessionPromptChannels, AISessionPromptPreview
@@ -55,7 +56,7 @@ from .models import AISessionPromptChannels, AISessionPromptPreview
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
-    from apeiria.ai.pipeline.prompting import AIReplyPromptChannels
+    from apeiria.app.ai.pipeline.prompting import AIReplyPromptChannels
     from apeiria.app.ai.reply_strategy.models import (
         ReplyStrategyDecision,
         SocialJudgmentInput,
@@ -175,6 +176,7 @@ async def build_scene_prompt_preview(
     scene_id: str,
     turn_limit: int = 50,
 ) -> AISessionPromptPreview | None:
+    ensure_app_ai_tools_loaded()
     conversation = await chat_session_service.get_session_view(session_id=scene_id)
     if conversation is None:
         return None

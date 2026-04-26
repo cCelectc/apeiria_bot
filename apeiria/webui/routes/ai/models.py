@@ -6,7 +6,17 @@ from typing import TYPE_CHECKING, Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
-from apeiria.ai.webui.schemas import (
+from apeiria.app.ai.admin.control_service import (
+    AISourceModelDeleteBlockedError,
+    AISourceModelFetchConfigError,
+    AISourceModelFetchUpstreamError,
+    AISourceModelTestConfigError,
+    AISourceModelTestUpstreamError,
+    ai_control_admin_service,
+)
+from apeiria.webui.auth import require_control_panel
+
+from .schemas import (
     AIModelBindingItem,
     AIModelCatalogItem,
     AIModelProfileItem,
@@ -17,21 +27,12 @@ from apeiria.ai.webui.schemas import (
     AISourceModelTestResult,
     AISourceModelUpsertRequest,
 )
-from apeiria.ai.webui.support import (
+from .support import (
     to_ai_model_binding_item,
     to_ai_model_catalog_item,
     to_ai_model_profile_item,
     to_ai_source_model_item,
 )
-from apeiria.app.ai.admin.control_service import (
-    AISourceModelDeleteBlockedError,
-    AISourceModelFetchConfigError,
-    AISourceModelFetchUpstreamError,
-    AISourceModelTestConfigError,
-    AISourceModelTestUpstreamError,
-    ai_control_admin_service,
-)
-from apeiria.webui.auth import require_control_panel
 
 if TYPE_CHECKING:
     from apeiria.access.principal import AuthSession

@@ -6,13 +6,14 @@ from typing import TYPE_CHECKING, Annotated, Any, cast
 
 from fastapi import APIRouter, Depends, Query
 
-from apeiria.ai.webui.schemas import (
+from apeiria.app.ai.admin.runtime_service import ai_runtime_admin_service
+from apeiria.webui.auth import require_control_panel
+
+from .schemas import (
     AIPersonProfileItem,
     AIPersonProfileUpdateRequest,
 )
-from apeiria.ai.webui.support import to_ai_person_profile_item
-from apeiria.app.ai.admin.runtime_service import ai_runtime_admin_service
-from apeiria.webui.auth import require_control_panel
+from .support import to_ai_person_profile_item
 
 if TYPE_CHECKING:
     from apeiria.access.principal import AuthSession

@@ -39,6 +39,9 @@ def test_import_ai_control_admin_service_is_safe_without_nonebot_plugin_orm() ->
         "apeiria.ai.admin.control_service",
         "apeiria.ai.admin.runtime_service",
         "apeiria.ai.admin.service",
+        "apeiria.ai.webui",
+        "apeiria.ai.webui.routes",
+        "apeiria.ai.webui.routes.sessions",
     ],
 )
 def test_legacy_ai_admin_modules_are_gone(module_name: str) -> None:
@@ -58,18 +61,31 @@ def test_app_ai_admin_package_no_longer_re_exports_legacy_service() -> None:
 def test_control_plane_route_files_import_control_service() -> None:
     project_root = Path(__file__).resolve().parents[2]
     expected = {
-        "apeiria/ai/webui/routes/sources.py": "ai_control_admin_service",
-        "apeiria/ai/webui/routes/models.py": "ai_control_admin_service",
-        "apeiria/ai/webui/routes/personas.py": "ai_control_admin_service",
-        "apeiria/ai/webui/routes/tools.py": "ai_control_admin_service",
-        "apeiria/ai/webui/__init__.py": "ai_control_admin_service",
-        "apeiria/ai/webui/routes/future_tasks.py": "ai_runtime_admin_service",
-        "apeiria/ai/webui/routes/memories.py": "ai_runtime_admin_service",
-        "apeiria/ai/webui/routes/person_profiles.py": "ai_runtime_admin_service",
-        "apeiria/ai/webui/routes/relationships.py": "ai_runtime_admin_service",
-        "apeiria/ai/webui/routes/sessions.py": "ai_session_read_service",
+        "apeiria/webui/routes/ai/sources.py": "ai_control_admin_service",
+        "apeiria/webui/routes/ai/models.py": "ai_control_admin_service",
+        "apeiria/webui/routes/ai/personas.py": "ai_control_admin_service",
+        "apeiria/webui/routes/ai/tools.py": "ai_control_admin_service",
+        "apeiria/webui/routes/ai/__init__.py": "ai_control_admin_service",
+        "apeiria/webui/routes/ai/future_tasks.py": "ai_runtime_admin_service",
+        "apeiria/webui/routes/ai/memories.py": "ai_runtime_admin_service",
+        "apeiria/webui/routes/ai/person_profiles.py": "ai_runtime_admin_service",
+        "apeiria/webui/routes/ai/relationships.py": "ai_runtime_admin_service",
+        "apeiria/webui/routes/ai/sessions.py": "ai_session_read_service",
     }
 
     for relative_path, symbol in expected.items():
         content = (project_root / relative_path).read_text(encoding="utf-8")
         assert symbol in content
+
+
+def test_import_webui_ai_routes_package_exposes_router() -> None:
+    for module_name in (
+        "apeiria.webui.routes.ai",
+        "apeiria.webui.routes.ai.future_tasks",
+    ):
+        sys.modules.pop(module_name, None)
+
+    module = importlib.import_module("apeiria.webui.routes.ai")
+
+    assert module.__name__ == "apeiria.webui.routes.ai"
+    assert module.__all__ == ["router"]

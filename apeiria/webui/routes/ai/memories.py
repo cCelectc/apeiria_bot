@@ -6,7 +6,10 @@ from typing import TYPE_CHECKING, Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, Query
 
-from apeiria.ai.webui.schemas import (
+from apeiria.app.ai.admin.runtime_service import ai_runtime_admin_service
+from apeiria.webui.auth import require_control_panel
+
+from .schemas import (
     AIMemoryBulkActionRequest,
     AIMemoryBulkActionResult,
     AIMemoryBulkIgnoreRequest,
@@ -16,9 +19,7 @@ from apeiria.ai.webui.schemas import (
     AIMemoryToggleIgnoredRequest,
     AIMemoryUpdateRequest,
 )
-from apeiria.ai.webui.support import to_ai_memory_item
-from apeiria.app.ai.admin.runtime_service import ai_runtime_admin_service
-from apeiria.webui.auth import require_control_panel
+from .support import to_ai_memory_item
 
 if TYPE_CHECKING:
     from apeiria.access.principal import AuthSession

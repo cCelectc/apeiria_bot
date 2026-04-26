@@ -7,7 +7,10 @@ from typing import TYPE_CHECKING, Annotated, Any
 from fastapi import APIRouter, Depends, Query
 
 from apeiria.ai.tools import AIToolPolicy
-from apeiria.ai.webui.schemas import (
+from apeiria.app.ai.admin.control_service import ai_control_admin_service
+from apeiria.webui.auth import require_control_panel
+
+from .schemas import (
     AICapabilityItem,
     AICapabilityPreviewItem,
     AICapabilityPreviewRequest,
@@ -22,7 +25,7 @@ from apeiria.ai.webui.schemas import (
     AIToolPolicyPreviewItem,
     AIToolPolicyPreviewRequest,
 )
-from apeiria.ai.webui.support import (
+from .support import (
     to_ai_capability_item,
     to_ai_capability_preview_item,
     to_ai_skill_item,
@@ -32,8 +35,6 @@ from apeiria.ai.webui.support import (
     to_ai_tool_policy_binding_item,
     to_ai_tool_policy_preview_item,
 )
-from apeiria.app.ai.admin.control_service import ai_control_admin_service
-from apeiria.webui.auth import require_control_panel
 
 if TYPE_CHECKING:
     from apeiria.access.principal import AuthSession

@@ -7,8 +7,9 @@ This module is intentionally thin. It:
 - Publishes AI's HTTP routes into the Web UI host via the plugin-router
   registry — so disabling this plugin also removes `/api/ai/*`
 
-Everything else lives in :mod:`apeiria.ai` as a library-style capability
-that other plugins can import directly.
+Stable AI capabilities live under :mod:`apeiria.ai`, orchestration lives
+under :mod:`apeiria.app.ai`, and HTTP route ownership lives under
+:mod:`apeiria.webui.routes.ai`.
 """
 
 from nonebot import require
@@ -19,8 +20,7 @@ from nonebot.plugin.on import on_command, on_message
 
 from apeiria.ai import ai_service
 from apeiria.ai.config import AIPluginConfig
-from apeiria.ai.pipeline import ai_runtime_service
-from apeiria.ai.webui import router as ai_webui_router
+from apeiria.app.ai.pipeline import AITraceContext, ai_runtime_service
 from apeiria.plugins.metadata.api import (
     ConfigExtra,
     PluginExtraData,
@@ -28,7 +28,9 @@ from apeiria.plugins.metadata.api import (
     RegisterConfig,
     UiExtra,
 )
+from apeiria.runtime.entries import build_ai_trace_entry
 from apeiria.webui.plugin_routers import register_plugin_router
+from apeiria.webui.routes.ai import router as ai_webui_router
 
 require("nonebot_plugin_alconna")
 
@@ -130,6 +132,14 @@ async def handle_ai_status() -> None:
 @ai_message.handle()
 async def handle_ai_message(bot: Bot, event: Event) -> None:
     """Run the AI reply loop for one incoming event."""
-    reply = await ai_runtime_service.handle_message(bot, event)
+    entry = build_ai_trace_entry("message", event=event)
+    reply = await ai_runtime_service.handle_message(
+        bot,
+        event,
+        trace=AITraceContext(
+            kind=entry.kind.value,
+            trigger=entry.trigger.value,
+        ),
+    )
     if reply:
         await bot.send(event, reply)

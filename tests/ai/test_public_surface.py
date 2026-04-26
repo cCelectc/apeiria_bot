@@ -10,7 +10,6 @@ def test_import_apeiria_ai_does_not_eagerly_import_runtime_services() -> None:
     for module_name in (
         "apeiria.ai",
         "apeiria.conversation.service",
-        "apeiria.ai.future_task.service",
         "apeiria.ai.memory.service",
         "apeiria.ai.model.gateway",
         "apeiria.ai.person.service",
@@ -31,7 +30,6 @@ def test_import_apeiria_ai_does_not_eagerly_import_runtime_services() -> None:
     assert module.__all__ == [
         "AIService",
         "AIServiceStatus",
-        "ai_future_task_service",
         "ai_memory_service",
         "ai_person_profile_service",
         "ai_persona_service",
@@ -46,7 +44,6 @@ def test_import_apeiria_ai_does_not_eagerly_import_runtime_services() -> None:
 
     for module_name in (
         "apeiria.conversation.service",
-        "apeiria.ai.future_task.service",
         "apeiria.ai.memory.service",
         "apeiria.ai.model.gateway",
         "apeiria.ai.person.service",
@@ -70,6 +67,7 @@ def test_apeiria_ai_no_longer_re_exports_conversation_core() -> None:
     module = importlib.import_module("apeiria.ai")
 
     assert not hasattr(module, "chat_session_service")
+    assert not hasattr(module, "ai_future_task_service")
     assert not hasattr(module, "reply_strategy_service")
 
 

@@ -9,7 +9,7 @@ from apeiria.ai.tools.decorators import ai_tool
 from apeiria.ai.tools.models import AIToolExecutionContext, AIToolResult
 
 if TYPE_CHECKING:
-    from apeiria.ai.future_task.models import AIFutureTaskDefinition
+    from apeiria.app.ai.future_task.models import AIFutureTaskDefinition
     from apeiria.conversation.models import ChatSessionIdentity
 
 _FutureTaskAction = Literal["create", "cancel", "list"]
@@ -67,13 +67,13 @@ async def handle_future_task(  # noqa: PLR0913
 async def _create_action(
     *,
     context: AIToolExecutionContext,
-    identity: ChatSessionIdentity,
+    identity: "ChatSessionIdentity",
     title: str | None,
     description: str | None,
     trigger_at: str | None,
 ) -> AIToolResult:
-    from apeiria.ai.future_task import ai_future_task_service
-    from apeiria.ai.future_task.models import AIFutureTaskCreateInput
+    from apeiria.app.ai.future_task import ai_future_task_service
+    from apeiria.app.ai.future_task.models import AIFutureTaskCreateInput
 
     if description is None:
         return _error_result("create", "description is required for create")
@@ -116,7 +116,7 @@ async def _cancel_action(
     context: AIToolExecutionContext,
     task_id: str | None,
 ) -> AIToolResult:
-    from apeiria.ai.future_task import ai_future_task_service
+    from apeiria.app.ai.future_task import ai_future_task_service
 
     if task_id is None:
         return _error_result("cancel", "task_id is required for cancel")
@@ -144,7 +144,7 @@ async def _list_action(
     context: AIToolExecutionContext,
     limit: int | None,
 ) -> AIToolResult:
-    from apeiria.ai.future_task import ai_future_task_service
+    from apeiria.app.ai.future_task import ai_future_task_service
 
     tasks = await ai_future_task_service.list_tasks(
         limit=max(1, min(limit or 5, 10)),
@@ -166,7 +166,7 @@ async def _list_action(
 
 
 def _error_result(action: _FutureTaskAction, message: str) -> AIToolResult:
-    from apeiria.ai.future_task.models import AIFutureTaskToolOutput
+    from apeiria.app.ai.future_task.models import AIFutureTaskToolOutput
 
     output = AIFutureTaskToolOutput(action=action, ok=False, message=message)
     return AIToolResult(
@@ -181,9 +181,9 @@ def _build_result(
     action: _FutureTaskAction,
     ok: bool,
     message: str,
-    tasks: tuple[AIFutureTaskDefinition, ...] = (),
+    tasks: tuple["AIFutureTaskDefinition", ...] = (),
 ) -> AIToolResult:
-    from apeiria.ai.future_task.models import (
+    from apeiria.app.ai.future_task.models import (
         AIFutureTaskToolItem,
         AIFutureTaskToolOutput,
     )
@@ -228,3 +228,6 @@ def _parse_iso_datetime(value: object) -> datetime | None:
     if parsed.tzinfo is None:
         return None
     return parsed
+
+
+__all__ = ["handle_future_task"]

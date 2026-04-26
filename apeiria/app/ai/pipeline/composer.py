@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from apeiria.ai.pipeline.prompting import (
+from apeiria.app.ai.pipeline.prompting import (
     AIPromptMode,
     AIReplyPromptChannels,
     AIReplyPromptContext,
@@ -15,7 +15,7 @@ from apeiria.ai.pipeline.prompting import (
 
 if TYPE_CHECKING:
     from apeiria.ai.memory import AIMemoryDefinition
-    from apeiria.ai.pipeline.prompting import AIPersonaPromptBundleLike
+    from apeiria.app.ai.pipeline.prompting import AIPersonaPromptBundleLike
     from apeiria.conversation.models import ChatContextMessageView
 
 

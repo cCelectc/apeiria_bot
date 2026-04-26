@@ -4,14 +4,14 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from apeiria.ai.webui.schemas import (
+from .schemas import (
     AIChatMessageItem,
     AIRecentTargetItem,
     AISessionItem,
     AISessionPromptChannelsItem,
     AISessionPromptPreviewItem,
 )
-from apeiria.ai.webui.support import to_ai_memory_item
+from .support import to_ai_memory_item
 
 if TYPE_CHECKING:
     from apeiria.app.ai.session_read.models import (

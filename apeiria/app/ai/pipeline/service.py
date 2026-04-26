@@ -10,36 +10,51 @@ from uuid import uuid4
 from nonebot.log import logger
 
 from apeiria.ai.config import get_ai_plugin_config
-from apeiria.ai.future_task import ai_future_task_service
-from apeiria.ai.pipeline.generation_steps import (
+from apeiria.ai.retention import ai_retention_service
+from apeiria.ai.skills import ai_skill_service
+from apeiria.app.ai.future_task import ai_future_task_service
+from apeiria.app.ai.pipeline.generation_steps import (
     DeliveryOutcome,
     gather_reply_inputs,
     generate_reply,
     prepare_generation,
 )
-from apeiria.ai.pipeline.memory_steps import store_extracted_memories
-from apeiria.ai.pipeline.persistence_steps import persist_reply
-from apeiria.ai.pipeline.reply_strategy_steps import decide_whether_to_speak
-from apeiria.ai.retention import ai_retention_service
-from apeiria.ai.skills import ai_skill_service
+from apeiria.app.ai.pipeline.memory_steps import store_extracted_memories
+from apeiria.app.ai.pipeline.persistence_steps import persist_reply
+from apeiria.app.ai.pipeline.reply_strategy_steps import decide_whether_to_speak
 from apeiria.app.ai.reply_strategy import (
     build_wake_context,
     reply_strategy_service,
 )
 from apeiria.app.ai.reply_strategy.wake_gate import evaluate_wake
+from apeiria.app.ai.tooling import ensure_app_ai_tools_loaded
 from apeiria.conversation.service import chat_session_service
-from apeiria.runtime.entries import (
-    ApeiriaEntry,
-    build_ai_trace_entry,
-)
 
 if TYPE_CHECKING:
     from nonebot.adapters import Bot, Event
 
-    from apeiria.ai.future_task.models import AIFutureTaskDefinition
     from apeiria.ai.memory import AIMessageSentiment
+    from apeiria.app.ai.future_task.models import AIFutureTaskDefinition
     from apeiria.app.ai.reply_strategy.models import WakeContext
     from apeiria.conversation.models import ChatSessionIdentity
+
+
+@dataclass(frozen=True, slots=True)
+class AITraceContext:
+    """Lightweight trace labels passed in from runtime/surface entrypoints."""
+
+    kind: str
+    trigger: str
+
+
+_DEFAULT_MESSAGE_TRACE = AITraceContext(
+    kind="conversation",
+    trigger="nonebot_message",
+)
+_DEFAULT_FUTURE_TASK_TRACE = AITraceContext(
+    kind="conversation",
+    trigger="ai_future_task",
+)
 
 
 @dataclass(frozen=True)
@@ -72,9 +87,12 @@ class AIRuntimeService:
         self,
         bot: "Bot",
         event: "Event",
+        *,
+        trace: AITraceContext | None = None,
     ) -> str | None:
         """Handle one runtime message and optionally return a reply."""
 
+        ensure_app_ai_tools_loaded()
         ai_skill_service.ensure_initialized()
         config = get_ai_plugin_config()
         wake_context = build_wake_context(
@@ -108,7 +126,7 @@ class AIRuntimeService:
         )
         result = await self._run_reply_pipeline(
             trace_id=f"ai_trace_{uuid4().hex}",
-            entry=build_ai_trace_entry("message", event=event),
+            trace=trace or _DEFAULT_MESSAGE_TRACE,
             request=AIRuntimeReplyRequest(
                 identity=identity,
                 message_text=message_text,
@@ -126,9 +144,12 @@ class AIRuntimeService:
     async def handle_future_task(
         self,
         task_id: str,
+        *,
+        trace: AITraceContext | None = None,
     ) -> AIRuntimeReplyResult | None:
         """Handle one due future task by running the normal reply pipeline."""
 
+        ensure_app_ai_tools_loaded()
         ai_retention_service.maybe_schedule_cleanup(config=get_ai_plugin_config())
         task = await ai_future_task_service.get_task(task_id=task_id)
         if task is None or task.status != "running":
@@ -143,7 +164,7 @@ class AIRuntimeService:
         user_id = identity.subject_id or task.user_id or identity.scene_id
         return await self._run_reply_pipeline(
             trace_id=f"ai_trace_{uuid4().hex}",
-            entry=build_ai_trace_entry("future_task"),
+            trace=trace or _DEFAULT_FUTURE_TASK_TRACE,
             request=AIRuntimeReplyRequest(
                 identity=identity,
                 message_text=task.description,
@@ -159,7 +180,7 @@ class AIRuntimeService:
         self,
         *,
         trace_id: str,
-        entry: ApeiriaEntry,
+        trace: AITraceContext,
         request: AIRuntimeReplyRequest,
         wake_context: WakeContext | None = None,
     ) -> AIRuntimeReplyResult | None:
@@ -208,8 +229,8 @@ class AIRuntimeService:
                 "entry_kind={} entry_trigger={}",
                 trace_id,
                 identity.session_id,
-                entry.kind,
-                entry.trigger,
+                trace.kind,
+                trace.trigger,
             )
             return None
 
@@ -237,8 +258,8 @@ class AIRuntimeService:
             response.model_name,
             len(inputs.recalled_memories),
             len(gen.skill_runtime.turns),
-            entry.kind,
-            entry.trigger,
+            trace.kind,
+            trace.trigger,
         )
         return AIRuntimeReplyResult(
             reply_text=response.content.strip(),
@@ -248,4 +269,4 @@ class AIRuntimeService:
 
 ai_runtime_service = AIRuntimeService()
 
-__all__ = ["AIRuntimeService", "ai_runtime_service"]
+__all__ = ["AIRuntimeService", "AITraceContext", "ai_runtime_service"]

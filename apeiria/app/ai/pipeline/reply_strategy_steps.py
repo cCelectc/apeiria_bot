@@ -19,10 +19,10 @@ if TYPE_CHECKING:
     from datetime import datetime
 
     from apeiria.ai.model import AIModelBindingTarget
-    from apeiria.ai.pipeline.prompting import AIPersonaPromptBundleLike
-    from apeiria.ai.pipeline.relationship_steps import AIRelationshipTarget
-    from apeiria.ai.pipeline.service import AIRuntimeReplyRequest
     from apeiria.ai.tools import AIToolSpec
+    from apeiria.app.ai.pipeline.prompting import AIPersonaPromptBundleLike
+    from apeiria.app.ai.pipeline.relationship_steps import AIRelationshipTarget
+    from apeiria.app.ai.pipeline.service import AIRuntimeReplyRequest
     from apeiria.app.ai.reply_strategy import ReplyStrategyDecision
     from apeiria.conversation.models import ChatContextMessageView
 

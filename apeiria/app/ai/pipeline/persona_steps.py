@@ -16,8 +16,8 @@ if TYPE_CHECKING:
     from datetime import datetime
 
     from apeiria.ai.persona import AIPersonaRenderContext
-    from apeiria.ai.pipeline.prompting import AIPersonaPromptBundleLike
-    from apeiria.ai.pipeline.service import AIRuntimeReplyRequest
+    from apeiria.app.ai.pipeline.prompting import AIPersonaPromptBundleLike
+    from apeiria.app.ai.pipeline.service import AIRuntimeReplyRequest
     from apeiria.conversation.models import (
         ChatContextMessageView,
         ChatSessionIdentity,

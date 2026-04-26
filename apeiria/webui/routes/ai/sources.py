@@ -6,20 +6,21 @@ from typing import TYPE_CHECKING, Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
-from apeiria.ai.webui.schemas import (
-    AISourceItem,
-    AISourcePresetItem,
-    AISourceUpsertRequest,
-)
-from apeiria.ai.webui.support import (
-    to_ai_source_item,
-    to_ai_source_preset_item,
-)
 from apeiria.app.ai.admin.control_service import (
     AISourceDeleteBlockedError,
     ai_control_admin_service,
 )
 from apeiria.webui.auth import require_control_panel
+
+from .schemas import (
+    AISourceItem,
+    AISourcePresetItem,
+    AISourceUpsertRequest,
+)
+from .support import (
+    to_ai_source_item,
+    to_ai_source_preset_item,
+)
 
 if TYPE_CHECKING:
     from apeiria.access.principal import AuthSession

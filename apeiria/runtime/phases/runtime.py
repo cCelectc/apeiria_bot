@@ -21,7 +21,7 @@ def _get_runtime_services() -> tuple[
     Any,
 ]:
     from apeiria.access.service import access_service
-    from apeiria.ai.pipeline.service import ai_runtime_service
+    from apeiria.app.ai.pipeline import ai_runtime_service
     from apeiria.config import project_config_service
     from apeiria.conversation.service import chat_session_service
     from apeiria.db.runtime import database_runtime

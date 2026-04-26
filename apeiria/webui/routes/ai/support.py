@@ -6,7 +6,8 @@ from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
 from apeiria.ai.relationship import apply_inactivity_decay, project_emotion
-from apeiria.ai.webui.schemas import (
+
+from .schemas import (
     AICapabilityItem,
     AICapabilityPreviewItem,
     AIFutureTaskItem,
@@ -32,7 +33,6 @@ from apeiria.ai.webui.schemas import (
 )
 
 if TYPE_CHECKING:
-    from apeiria.ai.future_task.models import AIFutureTaskDefinition
     from apeiria.ai.memory import AIMemoryDefinition
     from apeiria.ai.model import (
         AIModelBindingSpec,
@@ -55,6 +55,7 @@ if TYPE_CHECKING:
         AIToolPolicyBindingSpec,
         AIToolSpec,
     )
+    from apeiria.app.ai.future_task.models import AIFutureTaskDefinition
 
 
 def _skill_display_name(skill_name: str) -> str:

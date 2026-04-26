@@ -4,16 +4,16 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from apeiria.ai.pipeline.context_window_steps import build_and_store_context_window
+from apeiria.app.ai.pipeline.context_window_steps import build_and_store_context_window
 from apeiria.conversation.service import ChatMessageCreate, chat_session_service
 
 if TYPE_CHECKING:
-    from apeiria.ai.pipeline.generation_steps import (
+    from apeiria.app.ai.pipeline.generation_steps import (
         ReplyGeneration,
         ReplyInputs,
         ReplyPreparation,
     )
-    from apeiria.ai.pipeline.service import AIRuntimeReplyRequest
+    from apeiria.app.ai.pipeline.service import AIRuntimeReplyRequest
     from apeiria.app.ai.reply_strategy import ReplyStrategyDecision
 
 

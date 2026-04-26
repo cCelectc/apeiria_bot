@@ -9,39 +9,6 @@ from nonebot.log import logger
 
 from apeiria.ai.config import get_ai_plugin_config
 from apeiria.ai.model import AIModelRouteQuery, model_gateway
-from apeiria.ai.pipeline.composer import (
-    AIRuntimeComposeInput,
-    build_runtime_prompt_channels,
-    compose_pre_tool_reply_prompt,
-    compose_roleplay_reply_prompt,
-)
-from apeiria.ai.pipeline.context_window_steps import (
-    build_and_store_context_window,
-    record_context_usage,
-)
-from apeiria.ai.pipeline.memory_steps import (
-    load_person_profile_for_prompt,
-    recall_memories,
-)
-from apeiria.ai.pipeline.message_builder import build_chat_messages
-from apeiria.ai.pipeline.persona_steps import (
-    build_model_binding_target,
-    load_persona_bundle,
-)
-from apeiria.ai.pipeline.relationship_steps import (
-    build_relationship_target,
-    load_relationship_context,
-    update_relationship_state,
-)
-from apeiria.ai.pipeline.reply_strategy_steps import resolve_initiative_bias
-from apeiria.ai.pipeline.routing import (
-    select_post_tool_reply_task_class,
-    select_pre_tool_reply_task_class,
-)
-from apeiria.ai.pipeline.tool_steps import (
-    append_tool_observation_turns,
-    resolve_tool_policy,
-)
 from apeiria.ai.skills import ai_skill_service
 from apeiria.ai.tools import (
     ToolGatewayRequest,
@@ -49,12 +16,44 @@ from apeiria.ai.tools import (
     ai_tool_service,
     tool_gateway,
 )
+from apeiria.app.ai.pipeline.composer import (
+    AIRuntimeComposeInput,
+    build_runtime_prompt_channels,
+    compose_pre_tool_reply_prompt,
+    compose_roleplay_reply_prompt,
+)
+from apeiria.app.ai.pipeline.context_window_steps import (
+    build_and_store_context_window,
+    record_context_usage,
+)
+from apeiria.app.ai.pipeline.memory_steps import (
+    load_person_profile_for_prompt,
+    recall_memories,
+)
+from apeiria.app.ai.pipeline.message_builder import build_chat_messages
+from apeiria.app.ai.pipeline.persona_steps import (
+    build_model_binding_target,
+    load_persona_bundle,
+)
+from apeiria.app.ai.pipeline.relationship_steps import (
+    build_relationship_target,
+    load_relationship_context,
+    update_relationship_state,
+)
+from apeiria.app.ai.pipeline.reply_strategy_steps import resolve_initiative_bias
+from apeiria.app.ai.pipeline.routing import (
+    select_post_tool_reply_task_class,
+    select_pre_tool_reply_task_class,
+)
+from apeiria.app.ai.pipeline.tool_steps import (
+    append_tool_observation_turns,
+    resolve_tool_policy,
+)
 from apeiria.app.ai.reply_strategy import summarize_reply_strategy_decision
 
 if TYPE_CHECKING:
     from datetime import datetime
 
-    from apeiria.ai.future_task.models import AIFutureTaskDefinition
     from apeiria.ai.memory import AIMemoryDefinition
     from apeiria.ai.model import (
         AIModelBindingTarget,
@@ -62,10 +61,11 @@ if TYPE_CHECKING:
         AIModelToolDefinition,
         AISelectedModel,
     )
-    from apeiria.ai.pipeline.prompting import AIPersonaPromptBundleLike
-    from apeiria.ai.pipeline.relationship_steps import AIRelationshipTarget
-    from apeiria.ai.pipeline.service import AIRuntimeReplyRequest
     from apeiria.ai.tools import AIToolPolicy, AIToolSpec
+    from apeiria.app.ai.future_task.models import AIFutureTaskDefinition
+    from apeiria.app.ai.pipeline.prompting import AIPersonaPromptBundleLike
+    from apeiria.app.ai.pipeline.relationship_steps import AIRelationshipTarget
+    from apeiria.app.ai.pipeline.service import AIRuntimeReplyRequest
     from apeiria.app.ai.reply_strategy import ReplyStrategyDecision
     from apeiria.conversation.models import ChatContextMessageView
 

@@ -26,7 +26,7 @@ if TYPE_CHECKING:
         AISkillCatalogEntry,
         AISkillSelectionResult,
     )
-    from apeiria.ai.tools.models import AIToolPolicy
+    from apeiria.ai.tools.models import AIToolPolicy, AIToolSpec
     from apeiria.ai.tools.service import AIToolService
 
 
@@ -52,14 +52,25 @@ class AISkillService:
         Safe to call multiple times; only the first call takes effect.
         """
 
-        if self._initialized:
-            return
+        was_initialized = self._initialized
+        if not was_initialized:
+            root = skills_dir or get_default_skills_directory()
+            file_skills = load_skills_from_directory(root)
+            ai_skill_runtime.register_file_skills(file_skills)
+            self._initialized = True
+        else:
+            file_skills = ai_skill_runtime.list_file_skills()
 
-        # Load file-based skills
-        root = skills_dir or get_default_skills_directory()
-        file_skills = load_skills_from_directory(root)
-        ai_skill_runtime.register_file_skills(file_skills)
+        tool_specs = self._sync_tool_skills()
+        if not was_initialized:
+            logger.info(
+                "Skill service initialized: {} file skills, {} tool skills",
+                len(file_skills),
+                len(tool_specs),
+            )
 
+    @staticmethod
+    def _sync_tool_skills() -> list["AIToolSpec"]:
         tool_service = _get_ai_tool_service()
         tool_specs = tool_service.registry.list_tools()
 
@@ -71,13 +82,7 @@ class AISkillService:
                 description=tool.description,
                 tags=tool.tags,
             )
-
-        self._initialized = True
-        logger.info(
-            "Skill service initialized: {} file skills, {} tool skills",
-            len(file_skills),
-            len(tool_specs),
-        )
+        return tool_specs
 
     def list_skills(
         self,

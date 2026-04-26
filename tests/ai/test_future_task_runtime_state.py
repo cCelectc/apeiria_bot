@@ -7,6 +7,8 @@ import sys
 from datetime import datetime, timezone
 from typing import Any
 
+import pytest
+
 
 def test_future_task_service_import_is_safe_without_nonebot_plugin_orm() -> None:
     original_import = builtins.__import__
@@ -22,19 +24,52 @@ def test_future_task_service_import_is_safe_without_nonebot_plugin_orm() -> None
             raise AssertionError(name)
         return original_import(name, globalns, localns, fromlist, level)
 
-    sys.modules.pop("apeiria.ai.future_task.service", None)
+    sys.modules.pop("apeiria.app.ai.future_task.service", None)
     builtins.__import__ = guarded_import
     try:
-        module = importlib.import_module("apeiria.ai.future_task.service")
+        module = importlib.import_module("apeiria.app.ai.future_task.service")
     finally:
         builtins.__import__ = original_import
 
-    assert module.__name__ == "apeiria.ai.future_task.service"
+    assert module.__name__ == "apeiria.app.ai.future_task.service"
+
+
+def test_import_app_ai_future_task_exposes_public_surface() -> None:
+    for module_name in (
+        "apeiria.app.ai.future_task",
+        "apeiria.app.ai.future_task.service",
+    ):
+        sys.modules.pop(module_name, None)
+
+    module = importlib.import_module("apeiria.app.ai.future_task")
+
+    assert module.__name__ == "apeiria.app.ai.future_task"
+    assert "ai_future_task_service" in module.__all__
+    assert "apeiria.app.ai.future_task.service" not in sys.modules
+    assert (
+        module.ai_future_task_service
+        is sys.modules["apeiria.app.ai.future_task.service"].ai_future_task_service
+    )
+
+
+@pytest.mark.parametrize(
+    "module_name",
+    [
+        "apeiria.ai.future_task",
+        "apeiria.ai.future_task.models",
+        "apeiria.ai.future_task.service",
+    ],
+)
+def test_legacy_ai_future_task_modules_are_removed(module_name: str) -> None:
+    sys.modules.pop(module_name, None)
+
+    with pytest.raises(ModuleNotFoundError):
+        importlib.import_module(module_name)
 
 
 def test_future_tasks_are_runtime_scheduling_state(monkeypatch: Any) -> None:
-    import apeiria.ai.future_task.service as future_task_module
-    from apeiria.ai.future_task.models import AIFutureTaskCreateInput
+    import apeiria.app.ai.future_task.service as future_task_module
+    from apeiria.app.ai.future_task.models import AIFutureTaskCreateInput
 
     removed_jobs: list[str] = []
 

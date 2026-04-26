@@ -1,8 +1,7 @@
 """AI admin routes — thin aggregator over per-domain sub-routers.
 
 Each `/api/ai` endpoint family lives in its own module. This file just
-composes them into a single `router` that `routes/router.py` mounts at
-`/api/ai`.
+composes them into a single `router` that the AI plugin mounts.
 """
 
 from __future__ import annotations
@@ -11,33 +10,20 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends
 
-from apeiria.ai.webui.routes.future_tasks import (
-    router as _future_tasks_router,
-)
-from apeiria.ai.webui.routes.memories import (
-    router as _memories_router,
-)
-from apeiria.ai.webui.routes.models import router as _models_router
-from apeiria.ai.webui.routes.person_profiles import (
-    router as _person_profiles_router,
-)
-from apeiria.ai.webui.routes.personas import (
-    router as _personas_router,
-)
-from apeiria.ai.webui.routes.relationships import (
-    router as _relationships_router,
-)
-from apeiria.ai.webui.routes.sessions import (
-    router as _sessions_router,
-)
-from apeiria.ai.webui.routes.sources import (
-    router as _sources_router,
-)
-from apeiria.ai.webui.routes.tools import router as _tools_router
-from apeiria.ai.webui.schemas import AIBootstrapResponse
-from apeiria.ai.webui.support import to_ai_source_preset_item
 from apeiria.app.ai.admin.control_service import ai_control_admin_service
 from apeiria.webui.auth import require_control_panel
+
+from .future_tasks import router as _future_tasks_router
+from .memories import router as _memories_router
+from .models import router as _models_router
+from .person_profiles import router as _person_profiles_router
+from .personas import router as _personas_router
+from .relationships import router as _relationships_router
+from .schemas import AIBootstrapResponse
+from .sessions import router as _sessions_router
+from .sources import router as _sources_router
+from .support import to_ai_source_preset_item
+from .tools import router as _tools_router
 
 router = APIRouter()
 

@@ -15,6 +15,7 @@ from apeiria.ai.tools import (
     resolve_default_tool_policy,
 )
 from apeiria.app.ai.admin.audit import record_ai_admin_audit
+from apeiria.app.ai.tooling import ensure_app_ai_tools_loaded
 
 if TYPE_CHECKING:
     from apeiria.ai.skills import AISkillDefinition
@@ -32,6 +33,7 @@ class ToolsAdminMixin:
     """Admin read/mutation for tools, skills, capabilities, policies, and executions."""
 
     def list_tools(self, policy: "AIToolPolicy | None" = None) -> list["AIToolSpec"]:
+        ensure_app_ai_tools_loaded()
         return ai_tool_service.list_tool_specs(policy)
 
     def list_capabilities(self) -> list["AICapabilityDefinition"]:
@@ -41,6 +43,7 @@ class ToolsAdminMixin:
         self,
         policy: "AIToolPolicy | None" = None,
     ) -> list["AISkillDefinition"]:
+        ensure_app_ai_tools_loaded()
         return ai_skill_service.list_skills(policy)
 
     async def preview_tool_intents(
@@ -52,6 +55,7 @@ class ToolsAdminMixin:
         allow_read_only_tools: bool = True,
         capability_mode: str = "off",
     ) -> list["AIToolIntentPreview"]:
+        ensure_app_ai_tools_loaded()
         policy = self.preview_tool_policy(
             scope_type=scope_type,
             is_tome=is_tome,

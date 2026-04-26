@@ -11,7 +11,7 @@ from zoneinfo import ZoneInfo
 
 from nonebot.log import logger
 
-from apeiria.ai.future_task.models import (
+from apeiria.app.ai.future_task.models import (
     AIFutureTaskCreateInput,
     AIFutureTaskDefinition,
     AIFutureTaskStatus,
@@ -235,9 +235,16 @@ async def execute_future_task(task_id: str) -> None:
     await ai_future_task_service.mark_task_running(task_id=task_id)
 
     try:
-        from apeiria.ai.pipeline.service import ai_runtime_service
+        from apeiria.app.ai.pipeline import AITraceContext
+        from apeiria.app.ai.pipeline.service import ai_runtime_service
 
-        runtime_result = await ai_runtime_service.handle_future_task(task_id)
+        runtime_result = await ai_runtime_service.handle_future_task(
+            task_id,
+            trace=AITraceContext(
+                kind="conversation",
+                trigger="ai_future_task",
+            ),
+        )
     except Exception as exc:  # noqa: BLE001
         await ai_future_task_service.mark_task_failed(
             task_id=task_id,

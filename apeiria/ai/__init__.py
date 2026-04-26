@@ -17,7 +17,6 @@ from importlib import import_module
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from apeiria.ai.future_task.service import ai_future_task_service
     from apeiria.ai.memory import ai_memory_service
     from apeiria.ai.model import model_gateway
     from apeiria.ai.person import ai_person_profile_service
@@ -31,7 +30,6 @@ if TYPE_CHECKING:
 __all__ = [
     "AIService",
     "AIServiceStatus",
-    "ai_future_task_service",
     "ai_memory_service",
     "ai_person_profile_service",
     "ai_persona_service",
@@ -47,7 +45,6 @@ __all__ = [
 _LAZY_MODULES = {
     "AIService": "apeiria.ai.service",
     "AIServiceStatus": "apeiria.ai.service",
-    "ai_future_task_service": "apeiria.ai.future_task.service",
     "ai_memory_service": "apeiria.ai.memory",
     "ai_person_profile_service": "apeiria.ai.person",
     "ai_persona_service": "apeiria.ai.persona",
