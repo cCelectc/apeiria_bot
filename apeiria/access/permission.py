@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
+from typing import TYPE_CHECKING, TypeAlias
+
 from nonebot.exception import IgnoredException
 from nonebot.log import logger
 
@@ -11,6 +14,13 @@ from apeiria.access.models import AccessContext, PermissionDecision, PluginPolic
 from apeiria.access.service import access_service
 from apeiria.i18n import t
 from apeiria.plugins import plugin_policy_service
+
+if TYPE_CHECKING:
+    from nonebot.adapters import Bot, Event
+
+DeniedFeedbackHandler: TypeAlias = Callable[
+    ["Bot", "Event", PermissionDecision], Awaitable[None]
+]
 
 
 class PermissionService:
@@ -69,13 +79,19 @@ class PermissionService:
             },
         )
 
-    async def assert_plugin_allowed(self, bot, event, plugin) -> None:  # noqa: ANN001
-        from apeiria.bot.feedback import guard_feedback_service
-
+    async def assert_plugin_allowed(
+        self,
+        bot: Bot,
+        event: Event,
+        plugin: object,
+        *,
+        on_denied: DeniedFeedbackHandler | None = None,
+    ) -> None:
         decision = await self.check_plugin_execution(bot, event, plugin)
         if decision.allowed:
             return
-        await guard_feedback_service.handle_denied(bot, event, decision)
+        if on_denied is not None:
+            await on_denied(bot, event, decision)
         raise IgnoredException(decision.code)
 
     async def _check_plugin_state(
