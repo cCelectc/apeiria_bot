@@ -56,10 +56,11 @@ if TYPE_CHECKING:
 
     from apeiria.ai.future_task.models import AIFutureTaskDefinition
     from apeiria.ai.memory import AIMemoryDefinition
-    from apeiria.ai.model import AIModelBindingTarget, AISelectedModel
-    from apeiria.ai.model.adapter import (
+    from apeiria.ai.model import (
+        AIModelBindingTarget,
         AIModelGenerateResponse,
         AIModelToolDefinition,
+        AISelectedModel,
     )
     from apeiria.ai.pipeline.prompting import AIPersonaPromptBundleLike
     from apeiria.ai.pipeline.relationship_steps import AIRelationshipTarget

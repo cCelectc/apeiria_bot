@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from apeiria.ai.model.adapter import AIModelMessage
+from apeiria.ai.model import AIModelMessage
 
 if TYPE_CHECKING:
     from apeiria.ai.pipeline.prompting import AIReplyPromptChannels

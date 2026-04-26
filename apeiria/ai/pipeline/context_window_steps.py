@@ -15,7 +15,7 @@ from apeiria.app.ai.conversation_context.summary import (
 from apeiria.conversation.service import chat_session_service
 
 if TYPE_CHECKING:
-    from apeiria.ai.model.adapter import AIModelGenerateResponse
+    from apeiria.ai.model import AIModelGenerateResponse
     from apeiria.conversation.models import (
         ChatContextMessageView,
         ChatSessionIdentity,
