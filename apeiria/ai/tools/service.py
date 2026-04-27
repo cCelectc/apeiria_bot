@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 from dataclasses import asdict, is_dataclass
 from typing import Any
 
@@ -16,9 +15,9 @@ from apeiria.ai.tools.debug import (
     AICapabilityPreview,
     AIToolIntentPreview,
 )
+from apeiria.ai.tools.execution import AIToolIntentExecutor
 from apeiria.ai.tools.execution_repository import AIToolExecutionRepository
 from apeiria.ai.tools.models import (
-    AIToolExecutionContext,
     AIToolExecutionView,
     AIToolIntent,
     AIToolObservationRequest,
@@ -30,8 +29,6 @@ from apeiria.ai.tools.models import (
 from apeiria.ai.tools.planning import AIToolIntentPlanner
 from apeiria.ai.tools.policy import evaluate_tool_policy
 from apeiria.ai.tools.registry import AIToolRegistry
-
-MAX_CONSECUTIVE_FAILURES = 3
 
 
 class AIToolService:
@@ -46,11 +43,13 @@ class AIToolService:
         self,
         *,
         execution_repository: AIToolExecutionRepository | None = None,
+        intent_executor: AIToolIntentExecutor | None = None,
         intent_planner: AIToolIntentPlanner | None = None,
     ) -> None:
         self.registry = AIToolRegistry()
         self.capability_bridge = AINoneBotSkillBridge()
         self._execution_repository = execution_repository or AIToolExecutionRepository()
+        self._intent_executor = intent_executor or AIToolIntentExecutor()
         self._intent_planner = intent_planner or AIToolIntentPlanner()
         register_builtin_capabilities(self.capability_bridge)
         self._load_declarative_tools()
@@ -159,35 +158,11 @@ class AIToolService:
         request: AIToolObservationRequest,
         intents: list[AIToolIntent],
     ) -> list[AIToolObservationResult]:
-        """Execute tool intents via declarative entrypoints.
-
-        Includes death-spiral detection: if ``MAX_CONSECUTIVE_FAILURES``
-        consecutive tool calls fail, remaining intents are skipped.
-        """
-
-        observations: list[AIToolObservationResult] = []
-        consecutive_failures = 0
-
-        for intent in intents:
-            if consecutive_failures >= MAX_CONSECUTIVE_FAILURES:
-                logger.warning(
-                    "Death spiral: {} consecutive tool failures, "
-                    "skipping remaining {} intents",
-                    consecutive_failures,
-                    len(intents) - len(observations),
-                )
-                break
-
-            observation = await self._execute_single_intent(
-                request=request,
-                intent=intent,
-            )
-            observations.append(observation)
-
-            if observation.status == "success":
-                consecutive_failures = 0
-            else:
-                consecutive_failures += 1
+        observations = await self._intent_executor.execute_tool_intents(
+            registry=self.registry,
+            request=request,
+            intents=intents,
+        )
 
         for observation in observations:
             await self.record_execution(
@@ -202,116 +177,6 @@ class AIToolService:
             )
 
         return observations
-
-    async def _execute_single_intent(
-        self,
-        *,
-        request: AIToolObservationRequest,
-        intent: AIToolIntent,
-    ) -> AIToolObservationResult:
-        """Execute one tool intent via its declarative entrypoint."""
-
-        spec = self.registry.get(intent.tool_name)
-        if spec is None or spec.entrypoint is None:
-            return AIToolObservationResult(
-                tool_name=intent.tool_name,
-                summary=(
-                    f"- [{intent.tool_name}] failed: tool not found or "
-                    "has no entrypoint"
-                ),
-                input_payload=intent.input_payload,
-                output_payload={"error": "tool not found"},
-                status="error",
-            )
-
-        context = AIToolExecutionContext(
-            session_id=request.session_id,
-            source_message_id=request.source_message_id,
-            trace_id=request.trace_id,
-            message_text=request.message_text,
-            policy=request.policy,
-            recalled_memory_ids=request.recalled_memory_ids,
-            recalled_memory_contents=request.recalled_memory_contents,
-            relationship_context=request.relationship_context,
-            execution_timeout_seconds=request.execution_timeout_seconds,
-        )
-
-        # Parse arguments from model output
-        arguments = (
-            intent.input_payload if isinstance(intent.input_payload, dict) else {}
-        )
-
-        try:
-            execution = spec.entrypoint(**arguments, context=context)
-            if request.execution_timeout_seconds is not None:
-                result = await asyncio.wait_for(
-                    execution,
-                    timeout=request.execution_timeout_seconds,
-                )
-            else:
-                result = await execution
-            return AIToolObservationResult(
-                tool_name=intent.tool_name,
-                summary=result.summary,
-                input_payload=intent.input_payload,
-                output_payload=result.output_payload,
-                status=result.status,
-            )
-        except TimeoutError:
-            logger.warning(
-                "Tool {} execution timed out trace_id={} timeout={}s",
-                intent.tool_name,
-                request.trace_id,
-                request.execution_timeout_seconds,
-            )
-            timeout_summary = (
-                f"- [{intent.tool_name}] timed out after "
-                f"{request.execution_timeout_seconds:.1f}s"
-                if request.execution_timeout_seconds is not None
-                else f"- [{intent.tool_name}] timed out"
-            )
-            return AIToolObservationResult(
-                tool_name=intent.tool_name,
-                summary=timeout_summary,
-                input_payload=intent.input_payload,
-                output_payload={
-                    "error": "timeout",
-                    "timeout_seconds": request.execution_timeout_seconds,
-                    "trace_id": request.trace_id,
-                },
-                status="timeout",
-            )
-        except TypeError as exc:
-            logger.opt(exception=exc).debug(
-                "Tool {} argument error trace_id={}: {}",
-                intent.tool_name,
-                request.trace_id,
-                exc,
-            )
-            return AIToolObservationResult(
-                tool_name=intent.tool_name,
-                summary=f"- [{intent.tool_name}] failed: invalid arguments",
-                input_payload=intent.input_payload,
-                output_payload={
-                    "error": f"invalid arguments: {exc}",
-                    "trace_id": request.trace_id,
-                },
-                status="error",
-            )
-        except Exception as exc:  # noqa: BLE001
-            logger.opt(exception=exc).warning(
-                "Tool {} execution failed trace_id={}: {}",
-                intent.tool_name,
-                request.trace_id,
-                exc,
-            )
-            return AIToolObservationResult(
-                tool_name=intent.tool_name,
-                summary=f"- [{intent.tool_name}] failed: {exc}",
-                input_payload=intent.input_payload,
-                output_payload={"error": str(exc), "trace_id": request.trace_id},
-                status="error",
-            )
 
     # ------------------------------------------------------------------
     # Turn building

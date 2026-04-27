@@ -33,3 +33,18 @@ def test_tool_service_delegates_model_intent_planning() -> None:
     assert "build_function_tools" not in service_source
     assert "build_intents_from_tool_calls" not in service_source
     assert "model_gateway" not in service_source
+
+
+def test_tool_service_delegates_intent_execution() -> None:
+    project_root = Path(__file__).resolve().parents[2]
+    service_source = (
+        project_root / "apeiria" / "ai" / "tools" / "service.py"
+    ).read_text(encoding="utf-8")
+
+    execution_module = importlib.import_module("apeiria.ai.tools.execution")
+
+    assert hasattr(execution_module, "AIToolIntentExecutor")
+    assert "MAX_CONSECUTIVE_FAILURES" not in service_source
+    assert "asyncio.wait_for" not in service_source
+    assert "consecutive_failures" not in service_source
+    assert "spec.entrypoint" not in service_source
