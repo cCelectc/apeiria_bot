@@ -302,7 +302,7 @@
         id: `${Date.now()}_${Math.random().toString(16).slice(2)}`,
         timestamp: new Date().toISOString(),
         level: 'INFO',
-        source: 'legacy',
+        source: 'raw',
         message: frame,
         raw: frame,
         extra: {},
