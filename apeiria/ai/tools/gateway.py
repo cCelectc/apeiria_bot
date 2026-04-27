@@ -13,6 +13,20 @@ from apeiria.ai.tools.function_calling import (
     build_intents_from_tool_calls,
     function_name_to_tool_name,
 )
+from apeiria.ai.tools.loop.history import repair_tool_message_history
+from apeiria.ai.tools.loop.projection import (
+    ToolResult,
+    completed_observations,
+    project_tool_results,
+    summarize_arguments,
+)
+from apeiria.ai.tools.loop.prompt_budget import (
+    DEFAULT_OBSERVATION_CHAR_LIMIT,
+    build_prompt_safe_observation,
+    is_context_pressure_error,
+    recover_prompt_budget_messages,
+)
+from apeiria.ai.tools.loop.state import ToolLoopState
 from apeiria.ai.tools.models import (
     AIToolObservationRequest,
     AIToolObservationResult,
@@ -21,9 +35,7 @@ from apeiria.ai.tools.models import (
 from apeiria.ai.tools.policy import summarize_tool_policy
 from apeiria.ai.turn_records import (
     ModelAttempt,
-    PromptSafeObservation,
     ToolAttempt,
-    ToolLoopState,
     is_empty_model_response,
     model_ref,
     sanitize_model_diagnostic,
@@ -43,14 +55,10 @@ if TYPE_CHECKING:
         AIToolIntent,
         AIToolTurnCreateInput,
     )
+    from apeiria.ai.turn_records import ToolAttemptStatus
 
 MAX_TOOL_ROUNDS = 3
-DEFAULT_OBSERVATION_CHAR_LIMIT = 1200
-RECOVERY_OBSERVATION_CHAR_LIMIT = 320
-RECOVERY_OLDER_MESSAGE_CHAR_LIMIT = 800
-RECOVERY_RECENT_MESSAGE_COUNT = 4
 DEFAULT_REPEATED_TOOL_THRESHOLD = 3
-ARGUMENT_SUMMARY_CHAR_LIMIT = 160
 MAX_ROUNDS_FINALIZATION_PROMPT = "\n".join(
     (
         "The tool loop reached its maximum number of rounds.",
@@ -58,26 +66,6 @@ MAX_ROUNDS_FINALIZATION_PROMPT = "\n".join(
         "the best final answer you can.",
     )
 )
-_CONTEXT_PRESSURE_MARKERS = (
-    "prompt_too_long",
-    "context_length_exceeded",
-    "maximum context",
-    "too many tokens",
-    "context window",
-    "413",
-)
-
-
-@dataclass(frozen=True)
-class ToolResult:
-    """Outcome of a single tool call."""
-
-    tool_call_id: str
-    name: str
-    summary: str
-    ok: bool
-    error: str | None = None
-    native_observation: Any = None
 
 
 @dataclass(frozen=True)
@@ -162,8 +150,8 @@ class ToolGateway:
     ) -> ToolGatewayResult:
         intents = build_intents_from_tool_calls(tool_calls)
         observations = await self._execute_intents_with_policy(request, intents)
-        tool_results = _project_tool_results(tool_calls, observations)
-        completed_observations = _completed_observations(observations)
+        tool_results = project_tool_results(tool_calls, observations)
+        executed_observations = completed_observations(observations)
         return ToolGatewayResult(
             policy_text=summarize_tool_policy(
                 self._tool_service.registry.list_tools(),
@@ -173,7 +161,7 @@ class ToolGateway:
                 obs.summary if obs is not None else "- [tool] skipped: execution limit"
                 for obs in observations
             ),
-            turns=tuple(self._tool_service.build_tool_turns(completed_observations)),
+            turns=tuple(self._tool_service.build_tool_turns(executed_observations)),
             tool_results=tool_results,
             available_tools=(),
         )
@@ -203,7 +191,7 @@ class ToolGateway:
 
         for _ in range(max_rounds):
             round_idx = loop_state.next_round()
-            current_messages = _repair_tool_message_history(
+            current_messages = repair_tool_message_history(
                 (*messages, *tool_message_history),
                 loop_state=loop_state,
             )
@@ -242,15 +230,15 @@ class ToolGateway:
 
             intents = build_intents_from_tool_calls(response.tool_calls)
             observations = await self._execute_intents_with_policy(request, intents)
-            tool_results = _project_tool_results(response.tool_calls, observations)
-            completed_observations = _completed_observations(observations)
+            tool_results = project_tool_results(response.tool_calls, observations)
+            executed_observations = completed_observations(observations)
             all_tool_results.extend(tool_results)
             all_turns.extend(
-                self._tool_service.build_tool_turns(completed_observations)
+                self._tool_service.build_tool_turns(executed_observations)
             )
 
             obs_by_index = dict(enumerate(observations))
-            round_statuses: list[str] = []
+            round_statuses: list[ToolAttemptStatus] = []
             for index, tool_call in enumerate(response.tool_calls):
                 obs = obs_by_index.get(index)
                 tool_name = (
@@ -272,14 +260,14 @@ class ToolGateway:
                 diagnostic = (
                     f"repeated tool call count={repetition_count}" if repeated else None
                 )
-                status = obs.status if obs is not None else "skipped"
+                status: ToolAttemptStatus = obs.status if obs is not None else "skipped"
                 round_statuses.append(status)
                 all_tool_attempts.append(
                     ToolAttempt(
                         tool_call_id=tool_call.tool_call_id,
                         tool_name=tool_name,
                         status=status,
-                        arguments_summary=_summarize_arguments(tool_call.arguments),
+                        arguments_summary=summarize_arguments(tool_call.arguments),
                         observation=safe_observation,
                         repetition_count=repetition_count,
                         repeated=repeated,
@@ -424,7 +412,7 @@ class ToolGateway:
                     )
                 except Exception as exc:  # noqa: BLE001
                     diagnostic = sanitize_model_diagnostic(str(exc))
-                    is_context_pressure = _is_context_pressure_error(diagnostic)
+                    is_context_pressure = is_context_pressure_error(diagnostic)
                     attempts.append(
                         ModelAttempt(
                             attempt_index=loop_state.next_model_attempt_index(),
@@ -447,7 +435,7 @@ class ToolGateway:
                         and allow_context_recovery
                         and loop_state.can_attempt_context_recovery()
                     ):
-                        recovered, compacted = _recover_prompt_budget_messages(
+                        recovered, compacted = recover_prompt_budget_messages(
                             messages_for_call
                         )
                         loop_state.context_recovery_compacted_messages += compacted
@@ -515,7 +503,7 @@ class ToolGateway:
             role="user",
             content=MAX_ROUNDS_FINALIZATION_PROMPT,
         )
-        finalization_messages = _repair_tool_message_history(
+        finalization_messages = repair_tool_message_history(
             (*messages, finalization_prompt),
             loop_state=loop_state,
         )
@@ -546,167 +534,6 @@ class _ToolLoopModelResult:
     selected: "AISelectedModel"
     attempts: tuple[ModelAttempt, ...]
     finish_reason: str
-
-
-def _repair_tool_message_history(
-    messages: tuple[AIModelMessage, ...],
-    *,
-    loop_state: ToolLoopState,
-) -> tuple[AIModelMessage, ...]:
-    """Return provider-valid assistant/tool message history."""
-
-    tool_results_by_id = {
-        message.tool_call_id: message
-        for message in messages
-        if message.role == "tool" and message.tool_call_id
-    }
-    referenced_call_ids = {
-        tool_call.tool_call_id
-        for message in messages
-        if message.role == "assistant"
-        for tool_call in message.tool_calls
-    }
-    orphan_count = sum(
-        1
-        for message in messages
-        if message.role == "tool" and message.tool_call_id not in referenced_call_ids
-    )
-    loop_state.chain_repair_orphans += orphan_count
-
-    repaired: list[AIModelMessage] = []
-    for message in messages:
-        if message.role == "tool":
-            continue
-
-        repaired.append(message)
-        if message.role != "assistant" or not message.tool_calls:
-            continue
-
-        for tool_call in message.tool_calls:
-            tool_result = tool_results_by_id.get(tool_call.tool_call_id)
-            if tool_result is not None:
-                repaired.append(tool_result)
-                continue
-            tool_name = function_name_to_tool_name(tool_call.name)
-            loop_state.chain_repair_placeholders += 1
-            repaired.append(
-                AIModelMessage(
-                    role="tool",
-                    content=f"- [{tool_name}] skipped: missing tool observation",
-                    tool_call_id=tool_call.tool_call_id,
-                )
-            )
-
-    return tuple(repaired)
-
-
-def _recover_prompt_budget_messages(
-    messages: tuple[AIModelMessage, ...],
-) -> tuple[tuple[AIModelMessage, ...], int]:
-    """Shrink model-visible history for one context-pressure retry."""
-
-    compacted = 0
-    recovered: list[AIModelMessage] = []
-    for index, message in enumerate(messages):
-        recent_start = max(len(messages) - RECOVERY_RECENT_MESSAGE_COUNT, 0)
-        should_compact = message.role == "tool" or (
-            index < recent_start
-            and len(message.content) > RECOVERY_OLDER_MESSAGE_CHAR_LIMIT
-        )
-        if should_compact and len(message.content) > RECOVERY_OBSERVATION_CHAR_LIMIT:
-            safe = build_prompt_safe_observation(
-                message.content,
-                char_limit=RECOVERY_OBSERVATION_CHAR_LIMIT,
-            )
-            recovered.append(
-                AIModelMessage(
-                    role=message.role,
-                    content=safe.content,
-                    tool_call_id=message.tool_call_id,
-                    tool_calls=message.tool_calls,
-                )
-            )
-            compacted += 1
-            continue
-        recovered.append(message)
-    return tuple(recovered), compacted
-
-
-def _is_context_pressure_error(message: str) -> bool:
-    normalized = message.lower()
-    return any(marker in normalized for marker in _CONTEXT_PRESSURE_MARKERS)
-
-
-def _project_tool_results(
-    tool_calls: tuple["AIModelToolCall", ...],
-    observations: list["AIToolObservationResult | None"],
-) -> tuple[ToolResult, ...]:
-    obs_by_index = dict(enumerate(observations))
-    results: list[ToolResult] = []
-    for index, call in enumerate(tool_calls):
-        obs = obs_by_index.get(index)
-        if obs is None:
-            results.append(
-                ToolResult(
-                    tool_call_id=call.tool_call_id,
-                    name=call.name,
-                    summary=f"- [{call.name}] skipped: execution limit",
-                    ok=False,
-                    error="skipped_execution_limit",
-                )
-            )
-            continue
-        results.append(
-            ToolResult(
-                tool_call_id=call.tool_call_id,
-                name=call.name,
-                summary=obs.summary,
-                ok=obs.status == "success",
-                error=None if obs.status == "success" else obs.status,
-                native_observation=obs,
-            )
-        )
-    return tuple(results)
-
-
-def _completed_observations(
-    observations: list["AIToolObservationResult | None"],
-) -> list["AIToolObservationResult"]:
-    return [observation for observation in observations if observation is not None]
-
-
-def build_prompt_safe_observation(
-    content: str,
-    *,
-    char_limit: int = DEFAULT_OBSERVATION_CHAR_LIMIT,
-) -> PromptSafeObservation:
-    """Return the model-visible preview for one tool observation."""
-
-    normalized = str(content or "")
-    original_length = len(normalized)
-    if char_limit <= 0 or original_length <= char_limit:
-        return PromptSafeObservation(
-            content=normalized,
-            truncated=False,
-            original_length=original_length,
-        )
-
-    marker = "\n[truncated]"
-    keep = max(char_limit - len(marker), 0)
-    return PromptSafeObservation(
-        content=f"{normalized[:keep].rstrip()}{marker}",
-        truncated=True,
-        original_length=original_length,
-    )
-
-
-def _summarize_arguments(arguments: Any) -> str:
-    if not arguments:
-        return "{}"
-    text = str(arguments)
-    if len(text) <= ARGUMENT_SUMMARY_CHAR_LIMIT:
-        return text
-    return f"{text[: ARGUMENT_SUMMARY_CHAR_LIMIT - 3].rstrip()}..."
 
 
 def _dedupe_fallbacks(
