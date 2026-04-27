@@ -30,10 +30,8 @@ from apeiria.app.ai.pipeline.composer import (
     compose_pre_tool_reply_prompt,
     compose_roleplay_reply_prompt,
 )
-from apeiria.app.ai.pipeline.memory_steps import (
-    load_person_profile_for_prompt,
-    retrieve_memories_for_preview,
-)
+from apeiria.app.ai.pipeline.memory_steps import retrieve_memories_for_preview
+from apeiria.app.ai.pipeline.person_profile_steps import load_person_profile_for_prompt
 from apeiria.app.ai.pipeline.relationship_steps import (
     build_relationship_target,
     load_relationship_context,

@@ -10,8 +10,10 @@ from apeiria.ai.memory import (
     AIMemoryQuery,
     ai_memory_service,
 )
-from apeiria.ai.person import ai_person_profile_service
 from apeiria.app.ai.pipeline.memory_extraction_steps import extract_memory_from_message
+from apeiria.app.ai.pipeline.person_profile_steps import (
+    ingest_person_profile_from_memory,
+)
 from apeiria.conversation.identity import build_participant_subject_id
 
 if TYPE_CHECKING:
@@ -172,23 +174,6 @@ async def recall_memories(
     return recalled
 
 
-async def load_person_profile_for_prompt(
-    *,
-    identity: "ChatSessionIdentity",
-    user_id: str,
-) -> tuple[str, ...]:
-    """Load prompt-ready person profile lines for the active user."""
-
-    profile = await ai_person_profile_service.build_prompt_profile(
-        platform=identity.platform,
-        user_id=identity.subject_id or user_id,
-        group_id=identity.scene_id if identity.scene_type == "group" else None,
-    )
-    if profile is None:
-        return ()
-    return profile.prompt_lines
-
-
 async def retrieve_memories_for_preview(
     *,
     identity: "ChatSessionIdentity",
@@ -298,9 +283,9 @@ async def store_extracted_memories(
         existing_memories=tuple(existing_memories),
     )
     candidates = extraction_result.candidates
-    await ai_person_profile_service.ingest_message(
-        platform=identity.platform,
-        user_id=identity.subject_id or user_id,
+    await ingest_person_profile_from_memory(
+        identity=identity,
+        user_id=user_id,
         source_message_id=source_message_id,
         candidates=tuple(candidates),
         self_introduction_name=extraction_result.self_introduction_name,

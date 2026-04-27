@@ -7,10 +7,8 @@ from typing import TYPE_CHECKING
 
 from apeiria.ai.tools import ai_tool_service
 from apeiria.app.ai.pipeline.context_window_steps import build_and_store_context_window
-from apeiria.app.ai.pipeline.memory_steps import (
-    load_person_profile_for_prompt,
-    recall_memories,
-)
+from apeiria.app.ai.pipeline.memory_steps import recall_memories
+from apeiria.app.ai.pipeline.person_profile_steps import load_person_profile_for_prompt
 from apeiria.app.ai.pipeline.persona_steps import (
     build_model_binding_target,
     load_persona_bundle,
