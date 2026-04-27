@@ -42,6 +42,18 @@ async def select_pipeline_model(
     )
 
 
+def build_no_model_diagnostic(
+    *,
+    trace_id: str,
+    session_id: str,
+    task_class: "AIModelTaskClass",
+) -> str:
+    return (
+        f"AI trace {trace_id} skipped reply: no model selected for {task_class} "
+        f"in session {session_id}"
+    )
+
+
 async def safe_generate_model(
     request: GenerationRequest,
 ) -> "AIModelGenerateResponse | None":

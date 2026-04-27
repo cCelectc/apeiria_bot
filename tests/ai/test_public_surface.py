@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import asyncio
 import importlib
 import sys
+from types import SimpleNamespace
+from typing import Any
 
 import pytest
 
@@ -71,16 +74,25 @@ def test_apeiria_ai_no_longer_re_exports_conversation_core() -> None:
     assert not hasattr(module, "reply_strategy_service")
 
 
-def test_ai_service_status_reports_active_runtime() -> None:
-    module = importlib.import_module("apeiria.ai.service")
-    status = module.ai_service.get_status()
-    expected_summary = (
-        "AI plugin is active across runtime messaging, memory, tools, "
-        "admin, and session-read surfaces."
-    )
+class _ModelGatewayStub:
+    async def select_model(self, *, query: object, target: object | None) -> Any:
+        del query, target
+        return SimpleNamespace(
+            source=SimpleNamespace(source_id="source-public-surface"),
+            profile=SimpleNamespace(model_id="model-public-surface"),
+            resolved_model_name="gpt-public-surface",
+        )
 
-    assert status.phase == "runtime_active"
-    assert status.summary == expected_summary
+
+def test_ai_service_status_reports_model_readiness() -> None:
+    module = importlib.import_module("apeiria.ai.service")
+    service = module.AIService(model_gateway=_ModelGatewayStub())
+
+    status = asyncio.run(service.get_status())
+
+    assert status.phase == "runtime_ready"
+    assert status.ready is True
+    assert "source-public-surface:gpt-public-surface" in status.summary
 
 
 @pytest.mark.parametrize(

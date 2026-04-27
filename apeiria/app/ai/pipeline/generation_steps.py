@@ -28,6 +28,7 @@ from apeiria.app.ai.pipeline.delivery_steps import (
 from apeiria.app.ai.pipeline.message_builder import build_chat_messages
 from apeiria.app.ai.pipeline.model_steps import (
     GenerationRequest,
+    build_no_model_diagnostic,
     safe_generate_model,
     select_pipeline_model,
 )
@@ -111,9 +112,11 @@ async def prepare_generation(
     )
     if selected is None:
         logger.debug(
-            "AI trace {} skipped reply: no model selected for session {}",
-            trace_id,
-            identity.session_id,
+            build_no_model_diagnostic(
+                trace_id=trace_id,
+                session_id=identity.session_id,
+                task_class=pre_tool_task_class,
+            )
         )
         return None
 

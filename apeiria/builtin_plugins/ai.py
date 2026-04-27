@@ -125,7 +125,7 @@ register_plugin_router("/ai", ai_webui_router, tags=("ai",))
 @ai_status.handle()
 async def handle_ai_status() -> None:
     """Return the current bootstrap status of the AI domain."""
-    status = ai_service.get_status()
+    status = await ai_service.get_status()
     await ai_status.finish(f"{status.phase}: {status.summary}")
 
 
