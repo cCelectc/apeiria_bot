@@ -203,6 +203,14 @@ class AIRuntimeService:
             trace_id=trace_id,
         )
         if not social_decision.should_speak:
+            logger.debug(
+                "AI trace {} skipped reply: strategy_skipped for session {} "
+                "action={} reason_codes={}",
+                trace_id,
+                identity.session_id,
+                social_decision.action,
+                social_decision.reason_codes,
+            )
             return None
         prep = await prepare_generation(
             request=request,

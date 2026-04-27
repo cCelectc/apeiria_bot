@@ -8,11 +8,17 @@ from typing import TYPE_CHECKING
 from nonebot.log import logger
 
 from apeiria.ai.model import AIModelRouteQuery, model_gateway
+from apeiria.app.ai.agent_turn import (
+    AgentModelGenerationRequest,
+    AgentModelGenerationResult,
+    AgentTurnModelRuntime,
+)
 
 if TYPE_CHECKING:
     from apeiria.ai.model import (
         AIModelBindingTarget,
         AIModelGenerateResponse,
+        AIModelMessage,
         AIModelTaskClass,
         AIModelToolDefinition,
         AISelectedModel,
@@ -29,6 +35,10 @@ class GenerationRequest:
     session_id: str
     tools: tuple["AIModelToolDefinition", ...]
     failure_stage: str
+    runtime_mode: str = "message"
+    response_source: str = "direct"
+    messages: tuple["AIModelMessage", ...] = ()
+    fallback_models: tuple["AISelectedModel", ...] = ()
 
 
 async def select_pipeline_model(
@@ -57,17 +67,92 @@ def build_no_model_diagnostic(
 async def safe_generate_model(
     request: GenerationRequest,
 ) -> "AIModelGenerateResponse | None":
-    try:
-        return await model_gateway.generate_native(
-            selected=request.selected,
-            prompt=request.prompt,
-            tools=request.tools,
-        )
-    except Exception as exc:  # noqa: BLE001
-        logger.opt(exception=exc).warning(
-            "AI trace {} {} for session {}",
+    result = await generate_model_turn(request)
+    if result.response is None:
+        logger.warning(
+            "AI trace {} {} for session {} finish_reason={} diagnostic={}",
             request.trace_id,
             request.failure_stage,
             request.session_id,
+            result.turn.finish_reason,
+            result.turn.diagnostic,
         )
-        return None
+    return result.response
+
+
+async def generate_model_turn(
+    request: GenerationRequest,
+) -> AgentModelGenerationResult:
+    """Generate a model response and keep the turn attempt record."""
+
+    runtime = AgentTurnModelRuntime(model_gateway=model_gateway)
+    return await runtime.generate(
+        AgentModelGenerationRequest(
+            trace_id=request.trace_id,
+            session_id=request.session_id,
+            runtime_mode=request.runtime_mode,
+            selected=request.selected,
+            prompt=request.prompt,
+            messages=request.messages,
+            tools=request.tools,
+            response_source=request.response_source,
+            fallback_models=request.fallback_models,
+        )
+    )
+
+
+async def select_pipeline_fallback_models(
+    selected: "AISelectedModel",
+    *,
+    limit: int = 1,
+) -> tuple["AISelectedModel", ...]:
+    """Resolve bounded runtime fallback candidates from the profile chain."""
+
+    if limit <= 0 or selected.profile.fallback_profile_id is None:
+        return ()
+
+    from apeiria.ai.model.catalog.chat import ai_chat_model_service
+    from apeiria.ai.model.routing import AISelectedModel, select_source_for_profile
+    from apeiria.ai.model.routing.profile import ai_model_profile_service
+    from apeiria.ai.model.sources.service import ai_source_service
+
+    profiles = await ai_model_profile_service.list_profiles()
+    enabled_profiles = {
+        profile.profile_id: profile for profile in profiles if profile.enabled
+    }
+    sources = await ai_source_service.list_sources()
+    source_models = await ai_chat_model_service.list_all_models()
+    models_by_id = {model.model_id: model for model in source_models if model.enabled}
+
+    fallback_models: list[AISelectedModel] = []
+    visited = {selected.profile.profile_id}
+    next_profile_id = selected.profile.fallback_profile_id
+    selected_key = (selected.source.source_id, selected.resolved_model_name)
+
+    while next_profile_id and next_profile_id not in visited:
+        visited.add(next_profile_id)
+        profile = enabled_profiles.get(next_profile_id)
+        if profile is None:
+            break
+
+        source_model = models_by_id.get(profile.model_id)
+        if source_model is not None:
+            source = select_source_for_profile(sources, source_model.source_id)
+            candidate_key = (
+                source.source_id if source is not None else None,
+                source_model.model_identifier,
+            )
+            if source is not None and candidate_key != selected_key:
+                fallback_models.append(
+                    AISelectedModel(
+                        source=source,
+                        profile=profile,
+                        resolved_model_name=source_model.model_identifier,
+                    )
+                )
+                if len(fallback_models) >= limit:
+                    break
+
+        next_profile_id = profile.fallback_profile_id
+
+    return tuple(fallback_models)

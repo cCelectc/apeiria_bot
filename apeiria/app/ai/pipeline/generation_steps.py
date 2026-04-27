@@ -14,6 +14,7 @@ from apeiria.ai.tools import (
     ToolGatewayResult,
     tool_gateway,
 )
+from apeiria.app.ai.agent_turn import AgentTurnResult
 from apeiria.app.ai.pipeline.composer import (
     AIRuntimeComposeInput,
     build_runtime_prompt_channels,
@@ -29,7 +30,8 @@ from apeiria.app.ai.pipeline.message_builder import build_chat_messages
 from apeiria.app.ai.pipeline.model_steps import (
     GenerationRequest,
     build_no_model_diagnostic,
-    safe_generate_model,
+    generate_model_turn,
+    select_pipeline_fallback_models,
     select_pipeline_model,
 )
 from apeiria.app.ai.pipeline.persona_steps import build_model_binding_target
@@ -72,6 +74,7 @@ class ReplyGeneration:
     skill_runtime: ToolGatewayResult
     post_tool_task_class: "AIModelTaskClass | None"
     delivery_result: DeliveryOutcome | None
+    turn_result: AgentTurnResult | None = None
 
 
 async def prepare_generation(
@@ -170,7 +173,7 @@ async def _generate_direct(
     trace_id: str,
 ) -> ReplyGeneration:
     """Single-shot generation path (no tool loop)."""
-    response = await safe_generate_model(
+    turn = await generate_model_turn(
         GenerationRequest(
             selected=prep.selected,
             prompt=compose_pre_tool_reply_prompt(
@@ -187,14 +190,19 @@ async def _generate_direct(
             session_id=request.identity.session_id,
             tools=(),
             failure_stage="reply generation failed",
+            runtime_mode=request.runtime_mode,
+            response_source="direct",
+            fallback_models=await select_pipeline_fallback_models(prep.selected),
         )
     )
+    response = turn.response
     if response is None:
         return ReplyGeneration(
             response=None,
             skill_runtime=prep.skill_runtime,
             post_tool_task_class=None,
             delivery_result=None,
+            turn_result=turn.turn,
         )
 
     record_context_usage(
@@ -211,6 +219,7 @@ async def _generate_direct(
         skill_runtime=prep.skill_runtime,
         post_tool_task_class=None,
         delivery_result=delivery_result,
+        turn_result=turn.turn,
     )
 
 
@@ -246,6 +255,7 @@ async def _generate_with_tool_loop(  # noqa: PLR0913
         recalled_memories=tuple(inputs.recalled_memories),
         relationship_context=inputs.relationship_context,
         current_time=current_time,
+        runtime_mode=request.runtime_mode,
         tool_mode=social_decision.tool_mode,
         execution_timeout_seconds=get_ai_plugin_config().tool_execution_timeout_seconds,
     )
@@ -254,8 +264,14 @@ async def _generate_with_tool_loop(  # noqa: PLR0913
         messages=messages,
         tools=prep.skill_runtime.available_tools,
         selected=prep.selected,
+        fallback_models=await select_pipeline_fallback_models(prep.selected),
     )
     response = skill_runtime.final_response
+    turn_result = _build_tool_loop_turn_result(
+        trace_id=trace_id,
+        runtime_mode=request.runtime_mode,
+        skill_runtime=skill_runtime,
+    )
     post_tool_task_class: AIModelTaskClass | None = None
 
     if response is not None:
@@ -281,7 +297,7 @@ async def _generate_with_tool_loop(  # noqa: PLR0913
                     request.user_id,
                 ),
             )
-            refinement = await safe_generate_model(
+            refinement = await generate_model_turn(
                 GenerationRequest(
                     selected=roleplay_selected or prep.selected,
                     prompt=compose_roleplay_reply_prompt(
@@ -307,10 +323,19 @@ async def _generate_with_tool_loop(  # noqa: PLR0913
                     session_id=request.identity.session_id,
                     tools=(),
                     failure_stage="reply generation failed after tool calls",
+                    runtime_mode=request.runtime_mode,
+                    response_source="refinement",
+                    fallback_models=await select_pipeline_fallback_models(
+                        roleplay_selected or prep.selected
+                    ),
                 )
             )
-            if refinement is not None:
-                response = refinement
+            turn_result = _merge_refinement_turn_result(
+                base=turn_result,
+                refinement=refinement.turn,
+            )
+            if refinement.response is not None:
+                response = refinement.response
 
     if response is None:
         return ReplyGeneration(
@@ -318,6 +343,7 @@ async def _generate_with_tool_loop(  # noqa: PLR0913
             skill_runtime=skill_runtime,
             post_tool_task_class=post_tool_task_class,
             delivery_result=None,
+            turn_result=turn_result,
         )
     delivery_result = await deliver_generated_reply(
         request,
@@ -328,6 +354,61 @@ async def _generate_with_tool_loop(  # noqa: PLR0913
         skill_runtime=skill_runtime,
         post_tool_task_class=post_tool_task_class,
         delivery_result=delivery_result,
+        turn_result=turn_result,
+    )
+
+
+def _build_tool_loop_turn_result(
+    *,
+    trace_id: str,
+    runtime_mode: str,
+    skill_runtime: ToolGatewayResult,
+) -> AgentTurnResult:
+    response = skill_runtime.final_response
+    has_reply = response is not None and bool((response.content or "").strip())
+    return AgentTurnResult(
+        trace_id=trace_id,
+        runtime_mode=runtime_mode,
+        status="completed" if has_reply else "failed",
+        finish_reason=skill_runtime.loop_finish_reason,
+        model_attempts=skill_runtime.model_attempts,
+        tool_attempts=skill_runtime.tool_attempts,
+        response=response,
+        response_source="tool_loop",
+        metadata={
+            "tool_observation_count": len(skill_runtime.turns),
+            "tool_message_count": len(skill_runtime.tool_messages),
+        },
+    )
+
+
+def _merge_refinement_turn_result(
+    *,
+    base: AgentTurnResult,
+    refinement: AgentTurnResult,
+) -> AgentTurnResult:
+    response = refinement.response or base.response
+    used_refinement = refinement.response is not None
+    metadata = {
+        **base.metadata,
+        "tool_loop_finish_reason": base.finish_reason,
+        "refinement_finish_reason": refinement.finish_reason,
+    }
+    return AgentTurnResult(
+        trace_id=base.trace_id,
+        runtime_mode=base.runtime_mode,
+        status=refinement.status if used_refinement else base.status,
+        finish_reason=(
+            refinement.finish_reason if used_refinement else base.finish_reason
+        ),
+        model_attempts=(*base.model_attempts, *refinement.model_attempts),
+        tool_attempts=base.tool_attempts,
+        response=response,
+        response_source="refinement" if used_refinement else base.response_source,
+        diagnostic=(
+            None if used_refinement else refinement.diagnostic or base.diagnostic
+        ),
+        metadata=metadata,
     )
 
 

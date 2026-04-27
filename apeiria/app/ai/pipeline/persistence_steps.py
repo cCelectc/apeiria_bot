@@ -8,6 +8,7 @@ from apeiria.app.ai.pipeline.context_window_steps import build_and_store_context
 from apeiria.conversation.service import ChatMessageCreate, chat_session_service
 
 if TYPE_CHECKING:
+    from apeiria.app.ai.agent_turn import AgentTurnResult
     from apeiria.app.ai.pipeline.generation_steps import (
         ReplyGeneration,
         ReplyInputs,
@@ -68,7 +69,45 @@ async def persist_reply(  # noqa: PLR0913
                 "delivery_delivered": delivery.delivered if delivery else None,
                 "delivery_error": delivery.error if delivery else None,
                 "delivery_remote_message_id": None,
+                **_agent_turn_meta(gen.turn_result),
             },
         ),
     )
     await build_and_store_context_window(identity=identity)
+
+
+def _agent_turn_meta(turn: "AgentTurnResult | None") -> dict[str, object]:
+    if turn is None:
+        return {}
+    return {
+        "agent_turn_status": turn.status,
+        "agent_turn_finish_reason": turn.finish_reason,
+        "agent_turn_response_source": turn.response_source,
+        "agent_turn_model_attempts": [
+            {
+                "index": attempt.attempt_index,
+                "model_ref": attempt.model_ref,
+                "status": attempt.status,
+                "response_source": attempt.response_source,
+                "reason": attempt.reason,
+                "diagnostic": attempt.diagnostic,
+            }
+            for attempt in turn.model_attempts
+        ],
+        "agent_turn_tool_attempts": [
+            {
+                "tool_call_id": attempt.tool_call_id,
+                "tool_name": attempt.tool_name,
+                "status": attempt.status,
+                "arguments_summary": attempt.arguments_summary,
+                "repetition_count": attempt.repetition_count,
+                "repeated": attempt.repeated,
+                "diagnostic": attempt.diagnostic,
+                "observation": attempt.observation.content,
+                "observation_truncated": attempt.observation.truncated,
+                "observation_original_length": attempt.observation.original_length,
+            }
+            for attempt in turn.tool_attempts
+        ],
+        "agent_turn_metadata": turn.metadata,
+    }
