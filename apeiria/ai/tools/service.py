@@ -17,10 +17,6 @@ from apeiria.ai.tools.debug import (
     AIToolIntentPreview,
 )
 from apeiria.ai.tools.execution_repository import AIToolExecutionRepository
-from apeiria.ai.tools.function_calling import (
-    build_function_tools,
-    build_intents_from_tool_calls,
-)
 from apeiria.ai.tools.models import (
     AIToolExecutionContext,
     AIToolExecutionView,
@@ -31,9 +27,9 @@ from apeiria.ai.tools.models import (
     AIToolSpec,
     AIToolTurnCreateInput,
 )
+from apeiria.ai.tools.planning import AIToolIntentPlanner
 from apeiria.ai.tools.policy import evaluate_tool_policy
 from apeiria.ai.tools.registry import AIToolRegistry
-from apeiria.ai.tools.selection import build_tool_planning_prompt
 
 MAX_CONSECUTIVE_FAILURES = 3
 
@@ -50,10 +46,12 @@ class AIToolService:
         self,
         *,
         execution_repository: AIToolExecutionRepository | None = None,
+        intent_planner: AIToolIntentPlanner | None = None,
     ) -> None:
         self.registry = AIToolRegistry()
         self.capability_bridge = AINoneBotSkillBridge()
         self._execution_repository = execution_repository or AIToolExecutionRepository()
+        self._intent_planner = intent_planner or AIToolIntentPlanner()
         register_builtin_capabilities(self.capability_bridge)
         self._load_declarative_tools()
 
@@ -142,38 +140,14 @@ class AIToolService:
         recalled_memory_contents: tuple[str, ...],
         relationship_context: str | None,
     ) -> list[AIToolIntent]:
-        from apeiria.ai.model.gateway import model_gateway
-        from apeiria.ai.model.models import AIModelRouteQuery
-
         allowed_tools = self.list_allowed_tools(policy)
-        if not allowed_tools:
-            return []
-
-        selected = await model_gateway.select_model(
-            query=AIModelRouteQuery(task_class="tool_orchestration"),
+        return await self._intent_planner.plan_tool_intents(
+            message_text=message_text,
+            allowed_tools=allowed_tools,
+            recalled_memory_ids=recalled_memory_ids,
+            recalled_memory_contents=recalled_memory_contents,
+            relationship_context=relationship_context,
         )
-        if selected is None:
-            return []
-
-        response = await model_gateway.generate_native(
-            selected=selected,
-            prompt=build_tool_planning_prompt(
-                message_text=message_text,
-                recalled_memory_ids=recalled_memory_ids,
-                recalled_memory_contents=recalled_memory_contents,
-                relationship_context=relationship_context,
-            ),
-            tools=build_function_tools(allowed_tools),
-        )
-        if response is None:
-            return []
-
-        return [
-            intent
-            for intent in build_intents_from_tool_calls(response.tool_calls)
-            if intent.tool_name != "memory.update"
-            or _memory_update_is_recalled(intent, recalled_memory_ids)
-        ]
 
     # ------------------------------------------------------------------
     # Unified tool execution with death-spiral detection
@@ -436,19 +410,6 @@ class AIToolService:
 
 
 ai_tool_service = AIToolService()
-
-
-def _memory_update_is_recalled(
-    intent: AIToolIntent,
-    recalled_memory_ids: tuple[str, ...],
-) -> bool:
-    if isinstance(intent.input_payload, dict):
-        memory_id = intent.input_payload.get("memory_id")
-    else:
-        memory_id = getattr(intent.input_payload, "memory_id", None)
-    if not isinstance(memory_id, str):
-        return True
-    return memory_id in recalled_memory_ids
 
 
 def _to_jsonable_payload(payload: Any) -> Any:
