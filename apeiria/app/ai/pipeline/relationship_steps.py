@@ -1,4 +1,4 @@
-"""Runtime relationship steps extracted from the orchestration compatibility layer."""
+"""Runtime relationship steps for reply orchestration."""
 
 from __future__ import annotations
 

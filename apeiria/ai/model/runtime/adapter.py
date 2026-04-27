@@ -56,7 +56,7 @@ class AIModelGenerateRequest:
     """Unified text generation request for Apeiria AI services.
 
     When ``messages`` is non-empty, adapters use it directly (chat mode).
-    When empty, ``prompt`` is wrapped as a single user message (legacy mode).
+    When empty, ``prompt`` is wrapped as a single user message (plain-prompt mode).
     """
 
     source_id: str

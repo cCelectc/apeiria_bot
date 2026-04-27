@@ -1,4 +1,4 @@
-"""Runtime-facing model gateway wrapping the AI compat profile."""
+"""Runtime-facing model gateway for AI services."""
 
 from __future__ import annotations
 

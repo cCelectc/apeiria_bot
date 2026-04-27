@@ -1,4 +1,4 @@
-"""Runtime memory steps extracted from the orchestration compatibility layer."""
+"""Runtime memory steps for reply orchestration."""
 
 from __future__ import annotations
 
