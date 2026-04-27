@@ -29,19 +29,21 @@ async def serve_chat_websocket(
 
     try:
         while True:
-            frame = chat_gateway_service.parse_frame(await websocket.receive_json())
+            try:
+                frame = chat_gateway_service.parse_frame(await websocket.receive_json())
+            except ValidationError as exc:
+                await web_chat_service.emit_error(
+                    connection,
+                    code="INVALID_FRAME",
+                    message=f"{t('web_ui.chat.invalid_frame')}: {exc}",
+                    type_="system.error",
+                )
+                continue
             await chat_gateway_service.handle_frame(
                 connection,
                 frame,
                 token_verifier,
             )
-    except ValidationError as exc:
-        await web_chat_service.emit_error(
-            connection,
-            code="INVALID_FRAME",
-            message=f"{t('web_ui.chat.invalid_frame')}: {exc}",
-            type_="system.error",
-        )
     except WebSocketDisconnect:
         if connection.active_session_id:
             web_chat_service.close_session(connection.active_session_id)

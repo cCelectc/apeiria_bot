@@ -782,6 +782,9 @@
         appendMessage(event.payload as MessageReceivePayload)
         break
       }
+      case 'message.ack': {
+        break
+      }
       case 'message.error':
       case 'auth.error':
       case 'system.error': {
@@ -809,11 +812,15 @@
     if (segments.length === 0) return
     const messageId = `cli_${Date.now()}`
     if (session.value) {
-      client.sendMessage({
+      const result = client.sendMessage({
         session_id: session.value.session_id,
         message_id: messageId,
         segments,
       })
+      if (!result.sent) {
+        appendSimpleMessage('error', t('chat.sendUnavailable'))
+        return
+      }
     } else {
       autoCreatingSession.value = true
       pendingSessionMessage.value = {

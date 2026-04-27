@@ -4,7 +4,7 @@ import asyncio
 from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING
 
-from fastapi import HTTPException
+from fastapi import HTTPException, WebSocketDisconnect
 
 from apeiria.access.principal import AuthSession, Principal, PrincipalRole
 from apeiria.app.chat.connection import WebChatConnection
@@ -23,6 +23,7 @@ from apeiria.app.chat.protocol import (
 from apeiria.app.chat.session import ChatSession
 from apeiria.app.chat.state import WebChatStateManager
 from apeiria.app.chat.store import WebChatStore
+from apeiria.app.chat.transport import serve_chat_websocket
 
 if TYPE_CHECKING:
     import pytest
@@ -70,6 +71,28 @@ class _ConnectionStub(WebChatConnection):
         request_id: str | None = None,
     ) -> None:
         self.sent_envelopes.append((type_, payload, request_id))
+
+
+class _WebSocketStub:
+    def __init__(self, frames: list[object]) -> None:
+        self.frames = frames
+        self.accepted = False
+        self.sent_json: list[object] = []
+        self.closed: list[tuple[int, str | None]] = []
+
+    async def accept(self) -> None:
+        self.accepted = True
+
+    async def receive_json(self) -> object:
+        if not self.frames:
+            raise WebSocketDisconnect
+        return self.frames.pop(0)
+
+    async def send_json(self, payload: object) -> None:
+        self.sent_json.append(payload)
+
+    async def close(self, code: int = 1000, reason: str | None = None) -> None:
+        self.closed.append((code, reason))
 
 
 def _principal() -> WebUIPrincipal:
@@ -373,3 +396,36 @@ def test_auth_hello_emits_session_snapshot(
     assert connection.sent_envelopes[-1][0] == "session.snapshot"
     assert connection.sent_envelopes[-1][1] == snapshot
     assert connection.sent_envelopes[-1][2] == "req-auth"
+
+
+def test_websocket_invalid_frame_emits_error_and_continues(
+    monkeypatch: "pytest.MonkeyPatch",
+) -> None:
+    websocket = _WebSocketStub(
+        [
+            {"version": "1.0", "payload": {}},
+            {"version": "1.0", "type": "capabilities.request", "payload": {}},
+        ]
+    )
+    handled_frames: list[str] = []
+
+    async def handle_frame(
+        _connection: WebChatConnection,
+        frame: ChatEnvelope,
+        _token_verifier: object,
+    ) -> None:
+        handled_frames.append(frame.type)
+
+    monkeypatch.setattr(
+        "apeiria.app.chat.transport.chat_gateway_service.handle_frame",
+        handle_frame,
+    )
+
+    result = asyncio.run(serve_chat_websocket(websocket, _token_verifier))
+
+    assert result is None
+    assert websocket.accepted is True
+    assert websocket.closed == []
+    assert handled_frames == ["capabilities.request"]
+    assert websocket.sent_json[0]["type"] == "system.error"
+    assert websocket.sent_json[0]["payload"]["code"] == "INVALID_FRAME"

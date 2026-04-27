@@ -1,4 +1,4 @@
-import type { ChatClient } from '@/api/chat'
+import type { ChatClient, ChatSendResult } from '@/api/chat'
 import type {
   CapabilitiesResponsePayload,
   ChatCapabilities,
@@ -62,6 +62,14 @@ export function useChatSessionState (
     })
   }
 
+  function handleSendResult (result: ChatSendResult) {
+    if (result.sent) {
+      return true
+    }
+    appendSimpleMessage('error', options.t('chat.sendUnavailable'))
+    return false
+  }
+
   function startReplyToMessage (message: MessageReceivePayload) {
     pendingReply.value = message
     options.focusComposerEnd()
@@ -95,8 +103,8 @@ export function useChatSessionState (
     draftSession.value = true
     autoCreatingSession.value = false
     pendingSessionMessage.value = null
-    if (connected.value && session.value) {
-      client.closeSession()
+    if (connected.value && session.value && !handleSendResult(client.closeSession())) {
+      return
     }
     resetActiveSessionState()
   }
@@ -109,9 +117,9 @@ export function useChatSessionState (
       return
     }
     draftSession.value = false
-    client.selectSession({
+    handleSendResult(client.selectSession({
       session_id: target.session.session_id,
-    })
+    }))
   }
 
   function deleteSessionItem (target: SessionListItem) {
@@ -122,7 +130,7 @@ export function useChatSessionState (
     if (!confirmed) {
       return
     }
-    client.deleteSession({ session_id: target.session.session_id })
+    handleSendResult(client.deleteSession({ session_id: target.session.session_id }))
   }
 
   function applySessionSnapshot (payload: SessionSnapshotPayload) {
@@ -148,18 +156,18 @@ export function useChatSessionState (
     if (pendingSessionMessage.value && payload.active_session) {
       const pending = pendingSessionMessage.value
       pendingSessionMessage.value = null
-      client.sendMessage({
+      handleSendResult(client.sendMessage({
         session_id: payload.active_session.session_id,
         message_id: pending.message_id,
         segments: pending.segments,
-      })
+      }))
     }
   }
 
   function applyAuthOk (payload: { principal: WebUIPrincipal }) {
     authenticated.value = true
     principal.value = payload.principal
-    client.requestCapabilities()
+    handleSendResult(client.requestCapabilities())
   }
 
   function applyCapabilities (payload: CapabilitiesResponsePayload) {
@@ -174,7 +182,11 @@ export function useChatSessionState (
     const payload: SessionCreatePayload = {
       target_user_id: options.createSessionKey(),
     }
-    client.createSession(payload)
+    if (!handleSendResult(client.createSession(payload))) {
+      draftSession.value = false
+      autoCreatingSession.value = false
+      pendingSessionMessage.value = null
+    }
   }
 
   return {

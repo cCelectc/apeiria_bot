@@ -10,6 +10,12 @@ import type {
 type EnvelopeHandler = (event: ChatEnvelope) => void
 type VoidHandler = () => void
 
+export interface ChatSendResult {
+  requestId: string
+  sent: boolean
+  reason?: 'not_connected'
+}
+
 function makeRequestId (prefix: string) {
   if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
     return `${prefix}_${crypto.randomUUID()}`
@@ -81,14 +87,25 @@ export class ChatClient {
     return () => this.closeHandlers.delete(handler)
   }
 
-  send<T>(type: string, payload: T, requestId = makeRequestId(type.replace('.', '_'))) {
-    this.ws?.send(JSON.stringify({
+  send<T>(type: string, payload: T, requestId = makeRequestId(type.replace('.', '_'))): ChatSendResult {
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+      return {
+        requestId,
+        sent: false,
+        reason: 'not_connected',
+      }
+    }
+
+    this.ws.send(JSON.stringify({
       version: '1.0',
       type,
       request_id: requestId,
       payload,
     }))
-    return requestId
+    return {
+      requestId,
+      sent: true,
+    }
   }
 
   authenticate (token: string) {

@@ -976,6 +976,7 @@ const enUS = {
     systemFallback: 'System message',
     tokenMissing: 'Login token not found. Please sign in again.',
     connectionClosed: 'Connection closed.',
+    sendUnavailable: 'Connection is not ready. Reconnect and try again.',
   },
 } as const
 
