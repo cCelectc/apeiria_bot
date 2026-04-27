@@ -5,25 +5,21 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from nonebot.log import logger
-
 from apeiria.ai.memory import (
-    AIMemoryExtractionResult,
     AIMemoryLayer,
     AIMemoryQuery,
-    AIMessageSentiment,
     ai_memory_service,
 )
-from apeiria.ai.memory.extraction import (
-    build_memory_extraction_prompt,
-    parse_memory_extraction_response,
-)
-from apeiria.ai.model import AIModelRouteQuery, model_gateway
 from apeiria.ai.person import ai_person_profile_service
+from apeiria.app.ai.pipeline.memory_extraction_steps import extract_memory_from_message
 from apeiria.conversation.identity import build_participant_subject_id
 
 if TYPE_CHECKING:
-    from apeiria.ai.memory import AIMemoryAnchorType, AIMemoryDefinition
+    from apeiria.ai.memory import (
+        AIMemoryAnchorType,
+        AIMemoryDefinition,
+        AIMemoryExtractionResult,
+    )
     from apeiria.conversation.models import ChatSessionIdentity
 
 
@@ -270,13 +266,6 @@ def _build_knowledge_targets(
     ]
 
 
-_DEFAULT_EXTRACTION_RESULT = AIMemoryExtractionResult(
-    candidates=[],
-    sentiment=AIMessageSentiment(polarity="neutral", intensity=0.0),
-    self_introduction_name=None,
-)
-
-
 async def store_extracted_memories(
     *,
     identity: "ChatSessionIdentity",
@@ -304,25 +293,10 @@ async def store_extracted_memories(
             seen_memory_ids.add(row.memory_id)
             existing_memories.append(row)
 
-    extraction_result = _DEFAULT_EXTRACTION_RESULT
-    selected = await model_gateway.select_model(
-        query=AIModelRouteQuery(task_class="memory_extraction"),
+    extraction_result = await extract_memory_from_message(
+        message_text=message_text,
+        existing_memories=tuple(existing_memories),
     )
-    if selected is not None:
-        try:
-            response = await model_gateway.generate_native(
-                selected=selected,
-                prompt=build_memory_extraction_prompt(
-                    message_text,
-                    existing_memories=tuple(existing_memories),
-                ),
-            )
-        except Exception as exc:  # noqa: BLE001
-            logger.opt(exception=exc).warning("AI memory extraction failed")
-            response = None
-        if response is not None:
-            extraction_result = parse_memory_extraction_response(response.content)
-
     candidates = extraction_result.candidates
     await ai_person_profile_service.ingest_message(
         platform=identity.platform,
