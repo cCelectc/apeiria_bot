@@ -5,9 +5,11 @@
   "version": "0.0.0",
   "scripts": {
     "dev": "vite",
-    "build": "run-p type-check \"build-only {@}\" --",
+    "build": "run-s build-assets write-build-meta",
+    "build-assets": "run-p type-check build-only",
     "preview": "vite preview",
     "build-only": "vite build",
+    "write-build-meta": "python ../scripts/write-webui-build-meta.py --project-root ..",
     "lint": "eslint .",
     "lint:fix-dry-run": "eslint . --fix-dry-run",
     "type-check": "vue-tsc --build --force"
