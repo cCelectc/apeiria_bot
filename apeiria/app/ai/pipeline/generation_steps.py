@@ -8,7 +8,6 @@ from typing import TYPE_CHECKING
 from nonebot.log import logger
 
 from apeiria.ai.config import get_ai_plugin_config
-from apeiria.ai.model import AIModelRouteQuery, model_gateway
 from apeiria.ai.skills import ai_skill_service
 from apeiria.ai.tools import (
     ToolGatewayRequest,
@@ -35,6 +34,11 @@ from apeiria.app.ai.pipeline.memory_steps import (
     recall_memories,
 )
 from apeiria.app.ai.pipeline.message_builder import build_chat_messages
+from apeiria.app.ai.pipeline.model_steps import (
+    GenerationRequest,
+    safe_generate_model,
+    select_pipeline_model,
+)
 from apeiria.app.ai.pipeline.persona_steps import (
     build_model_binding_target,
     load_persona_bundle,
@@ -62,7 +66,7 @@ if TYPE_CHECKING:
     from apeiria.ai.model import (
         AIModelBindingTarget,
         AIModelGenerateResponse,
-        AIModelToolDefinition,
+        AIModelTaskClass,
         AISelectedModel,
     )
     from apeiria.ai.tools import AIToolPolicy, AIToolSpec
@@ -98,7 +102,7 @@ class ReplyPreparation:
     skill_runtime: ToolGatewayResult
     selected: "AISelectedModel"
     skill_activation: str | None
-    pre_tool_task_class: str
+    pre_tool_task_class: "AIModelTaskClass"
 
 
 @dataclass(frozen=True)
@@ -107,20 +111,8 @@ class ReplyGeneration:
 
     response: "AIModelGenerateResponse | None"
     skill_runtime: ToolGatewayResult
-    post_tool_task_class: str | None
+    post_tool_task_class: "AIModelTaskClass | None"
     delivery_result: DeliveryOutcome | None
-
-
-@dataclass(frozen=True)
-class _GenerationRequest:
-    """One model generation request with trace metadata."""
-
-    selected: "AISelectedModel"
-    prompt: str
-    trace_id: str
-    session_id: str
-    tools: tuple["AIModelToolDefinition", ...]
-    failure_stage: str
 
 
 async def gather_reply_inputs(
@@ -214,8 +206,8 @@ async def prepare_generation(
     pre_tool_task_class = select_pre_tool_reply_task_class(
         has_tools=bool(skill_runtime.available_tools),
     )
-    selected = await model_gateway.select_model(
-        query=AIModelRouteQuery(task_class=pre_tool_task_class),
+    selected = await select_pipeline_model(
+        task_class=pre_tool_task_class,
         target=inputs.model_target,
     )
     if selected is None:
@@ -276,8 +268,8 @@ async def _generate_direct(
     trace_id: str,
 ) -> ReplyGeneration:
     """Single-shot generation path (no tool loop)."""
-    response = await _safe_generate(
-        _GenerationRequest(
+    response = await safe_generate_model(
+        GenerationRequest(
             selected=prep.selected,
             prompt=compose_pre_tool_reply_prompt(
                 _build_compose_input(
@@ -362,7 +354,7 @@ async def _generate_with_tool_loop(  # noqa: PLR0913
         selected=prep.selected,
     )
     response = skill_runtime.final_response
-    post_tool_task_class: str | None = None
+    post_tool_task_class: AIModelTaskClass | None = None
 
     if response is not None:
         record_context_usage(
@@ -380,15 +372,15 @@ async def _generate_with_tool_loop(  # noqa: PLR0913
         post_tool_task_class = select_post_tool_reply_task_class()
 
         if response is not None and response.content.strip():
-            roleplay_selected = await model_gateway.select_model(
-                query=AIModelRouteQuery(task_class=post_tool_task_class),
+            roleplay_selected = await select_pipeline_model(
+                task_class=post_tool_task_class,
                 target=build_model_binding_target(
                     request.identity,
                     request.user_id,
                 ),
             )
-            refinement = await _safe_generate(
-                _GenerationRequest(
+            refinement = await safe_generate_model(
+                GenerationRequest(
                     selected=roleplay_selected or prep.selected,
                     prompt=compose_roleplay_reply_prompt(
                         AIRuntimeComposeInput(
@@ -475,22 +467,3 @@ def _build_future_task_context(
             f"status={task.status}",
         )
     )
-
-
-async def _safe_generate(
-    request: _GenerationRequest,
-) -> "AIModelGenerateResponse | None":
-    try:
-        return await model_gateway.generate_native(
-            selected=request.selected,
-            prompt=request.prompt,
-            tools=request.tools,
-        )
-    except Exception as exc:  # noqa: BLE001
-        logger.opt(exception=exc).warning(
-            "AI trace {} {} for session {}",
-            request.trace_id,
-            request.failure_stage,
-            request.session_id,
-        )
-        return None
