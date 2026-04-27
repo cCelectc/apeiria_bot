@@ -163,3 +163,6 @@ apeiria.drivers.toml
 **/dist/
 **/node_modules/
 **/.vite/
+
+# Local OpenSpec workflow artifacts
+openspec/
