@@ -28,6 +28,92 @@ export function estimateImageSize (segment: ImageSegment) {
   return ''
 }
 
+export function useProtectedChatAssets (options: {
+  imageAlt: () => string
+  openImagePreviewSource: (src: string, alt: string, sizeText?: string) => void
+}) {
+  const protectedAssetUrls = ref<Record<string, string>>({})
+  const loadingProtectedAssets = new Set<string>()
+
+  async function ensureProtectedAssetUrl (rawUrl: string) {
+    if (protectedAssetUrls.value[rawUrl] || loadingProtectedAssets.has(rawUrl)) {
+      return
+    }
+    const token = localStorage.getItem('token')
+    if (!token) {
+      return
+    }
+
+    loadingProtectedAssets.add(rawUrl)
+    try {
+      const response = await fetch(rawUrl, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      })
+      if (!response.ok) {
+        throw new Error(`Failed to load asset: ${response.status}`)
+      }
+      const blob = await response.blob()
+      protectedAssetUrls.value = {
+        ...protectedAssetUrls.value,
+        [rawUrl]: URL.createObjectURL(blob),
+      }
+    } catch {
+      protectedAssetUrls.value = { ...protectedAssetUrls.value }
+    } finally {
+      loadingProtectedAssets.delete(rawUrl)
+    }
+  }
+
+  function revokeProtectedAssetUrls () {
+    for (const url of Object.values(protectedAssetUrls.value)) {
+      URL.revokeObjectURL(url)
+    }
+    protectedAssetUrls.value = {}
+    loadingProtectedAssets.clear()
+  }
+
+  function resolveImageUrl (segment: ImageSegment) {
+    if (segment.base64) {
+      return `data:${segment.mime || 'image/png'};base64,${segment.base64}`
+    }
+    const rawUrl = segment.url
+    if (!rawUrl) {
+      return ''
+    }
+    if (!rawUrl.startsWith('/api/chat/assets/')) {
+      return rawUrl
+    }
+    void ensureProtectedAssetUrl(rawUrl)
+    return protectedAssetUrls.value[rawUrl] || ''
+  }
+
+  async function openImagePreview (segment: ImageSegment) {
+    let src = resolveImageUrl(segment)
+    if (!src && segment.url?.startsWith('/api/chat/assets/')) {
+      await ensureProtectedAssetUrl(segment.url)
+      src = protectedAssetUrls.value[segment.url] || ''
+    }
+    if (!src) {
+      return
+    }
+    options.openImagePreviewSource(
+      src,
+      segment.alt || options.imageAlt(),
+      estimateImageSize(segment),
+    )
+  }
+
+  return {
+    ensureProtectedAssetUrl,
+    openImagePreview,
+    protectedAssetUrls,
+    resolveImageUrl,
+    revokeProtectedAssetUrls,
+  }
+}
+
 export function useChatImagePreview () {
   const imagePreviewVisible = ref(false)
   const imagePreviewSrc = ref('')

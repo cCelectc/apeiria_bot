@@ -442,8 +442,26 @@
   import { getErrorMessage } from '@/api/client'
   import { getPlugins } from '@/api/plugins'
   import { useNoticeStore } from '@/stores/notice'
-
-  type Perspective = 'plugins' | 'users' | 'rules'
+  import {
+    pluginModuleOptions as buildPluginModuleOptions,
+    userEntries as buildUserEntries,
+    pluginRuleCount as countPluginRules,
+    filteredRules as filterRules,
+    visiblePlugins as filterVisiblePlugins,
+    visibleUserEntries as filterVisibleUserEntries,
+    manageablePlugins as getManageablePlugins,
+    ruleKey,
+  } from '@/views/permissions/filters'
+  import {
+    accessModeOptions as buildAccessModeOptions,
+    effectOptions as buildEffectOptions,
+    perspectiveItems as buildPerspectiveItems,
+    ruleEffectOptions as buildRuleEffectOptions,
+    ruleHeaders as buildRuleHeaders,
+    subjectTypeOptions as buildSubjectTypeOptions,
+    levelOptions,
+    type Perspective,
+  } from '@/views/permissions/options'
 
   const route = useRoute()
   const { t } = useI18n()
@@ -480,76 +498,38 @@
     note: '',
   })
 
-  const levelOptions = [0, 1, 2, 3, 4, 5, 6]
+  const perspectiveItems = computed(() =>
+    buildPerspectiveItems({
+      plugins: plugins.value.length,
+      rules: rules.value.length,
+      users: userEntries.value.length,
+    }, t),
+  )
 
-  const perspectiveItems = computed<
-    Array<{ value: Perspective, title: string, meta: string }>
-  >(() => [
-    { value: 'plugins', title: t('permissions.pluginsTab'), meta: String(plugins.value.length) },
-    { value: 'users', title: t('permissions.usersTab'), meta: String(userEntries.value.length) },
-    { value: 'rules', title: t('permissions.rulesTab'), meta: String(rules.value.length) },
-  ])
-
-  const ruleHeaders = computed(() => [
-    { title: t('permissions.subjectType'), key: 'subject_type' },
-    { title: t('permissions.subjectId'), key: 'subject_id' },
-    { title: t('permissions.pluginModule'), key: 'plugin_module' },
-    { title: t('permissions.effect'), key: 'effect' },
-    { title: t('permissions.note'), key: 'note' },
-    { title: '', key: 'actions', sortable: false },
-  ])
-
-  const subjectTypeOptions = computed(() => [
-    { title: t('permissions.user'), value: 'user' },
-    { title: t('permissions.group'), value: 'group' },
-  ])
-  const effectOptions = computed(() => [
-    { title: t('permissions.allow'), value: 'allow' },
-    { title: t('permissions.deny'), value: 'deny' },
-  ])
-  const accessModeOptions = computed(() => [
-    { title: t('permissions.accessModeDefaultAllow'), value: 'default_allow' },
-    { title: t('permissions.accessModeDefaultDeny'), value: 'default_deny' },
-  ])
-  const ruleEffectOptions = computed(() => [
-    { title: t('permissions.effectAll'), value: 'all' },
-    { title: t('permissions.allow'), value: 'allow' },
-    { title: t('permissions.deny'), value: 'deny' },
-  ])
+  const ruleHeaders = computed(() => buildRuleHeaders(t))
+  const subjectTypeOptions = computed(() => buildSubjectTypeOptions(t))
+  const effectOptions = computed(() => buildEffectOptions(t))
+  const accessModeOptions = computed(() => buildAccessModeOptions(t))
+  const ruleEffectOptions = computed(() => buildRuleEffectOptions(t))
 
   const manageablePlugins = computed(() =>
-    plugins.value.filter(item => item.kind !== 'core' && !item.is_protected),
+    getManageablePlugins(plugins.value),
   )
 
   const pluginModuleOptions = computed(() =>
-    manageablePlugins.value.map(item => ({
-      title: item.name && item.name !== item.module_name ? `${item.name} (${item.module_name})` : item.module_name,
-      value: item.module_name,
-    })),
+    buildPluginModuleOptions(manageablePlugins.value),
   )
 
-  const visiblePlugins = computed(() => {
-    const keyword = pluginSearch.value.trim().toLowerCase()
-    return manageablePlugins.value.filter(item => {
-      if (!keyword) return true
-      return `${item.name || ''} ${item.module_name}`.toLowerCase().includes(keyword)
-    })
-  })
+  const visiblePlugins = computed(() =>
+    filterVisiblePlugins(manageablePlugins.value, pluginSearch.value),
+  )
 
-  const filteredRules = computed(() => {
-    const keyword = ruleSearch.value.trim().toLowerCase()
-    return rules.value.filter(item => {
-      const matchKeyword = !keyword || [
-        item.subject_type,
-        item.subject_id,
-        item.plugin_module,
-        item.effect,
-        item.note || '',
-      ].some(value => value.toLowerCase().includes(keyword))
-      const matchEffect = ruleEffectFilter.value === 'all' || item.effect === ruleEffectFilter.value
-      return matchKeyword && matchEffect
-    })
-  })
+  const filteredRules = computed(() =>
+    filterRules(rules.value, {
+      effect: ruleEffectFilter.value,
+      search: ruleSearch.value,
+    }),
+  )
 
   const selectedPlugin = computed(() =>
     manageablePlugins.value.find(item => item.module_name === selectedPluginModule.value) || null,
@@ -570,25 +550,11 @@
     selectedPluginRules.value.filter(rule => rule.subject_type === 'group' && rule.effect === 'deny'),
   )
 
-  const userEntries = computed(() => {
-    const fromLevels = users.value.map(item => item.user_id)
-    const fromRules = rules.value.filter(item => item.subject_type === 'user').map(item => item.subject_id)
-    return [...new Set([...fromLevels, ...fromRules])]
-      .filter(Boolean)
-      .map(userId => ({
-        user_id: userId,
-        groups: users.value.filter(item => item.user_id === userId).length,
-        rules: rules.value.filter(item => item.subject_type === 'user' && item.subject_id === userId).length,
-      }))
-  })
+  const userEntries = computed(() => buildUserEntries(users.value, rules.value))
 
-  const visibleUserEntries = computed(() => {
-    const keyword = userSearch.value.trim().toLowerCase()
-    return userEntries.value.filter(item => {
-      if (!keyword) return true
-      return item.user_id.toLowerCase().includes(keyword)
-    })
-  })
+  const visibleUserEntries = computed(() =>
+    filterVisibleUserEntries(userEntries.value, userSearch.value),
+  )
 
   const selectedUserRules = computed(() =>
     rules.value.filter(rule => rule.subject_type === 'user' && rule.subject_id === selectedUserId.value),
@@ -597,12 +563,8 @@
     users.value.filter(item => item.user_id === selectedUserId.value),
   )
 
-  function ruleKey (rule: AccessRuleItem): string {
-    return `${rule.subject_type}:${rule.subject_id}:${rule.plugin_module}`
-  }
-
   function pluginRuleCount (moduleName: string): number {
-    return rules.value.filter(rule => rule.plugin_module === moduleName).length
+    return countPluginRules(rules.value, moduleName)
   }
 
   function applyRouteState (): void {

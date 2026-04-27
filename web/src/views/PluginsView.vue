@@ -880,6 +880,12 @@
   import { useNoticeStore } from '@/stores/notice'
   import { useRestartStore } from '@/stores/restart'
   import {
+    toggleConfirmTitle as buildToggleConfirmTitle,
+    uninstallConfirmSummary as buildUninstallConfirmSummary,
+    canUninstallPlugin as canUninstallPluginForRole,
+    canUpdatePlugin as canUpdatePluginForRole,
+  } from '@/views/plugins/actions'
+  import {
     pluginToggleHint as buildPluginToggleHint,
     settingsSourceLabel as buildSettingsSourceLabel,
     settingsValueSourceLabel as buildSettingsValueSourceLabel,
@@ -897,6 +903,13 @@
     getSystemPlugins,
     getVisiblePlugins,
   } from '@/views/plugins/filters'
+  import {
+    manualInstallRequirementHint as buildManualInstallRequirementHint,
+    manualInstallRequirementLabel as buildManualInstallRequirementLabel,
+    manualInstallSourceOptions as buildManualInstallSourceOptions,
+    canSubmitManualInstall as canSubmitManualInstallRequirement,
+    type ManualInstallSourceType,
+  } from '@/views/plugins/install'
   import RawSettingsEditor from '@/views/plugins/RawSettingsEditor.vue'
   import { renderReadmeHtml } from '@/views/plugins/readme'
   import {
@@ -923,7 +936,7 @@
   const manualInstallDialogVisible = ref(false)
   const manualInstallTaskDialogVisible = ref(false)
   const manualInstallSubmitting = ref(false)
-  const manualInstallSourceType = ref<'pypi' | 'git' | 'local'>('pypi')
+  const manualInstallSourceType = ref<ManualInstallSourceType>('pypi')
   const manualInstallRequirement = ref('')
   const manualInstallModuleName = ref('')
   const manualInstallTask = ref<PluginStoreTask | null>(null)
@@ -1039,25 +1052,15 @@
     },
   })
   const toggleConfirmTitle = computed(() =>
-    toggleConfirmNextValue.value ? t('plugins.enableConfirmTitle') : t('plugins.disableConfirmTitle'),
+    buildToggleConfirmTitle(toggleConfirmNextValue.value, t),
   )
   const toggleConfirmSummary = computed(() => toggleConfirmSummaryText.value)
   const pluginNameMap = computed(() =>
     buildPluginNameMap(plugins.value),
   )
-  const uninstallConfirmSummary = computed(() => {
-    if (!uninstallConfirmItem.value) return ''
-    const pluginName = uninstallConfirmItem.value.name || uninstallConfirmItem.value.module_name
-    if (uninstallConfirmItem.value.installed_package) {
-      return t('plugins.settingsUninstallConfirm', {
-        name: pluginName,
-        package: uninstallConfirmItem.value.installed_package,
-      })
-    }
-    return t('plugins.settingsUninstallConfirmFallback', {
-      name: pluginName,
-    })
-  })
+  const uninstallConfirmSummary = computed(() =>
+    buildUninstallConfirmSummary(uninstallConfirmItem.value, t),
+  )
   const systemPlugins = computed(() =>
     getSystemPlugins(plugins.value),
   )
@@ -1074,33 +1077,18 @@
     }),
   )
 
-  const manualInstallSourceOptions = computed(() => [
-    { value: 'pypi', label: t('plugins.manualInstallSourcePypi') },
-    { value: 'git', label: t('plugins.manualInstallSourceGit') },
-    { value: 'local', label: t('plugins.manualInstallSourceLocal') },
-  ])
-
-  const manualInstallRequirementLabel = computed(() => {
-    if (manualInstallSourceType.value === 'git') {
-      return t('plugins.manualInstallGitLabel')
-    }
-    if (manualInstallSourceType.value === 'local') {
-      return t('plugins.manualInstallLocalLabel')
-    }
-    return t('plugins.manualInstallPackageLabel')
-  })
-
-  const manualInstallRequirementHint = computed(() => {
-    if (manualInstallSourceType.value === 'git') {
-      return t('plugins.manualInstallGitHint')
-    }
-    if (manualInstallSourceType.value === 'local') {
-      return t('plugins.manualInstallLocalHint')
-    }
-    return t('plugins.manualInstallPackageHint')
-  })
-
-  const canSubmitManualInstall = computed(() => manualInstallRequirement.value.trim().length > 0)
+  const manualInstallSourceOptions = computed(() =>
+    buildManualInstallSourceOptions(t),
+  )
+  const manualInstallRequirementLabel = computed(() =>
+    buildManualInstallRequirementLabel(manualInstallSourceType.value, t),
+  )
+  const manualInstallRequirementHint = computed(() =>
+    buildManualInstallRequirementHint(manualInstallSourceType.value, t),
+  )
+  const canSubmitManualInstall = computed(() =>
+    canSubmitManualInstallRequirement(manualInstallRequirement.value),
+  )
   const manualInstallTaskErrorSummary = computed(() => {
     return summarizeTaskError(manualInstallTask.value?.error)
   })
@@ -1418,16 +1406,11 @@
   }
 
   function canUninstallPlugin (item: PluginItem) {
-    return authStore.role === 'owner' && item.can_uninstall
+    return canUninstallPluginForRole(authStore.role, item)
   }
 
   function canUpdatePlugin (item: PluginItem) {
-    return (
-      authStore.role === 'owner'
-      && item.can_package_update
-      && !item.is_pending_uninstall
-      && !!item.installed_package
-    )
+    return canUpdatePluginForRole(authStore.role, item)
   }
 
   async function updatePluginItem (item: PluginItem) {

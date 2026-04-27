@@ -325,7 +325,6 @@
     CapabilitiesResponsePayload,
     ChatEnvelope,
     ChatSegment,
-    ImageSegment,
     MessageReceivePayload,
     SessionSnapshotPayload,
   } from '@/types/chat'
@@ -343,9 +342,9 @@
     syncComposerImageTokenState as syncComposerImageState,
   } from '@/views/chat/composer'
   import {
-    estimateImageSize,
     formatBytes,
     useChatImagePreview,
+    useProtectedChatAssets,
   } from '@/views/chat/mediaPreview'
   import {
     createSessionKey,
@@ -383,10 +382,8 @@
   const composerVersion = ref(0)
   const selectedComposerImageId = ref<string | null>(null)
   const reconnecting = transport.reconnecting
-  const protectedAssetUrls = ref<Record<string, string>>({})
   const composerImages = new Map<string, PendingImage>()
   const composerMentions = new Map<string, PendingMention>()
-  const loadingProtectedAssets = new Set<string>()
   const {
     closeImagePreview,
     downloadPreviewImage,
@@ -410,6 +407,14 @@
     zoomInPreview,
     zoomOutPreview,
   } = useChatImagePreview()
+  const {
+    openImagePreview,
+    resolveImageUrl,
+    revokeProtectedAssetUrls,
+  } = useProtectedChatAssets({
+    imageAlt: () => t('chat.imageAlt'),
+    openImagePreviewSource,
+  })
   const sessionState = useChatSessionState(client, {
     clearComposer,
     closeImagePreview,
@@ -489,66 +494,6 @@
         target.value = ''
       }
     }
-  }
-
-  async function ensureProtectedAssetUrl (rawUrl: string) {
-    if (protectedAssetUrls.value[rawUrl] || loadingProtectedAssets.has(rawUrl)) return
-    const token = localStorage.getItem('token')
-    if (!token) return
-
-    loadingProtectedAssets.add(rawUrl)
-    try {
-      const response = await fetch(rawUrl, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      })
-      if (!response.ok) {
-        throw new Error(`Failed to load asset: ${response.status}`)
-      }
-      const blob = await response.blob()
-      protectedAssetUrls.value = {
-        ...protectedAssetUrls.value,
-        [rawUrl]: URL.createObjectURL(blob),
-      }
-    } catch {
-      protectedAssetUrls.value = { ...protectedAssetUrls.value }
-    } finally {
-      loadingProtectedAssets.delete(rawUrl)
-    }
-  }
-
-  function revokeProtectedAssetUrls () {
-    for (const url of Object.values(protectedAssetUrls.value)) {
-      URL.revokeObjectURL(url)
-    }
-    protectedAssetUrls.value = {}
-    loadingProtectedAssets.clear()
-  }
-
-  function resolveImageUrl (segment: ImageSegment) {
-    if (segment.base64) {
-      return `data:${segment.mime || 'image/png'};base64,${segment.base64}`
-    }
-    const rawUrl = segment.url
-    if (!rawUrl) return ''
-    if (!rawUrl.startsWith('/api/chat/assets/')) return rawUrl
-    void ensureProtectedAssetUrl(rawUrl)
-    return protectedAssetUrls.value[rawUrl] || ''
-  }
-
-  async function openImagePreview (segment: ImageSegment) {
-    let src = resolveImageUrl(segment)
-    if (!src && segment.url?.startsWith('/api/chat/assets/')) {
-      await ensureProtectedAssetUrl(segment.url)
-      src = protectedAssetUrls.value[segment.url] || ''
-    }
-    if (!src) return
-    openImagePreviewSource(
-      src,
-      segment.alt || t('chat.imageAlt'),
-      estimateImageSize(segment),
-    )
   }
 
   function touchComposer () {
