@@ -11,9 +11,9 @@ import {
   deleteAIToolPolicyBinding,
   getAICapabilities,
   getAIToolPolicyBindings,
-  previewAISkillCapabilityDebug,
-  previewAISkillPolicyDebug,
+  previewAICapability,
   previewAIToolIntents,
+  previewAIToolPolicy,
   updateAIToolPolicyBinding,
 } from '@/api/ai/tools'
 import { getErrorMessage } from '@/api/client'
@@ -124,7 +124,7 @@ export function useAIDebugToolsTab (t: (key: string) => string) {
   async function runPolicyPreview () {
     previewingPolicy.value = true
     try {
-      const response = await previewAISkillPolicyDebug(previewForm)
+      const response = await previewAIToolPolicy(previewForm)
       policyPreview.value = response.data
     } catch (error) {
       noticeStore.show(getErrorMessage(error, t('ai.previewFailed')), 'error')
@@ -136,7 +136,7 @@ export function useAIDebugToolsTab (t: (key: string) => string) {
   async function runCapabilityPreview () {
     previewingCapability.value = true
     try {
-      const response = await previewAISkillCapabilityDebug({
+      const response = await previewAICapability({
         capability_name: capabilityPreviewName.value,
         ...previewForm,
       })

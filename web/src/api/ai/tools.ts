@@ -87,18 +87,6 @@ export function previewAIToolIntents (payload: {
   )
 }
 
-export function previewAISkillPolicyDebug (payload: {
-  scope_type: string
-  is_tome: boolean
-  allow_read_only_tools: boolean
-  capability_mode: string
-}) {
-  return client.post<AIToolPolicyPreviewItem>(
-    '/ai/debug/skills/policy-preview',
-    payload,
-  )
-}
-
 export function previewAICapability (payload: {
   capability_name: string
   scope_type: string
@@ -108,19 +96,6 @@ export function previewAICapability (payload: {
 }) {
   return client.post<AICapabilityPreviewItem>(
     '/ai/tools/capability-preview',
-    payload,
-  )
-}
-
-export function previewAISkillCapabilityDebug (payload: {
-  capability_name: string
-  scope_type: string
-  is_tome: boolean
-  allow_read_only_tools: boolean
-  capability_mode: string
-}) {
-  return client.post<AICapabilityPreviewItem>(
-    '/ai/debug/skills/capability-preview',
     payload,
   )
 }
