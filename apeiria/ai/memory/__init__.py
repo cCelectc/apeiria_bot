@@ -18,10 +18,9 @@ from .models import (
 from .ranking import rank_memory_items
 
 if TYPE_CHECKING:
+    from .contracts import AIMemoryCreateInput, AIMemoryUpdateInput
     from .service import (
-        AIMemoryCreateInput,
         AIMemoryService,
-        AIMemoryUpdateInput,
         ai_memory_service,
     )
 
@@ -42,9 +41,9 @@ __all__ = [
 ]
 
 _LAZY_EXPORTS = {
-    "AIMemoryCreateInput": ".service",
+    "AIMemoryCreateInput": ".contracts",
     "AIMemoryService": ".service",
-    "AIMemoryUpdateInput": ".service",
+    "AIMemoryUpdateInput": ".contracts",
     "ai_memory_service": ".service",
 }
 

@@ -119,6 +119,45 @@ def test_memory_admin_does_not_open_orm_session(
     asyncio.run(scenario())
 
 
+def test_consolidate_anchor_summary_creates_first_summary_memory(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setattr(database_runtime, "_project_root", tmp_path)
+    database_runtime.ensure_ready()
+
+    from apeiria.ai.memory.service import AIMemoryCreateInput, ai_memory_service
+
+    async def scenario() -> None:
+        for content in ("likes concise answers", "works on Apeiria"):
+            await ai_memory_service.create_memory(
+                AIMemoryCreateInput(
+                    anchor_type="user",
+                    anchor_id="user-1",
+                    memory_layer="long_term",
+                    memory_kind="note",
+                    content=content,
+                ),
+            )
+
+        await ai_memory_service.consolidate_anchor_summary(
+            anchor_type="user",
+            anchor_id="user-1",
+        )
+
+        summaries = await ai_memory_service.list_memories(
+            anchor_type="user",
+            anchor_id="user-1",
+            memory_layer="summary",
+        )
+
+        assert len(summaries) == 1
+        assert summaries[0].is_editable is False
+        assert "likes concise answers" in summaries[0].content
+
+    asyncio.run(scenario())
+
+
 def test_ignored_memory_retention_deletes_sqlite_rows_and_embedding(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

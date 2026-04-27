@@ -9,6 +9,8 @@ import pytest
 @pytest.mark.parametrize(
     ("package_name", "lazy_module_name", "symbol_name"),
     [
+        ("apeiria.ai.memory", "apeiria.ai.memory.contracts", "AIMemoryCreateInput"),
+        ("apeiria.ai.memory", "apeiria.ai.memory.contracts", "AIMemoryUpdateInput"),
         ("apeiria.ai.memory", "apeiria.ai.memory.service", "ai_memory_service"),
         ("apeiria.ai.model", "apeiria.ai.model.gateway", "model_gateway"),
         ("apeiria.ai.person", "apeiria.ai.person.service", "ai_person_profile_service"),
