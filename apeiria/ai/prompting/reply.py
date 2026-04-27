@@ -15,6 +15,25 @@ if TYPE_CHECKING:
 
 ReplyPromptMode = Literal["planner", "roleplay"]
 _GROUP_USER_ID_SUFFIX_LENGTH = 4
+REPLY_SECTION_SYSTEM_INSTRUCTIONS = "SystemInstructions"
+REPLY_SECTION_PERSONA = "Persona"
+REPLY_SECTION_STYLE = "Style"
+REPLY_SECTION_RELATIONSHIP = "Relationship"
+REPLY_SECTION_PERSON_PROFILE = "PersonProfile"
+REPLY_SECTION_SOCIAL_POLICY = "SocialPolicy"
+REPLY_SECTION_TOOL_POLICY = "ToolPolicy"
+REPLY_SECTION_TOOL_RESULTS = "ToolResults"
+REPLY_SECTION_OPERATOR_MEMORIES = "OperatorMemories"
+REPLY_SECTION_SUMMARY_MEMORIES = "SummaryMemories"
+REPLY_SECTION_LONG_TERM_MEMORIES = "LongTermMemories"
+REPLY_SECTION_KNOWLEDGE_MEMORIES = "KnowledgeMemories"
+REPLY_SECTION_CONVERSATION_SUMMARY = "ConversationSummary"
+REPLY_SECTION_FUTURE_TASK = "FutureTask"
+REPLY_SECTION_ACTIVE_SKILLS = "ActiveSkills"
+REPLY_SECTION_CONTEXT_PRIORITY = "ContextPriority"
+REPLY_SECTION_RESPONSE_RULES = "ResponseRules"
+REPLY_SECTION_CONVERSATION = "Conversation"
+REPLY_SECTION_INSTRUCTION = "Instruction"
 
 
 class ReplyPersonaPromptBundleLike(Protocol):
@@ -69,13 +88,13 @@ def _build_reply_packet(
     _append_section(
         sections,
         role="system",
-        name="SystemInstructions",
+        name=REPLY_SECTION_SYSTEM_INSTRUCTIONS,
         content="\n".join(_build_system_instructions(mode)),
     )
     _append_section(
         sections,
         role="system",
-        name="Persona",
+        name=REPLY_SECTION_PERSONA,
         content=(
             inputs.persona.system_prompt
             if inputs.persona is not None
@@ -85,7 +104,7 @@ def _build_reply_packet(
     _append_section(
         sections,
         role="system",
-        name="Style",
+        name=REPLY_SECTION_STYLE,
         content=(
             inputs.persona.style_prompt
             if inputs.persona is not None and inputs.persona.style_prompt
@@ -95,70 +114,70 @@ def _build_reply_packet(
     _append_section(
         sections,
         role="system",
-        name="Relationship",
+        name=REPLY_SECTION_RELATIONSHIP,
         content=inputs.relationship,
     )
     _append_lines(
         sections,
         role="system",
-        name="PersonProfile",
+        name=REPLY_SECTION_PERSON_PROFILE,
         lines=inputs.person_profile,
     )
     _append_section(
         sections,
         role="system",
-        name="SocialPolicy",
+        name=REPLY_SECTION_SOCIAL_POLICY,
         content=inputs.social_policy_summary,
     )
     if mode == "planner":
         _append_section(
             sections,
             role="system",
-            name="ToolPolicy",
+            name=REPLY_SECTION_TOOL_POLICY,
             content=inputs.tool_policy,
         )
     _append_lines(
         sections,
         role="system",
-        name="ToolResults",
+        name=REPLY_SECTION_TOOL_RESULTS,
         lines=inputs.tool_results,
     )
     _append_memory_sections(sections, inputs.memories)
     _append_section(
         sections,
         role="system",
-        name="ConversationSummary",
+        name=REPLY_SECTION_CONVERSATION_SUMMARY,
         content=inputs.conversation_summary,
     )
     _append_section(
         sections,
         role="system",
-        name="FutureTask",
+        name=REPLY_SECTION_FUTURE_TASK,
         content=inputs.future_task_context,
     )
     _append_section(
         sections,
         role="system",
-        name="ActiveSkills",
+        name=REPLY_SECTION_ACTIVE_SKILLS,
         content=inputs.skill_activation,
     )
     _append_lines(
         sections,
         role="system",
-        name="ContextPriority",
+        name=REPLY_SECTION_CONTEXT_PRIORITY,
         lines=_build_context_priority(),
     )
     _append_lines(
         sections,
         role="system",
-        name="ResponseRules",
+        name=REPLY_SECTION_RESPONSE_RULES,
         lines=_build_response_rules(inputs, mode),
     )
     _append_conversation_sections(sections, inputs.turns, scene_type=inputs.scene_type)
     _append_section(
         sections,
         role="user",
-        name="Instruction",
+        name=REPLY_SECTION_INSTRUCTION,
         content=_build_instruction(inputs, mode),
     )
     return PromptPacket(
@@ -172,10 +191,10 @@ def _append_memory_sections(
     memories: "Sequence[AIMemoryDefinition]",
 ) -> None:
     for name, layer in (
-        ("OperatorMemories", "operator"),
-        ("SummaryMemories", "summary"),
-        ("LongTermMemories", "long_term"),
-        ("KnowledgeMemories", "knowledge"),
+        (REPLY_SECTION_OPERATOR_MEMORIES, "operator"),
+        (REPLY_SECTION_SUMMARY_MEMORIES, "summary"),
+        (REPLY_SECTION_LONG_TERM_MEMORIES, "long_term"),
+        (REPLY_SECTION_KNOWLEDGE_MEMORIES, "knowledge"),
     ):
         _append_lines(
             sections,
@@ -203,14 +222,14 @@ def _append_conversation_sections(
         _append_section(
             sections,
             role=_conversation_section_role(turn),
-            name="Conversation",
+            name=REPLY_SECTION_CONVERSATION,
             content=_format_turn(turn, scene_type=scene_type),
         )
     if not appended:
         _append_section(
             sections,
             role="user",
-            name="Conversation",
+            name=REPLY_SECTION_CONVERSATION,
             content="User: <empty>",
         )
 

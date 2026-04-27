@@ -238,3 +238,14 @@ def test_pipeline_does_not_own_reply_prompt_sections() -> None:
         source = path.read_text(encoding="utf-8")
         assert "PromptSection(" not in source
         assert "AIReplyPromptChannels" not in source
+
+
+def test_pipeline_composer_does_not_render_flat_reply_prompts() -> None:
+    source = (
+        REPO_ROOT / "apeiria" / "app" / "ai" / "pipeline" / "composer.py"
+    ).read_text(encoding="utf-8")
+
+    assert "render_flat" not in source
+    assert "compose_reply_prompt" not in source
+    assert "compose_pre_tool_reply_prompt" not in source
+    assert "compose_roleplay_reply_prompt" not in source

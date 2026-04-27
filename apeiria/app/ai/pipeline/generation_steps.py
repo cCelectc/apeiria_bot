@@ -174,7 +174,6 @@ async def _generate_direct(
     turn = await generate_model_turn(
         GenerationRequest(
             selected=prep.selected,
-            prompt="",
             messages=build_pre_tool_reply_messages(
                 _build_compose_input(
                     request=request,
@@ -296,7 +295,6 @@ async def _generate_with_tool_loop(  # noqa: PLR0913
             refinement = await generate_model_turn(
                 GenerationRequest(
                     selected=roleplay_selected or prep.selected,
-                    prompt="",
                     messages=build_roleplay_reply_messages(
                         AIRuntimeComposeInput(
                             persona=inputs.persona,

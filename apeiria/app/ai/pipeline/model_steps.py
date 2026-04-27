@@ -30,7 +30,6 @@ class GenerationRequest:
     """One model generation request with trace metadata."""
 
     selected: "AISelectedModel"
-    prompt: str
     trace_id: str
     session_id: str
     tools: tuple["AIModelToolDefinition", ...]
@@ -39,6 +38,7 @@ class GenerationRequest:
     response_source: str = "direct"
     messages: tuple["AIModelMessage", ...] = ()
     fallback_models: tuple["AISelectedModel", ...] = ()
+    prompt: str = ""
 
 
 async def select_pipeline_model(

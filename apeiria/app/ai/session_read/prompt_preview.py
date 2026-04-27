@@ -12,7 +12,7 @@ from apeiria.ai.persona import (
     ai_persona_service,
     build_persona_render_context,
 )
-from apeiria.ai.prompting import PromptPacket, render_flat
+from apeiria.ai.prompting import render_flat
 from apeiria.ai.tools import (
     AIToolPolicyBindingTarget,
     AIToolSceneContext,
@@ -54,6 +54,7 @@ from .models import (
     AISessionPromptPreview,
     AISessionPromptSection,
 )
+from .prompt_projection import project_prompt_packet_to_channels
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -144,61 +145,6 @@ async def _load_group_name(identity: "ChatSessionIdentity") -> str | None:
         return None
     group = await group_service.get_group(identity.scene_id)
     return group.group_name if group is not None else None
-
-
-def _to_prompt_channel_preview(
-    packet: PromptPacket,
-    *,
-    mode: str,
-) -> AISessionPromptChannels:
-    sections = tuple(
-        AISessionPromptSection(
-            role=section.role,
-            name=section.name,
-            content=section.content,
-        )
-        for section in packet.sections
-    )
-    return AISessionPromptChannels(
-        mode=mode,
-        system_instructions=_section_lines(packet, "SystemInstructions"),
-        persona=_section_text(packet, "Persona") or "",
-        style=_section_text(packet, "Style"),
-        relationship=_section_text(packet, "Relationship"),
-        social_policy=_section_text(packet, "SocialPolicy"),
-        tool_policy=_section_text(packet, "ToolPolicy"),
-        future_task=_section_text(packet, "FutureTask"),
-        person_profile=_section_lines(packet, "PersonProfile"),
-        tool_results=_section_lines(packet, "ToolResults"),
-        operator_memories=_section_lines(packet, "OperatorMemories"),
-        summary_memories=_section_lines(packet, "SummaryMemories"),
-        long_term_memories=_section_lines(packet, "LongTermMemories"),
-        knowledge_memories=_section_lines(packet, "KnowledgeMemories"),
-        conversation_summary=_section_text(packet, "ConversationSummary"),
-        context_priority=_section_lines(packet, "ContextPriority"),
-        conversation_messages=tuple(
-            section.content
-            for section in packet.sections
-            if section.name == "Conversation" and section.content.strip()
-        ),
-        response_rules=_section_lines(packet, "ResponseRules"),
-        instruction=_section_text(packet, "Instruction") or "",
-        sections=sections,
-    )
-
-
-def _section_text(packet: PromptPacket, name: str) -> str | None:
-    for section in packet.sections:
-        if section.name == name and section.content.strip():
-            return section.content
-    return None
-
-
-def _section_lines(packet: PromptPacket, name: str) -> tuple[str, ...]:
-    text = _section_text(packet, name)
-    if text is None:
-        return ()
-    return tuple(line for line in text.splitlines() if line.strip())
 
 
 async def build_scene_prompt_preview(
@@ -350,7 +296,7 @@ async def build_scene_prompt_preview(
     planning_packet = build_pre_tool_reply_packet(compose_input, has_tools=has_tools)
     planning_mode = "planner" if has_tools else "roleplay"
     planning_channels = (
-        _to_prompt_channel_preview(planning_packet, mode=planning_mode)
+        project_prompt_packet_to_channels(planning_packet, mode=planning_mode)
         if social_decision is None or social_decision.should_speak
         else AISessionPromptChannels(
             mode=planning_mode,
@@ -388,7 +334,7 @@ async def build_scene_prompt_preview(
     )
     roleplay_packet = build_roleplay_reply_packet(compose_input)
     roleplay_channels = (
-        _to_prompt_channel_preview(roleplay_packet, mode="roleplay")
+        project_prompt_packet_to_channels(roleplay_packet, mode="roleplay")
         if has_tools and (social_decision is None or social_decision.should_speak)
         else None
     )

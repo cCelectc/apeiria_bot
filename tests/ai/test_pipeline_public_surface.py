@@ -22,14 +22,14 @@ def test_import_app_ai_pipeline_exposes_public_surface() -> None:
         "AITraceContext",
         "ai_runtime_service",
         "build_relationship_target",
-        "compose_pre_tool_reply_prompt",
-        "compose_reply_prompt",
-        "compose_roleplay_reply_prompt",
         "load_relationship_context",
         "recall_memories",
         "store_extracted_memories",
         "update_relationship_state",
     ]
+    assert not hasattr(module, "compose_reply_prompt")
+    assert not hasattr(module, "compose_pre_tool_reply_prompt")
+    assert not hasattr(module, "compose_roleplay_reply_prompt")
     assert "apeiria.app.ai.pipeline.service" not in sys.modules
 
     ai_runtime_service = module.ai_runtime_service

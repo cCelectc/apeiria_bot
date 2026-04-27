@@ -5,12 +5,7 @@ from __future__ import annotations
 from importlib import import_module
 from typing import TYPE_CHECKING, Any
 
-from .composer import (
-    AIRuntimeComposeInput,
-    compose_pre_tool_reply_prompt,
-    compose_reply_prompt,
-    compose_roleplay_reply_prompt,
-)
+from .composer import AIRuntimeComposeInput
 
 if TYPE_CHECKING:
     from .memory_steps import recall_memories, store_extracted_memories
@@ -27,9 +22,6 @@ __all__ = [
     "AITraceContext",
     "ai_runtime_service",
     "build_relationship_target",
-    "compose_pre_tool_reply_prompt",
-    "compose_reply_prompt",
-    "compose_roleplay_reply_prompt",
     "load_relationship_context",
     "recall_memories",
     "store_extracted_memories",

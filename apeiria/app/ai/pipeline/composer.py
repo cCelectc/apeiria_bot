@@ -11,7 +11,6 @@ from apeiria.ai.prompting import (
     ReplyPromptMode,
     build_reply_final_packet,
     build_reply_planner_packet,
-    render_flat,
     render_messages,
 )
 
@@ -38,23 +37,6 @@ class AIRuntimeComposeInput:
     social_policy_summary: str | None = None
     future_task_context: str | None = None
     skill_activation: str | None = None
-
-
-def compose_reply_prompt(
-    inputs: AIRuntimeComposeInput,
-    *,
-    mode: ReplyPromptMode,
-    include_tool_policy: bool = True,
-) -> str:
-    """Compose one explicit flat runtime prompt during migration."""
-
-    return render_flat(
-        build_runtime_prompt_packet(
-            inputs,
-            mode=mode,
-            include_tool_policy=include_tool_policy,
-        ),
-    )
 
 
 def build_runtime_prompt_packet(
@@ -147,33 +129,3 @@ def build_roleplay_reply_messages(
     """Build final visible reply messages."""
 
     return render_messages(build_roleplay_reply_packet(inputs))
-
-
-def compose_pre_tool_reply_prompt(
-    inputs: AIRuntimeComposeInput,
-    *,
-    has_tools: bool,
-) -> str:
-    """Compose the first runtime prompt.
-
-    When tools are available this stays in the planning/orchestration lane.
-    When no tools are available, skip the extra tool-policy layer and use the
-    cleaner roleplay prompt directly.
-    """
-
-    if has_tools:
-        packet = build_pre_tool_reply_packet(inputs, has_tools=True)
-    else:
-        packet = build_pre_tool_reply_packet(inputs, has_tools=False)
-    return render_flat(packet)
-
-
-def compose_roleplay_reply_prompt(inputs: AIRuntimeComposeInput) -> str:
-    """Compose the final roleplay reply prompt after tool execution.
-
-    This stage intentionally omits tool-policy instructions so the final model
-    sees persona, relationship, memories, conversation, and distilled tool
-    results without the full structural policy layer.
-    """
-
-    return render_flat(build_roleplay_reply_packet(inputs))

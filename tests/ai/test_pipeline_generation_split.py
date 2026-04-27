@@ -64,3 +64,4 @@ def test_generation_steps_use_prompt_packets_for_reply_generation() -> None:
     assert "build_chat_messages" not in generation_source
     assert "build_pre_tool_reply_messages" in generation_source
     assert "build_roleplay_reply_messages" in generation_source
+    assert 'prompt=""' not in generation_source
