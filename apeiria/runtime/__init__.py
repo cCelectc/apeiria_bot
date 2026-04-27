@@ -6,7 +6,6 @@ from apeiria.runtime.package_map import (
     ApeiriaPackageRule,
     classify_package,
     iter_package_rules,
-    planned_app_target,
 )
 
 __all__ = [
@@ -15,5 +14,4 @@ __all__ = [
     "ApeiriaRuntime",
     "classify_package",
     "iter_package_rules",
-    "planned_app_target",
 ]

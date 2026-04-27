@@ -4,11 +4,11 @@ from apeiria.runtime import (
     ApeiriaPackageBand,
     classify_package,
     iter_package_rules,
-    planned_app_target,
 )
 from apeiria.runtime.package_map import (
     APP_PREFIXES,
     INFRASTRUCTURE_PREFIXES,
+    RETIRED_APP_OWNED_NAMESPACE_PREFIXES,
     STABLE_ROOT_BOUNDARY_EXCLUSIONS,
     STABLE_ROOT_PREFIXES,
     SURFACE_PREFIXES,
@@ -40,20 +40,12 @@ def test_runtime_package_map_exposes_boundary_prefix_sets() -> None:
     assert STABLE_ROOT_BOUNDARY_EXCLUSIONS == ()
 
 
-def test_runtime_package_map_tracks_planned_app_moves() -> None:
-    assert planned_app_target("apeiria.ai.pipeline.service") == (
-        "apeiria.app.ai.pipeline.service"
-    )
-    assert planned_app_target("apeiria.ai.conversation.summary") == (
-        "apeiria.app.ai.conversation_context.summary"
-    )
-    assert planned_app_target("apeiria.plugins.store.service") == (
-        "apeiria.app.plugins.store.service"
-    )
-    assert planned_app_target("apeiria.access.webui_auth.service") == (
-        "apeiria.app.access.webui_auth.service"
-    )
-    assert planned_app_target("apeiria.conversation.service") is None
+def test_runtime_package_map_tracks_retired_app_owned_namespaces() -> None:
+    assert "apeiria.ai.pipeline" in RETIRED_APP_OWNED_NAMESPACE_PREFIXES
+    assert "apeiria.ai.conversation" in RETIRED_APP_OWNED_NAMESPACE_PREFIXES
+    assert "apeiria.plugins.store" in RETIRED_APP_OWNED_NAMESPACE_PREFIXES
+    assert "apeiria.access.webui_auth" in RETIRED_APP_OWNED_NAMESPACE_PREFIXES
+    assert "apeiria.conversation" not in RETIRED_APP_OWNED_NAMESPACE_PREFIXES
 
 
 def test_runtime_package_map_rules_include_new_app_band() -> None:

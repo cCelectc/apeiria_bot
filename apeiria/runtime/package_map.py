@@ -1,10 +1,4 @@
-"""Ownership map for Apeiria package bands.
-
-This module documents the physical package bands that exist today and the
-legacy namespaces scheduled to move into ``apeiria.app/*`` as migration batches
-land. Boundary tests enforce only the physical bands; planned moves remain
-documentation until their batch lands.
-"""
+"""Ownership map for Apeiria package bands."""
 
 from __future__ import annotations
 
@@ -162,16 +156,16 @@ SURFACE_PREFIXES: tuple[str, ...] = tuple(
 # but the current tree no longer carries any app-owned stable-root subpackages.
 STABLE_ROOT_BOUNDARY_EXCLUSIONS: tuple[str, ...] = ()
 
-PLANNED_APP_NAMESPACE_MOVES: tuple[tuple[str, str], ...] = (
-    ("apeiria.ai.admin", "apeiria.app.ai.admin"),
-    ("apeiria.ai.conversation", "apeiria.app.ai.conversation_context"),
-    ("apeiria.ai.future_task", "apeiria.app.ai.future_task"),
-    ("apeiria.ai.pipeline", "apeiria.app.ai.pipeline"),
-    ("apeiria.ai.reply_strategy", "apeiria.app.ai.reply_strategy"),
-    ("apeiria.ai.session_read", "apeiria.app.ai.session_read"),
-    ("apeiria.chat", "apeiria.app.chat"),
-    ("apeiria.plugins.store", "apeiria.app.plugins.store"),
-    ("apeiria.access.webui_auth", "apeiria.app.access.webui_auth"),
+RETIRED_APP_OWNED_NAMESPACE_PREFIXES: tuple[str, ...] = (
+    "apeiria.ai.admin",
+    "apeiria.ai.conversation",
+    "apeiria.ai.future_task",
+    "apeiria.ai.pipeline",
+    "apeiria.ai.reply_strategy",
+    "apeiria.ai.session_read",
+    "apeiria.chat",
+    "apeiria.plugins.store",
+    "apeiria.access.webui_auth",
 )
 
 
@@ -188,15 +182,6 @@ def classify_package(module_name: str) -> ApeiriaPackageRule | None:
     return None
 
 
-def planned_app_target(module_name: str) -> str | None:
-    """Return the target app path for a legacy app-owned namespace."""
-
-    for source_prefix, target_prefix in PLANNED_APP_NAMESPACE_MOVES:
-        if _matches_prefix(module_name, source_prefix):
-            return target_prefix + module_name.removeprefix(source_prefix)
-    return None
-
-
 def iter_package_rules() -> tuple[ApeiriaPackageRule, ...]:
     """Expose the package rules as an immutable tuple for tests/docs."""
 
@@ -207,7 +192,7 @@ __all__ = [
     "APP_PREFIXES",
     "INFRASTRUCTURE_PREFIXES",
     "PACKAGE_RULES",
-    "PLANNED_APP_NAMESPACE_MOVES",
+    "RETIRED_APP_OWNED_NAMESPACE_PREFIXES",
     "STABLE_ROOT_BOUNDARY_EXCLUSIONS",
     "STABLE_ROOT_PREFIXES",
     "SURFACE_PREFIXES",
@@ -215,5 +200,4 @@ __all__ = [
     "ApeiriaPackageRule",
     "classify_package",
     "iter_package_rules",
-    "planned_app_target",
 ]
