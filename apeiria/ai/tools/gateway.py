@@ -233,9 +233,7 @@ class ToolGateway:
             tool_results = project_tool_results(response.tool_calls, observations)
             executed_observations = completed_observations(observations)
             all_tool_results.extend(tool_results)
-            all_turns.extend(
-                self._tool_service.build_tool_turns(executed_observations)
-            )
+            all_turns.extend(self._tool_service.build_tool_turns(executed_observations))
 
             obs_by_index = dict(enumerate(observations))
             round_statuses: list[ToolAttemptStatus] = []

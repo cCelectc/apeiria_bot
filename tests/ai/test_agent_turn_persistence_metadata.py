@@ -55,8 +55,7 @@ def test_tool_loop_metadata_is_available_to_persistence() -> None:
     assert persisted["agent_turn_metadata"]["tool_observation_count"] == 0
     assert persisted["agent_turn_metadata"]["tool_message_count"] == 0
     assert (
-        persisted["agent_turn_metadata"]["tool_loop_context_recovery_attempted"]
-        is True
+        persisted["agent_turn_metadata"]["tool_loop_context_recovery_attempted"] is True
     )
     assert persisted["agent_turn_metadata"]["tool_loop_model_retry_count"] == 1
     attempt = persisted["agent_turn_tool_attempts"][0]
@@ -64,4 +63,3 @@ def test_tool_loop_metadata_is_available_to_persistence() -> None:
     assert attempt["observation_original_length"] == original_observation_length
     assert raw_payload not in str(persisted)
     assert "native_observation" not in attempt
-

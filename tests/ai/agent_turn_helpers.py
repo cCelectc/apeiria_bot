@@ -143,4 +143,3 @@ def tool_call(call_id: str, name: str = "memory_query") -> AIModelToolCall:
         name=name,
         arguments={"query_text": "hello"},
     )
-

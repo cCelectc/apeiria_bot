@@ -421,4 +421,3 @@ def test_tool_loop_truncates_prompt_visible_observation() -> None:
     tool_messages = [msg for msg in result.tool_messages if msg.role == "tool"]
     assert tool_messages
     assert tool_messages[0].content == result.tool_attempts[0].observation.content
-

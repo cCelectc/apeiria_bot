@@ -78,9 +78,7 @@ class ToolLoopState:
                 self.context_recovery_compacted_messages
             )
         if self.chain_repair_placeholders or self.chain_repair_orphans:
-            data["tool_loop_chain_repair_placeholders"] = (
-                self.chain_repair_placeholders
-            )
+            data["tool_loop_chain_repair_placeholders"] = self.chain_repair_placeholders
             data["tool_loop_chain_repair_orphans"] = self.chain_repair_orphans
         if self.max_consecutive_tool_error_rounds:
             data["tool_loop_max_consecutive_tool_error_rounds"] = (

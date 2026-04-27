@@ -201,4 +201,3 @@ def test_pipeline_resolves_profile_fallback_candidates(monkeypatch: Any) -> None
         "profile-fallback"
     ]
     assert candidates[0].resolved_model_name == "model-fallback"
-

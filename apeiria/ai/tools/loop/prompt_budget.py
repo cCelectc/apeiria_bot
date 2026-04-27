@@ -79,4 +79,3 @@ def recover_prompt_budget_messages(
 def is_context_pressure_error(message: str) -> bool:
     normalized = message.lower()
     return any(marker in normalized for marker in _CONTEXT_PRESSURE_MARKERS)
-
