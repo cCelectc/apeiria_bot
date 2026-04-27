@@ -14,10 +14,10 @@ from apeiria.ai.retention import ai_retention_service
 from apeiria.ai.skills import ai_skill_service
 from apeiria.app.ai.future_task import ai_future_task_service
 from apeiria.app.ai.pipeline.generation_steps import (
-    gather_reply_inputs,
     generate_reply,
     prepare_generation,
 )
+from apeiria.app.ai.pipeline.input_steps import gather_reply_inputs
 from apeiria.app.ai.pipeline.memory_steps import store_extracted_memories
 from apeiria.app.ai.pipeline.persistence_steps import persist_reply
 from apeiria.app.ai.pipeline.reply_strategy_steps import decide_whether_to_speak

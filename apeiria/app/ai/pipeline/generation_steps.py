@@ -12,7 +12,6 @@ from apeiria.ai.skills import ai_skill_service
 from apeiria.ai.tools import (
     ToolGatewayRequest,
     ToolGatewayResult,
-    ai_tool_service,
     tool_gateway,
 )
 from apeiria.app.ai.pipeline.composer import (
@@ -21,17 +20,10 @@ from apeiria.app.ai.pipeline.composer import (
     compose_pre_tool_reply_prompt,
     compose_roleplay_reply_prompt,
 )
-from apeiria.app.ai.pipeline.context_window_steps import (
-    build_and_store_context_window,
-    record_context_usage,
-)
+from apeiria.app.ai.pipeline.context_window_steps import record_context_usage
 from apeiria.app.ai.pipeline.delivery_steps import (
     DeliveryOutcome,
     deliver_generated_reply,
-)
-from apeiria.app.ai.pipeline.memory_steps import (
-    load_person_profile_for_prompt,
-    recall_memories,
 )
 from apeiria.app.ai.pipeline.message_builder import build_chat_messages
 from apeiria.app.ai.pipeline.model_steps import (
@@ -39,60 +31,26 @@ from apeiria.app.ai.pipeline.model_steps import (
     safe_generate_model,
     select_pipeline_model,
 )
-from apeiria.app.ai.pipeline.persona_steps import (
-    build_model_binding_target,
-    load_persona_bundle,
-)
-from apeiria.app.ai.pipeline.relationship_steps import (
-    build_relationship_target,
-    load_relationship_context,
-    update_relationship_state,
-)
-from apeiria.app.ai.pipeline.reply_strategy_steps import resolve_initiative_bias
+from apeiria.app.ai.pipeline.persona_steps import build_model_binding_target
 from apeiria.app.ai.pipeline.routing import (
     select_post_tool_reply_task_class,
     select_pre_tool_reply_task_class,
 )
-from apeiria.app.ai.pipeline.tool_steps import (
-    append_tool_observation_turns,
-    resolve_tool_policy,
-)
+from apeiria.app.ai.pipeline.tool_steps import append_tool_observation_turns
 from apeiria.app.ai.reply_strategy import summarize_reply_strategy_decision
 
 if TYPE_CHECKING:
     from datetime import datetime
 
-    from apeiria.ai.memory import AIMemoryDefinition
     from apeiria.ai.model import (
-        AIModelBindingTarget,
         AIModelGenerateResponse,
         AIModelTaskClass,
         AISelectedModel,
     )
-    from apeiria.ai.tools import AIToolPolicy, AIToolSpec
     from apeiria.app.ai.future_task.models import AIFutureTaskDefinition
-    from apeiria.app.ai.pipeline.prompting import AIPersonaPromptBundleLike
-    from apeiria.app.ai.pipeline.relationship_steps import AIRelationshipTarget
+    from apeiria.app.ai.pipeline.input_steps import ReplyInputs
     from apeiria.app.ai.pipeline.service import AIRuntimeReplyRequest
     from apeiria.app.ai.reply_strategy import ReplyStrategyDecision
-    from apeiria.conversation.models import ChatContextMessageView
-
-
-@dataclass(frozen=True)
-class ReplyInputs:
-    """Aggregated prompt/context materials for one reply turn."""
-
-    turns: list["ChatContextMessageView"]
-    conversation_summary: str | None
-    relationship_target: "AIRelationshipTarget"
-    model_target: "AIModelBindingTarget"
-    tool_policy: "AIToolPolicy"
-    persona: "AIPersonaPromptBundleLike | None"
-    recalled_memories: list["AIMemoryDefinition"]
-    relationship_context: str | None
-    person_profile: tuple[str, ...]
-    allowed_tools: tuple["AIToolSpec", ...]
-    initiative_bias: float
 
 
 @dataclass(frozen=True)
@@ -113,65 +71,6 @@ class ReplyGeneration:
     skill_runtime: ToolGatewayResult
     post_tool_task_class: "AIModelTaskClass | None"
     delivery_result: DeliveryOutcome | None
-
-
-async def gather_reply_inputs(
-    request: "AIRuntimeReplyRequest",
-    current_time: "datetime",
-) -> ReplyInputs:
-    """Collect all prompt-facing materials needed to decide and generate a reply."""
-
-    identity = request.identity
-
-    turns, conversation_summary = await build_and_store_context_window(
-        identity=identity,
-    )
-    relationship_target = build_relationship_target(identity, request.user_id)
-    model_target = build_model_binding_target(identity, request.user_id)
-    tool_policy = await resolve_tool_policy(
-        identity,
-        is_tome=request.is_tome,
-    )
-    persona = await load_persona_bundle(
-        request=request,
-        current_time=current_time,
-        turns=turns,
-    )
-    if request.runtime_mode == "message" and request.sentiment is not None:
-        await update_relationship_state(
-            target=relationship_target,
-            sentiment=request.sentiment,
-            is_tome=request.is_tome,
-        )
-    recalled_memories = await recall_memories(
-        identity=identity,
-        user_id=request.user_id,
-        query_text=request.message_text,
-    )
-    relationship_context = await load_relationship_context(
-        target=relationship_target,
-    )
-    person_profile = await load_person_profile_for_prompt(
-        identity=identity,
-        user_id=request.user_id,
-    )
-    allowed_tools = tuple(ai_tool_service.list_allowed_tools(tool_policy))
-    initiative_bias = await resolve_initiative_bias(
-        relationship_target=relationship_target,
-    )
-    return ReplyInputs(
-        turns=turns,
-        conversation_summary=conversation_summary,
-        relationship_target=relationship_target,
-        model_target=model_target,
-        tool_policy=tool_policy,
-        persona=persona,
-        recalled_memories=recalled_memories,
-        relationship_context=relationship_context,
-        person_profile=person_profile,
-        allowed_tools=allowed_tools,
-        initiative_bias=initiative_bias,
-    )
 
 
 async def prepare_generation(

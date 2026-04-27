@@ -34,3 +34,20 @@ def test_generation_steps_delegate_model_io() -> None:
     assert "model_gateway" not in generation_source
     assert "AIModelRouteQuery" not in generation_source
     assert "generate_native" not in generation_source
+
+
+def test_generation_steps_delegate_reply_input_gathering() -> None:
+    project_root = Path(__file__).resolve().parents[2]
+    generation_source = (
+        project_root / "apeiria" / "app" / "ai" / "pipeline" / "generation_steps.py"
+    ).read_text(encoding="utf-8")
+
+    input_steps_module = importlib.import_module("apeiria.app.ai.pipeline.input_steps")
+
+    assert hasattr(input_steps_module, "ReplyInputs")
+    assert hasattr(input_steps_module, "gather_reply_inputs")
+    assert "build_and_store_context_window" not in generation_source
+    assert "recall_memories" not in generation_source
+    assert "load_persona_bundle" not in generation_source
+    assert "update_relationship_state" not in generation_source
+    assert "ai_tool_service" not in generation_source
