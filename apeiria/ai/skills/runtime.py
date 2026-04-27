@@ -2,14 +2,14 @@
 
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal
 
 from nonebot.log import logger
 
+from apeiria.ai.skills.selection import AISkillSelector
+
 if TYPE_CHECKING:
-    from apeiria.ai.model.selection import AISelectedModel
     from apeiria.ai.skills.parser import AISkillFileDefinition
 
 SkillActivationReason = Literal["model_selected", "explicit"]
@@ -80,9 +80,14 @@ class AISkillRuntime:
        activated skills.
     """
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        *,
+        selector: AISkillSelector | None = None,
+    ) -> None:
         self._file_skills: dict[str, AISkillFileDefinition] = {}
         self._catalog: dict[str, AISkillCatalogEntry] = {}
+        self._selector = selector or AISkillSelector()
 
     # ------------------------------------------------------------------
     # Registration
@@ -178,12 +183,10 @@ class AISkillRuntime:
         if not file_entries:
             return _EMPTY_SELECTION
 
-        catalog_prompt = self._build_catalog_prompt(file_entries)
-        selected_names = await self._ask_model_for_skills(
+        selected_names = await self._selector.select_skill_names(
             message_text=message_text,
             conversation_summary=conversation_summary,
-            catalog_prompt=catalog_prompt,
-            known_names={entry.skill_name for entry in file_entries},
+            entries=file_entries,
         )
 
         activations: list[AISkillActivation] = []
@@ -197,46 +200,6 @@ class AISkillRuntime:
             selected_names=tuple(selected_names),
             activations=tuple(activations),
             activation_prompt=activation_prompt,
-        )
-
-    async def _ask_model_for_skills(
-        self,
-        *,
-        message_text: str,
-        conversation_summary: str | None,
-        catalog_prompt: str,
-        known_names: set[str],
-    ) -> list[str]:
-        """Call a lightweight model to classify which skills apply."""
-
-        from apeiria.ai.model.gateway import model_gateway
-        from apeiria.ai.model.models import AIModelRouteQuery
-
-        selected: AISelectedModel | None = await model_gateway.select_model(
-            query=AIModelRouteQuery(task_class="planner_light"),
-        )
-        if selected is None:
-            return []
-
-        prompt = _build_skill_selection_prompt(
-            message_text=message_text,
-            conversation_summary=conversation_summary,
-            catalog_prompt=catalog_prompt,
-        )
-        try:
-            response = await model_gateway.generate_native(
-                selected=selected,
-                prompt=prompt,
-            )
-        except Exception as exc:  # noqa: BLE001
-            logger.opt(exception=exc).debug("Skill selection model call failed")
-            return []
-        if response is None:
-            return []
-
-        return _parse_skill_selection_response(
-            response.content,
-            known_names=known_names,
         )
 
     # ------------------------------------------------------------------
@@ -286,16 +249,6 @@ class AISkillRuntime:
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _build_catalog_prompt(
-        entries: list[AISkillCatalogEntry],
-    ) -> str:
-        lines: list[str] = ["Available skills:"]
-        for entry in entries:
-            mode_tag = f"[{entry.entry_mode}]"
-            lines.append(f"- **{entry.skill_name}** {mode_tag}: {entry.description}")
-        return "\n".join(lines)
-
-    @staticmethod
     def _build_activation_prompt(
         activations: list[AISkillActivation],
     ) -> str | None:
@@ -326,76 +279,6 @@ class AISkillRuntime:
 
 
 ai_skill_runtime = AISkillRuntime()
-
-
-# ------------------------------------------------------------------
-# Prompt for LLM skill selection
-# ------------------------------------------------------------------
-
-
-def _build_skill_selection_prompt(
-    *,
-    message_text: str,
-    conversation_summary: str | None,
-    catalog_prompt: str,
-) -> str:
-    parts: list[str] = [
-        "You are a skill selector. Given the user message and "
-        "available skills, decide which skills (if any) should be "
-        "activated to help generate a good reply.",
-        "",
-        f"User message: {message_text}",
-    ]
-    if conversation_summary:
-        parts.append(f"Conversation context: {conversation_summary}")
-    parts.extend(
-        [
-            "",
-            catalog_prompt,
-            "",
-            "Rules:",
-            "- Only select skills that are clearly relevant.",
-            "- Most messages need zero skills — return [] when unsure.",
-            '- Return a JSON array of skill names, e.g. ["social-observer"] or [].',
-            "- Return ONLY the JSON array, nothing else.",
-        ]
-    )
-    return "\n".join(parts)
-
-
-def _parse_skill_selection_response(
-    content: str,
-    *,
-    known_names: set[str],
-) -> list[str]:
-    """Extract skill names from the model's JSON array response."""
-
-    text = content.strip()
-
-    # Find the JSON array in the response
-    start = text.find("[")
-    end = text.rfind("]")
-    if start == -1 or end == -1 or end <= start:
-        return []
-
-    try:
-        parsed = json.loads(text[start : end + 1])
-    except json.JSONDecodeError:
-        return []
-
-    if not isinstance(parsed, list):
-        return []
-
-    selected_names: list[str] = []
-    seen_names: set[str] = set()
-    for name in parsed:
-        if not isinstance(name, str):
-            continue
-        if name not in known_names or name in seen_names:
-            continue
-        selected_names.append(name)
-        seen_names.add(name)
-    return selected_names
 
 
 __all__ = [
