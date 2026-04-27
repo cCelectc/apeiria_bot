@@ -4,11 +4,15 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from apeiria.ai.prompting import (
+    ToolIntentPlanningPromptInput,
+    build_tool_intent_planning_packet,
+    render_messages,
+)
 from apeiria.ai.tools.function_calling import (
     build_function_tools,
     build_intents_from_tool_calls,
 )
-from apeiria.ai.tools.selection import build_tool_planning_prompt
 
 if TYPE_CHECKING:
     from apeiria.ai.tools.models import AIToolIntent, AIToolSpec
@@ -40,11 +44,15 @@ class AIToolIntentPlanner:
 
         response = await model_gateway.generate_native(
             selected=selected,
-            prompt=build_tool_planning_prompt(
-                message_text=message_text,
-                recalled_memory_ids=recalled_memory_ids,
-                recalled_memory_contents=recalled_memory_contents,
-                relationship_context=relationship_context,
+            messages=render_messages(
+                build_tool_intent_planning_packet(
+                    ToolIntentPlanningPromptInput(
+                        message_text=message_text,
+                        recalled_memory_ids=recalled_memory_ids,
+                        recalled_memory_contents=recalled_memory_contents,
+                        relationship_context=relationship_context,
+                    )
+                )
             ),
             tools=build_function_tools(allowed_tools),
         )

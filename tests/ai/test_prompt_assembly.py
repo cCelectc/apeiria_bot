@@ -117,6 +117,8 @@ def test_prompting_public_exports_are_explicit() -> None:
 
     assert not hasattr(module, "__getattr__")
     assert module.__all__ == [
+        "ConversationSummaryPromptInput",
+        "MemoryExtractionPromptInput",
         "PromptPacket",
         "PromptPurpose",
         "PromptSection",
@@ -124,8 +126,18 @@ def test_prompting_public_exports_are_explicit() -> None:
         "ReplyPersonaPromptBundleLike",
         "ReplyPromptInput",
         "ReplyPromptMode",
+        "SkillCatalogEntryLike",
+        "SkillSelectionPromptInput",
+        "SocialEngagementType",
+        "SocialJudgmentPromptInput",
+        "ToolIntentPlanningPromptInput",
+        "build_conversation_summary_packet",
+        "build_memory_extraction_packet",
         "build_reply_final_packet",
         "build_reply_planner_packet",
+        "build_skill_selection_packet",
+        "build_social_judgment_packet",
+        "build_tool_intent_planning_packet",
         "render_flat",
         "render_messages",
     ]

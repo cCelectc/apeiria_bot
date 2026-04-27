@@ -7,15 +7,17 @@ from typing import TYPE_CHECKING
 from nonebot.log import logger
 
 from apeiria.ai.model import AIModelRouteQuery, model_gateway
+from apeiria.ai.prompting import (
+    SocialJudgmentPromptInput,
+    build_social_judgment_packet,
+    render_messages,
+)
 
 from .models import (
     SocialJudgmentInput,
     SocialJudgmentResult,
 )
-from .prompt import (
-    build_social_judgment_prompt,
-    parse_social_judgment_response,
-)
+from .prompt import parse_social_judgment_response
 
 if TYPE_CHECKING:
     from apeiria.ai.model import AIModelBindingTarget
@@ -76,7 +78,30 @@ async def evaluate_social_judgment(
     try:
         response = await model_gateway.generate_native(
             selected=selected,
-            prompt=build_social_judgment_prompt(judgment_input),
+            messages=render_messages(
+                build_social_judgment_packet(
+                    SocialJudgmentPromptInput(
+                        scene_type=judgment_input.scene_type,
+                        runtime_mode=judgment_input.runtime_mode,
+                        engagement_type=judgment_input.engagement_type,
+                        message_text=judgment_input.message_text,
+                        latest_user_turn_text=judgment_input.latest_user_turn_text,
+                        conversation_summary=judgment_input.conversation_summary,
+                        relationship_context=judgment_input.relationship_context,
+                        persona_id=judgment_input.persona_id,
+                        available_tool_names=judgment_input.available_tool_names,
+                        recent_turn_count=judgment_input.recent_turn_count,
+                        recent_bot_turn_count=judgment_input.recent_bot_turn_count,
+                        consecutive_silence_count=(
+                            judgment_input.consecutive_silence_count
+                        ),
+                        current_time=judgment_input.current_time,
+                        initiative_budget_score=(
+                            judgment_input.initiative_budget_score
+                        ),
+                    )
+                )
+            ),
         )
     except Exception as exc:  # noqa: BLE001
         logger.opt(exception=exc).warning("AI social judgment generation failed")

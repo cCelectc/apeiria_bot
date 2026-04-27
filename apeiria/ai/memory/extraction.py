@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from apeiria.ai.memory.models import (
     AIMemoryExtractionAction,
@@ -13,9 +13,6 @@ from apeiria.ai.memory.models import (
     AIMessageSentiment,
     AISentimentPolarity,
 )
-
-if TYPE_CHECKING:
-    from apeiria.ai.memory.models import AIMemoryDefinition
 
 _ALLOWED_MEMORY_KINDS: set[AIMemoryKind] = {
     "fact",
@@ -40,63 +37,6 @@ _ALLOWED_POLARITIES: set[AISentimentPolarity] = {
     "playful",
 }
 _DEFAULT_SENTIMENT = AIMessageSentiment(polarity="neutral", intensity=0.0)
-
-
-def build_memory_extraction_prompt(
-    message_text: str,
-    *,
-    existing_memories: tuple["AIMemoryDefinition", ...] = (),
-) -> str:
-    """Build the JSON-only extraction prompt used by the memory task model."""
-
-    return "\n".join(
-        (
-            "Analyze the user message and return strict JSON with this shape:",
-            "{",
-            '  "memories": [{"memory_kind": "...", "content": "...",',
-            '    "action": "add|update|noop",',
-            '    "target_memory_id": "optional-existing-id",',
-            '    "confidence": 0.0, "salience": 0.0}],',
-            '  "sentiment": {"polarity": "...", "intensity": 0.0},',
-            '  "self_introduction_name": null',
-            "}",
-            "",
-            "Allowed memory_kind values: "
-            "preference, fact, relationship, note, impression.",
-            "Allowed sentiment polarity values: positive, neutral, negative, playful.",
-            "",
-            "## Memory extraction rules",
-            "Only include information that is useful in future conversations.",
-            "Do not include transient requests, jokes, or uncertain guesses.",
-            "Use the same language as the source message for content.",
-            "Use action=noop when nothing should be stored for that row.",
-            "Use action=update when the message changes or corrects an "
-            "existing durable memory.",
-            "Use memory_kind=impression for subjective observations about the "
-            "user's personality, communication style, or character traits "
-            "(e.g. enthusiastic, introverted, knowledgeable). "
-            "Only extract impressions when there is clear behavioral evidence.",
-            "",
-            "## Sentiment analysis rules",
-            "Analyze the overall emotional tone of the message.",
-            "polarity: positive (grateful, happy, affectionate), "
-            "negative (angry, annoyed, hostile), "
-            "playful (teasing, joking, lighthearted), "
-            "neutral (informational, calm, ambiguous).",
-            "intensity: 0.0 (barely perceptible) to 1.0 (very strong).",
-            "",
-            "## Self-introduction name",
-            "If the user introduces themselves by name "
-            '(e.g. "叫我小明", "I\'m Alice", "你可以喊我阿澈"), '
-            "extract the name into self_introduction_name. Otherwise null.",
-            "",
-            _format_existing_memories(existing_memories),
-            'If there is nothing durable, return {"memories":[], '
-            '"sentiment": {"polarity": "neutral", "intensity": 0.0}, '
-            '"self_introduction_name": null}.',
-            f"User message: {message_text}",
-        )
-    )
 
 
 def parse_memory_extraction_response(
@@ -238,20 +178,3 @@ def _coerce_optional_id(value: Any) -> str | None:
     if isinstance(value, str) and value.strip():
         return value.strip()
     return None
-
-
-def _format_existing_memories(
-    existing_memories: tuple["AIMemoryDefinition", ...],
-) -> str:
-    if not existing_memories:
-        return "Existing memories: []"
-    lines = [
-        (
-            f"- id={memory.memory_id}; kind={memory.memory_kind}; "
-            f'content="{memory.content}"'
-        )
-        for memory in existing_memories[:8]
-    ]
-    if not lines:
-        return "Existing memories: []"
-    return "Existing memories:\n" + "\n".join(lines)

@@ -7,11 +7,13 @@ from typing import TYPE_CHECKING
 from nonebot.log import logger
 
 from apeiria.ai.memory import AIMemoryExtractionResult, AIMessageSentiment
-from apeiria.ai.memory.extraction import (
-    build_memory_extraction_prompt,
-    parse_memory_extraction_response,
-)
+from apeiria.ai.memory.extraction import parse_memory_extraction_response
 from apeiria.ai.model import AIModelRouteQuery, model_gateway
+from apeiria.ai.prompting import (
+    MemoryExtractionPromptInput,
+    build_memory_extraction_packet,
+    render_messages,
+)
 
 if TYPE_CHECKING:
     from apeiria.ai.memory import AIMemoryDefinition
@@ -38,9 +40,13 @@ async def extract_memory_from_message(
     try:
         response = await model_gateway.generate_native(
             selected=selected,
-            prompt=build_memory_extraction_prompt(
-                message_text,
-                existing_memories=existing_memories,
+            messages=render_messages(
+                build_memory_extraction_packet(
+                    MemoryExtractionPromptInput(
+                        message_text=message_text,
+                        existing_memories=existing_memories,
+                    )
+                )
             ),
         )
     except Exception as exc:  # noqa: BLE001

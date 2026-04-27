@@ -5,7 +5,15 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
-PromptPurpose = Literal["reply_planner", "reply_final"]
+PromptPurpose = Literal[
+    "reply_planner",
+    "reply_final",
+    "social_judgment",
+    "memory_extraction",
+    "conversation_summary",
+    "skill_selection",
+    "tool_intent_planning",
+]
 PromptSectionRole = Literal["system", "user", "assistant"]
 
 

@@ -7,6 +7,12 @@ from typing import TYPE_CHECKING
 
 from nonebot.log import logger
 
+from apeiria.ai.prompting import (
+    SkillSelectionPromptInput,
+    build_skill_selection_packet,
+    render_messages,
+)
+
 if TYPE_CHECKING:
     from apeiria.ai.model.routing.selection import AISelectedModel
     from apeiria.ai.skills.runtime import AISkillCatalogEntry
@@ -34,15 +40,18 @@ class AISkillSelector:
             return []
 
         known_names = {entry.skill_name for entry in entries}
-        prompt = _build_skill_selection_prompt(
-            message_text=message_text,
-            conversation_summary=conversation_summary,
-            catalog_prompt=_build_catalog_prompt(entries),
-        )
         try:
             response = await model_gateway.generate_native(
                 selected=selected,
-                prompt=prompt,
+                messages=render_messages(
+                    build_skill_selection_packet(
+                        SkillSelectionPromptInput(
+                            message_text=message_text,
+                            conversation_summary=conversation_summary,
+                            entries=entries,
+                        )
+                    )
+                ),
             )
         except Exception as exc:  # noqa: BLE001
             logger.opt(exception=exc).debug("Skill selection model call failed")
@@ -54,46 +63,6 @@ class AISkillSelector:
             response.content,
             known_names=known_names,
         )
-
-
-def _build_catalog_prompt(
-    entries: list["AISkillCatalogEntry"],
-) -> str:
-    lines: list[str] = ["Available skills:"]
-    for entry in entries:
-        mode_tag = f"[{entry.entry_mode}]"
-        lines.append(f"- **{entry.skill_name}** {mode_tag}: {entry.description}")
-    return "\n".join(lines)
-
-
-def _build_skill_selection_prompt(
-    *,
-    message_text: str,
-    conversation_summary: str | None,
-    catalog_prompt: str,
-) -> str:
-    parts: list[str] = [
-        "You are a skill selector. Given the user message and "
-        "available skills, decide which skills (if any) should be "
-        "activated to help generate a good reply.",
-        "",
-        f"User message: {message_text}",
-    ]
-    if conversation_summary:
-        parts.append(f"Conversation context: {conversation_summary}")
-    parts.extend(
-        [
-            "",
-            catalog_prompt,
-            "",
-            "Rules:",
-            "- Only select skills that are clearly relevant.",
-            "- Most messages need zero skills - return [] when unsure.",
-            '- Return a JSON array of skill names, e.g. ["social-observer"] or [].',
-            "- Return ONLY the JSON array, nothing else.",
-        ]
-    )
-    return "\n".join(parts)
 
 
 def _parse_skill_selection_response(
