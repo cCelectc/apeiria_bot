@@ -20,8 +20,8 @@ from .models import (
 )
 
 if TYPE_CHECKING:
+    from .contracts import ChatMessageCreate
     from .service import (
-        ChatMessageCreate,
         ChatSessionService,
         chat_session_service,
     )
@@ -42,7 +42,7 @@ __all__ = [
 ]
 
 _LAZY_EXPORTS = {
-    "ChatMessageCreate": ".service",
+    "ChatMessageCreate": ".contracts",
     "ChatSessionService": ".service",
     "chat_session_service": ".service",
 }

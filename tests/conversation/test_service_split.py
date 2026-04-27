@@ -20,6 +20,42 @@ def test_conversation_ingest_and_normalization_modules_exist() -> None:
     assert hasattr(normalization_module, "build_debug_raw_payload")
 
 
+def test_conversation_service_delegates_sqlite_storage() -> None:
+    from pathlib import Path
+
+    project_root = Path(__file__).resolve().parents[2]
+    service_source = (
+        project_root / "apeiria" / "conversation" / "service.py"
+    ).read_text(encoding="utf-8")
+
+    contracts_module = importlib.import_module("apeiria.conversation.contracts")
+    repository_module = importlib.import_module("apeiria.conversation.repository")
+
+    assert hasattr(contracts_module, "ChatMessageCreate")
+    assert hasattr(repository_module, "ChatSessionRepository")
+    assert "database_runtime" not in service_source
+    assert "_SELECT_CHAT_SESSION_FIELDS" not in service_source
+    assert "_row_to_chat_message" not in service_source
+
+
+def test_chat_message_create_export_stays_lazy_without_service() -> None:
+    for module_name in (
+        "apeiria.conversation",
+        "apeiria.conversation.contracts",
+        "apeiria.conversation.service",
+    ):
+        sys.modules.pop(module_name, None)
+
+    module = importlib.import_module("apeiria.conversation")
+
+    assert "apeiria.conversation.service" not in sys.modules
+
+    value = module.ChatMessageCreate
+
+    assert value is sys.modules["apeiria.conversation.contracts"].ChatMessageCreate
+    assert "apeiria.conversation.service" not in sys.modules
+
+
 def test_build_ingested_chat_event_preserves_existing_message_mapping() -> None:
     from apeiria.conversation.ingest import build_ingested_chat_event
 
