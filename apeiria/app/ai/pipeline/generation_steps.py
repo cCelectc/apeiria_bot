@@ -26,6 +26,10 @@ from apeiria.app.ai.pipeline.context_window_steps import (
     build_and_store_context_window,
     record_context_usage,
 )
+from apeiria.app.ai.pipeline.delivery_steps import (
+    DeliveryOutcome,
+    deliver_generated_reply,
+)
 from apeiria.app.ai.pipeline.memory_steps import (
     load_person_profile_for_prompt,
     recall_memories,
@@ -95,14 +99,6 @@ class ReplyPreparation:
     selected: "AISelectedModel"
     skill_activation: str | None
     pre_tool_task_class: str
-
-
-@dataclass(frozen=True)
-class DeliveryOutcome:
-    """Outcome of a proactive (future_task) message delivery."""
-
-    delivered: bool
-    error: str | None = None
 
 
 @dataclass(frozen=True)
@@ -312,7 +308,7 @@ async def _generate_direct(
         response=response,
         message_count=len(inputs.turns),
     )
-    delivery_result = await _deliver_generated_reply(
+    delivery_result = await deliver_generated_reply(
         request,
         response.content.strip() if response.content else "",
     )
@@ -429,7 +425,7 @@ async def _generate_with_tool_loop(  # noqa: PLR0913
             post_tool_task_class=post_tool_task_class,
             delivery_result=None,
         )
-    delivery_result = await _deliver_generated_reply(
+    delivery_result = await deliver_generated_reply(
         request,
         response.content.strip() if response.content else "",
     )
@@ -479,39 +475,6 @@ def _build_future_task_context(
             f"status={task.status}",
         )
     )
-
-
-async def _deliver_generated_reply(
-    request: "AIRuntimeReplyRequest",
-    reply_text: str,
-) -> DeliveryOutcome | None:
-    """Deliver a proactive reply for future_task mode via NoneBot native API."""
-    if request.runtime_mode != "future_task" or not reply_text.strip():
-        return None
-
-    import nonebot
-
-    identity = request.identity
-    bot = nonebot.get_bots().get(identity.bot_id)
-    if bot is None:
-        return DeliveryOutcome(delivered=False, error="bot_not_connected")
-
-    try:
-        if identity.scene_type == "group":
-            await bot.call_api(
-                "send_group_msg",
-                group_id=int(identity.scene_id),
-                message=reply_text,
-            )
-        else:
-            await bot.call_api(
-                "send_private_msg",
-                user_id=int(identity.scene_id),
-                message=reply_text,
-            )
-    except Exception as exc:  # noqa: BLE001
-        return DeliveryOutcome(delivered=False, error=str(exc))
-    return DeliveryOutcome(delivered=True)
 
 
 async def _safe_generate(

@@ -14,7 +14,6 @@ from apeiria.ai.retention import ai_retention_service
 from apeiria.ai.skills import ai_skill_service
 from apeiria.app.ai.future_task import ai_future_task_service
 from apeiria.app.ai.pipeline.generation_steps import (
-    DeliveryOutcome,
     gather_reply_inputs,
     generate_reply,
     prepare_generation,
@@ -35,6 +34,7 @@ if TYPE_CHECKING:
 
     from apeiria.ai.memory import AIMessageSentiment
     from apeiria.app.ai.future_task.models import AIFutureTaskDefinition
+    from apeiria.app.ai.pipeline.delivery_steps import DeliveryOutcome
     from apeiria.app.ai.reply_strategy.models import WakeContext
     from apeiria.conversation.models import ChatSessionIdentity
 
