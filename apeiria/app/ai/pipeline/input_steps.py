@@ -26,8 +26,8 @@ if TYPE_CHECKING:
 
     from apeiria.ai.memory import AIMemoryDefinition
     from apeiria.ai.model import AIModelBindingTarget
+    from apeiria.ai.prompting import ReplyPersonaPromptBundleLike
     from apeiria.ai.tools import AIToolPolicy, AIToolSpec
-    from apeiria.app.ai.pipeline.prompting import AIPersonaPromptBundleLike
     from apeiria.app.ai.pipeline.relationship_steps import AIRelationshipTarget
     from apeiria.app.ai.pipeline.service import AIRuntimeReplyRequest
     from apeiria.conversation.models import ChatContextMessageView
@@ -42,7 +42,7 @@ class ReplyInputs:
     relationship_target: "AIRelationshipTarget"
     model_target: "AIModelBindingTarget"
     tool_policy: "AIToolPolicy"
-    persona: "AIPersonaPromptBundleLike | None"
+    persona: "ReplyPersonaPromptBundleLike | None"
     recalled_memories: list["AIMemoryDefinition"]
     relationship_context: str | None
     person_profile: tuple[str, ...]

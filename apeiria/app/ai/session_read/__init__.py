@@ -5,7 +5,12 @@ from __future__ import annotations
 from importlib import import_module
 from typing import TYPE_CHECKING, Any
 
-from .models import AIRecentTarget, AISessionPromptChannels, AISessionPromptPreview
+from .models import (
+    AIRecentTarget,
+    AISessionPromptChannels,
+    AISessionPromptPreview,
+    AISessionPromptSection,
+)
 
 if TYPE_CHECKING:
     from .facade import AISessionReadService, ai_session_read_service
@@ -14,6 +19,7 @@ __all__ = [
     "AIRecentTarget",
     "AISessionPromptChannels",
     "AISessionPromptPreview",
+    "AISessionPromptSection",
     "AISessionReadService",
     "ai_session_read_service",
 ]

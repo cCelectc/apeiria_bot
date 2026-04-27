@@ -17,16 +17,14 @@ from apeiria.ai.tools import (
 from apeiria.app.ai.agent_turn import AgentTurnResult
 from apeiria.app.ai.pipeline.composer import (
     AIRuntimeComposeInput,
-    build_runtime_prompt_channels,
-    compose_pre_tool_reply_prompt,
-    compose_roleplay_reply_prompt,
+    build_pre_tool_reply_messages,
+    build_roleplay_reply_messages,
 )
 from apeiria.app.ai.pipeline.context_window_steps import record_context_usage
 from apeiria.app.ai.pipeline.delivery_steps import (
     DeliveryOutcome,
     deliver_generated_reply,
 )
-from apeiria.app.ai.pipeline.message_builder import build_chat_messages
 from apeiria.app.ai.pipeline.model_steps import (
     GenerationRequest,
     build_no_model_diagnostic,
@@ -176,7 +174,8 @@ async def _generate_direct(
     turn = await generate_model_turn(
         GenerationRequest(
             selected=prep.selected,
-            prompt=compose_pre_tool_reply_prompt(
+            prompt="",
+            messages=build_pre_tool_reply_messages(
                 _build_compose_input(
                     request=request,
                     inputs=inputs,
@@ -241,10 +240,7 @@ async def _generate_with_tool_loop(  # noqa: PLR0913
         skill_runtime=prep.skill_runtime,
         skill_activation=prep.skill_activation,
     )
-    channels = build_runtime_prompt_channels(
-        compose_input, mode="planner", include_tool_policy=True
-    )
-    messages = list(build_chat_messages(channels, inputs.turns))
+    messages = list(build_pre_tool_reply_messages(compose_input, has_tools=True))
 
     tool_request = ToolGatewayRequest(
         session_id=request.identity.session_id,
@@ -300,7 +296,8 @@ async def _generate_with_tool_loop(  # noqa: PLR0913
             refinement = await generate_model_turn(
                 GenerationRequest(
                     selected=roleplay_selected or prep.selected,
-                    prompt=compose_roleplay_reply_prompt(
+                    prompt="",
+                    messages=build_roleplay_reply_messages(
                         AIRuntimeComposeInput(
                             persona=inputs.persona,
                             scene_type=request.identity.scene_type,

@@ -13,6 +13,7 @@ if TYPE_CHECKING:
         AIRecentTarget,
         AISessionPromptChannels,
         AISessionPromptPreview,
+        AISessionPromptSection,
     )
     from apeiria.conversation.models import ChatMessageDetailView, ChatSessionAdminView
 
@@ -82,6 +83,13 @@ class AISessionPromptChannelsItem(BaseModel):
     conversation_messages: list[str] = []
     response_rules: list[str] = []
     instruction: str
+    sections: list["AISessionPromptSectionItem"] = []
+
+
+class AISessionPromptSectionItem(BaseModel):
+    role: str
+    name: str
+    content: str
 
 
 class AISessionPromptPreviewItem(BaseModel):
@@ -170,6 +178,16 @@ def to_ai_chat_message_item(item: "ChatMessageDetailView") -> AIChatMessageItem:
     )
 
 
+def to_ai_session_prompt_section_item(
+    item: "AISessionPromptSection",
+) -> AISessionPromptSectionItem:
+    return AISessionPromptSectionItem(
+        role=item.role,
+        name=item.name,
+        content=item.content,
+    )
+
+
 def to_ai_session_prompt_channels_item(
     item: "AISessionPromptChannels",
 ) -> AISessionPromptChannelsItem:
@@ -193,6 +211,9 @@ def to_ai_session_prompt_channels_item(
         conversation_messages=list(item.conversation_messages),
         response_rules=list(item.response_rules),
         instruction=item.instruction,
+        sections=[
+            to_ai_session_prompt_section_item(section) for section in item.sections
+        ],
     )
 
 

@@ -16,7 +16,7 @@ if TYPE_CHECKING:
     from datetime import datetime
 
     from apeiria.ai.persona import AIPersonaRenderContext
-    from apeiria.app.ai.pipeline.prompting import AIPersonaPromptBundleLike
+    from apeiria.ai.prompting import ReplyPersonaPromptBundleLike
     from apeiria.app.ai.pipeline.service import AIRuntimeReplyRequest
     from apeiria.conversation.models import (
         ChatContextMessageView,
@@ -102,7 +102,7 @@ async def load_persona_bundle(
     request: "AIRuntimeReplyRequest",
     current_time: "datetime",
     turns: list["ChatContextMessageView"],
-) -> "AIPersonaPromptBundleLike | None":
+) -> "ReplyPersonaPromptBundleLike | None":
     """Resolve persona binding target and build the prompt bundle."""
 
     target = build_persona_binding_target(request.identity, request.user_id)

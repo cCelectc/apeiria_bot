@@ -27,6 +27,15 @@ class AIRecentTarget:
 
 
 @dataclass(frozen=True)
+class AISessionPromptSection:
+    """One packet-derived prompt section exposed to preview surfaces."""
+
+    role: str
+    name: str
+    content: str
+
+
+@dataclass(frozen=True)
 class AISessionPromptChannels:
     """Structured prompt channels for one composed runtime prompt."""
 
@@ -49,6 +58,7 @@ class AISessionPromptChannels:
     conversation_messages: tuple[str, ...]
     response_rules: tuple[str, ...]
     instruction: str
+    sections: tuple[AISessionPromptSection, ...] = ()
 
 
 @dataclass(frozen=True)

@@ -27,6 +27,7 @@ def test_import_apeiria_ai_session_read_exposes_public_surface() -> None:
         "AIRecentTarget",
         "AISessionPromptChannels",
         "AISessionPromptPreview",
+        "AISessionPromptSection",
         "AISessionReadService",
         "ai_session_read_service",
     ]

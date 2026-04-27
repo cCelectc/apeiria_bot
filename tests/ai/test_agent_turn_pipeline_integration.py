@@ -121,7 +121,13 @@ def test_direct_generation_records_future_task_runtime_mode(monkeypatch: Any) ->
     )
 
     assert captured_requests[0].runtime_mode == "future_task"
+    assert captured_requests[0].prompt == ""
+    assert captured_requests[0].messages
+    assert captured_requests[0].messages[-1].role == "user"
+    assert (
+        "Write only the final assistant reply"
+        in captured_requests[0].messages[-1].content
+    )
     assert result.turn_result is not None
     assert result.turn_result.runtime_mode == "future_task"
     assert result.delivery_result == DeliveryOutcome(delivered=True)
-

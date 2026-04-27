@@ -51,3 +51,16 @@ def test_generation_steps_delegate_reply_input_gathering() -> None:
     assert "load_persona_bundle" not in generation_source
     assert "update_relationship_state" not in generation_source
     assert "ai_tool_service" not in generation_source
+
+
+def test_generation_steps_use_prompt_packets_for_reply_generation() -> None:
+    project_root = Path(__file__).resolve().parents[2]
+    generation_source = (
+        project_root / "apeiria" / "app" / "ai" / "pipeline" / "generation_steps.py"
+    ).read_text(encoding="utf-8")
+
+    assert "compose_pre_tool_reply_prompt" not in generation_source
+    assert "compose_roleplay_reply_prompt" not in generation_source
+    assert "build_chat_messages" not in generation_source
+    assert "build_pre_tool_reply_messages" in generation_source
+    assert "build_roleplay_reply_messages" in generation_source

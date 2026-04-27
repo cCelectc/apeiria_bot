@@ -5,17 +5,20 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from apeiria.app.ai.pipeline.prompting import (
-    AIPromptMode,
-    AIReplyPromptChannels,
-    AIReplyPromptContext,
-    build_reply_prompt_channels,
-    render_reply_prompt,
+from apeiria.ai.prompting import (
+    PromptPacket,
+    ReplyPromptInput,
+    ReplyPromptMode,
+    build_reply_final_packet,
+    build_reply_planner_packet,
+    render_flat,
+    render_messages,
 )
 
 if TYPE_CHECKING:
     from apeiria.ai.memory import AIMemoryDefinition
-    from apeiria.app.ai.pipeline.prompting import AIPersonaPromptBundleLike
+    from apeiria.ai.model import AIModelMessage
+    from apeiria.ai.prompting import ReplyPersonaPromptBundleLike
     from apeiria.conversation.models import ChatContextMessageView
 
 
@@ -23,7 +26,7 @@ if TYPE_CHECKING:
 class AIRuntimeComposeInput:
     """Structured runtime inputs for reply prompt composition."""
 
-    persona: "AIPersonaPromptBundleLike | None"
+    persona: "ReplyPersonaPromptBundleLike | None"
     scene_type: str
     relationship: str | None
     tool_policy: str | None
@@ -40,13 +43,57 @@ class AIRuntimeComposeInput:
 def compose_reply_prompt(
     inputs: AIRuntimeComposeInput,
     *,
-    mode: AIPromptMode,
+    mode: ReplyPromptMode,
     include_tool_policy: bool = True,
 ) -> str:
-    """Compose one runtime prompt from separated runtime channels."""
+    """Compose one explicit flat runtime prompt during migration."""
 
-    return render_reply_prompt(
-        build_runtime_prompt_channels(
+    return render_flat(
+        build_runtime_prompt_packet(
+            inputs,
+            mode=mode,
+            include_tool_policy=include_tool_policy,
+        ),
+    )
+
+
+def build_runtime_prompt_packet(
+    inputs: AIRuntimeComposeInput,
+    *,
+    mode: ReplyPromptMode,
+    include_tool_policy: bool = True,
+) -> PromptPacket:
+    """Build a reply prompt packet from runtime materials."""
+
+    recipe_input = ReplyPromptInput(
+        persona=inputs.persona,
+        scene_type=inputs.scene_type,
+        person_profile=inputs.person_profile,
+        relationship=inputs.relationship,
+        tool_policy=inputs.tool_policy if include_tool_policy else None,
+        tool_results=inputs.tool_results,
+        memories=inputs.memories,
+        conversation_summary=inputs.conversation_summary,
+        social_policy_summary=inputs.social_policy_summary,
+        future_task_context=inputs.future_task_context,
+        skill_activation=inputs.skill_activation,
+        turns=inputs.turns,
+    )
+    if mode == "planner":
+        return build_reply_planner_packet(recipe_input)
+    return build_reply_final_packet(recipe_input)
+
+
+def build_runtime_prompt_messages(
+    inputs: AIRuntimeComposeInput,
+    *,
+    mode: ReplyPromptMode,
+    include_tool_policy: bool = True,
+) -> tuple["AIModelMessage", ...]:
+    """Build model messages for one reply-generation prompt."""
+
+    return render_messages(
+        build_runtime_prompt_packet(
             inputs,
             mode=mode,
             include_tool_policy=include_tool_policy,
@@ -54,31 +101,52 @@ def compose_reply_prompt(
     )
 
 
-def build_runtime_prompt_channels(
+def build_pre_tool_reply_packet(
     inputs: AIRuntimeComposeInput,
     *,
-    mode: AIPromptMode,
-    include_tool_policy: bool = True,
-) -> AIReplyPromptChannels:
-    """Build structured runtime prompt channels without rendering."""
+    has_tools: bool,
+) -> PromptPacket:
+    """Build the initial reply packet for either planning or direct reply."""
 
-    return build_reply_prompt_channels(
-        AIReplyPromptContext(
-            persona=inputs.persona,
-            scene_type=inputs.scene_type,
-            person_profile=inputs.person_profile,
-            relationship=inputs.relationship,
-            tool_policy=inputs.tool_policy if include_tool_policy else None,
-            tool_results=inputs.tool_results,
-            memories=inputs.memories,
-            conversation_summary=inputs.conversation_summary,
-            social_policy=inputs.social_policy_summary,
-            future_task=inputs.future_task_context,
-            skill_activation=inputs.skill_activation,
-            turns=inputs.turns,
-        ),
-        mode=mode,
+    if has_tools:
+        return build_runtime_prompt_packet(
+            inputs,
+            mode="planner",
+            include_tool_policy=True,
+        )
+    return build_runtime_prompt_packet(
+        inputs,
+        mode="roleplay",
+        include_tool_policy=False,
     )
+
+
+def build_roleplay_reply_packet(inputs: AIRuntimeComposeInput) -> PromptPacket:
+    """Build the final visible reply packet."""
+
+    return build_runtime_prompt_packet(
+        inputs,
+        mode="roleplay",
+        include_tool_policy=False,
+    )
+
+
+def build_pre_tool_reply_messages(
+    inputs: AIRuntimeComposeInput,
+    *,
+    has_tools: bool,
+) -> tuple["AIModelMessage", ...]:
+    """Build initial reply messages for direct or tool-planning generation."""
+
+    return render_messages(build_pre_tool_reply_packet(inputs, has_tools=has_tools))
+
+
+def build_roleplay_reply_messages(
+    inputs: AIRuntimeComposeInput,
+) -> tuple["AIModelMessage", ...]:
+    """Build final visible reply messages."""
+
+    return render_messages(build_roleplay_reply_packet(inputs))
 
 
 def compose_pre_tool_reply_prompt(
@@ -94,16 +162,10 @@ def compose_pre_tool_reply_prompt(
     """
 
     if has_tools:
-        return compose_reply_prompt(
-            inputs,
-            mode="planner",
-            include_tool_policy=True,
-        )
-    return compose_reply_prompt(
-        inputs,
-        mode="roleplay",
-        include_tool_policy=False,
-    )
+        packet = build_pre_tool_reply_packet(inputs, has_tools=True)
+    else:
+        packet = build_pre_tool_reply_packet(inputs, has_tools=False)
+    return render_flat(packet)
 
 
 def compose_roleplay_reply_prompt(inputs: AIRuntimeComposeInput) -> str:
@@ -114,8 +176,4 @@ def compose_roleplay_reply_prompt(inputs: AIRuntimeComposeInput) -> str:
     results without the full structural policy layer.
     """
 
-    return compose_reply_prompt(
-        inputs,
-        mode="roleplay",
-        include_tool_policy=False,
-    )
+    return render_flat(build_roleplay_reply_packet(inputs))
