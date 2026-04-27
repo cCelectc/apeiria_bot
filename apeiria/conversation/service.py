@@ -19,7 +19,6 @@ from apeiria.conversation.repository import (
     ChatSessionRepository,
     ChatSessionRow,
 )
-from apeiria.conversation.summary import build_short_conversation_summary
 
 if TYPE_CHECKING:
     from nonebot.adapters import Bot, Event
@@ -75,22 +74,6 @@ class ChatSessionService:
         """Persist an externally-built conversation summary."""
 
         await self._repository.store_summary_text(identity, summary=summary)
-
-    async def update_summary_text(
-        self,
-        identity: ChatSessionIdentity,
-        *,
-        messages: list[ChatContextMessageView],
-    ) -> str | None:
-        """Refresh the compact stored summary for one session.
-
-        .. deprecated::
-            Prefer ``store_summary_text`` with an externally-built summary.
-        """
-
-        summary = build_short_conversation_summary(messages)
-        await self.store_summary_text(identity, summary=summary)
-        return summary
 
     async def append_message(
         self,
