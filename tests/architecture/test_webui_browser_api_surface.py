@@ -22,11 +22,13 @@ AI_RESOURCE_API_MODULES = (
 )
 CHAT_VIEW = WEB_SRC_ROOT / "views" / "ChatView.vue"
 CHAT_WORKFLOW_MODULES = (
+    WEB_SRC_ROOT / "views" / "chat" / "ChatMessageList.vue",
     WEB_SRC_ROOT / "views" / "chat" / "composer.ts",
     WEB_SRC_ROOT / "views" / "chat" / "mediaPreview.ts",
     WEB_SRC_ROOT / "views" / "chat" / "messageDisplay.ts",
     WEB_SRC_ROOT / "views" / "chat" / "sessionState.ts",
     WEB_SRC_ROOT / "views" / "chat" / "transport.ts",
+    WEB_SRC_ROOT / "views" / "chat" / "useChatComposer.ts",
 )
 PLUGINS_VIEW = WEB_SRC_ROOT / "views" / "PluginsView.vue"
 PLUGIN_WORKFLOW_MODULES = (
@@ -36,12 +38,27 @@ PLUGIN_WORKFLOW_MODULES = (
     WEB_SRC_ROOT / "views" / "plugins" / "install.ts",
     WEB_SRC_ROOT / "views" / "plugins" / "readme.ts",
     WEB_SRC_ROOT / "views" / "plugins" / "tasks.ts",
+    WEB_SRC_ROOT / "views" / "plugins" / "usePluginActions.ts",
+    WEB_SRC_ROOT / "views" / "plugins" / "usePluginInstallTasks.ts",
+    WEB_SRC_ROOT / "views" / "plugins" / "usePluginListState.ts",
+    WEB_SRC_ROOT / "views" / "plugins" / "usePluginReadmeDialog.ts",
+    WEB_SRC_ROOT / "views" / "plugins" / "usePluginSettingsDialog.ts",
+    WEB_SRC_ROOT / "views" / "plugins" / "usePluginUpdateChecks.ts",
 )
 PERMISSIONS_VIEW = WEB_SRC_ROOT / "views" / "PermissionsView.vue"
 PERMISSION_WORKFLOW_MODULES = (
     WEB_SRC_ROOT / "views" / "permissions" / "filters.ts",
     WEB_SRC_ROOT / "views" / "permissions" / "options.ts",
+    WEB_SRC_ROOT / "views" / "permissions" / "usePermissionPluginPerspective.ts",
+    WEB_SRC_ROOT / "views" / "permissions" / "usePermissionRouteState.ts",
+    WEB_SRC_ROOT / "views" / "permissions" / "usePermissionRules.ts",
+    WEB_SRC_ROOT / "views" / "permissions" / "usePermissionUserPerspective.ts",
 )
+TARGET_ROUTE_VIEW_LINE_LIMITS = {
+    CHAT_VIEW: 1000,
+    PERMISSIONS_VIEW: 1000,
+    PLUGINS_VIEW: 1700,
+}
 FORBIDDEN_IMPORT_PATTERN = re.compile(r"""from\s+['"]@/api(?:/index)?['"]""")
 
 
@@ -98,11 +115,12 @@ def test_chat_view_delegates_focused_workflow_modules() -> None:
     text = CHAT_VIEW.read_text(encoding="utf-8")
 
     for module_path in (
-        "@/views/chat/composer",
+        "@/views/chat/ChatMessageList.vue",
         "@/views/chat/mediaPreview",
         "@/views/chat/messageDisplay",
         "@/views/chat/sessionState",
         "@/views/chat/transport",
+        "@/views/chat/useChatComposer",
     ):
         assert module_path in text
 
@@ -114,12 +132,13 @@ def test_plugins_view_delegates_focused_workflow_modules() -> None:
     text = PLUGINS_VIEW.read_text(encoding="utf-8")
 
     for module_path in (
-        "@/views/plugins/actions",
         "@/views/plugins/display",
-        "@/views/plugins/filters",
-        "@/views/plugins/install",
-        "@/views/plugins/readme",
-        "@/views/plugins/tasks",
+        "@/views/plugins/usePluginActions",
+        "@/views/plugins/usePluginInstallTasks",
+        "@/views/plugins/usePluginListState",
+        "@/views/plugins/usePluginReadmeDialog",
+        "@/views/plugins/usePluginSettingsDialog",
+        "@/views/plugins/usePluginUpdateChecks",
     ):
         assert module_path in text
 
@@ -133,8 +152,28 @@ def test_permissions_view_delegates_focused_workflow_modules() -> None:
     for module_path in (
         "@/views/permissions/filters",
         "@/views/permissions/options",
+        "@/views/permissions/usePermissionPluginPerspective",
+        "@/views/permissions/usePermissionRouteState",
+        "@/views/permissions/usePermissionRules",
+        "@/views/permissions/usePermissionUserPerspective",
     ):
         assert module_path in text
+
+
+def test_target_route_views_stay_within_composition_shell_size() -> None:
+    violations = []
+
+    for path, limit in TARGET_ROUTE_VIEW_LINE_LIMITS.items():
+        line_count = len(path.read_text(encoding="utf-8").splitlines())
+        if line_count > limit:
+            violations.append(
+                f"{path.relative_to(REPO_ROOT)} has {line_count} lines, limit {limit}",
+            )
+
+    message = "target route views exceeding composition-shell limits:\n" + "\n".join(
+        violations,
+    )
+    assert not violations, message
 
 
 def _iter_browser_source_files() -> list[Path]:

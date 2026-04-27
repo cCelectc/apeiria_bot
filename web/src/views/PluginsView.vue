@@ -847,369 +847,62 @@
 </template>
 
 <script setup lang="ts">
-  import type { RawSettingsResponse } from '@/api/settings'
-  import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+  import type { PluginItem } from '@/api/plugins'
+  import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
   import { useI18n } from 'vue-i18n'
   import { useRoute } from 'vue-router'
   import { getErrorMessage } from '@/api/client'
-  import {
-    checkPluginUpdates,
-    cleanupOrphanPluginConfigs,
-    getOrphanPluginConfigs,
-    getPluginInstallTask,
-    getPluginReadme,
-    getPlugins,
-    getPluginSettings,
-    getPluginSettingsRaw,
-    getPluginTogglePreview,
-    installManualPlugin,
-    type OrphanPluginConfigItem,
-    type PluginItem,
-    type PluginReadmeResponse,
-    type PluginStoreTask,
-    type PluginUpdateCheckItem,
-    uninstallPlugin,
-    updateInstalledPlugin,
-    updatePlugin,
-    updatePluginSettings,
-    updatePluginSettingsRaw,
-    validatePluginSettingsRaw,
-  } from '@/api/plugins'
-  import { useRawTomlValidation } from '@/composables/useRawTomlValidation'
+  import { getPlugins } from '@/api/plugins'
   import { useAuthStore } from '@/stores/auth'
   import { useNoticeStore } from '@/stores/notice'
   import { useRestartStore } from '@/stores/restart'
-  import {
-    toggleConfirmTitle as buildToggleConfirmTitle,
-    uninstallConfirmSummary as buildUninstallConfirmSummary,
-    canUninstallPlugin as canUninstallPluginForRole,
-    canUpdatePlugin as canUpdatePluginForRole,
-  } from '@/views/plugins/actions'
   import {
     pluginToggleHint as buildPluginToggleHint,
     settingsSourceLabel as buildSettingsSourceLabel,
     settingsValueSourceLabel as buildSettingsValueSourceLabel,
     sourceLabel as buildSourceLabel,
-    updateButtonTooltip as buildUpdateButtonTooltip,
     formatFieldChoices,
-    hasPluginUpdate as hasPluginUpdateForChecks,
     pluginMetaSummary,
     pluginProjectUrl,
     sourceColor,
   } from '@/views/plugins/display'
-  import {
-    buildPluginNameMap,
-    getNonSystemPlugins,
-    getSystemPlugins,
-    getVisiblePlugins,
-  } from '@/views/plugins/filters'
-  import {
-    manualInstallRequirementHint as buildManualInstallRequirementHint,
-    manualInstallRequirementLabel as buildManualInstallRequirementLabel,
-    manualInstallSourceOptions as buildManualInstallSourceOptions,
-    canSubmitManualInstall as canSubmitManualInstallRequirement,
-    type ManualInstallSourceType,
-  } from '@/views/plugins/install'
   import RawSettingsEditor from '@/views/plugins/RawSettingsEditor.vue'
-  import { renderReadmeHtml } from '@/views/plugins/readme'
-  import {
-    buildRevertValues,
-    buildSettingsPreviewItems,
-    type PluginSettingField,
-  } from '@/views/plugins/settingsEditor'
   import SettingsFieldEditor from '@/views/plugins/SettingsFieldEditor.vue'
   import SettingsModeBar from '@/views/plugins/SettingsModeBar.vue'
   import SettingsPreviewDialog from '@/views/plugins/SettingsPreviewDialog.vue'
-  import {
-    manualInstallTaskStatusLabel as buildManualInstallTaskStatusLabel,
-    packageUpdateTaskStatusLabel as buildPackageUpdateTaskStatusLabel,
-    summarizeTaskError,
-  } from '@/views/plugins/tasks'
-  import { useSettingsEditor } from '@/views/plugins/useSettingsEditor'
+  import { usePluginActions } from '@/views/plugins/usePluginActions'
+  import { usePluginInstallTasks } from '@/views/plugins/usePluginInstallTasks'
+  import { usePluginListState } from '@/views/plugins/usePluginListState'
+  import { usePluginReadmeDialog } from '@/views/plugins/usePluginReadmeDialog'
+  import { usePluginSettingsDialog } from '@/views/plugins/usePluginSettingsDialog'
+  import { usePluginUpdateChecks } from '@/views/plugins/usePluginUpdateChecks'
 
   const plugins = ref<PluginItem[]>([])
   const loading = ref(false)
   const pendingModule = ref('')
   const errorMessage = ref('')
-  const pluginScopeTab = ref<'managed' | 'framework'>('managed')
-  const pluginSearch = ref('')
-  const manualInstallDialogVisible = ref(false)
-  const manualInstallTaskDialogVisible = ref(false)
-  const manualInstallSubmitting = ref(false)
-  const manualInstallSourceType = ref<ManualInstallSourceType>('pypi')
-  const manualInstallRequirement = ref('')
-  const manualInstallModuleName = ref('')
-  const manualInstallTask = ref<PluginStoreTask | null>(null)
-  const activeManualInstallRequirement = ref('')
-  let manualInstallTaskPollTimer: number | null = null
-  const packageUpdateTaskDialogVisible = ref(false)
-  const packageUpdateTask = ref<PluginStoreTask | null>(null)
-  const packageUpdatingModule = ref('')
-  let packageUpdateTaskPollTimer: number | null = null
-  const updateCheckLoading = ref(false)
-  const pluginUpdateChecks = ref<Record<string, PluginUpdateCheckItem>>({})
-  const readmeDialogVisible = ref(false)
-  const readmeLoading = ref(false)
-  const readmeLoadingModule = ref('')
-  const readmeTarget = ref<PluginItem | null>(null)
-  const readmeDocument = ref<PluginReadmeResponse | null>(null)
-  const readmeErrorMessage = ref('')
-  const settingsDialogVisible = ref(false)
-  const settingsLoadingModule = ref('')
-  const settingsPlugin = ref<PluginItem | null>(null)
-  const settingsEditorMode = ref<'basic' | 'advanced'>('basic')
-  const settingsRawText = ref('')
-  const settingsRawInitialText = ref('')
-  const settingsRawLoading = ref(false)
-  const settingsRawSaving = ref(false)
-  const settingsRawErrorMessage = ref('')
-  const previewDialogVisible = ref(false)
-  const previewMode = ref<'basic' | 'raw'>('basic')
-  const previewAction = ref<'plugin-basic' | 'plugin-raw'>('plugin-basic')
-  const toggleConfirmVisible = ref(false)
-  const toggleConfirmLoading = ref(false)
-  const toggleConfirmItem = ref<PluginItem | null>(null)
-  const toggleConfirmNextValue = ref(false)
-  const toggleConfirmSummaryText = ref('')
-  const toggleConfirmDependencies = ref<string[]>([])
-  const uninstallingModule = ref('')
-  const uninstallConfirmVisible = ref(false)
-  const uninstallConfirmItem = ref<PluginItem | null>(null)
-  const uninstallRemoveConfig = ref(false)
-  const orphanConfigDialogVisible = ref(false)
-  const orphanConfigLoading = ref(false)
-  const orphanConfigCleaning = ref(false)
-  const orphanConfigItems = ref<OrphanPluginConfigItem[]>([])
   const authStore = useAuthStore()
   const noticeStore = useNoticeStore()
   const restartStore = useRestartStore()
   const { t } = useI18n()
   const route = useRoute()
 
-  const pluginEditor = useSettingsEditor({
-    save: payload => updatePluginSettings(settingsPlugin.value!.module_name, payload),
-    messages: {
-      invalidJson: t('plugins.settingsInvalidJson'),
-      loadFailed: t('plugins.settingsLoadFailed'),
-      saveFailed: t('plugins.settingsSaveFailed'),
-      saveSuccess: t('plugins.settingsSaved'),
-    },
-    afterSave: ({ previousState, values, clear }) => {
-      if (!settingsPlugin.value) return
-      restartStore.markPending({
-        id: `plugin:settings:${settingsPlugin.value.module_name}`,
-        scope: 'plugins',
-        summary: t('restart.pendingPluginSettings', {
-          name: settingsPlugin.value.name || settingsPlugin.value.module_name,
-        }),
-        undo: {
-          kind: 'plugin-settings',
-          moduleName: settingsPlugin.value.module_name,
-          values: buildRevertValues(previousState.fields, values, clear),
-        },
-      })
-    },
-  })
-
-  const settingsDialogLoading = pluginEditor.loading
-  const settingsSaving = pluginEditor.saving
-  const settingsErrorMessage = pluginEditor.errorMessage
-  const settingsState = pluginEditor.state
-  const settingsFields = pluginEditor.fields
-  const settingsForm = pluginEditor.form
-  const hasPendingPluginChanges = pluginEditor.hasPendingChanges
-  const hasPendingPluginRawChanges = computed(() => settingsRawText.value !== settingsRawInitialText.value)
-  const previewSaving = computed(() => settingsSaving.value || settingsRawSaving.value)
-  const previewTitle = computed(() =>
-    previewMode.value === 'basic' ? t('plugins.previewChangesTitle') : t('plugins.previewRawTitle'),
-  )
-  const previewCurrentText = computed(() => settingsRawInitialText.value)
-  const previewNextText = computed(() => settingsRawText.value)
-  const previewItems = computed(() =>
-    buildSettingsPreviewItems(
-      settingsFields.value,
-      settingsForm.value,
-      pluginEditor.draftOverrides.value,
-      pluginEditor.draftClears.value,
-      t('plugins.settingsInvalidJson'),
-    ),
-  )
   const {
-    validateNow: validatePluginRawNow,
-    validationColumn: pluginRawValidationColumn,
-    validationLine: pluginRawValidationLine,
-    validationMessage: pluginRawValidationMessage,
-    validationPending: pluginRawValidationPending,
-  } = useRawTomlValidation({
-    text: settingsRawText,
-    initialText: settingsRawInitialText,
-    fallbackMessage: t('plugins.settingsRawValidateFailed'),
-    validate: async text => {
-      if (!settingsPlugin.value) {
-        return { valid: true, message: null, line: null, column: null }
-      }
-      return (await validatePluginSettingsRaw(settingsPlugin.value.module_name, { text })).data
-    },
-  })
-  const toggleConfirmTitle = computed(() =>
-    buildToggleConfirmTitle(toggleConfirmNextValue.value, t),
-  )
-  const toggleConfirmSummary = computed(() => toggleConfirmSummaryText.value)
-  const pluginNameMap = computed(() =>
-    buildPluginNameMap(plugins.value),
-  )
-  const uninstallConfirmSummary = computed(() =>
-    buildUninstallConfirmSummary(uninstallConfirmItem.value, t),
-  )
-  const systemPlugins = computed(() =>
-    getSystemPlugins(plugins.value),
-  )
+    applyRouteFilters,
+    getPluginLabel,
+    nonSystemPlugins,
+    pluginScopeTab,
+    pluginSearch,
+    systemPlugins,
+    visiblePlugins,
+  } = usePluginListState(plugins, route)
 
-  const nonSystemPlugins = computed(() =>
-    getNonSystemPlugins(plugins.value),
-  )
-
-  const visiblePlugins = computed(() =>
-    getVisiblePlugins(plugins.value, {
-      disabledOnly: route.query.enabled === 'disabled',
-      scope: pluginScopeTab.value,
-      search: pluginSearch.value,
-    }),
-  )
-
-  const manualInstallSourceOptions = computed(() =>
-    buildManualInstallSourceOptions(t),
-  )
-  const manualInstallRequirementLabel = computed(() =>
-    buildManualInstallRequirementLabel(manualInstallSourceType.value, t),
-  )
-  const manualInstallRequirementHint = computed(() =>
-    buildManualInstallRequirementHint(manualInstallSourceType.value, t),
-  )
-  const canSubmitManualInstall = computed(() =>
-    canSubmitManualInstallRequirement(manualInstallRequirement.value),
-  )
-  const manualInstallTaskErrorSummary = computed(() => {
-    return summarizeTaskError(manualInstallTask.value?.error)
-  })
-  const manualInstallTaskStatusLabel = computed(() => {
-    return buildManualInstallTaskStatusLabel(manualInstallTask.value, t)
-  })
-  const packageUpdateTaskErrorSummary = computed(() => {
-    return summarizeTaskError(packageUpdateTask.value?.error)
-  })
-  const packageUpdateTaskStatusLabel = computed(() => {
-    return buildPackageUpdateTaskStatusLabel(packageUpdateTask.value, t)
-  })
-  const readmeDialogTitle = computed(() =>
-    t('plugins.readmeTitle', {
-      name: readmeTarget.value?.name || readmeTarget.value?.module_name || '',
-    }),
-  )
-  const readmeFilename = computed(() => readmeDocument.value?.filename || '')
-  const readmeHtml = computed(() =>
-    renderReadmeHtml(
-      readmeDocument.value?.content || '',
-      readmeTarget.value?.module_name,
-    ),
-  )
-
-  function applyRouteFilters () {
-    const searchQuery = route.query.search
-    pluginSearch.value = typeof searchQuery === 'string' ? searchQuery : ''
-  }
-
-  function sourceLabel (source: string) {
-    return buildSourceLabel(source, t)
-  }
-
-  function hasPluginUpdate (item: PluginItem) {
-    return hasPluginUpdateForChecks(pluginUpdateChecks.value, item)
-  }
-
-  function updateButtonTooltip (item: PluginItem) {
-    return buildUpdateButtonTooltip(
-      pluginUpdateChecks.value,
-      item,
-      updateCheckLoading.value,
-      t,
-    )
-  }
-
-  function pluginToggleHint (item: PluginItem) {
-    return buildPluginToggleHint(item, t)
-  }
-
-  function settingsSourceLabel (source: string) {
-    return buildSettingsSourceLabel(source, t)
-  }
-
-  function settingsValueSourceLabel (source: string) {
-    return buildSettingsValueSourceLabel(source, t)
-  }
-
-  function getPluginLabel (moduleName: string) {
-    return pluginNameMap.value.get(moduleName) || moduleName
-  }
-
-  function closeToggleConfirm () {
-    toggleConfirmVisible.value = false
-    toggleConfirmLoading.value = false
-    toggleConfirmItem.value = null
-    toggleConfirmNextValue.value = false
-    toggleConfirmSummaryText.value = ''
-    toggleConfirmDependencies.value = []
-  }
-
-  function closeUninstallConfirm () {
-    uninstallConfirmVisible.value = false
-    uninstallConfirmItem.value = null
-    uninstallRemoveConfig.value = false
-  }
-
-  async function openOrphanConfigDialog () {
-    orphanConfigDialogVisible.value = true
-    orphanConfigLoading.value = true
-    try {
-      orphanConfigItems.value = (await getOrphanPluginConfigs()).data.items
-    } catch (error) {
-      orphanConfigDialogVisible.value = false
-      noticeStore.show(getErrorMessage(error, t('plugins.orphanConfigCleanupFailed')), 'error')
-    } finally {
-      orphanConfigLoading.value = false
-    }
-  }
-
-  function openToggleConfirm (
-    item: PluginItem,
-    enabled: boolean,
-    summary: string,
-    dependencies: string[],
-  ) {
-    toggleConfirmItem.value = item
-    toggleConfirmNextValue.value = enabled
-    toggleConfirmSummaryText.value = summary
-    toggleConfirmDependencies.value = dependencies
-    toggleConfirmVisible.value = true
-  }
-
-  function applyPluginRawState (nextState: RawSettingsResponse) {
-    settingsRawText.value = nextState.text
-    settingsRawInitialText.value = nextState.text
-  }
-
-  async function loadPluginRawSettings (moduleName: string) {
-    settingsRawLoading.value = true
-    settingsRawErrorMessage.value = ''
-    try {
-      const response = await getPluginSettingsRaw(moduleName)
-      applyPluginRawState(response.data)
-    } catch (error) {
-      settingsRawErrorMessage.value = getErrorMessage(error, t('plugins.settingsRawLoadFailed'))
-    } finally {
-      settingsRawLoading.value = false
-    }
-  }
+  const {
+    hasPluginUpdate,
+    runPluginUpdateCheck,
+    updateButtonTooltip,
+    updateCheckLoading,
+  } = usePluginUpdateChecks(t, noticeStore)
 
   async function loadPluginManagement (options?: { forceUpdateRefresh?: boolean }) {
     loading.value = true
@@ -1224,416 +917,150 @@
     }
   }
 
-  async function runPluginUpdateCheck (forceRefresh = false) {
-    if (updateCheckLoading.value) return
-    updateCheckLoading.value = true
-    try {
-      const response = await checkPluginUpdates({
-        force_refresh: forceRefresh || undefined,
-      })
-      pluginUpdateChecks.value = Object.fromEntries(
-        response.data.map(item => [item.module_name, item]),
-      )
-    } catch (error) {
-      noticeStore.show(getErrorMessage(error, t('plugins.updateCheckFailed')), 'error')
-    } finally {
-      updateCheckLoading.value = false
-    }
+  const {
+    canSubmitManualInstall,
+    manualInstallDialogVisible,
+    manualInstallModuleName,
+    manualInstallRequirement,
+    manualInstallRequirementHint,
+    manualInstallRequirementLabel,
+    manualInstallSourceOptions,
+    manualInstallSourceType,
+    manualInstallSubmitting,
+    manualInstallTask,
+    manualInstallTaskDialogVisible,
+    manualInstallTaskErrorSummary,
+    manualInstallTaskStatusLabel,
+    openManualInstallDialog,
+    packageUpdateTask,
+    packageUpdateTaskDialogVisible,
+    packageUpdateTaskErrorSummary,
+    packageUpdateTaskStatusLabel,
+    packageUpdatingModule,
+    stopManualInstallTaskPolling,
+    stopPackageUpdateTaskPolling,
+    submitManualInstall,
+    updatePluginItem,
+  } = usePluginInstallTasks({
+    loadPluginManagement,
+    noticeStore,
+    restartStore,
+    t,
+  })
+
+  const {
+    clearPluginField,
+    confirmPreviewSave,
+    hasPendingPluginChanges,
+    hasPendingPluginRawChanges,
+    loadPluginRawSettings,
+    openPluginRawPreview,
+    openPluginSettingsPreview,
+    openSettings,
+    pluginEditor,
+    pluginRawValidationColumn,
+    pluginRawValidationLine,
+    pluginRawValidationMessage,
+    pluginRawValidationPending,
+    previewCurrentText,
+    previewDialogVisible,
+    previewItems,
+    previewMode,
+    previewNextText,
+    previewSaving,
+    previewTitle,
+    settingsDialogLoading,
+    settingsDialogVisible,
+    settingsEditorMode,
+    settingsErrorMessage,
+    settingsFields,
+    settingsForm,
+    settingsLoadingModule,
+    settingsPlugin,
+    settingsRawErrorMessage,
+    settingsRawLoading,
+    settingsRawSaving,
+    settingsRawText,
+    settingsSaving,
+    settingsState,
+  } = usePluginSettingsDialog({
+    noticeStore,
+    restartStore,
+    t,
+  })
+
+  const {
+    openReadme,
+    readmeDialogTitle,
+    readmeDialogVisible,
+    readmeErrorMessage,
+    readmeFilename,
+    readmeHtml,
+    readmeLoading,
+    readmeLoadingModule,
+  } = usePluginReadmeDialog(t)
+
+  const {
+    canUninstallPlugin: canUninstallPluginForRole,
+    canUpdatePlugin: canUpdatePluginForRole,
+    closeToggleConfirm,
+    closeUninstallConfirm,
+    confirmCleanupOrphanConfigs,
+    confirmToggleAction,
+    confirmUninstallPlugin,
+    openOrphanConfigDialog,
+    orphanConfigCleaning,
+    orphanConfigDialogVisible,
+    orphanConfigItems,
+    orphanConfigLoading,
+    toggleConfirmDependencies,
+    toggleConfirmItem,
+    toggleConfirmLoading,
+    toggleConfirmNextValue,
+    toggleConfirmSummary,
+    toggleConfirmTitle,
+    toggleConfirmVisible,
+    togglePlugin,
+    uninstallConfirmSummary,
+    uninstallConfirmVisible,
+    uninstallPluginItem,
+    uninstallRemoveConfig,
+    uninstallingModule,
+  } = usePluginActions({
+    errorMessage,
+    getPluginLabel,
+    loadPluginManagement,
+    noticeStore,
+    pendingModule,
+    plugins,
+    restartStore,
+    settingsDialogVisible,
+    settingsPlugin,
+    t,
+  })
+
+  function sourceLabel (source: string) {
+    return buildSourceLabel(source, t)
   }
 
-  function openManualInstallDialog () {
-    manualInstallSourceType.value = 'pypi'
-    manualInstallRequirement.value = ''
-    manualInstallModuleName.value = ''
-    manualInstallDialogVisible.value = true
+  function pluginToggleHint (item: PluginItem) {
+    return buildPluginToggleHint(item, t)
   }
 
-  async function submitManualInstall () {
-    const requirement = manualInstallRequirement.value.trim()
-    if (!requirement) return
-
-    manualInstallSubmitting.value = true
-    try {
-      const response = await installManualPlugin({
-        requirement,
-        module_name: manualInstallModuleName.value.trim() || undefined,
-      })
-      activeManualInstallRequirement.value = requirement
-      manualInstallTask.value = response.data
-      manualInstallDialogVisible.value = false
-      manualInstallTaskDialogVisible.value = true
-      startManualInstallTaskPolling(response.data.task_id)
-    } catch (error) {
-      noticeStore.show(getErrorMessage(error, t('plugins.manualInstallFailed')), 'error')
-    } finally {
-      manualInstallSubmitting.value = false
-    }
+  function settingsSourceLabel (source: string) {
+    return buildSettingsSourceLabel(source, t)
   }
 
-  function stopManualInstallTaskPolling () {
-    if (manualInstallTaskPollTimer !== null) {
-      window.clearInterval(manualInstallTaskPollTimer)
-      manualInstallTaskPollTimer = null
-    }
-  }
-
-  function stopPackageUpdateTaskPolling () {
-    if (packageUpdateTaskPollTimer !== null) {
-      window.clearInterval(packageUpdateTaskPollTimer)
-      packageUpdateTaskPollTimer = null
-    }
-  }
-
-  function startManualInstallTaskPolling (taskId: string) {
-    stopManualInstallTaskPolling()
-    manualInstallTaskPollTimer = window.setInterval(async () => {
-      try {
-        const response = await getPluginInstallTask(taskId)
-        manualInstallTask.value = response.data
-        if (response.data.status === 'succeeded' || response.data.status === 'failed') {
-          stopManualInstallTaskPolling()
-          if (response.data.status === 'succeeded') {
-            const moduleName = typeof response.data.result.module_name === 'string'
-              ? response.data.result.module_name
-              : ''
-            const requirement = typeof response.data.result.requirement === 'string'
-              ? response.data.result.requirement
-              : activeManualInstallRequirement.value
-            restartStore.markPending({
-              id: `plugin-manual-install:${moduleName || requirement}`,
-              scope: 'plugins',
-              summary: t('plugins.manualInstallRestartPending', { name: moduleName || requirement }),
-              undo: {
-                kind: 'plugin-install',
-                packageName: requirement,
-                moduleName,
-              },
-            })
-            noticeStore.show(t('plugins.manualInstallSucceeded'), 'success')
-            void loadPluginManagement()
-          } else {
-            noticeStore.show(summarizeTaskError(response.data.error) || t('plugins.manualInstallFailed'), 'error')
-          }
-        }
-      } catch (error) {
-        stopManualInstallTaskPolling()
-        noticeStore.show(getErrorMessage(error, t('plugins.manualInstallFailed')), 'error')
-      }
-    }, 1500)
-  }
-
-  function startPackageUpdateTaskPolling (taskId: string) {
-    stopPackageUpdateTaskPolling()
-    packageUpdateTaskPollTimer = window.setInterval(async () => {
-      try {
-        const response = await getPluginInstallTask(taskId)
-        packageUpdateTask.value = response.data
-        if (response.data.status === 'succeeded' || response.data.status === 'failed') {
-          stopPackageUpdateTaskPolling()
-          if (response.data.status === 'succeeded') {
-            const moduleName = typeof response.data.result.module_name === 'string'
-              ? response.data.result.module_name
-              : packageUpdatingModule.value
-            const requirement = typeof response.data.result.requirement === 'string'
-              ? response.data.result.requirement
-              : ''
-            restartStore.markPending({
-              id: `plugin-package-update:${moduleName || requirement}`,
-              scope: 'plugins',
-              summary: t('plugins.packageUpdateRestartPending', { name: moduleName || requirement }),
-            })
-            noticeStore.show(t('plugins.packageUpdateSucceeded'), 'success')
-            void loadPluginManagement({ forceUpdateRefresh: true })
-          } else {
-            noticeStore.show(
-              summarizeTaskError(response.data.error) || t('plugins.packageUpdateFailed'),
-              'error',
-            )
-          }
-          packageUpdatingModule.value = ''
-        }
-      } catch (error) {
-        stopPackageUpdateTaskPolling()
-        packageUpdatingModule.value = ''
-        noticeStore.show(getErrorMessage(error, t('plugins.packageUpdateFailed')), 'error')
-      }
-    }, 1500)
-  }
-
-  async function openSettings (item: PluginItem) {
-    if (!item.can_edit_config) return
-    settingsPlugin.value = item
-    settingsDialogVisible.value = true
-    settingsEditorMode.value = 'basic'
-    settingsDialogLoading.value = true
-    settingsLoadingModule.value = item.module_name
-    pluginEditor.reset()
-    settingsRawText.value = ''
-    settingsRawInitialText.value = ''
-    settingsRawErrorMessage.value = ''
-    try {
-      const settingsResponse = await getPluginSettings(item.module_name)
-      pluginEditor.applyState(settingsResponse.data)
-    } catch (error) {
-      settingsErrorMessage.value = getErrorMessage(error, t('plugins.settingsLoadFailed'))
-    } finally {
-      settingsDialogLoading.value = false
-      settingsLoadingModule.value = ''
-    }
-    await loadPluginRawSettings(item.module_name)
-  }
-
-  async function openReadme (item: PluginItem) {
-    readmeTarget.value = item
-    readmeDialogVisible.value = true
-    readmeLoading.value = true
-    readmeLoadingModule.value = item.module_name
-    readmeDocument.value = null
-    readmeErrorMessage.value = ''
-    try {
-      readmeDocument.value = (await getPluginReadme(item.module_name)).data
-    } catch (error) {
-      readmeErrorMessage.value = getErrorMessage(error, t('plugins.readmeLoadFailed'))
-    } finally {
-      readmeLoading.value = false
-      readmeLoadingModule.value = ''
-    }
-  }
-
-  async function saveSettings () {
-    if (!settingsPlugin.value || !settingsState.value) return
-    await pluginEditor.submit()
+  function settingsValueSourceLabel (source: string) {
+    return buildSettingsValueSourceLabel(source, t)
   }
 
   function canUninstallPlugin (item: PluginItem) {
-    return canUninstallPluginForRole(authStore.role, item)
+    return canUninstallPluginForRole(item, authStore.role)
   }
 
   function canUpdatePlugin (item: PluginItem) {
-    return canUpdatePluginForRole(authStore.role, item)
-  }
-
-  async function updatePluginItem (item: PluginItem) {
-    if (!item.installed_package || packageUpdatingModule.value) return
-    packageUpdatingModule.value = item.module_name
-    try {
-      const response = await updateInstalledPlugin(item.module_name, {
-        package_name: item.installed_package,
-      })
-      packageUpdateTask.value = response.data
-      packageUpdateTaskDialogVisible.value = true
-      startPackageUpdateTaskPolling(response.data.task_id)
-    } catch (error) {
-      packageUpdatingModule.value = ''
-      noticeStore.show(getErrorMessage(error, t('plugins.packageUpdateFailed')), 'error')
-    }
-  }
-
-  async function uninstallPluginItem (item: PluginItem) {
-    uninstallConfirmItem.value = item
-    uninstallRemoveConfig.value = false
-    uninstallConfirmVisible.value = true
-  }
-
-  async function confirmUninstallPlugin () {
-    if (!uninstallConfirmItem.value) return
-    const item = uninstallConfirmItem.value
-    uninstallingModule.value = item.module_name
-    try {
-      await uninstallPlugin(item.module_name, {
-        remove_config: uninstallRemoveConfig.value,
-      })
-      noticeStore.show(t('plugins.settingsUninstallSucceeded'), 'success')
-      if (settingsPlugin.value?.module_name === item.module_name) {
-        settingsDialogVisible.value = false
-      }
-      closeUninstallConfirm()
-      await loadPluginManagement()
-    } catch (error) {
-      noticeStore.show(getErrorMessage(error, t('plugins.settingsUninstallFailed')), 'error')
-    } finally {
-      uninstallingModule.value = ''
-    }
-  }
-
-  async function confirmCleanupOrphanConfigs () {
-    orphanConfigCleaning.value = true
-    try {
-      const removed = (await cleanupOrphanPluginConfigs()).data.items
-      orphanConfigItems.value = removed
-      orphanConfigDialogVisible.value = false
-      if (removed.length > 0) {
-        noticeStore.show(
-          t('plugins.orphanConfigCleanupSucceeded', { count: removed.length }),
-          'success',
-        )
-      } else {
-        noticeStore.show(t('plugins.orphanConfigCleanupEmpty'), 'info')
-      }
-    } catch (error) {
-      noticeStore.show(getErrorMessage(error, t('plugins.orphanConfigCleanupFailed')), 'error')
-    } finally {
-      orphanConfigCleaning.value = false
-    }
-  }
-
-  function openPluginSettingsPreview () {
-    if (!settingsState.value) return
-    const items = previewItems.value
-    if (items.length === 0) return
-    previewMode.value = 'basic'
-    previewAction.value = 'plugin-basic'
-    previewDialogVisible.value = true
-  }
-
-  async function clearPluginField (field: PluginSettingField) {
-    pluginEditor.clearField(field)
-  }
-
-  async function savePluginRawSettings () {
-    if (!settingsPlugin.value || !hasPendingPluginRawChanges.value) return
-    settingsRawSaving.value = true
-    settingsRawErrorMessage.value = ''
-    const previousText = settingsRawInitialText.value
-    try {
-      const rawResponse = await updatePluginSettingsRaw(settingsPlugin.value.module_name, {
-        text: settingsRawText.value,
-      })
-      const settingsResponse = await getPluginSettings(settingsPlugin.value.module_name)
-      applyPluginRawState(rawResponse.data)
-      pluginEditor.applyState(settingsResponse.data)
-      restartStore.markPending({
-        id: `plugin:raw:${settingsPlugin.value.module_name}`,
-        scope: 'plugins',
-        summary: t('restart.pendingPluginRaw', {
-          name: settingsPlugin.value.name || settingsPlugin.value.module_name,
-        }),
-        undo: {
-          kind: 'plugin-raw',
-          moduleName: settingsPlugin.value.module_name,
-          text: previousText,
-        },
-      })
-      noticeStore.show(t('plugins.settingsRawSaved'), 'success')
-    } catch (error) {
-      const message = getErrorMessage(error, t('plugins.settingsRawSaveFailed'))
-      settingsRawErrorMessage.value = message
-      noticeStore.show(message, 'error')
-    } finally {
-      settingsRawSaving.value = false
-    }
-  }
-
-  async function openPluginRawPreview () {
-    if (!hasPendingPluginRawChanges.value) return
-    if (!await validatePluginRawNow()) return
-    previewMode.value = 'raw'
-    previewAction.value = 'plugin-raw'
-    previewDialogVisible.value = true
-  }
-
-  async function confirmPreviewSave () {
-    await (previewAction.value === 'plugin-basic' ? saveSettings() : savePluginRawSettings())
-
-    if (!settingsErrorMessage.value && !settingsRawErrorMessage.value) {
-      previewDialogVisible.value = false
-    }
-  }
-
-  async function togglePlugin (item: PluginItem, nextValue: boolean | null) {
-    if (item.is_pending_uninstall) {
-      noticeStore.show(t('plugins.pendingUninstallHint'), 'warning')
-      return
-    }
-    if (item.is_protected) {
-      noticeStore.show(item.protected_reason || t('plugins.cannotDisable'), 'warning')
-      return
-    }
-    const enabled = Boolean(nextValue)
-    item.is_global_enabled = !enabled
-    pendingModule.value = item.module_name
-    errorMessage.value = ''
-    try {
-      const preview = (await getPluginTogglePreview(item.module_name, enabled)).data
-      if (!preview.allowed) {
-        const message = preview.blocked_reason || t('plugins.cannotDisable')
-        errorMessage.value = message
-        noticeStore.show(message, 'warning')
-        return
-      }
-      const dependencies = enabled ? preview.requires_enable : preview.requires_disable
-      if (dependencies.length > 0) {
-        openToggleConfirm(item, enabled, preview.summary, dependencies)
-        return
-      }
-      await executeToggle(item, enabled, false)
-    } catch (error) {
-      errorMessage.value = getErrorMessage(error, t('plugins.updateFailed'))
-      noticeStore.show(errorMessage.value, 'error')
-    } finally {
-      pendingModule.value = ''
-    }
-  }
-
-  async function executeToggle (
-    item: PluginItem,
-    enabled: boolean,
-    cascade: boolean,
-  ) {
-    const previous = item.is_global_enabled
-    item.is_global_enabled = enabled
-    pendingModule.value = item.module_name
-    errorMessage.value = ''
-    try {
-      const response = await updatePlugin(item.module_name, enabled, cascade)
-      const affectedModules = response.data.affected_modules
-      restartStore.markPending({
-        id: `plugin:toggle:${item.module_name}`,
-        scope: 'plugins',
-        summary: t('restart.pendingPluginToggle', {
-          name: item.name || item.module_name,
-        }),
-        undo: {
-          kind: 'plugin-toggle',
-          moduleName: item.module_name,
-          enabled: previous,
-        },
-      })
-      await loadPluginManagement()
-      if (settingsPlugin.value) {
-        settingsPlugin.value = plugins.value.find(
-          candidate => candidate.module_name === settingsPlugin.value?.module_name,
-        ) || settingsPlugin.value
-      }
-      const linkedModules = affectedModules.filter(moduleName => moduleName !== item.module_name)
-      const affectedSummary = linkedModules.length > 0
-        ? ` (${linkedModules.map(moduleName => getPluginLabel(moduleName)).join(', ')})`
-        : ''
-      noticeStore.show(
-        t('plugins.toggled', {
-          name: item.name || item.module_name,
-          action: enabled ? t('plugins.enabledAction') : t('plugins.disabledAction'),
-        }) + affectedSummary,
-        'success',
-      )
-    } catch (error) {
-      item.is_global_enabled = previous
-      errorMessage.value = getErrorMessage(error, t('plugins.updateFailed'))
-      noticeStore.show(errorMessage.value, 'error')
-    } finally {
-      pendingModule.value = ''
-    }
-  }
-
-  async function confirmToggleAction () {
-    if (!toggleConfirmItem.value) return
-    toggleConfirmLoading.value = true
-    try {
-      await executeToggle(toggleConfirmItem.value, toggleConfirmNextValue.value, true)
-      closeToggleConfirm()
-    } finally {
-      toggleConfirmLoading.value = false
-    }
+    return canUpdatePluginForRole(item, authStore.role)
   }
 
   onMounted(() => {

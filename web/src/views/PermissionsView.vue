@@ -426,30 +426,20 @@
 
 <script setup lang="ts">
   import type { PluginItem } from '@/api/plugins'
-  import { computed, onMounted, reactive, ref, watch } from 'vue'
+  import { computed, onMounted, ref, watch } from 'vue'
   import { useI18n } from 'vue-i18n'
   import { useRoute } from 'vue-router'
   import {
     type AccessRuleItem,
-    createAccessRule,
-    deleteAccessRule,
     getAccessRules,
     getUsers,
-    updatePluginAccessMode,
-    updateUserLevel,
     type UserLevelItem,
   } from '@/api/access'
   import { getErrorMessage } from '@/api/client'
   import { getPlugins } from '@/api/plugins'
   import { useNoticeStore } from '@/stores/notice'
   import {
-    pluginModuleOptions as buildPluginModuleOptions,
-    userEntries as buildUserEntries,
-    pluginRuleCount as countPluginRules,
     filteredRules as filterRules,
-    visiblePlugins as filterVisiblePlugins,
-    visibleUserEntries as filterVisibleUserEntries,
-    manageablePlugins as getManageablePlugins,
     ruleKey,
   } from '@/views/permissions/filters'
   import {
@@ -460,42 +450,76 @@
     ruleHeaders as buildRuleHeaders,
     subjectTypeOptions as buildSubjectTypeOptions,
     levelOptions,
-    type Perspective,
   } from '@/views/permissions/options'
+  import { usePermissionPluginPerspective } from '@/views/permissions/usePermissionPluginPerspective'
+  import { usePermissionRouteState } from '@/views/permissions/usePermissionRouteState'
+  import { usePermissionRules } from '@/views/permissions/usePermissionRules'
+  import { usePermissionUserPerspective } from '@/views/permissions/usePermissionUserPerspective'
 
   const route = useRoute()
   const { t } = useI18n()
   const noticeStore = useNoticeStore()
 
-  const perspective = ref<Perspective>('plugins')
+  const { applyRouteState, perspective } = usePermissionRouteState(route)
   const loading = ref(false)
-  const creatingRule = ref(false)
-  const pendingPluginAccessMode = ref(false)
-  const pendingUserKey = ref('')
   const errorMessage = ref('')
 
   const plugins = ref<PluginItem[]>([])
   const rules = ref<AccessRuleItem[]>([])
   const users = ref<UserLevelItem[]>([])
 
-  const pluginSearch = ref('')
-  const userSearch = ref('')
   const ruleSearch = ref('')
   const ruleEffectFilter = ref<'all' | 'allow' | 'deny'>('all')
 
-  const selectedPluginModule = ref('')
-  const selectedUserId = ref('')
-
-  const pluginRuleForm = reactive({
-    subject_type: 'user',
-    subject_id: '',
-    effect: 'allow',
-    note: '',
+  const { createRule, creatingRule, handleDeleteRule } = usePermissionRules({
+    errorMessage,
+    noticeStore,
+    rules,
+    t,
   })
-  const userRuleForm = reactive({
-    plugin_module: '',
-    effect: 'allow',
-    note: '',
+  const {
+    createRuleForPlugin,
+    ensurePluginSelection,
+    pendingPluginAccessMode,
+    pluginModuleOptions,
+    pluginRuleCount,
+    pluginRuleForm,
+    pluginSearch,
+    selectedPlugin,
+    selectedPluginGroupAllowRules,
+    selectedPluginGroupDenyRules,
+    selectedPluginModule,
+    selectedPluginRules,
+    selectedPluginUserAllowRules,
+    selectedPluginUserDenyRules,
+    updateSelectedPluginAccessMode,
+    visiblePlugins,
+  } = usePermissionPluginPerspective({
+    createRule,
+    errorMessage,
+    noticeStore,
+    plugins,
+    rules,
+    t,
+  })
+  const {
+    createRuleForUser,
+    ensureUserSelection,
+    selectedUserId,
+    selectedUserLevels,
+    selectedUserRules,
+    updateLevel,
+    userEntries,
+    userRuleForm,
+    userSearch,
+    visibleUserEntries,
+  } = usePermissionUserPerspective({
+    createRule,
+    errorMessage,
+    noticeStore,
+    rules,
+    t,
+    users,
   })
 
   const perspectiveItems = computed(() =>
@@ -512,18 +536,6 @@
   const accessModeOptions = computed(() => buildAccessModeOptions(t))
   const ruleEffectOptions = computed(() => buildRuleEffectOptions(t))
 
-  const manageablePlugins = computed(() =>
-    getManageablePlugins(plugins.value),
-  )
-
-  const pluginModuleOptions = computed(() =>
-    buildPluginModuleOptions(manageablePlugins.value),
-  )
-
-  const visiblePlugins = computed(() =>
-    filterVisiblePlugins(manageablePlugins.value, pluginSearch.value),
-  )
-
   const filteredRules = computed(() =>
     filterRules(rules.value, {
       effect: ruleEffectFilter.value,
@@ -531,62 +543,9 @@
     }),
   )
 
-  const selectedPlugin = computed(() =>
-    manageablePlugins.value.find(item => item.module_name === selectedPluginModule.value) || null,
-  )
-  const selectedPluginRules = computed(() =>
-    rules.value.filter(rule => rule.plugin_module === selectedPluginModule.value),
-  )
-  const selectedPluginUserAllowRules = computed(() =>
-    selectedPluginRules.value.filter(rule => rule.subject_type === 'user' && rule.effect === 'allow'),
-  )
-  const selectedPluginUserDenyRules = computed(() =>
-    selectedPluginRules.value.filter(rule => rule.subject_type === 'user' && rule.effect === 'deny'),
-  )
-  const selectedPluginGroupAllowRules = computed(() =>
-    selectedPluginRules.value.filter(rule => rule.subject_type === 'group' && rule.effect === 'allow'),
-  )
-  const selectedPluginGroupDenyRules = computed(() =>
-    selectedPluginRules.value.filter(rule => rule.subject_type === 'group' && rule.effect === 'deny'),
-  )
-
-  const userEntries = computed(() => buildUserEntries(users.value, rules.value))
-
-  const visibleUserEntries = computed(() =>
-    filterVisibleUserEntries(userEntries.value, userSearch.value),
-  )
-
-  const selectedUserRules = computed(() =>
-    rules.value.filter(rule => rule.subject_type === 'user' && rule.subject_id === selectedUserId.value),
-  )
-  const selectedUserLevels = computed(() =>
-    users.value.filter(item => item.user_id === selectedUserId.value),
-  )
-
-  function pluginRuleCount (moduleName: string): number {
-    return countPluginRules(rules.value, moduleName)
-  }
-
-  function applyRouteState (): void {
-    const tabQuery = route.query.tab
-    if (tabQuery === 'plugins' || tabQuery === 'users' || tabQuery === 'rules') {
-      perspective.value = tabQuery
-    }
-  }
-
   function ensureSelections (): void {
-    if (!selectedPluginModule.value && manageablePlugins.value.length > 0) {
-      selectedPluginModule.value = manageablePlugins.value[0].module_name
-    }
-    if (
-      selectedPluginModule.value
-      && !manageablePlugins.value.some(item => item.module_name === selectedPluginModule.value)
-    ) {
-      selectedPluginModule.value = manageablePlugins.value[0]?.module_name || ''
-    }
-    if (!selectedUserId.value && userEntries.value.length > 0) {
-      selectedUserId.value = userEntries.value[0].user_id
-    }
+    ensurePluginSelection()
+    ensureUserSelection()
   }
 
   async function loadAll (): Promise<void> {
@@ -606,115 +565,6 @@
       errorMessage.value = getErrorMessage(error, t('permissions.loadFailed'))
     } finally {
       loading.value = false
-    }
-  }
-
-  async function createRule (payload: {
-    subject_type: string
-    subject_id: string
-    plugin_module: string
-    effect: string
-    note: string | null
-  }): Promise<void> {
-    creatingRule.value = true
-    errorMessage.value = ''
-    try {
-      const response = await createAccessRule(payload)
-      rules.value = [response.data, ...rules.value.filter(item => ruleKey(item) !== ruleKey(response.data))]
-      noticeStore.show(t('permissions.ruleCreated'), 'success')
-    } catch (error) {
-      errorMessage.value = getErrorMessage(error, t('permissions.ruleCreateFailed'))
-      noticeStore.show(errorMessage.value, 'error')
-    } finally {
-      creatingRule.value = false
-    }
-  }
-
-  async function createRuleForPlugin (): Promise<void> {
-    if (!selectedPluginModule.value || !pluginRuleForm.subject_id.trim()) return
-    await createRule({
-      subject_type: pluginRuleForm.subject_type,
-      subject_id: pluginRuleForm.subject_id.trim(),
-      plugin_module: selectedPluginModule.value,
-      effect: pluginRuleForm.effect,
-      note: pluginRuleForm.note.trim() || null,
-    })
-    pluginRuleForm.subject_id = ''
-    pluginRuleForm.note = ''
-    pluginRuleForm.effect = 'allow'
-  }
-
-  async function updateSelectedPluginAccessMode (
-    nextValue: unknown,
-  ): Promise<void> {
-    if (!selectedPlugin.value) return
-    const accessMode = String(nextValue)
-    if (!['default_allow', 'default_deny'].includes(accessMode)) return
-    if (selectedPlugin.value.access_mode === accessMode) return
-
-    const previous = selectedPlugin.value.access_mode
-    selectedPlugin.value.access_mode = accessMode
-    pendingPluginAccessMode.value = true
-    errorMessage.value = ''
-    try {
-      await updatePluginAccessMode(selectedPlugin.value.module_name, accessMode)
-      noticeStore.show(t('common.save'), 'success')
-    } catch (error) {
-      selectedPlugin.value.access_mode = previous
-      errorMessage.value = getErrorMessage(error, t('permissions.loadFailed'))
-      noticeStore.show(errorMessage.value, 'error')
-    } finally {
-      pendingPluginAccessMode.value = false
-    }
-  }
-
-  async function createRuleForUser (): Promise<void> {
-    if (!selectedUserId.value || !userRuleForm.plugin_module.trim()) return
-    await createRule({
-      subject_type: 'user',
-      subject_id: selectedUserId.value,
-      plugin_module: userRuleForm.plugin_module.trim(),
-      effect: userRuleForm.effect,
-      note: userRuleForm.note.trim() || null,
-    })
-    userRuleForm.plugin_module = ''
-    userRuleForm.note = ''
-    userRuleForm.effect = 'allow'
-  }
-
-  async function handleDeleteRule (rule: AccessRuleItem): Promise<void> {
-    errorMessage.value = ''
-    try {
-      await deleteAccessRule({
-        subject_type: rule.subject_type,
-        subject_id: rule.subject_id,
-        plugin_module: rule.plugin_module,
-      })
-      rules.value = rules.value.filter(item => ruleKey(item) !== ruleKey(rule))
-      noticeStore.show(t('permissions.ruleDeleted'), 'success')
-    } catch (error) {
-      errorMessage.value = getErrorMessage(error, t('permissions.ruleDeleteFailed'))
-      noticeStore.show(errorMessage.value, 'error')
-    }
-  }
-
-  async function updateLevel (item: UserLevelItem, nextValue: unknown): Promise<void> {
-    const level = Number(nextValue)
-    if (Number.isNaN(level) || level === item.level) return
-    const previous = item.level
-    const key = `${item.user_id}:${item.group_id}`
-    item.level = level
-    pendingUserKey.value = key
-    errorMessage.value = ''
-    try {
-      await updateUserLevel(item.user_id, item.group_id, level)
-      noticeStore.show(t('permissions.levelUpdated', { userId: item.user_id, groupId: item.group_id }), 'success')
-    } catch (error) {
-      item.level = previous
-      errorMessage.value = getErrorMessage(error, t('permissions.levelUpdateFailed'))
-      noticeStore.show(errorMessage.value, 'error')
-    } finally {
-      pendingUserKey.value = ''
     }
   }
 

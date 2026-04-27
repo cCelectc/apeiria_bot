@@ -83,101 +83,14 @@
       </aside>
 
       <main class="chat-panel">
-        <div ref="messagesContainer" class="chat-panel__messages">
-          <div v-if="messages.length === 0" class="chat-empty">
-            <div class="chat-empty__title">{{ t('chat.newSession') }}</div>
-          </div>
-
-          <div
-            v-for="message in messages"
-            :key="message.message_id + message.timestamp"
-            class="chat-message"
-            :data-message-id="message.message_id"
-          >
-            <div v-if="message.role === 'system'" class="chat-message-row chat-message-row--system">
-              <v-chip color="grey" size="small" variant="tonal">
-                {{ getTextContent(message.segments, t) }}
-              </v-chip>
-            </div>
-
-            <div v-else-if="message.role === 'error'" class="chat-message-row chat-message-row--bot">
-              <div class="chat-message-stack chat-message-stack--bot">
-                <v-card class="chat-bubble chat-bubble--error" color="error" rounded="lg" variant="tonal">
-                  <template v-for="(segment, index) in message.segments" :key="index">
-                    <div v-if="segment.type === 'text'" class="text-body-2">{{ segment.text }}</div>
-                  </template>
-                </v-card>
-              </div>
-            </div>
-
-            <div v-else :class="message.role === 'user' ? 'chat-message-row chat-message-row--user' : 'chat-message-row chat-message-row--bot'">
-              <div
-                class="chat-message-stack"
-                :class="message.role === 'user' ? 'chat-message-stack--user' : 'chat-message-stack--bot'"
-              >
-                <v-card
-                  class="chat-bubble"
-                  :class="{
-                    'chat-bubble--user': message.role === 'user',
-                    'chat-bubble--bot': message.role === 'bot',
-                    'chat-bubble--image': hasImageSegment(message.segments),
-                  }"
-                  rounded="lg"
-                  :variant="message.role === 'user' ? 'flat' : 'flat'"
-                >
-                  <div class="chat-bubble__content">
-                    <template v-for="(segment, index) in message.segments" :key="index">
-                      <div v-if="segment.type === 'reply'" class="reply-segment">
-                        <div class="reply-segment__head">
-                          <div class="reply-segment__label">{{ t('chat.replyMessage') }}</div>
-                          <button
-                            class="reply-segment__jump"
-                            type="button"
-                            @click="scrollToMessage(segment.message_id)"
-                          >
-                            {{ t('chat.viewOriginalMessage') }}
-                          </button>
-                        </div>
-                        <div v-if="segment.text" class="reply-segment__text">{{ segment.text }}</div>
-                      </div>
-                      <div v-else-if="segment.type === 'text'" class="text-body-2 chat-segment-text">
-                        {{ segment.text }}
-                      </div>
-                      <v-chip
-                        v-else-if="segment.type === 'mention'"
-                        class="align-self-start"
-                        color="secondary"
-                        size="small"
-                        variant="tonal"
-                      >
-                        @{{ segment.display || segment.target }}
-                      </v-chip>
-                      <img
-                        v-else-if="segment.type === 'image' && resolveImageUrl(segment)"
-                        :alt="segment.alt || t('chat.imageAlt')"
-                        class="chat-image"
-                        :src="resolveImageUrl(segment)"
-                        @click="openImagePreview(segment)"
-                      >
-                      <pre v-else-if="segment.type === 'raw'" class="chat-raw">{{ JSON.stringify(segment.data, null, 2) }}</pre>
-                    </template>
-                  </div>
-
-                  <div class="chat-bubble__actions">
-                    <v-btn
-                      prepend-icon="mdi-reply-outline"
-                      size="x-small"
-                      variant="text"
-                      @click="startReplyToMessage(message)"
-                    >
-                      {{ t('chat.replyButton') }}
-                    </v-btn>
-                  </div>
-                </v-card>
-              </div>
-            </div>
-          </div>
-        </div>
+        <ChatMessageList
+          ref="messagesContainer"
+          :messages="messages"
+          :resolve-image-url="resolveImageUrl"
+          @open-image-preview="openImagePreview"
+          @reply="startReplyToMessage"
+          @scroll-to-message="scrollToMessage"
+        />
 
         <div class="chat-panel__composer">
           <div v-if="pendingReply" class="pending-reply">
@@ -324,23 +237,12 @@
     AuthOkPayload,
     CapabilitiesResponsePayload,
     ChatEnvelope,
-    ChatSegment,
     MessageReceivePayload,
     SessionSnapshotPayload,
   } from '@/types/chat'
-  import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
+  import { nextTick, onMounted, onUnmounted, ref } from 'vue'
   import { useI18n } from 'vue-i18n'
-  import {
-    buildComposerSegmentsFromRoot,
-    createComposerImageNode,
-    getComposerImageToken as findComposerImageToken,
-    getOrderedComposerImages,
-    type PendingImage,
-    type PendingMention,
-    readPendingImageFile,
-    syncComposerImageTokenLabels as syncComposerImageLabels,
-    syncComposerImageTokenState as syncComposerImageState,
-  } from '@/views/chat/composer'
+  import ChatMessageList from '@/views/chat/ChatMessageList.vue'
   import {
     formatBytes,
     useChatImagePreview,
@@ -350,14 +252,12 @@
     createSessionKey,
     formatSessionTime,
     formatSessionTitle,
-    getTextContent,
-    hasImageSegment,
     summarizeReplyMessage,
   } from '@/views/chat/messageDisplay'
   import { useChatSessionState } from '@/views/chat/sessionState'
   import { useChatTransport } from '@/views/chat/transport'
+  import { useChatComposer } from '@/views/chat/useChatComposer'
 
-  let composerRange: Range | null = null
   const { t } = useI18n()
 
   const transport = useChatTransport({
@@ -375,15 +275,10 @@
   const reconnect = transport.reconnect
 
   const socketConnected = transport.socketConnected
-  const messagesContainer = ref<HTMLElement>()
-  const composerRef = ref<HTMLDivElement>()
-  const imageInputRef = ref<HTMLInputElement>()
-  const isPreparingImages = ref(false)
-  const composerVersion = ref(0)
-  const selectedComposerImageId = ref<string | null>(null)
+  const messagesContainer = ref<{
+    getElement: () => HTMLElement | null
+  }>()
   const reconnecting = transport.reconnecting
-  const composerImages = new Map<string, PendingImage>()
-  const composerMentions = new Map<string, PendingMention>()
   const {
     closeImagePreview,
     downloadPreviewImage,
@@ -407,6 +302,35 @@
     zoomInPreview,
     zoomOutPreview,
   } = useChatImagePreview()
+  const {
+    buildComposerSegments,
+    captureComposerSelection,
+    clearComposer,
+    composerHasContent,
+    composerRef,
+    focusComposer,
+    handleComposerClick,
+    handleComposerInput,
+    handleComposerKeydown,
+    handleComposerPaste,
+    handleImageSelection,
+    imageInputRef,
+    isPreparingImages,
+    moveComposerImageToCursor,
+    openImagePreviewFromPending,
+    orderedComposerImages,
+    pickImages,
+    removeComposerImage,
+    selectComposerImage,
+    selectedComposerImageId,
+  } = useChatComposer({
+    canSend: () => chatReady.value,
+    imageIndexedToken: index => t('chat.imageIndexedToken', { index: index + 1 }),
+    imageReadFailed: () => t('chat.imageReadFailed'),
+    imageToken: () => t('chat.imageToken'),
+    onSend: () => send(),
+    openImagePreviewSource,
+  })
   const {
     openImagePreview,
     resolveImageUrl,
@@ -453,309 +377,6 @@
 
   function resetConnectionState () {
     sessionState.resetConnectionState()
-  }
-
-  const composerHasContent = computed(() => {
-    const segments = buildComposerSegments()
-    return segments.some(segment => {
-      if (segment.type === 'text') {
-        return segment.text.trim().length > 0
-      }
-      return true
-    })
-  })
-
-  const orderedComposerImages = computed(() => {
-    void composerVersion.value
-    return getOrderedComposerImages(composerRef.value, composerImages)
-  })
-
-  function pickImages () {
-    imageInputRef.value?.click()
-  }
-
-  async function handleImageSelection (event: Event) {
-    const target = event.target as HTMLInputElement | null
-    const files = Array.from(target?.files || [])
-    if (files.length === 0) return
-
-    isPreparingImages.value = true
-    try {
-      const images = await Promise.all(
-        files.map(file => readPendingImageFile(file, t('chat.imageReadFailed'))),
-      )
-      for (const image of images) {
-        composerImages.set(image.id, image)
-        insertImageIntoComposer(image)
-      }
-    } finally {
-      isPreparingImages.value = false
-      if (target) {
-        target.value = ''
-      }
-    }
-  }
-
-  function touchComposer () {
-    composerVersion.value += 1
-  }
-
-  function captureComposerSelection () {
-    const composer = composerRef.value
-    if (!composer) return
-    const selection = window.getSelection()
-    if (!selection || selection.rangeCount === 0) return
-    const range = selection.getRangeAt(0)
-    if (!composer.contains(range.commonAncestorContainer)) return
-    composerRange = range.cloneRange()
-  }
-
-  function focusComposer (placeAtEnd = false) {
-    const composer = composerRef.value
-    if (!composer) return
-    composer.focus()
-    const selection = window.getSelection()
-    if (!selection) return
-
-    let range = composerRange
-    if (placeAtEnd || !range || !composer.contains(range.commonAncestorContainer)) {
-      range = document.createRange()
-      range.selectNodeContents(composer)
-      range.collapse(false)
-    }
-
-    selection.removeAllRanges()
-    selection.addRange(range)
-    composerRange = range.cloneRange()
-  }
-
-  function insertTextAtCursor (text: string) {
-    focusComposer()
-    const selection = window.getSelection()
-    if (!selection || selection.rangeCount === 0) return
-    const range = selection.getRangeAt(0)
-    range.deleteContents()
-    const node = document.createTextNode(text)
-    range.insertNode(node)
-    range.setStartAfter(node)
-    range.collapse(true)
-    selection.removeAllRanges()
-    selection.addRange(range)
-    composerRange = range.cloneRange()
-    touchComposer()
-  }
-
-  function getComposerImageToken (id: string) {
-    return findComposerImageToken(composerRef.value, id)
-  }
-
-  function syncComposerImageTokenState () {
-    syncComposerImageState(composerRef.value, selectedComposerImageId.value)
-  }
-
-  function selectComposerImage (id: string | null) {
-    selectedComposerImageId.value = id
-    syncComposerImageTokenState()
-  }
-
-  function insertImageIntoComposer (image: PendingImage) {
-    focusComposer()
-    const selection = window.getSelection()
-    if (!selection || selection.rangeCount === 0) return
-    const range = selection.getRangeAt(0)
-    range.deleteContents()
-
-    const token = createComposerImageNode(image, t('chat.imageToken'))
-    const caretAnchor = document.createTextNode('')
-    range.insertNode(caretAnchor)
-    range.insertNode(token)
-
-    range.setStart(caretAnchor, 0)
-    range.collapse(true)
-    selection.removeAllRanges()
-    selection.addRange(range)
-    composerRange = range.cloneRange()
-    syncComposerImageTokenLabels()
-    selectComposerImage(image.id)
-    touchComposer()
-  }
-
-  function removeComposerImage (id: string) {
-    const composer = composerRef.value
-    if (!composer) return
-    const node = composer.querySelector<HTMLElement>(`[data-image-id="${id}"]`)
-    node?.remove()
-    composerImages.delete(id)
-    if (selectedComposerImageId.value === id) {
-      selectComposerImage(null)
-    }
-    focusComposer(true)
-    syncComposerImageTokenLabels()
-    touchComposer()
-  }
-
-  function removeComposerMention (id: string) {
-    const composer = composerRef.value
-    if (!composer) return
-    const node = composer.querySelector<HTMLElement>(`[data-kind="mention-token"][data-mention-id="${id}"]`)
-    node?.remove()
-    composerMentions.delete(id)
-    focusComposer(true)
-    touchComposer()
-  }
-
-  function placeCaretAroundToken (node: HTMLElement, direction: 'before' | 'after') {
-    const selection = window.getSelection()
-    if (!selection) return
-    const range = document.createRange()
-    if (direction === 'before') {
-      range.setStartBefore(node)
-    } else {
-      range.setStartAfter(node)
-    }
-    range.collapse(true)
-    selection.removeAllRanges()
-    selection.addRange(range)
-    composerRange = range.cloneRange()
-  }
-
-  function moveComposerImageToCursor (id: string) {
-    const token = getComposerImageToken(id)
-    if (!token) return
-    focusComposer()
-    const selection = window.getSelection()
-    if (!selection || selection.rangeCount === 0) return
-    const range = selection.getRangeAt(0)
-    if (token.contains(range.commonAncestorContainer)) {
-      return
-    }
-    token.remove()
-    range.deleteContents()
-    const caretAnchor = document.createTextNode('')
-    range.insertNode(caretAnchor)
-    range.insertNode(token)
-    range.setStart(caretAnchor, 0)
-    range.collapse(true)
-    selection.removeAllRanges()
-    selection.addRange(range)
-    composerRange = range.cloneRange()
-    syncComposerImageTokenLabels()
-    selectComposerImage(id)
-    touchComposer()
-  }
-
-  function handleComposerInput () {
-    syncComposerImageTokenLabels()
-    syncComposerImageTokenState()
-    touchComposer()
-    captureComposerSelection()
-  }
-
-  function handleComposerKeydown (event: KeyboardEvent) {
-    if (!chatReady.value && event.key === 'Enter' && !event.shiftKey) {
-      event.preventDefault()
-      return
-    }
-    const selectedId = selectedComposerImageId.value
-    if (selectedId) {
-      const token = getComposerImageToken(selectedId)
-      if (token) {
-        if (event.key === 'Backspace' || event.key === 'Delete') {
-          event.preventDefault()
-          removeComposerImage(selectedId)
-          return
-        }
-        if (event.key === 'ArrowLeft') {
-          event.preventDefault()
-          selectComposerImage(null)
-          placeCaretAroundToken(token, 'before')
-          return
-        }
-        if (event.key === 'ArrowRight') {
-          event.preventDefault()
-          selectComposerImage(null)
-          placeCaretAroundToken(token, 'after')
-          return
-        }
-      }
-    }
-    if (event.key === 'Enter' && !event.shiftKey) {
-      event.preventDefault()
-      send()
-    }
-  }
-
-  function handleComposerClick (event: MouseEvent) {
-    const target = event.target as HTMLElement | null
-    if (!target) return
-    const removeButton = target.closest<HTMLElement>('[data-action="remove-image"]')
-    if (removeButton?.dataset.imageId) {
-      event.preventDefault()
-      removeComposerImage(removeButton.dataset.imageId)
-      return
-    }
-    const removeMentionButton = target.closest<HTMLElement>('[data-action="remove-mention"]')
-    if (removeMentionButton?.dataset.mentionId) {
-      event.preventDefault()
-      removeComposerMention(removeMentionButton.dataset.mentionId)
-      return
-    }
-    const imageToken = target.closest<HTMLElement>('[data-kind="image-token"][data-image-id]')
-    if (imageToken?.dataset.imageId) {
-      event.preventDefault()
-      selectComposerImage(imageToken.dataset.imageId)
-      return
-    }
-    const mentionToken = target.closest<HTMLElement>('[data-kind="mention-token"][data-mention-id]')
-    if (mentionToken) {
-      event.preventDefault()
-      return
-    }
-    selectComposerImage(null)
-    captureComposerSelection()
-  }
-
-  function handleComposerPaste (event: ClipboardEvent) {
-    event.preventDefault()
-    const text = event.clipboardData?.getData('text/plain') || ''
-    if (text) {
-      insertTextAtCursor(text)
-    }
-  }
-
-  function syncComposerImageTokenLabels () {
-    syncComposerImageLabels(
-      composerRef.value,
-      index => t('chat.imageIndexedToken', { index: index + 1 }),
-    )
-  }
-
-  function buildComposerSegments (): ChatSegment[] {
-    void composerVersion.value
-    return buildComposerSegmentsFromRoot(
-      composerRef.value,
-      composerImages,
-      composerMentions,
-    )
-  }
-
-  function clearComposer () {
-    const composer = composerRef.value
-    if (composer) {
-      composer.innerHTML = ''
-    }
-    for (const image of composerImages.values()) {
-      URL.revokeObjectURL(image.previewUrl)
-    }
-    composerImages.clear()
-    composerMentions.clear()
-    composerRange = null
-    selectComposerImage(null)
-    touchComposer()
-  }
-
-  function openImagePreviewFromPending (image: PendingImage) {
-    openImagePreviewSource(image.previewUrl, image.name, formatBytes(image.size))
   }
 
   function handleWindowKeydown (event: KeyboardEvent) {
@@ -834,7 +455,7 @@
   }
 
   function scrollToMessage (messageId: string) {
-    const container = messagesContainer.value
+    const container = messagesContainer.value?.getElement()
     if (!container) return
 
     const target = container.querySelector<HTMLElement>(`[data-message-id="${messageId}"]`)
@@ -849,8 +470,9 @@
 
   function scrollToBottom () {
     nextTick(() => {
-      messagesContainer.value?.scrollTo({
-        top: messagesContainer.value.scrollHeight,
+      const container = messagesContainer.value?.getElement()
+      container?.scrollTo({
+        top: container.scrollHeight,
         behavior: 'smooth',
       })
     })
@@ -1042,16 +664,6 @@
   overflow: hidden;
 }
 
-.chat-panel__messages {
-  min-height: 0;
-  overflow: auto;
-  padding: 16px;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  background: rgb(var(--v-theme-surface));
-}
-
 .chat-panel__composer {
   border-top: 1px solid rgba(var(--v-theme-outline-variant), 0.72);
   background: rgb(var(--v-theme-surface-container-low));
@@ -1059,222 +671,6 @@
   display: flex;
   flex-direction: column;
   gap: 10px;
-}
-
-.chat-empty {
-  margin: auto;
-  max-width: 420px;
-  text-align: center;
-  color: rgba(var(--v-theme-on-surface), 0.62);
-}
-
-.chat-empty__title {
-  font-size: 1.1rem;
-  font-weight: 700;
-}
-
-.chat-message-row {
-  display: flex;
-  width: 100%;
-}
-
-.chat-message {
-  width: 100%;
-  border-radius: var(--shape-base);
-  transition:
-    background-color var(--motion-base) var(--motion-ease),
-    box-shadow var(--motion-base) var(--motion-ease);
-}
-
-.chat-message--flash {
-  background: rgba(var(--v-theme-secondary), 0.08);
-  box-shadow: 0 0 0 1px rgba(var(--v-theme-secondary), 0.14);
-}
-
-.chat-message-row--user {
-  justify-content: flex-end;
-}
-
-.chat-message-row--bot {
-  justify-content: flex-start;
-}
-
-.chat-message-row--system {
-  justify-content: center;
-}
-
-.chat-message-stack {
-  display: flex;
-  flex-direction: column;
-  gap: 0;
-  max-width: min(78%, 760px);
-}
-
-.chat-message-stack--user {
-  align-items: flex-end;
-}
-
-.chat-message-stack--bot {
-  align-items: flex-start;
-}
-
-.chat-bubble {
-  padding: 11px 13px 7px;
-  border-radius: var(--shape-medium) !important;
-  box-shadow:
-    0 1px 2px rgba(15, 23, 42, 0.04),
-    0 2px 8px rgba(15, 23, 42, 0.05);
-}
-
-.chat-bubble--image {
-  max-width: min(78vw, 720px);
-}
-
-.chat-bubble--user {
-  border-top-right-radius: 8px !important;
-  color: rgb(var(--v-theme-on-primary-container));
-  background: rgb(var(--v-theme-primary-container)) !important;
-}
-
-.chat-bubble--bot {
-  border-top-left-radius: 8px !important;
-  background: rgb(var(--v-theme-surface-container)) !important;
-}
-
-.chat-bubble--error {
-  border-top-left-radius: 8px !important;
-}
-
-.chat-bubble__content {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.chat-bubble__actions {
-  display: flex;
-  justify-content: flex-end;
-  margin-top: 6px;
-}
-
-:deep(.chat-bubble--user .v-btn) {
-  color: rgba(var(--v-theme-on-primary-container), 0.82);
-}
-
-:deep(.chat-bubble__actions .v-btn) {
-  min-width: 0;
-  padding-inline: 2px;
-  font-size: 0.72rem;
-  opacity: 0.48;
-  letter-spacing: 0;
-}
-
-:deep(.chat-bubble__actions .v-btn .v-btn__prepend) {
-  margin-inline-end: 2px;
-}
-
-:deep(.chat-bubble__actions .v-btn:hover) {
-  opacity: 0.9;
-}
-
-.chat-segment-text {
-  white-space: pre-wrap;
-}
-
-.chat-raw {
-  white-space: pre-wrap;
-  margin: 0;
-  font-size: 0.85rem;
-}
-
-.chat-image {
-  display: block;
-  width: auto;
-  max-width: 100%;
-  max-height: min(52vh, 560px);
-  border-radius: var(--shape-medium);
-  cursor: zoom-in;
-}
-
-.reply-segment {
-  padding: 8px 10px;
-  border-radius: var(--shape-small);
-  border-left: 2px solid rgba(var(--v-theme-secondary), 0.4);
-  background: rgba(var(--v-theme-on-surface), 0.045);
-}
-
-.chat-bubble--user .reply-segment {
-  border-left-color: rgba(var(--v-theme-primary), 0.42);
-  background: rgba(255, 255, 255, 0.26);
-}
-
-.chat-bubble--bot .reply-segment,
-.chat-bubble--error .reply-segment {
-  background: rgba(var(--v-theme-on-surface), 0.06);
-}
-
-.reply-segment__head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  margin-bottom: 2px;
-}
-
-.reply-segment__label {
-  font-size: 0.7rem;
-  font-weight: 700;
-  opacity: 0.72;
-}
-
-.reply-segment__text {
-  font-size: 0.76rem;
-  color: rgba(var(--v-theme-on-surface), 0.62);
-}
-
-.chat-bubble--user .reply-segment__label,
-.chat-bubble--user .reply-segment__text {
-  color: rgba(var(--v-theme-on-primary-container), 0.84);
-}
-
-.chat-bubble--bot .reply-segment__label,
-.chat-bubble--error .reply-segment__label {
-  color: rgba(var(--v-theme-on-surface), 0.88);
-}
-
-.chat-bubble--bot .reply-segment__text,
-.chat-bubble--error .reply-segment__text {
-  color: rgba(var(--v-theme-on-surface), 0.72);
-}
-
-.reply-segment__jump {
-  border: 0;
-  padding: 0;
-  background: transparent;
-  color: rgba(var(--v-theme-primary), 0.82);
-  font-size: 0.7rem;
-  cursor: pointer;
-  opacity: 0.68;
-}
-
-.chat-bubble--user .reply-segment__jump {
-  color: rgba(var(--v-theme-on-primary-container), 0.76);
-}
-
-.chat-bubble--bot .reply-segment__jump,
-.chat-bubble--error .reply-segment__jump {
-  color: rgba(var(--v-theme-primary), 0.82);
-}
-
-.reply-segment__jump:hover {
-  text-decoration: underline;
-  opacity: 1;
-}
-
-.reply-segment__jump:focus-visible {
-  outline: none;
-  text-decoration: underline;
-  opacity: 1;
 }
 
 .pending-reply {
