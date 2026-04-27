@@ -6,6 +6,7 @@ from importlib import import_module
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
+    from .execution import execute_future_task
     from .models import (
         AIFutureTaskCreateInput,
         AIFutureTaskDefinition,
@@ -19,7 +20,6 @@ if TYPE_CHECKING:
         AIFutureTaskCreateResult,
         AIFutureTaskService,
         ai_future_task_service,
-        execute_future_task,
     )
 
 __all__ = [
@@ -47,7 +47,7 @@ _LAZY_EXPORTS = {
     "AIFutureTaskToolItem": ".models",
     "AIFutureTaskToolOutput": ".models",
     "ai_future_task_service": ".service",
-    "execute_future_task": ".service",
+    "execute_future_task": ".execution",
 }
 
 
