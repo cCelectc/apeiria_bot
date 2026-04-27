@@ -34,6 +34,7 @@ from .models import (
 )
 
 if TYPE_CHECKING:
+    from .contracts import AIToolExecutionCreateInput
     from .gateway import (
         ToolGateway,
         ToolGatewayRequest,
@@ -55,7 +56,7 @@ if TYPE_CHECKING:
         summarize_tool_policy,
         tool_policy_binding_to_profile,
     )
-    from .service import AIToolExecutionCreateInput, AIToolService, ai_tool_service
+    from .service import AIToolService, ai_tool_service
 
 __all__ = [
     "AICapabilityDefinition",
@@ -108,7 +109,7 @@ __all__ = [
 ]
 
 _LAZY_EXPORTS = {
-    "AIToolExecutionCreateInput": ".service",
+    "AIToolExecutionCreateInput": ".contracts",
     "AIToolPolicyBindingCreateInput": ".policy",
     "AIToolPolicyBindingService": ".policy",
     "AIToolPolicyBindingSpec": ".policy",

@@ -26,6 +26,11 @@ import pytest
             "project_emotion",
         ),
         ("apeiria.ai.skills", "apeiria.ai.skills.service", "ai_skill_service"),
+        (
+            "apeiria.ai.tools",
+            "apeiria.ai.tools.contracts",
+            "AIToolExecutionCreateInput",
+        ),
         ("apeiria.ai.tools", "apeiria.ai.tools.gateway", "tool_gateway"),
         (
             "apeiria.ai.tools",
