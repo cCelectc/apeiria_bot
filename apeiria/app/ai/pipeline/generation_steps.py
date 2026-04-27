@@ -378,6 +378,7 @@ def _build_tool_loop_turn_result(
         metadata={
             "tool_observation_count": len(skill_runtime.turns),
             "tool_message_count": len(skill_runtime.tool_messages),
+            **skill_runtime.metadata,
         },
     )
 

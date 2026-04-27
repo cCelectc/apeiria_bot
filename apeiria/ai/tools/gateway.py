@@ -23,6 +23,7 @@ from apeiria.ai.turn_records import (
     ModelAttempt,
     PromptSafeObservation,
     ToolAttempt,
+    ToolLoopState,
     is_empty_model_response,
     model_ref,
     sanitize_model_diagnostic,
@@ -45,8 +46,26 @@ if TYPE_CHECKING:
 
 MAX_TOOL_ROUNDS = 3
 DEFAULT_OBSERVATION_CHAR_LIMIT = 1200
+RECOVERY_OBSERVATION_CHAR_LIMIT = 320
+RECOVERY_OLDER_MESSAGE_CHAR_LIMIT = 800
+RECOVERY_RECENT_MESSAGE_COUNT = 4
 DEFAULT_REPEATED_TOOL_THRESHOLD = 3
 ARGUMENT_SUMMARY_CHAR_LIMIT = 160
+MAX_ROUNDS_FINALIZATION_PROMPT = "\n".join(
+    (
+        "The tool loop reached its maximum number of rounds.",
+        "Do not call any tools. Use the available tool observations and produce "
+        "the best final answer you can.",
+    )
+)
+_CONTEXT_PRESSURE_MARKERS = (
+    "prompt_too_long",
+    "context_length_exceeded",
+    "maximum context",
+    "too many tokens",
+    "context window",
+    "413",
+)
 
 
 @dataclass(frozen=True)
@@ -92,6 +111,7 @@ class ToolGatewayResult:
     final_response: "AIModelGenerateResponse | None" = None
     tool_messages: tuple[AIModelMessage, ...] = ()
     loop_finish_reason: str = "not_started"
+    metadata: dict[str, Any] = field(default_factory=dict)
 
 
 class ToolGateway:
@@ -158,7 +178,7 @@ class ToolGateway:
             available_tools=(),
         )
 
-    async def run_tool_loop(  # noqa: PLR0913
+    async def run_tool_loop(  # noqa: PLR0913, PLR0915
         self,
         request: ToolGatewayRequest,
         *,
@@ -178,11 +198,15 @@ class ToolGateway:
         tool_message_history: list[AIModelMessage] = []
         final_response: AIModelGenerateResponse | None = None
         loop_finish_reason = "not_started"
-        tool_repetition_counts: dict[str, int] = {}
         current_selected = selected
+        loop_state = ToolLoopState()
 
-        for round_idx in range(max_rounds):
-            current_messages = tuple(messages) + tuple(tool_message_history)
+        for _ in range(max_rounds):
+            round_idx = loop_state.next_round()
+            current_messages = _repair_tool_message_history(
+                (*messages, *tool_message_history),
+                loop_state=loop_state,
+            )
 
             model_result = await self._generate_tool_loop_model(
                 selected=current_selected,
@@ -192,6 +216,9 @@ class ToolGateway:
                     current_selected,
                     fallback_models,
                 ),
+                loop_state=loop_state,
+                response_source="tool_loop",
+                allow_context_recovery=True,
             )
             all_model_attempts.extend(model_result.attempts)
             response = model_result.response
@@ -223,6 +250,7 @@ class ToolGateway:
             )
 
             obs_by_index = dict(enumerate(observations))
+            round_statuses: list[str] = []
             for index, tool_call in enumerate(response.tool_calls):
                 obs = obs_by_index.get(index)
                 tool_name = (
@@ -230,8 +258,7 @@ class ToolGateway:
                     if index < len(intents)
                     else function_name_to_tool_name(tool_call.name)
                 )
-                repetition_count = tool_repetition_counts.get(tool_name, 0) + 1
-                tool_repetition_counts[tool_name] = repetition_count
+                repetition_count = loop_state.next_tool_repetition_count(tool_name)
                 repeated = repetition_count >= repeated_tool_threshold
                 observation_text = (
                     obs.summary
@@ -245,11 +272,13 @@ class ToolGateway:
                 diagnostic = (
                     f"repeated tool call count={repetition_count}" if repeated else None
                 )
+                status = obs.status if obs is not None else "skipped"
+                round_statuses.append(status)
                 all_tool_attempts.append(
                     ToolAttempt(
                         tool_call_id=tool_call.tool_call_id,
                         tool_name=tool_name,
-                        status=(obs.status if obs is not None else "skipped"),
+                        status=status,
                         arguments_summary=_summarize_arguments(tool_call.arguments),
                         observation=safe_observation,
                         repetition_count=repetition_count,
@@ -267,15 +296,32 @@ class ToolGateway:
                     )
                 )
 
+            loop_state.record_tool_round(round_statuses)
             logger.debug(
                 "Tool loop round {} completed: {} tool calls, {} observations",
-                round_idx + 1,
+                round_idx,
                 len(response.tool_calls),
                 len(observations),
             )
         else:
             if final_response is not None and final_response.tool_calls:
                 loop_finish_reason = "max_rounds_reached"
+                finalization = await self._finalize_after_max_rounds(
+                    selected=current_selected,
+                    messages=(*messages, *tool_message_history),
+                    fallback_models=_dedupe_fallbacks(
+                        current_selected,
+                        fallback_models,
+                    ),
+                    loop_state=loop_state,
+                )
+                all_model_attempts.extend(finalization.attempts)
+                if (
+                    finalization.response is not None
+                    and finalization.response.content.strip()
+                ):
+                    final_response = finalization.response
+                    current_selected = finalization.selected
 
         return ToolGatewayResult(
             policy_text=summarize_tool_policy(
@@ -291,6 +337,7 @@ class ToolGateway:
             final_response=final_response,
             tool_messages=tuple(tool_message_history),
             loop_finish_reason=loop_finish_reason,
+            metadata=loop_state.metadata(),
         )
 
     @staticmethod
@@ -351,65 +398,102 @@ class ToolGateway:
 
         return observations
 
-    async def _generate_tool_loop_model(
+    async def _generate_tool_loop_model(  # noqa: PLR0913
         self,
         *,
         selected: "AISelectedModel",
         messages: tuple[AIModelMessage, ...],
         tools: tuple["AIModelToolDefinition", ...],
         fallback_models: tuple["AISelectedModel", ...],
+        loop_state: ToolLoopState,
+        response_source: str,
+        allow_context_recovery: bool,
     ) -> "_ToolLoopModelResult":
         attempts: list[ModelAttempt] = []
         last_finish_reason = "model_error"
+        messages_for_call = messages
+        recovered_messages_active = False
 
-        for index, candidate in enumerate((selected, *fallback_models), start=1):
-            try:
-                response = await self._model_gateway.generate_native(
+        for candidate in (selected, *fallback_models):
+            while True:
+                try:
+                    response = await self._model_gateway.generate_native(
+                        selected=candidate,
+                        messages=messages_for_call,
+                        tools=tools,
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    diagnostic = sanitize_model_diagnostic(str(exc))
+                    is_context_pressure = _is_context_pressure_error(diagnostic)
+                    attempts.append(
+                        ModelAttempt(
+                            attempt_index=loop_state.next_model_attempt_index(),
+                            model_ref=model_ref(candidate),
+                            status="failed",
+                            response_source=response_source,
+                            reason=(
+                                "context_pressure"
+                                if is_context_pressure
+                                else "model_error"
+                            ),
+                            diagnostic=diagnostic,
+                        )
+                    )
+                    last_finish_reason = (
+                        "context_pressure" if is_context_pressure else "model_error"
+                    )
+                    if (
+                        is_context_pressure
+                        and allow_context_recovery
+                        and loop_state.can_attempt_context_recovery()
+                    ):
+                        recovered, compacted = _recover_prompt_budget_messages(
+                            messages_for_call
+                        )
+                        loop_state.context_recovery_compacted_messages += compacted
+                        if compacted:
+                            loop_state.model_retry_count += 1
+                            messages_for_call = recovered
+                            recovered_messages_active = True
+                            continue
+                        loop_state.context_recovery_failed = True
+                    elif recovered_messages_active:
+                        loop_state.context_recovery_failed = True
+                    break
+
+                if is_empty_model_response(response):
+                    attempts.append(
+                        ModelAttempt(
+                            attempt_index=loop_state.next_model_attempt_index(),
+                            model_ref=model_ref(candidate),
+                            status="failed",
+                            response_source=response_source,
+                            reason="empty_response",
+                        )
+                    )
+                    last_finish_reason = "empty_response"
+                    if recovered_messages_active:
+                        loop_state.context_recovery_failed = True
+                    break
+
+                attempts.append(
+                    ModelAttempt(
+                        attempt_index=loop_state.next_model_attempt_index(),
+                        model_ref=model_ref(candidate),
+                        status="success",
+                        response_source=response_source,
+                    )
+                )
+                if recovered_messages_active:
+                    loop_state.context_recovery_succeeded = True
+                return _ToolLoopModelResult(
+                    response=response,
                     selected=candidate,
-                    messages=messages,
-                    tools=tools,
+                    attempts=tuple(attempts),
+                    finish_reason=f"{response_source}_model_completed",
                 )
-            except Exception as exc:  # noqa: BLE001
-                attempts.append(
-                    ModelAttempt(
-                        attempt_index=index,
-                        model_ref=model_ref(candidate),
-                        status="failed",
-                        response_source="tool_loop",
-                        reason="model_error",
-                        diagnostic=sanitize_model_diagnostic(str(exc)),
-                    )
-                )
-                last_finish_reason = "model_error"
-                continue
-
-            if is_empty_model_response(response):
-                attempts.append(
-                    ModelAttempt(
-                        attempt_index=index,
-                        model_ref=model_ref(candidate),
-                        status="failed",
-                        response_source="tool_loop",
-                        reason="empty_response",
-                    )
-                )
-                last_finish_reason = "empty_response"
-                continue
-
-            attempts.append(
-                ModelAttempt(
-                    attempt_index=index,
-                    model_ref=model_ref(candidate),
-                    status="success",
-                    response_source="tool_loop",
-                )
-            )
-            return _ToolLoopModelResult(
-                response=response,
-                selected=candidate,
-                attempts=tuple(attempts),
-                finish_reason="tool_loop_model_completed",
-            )
+            messages_for_call = messages
+            recovered_messages_active = False
 
         return _ToolLoopModelResult(
             response=None,
@@ -418,6 +502,43 @@ class ToolGateway:
             finish_reason=last_finish_reason,
         )
 
+    async def _finalize_after_max_rounds(
+        self,
+        *,
+        selected: "AISelectedModel",
+        messages: tuple[AIModelMessage, ...],
+        fallback_models: tuple["AISelectedModel", ...],
+        loop_state: ToolLoopState,
+    ) -> "_ToolLoopModelResult":
+        loop_state.finalization_attempted = True
+        finalization_prompt = AIModelMessage(
+            role="user",
+            content=MAX_ROUNDS_FINALIZATION_PROMPT,
+        )
+        finalization_messages = _repair_tool_message_history(
+            (*messages, finalization_prompt),
+            loop_state=loop_state,
+        )
+        result = await self._generate_tool_loop_model(
+            selected=selected,
+            messages=finalization_messages,
+            tools=(),
+            fallback_models=fallback_models,
+            loop_state=loop_state,
+            response_source="tool_loop_finalization",
+            allow_context_recovery=False,
+        )
+        response = result.response
+        if response is None:
+            loop_state.finalization_error = result.finish_reason
+            return result
+        loop_state.finalization_ignored_tool_calls = len(response.tool_calls)
+        if response.content.strip():
+            loop_state.finalization_succeeded = True
+        else:
+            loop_state.finalization_error = "empty_response"
+        return result
+
 
 @dataclass(frozen=True)
 class _ToolLoopModelResult:
@@ -425,6 +546,95 @@ class _ToolLoopModelResult:
     selected: "AISelectedModel"
     attempts: tuple[ModelAttempt, ...]
     finish_reason: str
+
+
+def _repair_tool_message_history(
+    messages: tuple[AIModelMessage, ...],
+    *,
+    loop_state: ToolLoopState,
+) -> tuple[AIModelMessage, ...]:
+    """Return provider-valid assistant/tool message history."""
+
+    tool_results_by_id = {
+        message.tool_call_id: message
+        for message in messages
+        if message.role == "tool" and message.tool_call_id
+    }
+    referenced_call_ids = {
+        tool_call.tool_call_id
+        for message in messages
+        if message.role == "assistant"
+        for tool_call in message.tool_calls
+    }
+    orphan_count = sum(
+        1
+        for message in messages
+        if message.role == "tool" and message.tool_call_id not in referenced_call_ids
+    )
+    loop_state.chain_repair_orphans += orphan_count
+
+    repaired: list[AIModelMessage] = []
+    for message in messages:
+        if message.role == "tool":
+            continue
+
+        repaired.append(message)
+        if message.role != "assistant" or not message.tool_calls:
+            continue
+
+        for tool_call in message.tool_calls:
+            tool_result = tool_results_by_id.get(tool_call.tool_call_id)
+            if tool_result is not None:
+                repaired.append(tool_result)
+                continue
+            tool_name = function_name_to_tool_name(tool_call.name)
+            loop_state.chain_repair_placeholders += 1
+            repaired.append(
+                AIModelMessage(
+                    role="tool",
+                    content=f"- [{tool_name}] skipped: missing tool observation",
+                    tool_call_id=tool_call.tool_call_id,
+                )
+            )
+
+    return tuple(repaired)
+
+
+def _recover_prompt_budget_messages(
+    messages: tuple[AIModelMessage, ...],
+) -> tuple[tuple[AIModelMessage, ...], int]:
+    """Shrink model-visible history for one context-pressure retry."""
+
+    compacted = 0
+    recovered: list[AIModelMessage] = []
+    for index, message in enumerate(messages):
+        recent_start = max(len(messages) - RECOVERY_RECENT_MESSAGE_COUNT, 0)
+        should_compact = message.role == "tool" or (
+            index < recent_start
+            and len(message.content) > RECOVERY_OLDER_MESSAGE_CHAR_LIMIT
+        )
+        if should_compact and len(message.content) > RECOVERY_OBSERVATION_CHAR_LIMIT:
+            safe = build_prompt_safe_observation(
+                message.content,
+                char_limit=RECOVERY_OBSERVATION_CHAR_LIMIT,
+            )
+            recovered.append(
+                AIModelMessage(
+                    role=message.role,
+                    content=safe.content,
+                    tool_call_id=message.tool_call_id,
+                    tool_calls=message.tool_calls,
+                )
+            )
+            compacted += 1
+            continue
+        recovered.append(message)
+    return tuple(recovered), compacted
+
+
+def _is_context_pressure_error(message: str) -> bool:
+    normalized = message.lower()
+    return any(marker in normalized for marker in _CONTEXT_PRESSURE_MARKERS)
 
 
 def _project_tool_results(
