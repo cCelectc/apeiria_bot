@@ -210,9 +210,7 @@ def _module_name_for_path(path: Path) -> str:
 def _iter_imported_modules(module_name: str, path: Path) -> list[str]:
     tree = ast.parse(path.read_text(), filename=str(path))
     current_package = (
-        module_name
-        if path.name == "__init__.py"
-        else module_name.rsplit(".", 1)[0]
+        module_name if path.name == "__init__.py" else module_name.rsplit(".", 1)[0]
     )
     imports: list[str] = []
     for node in ast.walk(tree):

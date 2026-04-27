@@ -137,10 +137,10 @@ async def _upsert_rule(
 ) -> str:
     normalized_effect = effect.strip().lower()
     normalized_subject_type = subject_type.strip().lower()
-    if (
-        normalized_effect not in {"allow", "deny"}
-        or normalized_subject_type not in {"user", "group"}
-    ):
+    if normalized_effect not in {"allow", "deny"} or normalized_subject_type not in {
+        "user",
+        "group",
+    }:
         return t("admin.access.rule_usage")
 
     item, candidates = await resolve_plugin_catalog_query(

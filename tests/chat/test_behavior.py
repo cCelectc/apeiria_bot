@@ -138,8 +138,9 @@ def test_append_history_trims_to_latest_100_messages() -> None:
     assert history[-1].message_id == "msg-104"
 
 
-def test_select_session_returns_exact_requested_session_when_targets_duplicate(
-) -> None:
+def test_select_session_returns_exact_requested_session_when_targets_duplicate() -> (
+    None
+):
     state = WebChatStateManager(store=_StoreStub())
     principal = _principal()
     start = datetime(2026, 4, 26, tzinfo=timezone.utc)
@@ -347,6 +348,7 @@ def test_auth_hello_emits_session_snapshot(
         sessions=[],
         history=[],
     )
+
     def build_session_snapshot(
         _principal: WebUIPrincipal,
         _active_session_id: str | None,

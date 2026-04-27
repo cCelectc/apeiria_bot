@@ -21,9 +21,7 @@ PLUGIN_WORKFLOW_MODULES = (
     WEB_SRC_ROOT / "views" / "plugins" / "readme.ts",
     WEB_SRC_ROOT / "views" / "plugins" / "tasks.ts",
 )
-FORBIDDEN_IMPORT_PATTERN = re.compile(
-    r"""from\s+['"]@/api(?:/index)?['"]"""
-)
+FORBIDDEN_IMPORT_PATTERN = re.compile(r"""from\s+['"]@/api(?:/index)?['"]""")
 
 
 def test_browser_side_catch_all_api_bucket_is_removed() -> None:

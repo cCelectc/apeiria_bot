@@ -41,13 +41,9 @@ def test_webui_auth_split_modules_move_under_app_namespace() -> None:
     store_module = importlib.import_module("apeiria.app.access.webui_auth.store")
 
     assert secrets_module.WebUIAccount is accounts_module.WebUIAccount
+    assert secrets_module.WebUIRegistrationCode is accounts_module.WebUIRegistrationCode
     assert (
-        secrets_module.WebUIRegistrationCode
-        is accounts_module.WebUIRegistrationCode
-    )
-    assert (
-        secrets_module.WebUISecurityAuditEvent
-        is audit_module.WebUISecurityAuditEvent
+        secrets_module.WebUISecurityAuditEvent is audit_module.WebUISecurityAuditEvent
     )
 
     assert secrets_module.create_account is accounts_module.create_account
@@ -122,8 +118,7 @@ def test_webui_auth_account_flow_still_works_via_app_secrets_facade(
     assert rotated is not None
     assert rotated.session_version == EXPECTED_ROTATED_SESSION_VERSION
     assert [
-        item.event_type
-        for item in secrets_module.list_security_audit_events()
+        item.event_type for item in secrets_module.list_security_audit_events()
     ] == [
         "sessions_revoked",
         "password_changed",

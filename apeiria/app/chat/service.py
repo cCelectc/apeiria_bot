@@ -166,4 +166,5 @@ class WebChatService:
         self.emitter.prune_assets()
         return session_id
 
+
 web_chat_service = WebChatService()

@@ -32,8 +32,7 @@ def test_cli_nb_store_helpers_use_app_plugin_store_module() -> None:
 
     assert cli_nb.MODULE_TYPE == store_nb_cli.MODULE_TYPE
     assert (
-        cli_nb.search_store_packages_async
-        is store_nb_cli.search_store_packages_async
+        cli_nb.search_store_packages_async is store_nb_cli.search_store_packages_async
     )
     assert cli_nb.find_exact_store_package is store_nb_cli.find_exact_store_package
 

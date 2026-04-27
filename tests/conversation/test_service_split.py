@@ -13,9 +13,7 @@ def test_conversation_ingest_and_normalization_modules_exist() -> None:
         sys.modules.pop(module_name, None)
 
     ingest_module = importlib.import_module("apeiria.conversation.ingest")
-    normalization_module = importlib.import_module(
-        "apeiria.conversation.normalization"
-    )
+    normalization_module = importlib.import_module("apeiria.conversation.normalization")
 
     assert hasattr(ingest_module, "build_ingested_chat_event")
     assert hasattr(normalization_module, "build_normalized_content")

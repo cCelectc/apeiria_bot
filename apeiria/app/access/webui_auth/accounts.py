@@ -323,9 +323,7 @@ def delete_account(username: str) -> str:
         raise ValueError("last_owner_forbidden")
 
     auth_store["users"] = [
-        item
-        for item in _user_items()
-        if str(item.get("user_id")) != account.user_id
+        item for item in _user_items() if str(item.get("user_id")) != account.user_id
     ]
     append_security_audit_event(
         "account_deleted",

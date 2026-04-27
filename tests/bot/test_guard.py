@@ -66,6 +66,5 @@ def test_plugin_guard_wires_guard_feedback_handler(
     assert handler is not None
     assert getattr(handler, "__self__", None) is guard_feedback_service
     assert (
-        getattr(handler, "__func__", None)
-        is type(guard_feedback_service).handle_denied
+        getattr(handler, "__func__", None) is type(guard_feedback_service).handle_denied
     )
