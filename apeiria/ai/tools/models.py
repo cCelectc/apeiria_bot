@@ -79,7 +79,7 @@ class AIToolPolicy:
 
 @dataclass(frozen=True)
 class AIToolPolicyDecision:
-    """Decision returned by skill policy evaluation."""
+    """Decision returned by tool policy evaluation."""
 
     allowed: bool
     reason: str

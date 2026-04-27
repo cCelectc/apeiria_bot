@@ -1,4 +1,4 @@
-"""Advanced debug models for the tool boundary."""
+"""Admin preview models for the tool boundary."""
 
 from __future__ import annotations
 

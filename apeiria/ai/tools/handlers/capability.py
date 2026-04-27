@@ -27,7 +27,7 @@ async def handle_capability(
 ) -> AIToolResult:
     """Invoke a whitelisted NoneBot capability via the bridge."""
 
-    from apeiria.ai.tools.bridge import invoke_skill_with_policy
+    from apeiria.ai.tools.bridge import invoke_capability_with_policy
     from apeiria.ai.tools.models import AINoneBotCapabilityRequest
     from apeiria.ai.tools.service import ai_tool_service
 
@@ -37,7 +37,7 @@ async def handle_capability(
     )
 
     try:
-        result = await invoke_skill_with_policy(
+        result = await invoke_capability_with_policy(
             registry=ai_tool_service.registry,
             bridge=ai_tool_service.capability_bridge,
             request=request,

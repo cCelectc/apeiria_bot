@@ -1,4 +1,4 @@
-"""Built-in capability registration for the AI skill bridge."""
+"""Built-in capability registration for the AI capability bridge."""
 
 from __future__ import annotations
 
@@ -7,10 +7,10 @@ from typing import TYPE_CHECKING
 from nonebot import get_loaded_plugins
 
 if TYPE_CHECKING:
-    from apeiria.ai.tools.bridge import AINoneBotSkillBridge
+    from apeiria.ai.tools.bridge import AINoneBotCapabilityBridge
 
 
-def register_builtin_capabilities(bridge: "AINoneBotSkillBridge") -> None:
+def register_builtin_capabilities(bridge: "AINoneBotCapabilityBridge") -> None:
     """Register built-in capability handlers for the current process."""
 
     bridge.register("help.show", capability_help_show)

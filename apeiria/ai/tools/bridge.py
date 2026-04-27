@@ -24,17 +24,13 @@ class CapabilityNotAllowedError(RuntimeError):
 
 
 class ToolPolicyDeniedError(RuntimeError):
-    """Raised when skill policy rejects a bridge capability."""
+    """Raised when tool policy rejects a bridge capability."""
 
     def __init__(self, capability_name: str, reason: str) -> None:
         super().__init__(f"capability '{capability_name}' denied: {reason}")
 
 
-SkillNotAllowedError = CapabilityNotAllowedError
-SkillPolicyDeniedError = ToolPolicyDeniedError
-
-
-class AINoneBotSkillBridge:
+class AINoneBotCapabilityBridge:
     """Small registry for explicit NoneBot capability handlers."""
 
     def __init__(self) -> None:
@@ -63,10 +59,10 @@ class AINoneBotSkillBridge:
         return result
 
 
-async def invoke_skill_with_policy(
+async def invoke_capability_with_policy(
     *,
     registry: "AIToolRegistry",
-    bridge: AINoneBotSkillBridge,
+    bridge: AINoneBotCapabilityBridge,
     request: "AINoneBotCapabilityRequest",
     policy: "AIToolPolicy",
 ) -> Any:
@@ -86,10 +82,8 @@ async def invoke_skill_with_policy(
 
 
 __all__ = [
-    "AINoneBotSkillBridge",
+    "AINoneBotCapabilityBridge",
     "CapabilityNotAllowedError",
-    "SkillNotAllowedError",
-    "SkillPolicyDeniedError",
     "ToolPolicyDeniedError",
-    "invoke_skill_with_policy",
+    "invoke_capability_with_policy",
 ]

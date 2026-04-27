@@ -7,7 +7,7 @@ from typing import Any
 
 from nonebot.log import logger
 
-from apeiria.ai.tools.bridge import AINoneBotSkillBridge
+from apeiria.ai.tools.bridge import AINoneBotCapabilityBridge
 from apeiria.ai.tools.capabilities import register_builtin_capabilities
 from apeiria.ai.tools.contracts import AIToolExecutionCreateInput
 from apeiria.ai.tools.debug import (
@@ -47,7 +47,7 @@ class AIToolService:
         intent_planner: AIToolIntentPlanner | None = None,
     ) -> None:
         self.registry = AIToolRegistry()
-        self.capability_bridge = AINoneBotSkillBridge()
+        self.capability_bridge = AINoneBotCapabilityBridge()
         self._execution_repository = execution_repository or AIToolExecutionRepository()
         self._intent_executor = intent_executor or AIToolIntentExecutor()
         self._intent_planner = intent_planner or AIToolIntentPlanner()
@@ -224,7 +224,7 @@ class AIToolService:
         return self._execution_repository.list_executions(session_id=session_id)
 
     # ------------------------------------------------------------------
-    # Capability preview (admin/debug)
+    # Capability preview
     # ------------------------------------------------------------------
 
     def preview_capability(
@@ -260,9 +260,9 @@ class AIToolService:
         allowed_tool_names = {item.name for item in allowed_tools}
         allowed = tool.name in allowed_tool_names
         reason = (
-            "allowed by current skill policy"
+            "allowed by current tool policy"
             if allowed
-            else "denied by current skill policy"
+            else "denied by current tool policy"
         )
         return AICapabilityPreview(
             capability_name=capability_name,

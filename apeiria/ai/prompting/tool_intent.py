@@ -9,7 +9,7 @@ from .models import PromptPacket, PromptSection
 
 @dataclass(frozen=True)
 class ToolIntentPlanningPromptInput:
-    """Prompt-facing materials for one legacy tool intent planning call."""
+    """Prompt-facing materials for one tool intent planning call."""
 
     message_text: str
     recalled_memory_ids: tuple[str, ...]
