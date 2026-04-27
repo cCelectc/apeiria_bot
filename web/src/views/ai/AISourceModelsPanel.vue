@@ -340,7 +340,7 @@
     AIModelCatalogItem,
     AIModelProfileItem,
     AISourceModelItem,
-  } from '@/api'
+  } from '@/api/ai'
   import type {
     ModelFormState,
     ProfileFormState,

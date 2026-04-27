@@ -370,7 +370,7 @@
 </template>
 
 <script setup lang="ts">
-  import type { AIMemoryItem, AIRecentTargetItem } from '@/api'
+  import type { AIMemoryItem, AIRecentTargetItem } from '@/api/ai'
   import { computed } from 'vue'
   import { useI18n } from 'vue-i18n'
 

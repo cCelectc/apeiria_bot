@@ -4,14 +4,14 @@ import type {
   AISessionPromptChannelsItem,
   AISessionPromptPreviewItem,
   AIToolExecutionItem,
-} from '@/api'
+} from '@/api/ai'
 import { computed, reactive, ref } from 'vue'
 import {
   getAIScenePromptPreview,
   getAIScenes,
   getAISceneTurns,
   getAIToolExecutions,
-} from '@/api'
+} from '@/api/ai'
 import { getErrorMessage } from '@/api/client'
 import { useNoticeStore } from '@/stores/notice'
 

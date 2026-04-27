@@ -263,13 +263,13 @@
 </template>
 
 <script setup lang="ts">
-  import type { LogHistoryQuery, LogItem } from '@/api'
+  import type { LogHistoryQuery, LogItem } from '@/api/logs'
   import axios from 'axios'
   import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
   import { useI18n } from 'vue-i18n'
   import { useRoute, useRouter } from 'vue-router'
-  import { getLogHistory, getLogSources } from '@/api'
   import { getErrorMessage } from '@/api/client'
+  import { getLogHistory, getLogSources } from '@/api/logs'
 
   interface HistoryLogEntry extends LogItem {
     id: string

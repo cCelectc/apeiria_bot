@@ -847,12 +847,11 @@
 </template>
 
 <script setup lang="ts">
-  import DOMPurify from 'dompurify'
-  import MarkdownIt from 'markdown-it'
-  import markdownItTaskLists from 'markdown-it-task-lists'
+  import type { RawSettingsResponse } from '@/api/settings'
   import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
   import { useI18n } from 'vue-i18n'
   import { useRoute } from 'vue-router'
+  import { getErrorMessage } from '@/api/client'
   import {
     checkPluginUpdates,
     cleanupOrphanPluginConfigs,
@@ -869,67 +868,51 @@
     type PluginReadmeResponse,
     type PluginStoreTask,
     type PluginUpdateCheckItem,
-    type RawSettingsResponse,
     uninstallPlugin,
     updateInstalledPlugin,
     updatePlugin,
     updatePluginSettings,
     updatePluginSettingsRaw,
     validatePluginSettingsRaw,
-  } from '@/api'
-  import { getErrorMessage } from '@/api/client'
+  } from '@/api/plugins'
   import { useRawTomlValidation } from '@/composables/useRawTomlValidation'
   import { useAuthStore } from '@/stores/auth'
   import { useNoticeStore } from '@/stores/notice'
   import { useRestartStore } from '@/stores/restart'
+  import {
+    pluginToggleHint as buildPluginToggleHint,
+    settingsSourceLabel as buildSettingsSourceLabel,
+    settingsValueSourceLabel as buildSettingsValueSourceLabel,
+    sourceLabel as buildSourceLabel,
+    updateButtonTooltip as buildUpdateButtonTooltip,
+    formatFieldChoices,
+    hasPluginUpdate as hasPluginUpdateForChecks,
+    pluginMetaSummary,
+    pluginProjectUrl,
+    sourceColor,
+  } from '@/views/plugins/display'
+  import {
+    buildPluginNameMap,
+    getNonSystemPlugins,
+    getSystemPlugins,
+    getVisiblePlugins,
+  } from '@/views/plugins/filters'
   import RawSettingsEditor from '@/views/plugins/RawSettingsEditor.vue'
+  import { renderReadmeHtml } from '@/views/plugins/readme'
   import {
     buildRevertValues,
     buildSettingsPreviewItems,
-    displayChoiceTitle,
     type PluginSettingField,
   } from '@/views/plugins/settingsEditor'
   import SettingsFieldEditor from '@/views/plugins/SettingsFieldEditor.vue'
   import SettingsModeBar from '@/views/plugins/SettingsModeBar.vue'
   import SettingsPreviewDialog from '@/views/plugins/SettingsPreviewDialog.vue'
+  import {
+    manualInstallTaskStatusLabel as buildManualInstallTaskStatusLabel,
+    packageUpdateTaskStatusLabel as buildPackageUpdateTaskStatusLabel,
+    summarizeTaskError,
+  } from '@/views/plugins/tasks'
   import { useSettingsEditor } from '@/views/plugins/useSettingsEditor'
-
-  const markdown = new MarkdownIt({
-    html: true,
-    linkify: true,
-    breaks: false,
-  })
-  markdown.use(markdownItTaskLists, {
-    enabled: false,
-    label: true,
-    labelAfter: true,
-  })
-
-  const defaultLinkRender = markdown.renderer.rules.link_open
-  markdown.renderer.rules.link_open = (tokens, idx, options, env, self) => {
-    const href = tokens[idx].attrGet('href')
-    if (href) {
-      tokens[idx].attrSet('href', resolveReadmeRelativeUrl(href))
-    }
-    tokens[idx].attrSet('target', '_blank')
-    tokens[idx].attrSet('rel', 'noopener noreferrer')
-    if (defaultLinkRender) {
-      return defaultLinkRender(tokens, idx, options, env, self)
-    }
-    return self.renderToken(tokens, idx, options)
-  }
-
-  const defaultImageRender = markdown.renderer.rules.image
-  markdown.renderer.rules.image = (tokens, idx, options, env, self) => {
-    const src = tokens[idx].attrGet('src')
-    if (src) {
-      tokens[idx].attrSet('src', resolveReadmeRelativeUrl(src))
-    }
-    if (defaultImageRender) {
-      return defaultImageRender(tokens, idx, options, env, self)
-    }
-    return self.renderToken(tokens, idx, options)
-  }
 
   const plugins = ref<PluginItem[]>([])
   const loading = ref(false)
@@ -1060,9 +1043,7 @@
   )
   const toggleConfirmSummary = computed(() => toggleConfirmSummaryText.value)
   const pluginNameMap = computed(() =>
-    new Map(
-      plugins.value.map(item => [item.module_name, item.name || item.module_name]),
-    ),
+    buildPluginNameMap(plugins.value),
   )
   const uninstallConfirmSummary = computed(() => {
     if (!uninstallConfirmItem.value) return ''
@@ -1078,35 +1059,20 @@
     })
   })
   const systemPlugins = computed(() =>
-    plugins.value.filter(item => item.kind === 'core'),
+    getSystemPlugins(plugins.value),
   )
 
   const nonSystemPlugins = computed(() =>
-    plugins.value.filter(item => item.kind !== 'core'),
-  )
-
-  const scopedPlugins = computed(() =>
-    pluginScopeTab.value === 'framework' ? systemPlugins.value : nonSystemPlugins.value,
+    getNonSystemPlugins(plugins.value),
   )
 
   const visiblePlugins = computed(() =>
-    scopedPlugins.value
-      .filter(item => {
-        if (route.query.enabled === 'disabled' && item.is_global_enabled) {
-          return false
-        }
-        const keyword = pluginSearch.value.trim().toLowerCase()
-        if (!keyword) return true
-        return `${item.name || ''} ${item.module_name} ${item.description || ''} ${item.source}`.toLowerCase().includes(keyword)
-      }),
+    getVisiblePlugins(plugins.value, {
+      disabledOnly: route.query.enabled === 'disabled',
+      scope: pluginScopeTab.value,
+      search: pluginSearch.value,
+    }),
   )
-
-  const SOURCE_COLORS: Record<string, string> = {
-    framework: 'error',
-    custom: 'success',
-    builtin: 'secondary',
-    external: 'warning',
-  }
 
   const manualInstallSourceOptions = computed(() => [
     { value: 'pypi', label: t('plugins.manualInstallSourcePypi') },
@@ -1136,30 +1102,16 @@
 
   const canSubmitManualInstall = computed(() => manualInstallRequirement.value.trim().length > 0)
   const manualInstallTaskErrorSummary = computed(() => {
-    const error = manualInstallTask.value?.error?.trim()
-    if (!error) return ''
-    return error.split('\n')[0]?.trim() || error
+    return summarizeTaskError(manualInstallTask.value?.error)
   })
   const manualInstallTaskStatusLabel = computed(() => {
-    const status = manualInstallTask.value?.status || ''
-    if (status === 'pending') return t('plugins.manualInstallPending')
-    if (status === 'running') return t('plugins.manualInstallRunning')
-    if (status === 'succeeded') return t('plugins.manualInstallSucceeded')
-    if (status === 'failed') return manualInstallTaskErrorSummary.value || t('plugins.manualInstallFailed')
-    return ''
+    return buildManualInstallTaskStatusLabel(manualInstallTask.value, t)
   })
   const packageUpdateTaskErrorSummary = computed(() => {
-    const error = packageUpdateTask.value?.error?.trim()
-    if (!error) return ''
-    return error.split('\n')[0]?.trim() || error
+    return summarizeTaskError(packageUpdateTask.value?.error)
   })
   const packageUpdateTaskStatusLabel = computed(() => {
-    const status = packageUpdateTask.value?.status || ''
-    if (status === 'pending') return t('plugins.packageUpdatePending')
-    if (status === 'running') return t('plugins.packageUpdateRunning')
-    if (status === 'succeeded') return t('plugins.packageUpdateSucceeded')
-    if (status === 'failed') return packageUpdateTaskErrorSummary.value || t('plugins.packageUpdateFailed')
-    return ''
+    return buildPackageUpdateTaskStatusLabel(packageUpdateTask.value, t)
   })
   const readmeDialogTitle = computed(() =>
     t('plugins.readmeTitle', {
@@ -1167,166 +1119,45 @@
     }),
   )
   const readmeFilename = computed(() => readmeDocument.value?.filename || '')
-  const readmeHtml = computed(() => renderReadmeHtml(readmeDocument.value?.content || ''))
+  const readmeHtml = computed(() =>
+    renderReadmeHtml(
+      readmeDocument.value?.content || '',
+      readmeTarget.value?.module_name,
+    ),
+  )
 
   function applyRouteFilters () {
     const searchQuery = route.query.search
     pluginSearch.value = typeof searchQuery === 'string' ? searchQuery : ''
   }
 
-  function sourceColor (source: string) {
-    return SOURCE_COLORS[source] || 'default'
-  }
-
-  function labelFromMap (source: string, map: Record<string, string>) {
-    return map[source] || source
-  }
-
   function sourceLabel (source: string) {
-    return labelFromMap(source, {
-      framework: t('plugins.framework'),
-      custom: t('plugins.custom'),
-      builtin: t('plugins.builtin'),
-      external: t('plugins.external'),
-    })
-  }
-
-  function pluginMetaSummary (item: PluginItem) {
-    const author = item.author?.trim()
-    const version = item.version?.trim()
-    if (author && version) return `${author} · ${version}`
-    if (author) return author
-    if (version) return `v${version}`
-    return ''
-  }
-
-  function pluginUpdateCheck (item: PluginItem) {
-    return pluginUpdateChecks.value[item.module_name] || null
+    return buildSourceLabel(source, t)
   }
 
   function hasPluginUpdate (item: PluginItem) {
-    return !!pluginUpdateCheck(item)?.has_update
+    return hasPluginUpdateForChecks(pluginUpdateChecks.value, item)
   }
 
   function updateButtonTooltip (item: PluginItem) {
-    if (updateCheckLoading.value) return t('plugins.checkingUpdates')
-    const result = pluginUpdateCheck(item)
-    if (!result) return t('plugins.updateUnavailable')
-    if (result.has_update) {
-      return t('plugins.updateAvailableVersion', {
-        current: result.current_version || '?',
-        latest: result.latest_version || '?',
-      })
-    }
-    if (result.checked) {
-      return t('plugins.updateLatestVersion', {
-        version: result.current_version || result.latest_version || '?',
-      })
-    }
-    if (result.error?.trim()) return result.error.trim()
-    return t('plugins.updateUnavailable')
+    return buildUpdateButtonTooltip(
+      pluginUpdateChecks.value,
+      item,
+      updateCheckLoading.value,
+      t,
+    )
   }
 
   function pluginToggleHint (item: PluginItem) {
-    if (item.is_pending_uninstall) return t('plugins.pendingUninstallHint')
-    if (item.is_protected && item.protected_reason) return item.protected_reason
-    return ''
-  }
-
-  function pluginProjectUrl (item: PluginItem) {
-    const candidate = item.homepage || ''
-    if (candidate.startsWith('http://') || candidate.startsWith('https://')) {
-      return candidate
-    }
-    return ''
-  }
-
-  function resolveReadmeRelativeUrl (rawUrl: string) {
-    const normalized = rawUrl.trim()
-    if (!normalized || !readmeTarget.value) {
-      return normalized
-    }
-
-    if (
-      normalized.startsWith('#')
-      || normalized.startsWith('/')
-      || normalized.startsWith('//')
-      || /^[a-z][a-z0-9+.-]*:/i.test(normalized)
-    ) {
-      return normalized
-    }
-
-    const hashIndex = normalized.indexOf('#')
-    const hash = hashIndex === -1 ? '' : normalized.slice(hashIndex)
-    const pathWithQuery = hashIndex === -1 ? normalized : normalized.slice(0, hashIndex)
-    const queryIndex = pathWithQuery.indexOf('?')
-    const relativePath = queryIndex === -1
-      ? pathWithQuery
-      : pathWithQuery.slice(0, queryIndex)
-
-    if (!relativePath) {
-      return normalized
-    }
-
-    const basePath = `/api/plugins/${encodeURIComponent(readmeTarget.value.module_name)}/readme/asset`
-    const params = new URLSearchParams({ path: relativePath })
-    return `${basePath}?${params.toString()}${hash}`
-  }
-
-  function renderReadmeHtml (content: string) {
-    const sanitized = DOMPurify.sanitize(markdown.render(content), {
-      ADD_ATTR: ['align'],
-      ADD_TAGS: ['details', 'summary'],
-    })
-
-    const document = new DOMParser().parseFromString(sanitized, 'text/html')
-
-    for (const element of document.querySelectorAll<HTMLAnchorElement>('a[href]')) {
-      const href = element.getAttribute('href')
-      if (!href) continue
-      element.setAttribute('href', resolveReadmeRelativeUrl(href))
-      element.setAttribute('target', '_blank')
-      element.setAttribute('rel', 'noopener noreferrer')
-    }
-
-    for (const element of document.querySelectorAll<HTMLImageElement>('img[src]')) {
-      const src = element.getAttribute('src')
-      if (!src) continue
-      element.setAttribute('src', resolveReadmeRelativeUrl(src))
-    }
-
-    return document.body.innerHTML
+    return buildPluginToggleHint(item, t)
   }
 
   function settingsSourceLabel (source: string) {
-    return labelFromMap(source, {
-      static_scan: t('plugins.settingsSourceStaticScan'),
-      plugin_metadata: t('plugins.settingsSourceMetadata'),
-      none: t('plugins.settingsSourceNone'),
-      manual: t('plugins.settingsSourceManual'),
-      built_in: t('plugins.settingsSourceBuiltIn'),
-    })
+    return buildSettingsSourceLabel(source, t)
   }
 
   function settingsValueSourceLabel (source: string) {
-    return labelFromMap(source, {
-      default: t('plugins.settingsValueSourceDefault'),
-      plugin_section: t('plugins.settingsValueSourcePlugin'),
-      legacy_global: t('plugins.settingsValueSourceLegacy'),
-      env: t('plugins.settingsValueSourceEnv'),
-    })
-  }
-
-  function formatFieldChoices (choices: Array<{ title: string, value: unknown }>) {
-    const normalized = choices
-      .map(choice => displayChoiceTitle(choice))
-      .filter(Boolean)
-
-    if (normalized.length <= 4) {
-      return normalized.join(' / ')
-    }
-
-    return `${normalized.slice(0, 4).join(' / ')} +${normalized.length - 4}`
+    return buildSettingsValueSourceLabel(source, t)
   }
 
   function getPluginLabel (moduleName: string) {
@@ -1674,12 +1505,6 @@
 
   async function clearPluginField (field: PluginSettingField) {
     pluginEditor.clearField(field)
-  }
-
-  function summarizeTaskError (message: string | null | undefined) {
-    const normalized = message?.trim()
-    if (!normalized) return ''
-    return normalized.split('\n')[0]?.trim() || normalized
   }
 
   async function savePluginRawSettings () {

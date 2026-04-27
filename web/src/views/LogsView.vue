@@ -122,11 +122,11 @@
 </template>
 
 <script setup lang="ts">
-  import type { LogItem } from '@/api'
+  import type { LogItem } from '@/api/logs'
   import { computed, nextTick, onActivated, onDeactivated, onMounted, onUnmounted, ref, watch } from 'vue'
   import { useI18n } from 'vue-i18n'
-  import { getLogHistory } from '@/api'
   import { getErrorMessage } from '@/api/client'
+  import { getLogHistory } from '@/api/logs'
 
   interface LogEntry {
     id: string

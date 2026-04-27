@@ -49,7 +49,7 @@
               </template>
 
               <v-list-item-title class="chat-session-list__title">
-                {{ formatSessionTitle(recent) }}
+                {{ formatSessionTitle(recent, t) }}
               </v-list-item-title>
               <v-list-item-subtitle>
                 {{ formatSessionTime(recent.last_message_at || recent.session.updated_at || recent.session.created_at) || t('chat.justNow') }}
@@ -96,7 +96,7 @@
           >
             <div v-if="message.role === 'system'" class="chat-message-row chat-message-row--system">
               <v-chip color="grey" size="small" variant="tonal">
-                {{ getTextContent(message.segments) }}
+                {{ getTextContent(message.segments, t) }}
               </v-chip>
             </div>
 
@@ -183,7 +183,7 @@
           <div v-if="pendingReply" class="pending-reply">
             <div class="pending-reply__content">
               <div class="pending-reply__label">{{ t('chat.replyMessage') }}</div>
-              <div class="pending-reply__text">{{ summarizeReplyMessage(pendingReply) }}</div>
+              <div class="pending-reply__text">{{ summarizeReplyMessage(pendingReply, t) }}</div>
             </div>
             <button
               class="pending-reply__jump"
@@ -321,211 +321,133 @@
 
 <script setup lang="ts">
   import type {
+    AuthOkPayload,
     CapabilitiesResponsePayload,
-    ChatCapabilities,
     ChatEnvelope,
     ChatSegment,
-    ChatSessionState,
     ImageSegment,
     MessageReceivePayload,
-    SessionCreatePayload,
-    SessionListItem,
     SessionSnapshotPayload,
-    WebUIPrincipal,
   } from '@/types/chat'
   import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
   import { useI18n } from 'vue-i18n'
-  import { ChatClient } from '@/api/chat'
+  import {
+    buildComposerSegmentsFromRoot,
+    createComposerImageNode,
+    getComposerImageToken as findComposerImageToken,
+    getOrderedComposerImages,
+    type PendingImage,
+    type PendingMention,
+    readPendingImageFile,
+    syncComposerImageTokenLabels as syncComposerImageLabels,
+    syncComposerImageTokenState as syncComposerImageState,
+  } from '@/views/chat/composer'
+  import {
+    estimateImageSize,
+    formatBytes,
+    useChatImagePreview,
+  } from '@/views/chat/mediaPreview'
+  import {
+    createSessionKey,
+    formatSessionTime,
+    formatSessionTitle,
+    getTextContent,
+    hasImageSegment,
+    summarizeReplyMessage,
+  } from '@/views/chat/messageDisplay'
+  import { useChatSessionState } from '@/views/chat/sessionState'
+  import { useChatTransport } from '@/views/chat/transport'
 
-  const client = new ChatClient()
   let composerRange: Range | null = null
   const { t } = useI18n()
 
-  interface PendingImage {
-    id: string
-    name: string
-    size: number
-    mime: string
-    base64: string
-    previewUrl: string
-  }
+  const transport = useChatTransport({
+    onClose: resetConnectionState,
+    onMessage: handleEnvelope,
+    onOpen: client => {
+      const token = localStorage.getItem('token')
+      if (!token) {
+        return
+      }
+      client.authenticate(token)
+    },
+  })
+  const client = transport.client
+  const reconnect = transport.reconnect
 
-  interface PendingMention {
-    id: string
-    target: string
-    display: string
-  }
-
-  const socketConnected = ref(false)
-  const authenticated = ref(false)
-  const principal = ref<WebUIPrincipal | null>(null)
-  const capabilities = ref<ChatCapabilities | null>(null)
-  const session = ref<ChatSessionState | null>(null)
-  const recentSessions = ref<SessionListItem[]>([])
-  const messages = ref<MessageReceivePayload[]>([])
-  const pendingReply = ref<MessageReceivePayload | null>(null)
+  const socketConnected = transport.socketConnected
   const messagesContainer = ref<HTMLElement>()
   const composerRef = ref<HTMLDivElement>()
   const imageInputRef = ref<HTMLInputElement>()
   const isPreparingImages = ref(false)
   const composerVersion = ref(0)
   const selectedComposerImageId = ref<string | null>(null)
-  const imagePreviewVisible = ref(false)
-  const imagePreviewSrc = ref('')
-  const imagePreviewAlt = ref(t('chat.imageAlt'))
-  const previewScale = ref(1)
-  const previewOffsetX = ref(0)
-  const previewOffsetY = ref(0)
-  const previewImageRef = ref<HTMLImageElement>()
-  const previewWrapRef = ref<HTMLElement>()
-  const previewBaseScale = ref(1)
-  const previewImageNaturalWidth = ref(0)
-  const previewImageNaturalHeight = ref(0)
-  const previewImageSizeText = ref('')
-  const isDraggingPreview = ref(false)
-  const dragStartX = ref(0)
-  const dragStartY = ref(0)
-  const dragOriginX = ref(0)
-  const dragOriginY = ref(0)
-  const autoCreatingSession = ref(false)
-  const draftSession = ref(false)
-  const reconnecting = ref(false)
-  const pendingSessionMessage = ref<{
-    message_id: string
-    segments: ChatSegment[]
-  } | null>(null)
+  const reconnecting = transport.reconnecting
   const protectedAssetUrls = ref<Record<string, string>>({})
   const composerImages = new Map<string, PendingImage>()
   const composerMentions = new Map<string, PendingMention>()
   const loadingProtectedAssets = new Set<string>()
-  let reconnectTimer: number | null = null
-  let reconnectAttempts = 0
-  let shouldReconnect = true
-
-  const connected = computed(() => socketConnected.value && authenticated.value)
-  const chatReady = computed(() => connected.value)
-  const activeSessionInfo = computed(() => (draftSession.value ? null : session.value))
-  const activeSessionId = computed(() => activeSessionInfo.value?.session_id || '')
-
-  function appendMessage (message: MessageReceivePayload) {
-    messages.value.push(message)
-    scrollToBottom()
-  }
-
-  function appendSimpleMessage (role: 'system' | 'error', text: string) {
-    appendMessage({
-      session_id: session.value?.session_id ?? 'system',
-      message_id: `${role}_${Date.now()}`,
-      role,
-      segments: [{ type: 'text', text }],
-      timestamp: new Date().toISOString(),
-    })
-  }
-
-  function summarizeReplyMessage (message: MessageReceivePayload) {
-    const text = getTextContent(message.segments).trim()
-    return text || t('chat.imageSummary')
-  }
-
-  function startReplyToMessage (message: MessageReceivePayload) {
-    pendingReply.value = message
-    focusComposer(true)
-  }
-
-  function clearPendingReply () {
-    pendingReply.value = null
-  }
-
-  function resetActiveSessionState () {
-    session.value = null
-    draftSession.value = false
-    messages.value = []
-    clearPendingReply()
-    closeImagePreview()
-    revokeProtectedAssetUrls()
-    clearComposer()
-  }
+  const {
+    closeImagePreview,
+    downloadPreviewImage,
+    handlePreviewImageLoad,
+    handlePreviewWheel,
+    imagePreviewAlt,
+    imagePreviewSrc,
+    imagePreviewVisible,
+    openImagePreviewSource,
+    previewImageNaturalHeight,
+    previewImageNaturalWidth,
+    previewImageRef,
+    previewImageSizeText,
+    previewImageStyle,
+    previewScale,
+    previewWrapRef,
+    resetPreviewTransform,
+    startImageDrag,
+    stopImageDrag,
+    togglePreviewZoom,
+    zoomInPreview,
+    zoomOutPreview,
+  } = useChatImagePreview()
+  const sessionState = useChatSessionState(client, {
+    clearComposer,
+    closeImagePreview,
+    confirmDelete: () => window.confirm(t('chat.confirmDelete')),
+    createSessionKey,
+    focusComposerEnd: () => focusComposer(true),
+    revokeProtectedAssetUrls,
+    scrollToBottom,
+    socketConnected,
+    t,
+  })
+  const {
+    activeSessionId,
+    activeSessionInfo,
+    applyAuthOk,
+    applyCapabilities,
+    applySessionSnapshot,
+    appendMessage,
+    appendSimpleMessage,
+    authenticated,
+    autoCreatingSession,
+    chatReady,
+    clearPendingReply,
+    connected,
+    deleteSessionItem,
+    messages,
+    pendingReply,
+    pendingSessionMessage,
+    recentSessions,
+    saveSession,
+    session,
+    startNewSession,
+    startReplyToMessage,
+    switchToSession,
+  } = sessionState
 
   function resetConnectionState () {
-    socketConnected.value = false
-    authenticated.value = false
-    autoCreatingSession.value = false
-    pendingSessionMessage.value = null
-    principal.value = null
-    capabilities.value = null
-    resetActiveSessionState()
-  }
-
-  function startNewSession () {
-    draftSession.value = true
-    autoCreatingSession.value = false
-    pendingSessionMessage.value = null
-    if (connected.value && session.value) {
-      client.closeSession()
-    }
-    resetActiveSessionState()
-  }
-
-  function switchToSession (target: SessionListItem) {
-    if (!authenticated.value) return
-    if (activeSessionId.value === target.session.session_id) return
-    draftSession.value = false
-    client.selectSession({
-      session_id: target.session.session_id,
-    })
-  }
-
-  function deleteSessionItem (target: SessionListItem) {
-    if (!authenticated.value) return
-    const confirmed = window.confirm(t('chat.confirmDelete'))
-    if (!confirmed) return
-    client.deleteSession({ session_id: target.session.session_id })
-  }
-
-  function formatSessionTitle (item: SessionListItem) {
-    const sessionId = item.session.session_id
-    const shortId = sessionId.slice(-4)
-    return t('chat.sessionLabel', { id: shortId })
-  }
-
-  function createSessionKey () {
-    return `${Date.now()}`
-  }
-
-  function formatSessionTime (value?: string | null) {
-    if (!value) return ''
-    const date = new Date(value)
-    if (Number.isNaN(date.getTime())) return ''
-    return date.toLocaleString()
-  }
-
-  function applySessionSnapshot (payload: SessionSnapshotPayload) {
-    autoCreatingSession.value = false
-    draftSession.value = false
-    recentSessions.value = payload.sessions
-    session.value = payload.active_session ?? null
-    messages.value = payload.history
-    const repliedMessageStillVisible = pendingReply.value
-      ? payload.history.some(message => message.message_id === pendingReply.value?.message_id)
-      : false
-
-    if (!payload.active_session) {
-      clearPendingReply()
-    } else if (pendingReply.value && !repliedMessageStillVisible) {
-      clearPendingReply()
-    }
-
-    scrollToBottom()
-
-    if (pendingSessionMessage.value && payload.active_session) {
-      const pending = pendingSessionMessage.value
-      pendingSessionMessage.value = null
-      client.sendMessage({
-        session_id: payload.active_session.session_id,
-        message_id: pending.message_id,
-        segments: pending.segments,
-      })
-    }
+    sessionState.resetConnectionState()
   }
 
   const composerHasContent = computed(() => {
@@ -540,19 +462,7 @@
 
   const orderedComposerImages = computed(() => {
     void composerVersion.value
-    const composer = composerRef.value
-    if (!composer) return [] as PendingImage[]
-
-    const ids = Array.from(
-      composer.querySelectorAll<HTMLElement>('[data-kind="image-token"][data-image-id]'),
-    )
-      .map(node => node.dataset.imageId || '')
-      .filter(Boolean)
-
-    return ids.flatMap(id => {
-      const image = composerImages.get(id)
-      return image ? [image] : []
-    })
+    return getOrderedComposerImages(composerRef.value, composerImages)
   })
 
   function pickImages () {
@@ -566,7 +476,9 @@
 
     isPreparingImages.value = true
     try {
-      const images = await Promise.all(files.map(file => readImageFile(file)))
+      const images = await Promise.all(
+        files.map(file => readPendingImageFile(file, t('chat.imageReadFailed'))),
+      )
       for (const image of images) {
         composerImages.set(image.id, image)
         insertImageIntoComposer(image)
@@ -577,22 +489,6 @@
         target.value = ''
       }
     }
-  }
-
-  function getTextContent (segments: ChatSegment[]) {
-    return segments
-      .map(segment => {
-        if (segment.type === 'text') return segment.text
-        if (segment.type === 'image') return t('chat.imageToken')
-        if (segment.type === 'mention') return `@${segment.display || segment.target}`
-        if (segment.type === 'reply') return t('chat.replySummary', { messageId: segment.message_id })
-        return `[${segment.segment_type}]`
-      })
-      .join(' ')
-  }
-
-  function hasImageSegment (segments: ChatSegment[]) {
-    return segments.some(segment => segment.type === 'image')
   }
 
   async function ensureProtectedAssetUrl (rawUrl: string) {
@@ -648,185 +544,11 @@
       src = protectedAssetUrls.value[segment.url] || ''
     }
     if (!src) return
-    imagePreviewSrc.value = src
-    imagePreviewAlt.value = segment.alt || t('chat.imageAlt')
-    previewImageNaturalWidth.value = 0
-    previewImageNaturalHeight.value = 0
-    previewImageSizeText.value = estimateImageSize(segment)
-    resetPreviewTransform()
-    imagePreviewVisible.value = true
-  }
-
-  function closeImagePreview () {
-    imagePreviewVisible.value = false
-    imagePreviewSrc.value = ''
-    stopImageDrag()
-    resetPreviewTransform()
-  }
-
-  function resetPreviewTransform () {
-    previewScale.value = previewBaseScale.value
-    previewOffsetX.value = 0
-    previewOffsetY.value = 0
-  }
-
-  function zoomInPreview () {
-    setPreviewScale(previewScale.value + 0.2)
-  }
-
-  function zoomOutPreview () {
-    setPreviewScale(previewScale.value - 0.2)
-  }
-
-  function handlePreviewWheel (event: WheelEvent) {
-    setPreviewScale(previewScale.value + (event.deltaY < 0 ? 0.12 : -0.12))
-  }
-
-  const previewBounds = computed(() => {
-    const img = previewImageRef.value
-    const wrap = previewWrapRef.value
-    if (!img || !wrap) {
-      return { maxX: 0, maxY: 0 }
-    }
-
-    const scaledWidth = img.clientWidth * previewScale.value
-    const scaledHeight = img.clientHeight * previewScale.value
-    const maxX = Math.max(0, (scaledWidth - wrap.clientWidth) / 2)
-    const maxY = Math.max(0, (scaledHeight - wrap.clientHeight) / 2)
-    return { maxX, maxY }
-  })
-
-  const canDragPreview = computed(() => previewBounds.value.maxX > 0 || previewBounds.value.maxY > 0)
-
-  const previewImageStyle = computed(() => ({
-    transform: `translate(${previewOffsetX.value}px, ${previewOffsetY.value}px) scale(${previewScale.value})`,
-    transformOrigin: 'center center',
-    cursor: isDraggingPreview.value ? 'grabbing' : (canDragPreview.value ? 'grab' : 'zoom-in'),
-  }))
-
-  function startImageDrag (event: MouseEvent) {
-    if (event.button !== 0) return
-    if (!canDragPreview.value) return
-    event.preventDefault()
-    isDraggingPreview.value = true
-    dragStartX.value = event.clientX
-    dragStartY.value = event.clientY
-    dragOriginX.value = previewOffsetX.value
-    dragOriginY.value = previewOffsetY.value
-    window.addEventListener('mousemove', onImageDrag)
-    window.addEventListener('mouseup', stopImageDrag)
-    window.addEventListener('mouseleave', stopImageDrag)
-    window.addEventListener('blur', stopImageDrag)
-  }
-
-  function onImageDrag (event: MouseEvent) {
-    if (!isDraggingPreview.value) return
-    event.preventDefault()
-    previewOffsetX.value = dragOriginX.value + event.clientX - dragStartX.value
-    previewOffsetY.value = dragOriginY.value + event.clientY - dragStartY.value
-    clampPreviewOffset()
-  }
-
-  function stopImageDrag () {
-    if (!isDraggingPreview.value) {
-      window.removeEventListener('mousemove', onImageDrag)
-      window.removeEventListener('mouseup', stopImageDrag)
-      window.removeEventListener('mouseleave', stopImageDrag)
-      window.removeEventListener('blur', stopImageDrag)
-      return
-    }
-    isDraggingPreview.value = false
-    window.removeEventListener('mousemove', onImageDrag)
-    window.removeEventListener('mouseup', stopImageDrag)
-    window.removeEventListener('mouseleave', stopImageDrag)
-    window.removeEventListener('blur', stopImageDrag)
-  }
-
-  function setPreviewScale (next: number) {
-    previewScale.value = Math.min(5, Math.max(0.5, Number(next.toFixed(2))))
-    clampPreviewOffset()
-  }
-
-  function clampPreviewOffset () {
-    const { maxX, maxY } = previewBounds.value
-    previewOffsetX.value = Math.min(maxX, Math.max(-maxX, previewOffsetX.value))
-    previewOffsetY.value = Math.min(maxY, Math.max(-maxY, previewOffsetY.value))
-  }
-
-  function downloadPreviewImage () {
-    if (!imagePreviewSrc.value) return
-    const link = document.createElement('a')
-    link.href = imagePreviewSrc.value
-    link.download = 'chat-image.png'
-    link.click()
-  }
-
-  function handlePreviewImageLoad () {
-    const img = previewImageRef.value
-    const wrap = previewWrapRef.value
-    if (!img || !wrap) return
-
-    previewImageNaturalWidth.value = img.naturalWidth
-    previewImageNaturalHeight.value = img.naturalHeight
-
-    const fitScale = Math.min(
-      1,
-      wrap.clientWidth / img.naturalWidth,
-      wrap.clientHeight / img.naturalHeight,
+    openImagePreviewSource(
+      src,
+      segment.alt || t('chat.imageAlt'),
+      estimateImageSize(segment),
     )
-    previewBaseScale.value = Number(Math.max(0.5, fitScale).toFixed(2))
-    resetPreviewTransform()
-  }
-
-  function togglePreviewZoom () {
-    const fit = previewBaseScale.value
-    const current = previewScale.value
-    if (Math.abs(current - fit) < 0.05) {
-      setPreviewScale(1)
-      return
-    }
-    if (Math.abs(current - 1) < 0.05) {
-      setPreviewScale(2)
-      return
-    }
-    resetPreviewTransform()
-  }
-
-  function estimateImageSize (segment: ImageSegment) {
-    if (segment.base64) {
-      const padding = segment.base64.endsWith('==') ? 2 : (segment.base64.endsWith('=') ? 1 : 0)
-      const bytes = Math.max(0, Math.floor(segment.base64.length * 3 / 4) - padding)
-      return formatBytes(bytes)
-    }
-    return ''
-  }
-
-  function formatBytes (bytes: number) {
-    if (bytes <= 0) return ''
-    if (bytes < 1024) return `${bytes} B`
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-    return `${(bytes / 1024 / 1024).toFixed(1)} MB`
-  }
-
-  async function readImageFile (file: File): Promise<PendingImage> {
-    const dataUrl = await new Promise<string>((resolve, reject) => {
-      const reader = new FileReader()
-      reader.addEventListener('load', () => resolve(String(reader.result || '')))
-      reader.addEventListener('error', () => reject(reader.error || new Error(t('chat.imageReadFailed'))))
-      reader.readAsDataURL(file)
-    })
-
-    const [prefix, base64 = ''] = dataUrl.split(',', 2)
-    const mimeMatch = prefix.match(/^data:(.+);base64$/)
-
-    return {
-      id: `${file.name}_${file.lastModified}_${Math.random().toString(16).slice(2)}`,
-      name: file.name,
-      size: file.size,
-      mime: mimeMatch?.[1] || file.type || 'image/png',
-      base64,
-      previewUrl: dataUrl,
-    }
   }
 
   function touchComposer () {
@@ -878,43 +600,12 @@
     touchComposer()
   }
 
-  function createComposerImageNode (image: PendingImage) {
-    const wrapper = document.createElement('span')
-    wrapper.className = 'composer-image-token'
-    wrapper.contentEditable = 'false'
-    wrapper.dataset.imageId = image.id
-    wrapper.dataset.kind = 'image-token'
-
-    const label = document.createElement('span')
-    label.className = 'composer-image-token__label'
-    label.dataset.role = 'token-label'
-    label.textContent = t('chat.imageToken')
-
-    const remove = document.createElement('button')
-    remove.type = 'button'
-    remove.className = 'composer-image-token__remove'
-    remove.dataset.action = 'remove-image'
-    remove.dataset.imageId = image.id
-    remove.textContent = '×'
-
-    wrapper.append(label, remove)
-    return wrapper
-  }
-
   function getComposerImageToken (id: string) {
-    return composerRef.value?.querySelector<HTMLElement>(`[data-kind="image-token"][data-image-id="${id}"]`) || null
+    return findComposerImageToken(composerRef.value, id)
   }
 
   function syncComposerImageTokenState () {
-    const composer = composerRef.value
-    if (!composer) return
-    const tokens = Array.from(
-      composer.querySelectorAll<HTMLElement>('[data-kind="image-token"][data-image-id]'),
-    )
-    for (const token of tokens) {
-      const active = token.dataset.imageId === selectedComposerImageId.value
-      token.classList.toggle('composer-image-token--selected', active)
-    }
+    syncComposerImageState(composerRef.value, selectedComposerImageId.value)
   }
 
   function selectComposerImage (id: string | null) {
@@ -929,7 +620,7 @@
     const range = selection.getRangeAt(0)
     range.deleteContents()
 
-    const token = createComposerImageNode(image)
+    const token = createComposerImageNode(image, t('chat.imageToken'))
     const caretAnchor = document.createTextNode('')
     range.insertNode(caretAnchor)
     range.insertNode(token)
@@ -1088,100 +779,19 @@
   }
 
   function syncComposerImageTokenLabels () {
-    const composer = composerRef.value
-    if (!composer) return
-    const tokens = Array.from(
-      composer.querySelectorAll<HTMLElement>('[data-kind="image-token"][data-image-id]'),
+    syncComposerImageLabels(
+      composerRef.value,
+      index => t('chat.imageIndexedToken', { index: index + 1 }),
     )
-    for (const [index, token] of tokens.entries()) {
-      const label = token.querySelector<HTMLElement>('[data-role="token-label"]')
-      if (label) {
-        label.textContent = t('chat.imageIndexedToken', { index: index + 1 })
-      }
-    }
   }
 
   function buildComposerSegments (): ChatSegment[] {
     void composerVersion.value
-    const composer = composerRef.value
-    if (!composer) return []
-
-    const segments: ChatSegment[] = []
-    let textBuffer = ''
-
-    const flushText = () => {
-      if (textBuffer) {
-        segments.push({ type: 'text', text: textBuffer })
-        textBuffer = ''
-      }
-    }
-
-    const walkNode = (node: Node) => {
-      if (node.nodeType === Node.TEXT_NODE) {
-        textBuffer += node.textContent || ''
-        return
-      }
-
-      if (!(node instanceof HTMLElement)) {
-        return
-      }
-
-      if (node.dataset.kind === 'image-token' && node.dataset.imageId) {
-        const image = composerImages.get(node.dataset.imageId)
-        if (image) {
-          flushText()
-          segments.push({
-            type: 'image',
-            base64: image.base64,
-            mime: image.mime,
-            alt: image.name,
-          })
-        }
-        return
-      }
-
-      if (node.dataset.kind === 'mention-token' && node.dataset.mentionId) {
-        const mention = composerMentions.get(node.dataset.mentionId)
-        if (mention) {
-          flushText()
-          segments.push({
-            type: 'mention',
-            target: mention.target,
-            display: mention.display,
-            mention_type: 'user',
-          })
-        }
-        return
-      }
-
-      if (node.tagName === 'BR') {
-        textBuffer += '\n'
-        return
-      }
-
-      const isBlock = ['DIV', 'P'].includes(node.tagName)
-      if (isBlock && textBuffer && !textBuffer.endsWith('\n')) {
-        textBuffer += '\n'
-      }
-      for (const childNode of node.childNodes) {
-        walkNode(childNode)
-      }
-      if (isBlock && textBuffer && !textBuffer.endsWith('\n')) {
-        textBuffer += '\n'
-      }
-    }
-
-    for (const childNode of composer.childNodes) {
-      walkNode(childNode)
-    }
-    flushText()
-
-    return segments
-      .map(segment => {
-        if (segment.type !== 'text') return segment
-        return { ...segment, text: segment.text.replace(/\u00A0/g, ' ') }
-      })
-      .filter(segment => segment.type !== 'text' || segment.text.length > 0)
+    return buildComposerSegmentsFromRoot(
+      composerRef.value,
+      composerImages,
+      composerMentions,
+    )
   }
 
   function clearComposer () {
@@ -1200,13 +810,7 @@
   }
 
   function openImagePreviewFromPending (image: PendingImage) {
-    imagePreviewSrc.value = image.previewUrl
-    imagePreviewAlt.value = image.name
-    previewImageNaturalWidth.value = 0
-    previewImageNaturalHeight.value = 0
-    previewImageSizeText.value = formatBytes(image.size)
-    resetPreviewTransform()
-    imagePreviewVisible.value = true
+    openImagePreviewSource(image.previewUrl, image.name, formatBytes(image.size))
   }
 
   function handleWindowKeydown (event: KeyboardEvent) {
@@ -1218,13 +822,11 @@
   function handleEnvelope (event: ChatEnvelope) {
     switch (event.type) {
       case 'auth.ok': {
-        authenticated.value = true
-        principal.value = (event.payload as { principal: WebUIPrincipal }).principal
-        client.requestCapabilities()
+        applyAuthOk(event.payload as AuthOkPayload)
         break
       }
       case 'capabilities.response': {
-        capabilities.value = (event.payload as CapabilitiesResponsePayload).capabilities
+        applyCapabilities(event.payload as CapabilitiesResponsePayload)
         break
       }
       case 'session.snapshot': {
@@ -1249,49 +851,6 @@
     }
   }
 
-  function clearReconnectTimer () {
-    if (reconnectTimer !== null) {
-      window.clearTimeout(reconnectTimer)
-      reconnectTimer = null
-    }
-  }
-
-  function scheduleReconnect () {
-    if (!shouldReconnect || reconnectTimer !== null) return
-    reconnecting.value = true
-    const delay = Math.min(1000 * 2 ** reconnectAttempts, 5000)
-    reconnectAttempts += 1
-    reconnectTimer = window.setTimeout(() => {
-      reconnectTimer = null
-      connect()
-    }, delay)
-  }
-
-  function connect () {
-    clearReconnectTimer()
-    if (client.isConnected()) {
-      return
-    }
-    client.connect()
-  }
-
-  function reconnect () {
-    reconnecting.value = true
-    reconnectAttempts = 0
-    clearReconnectTimer()
-    client.disconnect()
-    connect()
-  }
-
-  function saveSession () {
-    if (!authenticated.value) return
-    draftSession.value = true
-    const payload: SessionCreatePayload = {
-      target_user_id: createSessionKey(),
-    }
-    client.createSession(payload)
-  }
-
   function send () {
     if (!chatReady.value) return
     const segments = buildComposerSegments()
@@ -1299,7 +858,7 @@
       segments.unshift({
         type: 'reply',
         message_id: pendingReply.value.message_id,
-        text: summarizeReplyMessage(pendingReply.value),
+        text: summarizeReplyMessage(pendingReply.value, t),
       })
     }
     if (segments.length === 0) return
@@ -1345,40 +904,17 @@
     })
   }
 
-  const unsubscribeMessage = client.onMessage(handleEnvelope)
-  const unsubscribeOpen = client.onOpen(() => {
-    clearReconnectTimer()
-    reconnectAttempts = 0
-    reconnecting.value = false
-    socketConnected.value = true
-    const token = localStorage.getItem('token')
-    if (!token) {
-      return
-    }
-    client.authenticate(token)
-  })
-  const unsubscribeClose = client.onClose(() => {
-    resetConnectionState()
-    scheduleReconnect()
-  })
-
   onMounted(() => {
-    shouldReconnect = true
-    connect()
+    transport.start()
     window.addEventListener('keydown', handleWindowKeydown)
   })
 
   onUnmounted(() => {
-    shouldReconnect = false
-    clearReconnectTimer()
     if (connected.value && session.value) {
       client.closeSession()
     }
     stopImageDrag()
-    unsubscribeMessage()
-    unsubscribeOpen()
-    unsubscribeClose()
-    client.disconnect()
+    transport.stop()
     revokeProtectedAssetUrls()
     clearComposer()
     window.removeEventListener('keydown', handleWindowKeydown)

@@ -235,11 +235,11 @@
 </template>
 
 <script setup lang="ts">
-  import type { DashboardEventItem, DashboardStatus, WebUIBuildStatus } from '@/api'
+  import type { DashboardEventItem, DashboardStatus, WebUIBuildStatus } from '@/api/dashboard'
   import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
   import { useI18n } from 'vue-i18n'
-  import { getDashboardEvents, getStatus, getWebUIBuildStatus, streamRebuildWebUI } from '@/api'
   import { getErrorMessage } from '@/api/client'
+  import { getDashboardEvents, getStatus, getWebUIBuildStatus, streamRebuildWebUI } from '@/api/dashboard'
   import { useRestartController } from '@/composables/useRestartController'
   import { useNoticeStore } from '@/stores/notice'
 

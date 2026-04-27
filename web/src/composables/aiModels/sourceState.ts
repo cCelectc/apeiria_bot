@@ -3,9 +3,9 @@ import type {
   AISourceItem,
   AISourceModelItem,
   AISourcePresetItem,
-} from '@/api'
+} from '@/api/ai'
 import { computed, reactive, ref, type Ref, watch } from 'vue'
-import { createAISource, deleteAISource, updateAISource } from '@/api'
+import { createAISource, deleteAISource, updateAISource } from '@/api/ai'
 import { getErrorMessage } from '@/api/client'
 import {
   buildSourceExtraConfig,

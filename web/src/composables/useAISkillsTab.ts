@@ -1,6 +1,6 @@
-import type { AICapabilityItem, AISkillItem } from '@/api'
+import type { AICapabilityItem, AISkillItem } from '@/api/ai'
 import { ref } from 'vue'
-import { getAICapabilities, getAISkills } from '@/api'
+import { getAICapabilities, getAISkills } from '@/api/ai'
 
 export function useAISkillsTab () {
   const skills = ref<AISkillItem[]>([])

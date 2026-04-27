@@ -58,7 +58,7 @@
   import { ref } from 'vue'
   import { useI18n } from 'vue-i18n'
   import { useRouter } from 'vue-router'
-  import { login } from '@/api'
+  import { login } from '@/api/auth'
   import { getErrorMessage } from '@/api/client'
   import { useAuthStore } from '@/stores/auth'
 

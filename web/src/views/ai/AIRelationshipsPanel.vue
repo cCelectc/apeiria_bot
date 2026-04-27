@@ -185,7 +185,7 @@
     AIRecentTargetItem,
     AIRelationshipEventItem,
     AIRelationshipStateItem,
-  } from '@/api'
+  } from '@/api/ai'
   import { computed } from 'vue'
   import { useI18n } from 'vue-i18n'
 

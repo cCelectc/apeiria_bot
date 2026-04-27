@@ -1,4 +1,4 @@
-import type { RawSettingsValidationResponse } from '@/api'
+import type { RawSettingsValidationResponse } from '@/api/settings'
 import { computed, onBeforeUnmount, ref, type Ref, watch } from 'vue'
 import { getErrorMessage } from '@/api/client'
 

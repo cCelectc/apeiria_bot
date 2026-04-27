@@ -130,7 +130,7 @@
 </template>
 
 <script setup lang="ts">
-  import type { SecurityAuditEventItem, WebUIAccountItem } from '@/api'
+  import type { SecurityAuditEventItem, WebUIAccountItem } from '@/api/auth'
   import { computed, onMounted, reactive, ref } from 'vue'
   import { useI18n } from 'vue-i18n'
   import {
@@ -138,7 +138,7 @@
     getCurrentAccount,
     getSecurityAuditEvents,
     revokeOtherSessions,
-  } from '@/api'
+  } from '@/api/auth'
   import { getErrorMessage } from '@/api/client'
   import { useAuthStore } from '@/stores/auth'
   import { useNoticeStore } from '@/stores/notice'

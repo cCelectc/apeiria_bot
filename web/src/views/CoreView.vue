@@ -244,9 +244,11 @@
 </template>
 
 <script setup lang="ts">
+  import type { RawSettingsResponse } from '@/api/settings'
   import { computed, onMounted, ref, watch } from 'vue'
   import { useI18n } from 'vue-i18n'
   import { useRoute } from 'vue-router'
+  import { getErrorMessage } from '@/api/client'
   import {
     type DriverConfigItem,
     getAdapterConfig,
@@ -254,12 +256,10 @@
     getCoreSettingsRaw,
     getDriverConfig,
     type ModuleConfigItem,
-    type RawSettingsResponse,
     updateCoreSettings,
     updateCoreSettingsRaw,
     validateCoreSettingsRaw,
-  } from '@/api'
-  import { getErrorMessage } from '@/api/client'
+  } from '@/api/core'
   import { useRawTomlValidation } from '@/composables/useRawTomlValidation'
   import { useNoticeStore } from '@/stores/notice'
   import { useRestartStore } from '@/stores/restart'

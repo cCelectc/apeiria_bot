@@ -3,7 +3,7 @@ import type {
   AIModelCatalogItem,
   AIModelProfileItem,
   AISourceModelItem,
-} from '@/api'
+} from '@/api/ai'
 import { computed, ref, type Ref } from 'vue'
 import {
   getAIModelBindings,
@@ -11,7 +11,7 @@ import {
   getAISourceModels,
   getAISourcePresets,
   getAISources,
-} from '@/api'
+} from '@/api/ai'
 import { getErrorMessage } from '@/api/client'
 import { useNoticeStore } from '@/stores/notice'
 import { useAIModelProfileState } from './aiModels/profileState'

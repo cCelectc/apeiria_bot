@@ -1,18 +1,15 @@
 import type { RestartUndoAction } from '@/stores/restart'
 import { ref } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { getErrorMessage } from '@/api/client'
+import { updateCoreSettings, updateCoreSettingsRaw, updatePluginConfig } from '@/api/core'
+import { getStatus, restartBot } from '@/api/dashboard'
 import {
-  getStatus,
-  restartBot,
   revertPluginStoreInstall,
-  updateCoreSettings,
-  updateCoreSettingsRaw,
   updatePlugin,
-  updatePluginConfig,
   updatePluginSettings,
   updatePluginSettingsRaw,
-} from '@/api'
-import { getErrorMessage } from '@/api/client'
+} from '@/api/plugins'
 import { useNoticeStore } from '@/stores/notice'
 import { useRestartStore } from '@/stores/restart'
 

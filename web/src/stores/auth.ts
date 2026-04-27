@@ -1,4 +1,4 @@
-import type { WebUIPrincipal } from '@/api'
+import type { WebUIPrincipal } from '@/api/auth'
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 import { CAP_CONTROL_PANEL } from '@/constants/access'
