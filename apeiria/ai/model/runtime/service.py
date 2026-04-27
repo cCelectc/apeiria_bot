@@ -4,23 +4,35 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Literal
 
-from apeiria.ai.model.adapter import (
+from apeiria.ai.model.routing.capability_selection import (
+    ai_model_capability_selection_service,
+)
+from apeiria.ai.model.routing.profile import ai_model_profile_service
+from apeiria.ai.model.runtime.adapter import (
     AIModelEmbeddingRequest,
     AIModelGenerateRequest,
     AIModelRerankRequest,
     AIModelSpeechRequest,
     AIModelTranscriptionRequest,
 )
-from apeiria.ai.model.capability_selection import (
-    ai_model_capability_selection_service,
-)
-from apeiria.ai.model.client import ai_model_client
-from apeiria.ai.model.factory import build_source_adapter
-from apeiria.ai.model.profile import ai_model_profile_service
-from apeiria.ai.model.source import ai_source_service
+from apeiria.ai.model.runtime.client import ai_model_client
+from apeiria.ai.model.runtime.factory import build_source_adapter
+from apeiria.ai.model.sources.service import ai_source_service
 
 if TYPE_CHECKING:
-    from apeiria.ai.model.adapter import (
+    from apeiria.ai.model.routing.bindings import (
+        AIModelBindingSpec,
+        AIModelBindingTarget,
+    )
+    from apeiria.ai.model.routing.models import (
+        AIModelProfileDefinition,
+        AIModelRouteQuery,
+    )
+    from apeiria.ai.model.routing.selection import (
+        AISelectedCapabilityModel,
+        AISelectedModel,
+    )
+    from apeiria.ai.model.runtime.adapter import (
         AIModelCatalogItem,
         AIModelEmbeddingResponse,
         AIModelGenerateResponse,
@@ -30,16 +42,10 @@ if TYPE_CHECKING:
         AIModelToolDefinition,
         AIModelTranscriptionResponse,
     )
-    from apeiria.ai.model.bindings import AIModelBindingSpec, AIModelBindingTarget
-    from apeiria.ai.model.models import (
-        AIModelProfileDefinition,
-        AIModelRouteQuery,
+    from apeiria.ai.model.sources.models import (
+        AISourceCapabilityType,
+        AISourceDefinition,
     )
-    from apeiria.ai.model.selection import (
-        AISelectedCapabilityModel,
-        AISelectedModel,
-    )
-    from apeiria.ai.model.sources import AISourceCapabilityType, AISourceDefinition
 
 
 class AIModelFacade:

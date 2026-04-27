@@ -7,14 +7,15 @@ from typing import TYPE_CHECKING
 from .service import ai_model_facade
 
 if TYPE_CHECKING:
+    from apeiria.ai.model.routing.bindings import AIModelBindingTarget
+    from apeiria.ai.model.routing.models import AIModelRouteQuery
+    from apeiria.ai.model.routing.selection import AISelectedModel
+
     from .adapter import (
         AIModelGenerateResponse,
         AIModelMessage,
         AIModelToolDefinition,
     )
-    from .bindings import AIModelBindingTarget
-    from .models import AIModelRouteQuery
-    from .selection import AISelectedModel
 
 
 class ModelGateway:

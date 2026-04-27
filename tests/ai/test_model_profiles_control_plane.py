@@ -19,11 +19,11 @@ ORM_SESSION_UNEXPECTED = "profile/binding admin methods should not use ORM sessi
 
 
 def test_import_ai_model_profile_service_does_not_require_nonebot_runtime() -> None:
-    sys.modules.pop("apeiria.ai.model.profile", None)
+    sys.modules.pop("apeiria.ai.model.routing.profile", None)
 
-    module = importlib.import_module("apeiria.ai.model.profile")
+    module = importlib.import_module("apeiria.ai.model.routing.profile")
 
-    assert module.__name__ == "apeiria.ai.model.profile"
+    assert module.__name__ == "apeiria.ai.model.routing.profile"
 
 
 def test_import_ai_admin_models_does_not_require_nonebot_plugin_orm() -> None:
@@ -39,9 +39,9 @@ def test_model_profile_service_uses_new_database(
     tmp_path: Path,
     monkeypatch: MonkeyPatch,
 ) -> None:
-    from apeiria.ai.model.bindings import AIModelBindingTarget
-    from apeiria.ai.model.models import AIModelRouteQuery
-    from apeiria.ai.model.profile import (
+    from apeiria.ai.model.routing.bindings import AIModelBindingTarget
+    from apeiria.ai.model.routing.models import AIModelRouteQuery
+    from apeiria.ai.model.routing.profile import (
         AIModelProfileCreateInput,
         ai_model_profile_service,
     )
@@ -126,9 +126,9 @@ def test_models_admin_profile_and_binding_methods_use_new_database(
     tmp_path: Path,
     monkeypatch: MonkeyPatch,
 ) -> None:
-    from apeiria.ai.model.bindings import AIModelBindingTarget
-    from apeiria.ai.model.models import AIModelRouteQuery
-    from apeiria.ai.model.profile import AIModelProfileCreateInput
+    from apeiria.ai.model.routing.bindings import AIModelBindingTarget
+    from apeiria.ai.model.routing.models import AIModelRouteQuery
+    from apeiria.ai.model.routing.profile import AIModelProfileCreateInput
 
     sys.modules.pop("apeiria.app.ai.admin.models", None)
 

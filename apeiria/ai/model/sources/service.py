@@ -9,7 +9,7 @@ from json import dumps
 from typing import Any, cast
 from uuid import uuid4
 
-from apeiria.ai.model.sources import (
+from apeiria.ai.model.sources.models import (
     SOURCE_PRESETS,
     AISourceCapabilityType,
     AISourceClientType,
@@ -257,7 +257,7 @@ class AISourceService:
         *,
         source_id: str,
     ) -> AISourceDeleteDependencyReport | None:
-        from apeiria.ai.model.capability_registry import (
+        from apeiria.ai.model.catalog.registry import (
             SOURCE_MODEL_CAPABILITY_REGISTRY,
         )
 

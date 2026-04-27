@@ -5,14 +5,17 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from apeiria.ai.model.models import AIModelProfileDefinition
+from apeiria.ai.model.routing.models import AIModelProfileDefinition
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
-    from apeiria.ai.model.models import AIModelRouteQuery
-    from apeiria.ai.model.source_models import AISourceModelDefinition
-    from apeiria.ai.model.sources import AISourceCapabilityType, AISourceDefinition
+    from apeiria.ai.model.catalog.models import AISourceModelDefinition
+    from apeiria.ai.model.routing.models import AIModelRouteQuery
+    from apeiria.ai.model.sources.models import (
+        AISourceCapabilityType,
+        AISourceDefinition,
+    )
 
 
 @dataclass(frozen=True)

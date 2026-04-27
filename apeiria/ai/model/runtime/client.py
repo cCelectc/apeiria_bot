@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from apeiria.ai.model.adapter import (
+    from apeiria.ai.model.runtime.adapter import (
         AIModelAdapter,
         AIModelCatalogItem,
         AIModelEmbeddingRequest,

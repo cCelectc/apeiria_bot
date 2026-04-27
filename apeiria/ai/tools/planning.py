@@ -26,8 +26,8 @@ class AIToolIntentPlanner:
         recalled_memory_contents: tuple[str, ...],
         relationship_context: str | None,
     ) -> list[AIToolIntent]:
-        from apeiria.ai.model.gateway import model_gateway
-        from apeiria.ai.model.models import AIModelRouteQuery
+        from apeiria.ai.model.routing.models import AIModelRouteQuery
+        from apeiria.ai.model.runtime.gateway import model_gateway
 
         if not allowed_tools:
             return []

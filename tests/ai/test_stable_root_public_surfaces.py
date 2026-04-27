@@ -12,7 +12,7 @@ import pytest
         ("apeiria.ai.memory", "apeiria.ai.memory.contracts", "AIMemoryCreateInput"),
         ("apeiria.ai.memory", "apeiria.ai.memory.contracts", "AIMemoryUpdateInput"),
         ("apeiria.ai.memory", "apeiria.ai.memory.service", "ai_memory_service"),
-        ("apeiria.ai.model", "apeiria.ai.model.gateway", "model_gateway"),
+        ("apeiria.ai.model", "apeiria.ai.model.runtime.gateway", "model_gateway"),
         ("apeiria.ai.person", "apeiria.ai.person.service", "ai_person_profile_service"),
         ("apeiria.ai.persona", "apeiria.ai.persona.service", "ai_persona_service"),
         (
@@ -64,7 +64,7 @@ def test_stable_ai_root_service_exports_stay_live(
     sys.modules.pop("apeiria.ai.model", None)
 
     module = importlib.import_module("apeiria.ai.model")
-    service_module = importlib.import_module("apeiria.ai.model.service")
+    service_module = importlib.import_module("apeiria.ai.model.runtime.service")
 
     assert module.ai_model_facade is service_module.ai_model_facade
 

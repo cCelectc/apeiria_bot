@@ -7,26 +7,26 @@ from datetime import datetime, timezone
 from typing import cast
 from uuid import uuid4
 
-from apeiria.ai.model.bindings import (
-    AIModelBindingSpec,
-    AIModelBindingTarget,
-    resolve_model_binding,
-)
-from apeiria.ai.model.models import (
-    AIModelProfileDefinition,
-    AIModelRouteQuery,
-    AIModelTaskClass,
-)
 from apeiria.ai.model.routing import (
     list_model_profile_candidates,
     resolve_model_profile,
 )
-from apeiria.ai.model.selection import (
+from apeiria.ai.model.routing.bindings import (
+    AIModelBindingSpec,
+    AIModelBindingTarget,
+    resolve_model_binding,
+)
+from apeiria.ai.model.routing.models import (
+    AIModelProfileDefinition,
+    AIModelRouteQuery,
+    AIModelTaskClass,
+)
+from apeiria.ai.model.routing.selection import (
     AISelectedModel,
     resolve_implicit_selected_model,
     resolve_source_selected_model_with_fallback,
 )
-from apeiria.ai.model.source import ai_source_service
+from apeiria.ai.model.sources.service import ai_source_service
 from apeiria.db.runtime import database_runtime
 
 
@@ -217,7 +217,7 @@ class AIModelProfileService:
         *,
         target: AIModelBindingTarget | None = None,
     ) -> AISelectedModel | None:
-        from apeiria.ai.model.chat_model import ai_chat_model_service
+        from apeiria.ai.model.catalog.chat import ai_chat_model_service
 
         profiles = await self.list_profiles()
         candidate_profiles: list[AIModelProfileDefinition] = []

@@ -11,7 +11,7 @@ def test_import_apeiria_ai_does_not_eagerly_import_runtime_services() -> None:
         "apeiria.ai",
         "apeiria.conversation.service",
         "apeiria.ai.memory.service",
-        "apeiria.ai.model.gateway",
+        "apeiria.ai.model.runtime.gateway",
         "apeiria.ai.person.service",
         "apeiria.ai.persona.service",
         "apeiria.ai.relationship.service",
@@ -45,7 +45,7 @@ def test_import_apeiria_ai_does_not_eagerly_import_runtime_services() -> None:
     for module_name in (
         "apeiria.conversation.service",
         "apeiria.ai.memory.service",
-        "apeiria.ai.model.gateway",
+        "apeiria.ai.model.runtime.gateway",
         "apeiria.ai.person.service",
         "apeiria.ai.persona.service",
         "apeiria.ai.relationship.service",

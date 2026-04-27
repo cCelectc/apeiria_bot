@@ -6,8 +6,8 @@ from dataclasses import dataclass
 from typing import Any
 from uuid import uuid4
 
-from apeiria.ai.model.chat_models import AIChatModelDefinition
-from apeiria.ai.model.source_model_storage import (
+from apeiria.ai.model.catalog.models import AIChatModelDefinition
+from apeiria.ai.model.catalog.storage import (
     create_source_model,
     delete_source_model,
     get_source_model,

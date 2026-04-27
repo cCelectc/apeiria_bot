@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 from nonebot.log import logger
 
 if TYPE_CHECKING:
-    from apeiria.ai.model.selection import AISelectedModel
+    from apeiria.ai.model.routing.selection import AISelectedModel
     from apeiria.ai.skills.runtime import AISkillCatalogEntry
 
 
@@ -24,8 +24,8 @@ class AISkillSelector:
     ) -> list[str]:
         """Call a lightweight model to classify which skills apply."""
 
-        from apeiria.ai.model.gateway import model_gateway
-        from apeiria.ai.model.models import AIModelRouteQuery
+        from apeiria.ai.model.routing.models import AIModelRouteQuery
+        from apeiria.ai.model.runtime.gateway import model_gateway
 
         selected: AISelectedModel | None = await model_gateway.select_model(
             query=AIModelRouteQuery(task_class="planner_light"),

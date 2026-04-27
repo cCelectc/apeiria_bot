@@ -6,7 +6,7 @@ from typing import Any
 
 from anthropic import AsyncAnthropic
 
-from apeiria.ai.model.adapter import (
+from apeiria.ai.model.runtime.adapter import (
     AIModelCatalogItem,
     AIModelEmbeddingRequest,
     AIModelEmbeddingResponse,

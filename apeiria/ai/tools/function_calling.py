@@ -3,7 +3,7 @@
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-from apeiria.ai.model.adapter import AIModelToolCall, AIModelToolDefinition
+from apeiria.ai.model.runtime.adapter import AIModelToolCall, AIModelToolDefinition
 from apeiria.ai.tools.models import AIToolIntent, AIToolIntentKind, AIToolSpec
 from apeiria.ai.tools.schema import build_json_schema
 

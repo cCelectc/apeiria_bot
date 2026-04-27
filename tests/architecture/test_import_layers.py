@@ -78,6 +78,52 @@ def test_ai_routes_do_not_import_removed_catch_all_surface_modules() -> None:
     )
 
 
+def test_ai_model_capability_uses_subdomain_packages() -> None:
+    expected_packages = (
+        REPO_ROOT / "apeiria/ai/model/sources",
+        REPO_ROOT / "apeiria/ai/model/catalog",
+        REPO_ROOT / "apeiria/ai/model/routing",
+        REPO_ROOT / "apeiria/ai/model/runtime",
+    )
+    missing_packages = tuple(
+        str(path.relative_to(REPO_ROOT))
+        for path in expected_packages
+        if not path.is_dir()
+    )
+    assert not missing_packages
+
+    retired_flat_modules = (
+        "adapter.py",
+        "bindings.py",
+        "capability_registry.py",
+        "capability_selection.py",
+        "chat_model.py",
+        "chat_models.py",
+        "client.py",
+        "embedding_model.py",
+        "factory.py",
+        "gateway.py",
+        "models.py",
+        "profile.py",
+        "rerank_model.py",
+        "routing.py",
+        "selection.py",
+        "service.py",
+        "source.py",
+        "source_model_storage.py",
+        "source_models.py",
+        "sources.py",
+        "stt_model.py",
+        "tts_model.py",
+    )
+    lingering_modules = tuple(
+        f"apeiria/ai/model/{module_name}"
+        for module_name in retired_flat_modules
+        if (REPO_ROOT / "apeiria/ai/model" / module_name).exists()
+    )
+    assert not lingering_modules
+
+
 def test_plugin_routes_do_not_import_plugin_buckets_from_shared_models() -> None:
     violations = _collect_boundary_violations(
         source_prefixes=(

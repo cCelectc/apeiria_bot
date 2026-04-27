@@ -33,7 +33,7 @@ if TYPE_CHECKING:
         AISourceDefinition,
         AISourceModelDefinition,
     )
-    from apeiria.ai.model.capability_registry import (
+    from apeiria.ai.model.catalog.registry import (
         AICapabilityModelRegistryEntry,
     )
 
@@ -41,7 +41,7 @@ if TYPE_CHECKING:
 def _get_source_model_capability_fallback_order() -> tuple[
     "AISourceCapabilityType", ...
 ]:
-    from apeiria.ai.model.capability_registry import (
+    from apeiria.ai.model.catalog.registry import (
         SOURCE_MODEL_CAPABILITY_FALLBACK_ORDER,
     )
 
@@ -437,7 +437,7 @@ class ModelsAdminMixin:
     def _get_model_capability_entry(
         capability_type: "AISourceCapabilityType",
     ) -> "AICapabilityModelRegistryEntry":
-        from apeiria.ai.model.capability_registry import (
+        from apeiria.ai.model.catalog.registry import (
             SOURCE_MODEL_CAPABILITY_REGISTRY,
         )
 

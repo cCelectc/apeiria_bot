@@ -70,7 +70,7 @@ def test_legacy_ai_admin_types_module_is_gone() -> None:
 def test_import_session_read_targets_stays_lightweight() -> None:
     for module_name in (
         "apeiria.app.ai.session_read.targets",
-        "apeiria.ai.model.service",
+        "apeiria.ai.model.runtime.service",
         "apeiria.ai.persona.service",
         "apeiria.app.ai.pipeline.composer",
         "apeiria.app.ai.reply_strategy.social_judgment",
@@ -80,7 +80,7 @@ def test_import_session_read_targets_stays_lightweight() -> None:
     module = importlib.import_module("apeiria.app.ai.session_read.targets")
 
     assert module.__name__ == "apeiria.app.ai.session_read.targets"
-    assert "apeiria.ai.model.service" not in sys.modules
+    assert "apeiria.ai.model.runtime.service" not in sys.modules
     assert "apeiria.ai.persona.service" not in sys.modules
     assert "apeiria.app.ai.pipeline.composer" not in sys.modules
     assert "apeiria.app.ai.reply_strategy.social_judgment" not in sys.modules

@@ -18,11 +18,11 @@ ORM_SESSION_UNEXPECTED = "source model CRUD should not use ORM sessions"
 
 
 def test_import_ai_chat_model_service_does_not_require_nonebot_runtime() -> None:
-    sys.modules.pop("apeiria.ai.model.chat_model", None)
+    sys.modules.pop("apeiria.ai.model.catalog.chat", None)
 
-    module = importlib.import_module("apeiria.ai.model.chat_model")
+    module = importlib.import_module("apeiria.ai.model.catalog.chat")
 
-    assert module.__name__ == "apeiria.ai.model.chat_model"
+    assert module.__name__ == "apeiria.ai.model.catalog.chat"
 
 
 def test_source_model_admin_methods_use_new_database(
@@ -145,7 +145,7 @@ def test_fetch_and_test_source_model_do_not_use_orm_session(
     monkeypatch.setitem(sys.modules, "nonebot_plugin_orm", stub_nonebot_plugin_orm)
 
     admin_models = importlib.import_module("apeiria.app.ai.admin.models")
-    model_service = importlib.import_module("apeiria.ai.model.service")
+    model_service = importlib.import_module("apeiria.ai.model.runtime.service")
     admin = admin_models.ModelsAdminMixin()
 
     catalog_item = SimpleNamespace(id="catalog-model")

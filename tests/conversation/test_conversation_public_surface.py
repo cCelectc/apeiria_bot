@@ -8,7 +8,7 @@ def test_import_apeiria_conversation_does_not_eagerly_import_runtime_services() 
     for module_name in (
         "apeiria.conversation",
         "apeiria.conversation.service",
-        "apeiria.ai.model.gateway",
+        "apeiria.ai.model.runtime.gateway",
     ):
         sys.modules.pop(module_name, None)
 
@@ -31,7 +31,7 @@ def test_import_apeiria_conversation_does_not_eagerly_import_runtime_services() 
     ]
 
     assert "apeiria.conversation.service" not in sys.modules
-    assert "apeiria.ai.model.gateway" not in sys.modules
+    assert "apeiria.ai.model.runtime.gateway" not in sys.modules
 
     chat_session_service = module.chat_session_service
 

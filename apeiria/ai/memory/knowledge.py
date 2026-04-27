@@ -10,8 +10,8 @@ from apeiria.ai.memory.embeddings import (
     cosine_similarity,
     embed_text,
 )
-from apeiria.ai.model.service import ai_model_facade
-from apeiria.ai.model.source import ai_source_service
+from apeiria.ai.model.runtime.service import ai_model_facade
+from apeiria.ai.model.sources.service import ai_source_service
 
 if TYPE_CHECKING:
     from apeiria.ai.memory.contracts import AIMemoryCreateInput

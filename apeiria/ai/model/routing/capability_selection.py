@@ -4,15 +4,15 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from apeiria.ai.model.capability_registry import SOURCE_MODEL_CAPABILITY_REGISTRY
-from apeiria.ai.model.selection import (
+from apeiria.ai.model.catalog.registry import SOURCE_MODEL_CAPABILITY_REGISTRY
+from apeiria.ai.model.routing.selection import (
     AISelectedCapabilityModel,
     resolve_capability_selected_model,
 )
-from apeiria.ai.model.source import ai_source_service
+from apeiria.ai.model.sources.service import ai_source_service
 
 if TYPE_CHECKING:
-    from apeiria.ai.model.sources import AISourceCapabilityType
+    from apeiria.ai.model.sources.models import AISourceCapabilityType
 
 
 class AIModelCapabilitySelectionService:

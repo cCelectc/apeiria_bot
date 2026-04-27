@@ -11,8 +11,8 @@ from apeiria.ai.model.adapters import (
 )
 
 if TYPE_CHECKING:
-    from apeiria.ai.model.adapter import AIModelAdapter
-    from apeiria.ai.model.sources import AISourceDefinition
+    from apeiria.ai.model.runtime.adapter import AIModelAdapter
+    from apeiria.ai.model.sources.models import AISourceDefinition
 
 SUPPORTED_SOURCE_CLIENT_TYPES = ("openai", "anthropic", "generic_rerank")
 

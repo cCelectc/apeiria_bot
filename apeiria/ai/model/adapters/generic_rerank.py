@@ -9,7 +9,7 @@ from typing import Any
 import httpx
 from nonebot.log import logger
 
-from apeiria.ai.model.adapter import (
+from apeiria.ai.model.runtime.adapter import (
     AIModelCatalogItem,
     AIModelEmbeddingRequest,
     AIModelEmbeddingResponse,

@@ -7,30 +7,30 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from apeiria.ai.model.chat_model import (
+from apeiria.ai.model.catalog.chat import (
     AIChatModelCreateInput,
     ai_chat_model_service,
 )
-from apeiria.ai.model.embedding_model import (
+from apeiria.ai.model.catalog.embedding import (
     AIEmbeddingModelCreateInput,
     ai_embedding_model_service,
 )
-from apeiria.ai.model.rerank_model import (
+from apeiria.ai.model.catalog.models import AISourceModelDefinition
+from apeiria.ai.model.catalog.rerank import (
     AIRerankModelCreateInput,
     ai_rerank_model_service,
 )
-from apeiria.ai.model.source_models import AISourceModelDefinition
-from apeiria.ai.model.stt_model import (
+from apeiria.ai.model.catalog.stt import (
     AISTTModelCreateInput,
     ai_stt_model_service,
 )
-from apeiria.ai.model.tts_model import (
+from apeiria.ai.model.catalog.tts import (
     AITTSModelCreateInput,
     ai_tts_model_service,
 )
 
 if TYPE_CHECKING:
-    from apeiria.ai.model.sources import AISourceCapabilityType
+    from apeiria.ai.model.sources.models import AISourceCapabilityType
 
 
 ModelListFn = Callable[[str], Awaitable[list[AISourceModelDefinition]]]

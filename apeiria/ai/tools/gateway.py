@@ -7,8 +7,8 @@ from typing import TYPE_CHECKING, Any
 
 from nonebot.log import logger
 
-from apeiria.ai.model.adapter import AIModelMessage
-from apeiria.ai.model.gateway import model_gateway
+from apeiria.ai.model.runtime.adapter import AIModelMessage
+from apeiria.ai.model.runtime.gateway import model_gateway
 from apeiria.ai.tools.function_calling import (
     build_function_tools,
     build_intents_from_tool_calls,
@@ -21,12 +21,12 @@ if TYPE_CHECKING:
     from datetime import datetime
 
     from apeiria.ai.memory.models import AIMemoryDefinition
-    from apeiria.ai.model.adapter import (
+    from apeiria.ai.model.routing.selection import AISelectedModel
+    from apeiria.ai.model.runtime.adapter import (
         AIModelGenerateResponse,
         AIModelToolCall,
         AIModelToolDefinition,
     )
-    from apeiria.ai.model.selection import AISelectedModel
     from apeiria.ai.tools.models import (
         AIToolObservationResult,
         AIToolTurnCreateInput,

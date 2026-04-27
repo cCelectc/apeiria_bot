@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 from pytest import raises
 
 from apeiria.ai.memory.service import AIMemoryCreateInput, ai_memory_service
-from apeiria.ai.model.source_model_storage import create_source_model
+from apeiria.ai.model.catalog.storage import create_source_model
 from apeiria.db.runtime import database_runtime
 
 if TYPE_CHECKING:
