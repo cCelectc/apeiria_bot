@@ -1,10 +1,13 @@
-import type { AIPersonMemoryPointItem, AIPersonProfileItem } from '@/api/ai'
+import type {
+  AIPersonMemoryPointItem,
+  AIPersonProfileItem,
+} from '@/api/ai/types'
 import { computed, reactive, ref } from 'vue'
 import {
   deleteAIPersonProfile,
   getAIPersonProfiles,
   updateAIPersonProfile,
-} from '@/api/ai'
+} from '@/api/ai/personas'
 import { getErrorMessage } from '@/api/client'
 import { useNoticeStore } from '@/stores/notice'
 

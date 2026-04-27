@@ -1,4 +1,4 @@
-import type { AISourceItem } from '@/api/ai'
+import type { AISourceItem } from '@/api/ai/types'
 
 export interface SourceFormState {
   source_id: string

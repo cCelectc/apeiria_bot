@@ -1,6 +1,10 @@
-import type { AIPersonaBindingItem, AIPersonaItem } from '@/api/ai'
+import type { AIPersonaBindingItem, AIPersonaItem } from '@/api/ai/types'
 import { computed, reactive, ref } from 'vue'
-import { getAIPersonaBindings, getAIPersonas, upsertAIPersona } from '@/api/ai'
+import {
+  getAIPersonaBindings,
+  getAIPersonas,
+  upsertAIPersona,
+} from '@/api/ai/personas'
 import { getErrorMessage } from '@/api/client'
 import { useNoticeStore } from '@/stores/notice'
 

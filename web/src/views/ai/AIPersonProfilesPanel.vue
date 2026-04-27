@@ -167,7 +167,7 @@
 </template>
 
 <script setup lang="ts">
-  import type { AIPersonMemoryPointItem, AIPersonProfileItem } from '@/api/ai'
+  import type { AIPersonMemoryPointItem, AIPersonProfileItem } from '@/api/ai/types'
   import { useI18n } from 'vue-i18n'
 
   interface PersonProfileEditFormState {

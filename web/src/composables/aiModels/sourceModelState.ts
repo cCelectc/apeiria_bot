@@ -1,4 +1,4 @@
-import type { AIModelCatalogItem, AISourceModelItem } from '@/api/ai'
+import type { AIModelCatalogItem, AISourceModelItem } from '@/api/ai/types'
 import { computed, type ComputedRef, reactive, ref, type Ref } from 'vue'
 import {
   createAISourceModel,
@@ -6,7 +6,7 @@ import {
   fetchAISourceModels,
   testAISourceModel,
   updateAISourceModel,
-} from '@/api/ai'
+} from '@/api/ai/models'
 import { getErrorMessage } from '@/api/client'
 import {
   buildModelSnapshot,

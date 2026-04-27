@@ -1,4 +1,4 @@
-import type { AIMemoryItem, AIRecentTargetItem } from '@/api/ai'
+import type { AIMemoryItem, AIRecentTargetItem } from '@/api/ai/types'
 import { computed, reactive, ref } from 'vue'
 import {
   bulkDeleteAIMemories,
@@ -9,7 +9,7 @@ import {
   getAIRecentTargets,
   toggleAIMemoryIgnored,
   updateAIMemory,
-} from '@/api/ai'
+} from '@/api/ai/memories'
 import { getErrorMessage } from '@/api/client'
 import { useNoticeStore } from '@/stores/notice'
 

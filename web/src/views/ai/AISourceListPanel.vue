@@ -65,7 +65,7 @@
 </template>
 
 <script setup lang="ts">
-  import type { AISourceItem } from '@/api/ai'
+  import type { AISourceItem } from '@/api/ai/types'
   import { useI18n } from 'vue-i18n'
 
   defineProps<{

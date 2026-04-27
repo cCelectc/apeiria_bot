@@ -70,7 +70,7 @@
 </template>
 
 <script setup lang="ts">
-  import type { AICapabilityItem, AISkillItem } from '@/api/ai'
+  import type { AICapabilityItem, AISkillItem } from '@/api/ai/types'
   import { computed } from 'vue'
   import { useI18n } from 'vue-i18n'
 

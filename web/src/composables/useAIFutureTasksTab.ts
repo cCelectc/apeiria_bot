@@ -1,6 +1,6 @@
-import type { AIFutureTaskItem } from '@/api/ai'
+import type { AIFutureTaskItem } from '@/api/ai/types'
 import { reactive, ref } from 'vue'
-import { cancelAIFutureTask, getAIFutureTasks } from '@/api/ai'
+import { cancelAIFutureTask, getAIFutureTasks } from '@/api/ai/futureTasks'
 import { getErrorMessage } from '@/api/client'
 import { useNoticeStore } from '@/stores/notice'
 

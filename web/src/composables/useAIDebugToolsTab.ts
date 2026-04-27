@@ -4,7 +4,7 @@ import type {
   AIToolIntentPreviewItem,
   AIToolPolicyBindingItem,
   AIToolPolicyPreviewItem,
-} from '@/api/ai'
+} from '@/api/ai/types'
 import { reactive, ref } from 'vue'
 import {
   createAIToolPolicyBinding,
@@ -15,7 +15,7 @@ import {
   previewAISkillPolicyDebug,
   previewAIToolIntents,
   updateAIToolPolicyBinding,
-} from '@/api/ai'
+} from '@/api/ai/tools'
 import { getErrorMessage } from '@/api/client'
 import { useNoticeStore } from '@/stores/notice'
 

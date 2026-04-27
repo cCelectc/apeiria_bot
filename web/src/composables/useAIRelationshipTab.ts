@@ -2,14 +2,14 @@ import type {
   AIRecentTargetItem,
   AIRelationshipEventItem,
   AIRelationshipStateItem,
-} from '@/api/ai'
+} from '@/api/ai/types'
 import { computed, reactive, ref } from 'vue'
 import {
   getAIRelationshipEvents,
   getAIRelationshipState,
   getAIRelationshipStates,
   updateAIRelationshipScore,
-} from '@/api/ai'
+} from '@/api/ai/relationships'
 import { getErrorMessage } from '@/api/client'
 import { useNoticeStore } from '@/stores/notice'
 

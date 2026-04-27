@@ -2,9 +2,9 @@ import type {
   AIModelBindingItem,
   AIModelProfileItem,
   AISourceModelItem,
-} from '@/api/ai'
+} from '@/api/ai/types'
 import { computed, type ComputedRef, reactive, ref, type Ref } from 'vue'
-import { getAIModelProfiles, upsertAIModelProfile } from '@/api/ai'
+import { getAIModelProfiles, upsertAIModelProfile } from '@/api/ai/models'
 import { getErrorMessage } from '@/api/client'
 import {
   buildProfileSnapshot,
