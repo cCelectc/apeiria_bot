@@ -1,7 +1,4 @@
-import nonebot
-
-
-def configure(driver: object, nb: object = nonebot) -> None:
+def configure(driver: object) -> None:
     """Project-local startup extension.
 
     Copy this file to ``user_bot.py`` and edit it freely.
@@ -20,17 +17,19 @@ def configure(driver: object, nb: object = nonebot) -> None:
     applied during ``nonebot.init(...)`` before this function runs.
     """
 
-    _ = (driver, nb)
+    _ = driver
 
     # 1. Attach project-local lifecycle hooks.
     #
     # @driver.on_startup
     # async def _startup() -> None:
-    #     nb.logger.info("custom startup hook ready")
+    #     from nonebot import logger
+    #     logger.info("custom startup hook ready")
     #
     # @driver.on_shutdown
     # async def _shutdown() -> None:
-    #     nb.logger.info("custom shutdown hook finished")
+    #     from nonebot import logger
+    #     logger.info("custom shutdown hook finished")
 
     # 2. Register adapters manually if you want to override the default order.
     #

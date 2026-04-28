@@ -1,8 +1,7 @@
 from __future__ import annotations
 
-"""Transition helpers for user setup and plugin loading during runtime-phase split."""
+"""User setup and plugin loading helpers for runtime bootstrap."""
 
-import inspect
 from importlib.util import module_from_spec, spec_from_file_location
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -14,9 +13,6 @@ from apeiria.environment.extension_project import inject_plugin_site_packages
 
 if TYPE_CHECKING:
     from types import ModuleType
-
-
-_CONFIGURE_WITH_NB_ARGS = 2
 
 
 def _project_root() -> Path:
@@ -43,7 +39,7 @@ def _load_user_module(user_bot: Path) -> ModuleType | None:
 
 
 def _apply_user_module(module: ModuleType, driver: object) -> None:
-    """Invoke `configure()` from `user_bot.py` with backward-compatible arity."""
+    """Invoke `configure()` from `user_bot.py` with the current setup contract."""
     configure = getattr(module, "configure", None)
     if configure is None:
         nonebot.logger.warning("Skip loading user_bot.py: missing configure()")
@@ -53,24 +49,7 @@ def _apply_user_module(module: ModuleType, driver: object) -> None:
         nonebot.logger.warning("Skip loading user_bot.py: configure is not callable")
         return
 
-    signature = inspect.signature(configure)
-    parameters = list(signature.parameters.values())
-    accepts_varargs = any(
-        parameter.kind is inspect.Parameter.VAR_POSITIONAL for parameter in parameters
-    )
-    positional_params = [
-        parameter
-        for parameter in parameters
-        if parameter.kind
-        in (
-            inspect.Parameter.POSITIONAL_ONLY,
-            inspect.Parameter.POSITIONAL_OR_KEYWORD,
-        )
-    ]
-    if accepts_varargs or len(positional_params) >= _CONFIGURE_WITH_NB_ARGS:
-        configure(driver, nonebot)
-    else:
-        configure(driver)
+    configure(driver)
 
 
 def load_user_setup(user_bot: Path | None = None) -> None:

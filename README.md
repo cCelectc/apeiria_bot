@@ -27,23 +27,24 @@ uv sync
 ./.venv/bin/apeiria run
 ```
 
-开发时可以指定入口文件或启用重载：
+开发时可以启用重载：
 
 ```bash
-./.venv/bin/apeiria run --entry user_bot.py --reload
+./.venv/bin/apeiria run --reload
 ```
 
-也可以直接运行：
+`bot.py` 保留为 NoneBot `nb run` 的兼容入口；Apeiria 自身的规范启动命令是
+`apeiria run`。
 
 ```bash
-./.venv/bin/python bot.py
+./.venv/bin/nb run
 ```
 
-如果本地运行环境还没准备好，`bot.py` 会在进入 NoneBot 启动前停止并提示
+如果本地运行环境还没准备好，运行时入口会在进入 NoneBot 启动前停止并提示
 最小维护命令。首次使用通常执行 `apeiria env init`；扩展环境缺失时执行
 `apeiria env repair`；数据库状态异常时先用 `apeiria db check` 查看，再按
-提示执行 `apeiria db repair`。`bot.py` 默认只做诊断，不会自动执行 uv 同步、
-环境修复或数据库修复。
+提示执行 `apeiria db repair`。启动入口默认只做诊断，不会自动执行 uv 同步、
+环境修复、数据迁移或数据库修复。
 
 ## CLI 运维
 

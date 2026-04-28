@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-"""Compatibility wrapper for the bot runtime entrypoint."""
+"""Compatibility entrypoint for NoneBot `nb run` project execution."""
 
 import sys
 from pathlib import Path

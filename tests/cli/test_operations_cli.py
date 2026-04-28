@@ -244,7 +244,7 @@ def test_plugin_text_output_remains_human_readable(tmp_path: Path) -> None:
     assert not result.output.lstrip().startswith("{")
 
 
-def test_run_uses_custom_entry_and_forwards_arguments(
+def test_run_uses_canonical_entry_and_forwards_arguments(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -268,41 +268,51 @@ def test_run_uses_custom_entry_and_forwards_arguments(
             "--cwd",
             str(tmp_path),
             "run",
-            "--entry",
-            "user_bot.py",
             "--",
             "--verbose",
         ],
     )
 
     assert result.exit_code == 0
-    assert calls == [([sys.executable, "user_bot.py", "--verbose"], tmp_path.resolve())]
+    assert calls == [
+        ([sys.executable, "-m", "apeiria.bot.entry", "--verbose"], tmp_path.resolve())
+    ]
 
 
-def test_run_reload_uses_apeiria_wrapper(
+def test_run_rejects_custom_entry_file(tmp_path: Path) -> None:
+    result = CliRunner().invoke(
+        cli,
+        ["--cwd", str(tmp_path), "run", "--entry", "user_bot.py"],
+    )
+
+    assert result.exit_code != 0
+    assert "apeiria run" in result.output
+    assert "user_bot.py" in result.output
+
+
+def test_run_reload_uses_canonical_entry(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    calls: list[tuple[Path, str, tuple[str, ...]]] = []
+    calls: list[tuple[Path, tuple[str, ...]]] = []
 
     def fake_reload(
         *,
         cwd: Path,
-        entry_file: str,
         extra_args: tuple[str, ...],
     ) -> int:
-        calls.append((cwd, entry_file, extra_args))
+        calls.append((cwd, extra_args))
         return 0
 
     monkeypatch.setattr("apeiria.cli.commands.env.run_with_reload", fake_reload)
 
     result = CliRunner().invoke(
         cli,
-        ["--cwd", str(tmp_path), "run", "--reload", "--entry", "dev_bot.py"],
+        ["--cwd", str(tmp_path), "run", "--reload", "--", "--verbose"],
     )
 
     assert result.exit_code == 0
-    assert calls == [(tmp_path.resolve(), "dev_bot.py", ())]
+    assert calls == [(tmp_path.resolve(), ("--verbose",))]
 
 
 def test_resource_search_commands_are_visible() -> None:

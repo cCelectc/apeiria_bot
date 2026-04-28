@@ -159,7 +159,7 @@ def repair() -> None:
 
 @click.command(
     context_settings={"ignore_unknown_options": True},
-    help=_("Run an Apeiria entry file with the current project Python environment."),
+    help=_("Run the canonical Apeiria runtime entry."),
 )
 @click.option(
     "--build",
@@ -170,9 +170,8 @@ def repair() -> None:
 @click.option(
     "--entry",
     "entry_file",
-    default="bot.py",
-    show_default=True,
-    help=_("Entry file to execute from the active Apeiria project root."),
+    default=None,
+    help=_("Retired. Use user_bot.py for project-local startup customization."),
 )
 @click.option(
     "--reload",
@@ -189,13 +188,18 @@ def run(
 ) -> None:
     if build_frontend_first:
         build_frontend()
+    if entry_file is not None:
+        raise click.ClickException(
+            _(
+                "custom entry files are retired; use `apeiria run` and "
+                "`user_bot.py` for project-local customization"
+            )
+        )
     root = project_root()
     if reload:
-        raise click.exceptions.Exit(
-            run_with_reload(cwd=root, entry_file=entry_file, extra_args=extra_args)
-        )
+        raise click.exceptions.Exit(run_with_reload(cwd=root, extra_args=extra_args))
     result = subprocess.run(
-        [sys.executable, entry_file, *extra_args],
+        [sys.executable, "-m", "apeiria.bot.entry", *extra_args],
         cwd=root,
         check=False,
     )
@@ -206,7 +210,6 @@ def run(
 def run_with_reload(
     *,
     cwd: Path,
-    entry_file: str,
     extra_args: tuple[str, ...],
 ) -> int:
     from watchfiles import run_process
@@ -214,17 +217,16 @@ def run_with_reload(
     return run_process(
         cwd,
         target=_run_entry_once,
-        args=(cwd, entry_file, extra_args),
+        args=(cwd, extra_args),
     )
 
 
 def _run_entry_once(
     cwd: Path,
-    entry_file: str,
     extra_args: tuple[str, ...],
 ) -> int:
     return subprocess.run(
-        [sys.executable, entry_file, *extra_args],
+        [sys.executable, "-m", "apeiria.bot.entry", *extra_args],
         cwd=cwd,
         check=False,
     ).returncode

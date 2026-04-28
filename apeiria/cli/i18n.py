@@ -70,9 +70,14 @@ MESSAGES_ZH_CN = {
     "Sync the main project environment without development dependencies.": (
         "同步主项目环境时不安装开发依赖。"
     ),
-    "Run bot.py with the current project Python environment.": (
-        "使用当前项目 Python 环境运行 bot.py。"
+    "Run the canonical Apeiria runtime entry.": "运行规范 Apeiria 运行时入口。",
+    "Retired. Use user_bot.py for project-local startup customization.": (
+        "已废弃。请使用 user_bot.py 进行项目本地启动定制。"
     ),
+    (
+        "custom entry files are retired; use `apeiria run` and "
+        "`user_bot.py` for project-local customization"
+    ): ("自定义入口文件已废弃；请使用 `apeiria run` 和 `user_bot.py` 进行项目本地定制"),
     "Show current Apeiria environment paths and status.": (
         "显示当前 Apeiria 环境路径和状态。"
     ),

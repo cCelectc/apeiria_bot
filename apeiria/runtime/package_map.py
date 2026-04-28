@@ -116,11 +116,6 @@ PACKAGE_RULES: tuple[ApeiriaPackageRule, ...] = (
         description="NoneBot-facing delivery surface.",
     ),
     ApeiriaPackageRule(
-        prefix="apeiria.bootstrap",
-        band=ApeiriaPackageBand.SURFACE,
-        description="Compatibility startup entrypoint.",
-    ),
-    ApeiriaPackageRule(
         prefix="apeiria.builtin_plugins",
         band=ApeiriaPackageBand.SURFACE,
         description="Built-in plugin delivery surface.",

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import importlib.util
+import sys
 from typing import TYPE_CHECKING
 
 from apeiria.runtime.bootstrapper import ApeiriaBootstrapper
@@ -20,29 +22,10 @@ def test_bootstrapper_exposes_explicit_phase_names() -> None:
     )
 
 
-def test_initialize_nonebot_delegates_to_bootstrapper(
-    monkeypatch: MonkeyPatch,
-) -> None:
-    from apeiria import bootstrap
+def test_legacy_bootstrap_facade_is_removed() -> None:
+    sys.modules.pop("apeiria.bootstrap", None)
 
-    calls: list[str] = []
-
-    class StubBootstrapper:
-        def initialize_nonebot(self) -> None:
-            calls.append("initialize_nonebot")
-
-    monkeypatch.setattr(bootstrap, "ApeiriaBootstrapper", StubBootstrapper)
-
-    bootstrap.initialize_nonebot()
-
-    assert calls == ["initialize_nonebot"]
-
-
-def test_bootstrap_no_longer_exposes_legacy_initialize_wrapper() -> None:
-    from apeiria import bootstrap
-
-    assert not hasattr(bootstrap, "_initialize_nonebot_legacy")
-    assert not hasattr(bootstrap, "resolve_driver_kwargs")
+    assert importlib.util.find_spec("apeiria.bootstrap") is None
 
 
 def test_bootstrapper_initialize_nonebot_runs_explicit_phases_in_order(
@@ -114,22 +97,6 @@ def test_bootstrapper_database_phase_stores_bootstrapped_database(
     bootstrapper._run_database_phase()
 
     assert bootstrapper.database is database
-
-
-def test_bootstrap_run_delegates_to_bootstrapper(monkeypatch: MonkeyPatch) -> None:
-    from apeiria import bootstrap
-
-    calls: list[str] = []
-
-    class StubBootstrapper:
-        def run(self) -> None:
-            calls.append("run")
-
-    monkeypatch.setattr(bootstrap, "ApeiriaBootstrapper", StubBootstrapper)
-
-    bootstrap.run()
-
-    assert calls == ["run"]
 
 
 def test_bot_entry_run_delegates_to_bootstrapper(monkeypatch: MonkeyPatch) -> None:
