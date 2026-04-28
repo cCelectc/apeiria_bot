@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import replace
 from datetime import datetime
 
+import nonebot
+
 from apeiria.app.plugins.store.models import (
     StoreCategoryCount,
     StoreInstallCandidate,
@@ -18,6 +20,7 @@ from apeiria.app.plugins.store.sources import (
     StoreSourceAdapter,
     configured_store_sources,
 )
+from apeiria.config import adapter_config_service
 from apeiria.config.plugins import plugin_config_service
 from apeiria.plugins.package_ids import normalize_package_id
 
@@ -74,13 +77,14 @@ class StoreService:
     async def list_items(self, query: StoreQuery | None = None) -> StorePage:
         effective_query = query or StoreQuery()
         source_pages = await self._load_source_pages(effective_query)
-        plugin_state = (
-            await _plugin_state() if effective_query.type == "plugin" else None
+        project_state = await _project_store_state(effective_query.type)
+        source_items = _deduplicate_store_items(
+            [item for page in source_pages for item in page.items],
         )
         enriched_items = self._enrich_item_state(
-            [item for page in source_pages for item in page.items],
+            source_items,
             effective_query,
-            plugin_state,
+            project_state,
         )
         categories = _collect_categories(enriched_items)
         items = _apply_category_filter(enriched_items, effective_query.category)
@@ -114,11 +118,11 @@ class StoreService:
         item = await source.find_exact(item_type, plugin_id)
         if item is None:
             return None
-        plugin_state = await _plugin_state() if item_type == "plugin" else None
+        project_state = await _project_store_state(item_type)
         enriched = self._enrich_item_state(
             [item],
             StoreQuery(type=item_type),
-            plugin_state,
+            project_state,
         )
         return enriched[0] if enriched else None
 
@@ -154,15 +158,15 @@ class StoreService:
         self,
         items: list[StoreItem],
         query: StoreQuery,
-        plugin_state: "_PluginState | None",
+        project_state: "_ProjectStoreState | None",
     ) -> list[StoreItem]:
-        if query.type != "plugin":
+        if project_state is None:
             return [item for item in items if _match_item(item, query)]
 
         return [
             item
             for item in (
-                _enrich_plugin_item_state(item, plugin_state) for item in items
+                _enrich_project_item_state(item, project_state) for item in items
             )
             if _match_item(item, query)
         ]
@@ -174,18 +178,16 @@ class StoreService:
         return None
 
 
-def _enrich_plugin_item_state(
+def _enrich_project_item_state(
     item: StoreItem,
-    plugin_state: "_PluginState | None",
+    project_state: "_ProjectStoreState",
 ) -> StoreItem:
-    if plugin_state is None:
-        return item
     installed = (
-        item.module_name in plugin_state.loaded_module_names
-        or item.module_name in plugin_state.registered_module_names
+        item.module_name in project_state.loaded_module_names
+        or item.module_name in project_state.registered_module_names
     )
-    registered = item.module_name in plugin_state.registered_module_names
-    installed_package = plugin_state.module_to_package.get(item.module_name)
+    registered = item.module_name in project_state.registered_module_names
+    installed_package = project_state.module_to_package.get(item.module_name)
     normalized_installed = normalize_package_id(installed_package or "")
     normalized_store = normalize_package_id(item.package_requirement)
     return replace(
@@ -193,7 +195,7 @@ def _enrich_plugin_item_state(
         is_installed=installed,
         is_registered=registered,
         installed_package=installed_package,
-        installed_module_names=plugin_state.package_bindings.get(
+        installed_module_names=project_state.package_bindings.get(
             installed_package or "",
             [],
         ),
@@ -205,7 +207,30 @@ def _enrich_plugin_item_state(
     )
 
 
-class _PluginState:
+def _deduplicate_store_items(items: list[StoreItem]) -> list[StoreItem]:
+    seen: set[tuple[str, StoreItemType, str, str]] = set()
+    result: list[StoreItem] = []
+    for item in items:
+        identity = _store_item_identity(item)
+        if identity in seen:
+            continue
+        seen.add(identity)
+        result.append(item)
+    return result
+
+
+def _store_item_identity(item: StoreItem) -> tuple[str, StoreItemType, str, str]:
+    normalized_package = normalize_package_id(item.package_requirement)
+    package_key = normalized_package or item.package_requirement.strip().lower()
+    return (
+        item.source_id,
+        item.type,
+        item.module_name.strip().lower(),
+        package_key,
+    )
+
+
+class _ProjectStoreState:
     def __init__(
         self,
         *,
@@ -220,7 +245,17 @@ class _PluginState:
         self.module_to_package = module_to_package
 
 
-async def _plugin_state() -> _PluginState:
+async def _project_store_state(
+    item_type: StoreItemType,
+) -> _ProjectStoreState | None:
+    if item_type == "plugin":
+        return await _plugin_state()
+    if item_type == "adapter":
+        return _adapter_state()
+    return None
+
+
+async def _plugin_state() -> _ProjectStoreState:
     project_config = plugin_config_service.read_project_plugin_config()
     registered_module_names = set(project_config["modules"])
     package_bindings = project_config["packages"]
@@ -237,12 +272,43 @@ async def _plugin_state() -> _PluginState:
     except ValueError:
         loaded_module_names = set()
 
-    return _PluginState(
+    return _ProjectStoreState(
         loaded_module_names=loaded_module_names,
         registered_module_names=registered_module_names,
         package_bindings=package_bindings,
         module_to_package=module_to_package,
     )
+
+
+def _adapter_state() -> _ProjectStoreState:
+    project_config = adapter_config_service.read_project_adapter_config()
+    registered_module_names = set(project_config["modules"])
+    package_bindings = project_config["packages"]
+    module_to_package = {
+        module_name: package_name
+        for package_name, module_names in package_bindings.items()
+        for module_name in module_names
+    }
+    try:
+        loaded_module_names = {
+            _normalize_adapter_module_name(adapter.__module__)
+            for adapter in nonebot.get_adapters().values()
+        }
+    except ValueError:
+        loaded_module_names = set()
+
+    return _ProjectStoreState(
+        loaded_module_names=loaded_module_names,
+        registered_module_names=registered_module_names,
+        package_bindings=package_bindings,
+        module_to_package=module_to_package,
+    )
+
+
+def _normalize_adapter_module_name(module_name: str) -> str:
+    if module_name.endswith(".adapter"):
+        return module_name[: -len(".adapter")]
+    return module_name
 
 
 def _match_item(item: StoreItem, query: StoreQuery) -> bool:

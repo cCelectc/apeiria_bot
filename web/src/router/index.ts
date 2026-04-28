@@ -23,6 +23,7 @@ const routes = [
       { path: '', redirect: '/dashboard' },
       { path: 'dashboard', name: 'dashboard', component: () => import('@/views/DashboardView.vue'), meta: { titleKey: 'dashboard.title' } },
       { path: 'core', name: 'core', component: () => import('@/views/CoreView.vue'), meta: { titleKey: 'core.title' } },
+      { path: 'core/adapters/store', name: 'adapters-store', component: () => import('@/views/AdapterStoreView.vue'), meta: { titleKey: 'adapterStore.title' } },
       { path: 'ai', name: 'ai', component: () => import('@/views/AIView.vue'), meta: { titleKey: 'ai.title' } },
       { path: 'plugins', redirect: '/plugins/config' },
       { path: 'plugins/config', name: 'plugins', component: () => import('@/views/PluginsView.vue'), meta: { titleKey: 'plugins.title' } },

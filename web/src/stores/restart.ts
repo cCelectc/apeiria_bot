@@ -4,6 +4,8 @@ import { computed, ref } from 'vue'
 export type RestartUndoAction
   = | { kind: 'core-settings', values: Record<string, unknown> }
     | { kind: 'core-raw', text: string }
+    | { kind: 'adapter-config', modules: string[] }
+    | { kind: 'adapter-install', packageName: string, moduleName: string }
     | { kind: 'plugin-settings', moduleName: string, values: Record<string, unknown> }
     | { kind: 'plugin-raw', moduleName: string, text: string }
     | { kind: 'plugin-config', modules: string[], dirs: string[] }

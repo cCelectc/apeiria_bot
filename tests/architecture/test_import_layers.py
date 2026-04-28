@@ -124,6 +124,7 @@ def test_ai_model_capability_uses_subdomain_packages() -> None:
 def test_plugin_routes_do_not_import_plugin_buckets_from_shared_models() -> None:
     violations = _collect_boundary_violations(
         source_prefixes=(
+            "apeiria.webui.routes.adapter_store",
             "apeiria.webui.routes.plugin_catalog",
             "apeiria.webui.routes.plugin_config",
             "apeiria.webui.routes.plugin_management",

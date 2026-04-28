@@ -55,17 +55,6 @@ export function getPluginConfig () {
   }>('/plugins/config')
 }
 
-export function getAdapterConfig () {
-  return client.get<{ modules: ModuleConfigItem[] }>('/plugins/adapters/config')
-}
-
-export function updateAdapterConfig (payload: { modules: string[] }) {
-  return client.patch<{ modules: ModuleConfigItem[] }>(
-    '/plugins/adapters/config',
-    payload,
-  )
-}
-
 export function getDriverConfig () {
   return client.get<{ builtin: DriverConfigItem[] }>('/plugins/drivers/config')
 }

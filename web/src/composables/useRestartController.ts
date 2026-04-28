@@ -1,6 +1,10 @@
 import type { RestartUndoAction } from '@/stores/restart'
 import { ref } from 'vue'
 import { useI18n } from 'vue-i18n'
+import {
+  revertAdapterStoreInstall,
+  updateAdapterConfig,
+} from '@/api/adapters'
 import { getErrorMessage } from '@/api/client'
 import { updateCoreSettings, updateCoreSettingsRaw, updatePluginConfig } from '@/api/core'
 import { getStatus, restartBot } from '@/api/dashboard'
@@ -77,6 +81,17 @@ export function useRestartController () {
 
 async function revertEntry (undo: RestartUndoAction) {
   switch (undo.kind) {
+    case 'adapter-config': {
+      await updateAdapterConfig({ modules: undo.modules })
+      return
+    }
+    case 'adapter-install': {
+      await revertAdapterStoreInstall({
+        package_name: undo.packageName,
+        module_name: undo.moduleName,
+      })
+      return
+    }
     case 'core-settings': {
       await updateCoreSettings({ values: undo.values })
       return

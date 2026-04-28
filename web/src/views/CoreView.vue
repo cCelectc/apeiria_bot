@@ -3,7 +3,7 @@
     <div class="page-header">
       <h1 class="page-title">{{ t('core.title') }}</h1>
       <div class="page-actions">
-        <v-btn :loading="loading" variant="tonal" @click="loadCoreManagement">{{ t('common.refresh') }}</v-btn>
+        <v-btn :loading="loading" variant="tonal" @click="handleRefresh">{{ t('common.refresh') }}</v-btn>
       </div>
     </div>
 
@@ -168,29 +168,7 @@
 
         <v-window-item value="adapters">
           <v-card-text class="d-flex flex-column ga-5">
-            <div class="d-flex justify-space-between align-center flex-wrap ga-3">
-              <div class="text-subtitle-1 font-weight-medium">{{ t('core.adaptersTab') }}</div>
-              <v-sheet class="summary-card" rounded="lg">
-                <div class="summary-card__label">{{ t('plugins.adapterCount') }}</div>
-                <div class="summary-card__value">{{ adapterModules.length }}</div>
-              </v-sheet>
-            </div>
-            <div class="config-chip-row">
-              <v-chip
-                v-for="adapterItem in adapterModules"
-                :key="adapterItem.name"
-                :color="moduleChipColor(adapterItem)"
-                variant="tonal"
-              >
-                {{ adapterItem.name }}
-                <v-tooltip activator="parent" location="top">
-                  {{ moduleStatusText(adapterItem) }}
-                </v-tooltip>
-              </v-chip>
-              <span v-if="adapterModules.length === 0" class="text-body-2 text-medium-emphasis">
-                {{ t('plugins.emptyAdapterModules') }}
-              </span>
-            </div>
+            <AdapterManagementPanel ref="adapterManagementPanel" />
           </v-card-text>
         </v-window-item>
 
@@ -245,17 +223,15 @@
 
 <script setup lang="ts">
   import type { RawSettingsResponse } from '@/api/settings'
-  import { computed, onMounted, ref, watch } from 'vue'
+  import { computed, onMounted, ref } from 'vue'
   import { useI18n } from 'vue-i18n'
-  import { useRoute } from 'vue-router'
+  import { useRoute, useRouter } from 'vue-router'
   import { getErrorMessage } from '@/api/client'
   import {
     type DriverConfigItem,
-    getAdapterConfig,
     getCoreSettings,
     getCoreSettingsRaw,
     getDriverConfig,
-    type ModuleConfigItem,
     updateCoreSettings,
     updateCoreSettingsRaw,
     validateCoreSettingsRaw,
@@ -263,6 +239,8 @@
   import { useRawTomlValidation } from '@/composables/useRawTomlValidation'
   import { useNoticeStore } from '@/stores/notice'
   import { useRestartStore } from '@/stores/restart'
+  import AdapterManagementPanel from '@/views/core/AdapterManagementPanel.vue'
+  import { useCoreRouteState } from '@/views/core/routeState'
   import RawSettingsEditor from '@/views/plugins/RawSettingsEditor.vue'
   import {
     buildRevertValues,
@@ -278,8 +256,7 @@
 
   const loading = ref(false)
   const errorMessage = ref('')
-  const sectionTab = ref('core')
-  const adapterModules = ref<ModuleConfigItem[]>([])
+  const adapterManagementPanel = ref<{ reload: () => Promise<void> } | null>(null)
   const driverBuiltin = ref<DriverConfigItem[]>([])
   const coreEditorMode = ref<'basic' | 'advanced'>('basic')
   const coreRawText = ref('')
@@ -294,6 +271,8 @@
   const restartStore = useRestartStore()
   const { t } = useI18n()
   const route = useRoute()
+  const router = useRouter()
+  const { sectionTab } = useCoreRouteState(route, router)
 
   const coreEditor = useSettingsEditor({
     load: getCoreSettings,
@@ -353,19 +332,6 @@
     validate: async text => (await validateCoreSettingsRaw({ text })).data,
   })
 
-  function applyRouteFilters () {
-    const sectionQuery = route.query.section
-    if (
-      sectionQuery === 'core'
-      || sectionQuery === 'adapters'
-      || sectionQuery === 'drivers'
-    ) {
-      sectionTab.value = sectionQuery
-      return
-    }
-    sectionTab.value = 'core'
-  }
-
   function settingsValueSourceLabel (source: string) {
     const map: Record<string, string> = {
       default: t('plugins.settingsValueSourceDefault'),
@@ -406,26 +372,21 @@
     }
   }
 
-  async function loadCoreManagement () {
-    loading.value = true
-    coreLoading.value = true
-    coreRawLoading.value = true
+  async function loadDriverManagement () {
     errorMessage.value = ''
-    coreErrorMessage.value = ''
-    coreRawErrorMessage.value = ''
     try {
-      const [adapterConfigResponse, driverConfigResponse] = await Promise.all([
-        getAdapterConfig(),
-        getDriverConfig(),
-      ])
-      adapterModules.value = adapterConfigResponse.data.modules
+      const driverConfigResponse = await getDriverConfig()
       driverBuiltin.value = driverConfigResponse.data.builtin
     } catch (error) {
       errorMessage.value = getErrorMessage(error, t('core.loadFailed'))
-    } finally {
-      loading.value = false
     }
+  }
 
+  async function loadCoreManagement () {
+    coreLoading.value = true
+    coreRawLoading.value = true
+    coreErrorMessage.value = ''
+    coreRawErrorMessage.value = ''
     try {
       const coreResponse = await getCoreSettings()
       coreEditor.applyState(coreResponse.data)
@@ -437,18 +398,6 @@
     }
 
     await loadCoreRawSettings()
-  }
-
-  function moduleChipColor (item: ModuleConfigItem) {
-    if (item.is_loaded) return 'success'
-    if (item.is_importable) return 'warning'
-    return 'error'
-  }
-
-  function moduleStatusText (item: ModuleConfigItem) {
-    if (item.is_loaded) return t('plugins.moduleLoaded')
-    if (item.is_importable) return t('plugins.moduleRegisteredOnly')
-    return t('plugins.moduleMissing')
   }
 
   function driverChipColor (item: DriverConfigItem) {
@@ -522,13 +471,27 @@
     }
   }
 
-  onMounted(() => {
-    applyRouteFilters()
-    void loadCoreManagement()
-  })
+  async function handleRefresh () {
+    loading.value = true
+    try {
+      await Promise.all([
+        loadDriverManagement(),
+        loadCoreManagement(),
+        adapterManagementPanel.value?.reload() || Promise.resolve(),
+      ])
+    } finally {
+      loading.value = false
+    }
+  }
 
-  watch(() => route.query, () => {
-    applyRouteFilters()
+  onMounted(() => {
+    loading.value = true
+    void Promise.all([
+      loadDriverManagement(),
+      loadCoreManagement(),
+    ]).finally(() => {
+      loading.value = false
+    })
   })
 </script>
 
