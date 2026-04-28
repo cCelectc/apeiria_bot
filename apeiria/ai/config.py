@@ -16,6 +16,12 @@ class AIPluginConfig(BaseModel):
 
     allow_group_initiative: bool = False
     persist_raw_event_payloads: bool = False
+    ambient_merge_window_ms: int = 1500
+    max_pending_messages: int = 12
+    group_reply_cooldown_seconds: int = 180
+    max_consecutive_ambient_replies: int = 1
+    direct_bypass_ambient_budget: bool = True
+    duplicate_event_ttl_seconds: int = 30
     tool_execution_timeout_seconds: float = 8.0
     cleanup_interval_minutes: int = 30
     conversation_retention_days: int = 30

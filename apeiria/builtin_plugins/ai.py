@@ -69,6 +69,45 @@ __plugin_meta__ = PluginMetadata(
                     type=bool,
                 ),
                 RegisterConfig(
+                    key="ambient_merge_window_ms",
+                    default=1500,
+                    help="Milliseconds to merge short ambient group-message bursts.",
+                    type=int,
+                ),
+                RegisterConfig(
+                    key="max_pending_messages",
+                    default=12,
+                    help="Maximum pending ambient messages retained for one AI turn.",
+                    type=int,
+                ),
+                RegisterConfig(
+                    key="group_reply_cooldown_seconds",
+                    default=180,
+                    help="Cooldown for default ambient group-chat AI replies.",
+                    type=int,
+                ),
+                RegisterConfig(
+                    key="max_consecutive_ambient_replies",
+                    default=1,
+                    help="Maximum consecutive AI replies to ambient group messages.",
+                    type=int,
+                ),
+                RegisterConfig(
+                    key="direct_bypass_ambient_budget",
+                    default=True,
+                    help=(
+                        "Let direct mentions, private messages, and future tasks "
+                        "bypass ambient initiative budget."
+                    ),
+                    type=bool,
+                ),
+                RegisterConfig(
+                    key="duplicate_event_ttl_seconds",
+                    default=30,
+                    help="Seconds to keep local duplicate event protection entries.",
+                    type=int,
+                ),
+                RegisterConfig(
                     key="tool_execution_timeout_seconds",
                     default=8.0,
                     help="Maximum seconds allowed for one AI tool execution.",

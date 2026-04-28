@@ -1,0 +1,184 @@
+# ruff: noqa: PLR2004
+
+from __future__ import annotations
+
+import asyncio
+
+from apeiria.ai.model import AIModelMessage, AIModelToolDefinition
+from apeiria.ai.tools import AIToolPolicy, AIToolSpec, ToolGatewayResult
+from apeiria.app.ai.session_runtime import (
+    ToolExposurePlan,
+    ToolGatewayMigrationAdapter,
+    ToolOrchestrator,
+    build_default_tool_exposure_plan,
+)
+
+
+def _tool(
+    name: str,
+    *,
+    tags: tuple[str, ...] = (),
+    is_capability_bridge: bool = False,
+    concurrency_safe: bool = True,
+) -> AIToolSpec:
+    return AIToolSpec(
+        name=name,
+        description=f"{name} description",
+        read_only=True,
+        concurrency_safe=concurrency_safe,
+        tags=tags,
+        is_capability_bridge=is_capability_bridge,
+    )
+
+
+def test_default_tool_exposure_categories_are_stable_and_schema_free() -> None:
+    plan = build_default_tool_exposure_plan(
+        allowed_tools=(
+            _tool("memory.query", tags=("memory",)),
+            _tool("future_task.create", tags=("future_task",)),
+            _tool("relationship.inspect", tags=("relationship",)),
+            _tool(
+                "plugin.capability.invoke",
+                tags=("plugin_capability",),
+                is_capability_bridge=True,
+            ),
+        ),
+        ordinary_ambient_group=True,
+    )
+
+    assert plan.category_ids == (
+        "memory",
+        "future_task",
+        "relationship",
+        "plugin_capability",
+    )
+    assert "memory.query" not in plan.awareness_text
+    assert "future_task.create" not in plan.awareness_text
+    assert plan.selected_tools == ()
+    assert plan.diagnostics["category_count"] == 4
+
+
+def test_ambient_group_excludes_admin_project_management_tools() -> None:
+    plan = build_default_tool_exposure_plan(
+        allowed_tools=(
+            _tool("memory.query", tags=("memory",)),
+            _tool("admin.project.reload", tags=("admin", "project_management")),
+        ),
+        ordinary_ambient_group=True,
+    )
+
+    assert plan.category_ids == (
+        "memory",
+        "future_task",
+        "relationship",
+        "plugin_capability",
+    )
+    assert plan.hidden_reasons == {
+        "admin.project.reload": "excluded_from_ambient_group"
+    }
+    assert plan.selected_tools == ()
+
+
+def test_non_ambient_context_keeps_admin_diagnostics_visible() -> None:
+    plan = build_default_tool_exposure_plan(
+        allowed_tools=(
+            _tool("admin.project.reload", tags=("admin", "project_management")),
+        ),
+        ordinary_ambient_group=False,
+    )
+
+    assert plan.hidden_reasons == {}
+    assert plan.diagnostics["admin_project_tool_count"] == 1
+
+
+def test_tool_orchestrator_selects_policy_allowed_executable_tools() -> None:
+    orchestrator = ToolOrchestrator()
+
+    plan = orchestrator.plan_exposure(
+        allowed_tools=(
+            _tool("memory.query", tags=("memory",)),
+            _tool("memory.update", tags=("memory",)),
+        ),
+        policy=AIToolPolicy(
+            execution_enabled=True,
+            allowed_tool_names={"memory.query", "memory.update"},
+            denied_tool_names={"memory.update"},
+        ),
+        requested_tool_names=("memory.query", "memory.update"),
+        ordinary_ambient_group=False,
+        execution_timeout_seconds=7.5,
+    )
+
+    assert plan.selected_tool_names == ("memory_query",)
+    assert plan.denied_reasons == {"memory.update": "policy_denied"}
+    assert plan.diagnostics["execution_timeout_seconds"] == 7.5
+    assert plan.diagnostics["parallel_safe_tool_names"] == ("memory.query",)
+
+
+def test_tool_orchestrator_denial_observation_is_bounded() -> None:
+    observation = ToolOrchestrator().build_denial_observation(
+        tool_name="memory.update",
+        reason="policy_denied",
+    )
+
+    assert "memory.update" in observation.content
+    assert "policy_denied" in observation.content
+    assert observation.truncated is False
+
+
+def test_tool_orchestrator_does_not_assume_parallel_safety() -> None:
+    plan = ToolOrchestrator().plan_exposure(
+        allowed_tools=(
+            _tool("memory.query", tags=("memory",), concurrency_safe=False),
+        ),
+        policy=AIToolPolicy(
+            execution_enabled=True,
+            allowed_tool_names={"memory.query"},
+        ),
+        requested_tool_names=("memory.query",),
+        ordinary_ambient_group=False,
+        execution_timeout_seconds=7.5,
+    )
+
+    assert plan.selected_tool_names == ("memory_query",)
+    assert plan.diagnostics["parallel_safe_tool_names"] == ()
+
+
+def test_tool_gateway_migration_adapter_uses_selected_tools_only() -> None:
+    class _Gateway:
+        def __init__(self) -> None:
+            self.tools: tuple[AIModelToolDefinition, ...] | None = None
+
+        async def run_tool_loop(self, request: object, **kwargs: object) -> object:
+            del request
+            self.tools = kwargs["tools"]  # type: ignore[assignment]
+            return ToolGatewayResult(policy_text="", result_lines=(), turns=())
+
+    selected_tool = AIModelToolDefinition(
+        name="memory_query",
+        description="Recall memory",
+        parameters={"type": "object", "properties": {}},
+    )
+    hidden_tool = AIModelToolDefinition(
+        name="admin_project_reload",
+        description="Reload project",
+        parameters={"type": "object", "properties": {}},
+    )
+    gateway = _Gateway()
+    adapter = ToolGatewayMigrationAdapter(gateway=gateway)
+
+    result = asyncio.run(
+        adapter.run_tool_loop(
+            request=object(),
+            messages=(AIModelMessage(role="user", content="hello"),),
+            exposure_plan=ToolExposurePlan(
+                selected_tools=(selected_tool,),
+                hidden_reasons={hidden_tool.name: "excluded_from_ambient_group"},
+            ),
+            selected_model=object(),
+            fallback_models=(),
+        )
+    )
+
+    assert isinstance(result, ToolGatewayResult)
+    assert gateway.tools == (selected_tool,)
