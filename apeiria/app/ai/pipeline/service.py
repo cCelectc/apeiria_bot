@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Any, Literal
 from uuid import uuid4
 
 from nonebot.log import logger
@@ -20,12 +20,21 @@ from apeiria.app.ai.pipeline.generation_steps import (
 from apeiria.app.ai.pipeline.input_steps import gather_reply_inputs
 from apeiria.app.ai.pipeline.memory_steps import store_extracted_memories
 from apeiria.app.ai.pipeline.persistence_steps import persist_reply
-from apeiria.app.ai.pipeline.reply_strategy_steps import decide_whether_to_speak
+from apeiria.app.ai.pipeline.reply_strategy_steps import (
+    build_fallback_wake_context,
+    decide_whether_to_speak,
+)
 from apeiria.app.ai.reply_strategy import (
     build_wake_context,
     reply_strategy_service,
 )
 from apeiria.app.ai.reply_strategy.wake_gate import evaluate_wake
+from apeiria.app.ai.session_runtime import (
+    InMemoryAISessionRuntimeResolver,
+    RuntimeTurnSource,
+    decide_runtime_hard_rule,
+    map_legacy_skip_to_runtime_decision,
+)
 from apeiria.app.ai.tooling import ensure_app_ai_tools_loaded
 from apeiria.conversation.service import chat_session_service
 
@@ -82,6 +91,15 @@ class AIRuntimeReplyResult:
 
 class AIRuntimeService:
     """Minimal end-to-end runtime path for the AI plugin."""
+
+    def __init__(
+        self,
+        *,
+        session_runtime_resolver: Any | None = None,
+    ) -> None:
+        self._session_runtime_resolver = (
+            session_runtime_resolver or InMemoryAISessionRuntimeResolver()
+        )
 
     async def handle_message(
         self,
@@ -186,6 +204,58 @@ class AIRuntimeService:
     ) -> AIRuntimeReplyResult | None:
         current_time = datetime.now(timezone.utc)
         identity = request.identity
+        session_runtime = self._session_runtime_resolver.resolve(
+            identity.session_id,
+            now=current_time,
+        )
+
+        async def operation() -> AIRuntimeReplyResult | None:
+            return await self._run_reply_pipeline_turn(
+                trace_id=trace_id,
+                trace=trace,
+                request=request,
+                wake_context=wake_context,
+                current_time=current_time,
+                session_runtime=session_runtime,
+            )
+
+        return await session_runtime.run_serialized(operation, now=current_time)
+
+    async def _run_reply_pipeline_turn(  # noqa: PLR0913
+        self,
+        *,
+        trace_id: str,
+        trace: AITraceContext,
+        request: AIRuntimeReplyRequest,
+        wake_context: WakeContext | None = None,
+        current_time: datetime,
+        session_runtime: Any | None = None,
+    ) -> AIRuntimeReplyResult | None:
+        identity = request.identity
+        wake_context = wake_context or build_fallback_wake_context(request)
+        hard_decision = decide_runtime_hard_rule(
+            wake_context=wake_context,
+            source=RuntimeTurnSource(
+                runtime_mode=request.runtime_mode,
+                message_text=request.message_text,
+                source_message_id=request.source_message_id,
+                user_id=request.user_id,
+                direct_signal=request.is_tome,
+                is_private=identity.scene_type == "private",
+            ),
+            session_runtime=session_runtime,
+            now=current_time,
+        )
+        if not hard_decision.should_reply:
+            logger.debug(
+                "AI trace {} skipped reply: hard_rule for session {} action={} "
+                "reason_codes={}",
+                trace_id,
+                identity.session_id,
+                hard_decision.action,
+                hard_decision.reason_codes,
+            )
+            return None
 
         inputs = await gather_reply_inputs(request, current_time)
 
@@ -203,13 +273,14 @@ class AIRuntimeService:
             trace_id=trace_id,
         )
         if not social_decision.should_speak:
+            runtime_decision = map_legacy_skip_to_runtime_decision(social_decision)
             logger.debug(
                 "AI trace {} skipped reply: strategy_skipped for session {} "
                 "action={} reason_codes={}",
                 trace_id,
                 identity.session_id,
-                social_decision.action,
-                social_decision.reason_codes,
+                runtime_decision.action,
+                runtime_decision.reason_codes,
             )
             return None
         prep = await prepare_generation(
@@ -255,6 +326,10 @@ class AIRuntimeService:
         # For future_tasks delivery happens internally and may fail.
         if gen.delivery_result is None or gen.delivery_result.delivered:
             reply_strategy_service.notify_replied(identity.session_id)
+            if session_runtime is not None and hard_decision.reason_codes == (
+                "ambient_candidate",
+            ):
+                session_runtime.record_ambient_reply(now=current_time)
         logger.info(
             "AI trace {} generated {} reply for session {} with source={} "
             "model={} memories={} tool_observations={} entry_kind={} "

@@ -1,7 +1,12 @@
 from __future__ import annotations
 
 from apeiria.ai.tools import AIToolObservationResult, ToolGatewayResult
-from apeiria.app.ai.agent_turn import PromptSafeObservation, ToolAttempt
+from apeiria.app.ai.agent_turn import (
+    AgentTurnResult,
+    PromptSafeObservation,
+    ToolAttempt,
+)
+from apeiria.app.ai.reply_strategy import ReplyStrategyDecision
 from tests.ai.agent_turn_helpers import model_response, selected_model
 
 
@@ -63,3 +68,49 @@ def test_tool_loop_metadata_is_available_to_persistence() -> None:
     assert attempt["observation_original_length"] == original_observation_length
     assert raw_payload not in str(persisted)
     assert "native_observation" not in attempt
+
+
+def test_compact_turn_trace_metadata_is_available_to_persistence() -> None:
+    from apeiria.app.ai.pipeline.persistence_steps import _turn_trace_meta
+
+    decision = ReplyStrategyDecision(
+        action="reply",
+        should_speak=True,
+        tool_mode="allow",
+        reason_codes=("direct_signal",),
+        reason_text="direct",
+        evidence={},
+        decision_source="fallback",
+    )
+    turn = AgentTurnResult.skipped(
+        trace_id="trace-1",
+        runtime_mode="message",
+        finish_reason="contract_test",
+    )
+
+    persisted = _turn_trace_meta(
+        trace_id="trace-1",
+        session_id="session-1",
+        runtime_mode="message",
+        social_decision=decision,
+        turn=turn,
+        delivery_delivered=None,
+    )
+
+    assert persisted["turn_trace"] == {
+        "trace_id": "trace-1",
+        "session_id": "session-1",
+        "runtime_mode": "message",
+        "strategy_action": "continue",
+        "strategy_reason_codes": ["direct_signal"],
+        "merged_message_count": 0,
+        "merge_reason": None,
+        "wait_reason": None,
+        "defer_reason": None,
+        "model_attempt_count": 0,
+        "tool_attempt_count": 0,
+        "tool_observation_count": 0,
+        "final_response_source": None,
+        "skip_reason": "contract_test",
+        "delivery_status": "not_required",
+    }
