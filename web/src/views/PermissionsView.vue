@@ -428,7 +428,7 @@
   import type { PluginItem } from '@/api/plugins'
   import { computed, onMounted, ref, watch } from 'vue'
   import { useI18n } from 'vue-i18n'
-  import { useRoute } from 'vue-router'
+  import { useRoute, useRouter } from 'vue-router'
   import {
     type AccessRuleItem,
     getAccessRules,
@@ -457,10 +457,11 @@
   import { usePermissionUserPerspective } from '@/views/permissions/usePermissionUserPerspective'
 
   const route = useRoute()
+  const router = useRouter()
   const { t } = useI18n()
   const noticeStore = useNoticeStore()
 
-  const { applyRouteState, perspective } = usePermissionRouteState(route)
+  const { applyRouteState, perspective } = usePermissionRouteState(route, router)
   const loading = ref(false)
   const errorMessage = ref('')
 

@@ -291,9 +291,10 @@
 </template>
 
 <script setup lang="ts">
-  import { computed, onMounted, ref } from 'vue'
+  import type { LocationQueryRaw } from 'vue-router'
+  import { computed, onMounted, ref, watch } from 'vue'
   import { useI18n } from 'vue-i18n'
-  import { useRouter } from 'vue-router'
+  import { useRoute, useRouter } from 'vue-router'
   import { getErrorMessage } from '@/api/client'
   import { useAIDebugTab } from '@/composables/useAIDebugTab'
   import { useAIDebugToolsTab } from '@/composables/useAIDebugToolsTab'
@@ -315,14 +316,103 @@
   import AISourceWorkspace from '@/views/ai/AISourceWorkspace.vue'
   import '@/views/ai/panelShared.css'
 
+  const aiTopTabs = [
+    'sources',
+    'personas',
+    'memories',
+    'relationships',
+    'profiles',
+    'skills',
+    'debug',
+  ] as const
+  const aiSourceCapabilityTabs = [
+    'chat',
+    'embedding',
+    'stt',
+    'tts',
+    'rerank',
+  ] as const
+  const aiDebugTabs = ['conversations', 'futureTasks', 'tools'] as const
+
+  type AITopTab = typeof aiTopTabs[number]
+  type AISourceCapabilityTab = typeof aiSourceCapabilityTabs[number]
+  type AIDebugTab = typeof aiDebugTabs[number]
+
   const { t } = useI18n()
+  const route = useRoute()
   const router = useRouter()
+  let applyingRouteState = false
 
   const loading = ref(false)
   const errorMessage = ref('')
-  const topTab = ref('sources')
-  const debugTab = ref('conversations')
-  const sourceCapabilityTab = ref('chat')
+  const topTab = ref<AITopTab>('sources')
+  const debugTab = ref<AIDebugTab>('conversations')
+  const sourceCapabilityTab = ref<AISourceCapabilityTab>('chat')
+
+  function resolveQueryTab<T extends string> (
+    value: unknown,
+    allowedValues: readonly T[],
+    fallback: T,
+  ): T {
+    return typeof value === 'string' && allowedValues.includes(value as T)
+      ? value as T
+      : fallback
+  }
+
+  function applyRouteState () {
+    const nextTopTab = resolveQueryTab(route.query.section, aiTopTabs, 'sources')
+    const nextSourceCapabilityTab = resolveQueryTab(
+      route.query.capability,
+      aiSourceCapabilityTabs,
+      'chat',
+    )
+    const nextDebugTab = resolveQueryTab(route.query.debug, aiDebugTabs, 'conversations')
+
+    if (
+      topTab.value === nextTopTab
+      && sourceCapabilityTab.value === nextSourceCapabilityTab
+      && debugTab.value === nextDebugTab
+    ) {
+      return
+    }
+
+    applyingRouteState = true
+    topTab.value = nextTopTab
+    sourceCapabilityTab.value = nextSourceCapabilityTab
+    debugTab.value = nextDebugTab
+    applyingRouteState = false
+  }
+
+  function syncTabQuery () {
+    const nextQuery: LocationQueryRaw = {
+      ...route.query,
+      section: topTab.value,
+    }
+
+    if (topTab.value === 'sources') {
+      nextQuery.capability = sourceCapabilityTab.value
+    } else {
+      delete nextQuery.capability
+    }
+
+    if (topTab.value === 'debug') {
+      nextQuery.debug = debugTab.value
+    } else {
+      delete nextQuery.debug
+    }
+
+    if (
+      route.query.section === nextQuery.section
+      && route.query.capability === nextQuery.capability
+      && route.query.debug === nextQuery.debug
+    ) {
+      return
+    }
+
+    void router.replace({ query: nextQuery })
+  }
+
+  applyRouteState()
 
   const {
     conversations,
@@ -590,6 +680,19 @@
   onMounted(() => {
     void loadData()
   })
+
+  watch(() => [
+    route.query.section,
+    route.query.capability,
+    route.query.debug,
+  ], () => {
+    applyRouteState()
+  })
+
+  watch([topTab, sourceCapabilityTab, debugTab], () => {
+    if (applyingRouteState) return
+    syncTabQuery()
+  }, { flush: 'sync' })
 </script>
 
 <style scoped>
