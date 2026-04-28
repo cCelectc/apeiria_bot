@@ -19,6 +19,7 @@ from apeiria.plugins.state import (
     get_disabled_plugin_modules_sync,
 )
 from apeiria.utils.files import atomic_write_text, load_toml_dict
+from apeiria.utils.project_context import current_project_root
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -37,7 +38,7 @@ class PluginConfigService:
     """Manage project plugin module, dir, and package bindings."""
 
     def _project_root(self) -> Path:
-        return Path(__file__).resolve().parent.parent.parent
+        return current_project_root()
 
     def default_config_path(self) -> Path:
         return self._project_root() / "apeiria.plugins.toml"

@@ -2,22 +2,12 @@
 
 from __future__ import annotations
 
-import sqlite3
-from typing import TYPE_CHECKING
-
-from apeiria.db import (
-    CURRENT_SCHEMA_LINE,
-    CURRENT_SCHEMA_VERSION,
-    ApeiriaDatabase,
-)
+from apeiria.db.inspection import inspect_database
 from apeiria.environment.manager import (
     EnvironmentService,
     environment_service,
 )
 from apeiria.environment.models import HealthCheck, HealthSnapshot
-
-if TYPE_CHECKING:
-    from pathlib import Path
 
 _CHECK_MESSAGES: dict[tuple[str, str], tuple[str, str | None]] = {
     ("uv", "available"): ("uv is available.", None),
@@ -216,61 +206,10 @@ class HealthService:
         return (f"Check `{key}` is {detail}.", None)
 
     def _build_database_check(self) -> HealthCheck:
-        database = ApeiriaDatabase(project_root=self._environment.project_root)
-        database_path = database.database_path()
-        if not database_path.exists():
-            detail = "missing"
-            ok = True
-        else:
-            detail, ok = self._inspect_database_schema(database_path)
+        inspection = inspect_database(self._environment.project_root)
+        detail = inspection.schema.status
+        ok = inspection.ready or detail == "missing"
         return self._build_check(key="database", ok=ok, detail=detail)
-
-    def _inspect_database_schema(self, database_path: "Path") -> tuple[str, bool]:
-        try:
-            connection = sqlite3.connect(f"file:{database_path}?mode=ro", uri=True)
-            try:
-                row = connection.execute(
-                    """
-                    SELECT schema_line, schema_version
-                    FROM apeiria_schema_meta
-                    WHERE id = 1
-                    """
-                ).fetchone()
-            finally:
-                connection.close()
-        except sqlite3.OperationalError as exc:
-            if "no such table" in str(exc).lower():
-                detail = "incompatible"
-            else:
-                detail = "unreadable"
-            ok = False
-        except sqlite3.DatabaseError:
-            detail = "unreadable"
-            ok = False
-        else:
-            detail, ok = self._classify_database_schema_row(row)
-        return detail, ok
-
-    @staticmethod
-    def _classify_database_schema_row(row: object | None) -> tuple[str, bool]:
-        detail = "current"
-        ok = True
-        if row is None:
-            return "incompatible", False
-        try:
-            schema_line = str(row[0])  # type: ignore[index]
-            schema_version = int(row[1])  # type: ignore[index]
-        except (IndexError, TypeError, ValueError):
-            detail = "incompatible"
-            ok = False
-        else:
-            if schema_line != CURRENT_SCHEMA_LINE:
-                detail = "incompatible"
-                ok = False
-            elif schema_version != CURRENT_SCHEMA_VERSION:
-                detail = "unsupported"
-                ok = False
-        return detail, ok
 
 
 health_service = HealthService()

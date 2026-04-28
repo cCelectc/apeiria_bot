@@ -30,6 +30,7 @@ from apeiria.environment.models import (
     FrontendBuildStreamEvent,
     ProjectConfigBootstrapResult,
 )
+from apeiria.utils.project_context import current_project_root
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
@@ -60,9 +61,7 @@ class EnvironmentService:
 
     def __init__(self, project_root: Path | None = None) -> None:
         self._project_root = (
-            project_root
-            if project_root is not None
-            else Path(__file__).resolve().parent.parent.parent
+            project_root if project_root is not None else current_project_root()
         )
 
     @property

@@ -1,8 +1,7 @@
 from __future__ import annotations
 
 import logging
-from pathlib import Path
-from typing import Any, TypedDict, cast
+from typing import TYPE_CHECKING, Any, TypedDict, cast
 
 import nonebot
 from nonebot.utils import resolve_dot_notation
@@ -17,6 +16,10 @@ from apeiria.config.package_config import (
     unbind_package_item,
 )
 from apeiria.utils.files import atomic_write_text, load_toml_dict
+from apeiria.utils.project_context import current_project_root
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 class AdapterConfig(TypedDict):
@@ -31,7 +34,7 @@ class AdapterConfigService:
     """Manage project adapter registration and package bindings."""
 
     def _project_root(self) -> Path:
-        return Path(__file__).resolve().parent.parent.parent
+        return current_project_root()
 
     def default_config_path(self) -> Path:
         return self._project_root() / "apeiria.adapters.toml"

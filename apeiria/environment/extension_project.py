@@ -15,6 +15,7 @@ from typing import Final
 
 from apeiria.plugins.package_ids import normalize_package_id
 from apeiria.utils.files import atomic_write_text
+from apeiria.utils.project_context import current_project_root
 
 _PLUGIN_PROJECT_RELATIVE_PATH: Final = Path(".apeiria") / "extensions"
 _PLUGIN_PROJECT_NAME: Final = "apeiria-user-plugins"
@@ -25,7 +26,7 @@ _logger = logging.getLogger("apeiria.environment.extension_project")
 
 
 def _project_root() -> Path:
-    return Path(__file__).resolve().parent.parent.parent
+    return current_project_root()
 
 
 def _load_toml_module():

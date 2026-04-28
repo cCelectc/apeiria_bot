@@ -15,6 +15,7 @@ from nonebot.log import logger
 from apeiria.access.principal_roles import ROLE_OWNER, normalize_supported_role
 from apeiria.i18n import t
 from apeiria.utils.files import atomic_write_text
+from apeiria.utils.project_context import active_project_root
 
 _PASSWORD_HASH_N = 2**14
 _PASSWORD_HASH_R = 8
@@ -33,6 +34,9 @@ def _apply_secret_permissions(secret_file: "Path") -> None:
 
 
 def _get_secret_file() -> "Path":
+    if (project_root := active_project_root()) is not None:
+        return project_root / "data" / "web_ui" / "secret.json"
+
     from nonebot_plugin_localstore import get_data_file
 
     return get_data_file("web_ui", "secret.json")
@@ -288,12 +292,16 @@ class LazyAuthStore(dict[str, Any]):
     def __init__(self) -> None:
         super().__init__()
         self._loaded = False
+        self._loaded_path: Path | None = None
 
     def _ensure_loaded(self) -> None:
-        if self._loaded:
+        secret_file = _get_secret_file()
+        if self._loaded and self._loaded_path == secret_file:
             return
+        super().clear()
         super().update(load_or_create_raw())
         self._loaded = True
+        self._loaded_path = secret_file
 
     def __getitem__(self, key: str) -> Any:
         self._ensure_loaded()

@@ -7,40 +7,42 @@ from typing import TYPE_CHECKING
 
 import click
 
+from apeiria.cli.context import active_environment_service, active_health_service
 from apeiria.cli.i18n import _
-from apeiria.environment import environment_service, health_service
+from apeiria.cli.output import echo_json
 
 if TYPE_CHECKING:
     from apeiria.environment.models import ProjectConfigBootstrapResult
 
 
 def project_root() -> Path:
-    return environment_service.project_root
+    return active_environment_service().project_root
 
 
 def main_config_path(root: Path | None = None) -> Path:
-    del root
-    return environment_service.main_config_path()
+    if root is not None:
+        return root / "apeiria.config.toml"
+    return active_environment_service().main_config_path()
 
 
 def initialize_user_environment(
     *,
     no_dev: bool = False,
 ) -> "ProjectConfigBootstrapResult":
-    return environment_service.initialize_user_environment(no_dev=no_dev)
+    return active_environment_service().initialize_user_environment(no_dev=no_dev)
 
 
 def repair_user_environment() -> None:
-    environment_service.repair_user_environment()
+    active_environment_service().repair_user_environment()
 
 
 def validate_database_schema() -> None:
-    environment_service.validate_database_schema()
+    active_environment_service().validate_database_schema()
 
 
 def repair_database_schema() -> None:
     try:
-        environment_service.repair_database_schema()
+        active_environment_service().repair_database_schema()
     except Exception as exc:
         hint = _startup_check_hint(str(exc))
         if hint:
@@ -60,7 +62,7 @@ def raise_click_runtime_error(exc: RuntimeError) -> None:
 
 
 def check_system_dependencies() -> None:
-    snapshot = environment_service.get_environment_snapshot()
+    snapshot = active_environment_service().get_environment_snapshot()
     if not snapshot.uv_available:
         raise click.ClickException(
             _("missing system dependencies: {deps}").format(deps="uv")
@@ -86,7 +88,7 @@ def check_system_dependencies() -> None:
 
 def build_frontend() -> None:
     try:
-        environment_service.build_frontend_sync()
+        active_environment_service().build_frontend_sync()
     except RuntimeError as exc:
         detail = str(exc)
         if detail == "build_tool_unavailable":
@@ -155,29 +157,86 @@ def repair() -> None:
     env_repair.callback()
 
 
-@click.command(help=_("Run bot.py with the current project Python environment."))
+@click.command(
+    context_settings={"ignore_unknown_options": True},
+    help=_("Run an Apeiria entry file with the current project Python environment."),
+)
 @click.option(
     "--build",
     "build_frontend_first",
     is_flag=True,
     help=_("Build Web UI frontend assets before running the bot."),
 )
+@click.option(
+    "--entry",
+    "entry_file",
+    default="bot.py",
+    show_default=True,
+    help=_("Entry file to execute from the active Apeiria project root."),
+)
+@click.option(
+    "--reload",
+    is_flag=True,
+    help=_("Restart the Apeiria entry process when project files change."),
+)
 @click.argument("extra_args", nargs=-1)
-def run(*, build_frontend_first: bool, extra_args: tuple[str, ...]) -> None:
+def run(
+    *,
+    build_frontend_first: bool,
+    entry_file: str,
+    reload: bool,
+    extra_args: tuple[str, ...],
+) -> None:
     if build_frontend_first:
         build_frontend()
+    root = project_root()
+    if reload:
+        raise click.exceptions.Exit(
+            run_with_reload(cwd=root, entry_file=entry_file, extra_args=extra_args)
+        )
     result = subprocess.run(
-        [sys.executable, "bot.py", *extra_args],
-        cwd=project_root(),
+        [sys.executable, entry_file, *extra_args],
+        cwd=root,
         check=False,
     )
     if result.returncode != 0:
         raise click.exceptions.Exit(result.returncode)
 
 
+def run_with_reload(
+    *,
+    cwd: Path,
+    entry_file: str,
+    extra_args: tuple[str, ...],
+) -> int:
+    from watchfiles import run_process
+
+    return run_process(
+        cwd,
+        target=_run_entry_once,
+        args=(cwd, entry_file, extra_args),
+    )
+
+
+def _run_entry_once(
+    cwd: Path,
+    entry_file: str,
+    extra_args: tuple[str, ...],
+) -> int:
+    return subprocess.run(
+        [sys.executable, entry_file, *extra_args],
+        cwd=cwd,
+        check=False,
+    ).returncode
+
+
 @env.command("info", help=_("Show current Apeiria environment paths and status."))
-def env_info() -> None:
-    snapshot = environment_service.get_environment_snapshot()
+@click.option("--json", "json_output", is_flag=True, help=_("Emit JSON output."))
+def env_info(*, json_output: bool) -> None:
+    snapshot = active_environment_service().get_environment_snapshot()
+    if json_output:
+        echo_json(snapshot)
+        return
     lines = [
         f"project_root={snapshot.project_root}",
         f"uv_available={snapshot.uv_available}",
@@ -199,7 +258,7 @@ def env_info() -> None:
 
 
 def _echo_system_health(*, include_checks: bool) -> None:
-    snapshot = health_service.get_snapshot()
+    snapshot = active_health_service().get_snapshot()
     click.echo(f"status={snapshot.status}")
     click.echo(f"project_root={snapshot.project_root}")
     if include_checks:
@@ -257,12 +316,20 @@ def _startup_check_hint(error_text: str) -> str | None:
 
 
 @env.command("doctor", help=_("Run non-mutating environment health checks."))
-def env_doctor() -> None:
+@click.option("--json", "json_output", is_flag=True, help=_("Emit JSON output."))
+def env_doctor(*, json_output: bool) -> None:
+    if json_output:
+        echo_json(active_health_service().get_snapshot())
+        return
     _echo_system_health(include_checks=True)
 
 
 @click.command(help=_("Show Apeiria system health summary."))
-def status() -> None:
+@click.option("--json", "json_output", is_flag=True, help=_("Emit JSON output."))
+def status(*, json_output: bool) -> None:
+    if json_output:
+        echo_json(active_health_service().get_snapshot())
+        return
     _echo_system_health(include_checks=True)
 
 
@@ -287,7 +354,7 @@ def check() -> None:
 @env.command("export", help=_("Export local runtime state for migration."))
 @click.argument("output_dir", required=False)
 def env_export(output_dir: str | None) -> None:
-    target_root, copied = environment_service.export_runtime_state(
+    target_root, copied = active_environment_service().export_runtime_state(
         Path(output_dir) if output_dir else None
     )
     click.echo(_("exported files: {count}").format(count=copied))
@@ -298,7 +365,9 @@ def env_export(output_dir: str | None) -> None:
 @click.argument("input_dir")
 def env_import(input_dir: str) -> None:
     try:
-        _target_root, copied = environment_service.import_runtime_state(Path(input_dir))
+        _target_root, copied = active_environment_service().import_runtime_state(
+            Path(input_dir)
+        )
     except FileNotFoundError as exc:
         raise click.ClickException(str(exc)) from exc
     except RuntimeError as exc:

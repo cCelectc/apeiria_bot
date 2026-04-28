@@ -321,11 +321,156 @@ def store_package_dependency(
 ) -> str | None:
     if package is None:
         return fallback
+    project_link = str(getattr(package, "project_link", "")).strip()
+    if project_link:
+        return project_link
     as_dependency = getattr(package, "as_dependency", None)
     if not callable(as_dependency):
         return fallback
     dependency = as_dependency()
     return dependency if isinstance(dependency, str) else fallback
+
+
+def store_packages_payload(
+    resource: str,
+    items: list[object],
+    source_id: str | None = None,
+) -> dict[str, object]:
+    return {
+        "resource": resource,
+        "mode": "store",
+        "source": source_id,
+        "items": [_store_package_record(item) for item in items],
+    }
+
+
+def _store_package_record(item: object) -> dict[str, object]:
+    fields = (
+        "name",
+        "module_name",
+        "project_link",
+        "desc",
+        "description",
+        "author",
+        "version",
+        "latest_version",
+    )
+    record: dict[str, object] = {
+        field: str(value)
+        for field in fields
+        if (value := getattr(item, field, None)) is not None
+    }
+    record["package_requirement"] = store_package_dependency(item, None) or ""
+    return record
+
+
+def _filter_packages(
+    packages: dict[str, list[str]],
+    query: str | None,
+) -> list[tuple[str, list[str]]]:
+    items = sorted(packages.items())
+    if not query:
+        return items
+    needle = query.lower()
+    return [
+        item
+        for item in items
+        if needle in item[0].lower()
+        or any(needle in binding.lower() for binding in item[1])
+    ]
+
+
+def plugin_registered_payload(
+    config_file: Path | None,
+    query: str | None = None,
+) -> dict[str, object]:
+    config = read_project_plugin_config(config_file)
+    current_path = current_config_path(config_file, default_plugin_config_path())
+    needle = (query or "").lower()
+    modules = (
+        [item for item in config["modules"] if needle in item.lower()]
+        if needle
+        else config["modules"]
+    )
+    dirs = (
+        [item for item in config["dirs"] if needle in item.lower()]
+        if needle
+        else config["dirs"]
+    )
+    return {
+        "resource": "plugin",
+        "mode": "registered",
+        "config": current_path,
+        "modules": modules,
+        "dirs": dirs,
+    }
+
+
+def installed_plugins_payload(query: str | None = None) -> dict[str, object]:
+    packages = _filter_packages(read_project_plugin_config()["packages"], query)
+    return {
+        "resource": "plugin",
+        "mode": "installed",
+        "packages": [{"name": name, "modules": modules} for name, modules in packages],
+    }
+
+
+def adapter_registered_payload(
+    config_file: Path | None,
+    query: str | None = None,
+) -> dict[str, object]:
+    config = read_project_adapter_config(config_file)
+    current_path = current_config_path(config_file, default_adapter_config_path())
+    needle = (query or "").lower()
+    modules = (
+        [item for item in config["modules"] if needle in item.lower()]
+        if needle
+        else config["modules"]
+    )
+    return {
+        "resource": "adapter",
+        "mode": "registered",
+        "config": current_path,
+        "modules": modules,
+    }
+
+
+def installed_adapters_payload(query: str | None = None) -> dict[str, object]:
+    packages = _filter_packages(read_project_adapter_config()["packages"], query)
+    return {
+        "resource": "adapter",
+        "mode": "installed",
+        "packages": [{"name": name, "modules": modules} for name, modules in packages],
+    }
+
+
+def driver_registered_payload(
+    config_file: Path | None,
+    query: str | None = None,
+) -> dict[str, object]:
+    config = read_project_driver_config(config_file)
+    current_path = current_config_path(config_file, default_driver_config_path())
+    needle = (query or "").lower()
+    builtin = (
+        [item for item in config["builtin"] if needle in item.lower()]
+        if needle
+        else config["builtin"]
+    )
+    return {
+        "resource": "driver",
+        "mode": "registered",
+        "config": current_path,
+        "builtin": builtin,
+    }
+
+
+def installed_drivers_payload(query: str | None = None) -> dict[str, object]:
+    packages = _filter_packages(read_project_driver_config()["packages"], query)
+    return {
+        "resource": "driver",
+        "mode": "installed",
+        "packages": [{"name": name, "builtin": builtin} for name, builtin in packages],
+    }
 
 
 def resolve_plugin_module(package: object | None, module_name: str | None) -> str:

@@ -3,6 +3,7 @@ from __future__ import annotations
 import click
 
 from apeiria.cli.i18n import _
+from apeiria.cli.output import echo_json
 from apeiria.cli.store_sources import default_store_source_id
 from apeiria.cli.support import (
     PLUGIN_RESOURCE,
@@ -18,9 +19,13 @@ from apeiria.cli.support import (
     ensure_project_plugin_config,
     ensure_single_listing_mode,
     install_resource_requirement,
+    installed_plugins_payload,
+    plugin_registered_payload,
     remove_project_plugin_dir,
     remove_project_plugin_module,
     select_store_package_cli,
+    store_packages_cli,
+    store_packages_payload,
     uninstall_resource_requirement,
     update_resource_requirement,
 )
@@ -75,18 +80,30 @@ def plugin_init(config_arg: str | None) -> None:
 @click.option(
     "--store", "use_store", is_flag=True, help=_("List official store packages.")
 )
+@click.option("--json", "json_output", is_flag=True, help=_("Emit JSON output."))
 def plugin_list(
     config_arg: str | None,
     *,
     installed: bool,
     registered: bool,
     use_store: bool,
+    json_output: bool,
 ) -> None:
     ensure_single_listing_mode(
         installed=installed,
         registered=registered,
         use_store=use_store,
     )
+    if json_output:
+        echo_json(
+            _plugin_list_payload(
+                config_arg,
+                installed=installed,
+                registered=registered,
+                use_store=use_store,
+            )
+        )
+        return
     if installed:
         echo_installed_plugins()
         return
@@ -104,7 +121,6 @@ def plugin_list(
 @plugin.command(
     "search",
     help=_("Search registered plugins or installed plugin packages."),
-    hidden=True,
 )
 @click.argument("query", required=False)
 @click.option("--config", "config_arg", type=click.Path(dir_okay=False))
@@ -122,6 +138,7 @@ def plugin_list(
     show_default=True,
     help=_("Choose which store source to use."),
 )
+@click.option("--json", "json_output", is_flag=True, help=_("Emit JSON output."))
 def plugin_search(  # noqa: PLR0913
     query: str | None,
     config_arg: str | None,
@@ -130,12 +147,23 @@ def plugin_search(  # noqa: PLR0913
     registered: bool,
     use_store: bool,
     source_id: str,
+    json_output: bool,
 ) -> None:
     ensure_single_listing_mode(
         installed=installed,
         registered=registered,
         use_store=use_store,
     )
+    if json_output:
+        echo_json(
+            _plugin_search_payload(
+                query,
+                config_arg,
+                source_id=source_id,
+                modes=(installed, registered, use_store),
+            )
+        )
+        return
     if installed:
         echo_installed_plugins(query)
         return
@@ -148,6 +176,58 @@ def plugin_search(  # noqa: PLR0913
     echo_registered_plugins(config_path(config_arg), query)
     click.echo()
     echo_installed_plugins(query)
+
+
+def _plugin_list_payload(
+    config_arg: str | None,
+    *,
+    installed: bool,
+    registered: bool,
+    use_store: bool,
+) -> dict[str, object]:
+    if installed:
+        return installed_plugins_payload()
+    if registered:
+        return plugin_registered_payload(config_path(config_arg))
+    if use_store:
+        source_id = default_store_source_id()
+        return store_packages_payload(
+            "plugin",
+            store_packages_cli("plugin", source_id=source_id),
+            source_id,
+        )
+    return {
+        "resource": "plugin",
+        "mode": "combined",
+        "registered": plugin_registered_payload(config_path(config_arg)),
+        "installed": installed_plugins_payload(),
+    }
+
+
+def _plugin_search_payload(
+    query: str | None,
+    config_arg: str | None,
+    *,
+    source_id: str,
+    modes: tuple[bool, bool, bool],
+) -> dict[str, object]:
+    installed, registered, use_store = modes
+    if installed:
+        return installed_plugins_payload(query)
+    if registered:
+        return plugin_registered_payload(config_path(config_arg), query)
+    if use_store:
+        return store_packages_payload(
+            "plugin",
+            store_packages_cli("plugin", query=query, source_id=source_id),
+            source_id,
+        )
+    return {
+        "resource": "plugin",
+        "mode": "combined",
+        "registered": plugin_registered_payload(config_path(config_arg), query),
+        "installed": installed_plugins_payload(query),
+    }
 
 
 @plugin.command(
