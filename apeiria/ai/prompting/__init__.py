@@ -11,6 +11,7 @@ from .memory_extraction import (
     build_memory_extraction_packet,
 )
 from .models import PromptPacket, PromptPurpose, PromptSection, PromptSectionRole
+from .regions import PromptRegion, PromptRegionProjection, project_prompt_regions
 from .renderer import render_flat, render_messages
 from .reply import (
     ReplyPersonaPromptBundleLike,
@@ -18,6 +19,7 @@ from .reply import (
     ReplyPromptMode,
     build_reply_final_packet,
     build_reply_planner_packet,
+    project_reply_prompt_regions,
 )
 from .skill_selection import (
     SkillCatalogEntryLike,
@@ -39,6 +41,8 @@ __all__ = [
     "MemoryExtractionPromptInput",
     "PromptPacket",
     "PromptPurpose",
+    "PromptRegion",
+    "PromptRegionProjection",
     "PromptSection",
     "PromptSectionRole",
     "ReplyPersonaPromptBundleLike",
@@ -56,6 +60,8 @@ __all__ = [
     "build_skill_selection_packet",
     "build_social_judgment_packet",
     "build_tool_intent_planning_packet",
+    "project_prompt_regions",
+    "project_reply_prompt_regions",
     "render_flat",
     "render_messages",
 ]

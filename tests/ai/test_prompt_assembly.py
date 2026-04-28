@@ -9,10 +9,13 @@ from pathlib import Path
 from apeiria.ai.memory import AIMemoryDefinition
 from apeiria.ai.prompting import (
     PromptPacket,
+    PromptRegionProjection,
     PromptSection,
     ReplyPromptInput,
     build_reply_final_packet,
     build_reply_planner_packet,
+    project_prompt_regions,
+    project_reply_prompt_regions,
     render_flat,
     render_messages,
 )
@@ -121,6 +124,8 @@ def test_prompting_public_exports_are_explicit() -> None:
         "MemoryExtractionPromptInput",
         "PromptPacket",
         "PromptPurpose",
+        "PromptRegion",
+        "PromptRegionProjection",
         "PromptSection",
         "PromptSectionRole",
         "ReplyPersonaPromptBundleLike",
@@ -138,9 +143,90 @@ def test_prompting_public_exports_are_explicit() -> None:
         "build_skill_selection_packet",
         "build_social_judgment_packet",
         "build_tool_intent_planning_packet",
+        "project_prompt_regions",
+        "project_reply_prompt_regions",
         "render_flat",
         "render_messages",
     ]
+
+
+def test_prompt_region_projection_is_inspectable_and_preserves_rendering() -> None:
+    packet = PromptPacket(
+        purpose="reply_final",
+        sections=(
+            PromptSection(role="system", name="SystemInstructions", content="runtime"),
+            PromptSection(role="system", name="Persona", content="persona"),
+            PromptSection(role="system", name="Memory", content="memory"),
+            PromptSection(role="user", name="Instruction", content="reply"),
+        ),
+    )
+
+    projection = project_prompt_regions(
+        packet,
+        stable_section_names=("SystemInstructions", "Persona"),
+    )
+
+    assert isinstance(projection, PromptRegionProjection)
+    assert [section.name for section in projection.stable] == [
+        "SystemInstructions",
+        "Persona",
+    ]
+    assert [section.name for section in projection.dynamic] == [
+        "Memory",
+        "Instruction",
+    ]
+    assert render_messages(projection.to_packet()) == render_messages(packet)
+
+
+def test_reply_prompt_regions_keep_stable_prefix_before_dynamic_turn_data() -> None:
+    packet = build_reply_planner_packet(_reply_input())
+
+    projection = project_reply_prompt_regions(packet)
+    stable_names = [section.name for section in projection.stable]
+    dynamic_names = [section.name for section in projection.dynamic]
+
+    assert stable_names == [
+        "SystemInstructions",
+        "Persona",
+        "Style",
+        "ResponseRules",
+    ]
+    assert "SocialPolicy" in dynamic_names
+    assert "Relationship" in dynamic_names
+    assert "ToolPolicy" in dynamic_names
+    assert "ToolResults" in dynamic_names
+    assert "LongTermMemories" in dynamic_names
+    assert "Conversation" in dynamic_names
+    assert dynamic_names[-1] == "Instruction"
+    assert render_messages(projection.to_packet()) == render_messages(packet)
+
+
+def test_capability_awareness_lives_in_stable_reply_region() -> None:
+    inputs = ReplyPromptInput(
+        persona=_Persona(),
+        scene_type="private",
+        relationship=None,
+        tool_policy="allowed: memory.query",
+        tool_results=(),
+        memories=(),
+        turns=(_turn("user", "hello"),),
+        person_profile=(),
+        capability_awareness="Capabilities may be selected when useful.",
+    )
+
+    packet = build_reply_planner_packet(inputs)
+    projection = project_reply_prompt_regions(packet)
+    names = [section.name for section in packet.sections]
+
+    assert [section.name for section in projection.stable] == [
+        "SystemInstructions",
+        "Persona",
+        "Style",
+        "CapabilityAwareness",
+        "ResponseRules",
+    ]
+    assert "CapabilityAwareness" not in [section.name for section in projection.dynamic]
+    assert names.index("CapabilityAwareness") < names.index("ToolPolicy")
 
 
 def test_reply_planner_recipe_sections_are_ordered_and_optional_sections_omit() -> None:
@@ -153,7 +239,7 @@ def test_reply_planner_recipe_sections_are_ordered_and_optional_sections_omit() 
         "SystemInstructions",
         "Persona",
         "Style",
-        "Relationship",
+        "ResponseRules",
     ]
     assert "ToolPolicy" in names
     assert "ActiveSkills" in names

@@ -35,6 +35,7 @@ class AIRuntimeComposeInput:
     person_profile: tuple[str, ...]
     conversation_summary: str | None = None
     social_policy_summary: str | None = None
+    capability_awareness: str | None = None
     future_task_context: str | None = None
     skill_activation: str | None = None
 
@@ -57,6 +58,7 @@ def build_runtime_prompt_packet(
         memories=inputs.memories,
         conversation_summary=inputs.conversation_summary,
         social_policy_summary=inputs.social_policy_summary,
+        capability_awareness=inputs.capability_awareness,
         future_task_context=inputs.future_task_context,
         skill_activation=inputs.skill_activation,
         turns=inputs.turns,

@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal, Protocol
 
 from .models import PromptPacket, PromptSection, PromptSectionRole
+from .regions import PromptRegionProjection, project_prompt_regions
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -18,6 +19,7 @@ _GROUP_USER_ID_SUFFIX_LENGTH = 4
 REPLY_SECTION_SYSTEM_INSTRUCTIONS = "SystemInstructions"
 REPLY_SECTION_PERSONA = "Persona"
 REPLY_SECTION_STYLE = "Style"
+REPLY_SECTION_CAPABILITY_AWARENESS = "CapabilityAwareness"
 REPLY_SECTION_RELATIONSHIP = "Relationship"
 REPLY_SECTION_PERSON_PROFILE = "PersonProfile"
 REPLY_SECTION_SOCIAL_POLICY = "SocialPolicy"
@@ -34,6 +36,13 @@ REPLY_SECTION_CONTEXT_PRIORITY = "ContextPriority"
 REPLY_SECTION_RESPONSE_RULES = "ResponseRules"
 REPLY_SECTION_CONVERSATION = "Conversation"
 REPLY_SECTION_INSTRUCTION = "Instruction"
+REPLY_STABLE_REGION_SECTIONS = (
+    REPLY_SECTION_SYSTEM_INSTRUCTIONS,
+    REPLY_SECTION_PERSONA,
+    REPLY_SECTION_STYLE,
+    REPLY_SECTION_CAPABILITY_AWARENESS,
+    REPLY_SECTION_RESPONSE_RULES,
+)
 
 
 class ReplyPersonaPromptBundleLike(Protocol):
@@ -63,6 +72,7 @@ class ReplyPromptInput:
     person_profile: tuple[str, ...]
     conversation_summary: str | None = None
     social_policy_summary: str | None = None
+    capability_awareness: str | None = None
     future_task_context: str | None = None
     skill_activation: str | None = None
 
@@ -110,6 +120,18 @@ def _build_reply_packet(
             if inputs.persona is not None and inputs.persona.style_prompt
             else None
         ),
+    )
+    _append_section(
+        sections,
+        role="system",
+        name=REPLY_SECTION_CAPABILITY_AWARENESS,
+        content=inputs.capability_awareness,
+    )
+    _append_lines(
+        sections,
+        role="system",
+        name=REPLY_SECTION_RESPONSE_RULES,
+        lines=_build_response_rules(inputs, mode),
     )
     _append_section(
         sections,
@@ -167,12 +189,6 @@ def _build_reply_packet(
         name=REPLY_SECTION_CONTEXT_PRIORITY,
         lines=_build_context_priority(),
     )
-    _append_lines(
-        sections,
-        role="system",
-        name=REPLY_SECTION_RESPONSE_RULES,
-        lines=_build_response_rules(inputs, mode),
-    )
     _append_conversation_sections(sections, inputs.turns, scene_type=inputs.scene_type)
     _append_section(
         sections,
@@ -183,6 +199,15 @@ def _build_reply_packet(
     return PromptPacket(
         purpose="reply_planner" if mode == "planner" else "reply_final",
         sections=tuple(sections),
+    )
+
+
+def project_reply_prompt_regions(packet: PromptPacket) -> PromptRegionProjection:
+    """Project a reply prompt packet into stable and dynamic regions."""
+
+    return project_prompt_regions(
+        packet,
+        stable_section_names=REPLY_STABLE_REGION_SECTIONS,
     )
 
 
