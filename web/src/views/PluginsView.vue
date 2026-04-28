@@ -338,11 +338,11 @@
               </v-chip>
               <v-chip
                 v-if="settingsState"
-                :color="settingsState.legacy_flatten ? 'warning' : 'default'"
+                color="default"
                 size="small"
                 variant="tonal"
               >
-                {{ settingsState.legacy_flatten ? t('plugins.settingsLegacy') : settingsSourceLabel(settingsState.config_source) }}
+                {{ settingsSourceLabel(settingsState.config_source) }}
               </v-chip>
               <v-chip
                 v-if="settingsPlugin?.admin_level"
@@ -492,7 +492,6 @@
                       <div class="settings-list-row__meta text-caption text-medium-emphasis">
                         <span>{{ t('plugins.settingsType') }}: {{ field.type }}</span>
                         <span>{{ t('plugins.settingsValueSource') }}: {{ settingsValueSourceLabel(field.value_source) }}</span>
-                        <span v-if="field.global_key">{{ t('plugins.settingsGlobalKey') }}: {{ field.global_key }}</span>
                         <span v-if="field.choices.length > 0">{{ t('plugins.settingsChoices') }}: {{ formatFieldChoices(field.choices) }}</span>
                       </div>
                     </div>

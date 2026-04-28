@@ -38,7 +38,6 @@ export interface PluginSettingField {
   current_value: unknown
   local_value: unknown
   value_source: string
-  global_key: string | null
   has_local_override: boolean
   allows_null: boolean
   editable: boolean
@@ -50,7 +49,6 @@ export interface PluginSettingField {
 export interface PluginSettingsState {
   module_name: string
   section: string
-  legacy_flatten: boolean
   config_source: string
   has_config_model: boolean
   fields: PluginSettingField[]

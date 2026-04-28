@@ -54,7 +54,6 @@ class ConfigFieldView:
     current_value: object | None
     local_value: object | None
     value_source: str
-    global_key: str | None
     has_local_override: bool
     allows_null: bool
     editable: bool
@@ -67,7 +66,6 @@ class ConfigFieldView:
 class ConfigView:
     module_name: str
     section: str
-    legacy_flatten: bool
     config_source: str
     has_config_model: bool
     fields: list[ConfigFieldView]
@@ -143,7 +141,6 @@ class _ConfigGovernanceFacade:
         return ConfigView(
             module_name=self._CORE_SETTINGS_MODULE_NAME,
             section="nonebot",
-            legacy_flatten=False,
             config_source="built_in",
             has_config_model=True,
             fields=build_core_setting_fields(),
@@ -199,7 +196,6 @@ class _ConfigGovernanceFacade:
         return ConfigView(
             module_name=module_name,
             section=declared.section,
-            legacy_flatten=declared.legacy_flatten,
             config_source=declared.config_source,
             has_config_model=declared.has_config_model,
             fields=build_plugin_setting_fields(declared),

@@ -505,7 +505,6 @@ def _register_config_from_declaration(
         label="",
         order=99,
         secret=False,
-        legacy_key="",
     )
 
 

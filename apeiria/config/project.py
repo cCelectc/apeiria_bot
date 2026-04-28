@@ -7,7 +7,6 @@ from typing import Any
 import tomlkit
 import tomlkit.items
 
-from apeiria.plugins.metadata.registry import build_legacy_nonebot_overrides
 from apeiria.utils.files import atomic_write_text, load_toml_dict
 
 logger = logging.getLogger("apeiria.config.project")
@@ -430,7 +429,6 @@ class ProjectConfigService:
         data = self._load_config(config_path)
         config = dict(PROJECT_NONEBOT_DEFAULTS)
         config.update(self._normalize_config(data))
-        config.update(build_legacy_nonebot_overrides(data))
         return config
 
     def _read_effective_nonebot_config(self, config_path: Path) -> dict[str, Any]:

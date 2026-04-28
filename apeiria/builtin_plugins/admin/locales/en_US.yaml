@@ -119,7 +119,6 @@ admin:
     masked: "[hidden]"
     source_default: "default"
     source_env: "environment"
-    source_legacy_global: "global config"
     source_plugin_section: "plugin section"
     source_builtin: "built-in"
   access:

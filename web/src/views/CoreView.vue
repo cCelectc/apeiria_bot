@@ -91,7 +91,6 @@
                         <div class="settings-list-row__meta text-caption text-medium-emphasis">
                           <span>{{ t('plugins.settingsType') }}: {{ field.type }}</span>
                           <span>{{ t('plugins.settingsValueSource') }}: {{ settingsValueSourceLabel(field.value_source) }}</span>
-                          <span v-if="field.global_key">{{ t('plugins.settingsGlobalKey') }}: {{ field.global_key }}</span>
                           <span v-if="field.choices.length > 0">{{ t('plugins.settingsChoices') }}: {{ formatFieldChoices(field.choices) }}</span>
                           <span>{{ t('plugins.settingsCurrent') }}: {{ displayFieldValue(field.current_value) }}</span>
                           <span v-if="field.has_local_override">{{ t('plugins.settingsLocal') }}: {{ displayFieldValue(field.local_value) }}</span>
@@ -336,7 +335,6 @@
     const map: Record<string, string> = {
       default: t('plugins.settingsValueSourceDefault'),
       plugin_section: t('plugins.settingsValueSourcePlugin'),
-      legacy_global: t('plugins.settingsValueSourceLegacy'),
       env: t('plugins.settingsValueSourceEnv'),
     }
     return map[source] || source

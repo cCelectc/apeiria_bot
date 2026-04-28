@@ -47,7 +47,6 @@ class RegisterConfig:
     label: str = ""
     order: int = 99
     secret: bool = False
-    legacy_key: str = ""
 
 
 @dataclass
@@ -238,7 +237,6 @@ def _coerce_register_config(raw: dict[str, Any]) -> RegisterConfig:
         label=str(raw.get("label", "")),
         order=int(raw.get("order", 99) or 99),
         secret=bool(raw.get("secret", False)),
-        legacy_key=str(raw.get("legacy_key", "")),
     )
 
 

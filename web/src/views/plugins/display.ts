@@ -124,7 +124,6 @@ export function settingsValueSourceLabel (source: string, t: PluginTranslate) {
   return labelFromMap(source, {
     default: t('plugins.settingsValueSourceDefault'),
     plugin_section: t('plugins.settingsValueSourcePlugin'),
-    legacy_global: t('plugins.settingsValueSourceLegacy'),
     env: t('plugins.settingsValueSourceEnv'),
   })
 }

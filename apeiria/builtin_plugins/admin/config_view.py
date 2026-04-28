@@ -112,7 +112,6 @@ def _source_label(source: str) -> str:
     mapping = {
         "default": t("admin.config.source_default"),
         "env": t("admin.config.source_env"),
-        "legacy_global": t("admin.config.source_legacy_global"),
         "plugin_section": t("admin.config.source_plugin_section"),
         "built_in": t("admin.config.source_builtin"),
     }

@@ -34,7 +34,6 @@ class UnknownPluginSettingFieldError(ValueError):
 class PluginDeclaredConfig:
     module_name: str
     section: str
-    legacy_flatten: bool
     config_source: str
     has_config_model: bool
     configs: list[RegisterConfig]
@@ -46,7 +45,6 @@ def get_plugin_declared_configs(module_name: str) -> PluginDeclaredConfig:
     return PluginDeclaredConfig(
         module_name=module_name,
         section=resolved.namespace,
-        legacy_flatten=resolved.legacy_flatten,
         config_source=resolved.source,
         has_config_model=resolved.has_config_model,
         configs=resolved.configs,

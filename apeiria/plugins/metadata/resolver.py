@@ -81,7 +81,6 @@ def _merge_declared_config(
             else base.order
         ),
         secret=enhancement.secret or base.secret,
-        legacy_key=enhancement.legacy_key or base.legacy_key,
     )
 
 
@@ -182,7 +181,6 @@ def _resolved_from_registration(
         namespace=registration.section,
         owner_kind="plugin",
         owner_id=registration.plugin_name,
-        legacy_flatten=registration.legacy_flatten,
         source=registration.source,
         has_config_model=bool(registration.configs),
         configs=list(registration.configs),
@@ -207,7 +205,6 @@ def ensure_config_namespace_contract(
             namespace=plugin_name.rsplit(".", maxsplit=1)[-1],
             owner_kind="plugin",
             owner_id=plugin_name,
-            legacy_flatten=False,
             source="none",
             has_config_model=False,
             configs=[],
@@ -218,7 +215,6 @@ def ensure_config_namespace_contract(
         options=RegisterPluginConfigOptions(
             section=scanned.section,
             configs=scanned.configs,
-            legacy_flatten=True,
             source="static_scan",
         ),
     )
@@ -253,7 +249,6 @@ def resolve_config_namespace_contract(module_name: str) -> ConfigNamespaceContra
                 namespace=module_name.rsplit(".", maxsplit=1)[-1],
                 owner_kind="plugin",
                 owner_id=module_name,
-                legacy_flatten=False,
                 source="plugin_metadata",
                 has_config_model=True,
                 configs=configs,
@@ -266,7 +261,6 @@ def resolve_config_namespace_contract(module_name: str) -> ConfigNamespaceContra
                 namespace=module_name.rsplit(".", maxsplit=1)[-1],
                 owner_kind="plugin",
                 owner_id=module_name,
-                legacy_flatten=False,
                 source="plugin_metadata",
                 has_config_model=bool(extra.configs),
                 configs=extra.configs,

@@ -17,7 +17,6 @@ class ConfigNamespaceContract:
     owner_kind: str
     owner_id: str
     source: str
-    legacy_flatten: bool
     has_config_model: bool
     configs: list["RegisterConfig"] = field(default_factory=list)
     scope_support: tuple[str, ...] = ("project",)

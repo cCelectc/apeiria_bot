@@ -119,7 +119,6 @@ admin:
     masked: "[已隐藏]"
     source_default: "默认值"
     source_env: "环境变量"
-    source_legacy_global: "全局配置"
     source_plugin_section: "插件配置段"
     source_builtin: "内建配置"
   access:

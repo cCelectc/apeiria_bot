@@ -58,7 +58,6 @@ class PluginSettingFieldItem(BaseModel):
     current_value: object | None = None
     local_value: object | None = None
     value_source: str = "default"
-    global_key: str | None = None
     has_local_override: bool = False
     allows_null: bool = False
     editable: bool = False
@@ -70,7 +69,6 @@ class PluginSettingFieldItem(BaseModel):
 class PluginSettingsResponse(BaseModel):
     module_name: str
     section: str
-    legacy_flatten: bool = False
     config_source: str = "none"
     has_config_model: bool = False
     fields: list[PluginSettingFieldItem]
@@ -218,7 +216,6 @@ def to_plugin_settings_response(state: "ConfigView") -> PluginSettingsResponse:
     return PluginSettingsResponse(
         module_name=state.module_name,
         section=state.section,
-        legacy_flatten=state.legacy_flatten,
         config_source=state.config_source,
         has_config_model=state.has_config_model,
         fields=[
@@ -237,7 +234,6 @@ def to_plugin_settings_response(state: "ConfigView") -> PluginSettingsResponse:
                 current_value=item.current_value,
                 local_value=item.local_value,
                 value_source=item.value_source,
-                global_key=item.global_key,
                 has_local_override=item.has_local_override,
                 allows_null=item.allows_null,
                 editable=item.editable,
