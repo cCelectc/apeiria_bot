@@ -39,6 +39,12 @@ uv sync
 ./.venv/bin/python bot.py
 ```
 
+如果本地运行环境还没准备好，`bot.py` 会在进入 NoneBot 启动前停止并提示
+最小维护命令。首次使用通常执行 `apeiria env init`；扩展环境缺失时执行
+`apeiria env repair`；数据库状态异常时先用 `apeiria db check` 查看，再按
+提示执行 `apeiria db repair`。`bot.py` 默认只做诊断，不会自动执行 uv 同步、
+环境修复或数据库修复。
+
 ## CLI 运维
 
 宿主机侧命令可以用 `--cwd` 指定 Apeiria 项目根目录，并在检查类命令中用

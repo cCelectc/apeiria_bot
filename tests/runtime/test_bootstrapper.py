@@ -141,8 +141,13 @@ def test_bot_entry_run_delegates_to_bootstrapper(monkeypatch: MonkeyPatch) -> No
         def run(self) -> None:
             calls.append("run")
 
+    def fake_guard(*, project_root: object | None = None) -> None:
+        assert project_root is None
+        calls.append("guard")
+
+    monkeypatch.setattr(entry, "ensure_entry_environment_ready", fake_guard)
     monkeypatch.setattr(entry, "ApeiriaBootstrapper", StubBootstrapper)
 
     entry.run()
 
-    assert calls == ["run"]
+    assert calls == ["guard", "run"]
