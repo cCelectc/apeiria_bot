@@ -331,148 +331,37 @@ async def render_template(
     )
 
 
-async def html_to_pic(  # noqa: PLR0913
-    html: str,
-    *,
-    width: int | None = None,
-    height: int | None = None,
-    max_width: int | None = None,
-    timeout_ms: int | None = None,
-    wait_until: str = "networkidle",
-    selector: str | None = None,
-    full_page: bool = False,
-    device_scale_factor: float | None = None,
-    css_urls: Sequence[str] | None = None,
-    inline_style: str = "",
-    extra_head_html: str = "",
-    base_url: str = "",
-    settle_time_ms: int = 0,
-) -> bytes:
-    """Render HTML to an image with a htmlkit-like convenience API."""
-    options = _build_options(
-        width=width,
-        height=height,
-        max_width=max_width,
-        timeout_ms=timeout_ms,
-        wait_until=wait_until,
-        selector=selector,
-        full_page=full_page,
-        device_scale_factor=device_scale_factor,
-        css_urls=css_urls,
-        inline_style=inline_style,
-        extra_head_html=extra_head_html,
-        base_url=base_url,
-        settle_time_ms=settle_time_ms,
-    )
-    return await render_html(html, options=options)
-
-
-async def template_to_pic(  # noqa: PLR0913
-    template_name: str,
-    *,
-    template_dir: str | Path,
-    context: dict[str, Any] | None = None,
-    width: int | None = None,
-    height: int | None = None,
-    max_width: int | None = None,
-    timeout_ms: int | None = None,
-    wait_until: str = "networkidle",
-    selector: str | None = None,
-    full_page: bool = False,
-    device_scale_factor: float | None = None,
-    css_urls: Sequence[str] | None = None,
-    inline_style: str = "",
-    extra_head_html: str = "",
-    base_url: str = "",
-    settle_time_ms: int = 0,
-) -> bytes:
-    """Render a Jinja template to an image with a convenience API."""
-    options = _build_options(
-        width=width,
-        height=height,
-        max_width=max_width,
-        timeout_ms=timeout_ms,
-        wait_until=wait_until,
-        selector=selector,
-        full_page=full_page,
-        device_scale_factor=device_scale_factor,
-        css_urls=css_urls,
-        inline_style=inline_style,
-        extra_head_html=extra_head_html,
-        base_url=base_url,
-        settle_time_ms=settle_time_ms,
-    )
-    return await render_template(
-        template_name,
-        context=context,
-        template_dir=template_dir,
-        options=options,
-    )
-
-
-async def url_to_pic(  # noqa: PLR0913
-    url: str,
-    *,
-    width: int | None = None,
-    height: int | None = None,
-    timeout_ms: int | None = None,
-    wait_until: str = "networkidle",
-    selector: str | None = None,
-    full_page: bool = False,
-    device_scale_factor: float | None = None,
-    settle_time_ms: int = 0,
-) -> bytes:
-    """Render a URL to an image with a convenience API."""
-    options = _build_options(
-        width=width,
-        height=height,
-        timeout_ms=timeout_ms,
-        wait_until=wait_until,
-        selector=selector,
-        full_page=full_page,
-        device_scale_factor=device_scale_factor,
-        settle_time_ms=settle_time_ms,
-    )
-    return await render_url(url, options=options)
-
-
-async def markdown_to_pic(  # noqa: PLR0913
+async def render_markdown(
     markdown: str,
     *,
-    width: int | None = None,
-    height: int | None = None,
-    max_width: int | None = None,
-    timeout_ms: int | None = None,
-    wait_until: str = "networkidle",
-    selector: str | None = ".markdown-body",
-    full_page: bool = False,
-    device_scale_factor: float | None = None,
-    css_urls: Sequence[str] | None = None,
-    inline_style: str = "",
-    extra_head_html: str = "",
-    base_url: str = "",
-    settle_time_ms: int = 0,
+    options: RenderOptions | None = None,
 ) -> bytes:
     """Render Markdown content to an image with a built-in readable stylesheet."""
     html = _markdown.render(markdown)
     merged_style = _DEFAULT_MARKDOWN_STYLE
-    if inline_style.strip():
-        merged_style = f"{_DEFAULT_MARKDOWN_STYLE}\n\n{inline_style.strip()}"
-    return await html_to_pic(
-        f'<article class="markdown-body">{html}</article>',
-        width=width,
-        height=height,
-        max_width=max_width,
-        timeout_ms=timeout_ms,
-        wait_until=wait_until,
-        selector=selector,
-        full_page=full_page,
-        device_scale_factor=device_scale_factor,
-        css_urls=css_urls,
+    base_options = options or RenderOptions(selector=".markdown-body")
+    if base_options.inline_style.strip():
+        merged_style = (
+            f"{_DEFAULT_MARKDOWN_STYLE}\n\n{base_options.inline_style.strip()}"
+        )
+    render_options = RenderOptions(
+        width=base_options.width,
+        height=base_options.height,
+        device_scale_factor=base_options.device_scale_factor,
+        timeout_ms=base_options.timeout_ms,
+        wait_until=base_options.wait_until,
+        selector=base_options.selector or ".markdown-body",
+        full_page=base_options.full_page,
+        image_format=base_options.image_format,
+        css_urls=list(base_options.css_urls),
         inline_style=merged_style,
-        extra_head_html=extra_head_html,
-        base_url=base_url,
-        settle_time_ms=settle_time_ms,
+        extra_head_html=base_options.extra_head_html,
+        base_url=base_options.base_url,
+        settle_time_ms=base_options.settle_time_ms,
+    )
+    return await render_html(
+        f'<article class="markdown-body">{html}</article>',
+        options=render_options,
     )
 
 
@@ -493,15 +382,12 @@ __all__ = [
     "RenderUnavailableError",
     "get_render_service",
     "get_render_status",
-    "html_to_pic",
     "is_playwright_available",
-    "markdown_to_pic",
     "playwright_dependency_message",
     "render_html",
+    "render_markdown",
     "render_template",
     "render_url",
-    "template_to_pic",
-    "url_to_pic",
 ]
 
 

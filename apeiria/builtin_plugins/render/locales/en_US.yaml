@@ -2,7 +2,7 @@ render:
   meta:
     name: "Unified Render Service"
     description: "Playwright-based shared HTML screenshot rendering service"
-    usage: "Infrastructure plugin used by official plugins.\nNo chat commands by default. Provides render_html / render_template / render_url APIs and compatibility aliases such as html_to_pic / template_to_pic / url_to_pic / markdown_to_pic."
+    usage: "Infrastructure plugin used by official plugins.\nNo chat commands by default. Provides render_html / render_template / render_url / render_markdown APIs."
     config_headless: "Launch Playwright Chromium in headless mode"
     config_channel: "Browser channel name such as chrome or msedge"
     config_executable_path: "Custom browser executable path"

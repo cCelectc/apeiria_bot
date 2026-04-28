@@ -6,7 +6,7 @@ import asyncio
 import json
 from hashlib import md5
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from apeiria.builtin_plugins.help.utils import (
     build_default_logo_data_uri,
@@ -15,10 +15,12 @@ from apeiria.builtin_plugins.help.utils import (
     read_image_as_data_uri,
     resolve_data_file,
 )
-from apeiria.builtin_plugins.render import template_to_pic
+from apeiria.builtin_plugins.render import RenderOptions, render_template
 from apeiria.i18n import t
 
 if TYPE_CHECKING:
+    from apeiria.builtin_plugins.render.service import WaitUntilState
+
     from .config import HelpConfig
     from .generator import CommandHelpInfo, HelpViewRole, PluginHelpInfo
 
@@ -225,16 +227,17 @@ async def _render_with_cache(
 
         width = render_options.get("width")
         timeout_ms = render_options.get("timeout_ms")
-        wait_until = str(render_options.get("wait_until", "networkidle"))
         selector = render_options.get("selector")
-        rendered = await template_to_pic(
+        rendered = await render_template(
             template_name,
             context=data,
             template_dir=template_dir,
-            width=width if isinstance(width, int) else None,
-            timeout_ms=timeout_ms if isinstance(timeout_ms, int) else None,
-            wait_until=wait_until,
-            selector=selector if isinstance(selector, str) else None,
+            options=RenderOptions(
+                width=width if isinstance(width, int) else None,
+                timeout_ms=timeout_ms if isinstance(timeout_ms, int) else None,
+                wait_until=_normalize_wait_until(render_options.get("wait_until")),
+                selector=selector if isinstance(selector, str) else None,
+            ),
         )
 
         if use_disk_cache:
@@ -242,6 +245,13 @@ async def _render_with_cache(
         else:
             _MEMORY_CACHE[key] = rendered
         return rendered
+
+
+def _normalize_wait_until(value: object) -> "WaitUntilState":
+    wait_until = str(value or "networkidle")
+    if wait_until not in {"commit", "domcontentloaded", "load", "networkidle"}:
+        wait_until = "networkidle"
+    return cast("WaitUntilState", wait_until)
 
 
 def _cache_key(

@@ -63,14 +63,11 @@ _✨ Apeiria 的统一图片渲染基础插件 ✨_
 
 ### 对开发者提供的接口
 
-- `html_to_pic(...)`
-- `template_to_pic(...)`
-- `url_to_pic(...)`
-- `markdown_to_pic(...)`
 - `RenderOptions`
 - `render_html(...)`
 - `render_template(...)`
 - `render_url(...)`
+- `render_markdown(...)`
 - `get_render_service()`
 - `get_render_status()`
 
