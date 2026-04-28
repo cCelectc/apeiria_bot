@@ -128,6 +128,46 @@ def test_webui_auth_account_flow_still_works_via_app_secrets_facade(
     assert secret_file.is_file()
 
 
+def test_webui_auth_rejects_legacy_single_password_storage(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _clear_webui_auth_modules()
+    secret_file = tmp_path / "data" / "web_ui" / "secret.json"
+    secret_file.parent.mkdir(parents=True)
+    legacy_payload = '{"token_secret":"token","password":"old-password"}\n'
+    secret_file.write_text(legacy_payload, encoding="utf-8")
+    stub_localstore = ModuleType("nonebot_plugin_localstore")
+    stub_localstore.get_data_file = _stub_get_data_file(secret_file)  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "nonebot_plugin_localstore", stub_localstore)
+
+    store_module = importlib.import_module("apeiria.app.access.webui_auth.store")
+    with pytest.raises(RuntimeError, match="legacy Web UI auth storage"):
+        store_module.load_or_create_raw()
+
+    assert secret_file.read_text(encoding="utf-8") == legacy_payload
+
+
+def test_webui_auth_rejects_legacy_invite_codes_storage(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _clear_webui_auth_modules()
+    secret_file = tmp_path / "data" / "web_ui" / "secret.json"
+    secret_file.parent.mkdir(parents=True)
+    legacy_payload = '{"token_secret":"token","invite_codes":["abc"]}\n'
+    secret_file.write_text(legacy_payload, encoding="utf-8")
+    stub_localstore = ModuleType("nonebot_plugin_localstore")
+    stub_localstore.get_data_file = _stub_get_data_file(secret_file)  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "nonebot_plugin_localstore", stub_localstore)
+
+    store_module = importlib.import_module("apeiria.app.access.webui_auth.store")
+    with pytest.raises(RuntimeError, match="legacy Web UI auth storage"):
+        store_module.load_or_create_raw()
+
+    assert secret_file.read_text(encoding="utf-8") == legacy_payload
+
+
 def _noop_mirror(*_args: object, **_kwargs: object) -> None:
     return None
 

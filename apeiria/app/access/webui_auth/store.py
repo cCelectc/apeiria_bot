@@ -123,59 +123,6 @@ def _ensure_bootstrap_registration_code(data: dict[str, Any]) -> dict[str, Any]:
     return data
 
 
-def _normalize_user_item(item: object, *, index: int) -> dict[str, object] | None:
-    if not isinstance(item, dict):
-        return None
-
-    role = normalize_supported_role(
-        item.get("role"),
-        fallback=ROLE_OWNER if index == 0 else "",
-    )
-    generated_user_id = f"webui_{secrets.token_hex(8)}"
-    return {
-        "user_id": str(item.get("user_id") or generated_user_id),
-        "username": normalize_username(str(item.get("username") or "")),
-        "password_hash": str(item.get("password_hash") or ""),
-        "role": role,
-        "is_disabled": bool(item.get("is_disabled", False)),
-        "last_login_at": (
-            str(item.get("last_login_at"))
-            if item.get("last_login_at") is not None
-            else None
-        ),
-        "password_changed_at": (
-            str(item.get("password_changed_at"))
-            if item.get("password_changed_at") is not None
-            else None
-        ),
-        "session_version": int(item.get("session_version") or 0),
-    }
-
-
-def _normalize_registration_code_item(item: object) -> dict[str, str] | None:
-    if isinstance(item, str):
-        return {
-            "code": item.strip(),
-            "role": ROLE_OWNER,
-            "created_at": iso_now(),
-            "created_by": "legacy",
-        }
-
-    if not isinstance(item, dict):
-        return None
-
-    code = str(item.get("code") or "").strip()
-    if not code:
-        return None
-
-    return {
-        "code": code,
-        "role": normalize_supported_role(item.get("role"), fallback=ROLE_OWNER),
-        "created_at": str(item.get("created_at") or iso_now()),
-        "created_by": str(item.get("created_by") or "unknown"),
-    }
-
-
 def load_or_create_raw() -> dict[str, Any]:
     """Load raw auth storage from disk, creating a default document when missing."""
     secret_file = _get_secret_file()
@@ -201,9 +148,18 @@ def load_or_create_raw() -> dict[str, Any]:
             raise RuntimeError(msg) from exc
 
         if isinstance(data, dict) and "token_secret" in data:
-            upgraded = _upgrade_legacy_schema(data)
-            persist_raw(upgraded)
-            return upgraded
+            if _is_legacy_schema(data):
+                logger.critical(
+                    "Web UI auth storage uses a legacy schema: {}",
+                    secret_file,
+                )
+                msg = (
+                    "legacy Web UI auth storage is unsupported; migrate or "
+                    "recreate data/web_ui/secret.json before startup"
+                )
+                raise RuntimeError(msg)
+            if _is_current_schema(data):
+                return data
 
         logger.critical("Web UI auth storage has unsupported schema: {}", secret_file)
         msg = "web_ui auth storage has unsupported schema"
@@ -221,59 +177,21 @@ def load_or_create_raw() -> dict[str, Any]:
     return data
 
 
-def _upgrade_legacy_schema(data: dict[str, Any]) -> dict[str, Any]:
-    """Upgrade legacy single-password storage into the current account schema."""
-    users = data.get("users")
+def _is_current_schema(data: dict[str, Any]) -> bool:
+    return (
+        isinstance(data.get("users"), list)
+        and isinstance(data.get("registration_codes"), list)
+        and isinstance(data.get("audit_events"), list)
+    )
+
+
+def _is_legacy_schema(data: dict[str, Any]) -> bool:
+    if "password" in data or "invite_codes" in data:
+        return True
     registration_codes = data.get("registration_codes")
-    if not isinstance(registration_codes, list):
-        registration_codes = data.get("invite_codes")
-    if isinstance(users, list) and isinstance(registration_codes, list):
-        normalized_users = [
-            normalized
-            for index, item in enumerate(users)
-            if (normalized := _normalize_user_item(item, index=index)) is not None
-        ]
-        normalized_registration_codes = [
-            normalized
-            for item in registration_codes
-            if (normalized := _normalize_registration_code_item(item)) is not None
-        ]
-        if not normalized_users and not normalized_registration_codes:
-            normalized_registration_codes = [
-                new_registration_code(role=ROLE_OWNER, created_by="system")
-            ]
-
-        return _ensure_bootstrap_registration_code(
-            {
-                "token_secret": str(data["token_secret"]),
-                "users": normalized_users,
-                "registration_codes": normalized_registration_codes,
-                "audit_events": [
-                    item
-                    for item in data.get("audit_events", [])
-                    if isinstance(item, dict)
-                ],
-            }
-        )
-
-    upgraded = {
-        "token_secret": str(data["token_secret"]),
-        "users": [],
-        "registration_codes": [],
-        "audit_events": [],
-    }
-    legacy_password = data.get("password")
-    if isinstance(legacy_password, str) and legacy_password:
-        upgraded["users"].append(
-            {
-                "user_id": "webui_admin",
-                "username": "admin",
-                "password_hash": hash_password(legacy_password),
-                "role": ROLE_OWNER,
-                "is_disabled": False,
-            }
-        )
-    return _ensure_bootstrap_registration_code(upgraded)
+    return isinstance(registration_codes, list) and any(
+        isinstance(item, str) for item in registration_codes
+    )
 
 
 def persist_raw(data: dict[str, Any]) -> None:

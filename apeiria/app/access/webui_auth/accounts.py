@@ -53,10 +53,7 @@ def _user_items() -> list[dict[str, Any]]:
 def _registration_code_items() -> list[dict[str, Any]]:
     return [
         item
-        for item in auth_store.get(
-            "registration_codes",
-            auth_store.get("invite_codes", []),
-        )
+        for item in auth_store.get("registration_codes", [])
         if isinstance(item, dict)
     ]
 
@@ -189,7 +186,6 @@ def create_registration_code(
         *_registration_code_items(),
         registration_code,
     ]
-    auth_store.pop("invite_codes", None)
     append_security_audit_event(
         "registration_code_created",
         actor_username=created_by,
@@ -213,7 +209,6 @@ def revoke_registration_code(
     if len(next_registration_codes) == len(current):
         raise ValueError("registration_code_not_found")
     auth_store["registration_codes"] = next_registration_codes
-    auth_store.pop("invite_codes", None)
     append_security_audit_event(
         "registration_code_revoked",
         actor_username=revoked_by,
@@ -420,7 +415,6 @@ def register_account(
         for item in _registration_code_items()
         if str(item.get("code") or "").strip() != normalized_registration_code
     ]
-    auth_store.pop("invite_codes", None)
     append_security_audit_event(
         "registration_code_used",
         actor_username=normalized_username,

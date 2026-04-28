@@ -91,6 +91,36 @@ def test_health_warns_about_unsupported_database_version(tmp_path: Path) -> None
     assert check.detail == "unsupported"
 
 
+def test_health_reports_retired_webui_token_config_key(tmp_path: Path) -> None:
+    (tmp_path / "apeiria.config.toml").write_text(
+        "web_ui_token_expire_days = 30\n",
+        encoding="utf-8",
+    )
+
+    snapshot = HealthService(EnvironmentService(project_root=tmp_path)).get_snapshot()
+
+    check = _health_check(snapshot, "compatibility:web_ui_token_expire_days")
+    assert check.ok is False
+    assert check.detail == "retired"
+    assert "[plugins.web_ui]" in (check.hint or "")
+
+
+def test_health_reports_legacy_webui_auth_storage(tmp_path: Path) -> None:
+    secret_file = tmp_path / "data" / "web_ui" / "secret.json"
+    secret_file.parent.mkdir(parents=True)
+    secret_file.write_text(
+        json.dumps({"token_secret": "token", "password": "old-password"}),
+        encoding="utf-8",
+    )
+
+    snapshot = HealthService(EnvironmentService(project_root=tmp_path)).get_snapshot()
+
+    check = _health_check(snapshot, "compatibility:web_ui_auth_legacy_schema")
+    assert check.ok is False
+    assert check.detail == "retired"
+    assert "secret.json" in (check.hint or "")
+
+
 def test_webui_build_health_reports_current_metadata(tmp_path: Path) -> None:
     _create_frontend_fixture(tmp_path)
     write_frontend_build_meta(tmp_path)

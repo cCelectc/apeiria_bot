@@ -106,6 +106,17 @@ def inspect_entry_environment(
             )
         )
 
+    for check in snapshot.checks:
+        if check.ok or not check.key.startswith("compatibility:"):
+            continue
+        issues.append(
+            EntryEnvironmentIssue(
+                key=check.key,
+                message=check.message,
+                command="apeiria env doctor",
+            )
+        )
+
     return EntryEnvironmentReport(
         project_root=snapshot.project_root,
         issues=tuple(_deduplicate_issues(issues)),

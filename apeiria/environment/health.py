@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from apeiria.db.inspection import inspect_database
+from apeiria.environment.compatibility import inspect_retired_project_state
 from apeiria.environment.manager import (
     EnvironmentService,
     environment_service,
@@ -167,6 +168,16 @@ class HealthService:
                 ),
                 detail=environment.frontend_build_detail or "unknown",
             ),
+            *[
+                HealthCheck(
+                    key=f"compatibility:{issue.key}",
+                    ok=False,
+                    detail="retired",
+                    message=issue.message,
+                    hint=issue.hint,
+                )
+                for issue in inspect_retired_project_state(environment.project_root)
+            ],
         ]
         status = "ok" if all(check.ok for check in checks) else "warning"
         return HealthSnapshot(
