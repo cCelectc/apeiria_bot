@@ -27,10 +27,35 @@ uv sync
 ./.venv/bin/apeiria run
 ```
 
+开发时可以指定入口文件或启用重载：
+
+```bash
+./.venv/bin/apeiria run --entry user_bot.py --reload
+```
+
 也可以直接运行：
 
 ```bash
 ./.venv/bin/python bot.py
+```
+
+## CLI 运维
+
+宿主机侧命令可以用 `--cwd` 指定 Apeiria 项目根目录，并在检查类命令中用
+`--json` 输出机器可读结果：
+
+```bash
+./.venv/bin/apeiria --cwd /path/to/project status --json
+./.venv/bin/apeiria env info --json
+./.venv/bin/apeiria env doctor --json
+```
+
+数据库状态可以直接检查或修复：
+
+```bash
+./.venv/bin/apeiria db status
+./.venv/bin/apeiria db check --json
+./.venv/bin/apeiria db repair
 ```
 
 ## Web UI
