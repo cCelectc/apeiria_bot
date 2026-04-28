@@ -3,8 +3,10 @@
 import base64
 from collections.abc import Sequence
 from importlib import import_module
+from importlib.util import find_spec
 from typing import TYPE_CHECKING, Any
 
+from nonebot import require
 from nonebot.adapters import Bot, Event, Message
 from nonebot_plugin_alconna.uniseg.builder import MessageBuilder, build
 from nonebot_plugin_alconna.uniseg.constraint import SupportAdapter, SupportScope
@@ -265,6 +267,20 @@ def _build_webchat_uninfo_fetcher() -> Any | None:  # noqa: C901
     return fetcher
 
 
+def _ensure_uninfo_plugin_loaded() -> bool:
+    try:
+        if find_spec("nonebot_plugin_uninfo") is None:
+            return False
+    except (ImportError, ValueError):
+        return False
+
+    try:
+        require("nonebot_plugin_uninfo")
+    except RuntimeError:
+        return False
+    return True
+
+
 def register_webchat_uninfo() -> None:
     """Register a minimal Uninfo fetcher for the in-process WebChat adapter.
 
@@ -272,6 +288,9 @@ def register_webchat_uninfo() -> None:
     know how to resolve it. A lightweight private-session fetcher is enough to
     stop warning spam and satisfy libraries that probe session metadata.
     """
+
+    if not _ensure_uninfo_plugin_loaded():
+        return
 
     try:
         info_fetcher_mapping = import_module("nonebot_plugin_uninfo.adapters")
