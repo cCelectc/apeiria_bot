@@ -9,6 +9,11 @@ from typing import TYPE_CHECKING, cast
 
 import apeiria.ai.model as ai_model
 from apeiria.ai.model import ai_source_service, resolve_client_type_for_preset
+from apeiria.ai.model.catalog.capability_templates import enrich_catalog_item
+from apeiria.ai.model.runtime.adapter import AIModelCatalogItem
+from apeiria.ai.model.runtime.capability_sources import (
+    capability_provenance_to_metadata,
+)
 from apeiria.app.ai.admin.errors import (
     AISourceModelFetchConfigError,
     AISourceModelFetchUpstreamError,
@@ -20,7 +25,7 @@ from apeiria.app.ai.admin.sources import coerce_source_preset_type
 if TYPE_CHECKING:
     from typing import Literal
 
-    from apeiria.ai.model import AIModelCatalogItem, AISourceDefinition
+    from apeiria.ai.model import AISourceDefinition
 
 
 MODEL_TEST_PROMPT = "Reply with exactly OK."
@@ -66,10 +71,13 @@ async def fetch_source_model_catalog(  # noqa: PLR0913
     if not resolved_api_key:
         raise AISourceModelFetchConfigError
     try:
-        return await ai_model.ai_model_facade.list_source_models(
+        catalog_items = await ai_model.ai_model_facade.list_source_models(
             source=source,
             api_key=resolved_api_key,
         )
+        return [
+            _enrich_catalog_item(source=source, item=item) for item in catalog_items
+        ]
     except Exception as exc:
         raise AISourceModelFetchUpstreamError(
             _sanitize_upstream_error_detail(
@@ -77,6 +85,21 @@ async def fetch_source_model_catalog(  # noqa: PLR0913
                 secrets=(api_key, resolved_api_key),
             )
         ) from exc
+
+
+def _enrich_catalog_item(
+    *,
+    source: "AISourceDefinition",
+    item: "AIModelCatalogItem",
+) -> "AIModelCatalogItem":
+    enrichment = enrich_catalog_item(source=source, catalog_item=item)
+    return AIModelCatalogItem(
+        id=item.id,
+        name=item.name,
+        capability_metadata=enrichment.capability_metadata,
+        default_options=enrichment.default_options,
+        capability_provenance=capability_provenance_to_metadata(enrichment.provenance),
+    )
 
 
 async def test_source_model_connectivity(  # noqa: PLR0913

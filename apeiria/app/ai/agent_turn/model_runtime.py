@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from apeiria.ai.model.runtime.capabilities import AIModelCapabilityPlanningError
+from apeiria.ai.model.runtime.capability_sources import classify_capability_mismatch
 from apeiria.ai.turn_records import (
     is_empty_model_response,
     model_ref,
@@ -46,7 +48,7 @@ class AgentTurnModelRuntime:
                     messages=request.messages,
                     tools=request.tools,
                 )
-            except Exception as exc:  # noqa: BLE001
+            except AIModelCapabilityPlanningError as exc:
                 diagnostic = sanitize_model_diagnostic(str(exc))
                 attempts.append(
                     ModelAttempt(
@@ -54,11 +56,38 @@ class AgentTurnModelRuntime:
                         model_ref=model_ref(selected),
                         status="failed",
                         response_source=request.response_source,
-                        reason="model_error",
+                        reason="capability_unavailable",
                         diagnostic=diagnostic,
                     )
                 )
-                last_finish_reason = "model_error"
+                last_finish_reason = "capability_unavailable"
+                last_diagnostic = diagnostic
+                continue
+            except Exception as exc:  # noqa: BLE001
+                diagnostic = sanitize_model_diagnostic(str(exc))
+                observation = classify_capability_mismatch(
+                    exc,
+                    planned_feature=_planned_feature_for_request(request),
+                    model_ref=model_ref(selected),
+                )
+                attempts.append(
+                    ModelAttempt(
+                        attempt_index=index,
+                        model_ref=model_ref(selected),
+                        status="failed",
+                        response_source=request.response_source,
+                        reason=(
+                            "capability_mismatch"
+                            if observation is not None
+                            else "model_error"
+                        ),
+                        diagnostic=diagnostic,
+                        capability_observation=observation,
+                    )
+                )
+                last_finish_reason = (
+                    "capability_mismatch" if observation is not None else "model_error"
+                )
                 last_diagnostic = diagnostic
                 continue
 
@@ -121,3 +150,14 @@ def _completed_finish_reason(response_source: str) -> str:
     if response_source == "direct":
         return "direct_model_completed"
     return f"{response_source}_model_completed"
+
+
+def _planned_feature_for_request(request: AgentModelGenerationRequest) -> str:
+    if request.tools:
+        return "tool_calling"
+    for message in request.messages:
+        for part in getattr(message, "parts", ()):
+            kind = getattr(part, "kind", None)
+            if kind in {"image", "audio", "file"}:
+                return "modality"
+    return "unknown"

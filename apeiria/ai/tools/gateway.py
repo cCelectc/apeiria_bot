@@ -3,11 +3,16 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 from nonebot.log import logger
 
 from apeiria.ai.model.runtime.adapter import AIModelMessage
+from apeiria.ai.model.runtime.capabilities import (
+    AIModelCallRequirements,
+    AIModelCapabilityPlanningError,
+)
+from apeiria.ai.model.runtime.capability_sources import classify_capability_mismatch
 from apeiria.ai.tools.function_calling import (
     build_function_tools,
     build_intents_from_tool_calls,
@@ -177,6 +182,7 @@ class ToolGateway:
         observation_char_limit: int = DEFAULT_OBSERVATION_CHAR_LIMIT,
         repeated_tool_threshold: int = DEFAULT_REPEATED_TOOL_THRESHOLD,
         fallback_models: tuple["AISelectedModel", ...] = (),
+        tool_calling_requirement: Literal["required", "optional", "none"] = "required",
     ) -> ToolGatewayResult:
         all_result_lines: list[str] = []
         all_turns: list[AIToolTurnCreateInput] = []
@@ -204,6 +210,7 @@ class ToolGateway:
                     current_selected,
                     fallback_models,
                 ),
+                tool_calling_requirement=tool_calling_requirement,
                 loop_state=loop_state,
                 response_source="tool_loop",
                 allow_context_recovery=True,
@@ -299,6 +306,7 @@ class ToolGateway:
                         current_selected,
                         fallback_models,
                     ),
+                    tool_calling_requirement="none",
                     loop_state=loop_state,
                 )
                 all_model_attempts.extend(finalization.attempts)
@@ -384,13 +392,14 @@ class ToolGateway:
 
         return observations
 
-    async def _generate_tool_loop_model(  # noqa: PLR0913
+    async def _generate_tool_loop_model(  # noqa: C901, PLR0913
         self,
         *,
         selected: "AISelectedModel",
         messages: tuple[AIModelMessage, ...],
         tools: tuple["AIModelToolDefinition", ...],
         fallback_models: tuple["AISelectedModel", ...],
+        tool_calling_requirement: Literal["required", "optional", "none"],
         loop_state: ToolLoopState,
         response_source: str,
         allow_context_recovery: bool,
@@ -407,10 +416,42 @@ class ToolGateway:
                         selected=candidate,
                         messages=messages_for_call,
                         tools=tools,
+                        requirements=AIModelCallRequirements(
+                            tool_calling=(
+                                tool_calling_requirement if tools else "none"
+                            ),
+                        ),
                     )
+                except AIModelCapabilityPlanningError as exc:
+                    diagnostic = sanitize_model_diagnostic(str(exc))
+                    attempts.append(
+                        ModelAttempt(
+                            attempt_index=loop_state.next_model_attempt_index(),
+                            model_ref=model_ref(candidate),
+                            status="failed",
+                            response_source=response_source,
+                            reason="capability_unavailable",
+                            diagnostic=diagnostic,
+                        )
+                    )
+                    last_finish_reason = "capability_unavailable"
+                    break
                 except Exception as exc:  # noqa: BLE001
                     diagnostic = sanitize_model_diagnostic(str(exc))
                     is_context_pressure = is_context_pressure_error(diagnostic)
+                    observation = (
+                        None
+                        if is_context_pressure
+                        else classify_capability_mismatch(
+                            exc,
+                            planned_feature=_planned_feature_for_tool_loop(
+                                tools=tools,
+                                tool_calling_requirement=tool_calling_requirement,
+                                messages=messages_for_call,
+                            ),
+                            model_ref=model_ref(candidate),
+                        )
+                    )
                     attempts.append(
                         ModelAttempt(
                             attempt_index=loop_state.next_model_attempt_index(),
@@ -420,13 +461,24 @@ class ToolGateway:
                             reason=(
                                 "context_pressure"
                                 if is_context_pressure
-                                else "model_error"
+                                else (
+                                    "capability_mismatch"
+                                    if observation is not None
+                                    else "model_error"
+                                )
                             ),
                             diagnostic=diagnostic,
+                            capability_observation=observation,
                         )
                     )
                     last_finish_reason = (
-                        "context_pressure" if is_context_pressure else "model_error"
+                        "context_pressure"
+                        if is_context_pressure
+                        else (
+                            "capability_mismatch"
+                            if observation is not None
+                            else "model_error"
+                        )
                     )
                     if (
                         is_context_pressure
@@ -470,6 +522,7 @@ class ToolGateway:
                         response_source=response_source,
                     )
                 )
+                _record_response_degradations(response, loop_state)
                 if recovered_messages_active:
                     loop_state.context_recovery_succeeded = True
                 return _ToolLoopModelResult(
@@ -494,6 +547,7 @@ class ToolGateway:
         selected: "AISelectedModel",
         messages: tuple[AIModelMessage, ...],
         fallback_models: tuple["AISelectedModel", ...],
+        tool_calling_requirement: Literal["required", "optional", "none"],
         loop_state: ToolLoopState,
     ) -> "_ToolLoopModelResult":
         loop_state.finalization_attempted = True
@@ -510,6 +564,7 @@ class ToolGateway:
             messages=finalization_messages,
             tools=(),
             fallback_models=fallback_models,
+            tool_calling_requirement=tool_calling_requirement,
             loop_state=loop_state,
             response_source="tool_loop_finalization",
             allow_context_recovery=False,
@@ -548,6 +603,35 @@ def _dedupe_fallbacks(
         seen.add(key)
         deduped.append(model)
     return tuple(deduped)
+
+
+def _record_response_degradations(
+    response: "AIModelGenerateResponse",
+    loop_state: ToolLoopState,
+) -> None:
+    provider_data = response.provider_data or {}
+    degradations = provider_data.get("apeiria_degradations")
+    if not isinstance(degradations, list):
+        return
+    for item in degradations:
+        if isinstance(item, dict):
+            loop_state.capability_degradations.append(dict(item))
+
+
+def _planned_feature_for_tool_loop(
+    *,
+    tools: tuple["AIModelToolDefinition", ...],
+    tool_calling_requirement: Literal["required", "optional", "none"],
+    messages: tuple[AIModelMessage, ...],
+) -> str:
+    if tools and tool_calling_requirement != "none":
+        return "tool_calling"
+    for message in messages:
+        for part in getattr(message, "parts", ()):
+            kind = getattr(part, "kind", None)
+            if kind in {"image", "audio", "file"}:
+                return "modality"
+    return "unknown"
 
 
 tool_gateway = ToolGateway()

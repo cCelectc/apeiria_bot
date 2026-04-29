@@ -130,6 +130,11 @@ def _agent_turn_meta(turn: "AgentTurnResult | None") -> dict[str, object]:
                 "response_source": attempt.response_source,
                 "reason": attempt.reason,
                 "diagnostic": attempt.diagnostic,
+                "capability_observation": (
+                    attempt.capability_observation.to_metadata()
+                    if attempt.capability_observation is not None
+                    else None
+                ),
             }
             for attempt in turn.model_attempts
         ],

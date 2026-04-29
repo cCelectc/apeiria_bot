@@ -15,6 +15,10 @@ from apeiria.ai.model import (
     ai_stt_model_service,
     ai_tts_model_service,
 )
+from apeiria.ai.model.catalog.capability_templates import enrich_model_capabilities
+from apeiria.ai.model.runtime.capability_sources import (
+    capability_provenance_to_metadata,
+)
 from apeiria.app.ai.admin.audit import record_ai_admin_audit
 from apeiria.app.ai.admin.errors import (
     AIAdminModelNotFoundError,
@@ -157,6 +161,9 @@ class ModelsAdminMixin:
         enabled: bool,
         is_default: bool,
         extra_params: dict[str, object],
+        capability_metadata: dict[str, object] | None = None,
+        default_options: dict[str, object] | None = None,
+        capability_provenance: dict[str, object] | None = None,
         actor_username: str | None = None,
     ) -> "AISourceModelDefinition":
         source = await ai_source_service.get_source(source_id=source_id)
@@ -170,6 +177,9 @@ class ModelsAdminMixin:
             enabled=enabled,
             is_default=is_default,
             extra_params=extra_params,
+            capability_metadata=capability_metadata,
+            default_options=default_options,
+            capability_provenance=capability_provenance,
         )
         record_ai_admin_audit(
             "ai_source_model_created",
@@ -188,6 +198,9 @@ class ModelsAdminMixin:
         enabled: bool,
         is_default: bool,
         extra_params: dict[str, object],
+        capability_metadata: dict[str, object] | None = None,
+        default_options: dict[str, object] | None = None,
+        capability_provenance: dict[str, object] | None = None,
         actor_username: str | None = None,
     ) -> "AISourceModelDefinition | None":
         source = await ai_source_service.get_source(source_id=source_id)
@@ -202,6 +215,9 @@ class ModelsAdminMixin:
             enabled=enabled,
             is_default=is_default,
             extra_params=extra_params,
+            capability_metadata=capability_metadata,
+            default_options=default_options,
+            capability_provenance=capability_provenance,
         )
         if updated is not None:
             record_ai_admin_audit(
@@ -341,8 +357,18 @@ class ModelsAdminMixin:
         enabled: bool,
         is_default: bool,
         extra_params: dict[str, object],
+        capability_metadata: dict[str, object] | None,
+        default_options: dict[str, object] | None,
+        capability_provenance: dict[str, object] | None,
     ) -> "AISourceModelDefinition":
         entry = self._get_model_capability_entry(source.capability_type)
+        enrichment = enrich_model_capabilities(
+            source=source,
+            model_identifier=model_identifier,
+            owner_capability_metadata=capability_metadata or None,
+            owner_default_options=default_options or None,
+            existing_provenance=capability_provenance,
+        )
         return await entry.create_model(
             source_id,
             model_identifier,
@@ -350,6 +376,9 @@ class ModelsAdminMixin:
             enabled,
             is_default,
             extra_params,
+            enrichment.capability_metadata,
+            enrichment.default_options,
+            capability_provenance_to_metadata(enrichment.provenance),
         )
 
     async def _update_managed_model(  # noqa: PLR0913
@@ -363,8 +392,22 @@ class ModelsAdminMixin:
         enabled: bool,
         is_default: bool,
         extra_params: dict[str, object],
+        capability_metadata: dict[str, object] | None,
+        default_options: dict[str, object] | None,
+        capability_provenance: dict[str, object] | None,
     ) -> "AISourceModelDefinition | None":
         entry = self._get_model_capability_entry(source.capability_type)
+        existing = await entry.get_model(model_id)
+        enrichment = enrich_model_capabilities(
+            source=source,
+            model_identifier=model_identifier,
+            owner_capability_metadata=capability_metadata or None,
+            owner_default_options=default_options or None,
+            existing_provenance=(
+                capability_provenance
+                or (existing.capability_provenance if existing else None)
+            ),
+        )
         return await entry.update_model(
             model_id,
             source_id,
@@ -373,6 +416,9 @@ class ModelsAdminMixin:
             enabled,
             is_default,
             extra_params,
+            enrichment.capability_metadata,
+            enrichment.default_options,
+            capability_provenance_to_metadata(enrichment.provenance),
         )
 
     async def _list_managed_models(

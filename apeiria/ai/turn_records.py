@@ -8,6 +8,9 @@ from typing import TYPE_CHECKING, Any, Literal
 
 if TYPE_CHECKING:
     from apeiria.ai.model import AIModelGenerateResponse, AISelectedModel
+    from apeiria.ai.model.runtime.capability_sources import (
+        AIModelCapabilityObservation,
+    )
 
 
 ModelAttemptStatus = Literal["success", "failed"]
@@ -33,6 +36,7 @@ class ModelAttempt:
     response_source: str
     reason: str | None = None
     diagnostic: str | None = None
+    capability_observation: "AIModelCapabilityObservation | None" = None
 
 
 @dataclass(frozen=True)
@@ -70,7 +74,7 @@ def is_empty_model_response(response: "AIModelGenerateResponse | None") -> bool:
 
     if response is None:
         return True
-    return not response.content.strip() and not response.tool_calls
+    return not response.text_content.strip() and not response.tool_calls
 
 
 _SECRET_ASSIGNMENT_RE = re.compile(
