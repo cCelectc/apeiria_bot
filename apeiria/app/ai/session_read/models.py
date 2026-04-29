@@ -36,6 +36,18 @@ class AISessionPromptSection:
 
 
 @dataclass(frozen=True)
+class AISessionPromptDiagnostics:
+    """Bounded region metadata for one composed runtime prompt."""
+
+    prompt_purpose: str
+    stable_section_names: tuple[str, ...]
+    dynamic_section_names: tuple[str, ...]
+    stable_section_count: int
+    dynamic_section_count: int
+    total_section_count: int
+
+
+@dataclass(frozen=True)
 class AISessionPromptChannels:
     """Structured prompt channels for one composed runtime prompt."""
 
@@ -82,17 +94,23 @@ class AISessionPromptPreview:
     conversation_summary: str | None
     relationship_context: str | None
     tool_policy: str | None
+    hard_rule_action: str | None
+    hard_rule_reason_text: str | None
+    hard_rule_reason_codes: tuple[str, ...]
     social_action: str | None
     social_tool_mode: str | None
     social_reason_text: str | None
     social_reason_codes: tuple[str, ...]
     social_policy_source: str | None
+    preview_diagnostics: tuple[str, ...]
     tool_results: tuple[str, ...]
     memories: tuple["AIMemoryDefinition", ...]
     operator_memory_count: int
     summary_memory_count: int
     long_term_memory_count: int
     knowledge_memory_count: int
+    planning_prompt_diagnostics: AISessionPromptDiagnostics
+    roleplay_prompt_diagnostics: AISessionPromptDiagnostics | None
     planning_channels: AISessionPromptChannels
     roleplay_channels: AISessionPromptChannels | None
     rendered_roleplay_prompt: str | None

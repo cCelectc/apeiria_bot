@@ -11,6 +11,7 @@ from apeiria.app.ai.session_runtime import (
     ToolGatewayMigrationAdapter,
     ToolOrchestrator,
     build_default_tool_exposure_plan,
+    compile_tool_exposure_provider_schema,
 )
 
 
@@ -109,8 +110,12 @@ def test_tool_orchestrator_selects_policy_allowed_executable_tools() -> None:
         execution_timeout_seconds=7.5,
     )
 
-    assert plan.selected_tool_names == ("memory_query",)
+    assert tuple(tool.name for tool in plan.selected_tool_specs) == ("memory.query",)
+    assert plan.selected_tools == ()
+    provider_tools = compile_tool_exposure_provider_schema(plan)
+    assert tuple(tool.name for tool in provider_tools) == ("memory_query",)
     assert plan.denied_reasons == {"memory.update": "policy_denied"}
+    assert plan.unavailable_reasons == {}
     assert plan.diagnostics["execution_timeout_seconds"] == 7.5
     assert plan.diagnostics["parallel_safe_tool_names"] == ("memory.query",)
 
@@ -140,8 +145,28 @@ def test_tool_orchestrator_does_not_assume_parallel_safety() -> None:
         execution_timeout_seconds=7.5,
     )
 
-    assert plan.selected_tool_names == ("memory_query",)
+    assert tuple(tool.name for tool in plan.selected_tool_specs) == ("memory.query",)
+    assert compile_tool_exposure_provider_schema(plan)[0].name == "memory_query"
     assert plan.diagnostics["parallel_safe_tool_names"] == ()
+
+
+def test_tool_orchestrator_records_unavailable_tools_before_schema_compile() -> None:
+    plan = ToolOrchestrator().plan_exposure(
+        allowed_tools=(_tool("memory.query", tags=("memory",)),),
+        policy=AIToolPolicy(
+            execution_enabled=False,
+            allowed_tool_names={"memory.query"},
+        ),
+        requested_tool_names=("memory.query",),
+        ordinary_ambient_group=False,
+        execution_timeout_seconds=3.0,
+    )
+
+    assert plan.selected_tool_specs == ()
+    assert compile_tool_exposure_provider_schema(plan) == ()
+    assert plan.unavailable_reasons == {"memory.query": "execution_disabled"}
+    assert plan.diagnostics["selected_tool_count"] == 0
+    assert plan.diagnostics["execution_timeout_seconds"] == 3.0
 
 
 def test_tool_gateway_migration_adapter_uses_selected_tools_only() -> None:

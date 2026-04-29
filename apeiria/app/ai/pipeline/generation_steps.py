@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING
 
 from nonebot.log import logger
 
 from apeiria.ai.config import get_ai_plugin_config
+from apeiria.ai.prompting import (
+    project_reply_prompt_regions,
+    prompt_region_diagnostics,
+)
 from apeiria.ai.skills import ai_skill_service
 from apeiria.ai.tools import (
     ToolGatewayRequest,
@@ -18,6 +22,7 @@ from apeiria.app.ai.agent_turn import AgentTurnResult
 from apeiria.app.ai.pipeline.composer import (
     AIRuntimeComposeInput,
     build_pre_tool_reply_messages,
+    build_pre_tool_reply_packet,
     build_roleplay_reply_messages,
 )
 from apeiria.app.ai.pipeline.context_window_steps import record_context_usage
@@ -39,12 +44,17 @@ from apeiria.app.ai.pipeline.routing import (
 )
 from apeiria.app.ai.pipeline.tool_steps import append_tool_observation_turns
 from apeiria.app.ai.reply_strategy import summarize_reply_strategy_decision
+from apeiria.app.ai.session_runtime import (
+    RuntimeAgentRunner,
+    ToolGatewayMigrationAdapter,
+)
 
 if TYPE_CHECKING:
     from datetime import datetime
 
     from apeiria.ai.model import (
         AIModelGenerateResponse,
+        AIModelMessage,
         AIModelTaskClass,
         AISelectedModel,
     )
@@ -52,6 +62,7 @@ if TYPE_CHECKING:
     from apeiria.app.ai.pipeline.input_steps import ReplyInputs
     from apeiria.app.ai.pipeline.service import AIRuntimeReplyRequest
     from apeiria.app.ai.reply_strategy import ReplyStrategyDecision
+    from apeiria.app.ai.session_runtime import TurnContext
 
 
 @dataclass(frozen=True)
@@ -141,10 +152,21 @@ async def generate_reply(  # noqa: PLR0913
     prep: ReplyPreparation,
     current_time: "datetime",
     trace_id: str,
+    turn_context: "TurnContext | None" = None,
 ) -> ReplyGeneration:
     """Generate a reply via direct or tool-loop path and deliver it if needed."""
 
     if prep.skill_runtime.available_tools:
+        if turn_context is not None:
+            return await _generate_tool_capable_turn_context(
+                request=request,
+                inputs=inputs,
+                social_decision=social_decision,
+                prep=prep,
+                current_time=current_time,
+                trace_id=trace_id,
+                turn_context=turn_context,
+            )
         return await _generate_with_tool_loop(
             request=request,
             inputs=inputs,
@@ -159,18 +181,115 @@ async def generate_reply(  # noqa: PLR0913
         social_decision=social_decision,
         prep=prep,
         trace_id=trace_id,
+        turn_context=turn_context,
     )
 
 
-async def _generate_direct(
+async def _generate_tool_capable_turn_context(  # noqa: PLR0913
+    *,
+    request: "AIRuntimeReplyRequest",
+    inputs: ReplyInputs,
+    social_decision: "ReplyStrategyDecision",
+    prep: ReplyPreparation,
+    current_time: "datetime",
+    trace_id: str,
+    turn_context: "TurnContext",
+) -> ReplyGeneration:
+    reply_generation: ReplyGeneration | None = None
+
+    async def direct_executor(context: "TurnContext") -> AgentTurnResult:
+        return AgentTurnResult.skipped(
+            trace_id=context.trace_id,
+            runtime_mode=context.runtime_mode,
+            finish_reason="direct_executor_not_configured",
+        )
+
+    async def tool_capable_executor(context: "TurnContext") -> AgentTurnResult:
+        nonlocal reply_generation
+        reply_generation = await _generate_with_tool_loop(
+            request=request,
+            inputs=inputs,
+            social_decision=social_decision,
+            prep=prep,
+            current_time=current_time,
+            trace_id=trace_id,
+            turn_context=context,
+        )
+        tool_turn_result = reply_generation.turn_result
+        if tool_turn_result is not None:
+            tool_turn_result = _with_prompt_diagnostics(
+                tool_turn_result,
+                context,
+            )
+            reply_generation = replace(
+                reply_generation,
+                turn_result=tool_turn_result,
+            )
+            return tool_turn_result
+        return AgentTurnResult.skipped(
+            trace_id=context.trace_id,
+            runtime_mode=context.runtime_mode,
+            finish_reason="tool_loop_without_turn_result",
+        )
+
+    runner = RuntimeAgentRunner(
+        direct_executor=direct_executor,
+        tool_capable_executor=tool_capable_executor,
+    )
+    turn_result = await runner.run_turn(turn_context)
+    if reply_generation is not None:
+        return reply_generation
+    return ReplyGeneration(
+        response=turn_result.response,
+        skill_runtime=prep.skill_runtime,
+        post_tool_task_class=None,
+        delivery_result=None,
+        turn_result=turn_result,
+    )
+
+
+async def _generate_direct(  # noqa: PLR0913
     *,
     request: "AIRuntimeReplyRequest",
     inputs: ReplyInputs,
     social_decision: "ReplyStrategyDecision",
     prep: ReplyPreparation,
     trace_id: str,
+    turn_context: "TurnContext | None" = None,
 ) -> ReplyGeneration:
     """Single-shot generation path (no tool loop)."""
+    if turn_context is not None:
+        turn_result = await _run_direct_turn_context(
+            context=turn_context,
+            prep=prep,
+        )
+        response = turn_result.response
+        if response is None:
+            return ReplyGeneration(
+                response=None,
+                skill_runtime=prep.skill_runtime,
+                post_tool_task_class=None,
+                delivery_result=None,
+                turn_result=turn_result,
+            )
+
+        record_context_usage(
+            request.identity.session_id,
+            response=response,
+            message_count=len(inputs.turns),
+        )
+        delivery_result = await deliver_generated_reply(
+            request,
+            response.content.strip() if response.content else "",
+        )
+        return ReplyGeneration(
+            response=response,
+            skill_runtime=prep.skill_runtime,
+            post_tool_task_class=None,
+            delivery_result=delivery_result,
+            turn_result=turn_result,
+        )
+
     turn = await generate_model_turn(
         GenerationRequest(
             selected=prep.selected,
@@ -229,6 +348,7 @@ async def _generate_with_tool_loop(  # noqa: PLR0913
     prep: ReplyPreparation,
     current_time: "datetime",
     trace_id: str,
+    turn_context: "TurnContext | None" = None,
 ) -> ReplyGeneration:
     """Messages-based multi-round tool calling flow with optional refinement."""
 
@@ -254,13 +374,25 @@ async def _generate_with_tool_loop(  # noqa: PLR0913
         tool_mode=social_decision.tool_mode,
         execution_timeout_seconds=get_ai_plugin_config().tool_execution_timeout_seconds,
     )
-    skill_runtime = await tool_gateway.run_tool_loop(
-        tool_request,
-        messages=messages,
-        tools=prep.skill_runtime.available_tools,
-        selected=prep.selected,
-        fallback_models=await select_pipeline_fallback_models(prep.selected),
-    )
+    fallback_models = await select_pipeline_fallback_models(prep.selected)
+    if turn_context is not None:
+        skill_runtime = await ToolGatewayMigrationAdapter(
+            gateway=tool_gateway
+        ).run_tool_loop(
+            request=tool_request,
+            messages=tuple(messages),
+            exposure_plan=turn_context.tool_exposure_plan,
+            selected_model=prep.selected,
+            fallback_models=fallback_models,
+        )
+    else:
+        skill_runtime = await tool_gateway.run_tool_loop(
+            tool_request,
+            messages=messages,
+            tools=prep.skill_runtime.available_tools,
+            selected=prep.selected,
+            fallback_models=fallback_models,
+        )
     response = skill_runtime.final_response
     turn_result = _build_tool_loop_turn_result(
         trace_id=trace_id,
@@ -350,6 +482,115 @@ async def _generate_with_tool_loop(  # noqa: PLR0913
         post_tool_task_class=post_tool_task_class,
         delivery_result=delivery_result,
         turn_result=turn_result,
+    )
+
+
+async def _run_direct_turn_context(
+    *,
+    context: "TurnContext",
+    prep: ReplyPreparation,
+) -> AgentTurnResult:
+    fallback_models = await select_pipeline_fallback_models(prep.selected)
+
+    async def direct_executor(context: "TurnContext") -> AgentTurnResult:
+        result = await generate_model_turn(
+            GenerationRequest(
+                selected=prep.selected,
+                messages=context.prompt_messages,
+                trace_id=context.trace_id,
+                session_id=context.session_id,
+                tools=(),
+                failure_stage="reply generation failed",
+                runtime_mode=context.runtime_mode,
+                response_source="direct",
+                fallback_models=fallback_models,
+            )
+        )
+        return _with_prompt_diagnostics(result.turn, context)
+
+    async def tool_capable_executor(context: "TurnContext") -> AgentTurnResult:
+        return AgentTurnResult.skipped(
+            trace_id=context.trace_id,
+            runtime_mode=context.runtime_mode,
+            finish_reason="tool_executor_not_configured",
+        )
+
+    runner = RuntimeAgentRunner(
+        direct_executor=direct_executor,
+        tool_capable_executor=tool_capable_executor,
+    )
+    return await runner.run_turn(context)
+
+
+def _with_prompt_diagnostics(
+    turn_result: AgentTurnResult,
+    context: "TurnContext",
+) -> AgentTurnResult:
+    if not context.prompt_diagnostics:
+        return turn_result
+    return replace(
+        turn_result,
+        metadata={
+            **turn_result.metadata,
+            "prompt_diagnostics": context.prompt_diagnostics,
+        },
+    )
+
+
+def build_initial_reply_prompt_messages(
+    *,
+    request: "AIRuntimeReplyRequest",
+    inputs: ReplyInputs,
+    social_decision: "ReplyStrategyDecision",
+    prep: ReplyPreparation,
+) -> tuple["AIModelMessage", ...]:
+    """Build the first model prompt messages used by direct/tool planning."""
+
+    return build_pre_tool_reply_messages(
+        _initial_reply_compose_input(
+            request=request,
+            inputs=inputs,
+            social_decision=social_decision,
+            prep=prep,
+        ),
+        has_tools=bool(prep.skill_runtime.available_tools),
+    )
+
+
+def build_initial_reply_prompt_diagnostics(
+    *,
+    request: "AIRuntimeReplyRequest",
+    inputs: ReplyInputs,
+    social_decision: "ReplyStrategyDecision",
+    prep: ReplyPreparation,
+) -> dict[str, object]:
+    """Build bounded prompt-region diagnostics for the first reply prompt."""
+
+    packet = build_pre_tool_reply_packet(
+        _initial_reply_compose_input(
+            request=request,
+            inputs=inputs,
+            social_decision=social_decision,
+            prep=prep,
+        ),
+        has_tools=bool(prep.skill_runtime.available_tools),
+    )
+    return prompt_region_diagnostics(project_reply_prompt_regions(packet))
+
+
+def _initial_reply_compose_input(
+    *,
+    request: "AIRuntimeReplyRequest",
+    inputs: ReplyInputs,
+    social_decision: "ReplyStrategyDecision",
+    prep: ReplyPreparation,
+) -> AIRuntimeComposeInput:
+    return _build_compose_input(
+        request=request,
+        inputs=inputs,
+        social_decision=social_decision,
+        skill_runtime=prep.skill_runtime,
+        skill_activation=prep.skill_activation,
     )
 
 

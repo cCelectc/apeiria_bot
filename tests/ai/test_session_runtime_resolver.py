@@ -4,7 +4,11 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
+import pytest  # noqa: TC002
+
 from apeiria.ai.config import AIPluginConfig
+from apeiria.app.ai.pipeline import service as service_module
+from apeiria.app.ai.pipeline.service import AIRuntimeService
 from apeiria.app.ai.session_runtime import (
     InMemoryAISessionRuntimeResolver,
     RuntimeTurnSource,
@@ -25,6 +29,33 @@ def test_session_runtime_policy_uses_project_config_defaults() -> None:
     assert policy.max_consecutive_ambient_replies == 1
     assert policy.direct_bypass_ambient_budget is True
     assert policy.duplicate_event_ttl == timedelta(seconds=30)
+
+
+def test_default_airuntime_service_resolver_uses_project_config(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        service_module,
+        "get_ai_plugin_config",
+        lambda: AIPluginConfig(
+            ambient_merge_window_ms=250,
+            max_pending_messages=3,
+            group_reply_cooldown_seconds=7,
+            max_consecutive_ambient_replies=2,
+            direct_bypass_ambient_budget=False,
+            duplicate_event_ttl_seconds=5,
+        ),
+    )
+
+    service = AIRuntimeService()
+    runtime = service._session_runtime_resolver.resolve("session-1", now=_now())
+
+    assert runtime.policy.ambient_merge_window == timedelta(milliseconds=250)
+    assert runtime.policy.max_pending_messages == 3
+    assert runtime.policy.group_reply_cooldown == timedelta(seconds=7)
+    assert runtime.policy.max_consecutive_ambient_replies == 2
+    assert runtime.policy.direct_bypass_ambient_budget is False
+    assert runtime.policy.duplicate_event_ttl == timedelta(seconds=5)
 
 
 def test_resolver_reuses_session_runtime_and_cleans_idle_entries() -> None:

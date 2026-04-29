@@ -243,6 +243,46 @@ def test_tool_loop_records_failed_tool_observation() -> None:
     )
 
 
+def test_tool_loop_records_timeout_tool_observation() -> None:
+    selected = selected_model("main")
+    gateway = ModelGatewayStub(
+        [
+            model_response(selected, "", tool_calls=(tool_call("call-1"),)),
+            model_response(selected, "done"),
+        ]
+    )
+    service = ToolServiceStub(
+        [
+            [
+                AIToolObservationResult(
+                    tool_name="memory.query",
+                    summary="- [memory.query] timed out after 0.1s",
+                    input_payload={"query_text": "hello"},
+                    output_payload={"error": "timeout"},
+                    status="timeout",
+                )
+            ]
+        ]
+    )
+    tool_gateway = ToolGateway(model_gateway=gateway, tool_service=service)
+
+    result = asyncio.run(
+        tool_gateway.run_tool_loop(
+            replace(tool_request(), execution_timeout_seconds=0.1),
+            messages=[],
+            tools=(),
+            selected=selected,
+        )
+    )
+
+    assert result.tool_attempts[0].status == "timeout"
+    assert result.tool_attempts[0].native_observation is not None
+    assert result.tool_attempts[0].native_observation.output_payload == {
+        "error": "timeout"
+    }
+    assert "timed out" in result.tool_attempts[0].observation.content
+
+
 def test_tool_loop_records_denied_tool_observation() -> None:
     selected = selected_model("main")
     gateway = ModelGatewayStub(
@@ -266,6 +306,35 @@ def test_tool_loop_records_denied_tool_observation() -> None:
     assert service.calls == []
     assert result.tool_attempts[0].status == "error"
     assert "denied by policy" in result.tool_attempts[0].observation.content
+
+
+def test_tool_loop_denies_tool_not_exposed_for_current_turn() -> None:
+    selected = selected_model("main")
+    gateway = ModelGatewayStub(
+        [
+            model_response(selected, "", tool_calls=(tool_call("call-1"),)),
+            model_response(selected, "done"),
+        ]
+    )
+    service = ToolServiceStub(observations=[], allowed_tool_names=("memory.query",))
+    tool_gateway = ToolGateway(model_gateway=gateway, tool_service=service)
+
+    result = asyncio.run(
+        tool_gateway.run_tool_loop(
+            replace(tool_request(), executable_tool_names=frozenset()),
+            messages=[],
+            tools=(_tool_definition(),),
+            selected=selected,
+        )
+    )
+
+    assert service.calls == []
+    assert result.tool_attempts[0].status == "error"
+    assert "not exposed for this turn" in result.tool_attempts[0].observation.content
+    assert result.tool_attempts[0].native_observation is not None
+    assert result.tool_attempts[0].native_observation.output_payload["error"] == (
+        "not_exposed_for_turn"
+    )
 
 
 def test_tool_loop_recovers_once_from_context_pressure() -> None:

@@ -32,11 +32,12 @@ class TurnTrace:
     final_response_source: str | None = None
     skip_reason: str | None = None
     delivery_status: str | None = None
+    prompt_diagnostics: dict[str, object] | None = None
 
     def to_metadata(self) -> dict[str, object]:
         """Project the trace to compact metadata for diagnostics surfaces."""
 
-        return {
+        metadata: dict[str, object] = {
             "trace_id": self.trace_id,
             "session_id": self.session_id,
             "runtime_mode": self.runtime_mode,
@@ -53,6 +54,9 @@ class TurnTrace:
             "skip_reason": self.skip_reason,
             "delivery_status": self.delivery_status,
         }
+        if self.prompt_diagnostics:
+            metadata["prompt_diagnostics"] = self.prompt_diagnostics
+        return metadata
 
 
 def project_turn_trace(  # noqa: PLR0913
@@ -91,6 +95,12 @@ def project_turn_trace(  # noqa: PLR0913
         final_response_source=turn_result.response_source if turn_result else None,
         skip_reason=skip_reason,
         delivery_status=_delivery_status(delivery_result),
+        prompt_diagnostics=(
+            turn_result.metadata.get("prompt_diagnostics")
+            if turn_result is not None
+            and isinstance(turn_result.metadata.get("prompt_diagnostics"), dict)
+            else None
+        ),
     )
 
 

@@ -4,6 +4,10 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from apeiria.ai.prompting import (
+    project_reply_prompt_regions,
+    prompt_region_diagnostics,
+)
 from apeiria.ai.prompting.reply import (
     REPLY_SECTION_CONTEXT_PRIORITY,
     REPLY_SECTION_CONVERSATION,
@@ -25,7 +29,11 @@ from apeiria.ai.prompting.reply import (
     REPLY_SECTION_TOOL_RESULTS,
 )
 
-from .models import AISessionPromptChannels, AISessionPromptSection
+from .models import (
+    AISessionPromptChannels,
+    AISessionPromptDiagnostics,
+    AISessionPromptSection,
+)
 
 if TYPE_CHECKING:
     from apeiria.ai.prompting import PromptPacket
@@ -77,6 +85,35 @@ def project_prompt_packet_to_channels(
     )
 
 
+def project_prompt_packet_to_preview(
+    packet: "PromptPacket",
+    *,
+    mode: str,
+) -> tuple[AISessionPromptChannels, AISessionPromptDiagnostics]:
+    """Project a packet into preview channels plus bounded region diagnostics."""
+
+    return (
+        project_prompt_packet_to_channels(packet, mode=mode),
+        project_prompt_packet_to_diagnostics(packet),
+    )
+
+
+def project_prompt_packet_to_diagnostics(
+    packet: "PromptPacket",
+) -> AISessionPromptDiagnostics:
+    """Project reply packet regions into session-read diagnostics."""
+
+    diagnostics = prompt_region_diagnostics(project_reply_prompt_regions(packet))
+    return AISessionPromptDiagnostics(
+        prompt_purpose=str(diagnostics["prompt_purpose"]),
+        stable_section_names=_string_tuple(diagnostics["stable_section_names"]),
+        dynamic_section_names=_string_tuple(diagnostics["dynamic_section_names"]),
+        stable_section_count=_int_value(diagnostics["stable_section_count"]),
+        dynamic_section_count=_int_value(diagnostics["dynamic_section_count"]),
+        total_section_count=_int_value(diagnostics["total_section_count"]),
+    )
+
+
 def _section_text(packet: PromptPacket, name: str) -> str | None:
     for section in packet.sections:
         if section.name == name and section.content.strip():
@@ -89,3 +126,24 @@ def _section_lines(packet: PromptPacket, name: str) -> tuple[str, ...]:
     if text is None:
         return ()
     return tuple(line for line in text.splitlines() if line.strip())
+
+
+def _string_tuple(value: object) -> tuple[str, ...]:
+    if not isinstance(value, (tuple, list)):
+        return ()
+    return tuple(str(item) for item in value)
+
+
+def _int_value(value: object) -> int:
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str):
+        return int(value)
+    return 0
+
+
+__all__ = [
+    "project_prompt_packet_to_channels",
+    "project_prompt_packet_to_diagnostics",
+    "project_prompt_packet_to_preview",
+]

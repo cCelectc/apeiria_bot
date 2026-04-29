@@ -51,3 +51,18 @@ def project_prompt_regions(
         stable=tuple(stable),
         dynamic=tuple(dynamic),
     )
+
+
+def prompt_region_diagnostics(
+    projection: PromptRegionProjection,
+) -> dict[str, object]:
+    """Return bounded prompt-region metadata without section content."""
+
+    return {
+        "prompt_purpose": projection.purpose,
+        "stable_section_names": tuple(section.name for section in projection.stable),
+        "dynamic_section_names": tuple(section.name for section in projection.dynamic),
+        "stable_section_count": len(projection.stable),
+        "dynamic_section_count": len(projection.dynamic),
+        "total_section_count": len(projection.sections),
+    }

@@ -24,6 +24,13 @@ def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
 
+def _current_task() -> asyncio.Task[object] | None:
+    try:
+        return asyncio.current_task()
+    except RuntimeError:
+        return None
+
+
 @runtime_checkable
 class AISessionRuntime(Protocol):
     """Protocol for session-scoped AI runtime coordinators."""
@@ -100,6 +107,11 @@ class InMemoryAISessionRuntime:
     last_ambient_reply_at: datetime | None = None
     consecutive_ambient_replies: int = 0
     _lock: asyncio.Lock = field(default_factory=asyncio.Lock, init=False, repr=False)
+    _active_turn_task: asyncio.Task[object] | None = field(
+        default=None,
+        init=False,
+        repr=False,
+    )
     _duplicate_events: dict[str, datetime] = field(
         default_factory=dict,
         init=False,
@@ -136,8 +148,12 @@ class InMemoryAISessionRuntime:
 
         current_time = now or _utcnow()
         async with self._lock:
-            self.touch(current_time)
-            return await operation()
+            self._active_turn_task = _current_task()
+            try:
+                self.touch(current_time)
+                return await operation()
+            finally:
+                self._active_turn_task = None
 
     @property
     def pending_ambient_count(self) -> int:
@@ -150,6 +166,21 @@ class InMemoryAISessionRuntime:
         """Return whether a turn is currently running in this session."""
 
         return self._lock.locked()
+
+    @property
+    def current_turn_owns_lock(self) -> bool:
+        """Return whether the calling task owns the active session turn lock."""
+
+        if not self._lock.locked():
+            return False
+        current_task = _current_task()
+        return current_task is not None and current_task is self._active_turn_task
+
+    @property
+    def has_other_active_turn(self) -> bool:
+        """Return whether another task is running the active session turn."""
+
+        return self.is_active and not self.current_turn_owns_lock
 
     def touch(self, now: datetime | None = None) -> None:
         """Refresh the runtime's last activity timestamp."""

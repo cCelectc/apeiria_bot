@@ -223,6 +223,22 @@ export interface AISessionPromptChannelsItem {
   conversation_messages: string[]
   response_rules: string[]
   instruction: string
+  sections: AISessionPromptSectionItem[]
+}
+
+export interface AISessionPromptSectionItem {
+  role: string
+  name: string
+  content: string
+}
+
+export interface AISessionPromptDiagnosticsItem {
+  prompt_purpose: string
+  stable_section_names: string[]
+  dynamic_section_names: string[]
+  stable_section_count: number
+  dynamic_section_count: number
+  total_section_count: number
 }
 
 export interface AISessionPromptPreviewItem {
@@ -243,17 +259,23 @@ export interface AISessionPromptPreviewItem {
   conversation_summary: string | null
   relationship_context: string | null
   tool_policy: string | null
+  hard_rule_action: string | null
+  hard_rule_reason_text: string | null
+  hard_rule_reason_codes: string[]
   social_action: string | null
   social_tool_mode: string | null
   social_reason_text: string | null
   social_reason_codes: string[]
   social_policy_source: string | null
+  preview_diagnostics: string[]
   tool_results: string[]
   memories: AIMemoryItem[]
   operator_memory_count: number
   summary_memory_count: number
   long_term_memory_count: number
   knowledge_memory_count: number
+  planning_prompt_diagnostics: AISessionPromptDiagnosticsItem
+  roleplay_prompt_diagnostics: AISessionPromptDiagnosticsItem | null
   planning_channels: AISessionPromptChannelsItem
   roleplay_channels: AISessionPromptChannelsItem | null
   rendered_roleplay_prompt: string | null

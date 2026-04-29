@@ -11,7 +11,12 @@ from .memory_extraction import (
     build_memory_extraction_packet,
 )
 from .models import PromptPacket, PromptPurpose, PromptSection, PromptSectionRole
-from .regions import PromptRegion, PromptRegionProjection, project_prompt_regions
+from .regions import (
+    PromptRegion,
+    PromptRegionProjection,
+    project_prompt_regions,
+    prompt_region_diagnostics,
+)
 from .renderer import render_flat, render_messages
 from .reply import (
     ReplyPersonaPromptBundleLike,
@@ -62,6 +67,7 @@ __all__ = [
     "build_tool_intent_planning_packet",
     "project_prompt_regions",
     "project_reply_prompt_regions",
+    "prompt_region_diagnostics",
     "render_flat",
     "render_messages",
 ]

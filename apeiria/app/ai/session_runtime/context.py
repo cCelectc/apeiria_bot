@@ -10,6 +10,8 @@ if TYPE_CHECKING:
 
     from apeiria.ai.model import AIModelBindingTarget, AIModelMessage
     from apeiria.ai.tools import AIToolPolicy
+    from apeiria.app.ai.reply_strategy.models import ReplyStrategyDecision
+    from apeiria.app.ai.session_runtime.strategy import RuntimeHardRuleDecision
     from apeiria.app.ai.session_runtime.tools import ToolExposurePlan
     from apeiria.conversation.models import ChatSessionIdentity
 
@@ -28,6 +30,8 @@ class RuntimeTurnSource:
     user_id: str
     direct_signal: bool = False
     is_private: bool = False
+    event_dedupe_key: str | None = None
+    event_dedupe_claimed: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -61,7 +65,10 @@ class TurnContext:
     tool_policy: "AIToolPolicy"
     tool_exposure_plan: "ToolExposurePlan" = field(default_factory=ToolExposurePlan)
     prompt_messages: tuple["AIModelMessage", ...] = ()
+    prompt_diagnostics: dict[str, object] = field(default_factory=dict)
     merge: MergeMetadata = MergeMetadata()
+    hard_rule_decision: "RuntimeHardRuleDecision | None" = None
+    social_decision: "ReplyStrategyDecision | None" = None
 
     @property
     def session_id(self) -> str:

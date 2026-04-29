@@ -2,16 +2,24 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime  # noqa: TC003
 from typing import TYPE_CHECKING, Any
 
-from apeiria.ai.tools.function_calling import build_function_tools
+from apeiria.ai.tools.function_calling import (
+    build_function_tools,
+    function_name_to_tool_name,
+)
 from apeiria.ai.turn_records import PromptSafeObservation
 
 if TYPE_CHECKING:
-    from apeiria.ai.model import AIModelToolDefinition
-    from apeiria.ai.tools import AIToolPolicy, AIToolSpec
+    from apeiria.ai.model import AIModelMessage, AIModelToolDefinition, AISelectedModel
+    from apeiria.ai.tools import (
+        AIToolPolicy,
+        AIToolSpec,
+        ToolGatewayRequest,
+        ToolGatewayResult,
+    )
 
 
 DEFAULT_TOOL_AWARENESS_CATEGORIES = (
@@ -28,6 +36,7 @@ class ToolExposurePlan:
 
     awareness_text: str = ""
     category_ids: tuple[str, ...] = ()
+    selected_tool_specs: tuple["AIToolSpec", ...] = ()
     selected_tools: tuple["AIModelToolDefinition", ...] = ()
     hidden_reasons: dict[str, str] = field(default_factory=dict)
     unavailable_reasons: dict[str, str] = field(default_factory=dict)
@@ -38,13 +47,30 @@ class ToolExposurePlan:
     def selected_tool_names(self) -> tuple[str, ...]:
         """Return selected executable tool names in model-visible order."""
 
+        if self.selected_tool_specs:
+            return tuple(tool.name for tool in self.selected_tool_specs)
         return tuple(tool.name for tool in self.selected_tools)
 
     @property
     def has_executable_tools(self) -> bool:
         """Return whether this plan exposes executable tool definitions."""
 
-        return bool(self.selected_tools)
+        return bool(self.selected_tool_specs or self.selected_tools)
+
+
+def compile_tool_exposure_provider_schema(
+    plan: ToolExposurePlan,
+    *,
+    current_time: datetime | None = None,
+) -> tuple["AIModelToolDefinition", ...]:
+    """Compile selected logical tool specs into provider tool definitions."""
+
+    if plan.selected_tool_specs:
+        return build_function_tools(
+            list(plan.selected_tool_specs),
+            current_time=current_time,
+        )
+    return plan.selected_tools
 
 
 def build_default_tool_exposure_plan(
@@ -111,6 +137,7 @@ class ToolOrchestrator:
     ) -> ToolExposurePlan:
         """Plan awareness and selected executable tool definitions."""
 
+        del current_time
         base_plan = build_default_tool_exposure_plan(
             allowed_tools=allowed_tools,
             ordinary_ambient_group=ordinary_ambient_group,
@@ -134,14 +161,10 @@ class ToolOrchestrator:
                 continue
             selected_specs.append(tool)
 
-        selected_tools = build_function_tools(
-            selected_specs,
-            current_time=current_time,
-        )
         return ToolExposurePlan(
             awareness_text=base_plan.awareness_text,
             category_ids=base_plan.category_ids,
-            selected_tools=selected_tools,
+            selected_tool_specs=tuple(selected_specs),
             hidden_reasons=base_plan.hidden_reasons,
             unavailable_reasons=unavailable_reasons,
             denied_reasons=denied_reasons,
@@ -198,18 +221,40 @@ class ToolGatewayMigrationAdapter:
     async def run_tool_loop(
         self,
         *,
-        request: object,
-        messages: tuple[object, ...],
+        request: "ToolGatewayRequest",
+        messages: tuple["AIModelMessage", ...],
         exposure_plan: ToolExposurePlan,
-        selected_model: object,
-        fallback_models: tuple[object, ...],
-    ) -> object:
+        selected_model: "AISelectedModel",
+        fallback_models: tuple["AISelectedModel", ...],
+    ) -> "ToolGatewayResult":
         """Run the existing gateway using the orchestrator-selected definitions."""
 
+        request = _with_exposure_allowlist(request, exposure_plan)
         return await self.gateway.run_tool_loop(
             request,
             messages=list(messages),
-            tools=exposure_plan.selected_tools,
+            tools=compile_tool_exposure_provider_schema(exposure_plan),
             selected=selected_model,
             fallback_models=fallback_models,
         )
+
+
+def _with_exposure_allowlist(
+    request: "ToolGatewayRequest",
+    plan: ToolExposurePlan,
+) -> "ToolGatewayRequest":
+    if not hasattr(request, "executable_tool_names"):
+        return request
+    return replace(
+        request,
+        executable_tool_names=frozenset(_executable_tool_names(plan)),
+    )
+
+
+def _executable_tool_names(plan: ToolExposurePlan) -> tuple[str, ...]:
+    if plan.selected_tool_specs:
+        return tuple(tool.name for tool in plan.selected_tool_specs)
+    return tuple(
+        function_name_to_tool_name(tool.name)
+        for tool in compile_tool_exposure_provider_schema(plan)
+    )

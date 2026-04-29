@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from .memories_schemas import AIMemoryItem, to_ai_memory_item
 
@@ -12,6 +12,7 @@ if TYPE_CHECKING:
     from apeiria.app.ai.session_read.models import (
         AIRecentTarget,
         AISessionPromptChannels,
+        AISessionPromptDiagnostics,
         AISessionPromptPreview,
         AISessionPromptSection,
     )
@@ -86,6 +87,15 @@ class AISessionPromptChannelsItem(BaseModel):
     sections: list["AISessionPromptSectionItem"] = []
 
 
+class AISessionPromptDiagnosticsItem(BaseModel):
+    prompt_purpose: str
+    stable_section_names: list[str] = Field(default_factory=list)
+    dynamic_section_names: list[str] = Field(default_factory=list)
+    stable_section_count: int = 0
+    dynamic_section_count: int = 0
+    total_section_count: int = 0
+
+
 class AISessionPromptSectionItem(BaseModel):
     role: str
     name: str
@@ -110,17 +120,23 @@ class AISessionPromptPreviewItem(BaseModel):
     conversation_summary: str | None = None
     relationship_context: str | None = None
     tool_policy: str | None = None
+    hard_rule_action: str | None = None
+    hard_rule_reason_text: str | None = None
+    hard_rule_reason_codes: list[str] = []
     social_action: str | None = None
     social_tool_mode: str | None = None
     social_reason_text: str | None = None
     social_reason_codes: list[str] = []
     social_policy_source: str | None = None
+    preview_diagnostics: list[str] = []
     tool_results: list[str] = []
     memories: list[AIMemoryItem] = []
     operator_memory_count: int = 0
     summary_memory_count: int = 0
     long_term_memory_count: int = 0
     knowledge_memory_count: int = 0
+    planning_prompt_diagnostics: AISessionPromptDiagnosticsItem
+    roleplay_prompt_diagnostics: AISessionPromptDiagnosticsItem | None = None
     planning_channels: AISessionPromptChannelsItem
     roleplay_channels: AISessionPromptChannelsItem | None = None
     rendered_roleplay_prompt: str | None = None
@@ -188,6 +204,19 @@ def to_ai_session_prompt_section_item(
     )
 
 
+def to_ai_session_prompt_diagnostics_item(
+    item: "AISessionPromptDiagnostics",
+) -> AISessionPromptDiagnosticsItem:
+    return AISessionPromptDiagnosticsItem(
+        prompt_purpose=item.prompt_purpose,
+        stable_section_names=list(item.stable_section_names),
+        dynamic_section_names=list(item.dynamic_section_names),
+        stable_section_count=item.stable_section_count,
+        dynamic_section_count=item.dynamic_section_count,
+        total_section_count=item.total_section_count,
+    )
+
+
 def to_ai_session_prompt_channels_item(
     item: "AISessionPromptChannels",
 ) -> AISessionPromptChannelsItem:
@@ -238,17 +267,29 @@ def to_ai_session_prompt_preview_item(
         conversation_summary=item.conversation_summary,
         relationship_context=item.relationship_context,
         tool_policy=item.tool_policy,
+        hard_rule_action=item.hard_rule_action,
+        hard_rule_reason_text=item.hard_rule_reason_text,
+        hard_rule_reason_codes=list(item.hard_rule_reason_codes),
         social_action=item.social_action,
         social_tool_mode=item.social_tool_mode,
         social_reason_text=item.social_reason_text,
         social_reason_codes=list(item.social_reason_codes),
         social_policy_source=item.social_policy_source,
+        preview_diagnostics=list(item.preview_diagnostics),
         tool_results=list(item.tool_results),
         memories=[to_ai_memory_item(memory) for memory in item.memories],
         operator_memory_count=item.operator_memory_count,
         summary_memory_count=item.summary_memory_count,
         long_term_memory_count=item.long_term_memory_count,
         knowledge_memory_count=item.knowledge_memory_count,
+        planning_prompt_diagnostics=to_ai_session_prompt_diagnostics_item(
+            item.planning_prompt_diagnostics,
+        ),
+        roleplay_prompt_diagnostics=(
+            to_ai_session_prompt_diagnostics_item(item.roleplay_prompt_diagnostics)
+            if item.roleplay_prompt_diagnostics is not None
+            else None
+        ),
         planning_channels=to_ai_session_prompt_channels_item(item.planning_channels),
         roleplay_channels=(
             to_ai_session_prompt_channels_item(item.roleplay_channels)

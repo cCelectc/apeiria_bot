@@ -112,7 +112,7 @@ async def select_pipeline_fallback_models(
         return ()
 
     from apeiria.ai.model.catalog.chat import ai_chat_model_service
-    from apeiria.ai.model.routing import AISelectedModel, select_source_for_profile
+    from apeiria.ai.model.routing import resolve_source_selected_model_with_fallback
     from apeiria.ai.model.routing.profile import ai_model_profile_service
     from apeiria.ai.model.sources.service import ai_source_service
 
@@ -122,7 +122,6 @@ async def select_pipeline_fallback_models(
     }
     sources = await ai_source_service.list_sources()
     source_models = await ai_chat_model_service.list_all_models()
-    models_by_id = {model.model_id: model for model in source_models if model.enabled}
 
     fallback_models: list[AISelectedModel] = []
     visited = {selected.profile.profile_id}
@@ -135,24 +134,20 @@ async def select_pipeline_fallback_models(
         if profile is None:
             break
 
-        source_model = models_by_id.get(profile.model_id)
-        if source_model is not None:
-            source = select_source_for_profile(sources, source_model.source_id)
-            candidate_key = (
-                source.source_id if source is not None else None,
-                source_model.model_identifier,
-            )
-            if source is not None and candidate_key != selected_key:
-                fallback_models.append(
-                    AISelectedModel(
-                        source=source,
-                        profile=profile,
-                        resolved_model_name=source_model.model_identifier,
-                    )
-                )
+        candidate = resolve_source_selected_model_with_fallback(
+            sources,
+            source_models,
+            profiles,
+            [profile],
+        )
+        if candidate is not None:
+            candidate_key = (candidate.source.source_id, candidate.resolved_model_name)
+            if candidate_key != selected_key:
+                fallback_models.append(candidate)
                 if len(fallback_models) >= limit:
                     break
-
-        next_profile_id = profile.fallback_profile_id
+            next_profile_id = candidate.profile.fallback_profile_id
+        else:
+            next_profile_id = profile.fallback_profile_id
 
     return tuple(fallback_models)

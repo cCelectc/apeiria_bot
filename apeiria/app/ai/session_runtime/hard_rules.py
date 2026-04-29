@@ -28,9 +28,14 @@ def decide_runtime_hard_rule(  # noqa: C901, PLR0911
     """Map existing wake/direct/source signals into a runtime hard-rule decision."""
 
     current_time = now or datetime.now(timezone.utc)
-    if session_runtime is not None and not session_runtime.record_event_if_new(
-        source.source_message_id,
-        now=current_time,
+    event_dedupe_key = source.event_dedupe_key or source.source_message_id
+    if (
+        session_runtime is not None
+        and not source.event_dedupe_claimed
+        and not session_runtime.record_event_if_new(
+            event_dedupe_key,
+            now=current_time,
+        )
     ):
         return _decision(
             action="drop",
@@ -93,7 +98,7 @@ def decide_runtime_hard_rule(  # noqa: C901, PLR0911
             },
         )
 
-    if session_runtime is not None and session_runtime.is_active:
+    if session_runtime is not None and session_runtime.has_other_active_turn:
         session_runtime.record_defer(
             reason="session_busy",
             queued_at=current_time,
@@ -236,6 +241,8 @@ def _decision(  # noqa: PLR0913
         "is_private": wake_context.is_private or source.is_private,
         "allow_group_initiative": wake_context.allow_group_initiative,
     }
+    if source.event_dedupe_key:
+        evidence["event_dedupe_key"] = source.event_dedupe_key
     if extra_evidence:
         evidence.update(extra_evidence)
     return RuntimeHardRuleDecision(

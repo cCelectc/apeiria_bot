@@ -40,91 +40,32 @@ from apeiria.app.ai.pipeline.routing import (
     select_post_tool_reply_task_class,
     select_pre_tool_reply_task_class,
 )
-from apeiria.app.ai.reply_strategy import (
-    count_recent_bot_turns,
-    latest_bot_turn_at,
-    latest_user_turn_text,
-    summarize_reply_strategy_decision,
+from apeiria.app.ai.reply_strategy import summarize_reply_strategy_decision
+from apeiria.app.ai.reply_strategy.models import ReplyStrategyDecision, WakeContext
+from apeiria.app.ai.session_runtime import (
+    RuntimeHardRuleDecision,
+    RuntimeTurnSource,
+    decide_runtime_hard_rule,
 )
 from apeiria.app.ai.tooling import ensure_app_ai_tools_loaded
 from apeiria.conversation.service import chat_session_service
 
 from .models import (
     AISessionPromptChannels,
+    AISessionPromptDiagnostics,
     AISessionPromptPreview,
     AISessionPromptSection,
 )
-from .prompt_projection import project_prompt_packet_to_channels
+from .prompt_projection import project_prompt_packet_to_preview
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
-    from apeiria.app.ai.reply_strategy.models import (
-        ReplyStrategyDecision,
-        SocialJudgmentInput,
-    )
     from apeiria.conversation.models import (
         ChatContextMessageView,
         ChatMessageDetailView,
         ChatSessionIdentity,
     )
-
-
-def _build_prompt_preview_social_input(  # noqa: PLR0913
-    *,
-    session_id: str,
-    identity: "ChatSessionIdentity",
-    latest_user_message: str,
-    conversation_summary: str | None,
-    relationship_context: str | None,
-    persona_id: str | None,
-    allowed_tool_names: tuple[str, ...],
-    context_turns: list["ChatContextMessageView"],
-):
-    from apeiria.app.ai.reply_strategy.models import SocialJudgmentInput
-
-    decision_time = (
-        latest_bot_turn_at(context_turns) or context_turns[-1].created_at
-        if context_turns
-        else datetime.now(timezone.utc)
-    )
-    return SocialJudgmentInput(
-        session_id=session_id,
-        scene_type=identity.scene_type,
-        message_text=latest_user_message,
-        latest_user_turn_text=latest_user_turn_text(context_turns),
-        conversation_summary=conversation_summary,
-        relationship_context=relationship_context,
-        persona_id=persona_id,
-        available_tool_names=allowed_tool_names,
-        recent_turn_count=len(context_turns),
-        recent_bot_turn_count=count_recent_bot_turns(context_turns),
-        last_bot_turn_at=latest_bot_turn_at(context_turns),
-        current_time=decision_time,
-        runtime_mode="message",
-        engagement_type="direct",
-        initiative_budget_score=None,
-        consecutive_silence_count=0,
-    )
-
-
-async def _evaluate_preview_social_judgment(
-    *,
-    judgment_input: "SocialJudgmentInput",
-    target: "AIModelBindingTarget",
-) -> "ReplyStrategyDecision":
-    """Run social judgment for workbench preview and wrap as ReplyStrategyDecision."""
-
-    from apeiria.app.ai.reply_strategy.models import judgment_to_decision
-    from apeiria.app.ai.reply_strategy.social_judgment import (
-        evaluate_social_judgment,
-    )
-
-    result = await evaluate_social_judgment(
-        judgment_input=judgment_input,
-        target=target,
-    )
-    return judgment_to_decision(result)
 
 
 def _find_recent_user_name(
@@ -145,6 +86,219 @@ async def _load_group_name(identity: "ChatSessionIdentity") -> str | None:
         return None
     group = await group_service.get_group(identity.scene_id)
     return group.group_name if group is not None else None
+
+
+def _build_preview_hard_rule_decision(
+    *,
+    identity: "ChatSessionIdentity",
+    latest_user_turn: "ChatMessageDetailView | None",
+    latest_user_message: str | None,
+    user_id: str | None,
+    now: datetime,
+):
+    """Evaluate preview-safe hard rules without touching session runtime state."""
+
+    is_private = identity.scene_type == "private"
+    direct_signal = is_private or bool(
+        latest_user_turn is not None
+        and (latest_user_turn.directed_to_bot or latest_user_turn.mentions_bot)
+    )
+    resolved_user_id = user_id or identity.subject_id or identity.scene_id
+    message_text = latest_user_message or ""
+    wake_context = WakeContext(
+        bot_self_id=identity.bot_id,
+        user_id=resolved_user_id,
+        message_text=message_text,
+        is_tome=direct_signal,
+        is_private=is_private,
+        is_future_task=False,
+    )
+    source = RuntimeTurnSource(
+        runtime_mode="message",
+        message_text=message_text,
+        source_message_id=(
+            latest_user_turn.message_id if latest_user_turn is not None else None
+        ),
+        user_id=resolved_user_id,
+        direct_signal=direct_signal,
+        is_private=is_private,
+        event_dedupe_key=(
+            latest_user_turn.platform_message_id
+            if latest_user_turn is not None
+            else None
+        ),
+        event_dedupe_claimed=True,
+    )
+    return decide_runtime_hard_rule(
+        wake_context=wake_context,
+        source=source,
+        session_runtime=None,
+        now=now,
+    )
+
+
+def _build_preview_social_decision(
+    *,
+    hard_rule_decision: RuntimeHardRuleDecision,
+    has_latest_user_message: bool,
+) -> ReplyStrategyDecision | None:
+    """Return a bounded no-model social-policy placeholder for preview."""
+
+    if not has_latest_user_message:
+        return None
+    if not hard_rule_decision.should_reply:
+        return ReplyStrategyDecision(
+            action="silent",
+            should_speak=False,
+            tool_mode="avoid",
+            reason_codes=("hard_rule_suppressed", *hard_rule_decision.reason_codes),
+            reason_text=hard_rule_decision.reason_text,
+            evidence={
+                "policy_source": "preview",
+                "hard_rule_action": hard_rule_decision.action,
+            },
+            decision_source="fallback",
+        )
+    return ReplyStrategyDecision(
+        action="reply",
+        should_speak=True,
+        tool_mode="allow",
+        reason_codes=("preview_social_judgment_not_invoked",),
+        reason_text="Preview does not call the social judgment model.",
+        evidence={"policy_source": "preview", "preview_only": True},
+        decision_source="fallback",
+    )
+
+
+def _build_preview_diagnostics(
+    *,
+    identity: "ChatSessionIdentity",
+    latest_user_turn: "ChatMessageDetailView | None",
+    hard_rule_decision: RuntimeHardRuleDecision,
+    social_decision: ReplyStrategyDecision | None,
+) -> tuple[str, ...]:
+    diagnostics = [
+        "social_judgment_model_not_invoked",
+        "future_task_metadata_unavailable",
+    ]
+    if latest_user_turn is None:
+        diagnostics.append("latest_user_message_unavailable")
+    elif identity.scene_type == "group":
+        diagnostics.append("live_platform_mention_assumed_from_persisted_message")
+    if not hard_rule_decision.should_reply:
+        diagnostics.extend(
+            f"hard_rule_suppressed:{reason_code}"
+            for reason_code in hard_rule_decision.reason_codes
+        )
+    if social_decision is not None and not social_decision.should_speak:
+        diagnostics.extend(
+            f"social_policy_suppressed:{reason_code}"
+            for reason_code in social_decision.reason_codes
+        )
+    return tuple(dict.fromkeys(diagnostics))
+
+
+def _suppressed_prompt_channels(
+    *,
+    mode: str,
+    reason_text: str,
+) -> AISessionPromptChannels:
+    return AISessionPromptChannels(
+        mode=mode,
+        system_instructions=(),
+        persona="",
+        style=None,
+        relationship=None,
+        person_profile=(),
+        social_policy=None,
+        tool_policy=None,
+        future_task=None,
+        tool_results=(),
+        operator_memories=(),
+        summary_memories=(),
+        long_term_memories=(),
+        knowledge_memories=(),
+        conversation_summary=None,
+        context_priority=(),
+        conversation_messages=(),
+        response_rules=(),
+        instruction=reason_text,
+        sections=(
+            AISessionPromptSection(
+                role="system",
+                name="Suppressed",
+                content=reason_text,
+            ),
+        ),
+    )
+
+
+def _suppressed_prompt_diagnostics() -> AISessionPromptDiagnostics:
+    return AISessionPromptDiagnostics(
+        prompt_purpose="suppressed",
+        stable_section_names=(),
+        dynamic_section_names=(),
+        stable_section_count=0,
+        dynamic_section_count=0,
+        total_section_count=0,
+    )
+
+
+def _build_preview_prompt_outputs(
+    *,
+    compose_input: AIRuntimeComposeInput,
+    has_tools: bool,
+    hard_rule_decision: RuntimeHardRuleDecision,
+    social_decision: ReplyStrategyDecision | None,
+) -> tuple[
+    AISessionPromptChannels,
+    AISessionPromptDiagnostics,
+    AISessionPromptChannels | None,
+    AISessionPromptDiagnostics | None,
+    str,
+    str | None,
+]:
+    planning_packet = build_pre_tool_reply_packet(compose_input, has_tools=has_tools)
+    planning_mode = "planner" if has_tools else "roleplay"
+    should_show_prompt = hard_rule_decision.should_reply and (
+        social_decision is None or social_decision.should_speak
+    )
+    if should_show_prompt:
+        planning_channels, planning_prompt_diagnostics = (
+            project_prompt_packet_to_preview(planning_packet, mode=planning_mode)
+        )
+        rendered_prompt = render_flat(planning_packet)
+    else:
+        suppression_text = (
+            hard_rule_decision.reason_text
+            if not hard_rule_decision.should_reply
+            else "Suppressed by social policy before prompt generation."
+        )
+        planning_channels = _suppressed_prompt_channels(
+            mode=planning_mode,
+            reason_text=suppression_text,
+        )
+        planning_prompt_diagnostics = _suppressed_prompt_diagnostics()
+        rendered_prompt = suppression_text
+
+    roleplay_packet = build_roleplay_reply_packet(compose_input)
+    if has_tools and should_show_prompt:
+        roleplay_channels, roleplay_prompt_diagnostics = (
+            project_prompt_packet_to_preview(roleplay_packet, mode="roleplay")
+        )
+        rendered_roleplay_prompt = render_flat(roleplay_packet)
+    else:
+        roleplay_channels = None
+        roleplay_prompt_diagnostics = None
+        rendered_roleplay_prompt = None
+    return (
+        planning_channels,
+        planning_prompt_diagnostics,
+        roleplay_channels,
+        roleplay_prompt_diagnostics,
+        rendered_prompt,
+        rendered_roleplay_prompt,
+    )
 
 
 async def build_scene_prompt_preview(
@@ -256,26 +410,22 @@ async def build_scene_prompt_preview(
         else None
     )
     context_turns = to_context_turns(turns)
-    social_decision = (
-        await _evaluate_preview_social_judgment(
-            judgment_input=_build_prompt_preview_social_input(
-                session_id=scene_id,
-                identity=identity,
-                latest_user_message=latest_user_message,
-                conversation_summary=conversation.summary_text,
-                relationship_context=relationship_context,
-                persona_id=persona.persona_id if persona is not None else None,
-                allowed_tool_names=tuple(tool.name for tool in allowed_tools),
-                context_turns=context_turns,
-            ),
-            target=AIModelBindingTarget(
-                conversation_id=identity.session_id,
-                group_id=identity.scene_id if identity.scene_type == "group" else None,
-                user_id=user_id,
-            ),
-        )
-        if latest_user_message
-        else None
+    hard_rule_decision = _build_preview_hard_rule_decision(
+        identity=identity,
+        latest_user_turn=latest_user_turn,
+        latest_user_message=latest_user_message,
+        user_id=user_id,
+        now=prompt_time,
+    )
+    social_decision = _build_preview_social_decision(
+        hard_rule_decision=hard_rule_decision,
+        has_latest_user_message=latest_user_message is not None,
+    )
+    preview_diagnostics = _build_preview_diagnostics(
+        identity=identity,
+        latest_user_turn=latest_user_turn,
+        hard_rule_decision=hard_rule_decision,
+        social_decision=social_decision,
     )
     compose_input = AIRuntimeComposeInput(
         persona=persona,
@@ -293,55 +443,18 @@ async def build_scene_prompt_preview(
         ),
         turns=context_turns,
     )
-    planning_packet = build_pre_tool_reply_packet(compose_input, has_tools=has_tools)
-    planning_mode = "planner" if has_tools else "roleplay"
-    planning_channels = (
-        project_prompt_packet_to_channels(planning_packet, mode=planning_mode)
-        if social_decision is None or social_decision.should_speak
-        else AISessionPromptChannels(
-            mode=planning_mode,
-            system_instructions=(),
-            persona="",
-            style=None,
-            relationship=None,
-            person_profile=(),
-            social_policy=None,
-            tool_policy=None,
-            future_task=None,
-            tool_results=(),
-            operator_memories=(),
-            summary_memories=(),
-            long_term_memories=(),
-            knowledge_memories=(),
-            conversation_summary=None,
-            context_priority=(),
-            conversation_messages=(),
-            response_rules=(),
-            instruction="Suppressed by social policy before prompt generation.",
-            sections=(
-                AISessionPromptSection(
-                    role="system",
-                    name="Suppressed",
-                    content="Suppressed by social policy before prompt generation.",
-                ),
-            ),
-        )
-    )
-    rendered_prompt = (
-        render_flat(planning_packet)
-        if social_decision is None or social_decision.should_speak
-        else "Suppressed by social policy before prompt generation."
-    )
-    roleplay_packet = build_roleplay_reply_packet(compose_input)
-    roleplay_channels = (
-        project_prompt_packet_to_channels(roleplay_packet, mode="roleplay")
-        if has_tools and (social_decision is None or social_decision.should_speak)
-        else None
-    )
-    rendered_roleplay_prompt = (
-        render_flat(roleplay_packet)
-        if has_tools and (social_decision is None or social_decision.should_speak)
-        else None
+    (
+        planning_channels,
+        planning_prompt_diagnostics,
+        roleplay_channels,
+        roleplay_prompt_diagnostics,
+        rendered_prompt,
+        rendered_roleplay_prompt,
+    ) = _build_preview_prompt_outputs(
+        compose_input=compose_input,
+        has_tools=has_tools,
+        hard_rule_decision=hard_rule_decision,
+        social_decision=social_decision,
     )
     operator_memory_count = sum(
         1 for memory in memories if memory.memory_layer == "operator"
@@ -389,6 +502,9 @@ async def build_scene_prompt_preview(
         conversation_summary=conversation.summary_text,
         relationship_context=relationship_context,
         tool_policy=tool_policy_text,
+        hard_rule_action=hard_rule_decision.action,
+        hard_rule_reason_text=hard_rule_decision.reason_text,
+        hard_rule_reason_codes=hard_rule_decision.reason_codes,
         social_action=social_decision.action if social_decision is not None else None,
         social_tool_mode=(
             social_decision.tool_mode if social_decision is not None else None
@@ -405,15 +521,18 @@ async def build_scene_prompt_preview(
             and social_decision.evidence.get("policy_source") is not None
             else None
         ),
+        preview_diagnostics=preview_diagnostics,
         tool_results=tool_results,
         memories=tuple(memories),
         operator_memory_count=operator_memory_count,
         summary_memory_count=summary_memory_count,
         long_term_memory_count=long_term_memory_count,
         knowledge_memory_count=knowledge_memory_count,
+        planning_prompt_diagnostics=planning_prompt_diagnostics,
+        roleplay_prompt_diagnostics=roleplay_prompt_diagnostics,
         planning_channels=planning_channels,
         roleplay_channels=roleplay_channels,
-        rendered_roleplay_prompt=rendered_roleplay_prompt if has_tools else None,
+        rendered_roleplay_prompt=rendered_roleplay_prompt,
         rendered_prompt=rendered_prompt,
     )
 

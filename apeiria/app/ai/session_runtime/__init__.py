@@ -9,6 +9,7 @@ from .context import (
     RuntimeTurnSource,
     TurnContext,
 )
+from .context_adapter import build_turn_context
 from .hard_rules import (
     decide_runtime_hard_rule,
     map_legacy_skip_to_runtime_decision,
@@ -35,6 +36,7 @@ from .tools import (
     ToolGatewayMigrationAdapter,
     ToolOrchestrator,
     build_default_tool_exposure_plan,
+    compile_tool_exposure_provider_schema,
 )
 from .trace import TurnTrace, project_turn_trace
 
@@ -63,6 +65,8 @@ __all__ = [
     "TurnTrace",
     "WaitState",
     "build_default_tool_exposure_plan",
+    "build_turn_context",
+    "compile_tool_exposure_provider_schema",
     "decide_runtime_hard_rule",
     "map_legacy_skip_to_runtime_decision",
     "project_turn_trace",

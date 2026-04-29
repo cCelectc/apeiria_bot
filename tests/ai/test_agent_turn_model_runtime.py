@@ -150,6 +150,50 @@ def test_model_runtime_uses_configured_fallback_candidate() -> None:
     ]
 
 
+def test_model_runtime_exposes_direct_capability_degradations() -> None:
+    selected = selected_model("main")
+    response = model_response(selected, "hello")
+    response = type(response)(
+        source_id=response.source_id,
+        model_name=response.model_name,
+        content=response.content,
+        provider_data={
+            "apeiria_degradations": [
+                {
+                    "kind": "tools_omitted",
+                    "reason": "optional_tools_unsupported",
+                    "detail": "model lacks tool calling",
+                    "metadata": {"tool_count": 1},
+                }
+            ]
+        },
+    )
+    gateway = ModelGatewayStub([response])
+    runtime = AgentTurnModelRuntime(model_gateway=gateway)
+
+    result = asyncio.run(
+        runtime.generate(
+            AgentModelGenerationRequest(
+                trace_id="trace-degraded",
+                session_id="session-1",
+                runtime_mode="message",
+                selected=selected,
+                prompt="Say hello",
+                response_source="direct",
+            )
+        )
+    )
+
+    assert result.turn.metadata["capability_degradations"] == [
+        {
+            "kind": "tools_omitted",
+            "reason": "optional_tools_unsupported",
+            "detail": "model lacks tool calling",
+            "metadata": {"tool_count": 1},
+        }
+    ]
+
+
 def test_pipeline_resolves_profile_fallback_candidates(monkeypatch: Any) -> None:
     from apeiria.ai.model.catalog import chat as chat_module
     from apeiria.ai.model.routing import profile as profile_module
@@ -178,6 +222,8 @@ def test_pipeline_resolves_profile_fallback_candidates(monkeypatch: Any) -> None
                 source_id=fallback.source.source_id,
                 model_identifier=fallback.resolved_model_name or "",
                 display_name="Fallback",
+                default_options={"max_tokens": 200},
+                capability_metadata={"tool_calling": True},
             ),
         ]
 
@@ -201,3 +247,7 @@ def test_pipeline_resolves_profile_fallback_candidates(monkeypatch: Any) -> None
         "profile-fallback"
     ]
     assert candidates[0].resolved_model_name == "model-fallback"
+    assert candidates[0].source_model is not None
+    assert candidates[0].source_model.model_id == fallback.profile.model_id
+    assert candidates[0].model_default_options == {"max_tokens": 200}
+    assert candidates[0].resolved_capabilities.supports_tool_calling is True

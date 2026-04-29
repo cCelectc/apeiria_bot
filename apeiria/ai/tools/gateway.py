@@ -88,6 +88,7 @@ class ToolGatewayRequest:
     runtime_mode: str = "message"
     tool_mode: str = "allow"
     execution_timeout_seconds: float | None = None
+    executable_tool_names: frozenset[str] | None = None
 
 
 @dataclass(frozen=True)
@@ -362,11 +363,24 @@ class ToolGateway:
         }
         if request.tool_mode == "avoid":
             allowed_names = set()
+        exposed_names = request.executable_tool_names
 
         observations: list[AIToolObservationResult | None] = [None] * len(intents)
         allowed_intents: list[AIToolIntent] = []
         allowed_positions: list[int] = []
         for index, intent in enumerate(intents):
+            if exposed_names is not None and intent.tool_name not in exposed_names:
+                observations[index] = AIToolObservationResult(
+                    tool_name=intent.tool_name,
+                    summary=f"- [{intent.tool_name}] not exposed for this turn",
+                    input_payload=intent.input_payload,
+                    output_payload={
+                        "error": "not_exposed_for_turn",
+                        "trace_id": request.trace_id,
+                    },
+                    status="error",
+                )
+                continue
             if intent.tool_name not in allowed_names:
                 observations[index] = AIToolObservationResult(
                     tool_name=intent.tool_name,

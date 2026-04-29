@@ -14,6 +14,8 @@ from apeiria.ai.retention import ai_retention_service
 from apeiria.ai.skills import ai_skill_service
 from apeiria.app.ai.future_task import ai_future_task_service
 from apeiria.app.ai.pipeline.generation_steps import (
+    build_initial_reply_prompt_diagnostics,
+    build_initial_reply_prompt_messages,
     generate_reply,
     prepare_generation,
 )
@@ -30,8 +32,12 @@ from apeiria.app.ai.reply_strategy import (
 )
 from apeiria.app.ai.reply_strategy.wake_gate import evaluate_wake
 from apeiria.app.ai.session_runtime import (
+    DeliveryTarget,
     InMemoryAISessionRuntimeResolver,
     RuntimeTurnSource,
+    SessionRuntimePolicy,
+    ToolExposurePlan,
+    build_turn_context,
     decide_runtime_hard_rule,
     map_legacy_skip_to_runtime_decision,
 )
@@ -79,6 +85,8 @@ class AIRuntimeReplyRequest:
     is_tome: bool = False
     future_task: "AIFutureTaskDefinition | None" = None
     sentiment: "AIMessageSentiment | None" = None
+    event_dedupe_key: str | None = None
+    event_dedupe_claimed: bool = False
 
 
 @dataclass(frozen=True)
@@ -97,9 +105,11 @@ class AIRuntimeService:
         *,
         session_runtime_resolver: Any | None = None,
     ) -> None:
-        self._session_runtime_resolver = (
-            session_runtime_resolver or InMemoryAISessionRuntimeResolver()
-        )
+        if session_runtime_resolver is None:
+            session_runtime_resolver = InMemoryAISessionRuntimeResolver(
+                policy=SessionRuntimePolicy.from_config(get_ai_plugin_config())
+            )
+        self._session_runtime_resolver = session_runtime_resolver
 
     async def handle_message(
         self,
@@ -134,6 +144,26 @@ class AIRuntimeService:
             return None
 
         identity, turn = ingested
+        event_dedupe_key = _message_event_dedupe_key(turn)
+        current_time = datetime.now(timezone.utc)
+        session_runtime = self._session_runtime_resolver.resolve(
+            identity.session_id,
+            now=current_time,
+        )
+        event_dedupe_claimed = False
+        if event_dedupe_key is not None:
+            event_dedupe_claimed = session_runtime.record_event_if_new(
+                event_dedupe_key,
+                now=current_time,
+            )
+            if not event_dedupe_claimed:
+                logger.debug(
+                    "AI skipped duplicate platform event for session {} key={}",
+                    identity.session_id,
+                    event_dedupe_key,
+                )
+                return None
+
         user_id = str(event.get_user_id())
         is_tome = bool(hasattr(event, "is_tome") and event.is_tome())
         extraction_result = await store_extracted_memories(
@@ -154,6 +184,8 @@ class AIRuntimeService:
                 runtime_mode="message",
                 is_tome=is_tome,
                 sentiment=extraction_result.sentiment,
+                event_dedupe_key=event_dedupe_key,
+                event_dedupe_claimed=event_dedupe_claimed,
             ),
             wake_context=wake_context,
         )
@@ -191,6 +223,7 @@ class AIRuntimeService:
                 sender_id=identity.bot_id,
                 runtime_mode="future_task",
                 future_task=task,
+                event_dedupe_key=task.source_message_id,
             ),
         )
 
@@ -242,6 +275,8 @@ class AIRuntimeService:
                 user_id=request.user_id,
                 direct_signal=request.is_tome,
                 is_private=identity.scene_type == "private",
+                event_dedupe_key=request.event_dedupe_key,
+                event_dedupe_claimed=request.event_dedupe_claimed,
             ),
             session_runtime=session_runtime,
             now=current_time,
@@ -292,6 +327,28 @@ class AIRuntimeService:
         )
         if prep is None:
             return None
+        turn_context = build_turn_context(
+            trace_id=trace_id,
+            request=request,
+            inputs=inputs,
+            hard_decision=hard_decision,
+            social_decision=social_decision,
+            delivery_target=_delivery_target_for_request(request),
+            prompt_messages=build_initial_reply_prompt_messages(
+                request=request,
+                inputs=inputs,
+                social_decision=social_decision,
+                prep=prep,
+            ),
+            tool_exposure_plan=_tool_exposure_plan_from_preparation(prep),
+            current_time=current_time,
+            prompt_diagnostics=build_initial_reply_prompt_diagnostics(
+                request=request,
+                inputs=inputs,
+                social_decision=social_decision,
+                prep=prep,
+            ),
+        )
 
         gen = await generate_reply(
             request=request,
@@ -300,6 +357,7 @@ class AIRuntimeService:
             prep=prep,
             current_time=current_time,
             trace_id=trace_id,
+            turn_context=turn_context,
         )
         response = gen.response
         if response is None or not response.content.strip():
@@ -348,6 +406,41 @@ class AIRuntimeService:
             reply_text=response.content.strip(),
             delivery_result=gen.delivery_result,
         )
+
+
+def _message_event_dedupe_key(turn: Any) -> str | None:
+    platform_message_id = getattr(turn, "platform_message_id", None)
+    if isinstance(platform_message_id, str) and platform_message_id.strip():
+        return f"platform_message:{platform_message_id.strip()}"
+
+    source_message_id = getattr(turn, "message_id", None)
+    if isinstance(source_message_id, str) and source_message_id.strip():
+        return f"source_message:{source_message_id.strip()}"
+
+    return None
+
+
+def _delivery_target_for_request(request: AIRuntimeReplyRequest) -> DeliveryTarget:
+    if request.runtime_mode == "future_task":
+        return DeliveryTarget(
+            session_id=request.identity.session_id,
+            delivery_channel="future_task",
+        )
+    return DeliveryTarget(
+        session_id=request.identity.session_id,
+        reply_to_message_id=request.source_message_id,
+        delivery_channel="message",
+    )
+
+
+def _tool_exposure_plan_from_preparation(prep: Any) -> ToolExposurePlan:
+    return ToolExposurePlan(
+        selected_tools=prep.skill_runtime.available_tools,
+        diagnostics={
+            "selected_tool_count": len(prep.skill_runtime.available_tools),
+            "source": "tool_gateway_prepare",
+        },
+    )
 
 
 ai_runtime_service = AIRuntimeService()

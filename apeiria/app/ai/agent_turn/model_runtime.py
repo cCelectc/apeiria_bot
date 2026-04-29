@@ -113,6 +113,7 @@ class AgentTurnModelRuntime:
                     response_source=request.response_source,
                 )
             )
+            metadata = _turn_metadata_from_response(response)
             return AgentModelGenerationResult(
                 response=response,
                 selected=selected,
@@ -128,6 +129,7 @@ class AgentTurnModelRuntime:
                     model_attempts=tuple(attempts),
                     response=response,
                     response_source=request.response_source,
+                    metadata=metadata,
                 ),
             )
 
@@ -161,3 +163,21 @@ def _planned_feature_for_request(request: AgentModelGenerationRequest) -> str:
             if kind in {"image", "audio", "file"}:
                 return "modality"
     return "unknown"
+
+
+def _turn_metadata_from_response(response: Any) -> dict[str, object]:
+    provider_data = getattr(response, "provider_data", None)
+    if not isinstance(provider_data, dict):
+        return {}
+    raw_degradations = provider_data.get("apeiria_degradations")
+    if not isinstance(raw_degradations, list):
+        return {}
+
+    degradations = [
+        item
+        for item in raw_degradations[:5]
+        if isinstance(item, dict) and isinstance(item.get("kind"), str)
+    ]
+    if not degradations:
+        return {}
+    return {"capability_degradations": degradations}

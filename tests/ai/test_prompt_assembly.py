@@ -16,6 +16,7 @@ from apeiria.ai.prompting import (
     build_reply_planner_packet,
     project_prompt_regions,
     project_reply_prompt_regions,
+    prompt_region_diagnostics,
     render_flat,
     render_messages,
 )
@@ -145,6 +146,7 @@ def test_prompting_public_exports_are_explicit() -> None:
         "build_tool_intent_planning_packet",
         "project_prompt_regions",
         "project_reply_prompt_regions",
+        "prompt_region_diagnostics",
         "render_flat",
         "render_messages",
     ]
@@ -176,6 +178,34 @@ def test_prompt_region_projection_is_inspectable_and_preserves_rendering() -> No
         "Instruction",
     ]
     assert render_messages(projection.to_packet()) == render_messages(packet)
+
+
+def test_prompt_region_diagnostics_are_bounded() -> None:
+    packet = PromptPacket(
+        purpose="reply_final",
+        sections=(
+            PromptSection(role="system", name="SystemInstructions", content="runtime"),
+            PromptSection(role="system", name="Persona", content="persona"),
+            PromptSection(role="user", name="Instruction", content="reply"),
+        ),
+    )
+
+    diagnostics = prompt_region_diagnostics(
+        project_prompt_regions(
+            packet,
+            stable_section_names=("SystemInstructions", "Persona"),
+        )
+    )
+
+    assert diagnostics == {
+        "prompt_purpose": "reply_final",
+        "stable_section_names": ("SystemInstructions", "Persona"),
+        "dynamic_section_names": ("Instruction",),
+        "stable_section_count": 2,
+        "dynamic_section_count": 1,
+        "total_section_count": 3,
+    }
+    assert "persona" not in str(diagnostics)
 
 
 def test_reply_prompt_regions_keep_stable_prefix_before_dynamic_turn_data() -> None:
