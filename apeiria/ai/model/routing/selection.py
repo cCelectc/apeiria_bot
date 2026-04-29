@@ -2,10 +2,17 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from apeiria.ai.model.routing.models import AIModelProfileDefinition
+from apeiria.ai.model.runtime.capabilities import (
+    AIModelCapabilities,
+    merge_model_capabilities,
+    parse_model_capabilities,
+)
+from apeiria.ai.model.runtime.registry import provider_adapter_registry
+from apeiria.ai.model.sources.models import resolve_adapter_kind_for_client_type
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -25,6 +32,11 @@ class AISelectedModel:
     source: "AISourceDefinition"
     profile: "AIModelProfileDefinition"
     resolved_model_name: str | None = None
+    source_model: "AISourceModelDefinition | None" = None
+    resolved_capabilities: AIModelCapabilities = field(
+        default_factory=AIModelCapabilities
+    )
+    model_default_options: dict[str, object] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -119,6 +131,12 @@ def resolve_implicit_selected_model(
         source=enabled_source_map[selected_model.source_id],
         profile=implicit_profile,
         resolved_model_name=selected_model.model_identifier,
+        source_model=selected_model,
+        resolved_capabilities=_resolve_capabilities(
+            source=enabled_source_map[selected_model.source_id],
+            model=selected_model,
+        ),
+        model_default_options=dict(selected_model.default_options or {}),
     )
 
 
@@ -138,6 +156,12 @@ def _resolve_source_selected_model(
         source=source,
         profile=profile,
         resolved_model_name=selected_model.model_identifier,
+        source_model=selected_model,
+        resolved_capabilities=_resolve_capabilities(
+            source=source,
+            model=selected_model,
+        ),
+        model_default_options=dict(selected_model.default_options or {}),
     )
 
 
@@ -205,4 +229,25 @@ def resolve_capability_selected_model(
         capability_type=capability_type,
         source=source_by_id[selected_model.source_id],
         model=selected_model,
+    )
+
+
+def _resolve_capabilities(
+    *,
+    source: "AISourceDefinition",
+    model: "AISourceModelDefinition",
+) -> AIModelCapabilities:
+    adapter_kind = source.adapter_kind or resolve_adapter_kind_for_client_type(
+        source.client_type
+    )
+    adapter_capabilities = provider_adapter_registry.get(
+        adapter_kind
+    ).default_capabilities
+    source_capabilities = merge_model_capabilities(
+        adapter_capabilities,
+        parse_model_capabilities(source.capability_metadata),
+    )
+    return merge_model_capabilities(
+        source_capabilities,
+        parse_model_capabilities(model.capability_metadata),
     )

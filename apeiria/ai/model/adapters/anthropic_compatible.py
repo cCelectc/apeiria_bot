@@ -83,10 +83,17 @@ class AnthropicCompatibleProvider:
             "messages": chat_messages,
             "max_tokens": request.max_tokens or 1024,
         }
+        planned_options = request.options or request.extra or {}
+        max_tokens = request.max_tokens or _coerce_int(planned_options, "max_tokens")
+        if max_tokens is not None:
+            payload["max_tokens"] = max_tokens
         if system_text:
             payload["system"] = system_text
-        if request.temperature is not None:
-            payload["temperature"] = request.temperature
+        temperature = request.temperature
+        if temperature is None:
+            temperature = _coerce_float(planned_options, "temperature")
+        if temperature is not None:
+            payload["temperature"] = temperature
         if request.tools:
             payload["tools"] = [
                 {
@@ -115,6 +122,13 @@ class AnthropicCompatibleProvider:
             content=_extract_anthropic_content(response),
             tool_calls=tuple(_extract_anthropic_tool_calls(response)),
             raw=raw,
+            usage=raw.get("usage") if isinstance(raw.get("usage"), dict) else None,
+            finish_reason=(
+                str(raw.get("stop_reason")) if raw.get("stop_reason") else None
+            ),
+            response_id=str(raw.get("id")) if raw.get("id") is not None else None,
+            reasoning_content=_extract_anthropic_reasoning_content(response),
+            provider_data=_extract_anthropic_provider_data(raw),
         )
 
     async def list_models(
@@ -186,6 +200,20 @@ def _coerce_int(extra: dict[str, Any] | None, key: str) -> int | None:
     if isinstance(value, str) and value.strip():
         try:
             return int(value.strip())
+        except ValueError:
+            return None
+    return None
+
+
+def _coerce_float(extra: dict[str, Any] | None, key: str) -> float | None:
+    if not extra:
+        return None
+    value = extra.get(key)
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, str) and value.strip():
+        try:
+            return float(value.strip())
         except ValueError:
             return None
     return None
@@ -271,6 +299,28 @@ def _extract_anthropic_tool_calls(response: Any) -> list[AIModelToolCall]:
     return extracted
 
 
+def _extract_anthropic_reasoning_content(response: Any) -> str | None:
+    content = getattr(response, "content", None)
+    if not isinstance(content, list):
+        return None
+    parts: list[str] = []
+    for block in content:
+        if getattr(block, "type", None) in {"thinking", "redacted_thinking"}:
+            text = getattr(block, "thinking", None) or getattr(block, "data", None)
+            if isinstance(text, str) and text:
+                parts.append(text)
+    return "\n".join(parts) if parts else None
+
+
+def _extract_anthropic_provider_data(raw: dict[str, Any]) -> dict[str, Any] | None:
+    data = {
+        key: raw[key]
+        for key in ("stop_sequence", "model")
+        if key in raw and raw[key] is not None
+    }
+    return data or None
+
+
 def _build_anthropic_payload(
     messages: tuple[AIModelMessage, ...],
     fallback_prompt: str,
@@ -291,16 +341,16 @@ def _build_anthropic_payload(
 
     for msg in messages:
         if msg.role == "system":
-            system_parts.append(msg.content)
+            system_parts.append(msg.text_content)
             continue
 
         if msg.role == "user":
-            _append_anthropic_user(chat, msg.content)
+            _append_anthropic_user(chat, msg.text_content)
 
         elif msg.role == "assistant":
             content: list[dict[str, Any]] = []
-            if msg.content:
-                content.append({"type": "text", "text": msg.content})
+            if msg.text_content:
+                content.append({"type": "text", "text": msg.text_content})
             content.extend(
                 {
                     "type": "tool_use",
@@ -322,7 +372,7 @@ def _build_anthropic_payload(
             tool_result_block: dict[str, Any] = {
                 "type": "tool_result",
                 "tool_use_id": msg.tool_call_id or "",
-                "content": msg.content,
+                "content": msg.text_content,
             }
             # Merge into the last message if it's already a user message
             # with list content (i.e. another tool_result).

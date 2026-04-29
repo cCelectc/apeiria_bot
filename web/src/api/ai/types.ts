@@ -120,8 +120,12 @@ export interface AISourcePresetItem {
   display_name: string
   capability_type: string
   client_type: string
+  adapter_kind: string
   default_api_base: string | null
   description: string
+  capability_metadata: Record<string, unknown>
+  default_options: Record<string, unknown>
+  capability_provenance: Record<string, unknown>
 }
 
 export interface AIBootstrapResponse {
@@ -136,6 +140,7 @@ export interface AISourceItem {
   name: string
   capability_type: string
   client_type: string
+  adapter_kind: string | null
   preset_type: string
   api_base: string | null
   api_key_env_name: string | null
@@ -143,6 +148,9 @@ export interface AISourceItem {
   timeout_seconds: number | null
   custom_headers: Record<string, string>
   extra_config: Record<string, unknown>
+  capability_metadata: Record<string, unknown>
+  default_options: Record<string, unknown>
+  capability_provenance: Record<string, unknown>
 }
 
 export interface AISourceModelItem {
@@ -153,6 +161,9 @@ export interface AISourceModelItem {
   enabled: boolean
   is_default: boolean
   extra_params: Record<string, unknown>
+  capability_metadata: Record<string, unknown>
+  default_options: Record<string, unknown>
+  capability_provenance: Record<string, unknown>
 }
 
 export interface AISourceModelTestResult {
@@ -305,6 +316,9 @@ export interface AIRelationshipEventItem {
 export interface AIModelCatalogItem {
   id: string
   name: string
+  capability_metadata: Record<string, unknown>
+  default_options: Record<string, unknown>
+  capability_provenance: Record<string, unknown>
 }
 
 export interface AIPersonMemoryPointItem {

@@ -5,6 +5,7 @@ export interface SourceFormState {
   name: string
   preset_type: string
   capability_type: string
+  adapter_kind: string
   api_base: string
   api_keys: string[]
   api_key_env_name: string
@@ -17,6 +18,9 @@ export interface SourceFormState {
   tts_response_format: string
   rerank_api_suffix: string
   rerank_top_n: number | null
+  capability_metadata_json: string
+  default_options_json: string
+  capability_provenance_json: string
 }
 
 export interface ModelFormState {
@@ -26,6 +30,9 @@ export interface ModelFormState {
   display_name: string
   enabled: boolean
   is_default: boolean
+  capability_metadata_json: string
+  default_options_json: string
+  capability_provenance_json: string
 }
 
 export interface ProfileFormState {
@@ -44,6 +51,7 @@ export function buildSourceSnapshot (form: SourceFormState) {
     name: form.name.trim(),
     preset_type: form.preset_type,
     capability_type: form.capability_type,
+    adapter_kind: form.adapter_kind.trim(),
     api_base: form.api_base.trim(),
     api_keys: normalizeApiKeys(form.api_keys),
     api_key_env_name: form.api_key_env_name.trim(),
@@ -56,6 +64,9 @@ export function buildSourceSnapshot (form: SourceFormState) {
     tts_response_format: form.tts_response_format.trim(),
     rerank_api_suffix: form.rerank_api_suffix.trim(),
     rerank_top_n: form.rerank_top_n,
+    capability_metadata_json: form.capability_metadata_json.trim(),
+    default_options_json: form.default_options_json.trim(),
+    capability_provenance_json: form.capability_provenance_json.trim(),
   })
 }
 
@@ -67,6 +78,9 @@ export function buildModelSnapshot (form: ModelFormState) {
     display_name: form.display_name.trim(),
     enabled: form.enabled,
     is_default: form.is_default,
+    capability_metadata_json: form.capability_metadata_json.trim(),
+    default_options_json: form.default_options_json.trim(),
+    capability_provenance_json: form.capability_provenance_json.trim(),
   })
 }
 
@@ -176,4 +190,26 @@ export function extractSourceApiKeys (item: AISourceItem) {
     .filter((value): value is string => typeof value === 'string')
     .map(value => value.trim())
     .filter(Boolean)
+}
+
+export function stringifyJsonObject (value: unknown) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return '{}'
+  }
+  return JSON.stringify(value, null, 2)
+}
+
+export function parseJsonObject (value: string) {
+  const normalized = value.trim()
+  if (!normalized) {
+    return {}
+  }
+  try {
+    const parsed = JSON.parse(normalized)
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? parsed as Record<string, unknown>
+      : {}
+  } catch {
+    return {}
+  }
 }

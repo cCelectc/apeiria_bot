@@ -17,6 +17,9 @@ class AISourceModelDefinition:
     enabled: bool = True
     is_default: bool = False
     extra_params: dict[str, Any] | None = None
+    capability_metadata: dict[str, Any] | None = None
+    default_options: dict[str, Any] | None = None
+    capability_provenance: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True)

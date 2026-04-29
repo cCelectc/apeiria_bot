@@ -182,6 +182,23 @@ def test_database_schema_declares_value_checks(tmp_path: Path) -> None:
             connection,
             "ai_source",
         )
+        assert "capability_provenance_json" in _table_sql(
+            connection,
+            "ai_source",
+        )
+        assert "json_valid(capability_provenance_json)" in _table_sql(
+            connection,
+            "ai_source",
+        )
+        for table_name in SOURCE_MODEL_TABLE_NAMES:
+            assert "capability_provenance_json" in _table_sql(
+                connection,
+                table_name,
+            )
+            assert "json_valid(capability_provenance_json)" in _table_sql(
+                connection,
+                table_name,
+            )
         assert "scope_type IN" in _table_sql(connection, "ai_tool_policy")
         assert "'private_and_tome'" not in _table_sql(connection, "ai_tool_policy")
         assert "CHECK(status IN ('success', 'error', 'timeout'))" in _table_sql(
@@ -202,6 +219,38 @@ def test_database_schema_declares_value_checks(tmp_path: Path) -> None:
         )
 
 
+def test_database_ensure_ready_adds_provider_metadata_columns_to_v1_shape(
+    tmp_path: Path,
+) -> None:
+    database = ApeiriaDatabase(project_root=tmp_path)
+    _create_minimal_legacy_ai_model_tables(database)
+
+    database.ensure_ready()
+
+    with database.connect_sync() as connection:
+        source_row = connection.execute(
+            """
+            SELECT adapter_kind, capability_metadata_json, default_options_json
+                , capability_provenance_json
+            FROM ai_source
+            WHERE source_id = ?
+            """,
+            ("source-legacy",),
+        ).fetchone()
+        model_row = connection.execute(
+            """
+            SELECT capability_metadata_json, default_options_json
+                , capability_provenance_json
+            FROM ai_chat_model
+            WHERE model_id = ?
+            """,
+            ("model-legacy",),
+        ).fetchone()
+
+    assert source_row == ("anthropic_compatible", "{}", "{}", "{}")
+    assert model_row == ("{}", "{}", "{}")
+
+
 def _create_schema_meta(
     database: ApeiriaDatabase,
     *,
@@ -209,35 +258,140 @@ def _create_schema_meta(
     schema_version: int,
 ) -> None:
     with database.connect_sync() as connection:
+        _create_schema_meta_in_connection(
+            connection,
+            schema_line=schema_line,
+            schema_version=schema_version,
+        )
+
+
+def _create_minimal_legacy_ai_model_tables(database: ApeiriaDatabase) -> None:
+    with database.connect_sync() as connection:
+        _create_schema_meta_in_connection(
+            connection,
+            schema_line=CURRENT_SCHEMA_LINE,
+            schema_version=CURRENT_SCHEMA_VERSION,
+        )
         connection.execute(
             """
-            CREATE TABLE apeiria_schema_meta (
-                id INTEGER PRIMARY KEY,
-                schema_line TEXT NOT NULL,
-                schema_version INTEGER NOT NULL,
-                created_at TEXT NOT NULL,
+            CREATE TABLE ai_source (
+                source_id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                capability_type TEXT NOT NULL,
+                client_type TEXT NOT NULL,
+                preset_type TEXT NOT NULL,
+                api_base TEXT,
+                api_key_env_name TEXT,
+                enabled INTEGER NOT NULL DEFAULT 1,
+                timeout_seconds INTEGER,
+                custom_headers_json TEXT NOT NULL DEFAULT '{}',
+                extra_config_json TEXT NOT NULL DEFAULT '{}',
                 updated_at TEXT NOT NULL
             )
             """
         )
         connection.execute(
             """
-            INSERT INTO apeiria_schema_meta (
-                id,
-                schema_line,
-                schema_version,
-                created_at,
+            INSERT INTO ai_source (
+                source_id,
+                name,
+                capability_type,
+                client_type,
+                preset_type,
+                enabled,
+                custom_headers_json,
+                extra_config_json,
                 updated_at
-            ) VALUES (?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
+                "source-legacy",
+                "Legacy",
+                "chat_completion",
+                "anthropic",
+                "anthropic_compatible",
                 1,
-                schema_line,
-                schema_version,
-                "2026-04-25T00:00:00",
+                "{}",
+                "{}",
                 "2026-04-25T00:00:00",
             ),
         )
+        for table_name in SOURCE_MODEL_TABLE_NAMES:
+            connection.execute(
+                f"""
+                CREATE TABLE {table_name} (
+                    model_id TEXT PRIMARY KEY,
+                    source_id TEXT NOT NULL,
+                    model_identifier TEXT NOT NULL,
+                    display_name TEXT NOT NULL,
+                    enabled INTEGER NOT NULL DEFAULT 1,
+                    is_default INTEGER NOT NULL DEFAULT 0,
+                    extra_params_json TEXT NOT NULL DEFAULT '{{}}',
+                    updated_at TEXT NOT NULL
+                )
+                """
+            )
+        connection.execute(
+            """
+            INSERT INTO ai_chat_model (
+                model_id,
+                source_id,
+                model_identifier,
+                display_name,
+                enabled,
+                is_default,
+                extra_params_json,
+                updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "model-legacy",
+                "source-legacy",
+                "claude-legacy",
+                "Claude Legacy",
+                1,
+                1,
+                "{}",
+                "2026-04-25T00:00:00",
+            ),
+        )
+
+
+def _create_schema_meta_in_connection(
+    connection: "Connection",
+    *,
+    schema_line: str,
+    schema_version: int,
+) -> None:
+    connection.execute(
+        """
+        CREATE TABLE apeiria_schema_meta (
+            id INTEGER PRIMARY KEY,
+            schema_line TEXT NOT NULL,
+            schema_version INTEGER NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+        """
+    )
+    connection.execute(
+        """
+        INSERT INTO apeiria_schema_meta (
+            id,
+            schema_line,
+            schema_version,
+            created_at,
+            updated_at
+        ) VALUES (?, ?, ?, ?, ?)
+        """,
+        (
+            1,
+            schema_line,
+            schema_version,
+            "2026-04-25T00:00:00",
+            "2026-04-25T00:00:00",
+        ),
+    )
 
 
 def _table_names(connection: "Connection") -> set[str]:

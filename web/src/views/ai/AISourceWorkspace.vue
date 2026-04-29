@@ -162,6 +162,40 @@
         <v-expansion-panel-text>
           <div class="source-advanced-form pt-2">
             <v-text-field
+              v-model.trim="sourceForm.adapter_kind"
+              density="comfortable"
+              :disabled="savingSource"
+              hide-details
+              :label="t('ai.sourceAdapterKind')"
+            />
+            <v-textarea
+              v-model="sourceForm.capability_metadata_json"
+              auto-grow
+              density="comfortable"
+              :disabled="savingSource"
+              hide-details
+              :label="t('ai.capabilityMetadata')"
+              rows="2"
+            />
+            <v-textarea
+              v-model="sourceForm.default_options_json"
+              auto-grow
+              density="comfortable"
+              :disabled="savingSource"
+              hide-details
+              :label="t('ai.defaultOptions')"
+              rows="2"
+            />
+            <v-textarea
+              v-model="sourceForm.capability_provenance_json"
+              auto-grow
+              density="comfortable"
+              :disabled="savingSource"
+              hide-details
+              :label="t('ai.capabilityProvenance')"
+              rows="2"
+            />
+            <v-text-field
               v-model.number="sourceForm.timeout_seconds"
               density="comfortable"
               :disabled="savingSource"

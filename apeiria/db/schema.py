@@ -86,6 +86,7 @@ def ensure_database_ready_sync(database: "ApeiriaDatabase | None" = None) -> Non
                 observed=meta.schema_version,
                 expected=CURRENT_SCHEMA_VERSION,
             )
+        _ensure_current_schema_shape(connection)
 
 
 async def ensure_database_ready(database: "ApeiriaDatabase | None" = None) -> None:
@@ -125,6 +126,86 @@ def _read_schema_meta(connection: sqlite3.Connection) -> SchemaMetaRecord | None
     if row is None:
         return None
     return SchemaMetaRecord(schema_line=str(row[0]), schema_version=int(row[1]))
+
+
+def _column_names(connection: sqlite3.Connection, table_name: str) -> set[str]:
+    return {
+        str(row[1]) for row in connection.execute(f"PRAGMA table_info({table_name})")
+    }
+
+
+def _ensure_current_schema_shape(connection: sqlite3.Connection) -> None:
+    """Apply additive JSON metadata columns for in-development v1 databases."""
+
+    source_columns = _column_names(connection, "ai_source")
+    if "adapter_kind" not in source_columns:
+        connection.execute(
+            """
+            ALTER TABLE ai_source
+            ADD COLUMN adapter_kind TEXT NOT NULL DEFAULT 'openai_compatible'
+            """
+        )
+    if "capability_metadata_json" not in source_columns:
+        connection.execute(
+            """
+            ALTER TABLE ai_source
+            ADD COLUMN capability_metadata_json TEXT NOT NULL DEFAULT '{}'
+            """
+        )
+    if "default_options_json" not in source_columns:
+        connection.execute(
+            """
+            ALTER TABLE ai_source
+            ADD COLUMN default_options_json TEXT NOT NULL DEFAULT '{}'
+            """
+        )
+    if "capability_provenance_json" not in source_columns:
+        connection.execute(
+            """
+            ALTER TABLE ai_source
+            ADD COLUMN capability_provenance_json TEXT NOT NULL DEFAULT '{}'
+            """
+        )
+    connection.execute(
+        """
+        UPDATE ai_source
+        SET adapter_kind = CASE client_type
+            WHEN 'anthropic' THEN 'anthropic_compatible'
+            WHEN 'generic_rerank' THEN 'generic_rerank'
+            ELSE 'openai_compatible'
+        END
+        WHERE adapter_kind IS NULL
+            OR adapter_kind = ''
+            OR (
+                adapter_kind = 'openai_compatible'
+                AND client_type IN ('anthropic', 'generic_rerank')
+            )
+        """
+    )
+
+    for table_name in SOURCE_MODEL_TABLE_NAMES:
+        columns = _column_names(connection, table_name)
+        if "capability_metadata_json" not in columns:
+            connection.execute(
+                f"""
+                ALTER TABLE {table_name}
+                ADD COLUMN capability_metadata_json TEXT NOT NULL DEFAULT '{{}}'
+                """
+            )
+        if "default_options_json" not in columns:
+            connection.execute(
+                f"""
+                ALTER TABLE {table_name}
+                ADD COLUMN default_options_json TEXT NOT NULL DEFAULT '{{}}'
+                """
+            )
+        if "capability_provenance_json" not in columns:
+            connection.execute(
+                f"""
+                ALTER TABLE {table_name}
+                ADD COLUMN capability_provenance_json TEXT NOT NULL DEFAULT '{{}}'
+                """
+            )
 
 
 def _sqlite_supports_json_valid(connection: sqlite3.Connection) -> bool:
@@ -246,6 +327,12 @@ def _create_governance_tables(connection: sqlite3.Connection) -> None:
 def _create_ai_control_plane_tables(connection: sqlite3.Connection) -> None:
     custom_headers_check = _json_check(connection, "custom_headers_json")
     extra_config_check = _json_check(connection, "extra_config_json")
+    capability_metadata_check = _json_check(connection, "capability_metadata_json")
+    default_options_check = _json_check(connection, "default_options_json")
+    capability_provenance_check = _json_check(
+        connection,
+        "capability_provenance_json",
+    )
     connection.execute(
         f"""
         CREATE TABLE ai_source (
@@ -263,6 +350,13 @@ def _create_ai_control_plane_tables(connection: sqlite3.Connection) -> None:
             client_type TEXT NOT NULL CHECK(
                 client_type IN ('openai', 'anthropic', 'generic_rerank')
             ),
+            adapter_kind TEXT NOT NULL DEFAULT 'openai_compatible' CHECK(
+                adapter_kind IN (
+                    'openai_compatible',
+                    'anthropic_compatible',
+                    'generic_rerank'
+                )
+            ),
             preset_type TEXT NOT NULL CHECK(
                 preset_type IN (
                     'openai_compatible',
@@ -270,7 +364,8 @@ def _create_ai_control_plane_tables(connection: sqlite3.Connection) -> None:
                     'openai_compatible_stt',
                     'openai_compatible_tts',
                     'generic_rerank_api',
-                    'anthropic_compatible'
+                    'anthropic_compatible',
+                    'openrouter'
                 )
             ),
             api_base TEXT,
@@ -283,6 +378,12 @@ def _create_ai_control_plane_tables(connection: sqlite3.Connection) -> None:
                 CHECK({custom_headers_check}),
             extra_config_json TEXT NOT NULL DEFAULT '{{}}'
                 CHECK({extra_config_check}),
+            capability_metadata_json TEXT NOT NULL DEFAULT '{{}}'
+                CHECK({capability_metadata_check}),
+            default_options_json TEXT NOT NULL DEFAULT '{{}}'
+                CHECK({default_options_check}),
+            capability_provenance_json TEXT NOT NULL DEFAULT '{{}}'
+                CHECK({capability_provenance_check}),
             updated_at TEXT NOT NULL
         )
         """
@@ -346,6 +447,12 @@ def _create_ai_control_plane_tables(connection: sqlite3.Connection) -> None:
 
 def _create_source_model_tables(connection: sqlite3.Connection) -> None:
     extra_params_check = _json_check(connection, "extra_params_json")
+    capability_metadata_check = _json_check(connection, "capability_metadata_json")
+    default_options_check = _json_check(connection, "default_options_json")
+    capability_provenance_check = _json_check(
+        connection,
+        "capability_provenance_json",
+    )
     for table_name in SOURCE_MODEL_TABLE_NAMES:
         connection.execute(
             f"""
@@ -358,6 +465,12 @@ def _create_source_model_tables(connection: sqlite3.Connection) -> None:
                 is_default INTEGER NOT NULL DEFAULT 0 CHECK(is_default IN (0, 1)),
                 extra_params_json TEXT NOT NULL DEFAULT '{{}}'
                     CHECK({extra_params_check}),
+                capability_metadata_json TEXT NOT NULL DEFAULT '{{}}'
+                    CHECK({capability_metadata_check}),
+                default_options_json TEXT NOT NULL DEFAULT '{{}}'
+                    CHECK({default_options_check}),
+                capability_provenance_json TEXT NOT NULL DEFAULT '{{}}'
+                    CHECK({capability_provenance_check}),
                 updated_at TEXT NOT NULL,
                 UNIQUE(source_id, model_identifier),
                 FOREIGN KEY(source_id)

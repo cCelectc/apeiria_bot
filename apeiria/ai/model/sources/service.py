@@ -6,7 +6,7 @@ import os
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from json import dumps
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 from uuid import uuid4
 
 from apeiria.ai.model.sources.models import (
@@ -16,9 +16,18 @@ from apeiria.ai.model.sources.models import (
     AISourceDefinition,
     AISourcePresetDefinition,
     AISourcePresetType,
+    resolve_adapter_kind_for_client_type,
 )
 from apeiria.db.runtime import database_runtime
 from apeiria.utils.json_utils import safe_json_loads
+
+if TYPE_CHECKING:
+    from apeiria.ai.model.runtime.capabilities import AIModelAdapterKind
+
+_ADAPTER_KIND_COLUMN_INDEX = 11
+_CAPABILITY_METADATA_COLUMN_INDEX = 12
+_DEFAULT_OPTIONS_COLUMN_INDEX = 13
+_CAPABILITY_PROVENANCE_COLUMN_INDEX = 14
 
 
 @dataclass(frozen=True)
@@ -35,6 +44,10 @@ class AISourceCreateInput:
     timeout_seconds: int | None = None
     custom_headers: dict[str, str] | None = None
     extra_config: dict[str, Any] | None = None
+    adapter_kind: str | None = None
+    capability_metadata: dict[str, Any] | None = None
+    default_options: dict[str, Any] | None = None
+    capability_provenance: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True)
@@ -67,7 +80,11 @@ class AISourceService:
                     enabled,
                     timeout_seconds,
                     custom_headers_json,
-                    extra_config_json
+                    extra_config_json,
+                    adapter_kind,
+                    capability_metadata_json,
+                    default_options_json,
+                    capability_provenance_json
                 FROM ai_source
                 ORDER BY name ASC, source_id ASC
                 """
@@ -93,7 +110,11 @@ class AISourceService:
                     enabled,
                     timeout_seconds,
                     custom_headers_json,
-                    extra_config_json
+                    extra_config_json,
+                    adapter_kind,
+                    capability_metadata_json,
+                    default_options_json,
+                    capability_provenance_json
                 FROM ai_source
                 WHERE source_id = ?
                 """,
@@ -119,6 +140,14 @@ class AISourceService:
             timeout_seconds=create_input.timeout_seconds,
             custom_headers=create_input.custom_headers or {},
             extra_config=create_input.extra_config or {},
+            adapter_kind=cast(
+                "AIModelAdapterKind",
+                create_input.adapter_kind
+                or resolve_adapter_kind_for_client_type(create_input.client_type),
+            ),
+            capability_metadata=create_input.capability_metadata or {},
+            default_options=create_input.default_options or {},
+            capability_provenance=create_input.capability_provenance or {},
         )
         with database_runtime.connect_sync() as connection:
             connection.execute(
@@ -135,8 +164,12 @@ class AISourceService:
                     timeout_seconds,
                     custom_headers_json,
                     extra_config_json,
+                    adapter_kind,
+                    capability_metadata_json,
+                    default_options_json,
+                    capability_provenance_json,
                     updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     source.source_id,
@@ -150,6 +183,10 @@ class AISourceService:
                     source.timeout_seconds,
                     dumps(source.custom_headers or {}, ensure_ascii=False),
                     dumps(source.extra_config or {}, ensure_ascii=False),
+                    source.adapter_kind,
+                    dumps(source.capability_metadata or {}, ensure_ascii=False),
+                    dumps(source.default_options or {}, ensure_ascii=False),
+                    dumps(source.capability_provenance or {}, ensure_ascii=False),
                     _utcnow_text(),
                 ),
             )
@@ -168,6 +205,10 @@ class AISourceService:
         timeout_seconds: int | None = None,
         custom_headers: dict[str, str] | None = None,
         extra_config: dict[str, Any] | None = None,
+        adapter_kind: str | None = None,
+        capability_metadata: dict[str, Any] | None = None,
+        default_options: dict[str, Any] | None = None,
+        capability_provenance: dict[str, Any] | None = None,
     ) -> AISourceDefinition:
         return AISourceDefinition(
             source_id="preview_source",
@@ -181,6 +222,13 @@ class AISourceService:
             timeout_seconds=timeout_seconds,
             custom_headers=custom_headers or {},
             extra_config=extra_config or {},
+            adapter_kind=cast(
+                "AIModelAdapterKind",
+                adapter_kind or resolve_adapter_kind_for_client_type(client_type),
+            ),
+            capability_metadata=capability_metadata or {},
+            default_options=default_options or {},
+            capability_provenance=capability_provenance or {},
         )
 
     async def update_source(
@@ -204,6 +252,14 @@ class AISourceService:
             timeout_seconds=create_input.timeout_seconds,
             custom_headers=create_input.custom_headers or {},
             extra_config=create_input.extra_config or {},
+            adapter_kind=cast(
+                "AIModelAdapterKind",
+                create_input.adapter_kind
+                or resolve_adapter_kind_for_client_type(create_input.client_type),
+            ),
+            capability_metadata=create_input.capability_metadata or {},
+            default_options=create_input.default_options or {},
+            capability_provenance=create_input.capability_provenance or {},
         )
         with database_runtime.connect_sync() as connection:
             connection.execute(
@@ -220,6 +276,10 @@ class AISourceService:
                     timeout_seconds = ?,
                     custom_headers_json = ?,
                     extra_config_json = ?,
+                    adapter_kind = ?,
+                    capability_metadata_json = ?,
+                    default_options_json = ?,
+                    capability_provenance_json = ?,
                     updated_at = ?
                 WHERE source_id = ?
                 """,
@@ -234,6 +294,10 @@ class AISourceService:
                     updated.timeout_seconds,
                     dumps(updated.custom_headers or {}, ensure_ascii=False),
                     dumps(updated.extra_config or {}, ensure_ascii=False),
+                    updated.adapter_kind,
+                    dumps(updated.capability_metadata or {}, ensure_ascii=False),
+                    dumps(updated.default_options or {}, ensure_ascii=False),
+                    dumps(updated.capability_provenance or {}, ensure_ascii=False),
                     _utcnow_text(),
                     source_id,
                 ),
@@ -296,11 +360,52 @@ class AISourceService:
             str(row[10]) if row[10] is not None else None,
             default={},
         )
+        capability_metadata = safe_json_loads(
+            (
+                str(row[_CAPABILITY_METADATA_COLUMN_INDEX])
+                if len(row) > _CAPABILITY_METADATA_COLUMN_INDEX
+                and row[_CAPABILITY_METADATA_COLUMN_INDEX] is not None
+                else None
+            ),
+            default={},
+        )
+        default_options = safe_json_loads(
+            (
+                str(row[_DEFAULT_OPTIONS_COLUMN_INDEX])
+                if len(row) > _DEFAULT_OPTIONS_COLUMN_INDEX
+                and row[_DEFAULT_OPTIONS_COLUMN_INDEX] is not None
+                else None
+            ),
+            default={},
+        )
+        capability_provenance = safe_json_loads(
+            (
+                str(row[_CAPABILITY_PROVENANCE_COLUMN_INDEX])
+                if len(row) > _CAPABILITY_PROVENANCE_COLUMN_INDEX
+                and row[_CAPABILITY_PROVENANCE_COLUMN_INDEX] is not None
+                else None
+            ),
+            default={},
+        )
+        client_type = cast("AISourceClientType", str(row[3]))
+        raw_adapter_kind = (
+            row[_ADAPTER_KIND_COLUMN_INDEX]
+            if len(row) > _ADAPTER_KIND_COLUMN_INDEX
+            else None
+        )
+        adapter_kind = cast(
+            "AIModelAdapterKind",
+            (
+                raw_adapter_kind.strip()
+                if isinstance(raw_adapter_kind, str) and raw_adapter_kind.strip()
+                else resolve_adapter_kind_for_client_type(client_type)
+            ),
+        )
         return AISourceDefinition(
             source_id=str(row[0]),
             name=str(row[1]),
             capability_type=cast("AISourceCapabilityType", str(row[2])),
-            client_type=cast("AISourceClientType", str(row[3])),
+            client_type=client_type,
             preset_type=cast("AISourcePresetType", str(row[4])),
             api_base=str(row[5]) if row[5] is not None else None,
             api_key_env_name=str(row[6]) if row[6] is not None else None,
@@ -308,6 +413,16 @@ class AISourceService:
             timeout_seconds=_coerce_optional_int(row[8]),
             custom_headers=(custom_headers if isinstance(custom_headers, dict) else {}),
             extra_config=extra_config if isinstance(extra_config, dict) else {},
+            adapter_kind=adapter_kind,
+            capability_metadata=(
+                capability_metadata if isinstance(capability_metadata, dict) else {}
+            ),
+            default_options=(
+                default_options if isinstance(default_options, dict) else {}
+            ),
+            capability_provenance=(
+                capability_provenance if isinstance(capability_provenance, dict) else {}
+            ),
         )
 
 

@@ -10,6 +10,8 @@ from .models import (
     AISourcePresetDefinition,
     AISourcePresetType,
     UnsupportedAISourcePresetError,
+    resolve_adapter_kind_for_client_type,
+    resolve_adapter_kind_for_preset,
     resolve_capability_type_for_preset,
     resolve_client_type_for_preset,
 )
@@ -22,6 +24,8 @@ __all__ = [
     "AISourcePresetDefinition",
     "AISourcePresetType",
     "UnsupportedAISourcePresetError",
+    "resolve_adapter_kind_for_client_type",
+    "resolve_adapter_kind_for_preset",
     "resolve_capability_type_for_preset",
     "resolve_client_type_for_preset",
 ]

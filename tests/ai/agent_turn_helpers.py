@@ -75,6 +75,7 @@ class ModelGatewayStub:
         prompt: str = "",
         messages: tuple[AIModelMessage, ...] = (),
         tools: tuple[AIModelToolDefinition, ...] = (),
+        **_: Any,
     ) -> AIModelGenerateResponse | None:
         del prompt
         self.calls.append(selected)

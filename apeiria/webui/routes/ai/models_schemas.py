@@ -48,6 +48,9 @@ class AISourceModelItem(BaseModel):
     enabled: bool
     is_default: bool
     extra_params: dict[str, object] = {}
+    capability_metadata: dict[str, object] = {}
+    default_options: dict[str, object] = {}
+    capability_provenance: dict[str, object] = {}
 
 
 class AISourceModelUpsertRequest(BaseModel):
@@ -58,6 +61,9 @@ class AISourceModelUpsertRequest(BaseModel):
     enabled: bool = True
     is_default: bool = False
     extra_params: dict[str, object] = {}
+    capability_metadata: dict[str, object] = {}
+    default_options: dict[str, object] = {}
+    capability_provenance: dict[str, object] = {}
 
 
 class AIModelProfileItem(BaseModel):
@@ -90,6 +96,9 @@ class AIModelBindingItem(BaseModel):
 class AIModelCatalogItem(BaseModel):
     id: str
     name: str
+    capability_metadata: dict[str, object] = {}
+    default_options: dict[str, object] = {}
+    capability_provenance: dict[str, object] = {}
 
 
 def to_ai_source_model_item(item: "AISourceModelDefinition") -> AISourceModelItem:
@@ -101,6 +110,9 @@ def to_ai_source_model_item(item: "AISourceModelDefinition") -> AISourceModelIte
         enabled=item.enabled,
         is_default=item.is_default,
         extra_params=item.extra_params or {},
+        capability_metadata=item.capability_metadata or {},
+        default_options=item.default_options or {},
+        capability_provenance=item.capability_provenance or {},
     )
 
 
@@ -129,4 +141,7 @@ def to_ai_model_catalog_item(item: "DomainModelCatalogItem") -> AIModelCatalogIt
     return AIModelCatalogItem(
         id=item.id,
         name=item.name,
+        capability_metadata=item.capability_metadata or {},
+        default_options=item.default_options or {},
+        capability_provenance=item.capability_provenance or {},
     )

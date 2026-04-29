@@ -27,6 +27,9 @@ class AIChatModelCreateInput:
     enabled: bool = True
     is_default: bool = False
     extra_params: dict[str, Any] | None = None
+    capability_metadata: dict[str, Any] | None = None
+    default_options: dict[str, Any] | None = None
+    capability_provenance: dict[str, Any] | None = None
 
 
 class AIChatModelService:
@@ -49,6 +52,9 @@ class AIChatModelService:
                 enabled=record.enabled,
                 is_default=record.is_default,
                 extra_params=record.extra_params,
+                capability_metadata=record.capability_metadata,
+                default_options=record.default_options,
+                capability_provenance=record.capability_provenance,
             )
         )
 
@@ -64,6 +70,9 @@ class AIChatModelService:
                 enabled=row.enabled,
                 is_default=row.is_default,
                 extra_params=row.extra_params,
+                capability_metadata=row.capability_metadata,
+                default_options=row.default_options,
+                capability_provenance=row.capability_provenance,
             )
             for row in list_all_source_models("ai_chat_model")
         ]
@@ -82,6 +91,9 @@ class AIChatModelService:
                 enabled=row.enabled,
                 is_default=row.is_default,
                 extra_params=row.extra_params,
+                capability_metadata=row.capability_metadata,
+                default_options=row.default_options,
+                capability_provenance=row.capability_provenance,
             )
             for row in list_source_models("ai_chat_model", source_id=source_id)
         ]
@@ -100,6 +112,9 @@ class AIChatModelService:
                 enabled=create_input.enabled,
                 is_default=create_input.is_default,
                 extra_params=create_input.extra_params,
+                capability_metadata=create_input.capability_metadata,
+                default_options=create_input.default_options,
+                capability_provenance=create_input.capability_provenance,
             ).__dict__
         )
 
@@ -118,6 +133,9 @@ class AIChatModelService:
             enabled=create_input.enabled,
             is_default=create_input.is_default,
             extra_params=create_input.extra_params,
+            capability_metadata=create_input.capability_metadata,
+            default_options=create_input.default_options,
+            capability_provenance=create_input.capability_provenance,
         )
         return None if record is None else AIChatModelDefinition(**record.__dict__)
 

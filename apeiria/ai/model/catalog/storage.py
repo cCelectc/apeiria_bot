@@ -14,6 +14,10 @@ from apeiria.utils.json_utils import safe_json_loads
 if TYPE_CHECKING:
     from sqlite3 import Connection
 
+_CAPABILITY_METADATA_COLUMN_INDEX = 7
+_DEFAULT_OPTIONS_COLUMN_INDEX = 8
+_CAPABILITY_PROVENANCE_COLUMN_INDEX = 9
+
 
 class UnsupportedSourceModelTableError(ValueError):
     """Raised when source model storage is asked to use an unknown table."""
@@ -33,6 +37,9 @@ class SourceModelRecord:
     enabled: bool
     is_default: bool
     extra_params: dict[str, object]
+    capability_metadata: dict[str, object]
+    default_options: dict[str, object]
+    capability_provenance: dict[str, object]
 
 
 def get_source_model(table_name: str, *, model_id: str) -> SourceModelRecord | None:
@@ -47,7 +54,10 @@ def get_source_model(table_name: str, *, model_id: str) -> SourceModelRecord | N
                 display_name,
                 enabled,
                 is_default,
-                extra_params_json
+                extra_params_json,
+                capability_metadata_json,
+                default_options_json,
+                capability_provenance_json
             FROM {table_name}
             WHERE model_id = ?
             """,
@@ -72,7 +82,10 @@ def list_source_models(
                 display_name,
                 enabled,
                 is_default,
-                extra_params_json
+                extra_params_json,
+                capability_metadata_json,
+                default_options_json,
+                capability_provenance_json
             FROM {table_name}
             WHERE source_id = ?
             ORDER BY is_default DESC, display_name ASC, model_id ASC
@@ -94,7 +107,10 @@ def list_all_source_models(table_name: str) -> list[SourceModelRecord]:
                 display_name,
                 enabled,
                 is_default,
-                extra_params_json
+                extra_params_json,
+                capability_metadata_json,
+                default_options_json,
+                capability_provenance_json
             FROM {table_name}
             ORDER BY source_id ASC, is_default DESC, display_name ASC, model_id ASC
             """
@@ -112,6 +128,9 @@ def create_source_model(  # noqa: PLR0913
     enabled: bool,
     is_default: bool,
     extra_params: dict[str, object] | None,
+    capability_metadata: dict[str, object] | None = None,
+    default_options: dict[str, object] | None = None,
+    capability_provenance: dict[str, object] | None = None,
 ) -> SourceModelRecord:
     table_name = _coerce_table_name(table_name)
     with database_runtime.transaction_sync() as connection:
@@ -127,8 +146,11 @@ def create_source_model(  # noqa: PLR0913
                 enabled,
                 is_default,
                 extra_params_json,
+                capability_metadata_json,
+                default_options_json,
+                capability_provenance_json,
                 updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 model_id,
@@ -138,6 +160,9 @@ def create_source_model(  # noqa: PLR0913
                 1 if enabled else 0,
                 1 if is_default else 0,
                 dumps(extra_params or {}, ensure_ascii=False),
+                dumps(capability_metadata or {}, ensure_ascii=False),
+                dumps(default_options or {}, ensure_ascii=False),
+                dumps(capability_provenance or {}, ensure_ascii=False),
                 _utcnow_text(),
             ),
         )
@@ -149,6 +174,9 @@ def create_source_model(  # noqa: PLR0913
         enabled=enabled,
         is_default=is_default,
         extra_params=extra_params or {},
+        capability_metadata=capability_metadata or {},
+        default_options=default_options or {},
+        capability_provenance=capability_provenance or {},
     )
 
 
@@ -162,6 +190,9 @@ def update_source_model(  # noqa: PLR0913
     enabled: bool,
     is_default: bool,
     extra_params: dict[str, object] | None,
+    capability_metadata: dict[str, object] | None = None,
+    default_options: dict[str, object] | None = None,
+    capability_provenance: dict[str, object] | None = None,
 ) -> SourceModelRecord | None:
     table_name = _coerce_table_name(table_name)
     with database_runtime.transaction_sync() as connection:
@@ -183,6 +214,9 @@ def update_source_model(  # noqa: PLR0913
                 enabled = ?,
                 is_default = ?,
                 extra_params_json = ?,
+                capability_metadata_json = ?,
+                default_options_json = ?,
+                capability_provenance_json = ?,
                 updated_at = ?
             WHERE model_id = ?
             """,
@@ -193,6 +227,9 @@ def update_source_model(  # noqa: PLR0913
                 1 if enabled else 0,
                 1 if is_default else 0,
                 dumps(extra_params or {}, ensure_ascii=False),
+                dumps(capability_metadata or {}, ensure_ascii=False),
+                dumps(default_options or {}, ensure_ascii=False),
+                dumps(capability_provenance or {}, ensure_ascii=False),
                 _utcnow_text(),
                 model_id,
             ),
@@ -205,6 +242,9 @@ def update_source_model(  # noqa: PLR0913
         enabled=enabled,
         is_default=is_default,
         extra_params=extra_params or {},
+        capability_metadata=capability_metadata or {},
+        default_options=default_options or {},
+        capability_provenance=capability_provenance or {},
     )
 
 
@@ -231,6 +271,33 @@ def _row_to_record(row: tuple[object, ...] | None) -> SourceModelRecord | None:
         str(row[6]) if row[6] is not None else None,
         default={},
     )
+    capability_metadata = safe_json_loads(
+        (
+            str(row[_CAPABILITY_METADATA_COLUMN_INDEX])
+            if len(row) > _CAPABILITY_METADATA_COLUMN_INDEX
+            and row[_CAPABILITY_METADATA_COLUMN_INDEX] is not None
+            else None
+        ),
+        default={},
+    )
+    default_options = safe_json_loads(
+        (
+            str(row[_DEFAULT_OPTIONS_COLUMN_INDEX])
+            if len(row) > _DEFAULT_OPTIONS_COLUMN_INDEX
+            and row[_DEFAULT_OPTIONS_COLUMN_INDEX] is not None
+            else None
+        ),
+        default={},
+    )
+    capability_provenance = safe_json_loads(
+        (
+            str(row[_CAPABILITY_PROVENANCE_COLUMN_INDEX])
+            if len(row) > _CAPABILITY_PROVENANCE_COLUMN_INDEX
+            and row[_CAPABILITY_PROVENANCE_COLUMN_INDEX] is not None
+            else None
+        ),
+        default={},
+    )
     return SourceModelRecord(
         model_id=str(row[0]),
         source_id=str(row[1]),
@@ -239,6 +306,13 @@ def _row_to_record(row: tuple[object, ...] | None) -> SourceModelRecord | None:
         enabled=bool(row[4]),
         is_default=bool(row[5]),
         extra_params=extra_params if isinstance(extra_params, dict) else {},
+        capability_metadata=(
+            capability_metadata if isinstance(capability_metadata, dict) else {}
+        ),
+        default_options=default_options if isinstance(default_options, dict) else {},
+        capability_provenance=(
+            capability_provenance if isinstance(capability_provenance, dict) else {}
+        ),
     )
 
 

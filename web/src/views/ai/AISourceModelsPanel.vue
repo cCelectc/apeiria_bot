@@ -85,6 +85,36 @@
                   :label="t('ai.modelDisplayName')"
                   @blur="touchModelField('display_name')"
                 />
+                <v-textarea
+                  v-model="modelForm.capability_metadata_json"
+                  auto-grow
+                  class="source-model-form__wide"
+                  density="comfortable"
+                  :disabled="savingModel"
+                  hide-details
+                  :label="t('ai.capabilityMetadata')"
+                  rows="2"
+                />
+                <v-textarea
+                  v-model="modelForm.default_options_json"
+                  auto-grow
+                  class="source-model-form__wide"
+                  density="comfortable"
+                  :disabled="savingModel"
+                  hide-details
+                  :label="t('ai.defaultOptions')"
+                  rows="2"
+                />
+                <v-textarea
+                  v-model="modelForm.capability_provenance_json"
+                  auto-grow
+                  class="source-model-form__wide"
+                  density="comfortable"
+                  :disabled="savingModel"
+                  hide-details
+                  :label="t('ai.capabilityProvenance')"
+                  rows="2"
+                />
               </div>
 
               <div class="d-flex flex-wrap ga-4 mt-3">
@@ -148,6 +178,24 @@
               >
                 {{ t('ai.modelDefault') }}
               </span>
+              <span
+                v-for="source in capabilityProvenanceSources(item.capability_provenance)"
+                :key="`${item.model_id}-${source}`"
+                class="source-model-row__flag"
+                :class="provenanceSourceClass(source)"
+              >
+                {{ source }}
+              </span>
+            </div>
+            <div v-else class="source-model-row__meta">
+              <span
+                v-for="source in capabilityProvenanceSources(item.capability_provenance)"
+                :key="`${item.key}-${source}`"
+                class="source-model-row__flag"
+                :class="provenanceSourceClass(source)"
+              >
+                {{ source }}
+              </span>
             </div>
             <div class="source-model-row__actions">
               <template v-if="item.kind === 'configured'">
@@ -186,6 +234,9 @@
                   @click.stop="importSourceModelCatalogItem({
                     id: item.model_identifier,
                     name: item.display_name,
+                    capability_metadata: item.capability_metadata,
+                    default_options: item.default_options,
+                    capability_provenance: item.capability_provenance,
                   })"
                 >
                   {{ t('ai.importModel') }}
@@ -359,6 +410,9 @@
     kind: 'importable'
     display_name: string
     model_identifier: string
+    capability_metadata: Record<string, unknown>
+    default_options: Record<string, unknown>
+    capability_provenance: Record<string, unknown>
   }
 
   const props = defineProps<{
@@ -455,6 +509,9 @@
       kind: 'importable',
       display_name: item.name,
       model_identifier: item.id,
+      capability_metadata: item.capability_metadata,
+      default_options: item.default_options,
+      capability_provenance: item.capability_provenance,
     })))
 
   const unifiedSourceModels = computed<Array<ConfiguredSourceModelRow | ImportableSourceModelRow>>(() => [
@@ -499,6 +556,36 @@
     pendingDeleteModel.value = null
     await props.removeSourceModel(target.modelId)
   }
+
+  function capabilityProvenanceSources (value: Record<string, unknown> | undefined) {
+    if (!value || typeof value !== 'object') {
+      return []
+    }
+    const sources = new Set<string>()
+    for (const item of Object.values(value)) {
+      if (!item || typeof item !== 'object') {
+        continue
+      }
+      const source = (item as { source?: unknown }).source
+      if (typeof source === 'string' && source.trim()) {
+        sources.add(source.trim())
+      }
+    }
+    return [...sources].slice(0, 4)
+  }
+
+  function provenanceSourceClass (source: string) {
+    if (source === 'owner_override') {
+      return 'source-model-row__flag--owner'
+    }
+    if (source === 'upstream_catalog') {
+      return 'source-model-row__flag--reported'
+    }
+    if (source === 'model_template') {
+      return 'source-model-row__flag--template'
+    }
+    return ''
+  }
 </script>
 
 <style scoped>
@@ -515,6 +602,10 @@
   display: grid;
   gap: 12px;
   grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.source-model-form__wide {
+  grid-column: 1 / -1;
 }
 
 .source-model-editor-inline {
@@ -591,6 +682,21 @@
 .source-model-row__flag--primary {
   background: rgba(var(--v-theme-primary), 0.12);
   color: rgb(var(--v-theme-primary));
+}
+
+.source-model-row__flag--owner {
+  background: rgba(var(--v-theme-warning), 0.16);
+  color: rgb(var(--v-theme-warning));
+}
+
+.source-model-row__flag--reported {
+  background: rgba(var(--v-theme-info), 0.14);
+  color: rgb(var(--v-theme-info));
+}
+
+.source-model-row__flag--template {
+  background: rgba(var(--v-theme-secondary), 0.14);
+  color: rgb(var(--v-theme-secondary));
 }
 
 .source-model-row__actions {

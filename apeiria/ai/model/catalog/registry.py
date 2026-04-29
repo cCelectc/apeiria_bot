@@ -34,12 +34,34 @@ if TYPE_CHECKING:
 
 
 ModelListFn = Callable[[str], Awaitable[list[AISourceModelDefinition]]]
+ModelGetFn = Callable[[str], Awaitable[AISourceModelDefinition | None]]
 ModelCreateFn = Callable[
-    [str, str, str, bool, bool, dict[str, object]],
+    [
+        str,
+        str,
+        str,
+        bool,
+        bool,
+        dict[str, object],
+        dict[str, object] | None,
+        dict[str, object] | None,
+        dict[str, object] | None,
+    ],
     Awaitable[AISourceModelDefinition],
 ]
 ModelUpdateFn = Callable[
-    [str, str, str, str, bool, bool, dict[str, object]],
+    [
+        str,
+        str,
+        str,
+        str,
+        bool,
+        bool,
+        dict[str, object],
+        dict[str, object] | None,
+        dict[str, object] | None,
+        dict[str, object] | None,
+    ],
     Awaitable[AISourceModelDefinition | None],
 ]
 ModelDeleteFn = Callable[[str], Awaitable[bool]]
@@ -50,10 +72,15 @@ class AICapabilityModelRegistryEntry:
     """One capability-specific source model manager entry."""
 
     capability_type: "AISourceCapabilityType"
+    get_model: ModelGetFn
     list_models: ModelListFn
     create_model: ModelCreateFn
     update_model: ModelUpdateFn
     delete_model: ModelDeleteFn
+
+
+async def _get_chat_model(model_id: str) -> AISourceModelDefinition | None:
+    return await ai_chat_model_service.get_model(model_id=model_id)
 
 
 async def _list_chat_models(
@@ -69,6 +96,9 @@ async def _create_chat_model(
     enabled: bool,
     is_default: bool,
     extra_params: dict[str, object],
+    capability_metadata: dict[str, object] | None,
+    default_options: dict[str, object] | None,
+    capability_provenance: dict[str, object] | None,
 ) -> AISourceModelDefinition:
     return await ai_chat_model_service.create_model(
         AIChatModelCreateInput(
@@ -78,6 +108,9 @@ async def _create_chat_model(
             enabled=enabled,
             is_default=is_default,
             extra_params=extra_params,
+            capability_metadata=capability_metadata,
+            default_options=default_options,
+            capability_provenance=capability_provenance,
         ),
     )
 
@@ -90,6 +123,9 @@ async def _update_chat_model(
     enabled: bool,
     is_default: bool,
     extra_params: dict[str, object],
+    capability_metadata: dict[str, object] | None,
+    default_options: dict[str, object] | None,
+    capability_provenance: dict[str, object] | None,
 ) -> AISourceModelDefinition | None:
     return await ai_chat_model_service.update_model(
         model_id=model_id,
@@ -100,12 +136,19 @@ async def _update_chat_model(
             enabled=enabled,
             is_default=is_default,
             extra_params=extra_params,
+            capability_metadata=capability_metadata,
+            default_options=default_options,
+            capability_provenance=capability_provenance,
         ),
     )
 
 
 async def _delete_chat_model(model_id: str) -> bool:
     return await ai_chat_model_service.delete_model(model_id=model_id)
+
+
+async def _get_embedding_model(model_id: str) -> AISourceModelDefinition | None:
+    return await ai_embedding_model_service.get_model(model_id=model_id)
 
 
 async def _list_embedding_models(
@@ -121,6 +164,9 @@ async def _create_embedding_model(
     enabled: bool,
     is_default: bool,
     extra_params: dict[str, object],
+    capability_metadata: dict[str, object] | None,
+    default_options: dict[str, object] | None,
+    capability_provenance: dict[str, object] | None,
 ) -> AISourceModelDefinition:
     return await ai_embedding_model_service.create_model(
         AIEmbeddingModelCreateInput(
@@ -130,6 +176,9 @@ async def _create_embedding_model(
             enabled=enabled,
             is_default=is_default,
             extra_params=extra_params,
+            capability_metadata=capability_metadata,
+            default_options=default_options,
+            capability_provenance=capability_provenance,
         ),
     )
 
@@ -142,6 +191,9 @@ async def _update_embedding_model(
     enabled: bool,
     is_default: bool,
     extra_params: dict[str, object],
+    capability_metadata: dict[str, object] | None,
+    default_options: dict[str, object] | None,
+    capability_provenance: dict[str, object] | None,
 ) -> AISourceModelDefinition | None:
     return await ai_embedding_model_service.update_model(
         model_id=model_id,
@@ -152,6 +204,9 @@ async def _update_embedding_model(
             enabled=enabled,
             is_default=is_default,
             extra_params=extra_params,
+            capability_metadata=capability_metadata,
+            default_options=default_options,
+            capability_provenance=capability_provenance,
         ),
     )
 
@@ -160,6 +215,10 @@ async def _delete_embedding_model(
     model_id: str,
 ) -> bool:
     return await ai_embedding_model_service.delete_model(model_id=model_id)
+
+
+async def _get_stt_model(model_id: str) -> AISourceModelDefinition | None:
+    return await ai_stt_model_service.get_model(model_id=model_id)
 
 
 async def _list_stt_models(
@@ -175,6 +234,9 @@ async def _create_stt_model(
     enabled: bool,
     is_default: bool,
     extra_params: dict[str, object],
+    capability_metadata: dict[str, object] | None,
+    default_options: dict[str, object] | None,
+    capability_provenance: dict[str, object] | None,
 ) -> AISourceModelDefinition:
     return await ai_stt_model_service.create_model(
         AISTTModelCreateInput(
@@ -184,6 +246,9 @@ async def _create_stt_model(
             enabled=enabled,
             is_default=is_default,
             extra_params=extra_params,
+            capability_metadata=capability_metadata,
+            default_options=default_options,
+            capability_provenance=capability_provenance,
         ),
     )
 
@@ -196,6 +261,9 @@ async def _update_stt_model(
     enabled: bool,
     is_default: bool,
     extra_params: dict[str, object],
+    capability_metadata: dict[str, object] | None,
+    default_options: dict[str, object] | None,
+    capability_provenance: dict[str, object] | None,
 ) -> AISourceModelDefinition | None:
     return await ai_stt_model_service.update_model(
         model_id=model_id,
@@ -206,12 +274,19 @@ async def _update_stt_model(
             enabled=enabled,
             is_default=is_default,
             extra_params=extra_params,
+            capability_metadata=capability_metadata,
+            default_options=default_options,
+            capability_provenance=capability_provenance,
         ),
     )
 
 
 async def _delete_stt_model(model_id: str) -> bool:
     return await ai_stt_model_service.delete_model(model_id=model_id)
+
+
+async def _get_tts_model(model_id: str) -> AISourceModelDefinition | None:
+    return await ai_tts_model_service.get_model(model_id=model_id)
 
 
 async def _list_tts_models(
@@ -227,6 +302,9 @@ async def _create_tts_model(
     enabled: bool,
     is_default: bool,
     extra_params: dict[str, object],
+    capability_metadata: dict[str, object] | None,
+    default_options: dict[str, object] | None,
+    capability_provenance: dict[str, object] | None,
 ) -> AISourceModelDefinition:
     return await ai_tts_model_service.create_model(
         AITTSModelCreateInput(
@@ -236,6 +314,9 @@ async def _create_tts_model(
             enabled=enabled,
             is_default=is_default,
             extra_params=extra_params,
+            capability_metadata=capability_metadata,
+            default_options=default_options,
+            capability_provenance=capability_provenance,
         ),
     )
 
@@ -248,6 +329,9 @@ async def _update_tts_model(
     enabled: bool,
     is_default: bool,
     extra_params: dict[str, object],
+    capability_metadata: dict[str, object] | None,
+    default_options: dict[str, object] | None,
+    capability_provenance: dict[str, object] | None,
 ) -> AISourceModelDefinition | None:
     return await ai_tts_model_service.update_model(
         model_id=model_id,
@@ -258,12 +342,19 @@ async def _update_tts_model(
             enabled=enabled,
             is_default=is_default,
             extra_params=extra_params,
+            capability_metadata=capability_metadata,
+            default_options=default_options,
+            capability_provenance=capability_provenance,
         ),
     )
 
 
 async def _delete_tts_model(model_id: str) -> bool:
     return await ai_tts_model_service.delete_model(model_id=model_id)
+
+
+async def _get_rerank_model(model_id: str) -> AISourceModelDefinition | None:
+    return await ai_rerank_model_service.get_model(model_id=model_id)
 
 
 async def _list_rerank_models(
@@ -279,6 +370,9 @@ async def _create_rerank_model(
     enabled: bool,
     is_default: bool,
     extra_params: dict[str, object],
+    capability_metadata: dict[str, object] | None,
+    default_options: dict[str, object] | None,
+    capability_provenance: dict[str, object] | None,
 ) -> AISourceModelDefinition:
     return await ai_rerank_model_service.create_model(
         AIRerankModelCreateInput(
@@ -288,6 +382,9 @@ async def _create_rerank_model(
             enabled=enabled,
             is_default=is_default,
             extra_params=extra_params,
+            capability_metadata=capability_metadata,
+            default_options=default_options,
+            capability_provenance=capability_provenance,
         ),
     )
 
@@ -300,6 +397,9 @@ async def _update_rerank_model(
     enabled: bool,
     is_default: bool,
     extra_params: dict[str, object],
+    capability_metadata: dict[str, object] | None,
+    default_options: dict[str, object] | None,
+    capability_provenance: dict[str, object] | None,
 ) -> AISourceModelDefinition | None:
     return await ai_rerank_model_service.update_model(
         model_id=model_id,
@@ -310,6 +410,9 @@ async def _update_rerank_model(
             enabled=enabled,
             is_default=is_default,
             extra_params=extra_params,
+            capability_metadata=capability_metadata,
+            default_options=default_options,
+            capability_provenance=capability_provenance,
         ),
     )
 
@@ -325,6 +428,7 @@ SOURCE_MODEL_CAPABILITY_REGISTRY: dict[
 ] = {
     "chat_completion": AICapabilityModelRegistryEntry(
         capability_type="chat_completion",
+        get_model=_get_chat_model,
         list_models=_list_chat_models,
         create_model=_create_chat_model,
         update_model=_update_chat_model,
@@ -332,6 +436,7 @@ SOURCE_MODEL_CAPABILITY_REGISTRY: dict[
     ),
     "embedding": AICapabilityModelRegistryEntry(
         capability_type="embedding",
+        get_model=_get_embedding_model,
         list_models=_list_embedding_models,
         create_model=_create_embedding_model,
         update_model=_update_embedding_model,
@@ -339,6 +444,7 @@ SOURCE_MODEL_CAPABILITY_REGISTRY: dict[
     ),
     "speech_to_text": AICapabilityModelRegistryEntry(
         capability_type="speech_to_text",
+        get_model=_get_stt_model,
         list_models=_list_stt_models,
         create_model=_create_stt_model,
         update_model=_update_stt_model,
@@ -346,6 +452,7 @@ SOURCE_MODEL_CAPABILITY_REGISTRY: dict[
     ),
     "text_to_speech": AICapabilityModelRegistryEntry(
         capability_type="text_to_speech",
+        get_model=_get_tts_model,
         list_models=_list_tts_models,
         create_model=_create_tts_model,
         update_model=_update_tts_model,
@@ -353,6 +460,7 @@ SOURCE_MODEL_CAPABILITY_REGISTRY: dict[
     ),
     "rerank": AICapabilityModelRegistryEntry(
         capability_type="rerank",
+        get_model=_get_rerank_model,
         list_models=_list_rerank_models,
         create_model=_create_rerank_model,
         update_model=_update_rerank_model,

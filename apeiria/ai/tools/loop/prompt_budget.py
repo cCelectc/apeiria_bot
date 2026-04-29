@@ -68,6 +68,7 @@ def recover_prompt_budget_messages(
                     content=safe.content,
                     tool_call_id=message.tool_call_id,
                     tool_calls=message.tool_calls,
+                    parts=message.parts,
                 )
             )
             compacted += 1

@@ -28,6 +28,7 @@ class ToolLoopState:
     finalization_succeeded: bool = False
     finalization_error: str | None = None
     finalization_ignored_tool_calls: int = 0
+    capability_degradations: list[dict[str, Any]] = field(default_factory=list)
     repeated_tool_counts: dict[str, int] = field(default_factory=dict)
 
     def next_round(self) -> int:
@@ -93,4 +94,6 @@ class ToolLoopState:
                 data["tool_loop_finalization_ignored_tool_calls"] = (
                     self.finalization_ignored_tool_calls
                 )
+        if self.capability_degradations:
+            data["tool_loop_capability_degradations"] = self.capability_degradations
         return data

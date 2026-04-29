@@ -20,6 +20,10 @@ export function createAISource (payload: {
   timeout_seconds?: number | null
   custom_headers?: Record<string, string>
   extra_config?: Record<string, unknown>
+  adapter_kind?: string | null
+  capability_metadata?: Record<string, unknown>
+  default_options?: Record<string, unknown>
+  capability_provenance?: Record<string, unknown>
 }) {
   return client.post<AISourceItem>('/ai/sources', payload)
 }
@@ -35,6 +39,10 @@ export function updateAISource (payload: {
   timeout_seconds?: number | null
   custom_headers?: Record<string, string>
   extra_config?: Record<string, unknown>
+  adapter_kind?: string | null
+  capability_metadata?: Record<string, unknown>
+  default_options?: Record<string, unknown>
+  capability_provenance?: Record<string, unknown>
 }) {
   return client.put<AISourceItem | null>('/ai/sources', payload)
 }

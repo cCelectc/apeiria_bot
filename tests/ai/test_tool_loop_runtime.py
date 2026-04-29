@@ -1,9 +1,22 @@
 from __future__ import annotations
 
 import asyncio
+from dataclasses import replace
+from typing import Any
 
-from apeiria.ai.model import AIModelMessage
+from apeiria.ai.model import (
+    AIModelContentPart,
+    AIModelGenerateResponse,
+    AIModelMessage,
+)
+from apeiria.ai.model.runtime.capabilities import (
+    AIModelCallRequirements,
+    AIModelCapabilities,
+    AIModelCapabilityPlanningError,
+)
+from apeiria.ai.model.runtime.planning import plan_model_call
 from apeiria.ai.tools import AIToolObservationResult, ToolGateway
+from apeiria.ai.tools.loop.prompt_budget import recover_prompt_budget_messages
 from tests.ai.agent_turn_helpers import (
     ModelGatewayStub,
     ToolServiceStub,
@@ -12,6 +25,51 @@ from tests.ai.agent_turn_helpers import (
     tool_call,
     tool_request,
 )
+
+
+class PlanningGatewayStub:
+    def __init__(self, content: str = "done") -> None:
+        self.content = content
+        self.calls: list[Any] = []
+        self.tool_calls: list[tuple[Any, ...]] = []
+
+    async def generate_native(
+        self,
+        *,
+        selected: Any,
+        prompt: str = "",
+        messages: tuple[AIModelMessage, ...] = (),
+        tools: tuple[Any, ...] = (),
+        requirements: AIModelCallRequirements | None = None,
+        **_: Any,
+    ) -> AIModelGenerateResponse:
+        del prompt
+        plan = plan_model_call(
+            selected=selected,
+            messages=messages,
+            tools=tools,
+            requirements=requirements,
+        )
+        self.calls.append(selected)
+        if plan.action == "reject":
+            raise AIModelCapabilityPlanningError(plan)
+        self.tool_calls.append(plan.tools)
+        return AIModelGenerateResponse(
+            source_id=selected.source.source_id,
+            model_name=selected.resolved_model_name or "",
+            content=self.content,
+            provider_data={
+                "apeiria_degradations": [
+                    {
+                        "kind": item.kind,
+                        "reason": item.reason,
+                        "detail": item.detail,
+                        "metadata": item.metadata,
+                    }
+                    for item in plan.degradations
+                ]
+            },
+        )
 
 
 def test_tool_loop_records_final_response_finish_reason() -> None:
@@ -54,6 +112,97 @@ def test_tool_loop_records_final_response_finish_reason() -> None:
     ]
     assert result.tool_attempts[0].tool_name == "memory.query"
     assert result.tool_attempts[0].status == "success"
+
+
+def test_tool_loop_uses_capable_fallback_for_required_tools() -> None:
+    primary = replace(
+        selected_model("primary"),
+        resolved_capabilities=AIModelCapabilities(
+            lanes=frozenset({"chat_completion"}),
+            input_modalities=frozenset({"text"}),
+            output_modalities=frozenset({"text"}),
+            supports_tool_calling=False,
+        ),
+    )
+    fallback = replace(
+        selected_model("fallback"),
+        resolved_capabilities=AIModelCapabilities(
+            lanes=frozenset({"chat_completion"}),
+            input_modalities=frozenset({"text"}),
+            output_modalities=frozenset({"text"}),
+            supports_tool_calling=True,
+        ),
+    )
+    gateway = PlanningGatewayStub()
+    service = ToolServiceStub(observations=[])
+    tool_gateway = ToolGateway(model_gateway=gateway, tool_service=service)
+
+    result = asyncio.run(
+        tool_gateway.run_tool_loop(
+            tool_request(),
+            messages=[AIModelMessage(role="user", content="use tools")],
+            tools=(_tool_definition(),),
+            selected=primary,
+            fallback_models=(fallback,),
+        )
+    )
+
+    assert [attempt.reason for attempt in result.model_attempts] == [
+        "capability_unavailable",
+        None,
+    ]
+    assert [item.source.source_id for item in gateway.calls] == [
+        "source-primary",
+        "source-fallback",
+    ]
+    assert result.final_response is not None
+    assert result.final_response.content == "done"
+
+
+def test_tool_loop_records_optional_tool_degradation() -> None:
+    selected = replace(
+        selected_model("main"),
+        resolved_capabilities=AIModelCapabilities(
+            lanes=frozenset({"chat_completion"}),
+            input_modalities=frozenset({"text"}),
+            output_modalities=frozenset({"text"}),
+            supports_tool_calling=False,
+        ),
+    )
+    gateway = PlanningGatewayStub()
+    service = ToolServiceStub(observations=[])
+    tool_gateway = ToolGateway(model_gateway=gateway, tool_service=service)
+
+    result = asyncio.run(
+        tool_gateway.run_tool_loop(
+            tool_request(),
+            messages=[AIModelMessage(role="user", content="answer without tools")],
+            tools=(_tool_definition(),),
+            selected=selected,
+            tool_calling_requirement="optional",
+        )
+    )
+
+    assert gateway.tool_calls == [()]
+    assert result.final_response is not None
+    assert result.metadata["tool_loop_capability_degradations"][0]["kind"] == (
+        "tools_omitted"
+    )
+
+
+def test_prompt_budget_recovery_preserves_content_parts() -> None:
+    message = AIModelMessage(
+        role="tool",
+        content="x" * 1000,
+        tool_call_id="call-1",
+        parts=(AIModelContentPart(kind="text", text="part text"),),
+    )
+
+    recovered, compacted = recover_prompt_budget_messages((message,))
+
+    assert compacted == 1
+    assert recovered[0].parts == message.parts
+    assert "[truncated]" in recovered[0].content
 
 
 def test_tool_loop_records_failed_tool_observation() -> None:
@@ -223,6 +372,16 @@ def test_tool_loop_records_failed_context_pressure_recovery() -> None:
     assert all(
         "secret-token" not in (attempt.diagnostic or "")
         for attempt in result.model_attempts
+    )
+
+
+def _tool_definition() -> Any:
+    from apeiria.ai.model import AIModelToolDefinition
+
+    return AIModelToolDefinition(
+        name="memory_query",
+        description="Query memory",
+        parameters={"type": "object"},
     )
 
 

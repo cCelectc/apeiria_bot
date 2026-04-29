@@ -44,6 +44,9 @@ export function createAISourceModel (payload: {
   enabled: boolean
   is_default: boolean
   extra_params?: Record<string, unknown>
+  capability_metadata?: Record<string, unknown>
+  default_options?: Record<string, unknown>
+  capability_provenance?: Record<string, unknown>
 }) {
   return client.post<AISourceModelItem>('/ai/sources/models', payload)
 }
@@ -56,6 +59,9 @@ export function updateAISourceModel (payload: {
   enabled: boolean
   is_default: boolean
   extra_params?: Record<string, unknown>
+  capability_metadata?: Record<string, unknown>
+  default_options?: Record<string, unknown>
+  capability_provenance?: Record<string, unknown>
 }) {
   return client.put<AISourceModelItem | null>('/ai/sources/models', payload)
 }

@@ -25,6 +25,44 @@ class AIModelToolCall:
 
 
 AIModelMessageRole = Literal["system", "user", "assistant", "tool"]
+AIModelContentPartKind = Literal[
+    "text",
+    "image",
+    "audio",
+    "file",
+    "tool_result",
+    "provider_data",
+]
+
+
+@dataclass(frozen=True)
+class AIModelContentPart:
+    """One provider-neutral model-visible content part."""
+
+    kind: AIModelContentPartKind
+    text: str | None = None
+    url: str | None = None
+    mime_type: str | None = None
+    data: bytes | None = None
+    metadata: dict[str, Any] | None = None
+    required: bool = True
+
+    @classmethod
+    def image(
+        cls,
+        *,
+        url: str | None = None,
+        data: bytes | None = None,
+        mime_type: str | None = None,
+        required: bool = True,
+    ) -> "AIModelContentPart":
+        return cls(
+            kind="image",
+            url=url,
+            data=data,
+            mime_type=mime_type,
+            required=required,
+        )
 
 
 @dataclass(frozen=True)
@@ -41,6 +79,16 @@ class AIModelMessage:
     content: str
     tool_call_id: str | None = None
     tool_calls: tuple[AIModelToolCall, ...] = ()
+    parts: tuple[AIModelContentPart, ...] = ()
+
+    @property
+    def text_content(self) -> str:
+        """Return the text-compatible message content."""
+
+        if self.content:
+            return self.content
+        text_parts = [part.text for part in self.parts if part.kind == "text"]
+        return "\n".join(text for text in text_parts if isinstance(text, str))
 
 
 @dataclass(frozen=True)
@@ -49,6 +97,9 @@ class AIModelCatalogItem:
 
     id: str
     name: str
+    capability_metadata: dict[str, Any] | None = None
+    default_options: dict[str, Any] | None = None
+    capability_provenance: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True)
@@ -67,6 +118,8 @@ class AIModelGenerateRequest:
     max_tokens: int | None = None
     tools: tuple[AIModelToolDefinition, ...] = ()
     extra: dict[str, Any] | None = None
+    options: dict[str, Any] | None = None
+    degradations: tuple[Any, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -78,6 +131,22 @@ class AIModelGenerateResponse:
     content: str
     tool_calls: tuple[AIModelToolCall, ...] = ()
     raw: dict[str, Any] | None = None
+    parts: tuple[AIModelContentPart, ...] = ()
+    usage: dict[str, Any] | None = None
+    finish_reason: str | None = None
+    response_id: str | None = None
+    reasoning_content: str | None = None
+    reasoning_signature: str | None = None
+    provider_data: dict[str, Any] | None = None
+
+    @property
+    def text_content(self) -> str:
+        """Return the text-compatible response content."""
+
+        if self.content:
+            return self.content
+        text_parts = [part.text for part in self.parts if part.kind == "text"]
+        return "\n".join(text for text in text_parts if isinstance(text, str))
 
 
 @dataclass(frozen=True)

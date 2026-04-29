@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import TYPE_CHECKING, Literal
 
 from apeiria.ai.model.routing.capability_selection import (
@@ -15,8 +16,14 @@ from apeiria.ai.model.runtime.adapter import (
     AIModelSpeechRequest,
     AIModelTranscriptionRequest,
 )
+from apeiria.ai.model.runtime.capabilities import (
+    AIModelCallOptions,
+    AIModelCallRequirements,
+    AIModelCapabilityPlanningError,
+)
 from apeiria.ai.model.runtime.client import ai_model_client
 from apeiria.ai.model.runtime.factory import build_source_adapter
+from apeiria.ai.model.runtime.planning import plan_model_call
 from apeiria.ai.model.sources.service import ai_source_service
 
 if TYPE_CHECKING:
@@ -95,29 +102,59 @@ class AIModelFacade:
             preferred_source_id=preferred_source_id,
         )
 
-    async def generate_text(
+    async def generate_text(  # noqa: PLR0913
         self,
         selected: "AISelectedModel",
         *,
         prompt: str = "",
         messages: tuple["AIModelMessage", ...] = (),
         tools: tuple["AIModelToolDefinition", ...] = (),
+        requirements: AIModelCallRequirements | None = None,
+        options: AIModelCallOptions | None = None,
+        call_options: dict[str, object] | None = None,
     ) -> "AIModelGenerateResponse | None":
         api_key = ai_source_service.get_source_api_key(selected.source)
         model_name = self.resolve_model_name(selected)
         if not api_key or not model_name:
             return None
 
+        plan = plan_model_call(
+            selected=selected,
+            messages=messages,
+            tools=tools,
+            requirements=requirements,
+            options=options,
+            call_options=call_options,
+        )
+        if plan.action == "reject":
+            raise AIModelCapabilityPlanningError(plan)
+
         self._register_source(selected.source, api_key=api_key)
-        return await ai_model_client.generate_text(
+        response = await ai_model_client.generate_text(
             AIModelGenerateRequest(
                 source_id=selected.source.source_id,
                 model_name=model_name,
                 prompt=prompt,
-                messages=messages,
-                tools=tools,
+                messages=plan.messages,
+                tools=plan.tools,
+                extra=plan.options,
+                options=plan.options,
+                degradations=plan.degradations,
             )
         )
+        if not plan.degradations:
+            return response
+        provider_data = dict(response.provider_data or {})
+        provider_data["apeiria_degradations"] = [
+            {
+                "kind": degradation.kind,
+                "reason": degradation.reason,
+                "detail": degradation.detail,
+                "metadata": degradation.metadata,
+            }
+            for degradation in plan.degradations
+        ]
+        return replace(response, provider_data=provider_data)
 
     async def generate_text_for_source(
         self,

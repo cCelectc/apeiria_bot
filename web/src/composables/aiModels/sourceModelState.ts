@@ -11,7 +11,9 @@ import { getErrorMessage } from '@/api/client'
 import {
   buildModelSnapshot,
   type ModelFormState,
+  parseJsonObject,
   type SourceFormState,
+  stringifyJsonObject,
 } from './formState'
 
 type NoticeLevel = 'error' | 'success' | 'warning'
@@ -60,6 +62,9 @@ export function useAISourceModelState ({
     display_name: '',
     enabled: true,
     is_default: false,
+    capability_metadata_json: '{}',
+    default_options_json: '{}',
+    capability_provenance_json: '{}',
   })
 
   const modelErrors = computed(() => ({
@@ -122,6 +127,13 @@ export function useAISourceModelState ({
     modelForm.display_name = item.display_name
     modelForm.enabled = item.enabled
     modelForm.is_default = item.is_default
+    modelForm.capability_metadata_json = stringifyJsonObject(
+      item.capability_metadata,
+    )
+    modelForm.default_options_json = stringifyJsonObject(item.default_options)
+    modelForm.capability_provenance_json = stringifyJsonObject(
+      item.capability_provenance,
+    )
     syncModelBaseline()
     resetModelValidation()
   }
@@ -133,6 +145,9 @@ export function useAISourceModelState ({
     modelForm.display_name = ''
     modelForm.enabled = true
     modelForm.is_default = sourceModels.value.length === 0
+    modelForm.capability_metadata_json = '{}'
+    modelForm.default_options_json = '{}'
+    modelForm.capability_provenance_json = '{}'
     syncModelBaseline()
     resetModelValidation()
   }
@@ -161,6 +176,11 @@ export function useAISourceModelState ({
         enabled: modelForm.enabled,
         is_default: modelForm.is_default,
         extra_params: {},
+        capability_metadata: parseJsonObject(modelForm.capability_metadata_json),
+        default_options: parseJsonObject(modelForm.default_options_json),
+        capability_provenance: parseJsonObject(
+          modelForm.capability_provenance_json,
+        ),
       }
       const response = modelForm.model_id
         ? await updateAISourceModel({ ...payload, model_id: modelForm.model_id })
@@ -203,6 +223,9 @@ export function useAISourceModelState ({
         enabled: true,
         is_default: sourceModels.value.length === 0,
         extra_params: {},
+        capability_metadata: item.capability_metadata,
+        default_options: item.default_options,
+        capability_provenance: item.capability_provenance,
       })
       if (response.data) {
         await loadSourceModelsFor(sourceForm.source_id)

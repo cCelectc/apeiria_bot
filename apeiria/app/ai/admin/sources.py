@@ -10,6 +10,7 @@ from apeiria.ai.model import (
     AISourcePresetType,
     UnsupportedAISourcePresetError,
     ai_source_service,
+    resolve_adapter_kind_for_preset,
     resolve_capability_type_for_preset,
     resolve_client_type_for_preset,
 )
@@ -55,6 +56,10 @@ class SourcesAdminMixin:
         timeout_seconds: int | None,
         custom_headers: dict[str, str],
         extra_config: dict[str, object],
+        adapter_kind: str | None = None,
+        capability_metadata: dict[str, object] | None = None,
+        default_options: dict[str, object] | None = None,
+        capability_provenance: dict[str, object] | None = None,
         actor_username: str | None = None,
     ) -> "AISourceDefinition":
         _ = capability_type
@@ -71,6 +76,11 @@ class SourcesAdminMixin:
                 timeout_seconds=timeout_seconds,
                 custom_headers=custom_headers,
                 extra_config=extra_config,
+                adapter_kind=adapter_kind
+                or resolve_adapter_kind_for_preset(coerced_preset_type),
+                capability_metadata=capability_metadata,
+                default_options=default_options,
+                capability_provenance=capability_provenance,
             ),
         )
         record_ai_admin_audit(
@@ -93,6 +103,10 @@ class SourcesAdminMixin:
         timeout_seconds: int | None,
         custom_headers: dict[str, str],
         extra_config: dict[str, object],
+        adapter_kind: str | None = None,
+        capability_metadata: dict[str, object] | None = None,
+        default_options: dict[str, object] | None = None,
+        capability_provenance: dict[str, object] | None = None,
         actor_username: str | None = None,
     ) -> "AISourceDefinition | None":
         _ = capability_type
@@ -110,6 +124,11 @@ class SourcesAdminMixin:
                 timeout_seconds=timeout_seconds,
                 custom_headers=custom_headers,
                 extra_config=extra_config,
+                adapter_kind=adapter_kind
+                or resolve_adapter_kind_for_preset(coerced_preset_type),
+                capability_metadata=capability_metadata,
+                default_options=default_options,
+                capability_provenance=capability_provenance,
             ),
         )
         if updated is not None:

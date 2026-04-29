@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
+
+if TYPE_CHECKING:
+    from apeiria.ai.model.runtime.capabilities import AIModelAdapterKind
 
 AISourceCapabilityType = Literal[
     "chat_completion",
@@ -20,6 +23,7 @@ AISourcePresetType = Literal[
     "openai_compatible_tts",
     "generic_rerank_api",
     "anthropic_compatible",
+    "openrouter",
 ]
 
 
@@ -35,8 +39,12 @@ class AISourcePresetDefinition:
     display_name: str
     capability_type: AISourceCapabilityType
     client_type: AISourceClientType
+    adapter_kind: AIModelAdapterKind
     default_api_base: str | None
     description: str
+    capability_metadata: dict[str, Any] | None = None
+    default_options: dict[str, Any] | None = None
+    capability_provenance: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True)
@@ -54,6 +62,10 @@ class AISourceDefinition:
     timeout_seconds: int | None = None
     custom_headers: dict[str, str] | None = None
     extra_config: dict[str, Any] | None = None
+    adapter_kind: AIModelAdapterKind | None = None
+    capability_metadata: dict[str, Any] | None = None
+    default_options: dict[str, Any] | None = None
+    capability_provenance: dict[str, Any] | None = None
 
 
 SOURCE_PRESETS: tuple[AISourcePresetDefinition, ...] = (
@@ -62,14 +74,25 @@ SOURCE_PRESETS: tuple[AISourcePresetDefinition, ...] = (
         display_name="OpenAI Compatible",
         capability_type="chat_completion",
         client_type="openai",
+        adapter_kind="openai_compatible",
         default_api_base="https://api.openai.com/v1",
         description="适用于 OpenAI 风格的聊天补全接口。",
+    ),
+    AISourcePresetDefinition(
+        preset_type="openrouter",
+        display_name="OpenRouter",
+        capability_type="chat_completion",
+        client_type="openai",
+        adapter_kind="openai_compatible",
+        default_api_base="https://openrouter.ai/api/v1",
+        description="适用于 OpenRouter 的 OpenAI 兼容聊天补全接口。",
     ),
     AISourcePresetDefinition(
         preset_type="openai_compatible_embedding",
         display_name="OpenAI Compatible",
         capability_type="embedding",
         client_type="openai",
+        adapter_kind="openai_compatible",
         default_api_base="https://api.openai.com/v1",
         description="适用于 OpenAI 风格的嵌入接口。",
     ),
@@ -78,6 +101,7 @@ SOURCE_PRESETS: tuple[AISourcePresetDefinition, ...] = (
         display_name="OpenAI Compatible",
         capability_type="speech_to_text",
         client_type="openai",
+        adapter_kind="openai_compatible",
         default_api_base="https://api.openai.com/v1",
         description="适用于 OpenAI 风格的语音转文字接口。",
     ),
@@ -86,6 +110,7 @@ SOURCE_PRESETS: tuple[AISourcePresetDefinition, ...] = (
         display_name="OpenAI Compatible",
         capability_type="text_to_speech",
         client_type="openai",
+        adapter_kind="openai_compatible",
         default_api_base="https://api.openai.com/v1",
         description="适用于 OpenAI 风格的文字转语音接口。",
     ),
@@ -94,6 +119,7 @@ SOURCE_PRESETS: tuple[AISourcePresetDefinition, ...] = (
         display_name="Generic Rerank API",
         capability_type="rerank",
         client_type="generic_rerank",
+        adapter_kind="generic_rerank",
         default_api_base="http://127.0.0.1:8000",
         description="适用于常见 `/rerank` 风格的重排序接口。",
     ),
@@ -102,10 +128,17 @@ SOURCE_PRESETS: tuple[AISourcePresetDefinition, ...] = (
         display_name="Anthropic Compatible",
         capability_type="chat_completion",
         client_type="anthropic",
+        adapter_kind="anthropic_compatible",
         default_api_base=None,
         description="适用于 Anthropic 风格的消息接口。",
     ),
 )
+
+CLIENT_TYPE_ADAPTER_KIND_MAP: dict[AISourceClientType, AIModelAdapterKind] = {
+    "openai": "openai_compatible",
+    "anthropic": "anthropic_compatible",
+    "generic_rerank": "generic_rerank",
+}
 
 
 def resolve_client_type_for_preset(
@@ -114,6 +147,23 @@ def resolve_client_type_for_preset(
     for item in SOURCE_PRESETS:
         if item.preset_type == preset_type:
             return item.client_type
+    raise UnsupportedAISourcePresetError
+
+
+def resolve_adapter_kind_for_client_type(
+    client_type: AISourceClientType,
+) -> AIModelAdapterKind:
+    """Bridge legacy client type values into adapter-kind vocabulary."""
+
+    return CLIENT_TYPE_ADAPTER_KIND_MAP[client_type]
+
+
+def resolve_adapter_kind_for_preset(
+    preset_type: AISourcePresetType,
+) -> AIModelAdapterKind:
+    for item in SOURCE_PRESETS:
+        if item.preset_type == preset_type:
+            return item.adapter_kind
     raise UnsupportedAISourcePresetError
 
 

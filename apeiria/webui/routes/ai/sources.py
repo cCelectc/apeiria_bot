@@ -65,6 +65,10 @@ async def create_ai_source(
         timeout_seconds=payload.timeout_seconds,
         custom_headers=payload.custom_headers,
         extra_config=payload.extra_config,
+        adapter_kind=payload.adapter_kind,
+        capability_metadata=payload.capability_metadata,
+        default_options=payload.default_options,
+        capability_provenance=payload.capability_provenance,
         actor_username=_actor_username_from_claims(session),
     )
     return to_ai_source_item(item)
@@ -88,6 +92,10 @@ async def update_ai_source(
         timeout_seconds=payload.timeout_seconds,
         custom_headers=payload.custom_headers,
         extra_config=payload.extra_config,
+        adapter_kind=payload.adapter_kind,
+        capability_metadata=payload.capability_metadata,
+        default_options=payload.default_options,
+        capability_provenance=payload.capability_provenance,
         actor_username=_actor_username_from_claims(session),
     )
     return to_ai_source_item(item) if item is not None else None

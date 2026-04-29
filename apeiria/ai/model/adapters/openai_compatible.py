@@ -78,6 +78,7 @@ class OpenAICompatibleProvider:
                 else [{"role": "user", "content": request.prompt}]
             ),
         }
+        planned_options = request.options or request.extra or {}
         if request.tools:
             payload["tools"] = [
                 {
@@ -90,10 +91,14 @@ class OpenAICompatibleProvider:
                 }
                 for tool in request.tools
             ]
-        if request.temperature is not None:
-            payload["temperature"] = request.temperature
-        if request.max_tokens is not None:
-            payload["max_tokens"] = request.max_tokens
+        temperature = request.temperature
+        if temperature is None:
+            temperature = _coerce_float(planned_options, "temperature")
+        if temperature is not None:
+            payload["temperature"] = temperature
+        max_tokens = request.max_tokens or _coerce_int(planned_options, "max_tokens")
+        if max_tokens is not None:
+            payload["max_tokens"] = max_tokens
 
         client = _build_openai_client(
             api_key=api_key,
@@ -112,6 +117,11 @@ class OpenAICompatibleProvider:
             content=_extract_openai_content(response),
             tool_calls=tuple(_extract_openai_tool_calls(response)),
             raw=raw,
+            usage=raw.get("usage") if isinstance(raw.get("usage"), dict) else None,
+            finish_reason=_extract_openai_finish_reason(response),
+            response_id=str(raw.get("id")) if raw.get("id") is not None else None,
+            reasoning_content=_extract_openai_reasoning_content(response),
+            provider_data=_extract_openai_provider_data(raw),
         )
 
     async def list_models(
@@ -282,6 +292,20 @@ def _coerce_int(extra: dict[str, Any] | None, key: str) -> int | None:
     return None
 
 
+def _coerce_float(extra: dict[str, Any] | None, key: str) -> float | None:
+    if not extra:
+        return None
+    value = extra.get(key)
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, str) and value.strip():
+        try:
+            return float(value.strip())
+        except ValueError:
+            return None
+    return None
+
+
 def _normalize_openai_api_base(api_base: str | None) -> str | None:
     if not isinstance(api_base, str) or not api_base.strip():
         return None
@@ -410,6 +434,32 @@ def _extract_openai_tool_calls(response: Any) -> list[AIModelToolCall]:
     return extracted
 
 
+def _extract_openai_finish_reason(response: Any) -> str | None:
+    choices = getattr(response, "choices", None)
+    if not isinstance(choices, list) or not choices:
+        return None
+    reason = getattr(choices[0], "finish_reason", None)
+    return reason if isinstance(reason, str) else None
+
+
+def _extract_openai_reasoning_content(response: Any) -> str | None:
+    choices = getattr(response, "choices", None)
+    if not isinstance(choices, list) or not choices:
+        return None
+    message = getattr(choices[0], "message", None)
+    value = getattr(message, "reasoning_content", None)
+    return value if isinstance(value, str) and value else None
+
+
+def _extract_openai_provider_data(raw: dict[str, Any]) -> dict[str, Any] | None:
+    data = {
+        key: raw[key]
+        for key in ("system_fingerprint", "service_tier")
+        if key in raw and raw[key] is not None
+    }
+    return data or None
+
+
 def _parse_tool_arguments(arguments: Any) -> dict[str, Any]:
     if isinstance(arguments, dict):
         return arguments
@@ -430,11 +480,23 @@ def _build_openai_messages(
     result: list[dict[str, Any]] = []
     for msg in messages:
         if msg.role == "system":
-            result.append({"role": "system", "content": msg.content})
+            result.append({"role": "system", "content": msg.text_content})
         elif msg.role == "user":
-            result.append({"role": "user", "content": msg.content})
+            result.append(
+                {
+                    "role": "user",
+                    "content": (
+                        _build_openai_content_parts(msg)
+                        if msg.parts
+                        else msg.text_content
+                    ),
+                }
+            )
         elif msg.role == "assistant":
-            entry: dict[str, Any] = {"role": "assistant", "content": msg.content}
+            entry: dict[str, Any] = {
+                "role": "assistant",
+                "content": msg.text_content,
+            }
             if msg.tool_calls:
                 entry["tool_calls"] = [
                     {
@@ -453,7 +515,17 @@ def _build_openai_messages(
                 {
                     "role": "tool",
                     "tool_call_id": msg.tool_call_id or "",
-                    "content": msg.content,
+                    "content": msg.text_content,
                 }
             )
     return result
+
+
+def _build_openai_content_parts(msg: AIModelMessage) -> list[dict[str, Any]] | str:
+    parts: list[dict[str, Any]] = []
+    for part in msg.parts:
+        if part.kind == "text" and part.text:
+            parts.append({"type": "text", "text": part.text})
+        elif part.kind == "image" and part.url:
+            parts.append({"type": "image_url", "image_url": {"url": part.url}})
+    return parts or msg.text_content
