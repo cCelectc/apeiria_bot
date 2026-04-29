@@ -13,7 +13,7 @@ RENDER_INIT = (
 MISSING_ALL_EXPORTS = "__all__ not found"
 
 
-def test_render_public_surface_uses_canonical_helper_names() -> None:
+def test_render_public_surface_keeps_canonical_and_convenience_helpers() -> None:
     exported = _read_all_exports(RENDER_INIT)
 
     assert {"render_html", "render_template", "render_url", "render_markdown"} <= set(
@@ -24,7 +24,7 @@ def test_render_public_surface_uses_canonical_helper_names() -> None:
         "template_to_pic",
         "url_to_pic",
         "markdown_to_pic",
-    }.isdisjoint(exported)
+    } <= set(exported)
 
 
 def _read_all_exports(path: Path) -> list[str]:

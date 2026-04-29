@@ -2,7 +2,7 @@ render:
   meta:
     name: "统一渲染服务"
     description: "基于 Playwright 的统一 HTML 截图渲染服务"
-    usage: "供官方插件调用的基础设施插件。\n默认无聊天命令，提供 render_html / render_template / render_url / render_markdown API。"
+    usage: "供官方插件调用的基础设施插件。\n默认无聊天命令，提供 render_html / render_template / render_url / render_markdown API，以及 html_to_pic / template_to_pic / url_to_pic / markdown_to_pic 便利别名。"
     config_headless: "是否以无头模式启动 Playwright Chromium"
     config_channel: "浏览器通道名称，例如 chrome 或 msedge"
     config_executable_path: "自定义浏览器可执行文件路径"

@@ -15,10 +15,6 @@ _RETIRED_RUNTIME_TOKENS = (
     "web_ui_token_expire_days",
     "legacy_flatten",
     "legacy_global",
-    "html_to_pic",
-    "template_to_pic",
-    "url_to_pic",
-    "markdown_to_pic",
 )
 
 
@@ -33,7 +29,6 @@ def test_compatibility_inventory_names_removed_surfaces() -> None:
         "web_ui_token_expire_days",
         "web_ui_auth_legacy_schema",
         "plugin_config_flattening",
-        "render_pic_aliases",
     } <= keys
 
 

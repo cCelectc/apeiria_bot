@@ -68,6 +68,10 @@ _✨ Apeiria 的统一图片渲染基础插件 ✨_
 - `render_template(...)`
 - `render_url(...)`
 - `render_markdown(...)`
+- `html_to_pic(...)`
+- `template_to_pic(...)`
+- `url_to_pic(...)`
+- `markdown_to_pic(...)`
 - `get_render_service()`
 - `get_render_status()`
 

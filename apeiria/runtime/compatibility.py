@@ -45,11 +45,6 @@ RETIRED_COMPATIBILITY_SURFACES: tuple[RetiredCompatibilitySurface, ...] = (
         category="plugin_config",
         replacement="[plugins.<section>] config tables",
     ),
-    RetiredCompatibilitySurface(
-        key="render_pic_aliases",
-        category="render_api",
-        replacement="render_html, render_template, render_url, render_markdown",
-    ),
 )
 
 NON_MIGRATION_COMPATIBILITY_TERMS: tuple[str, ...] = (
