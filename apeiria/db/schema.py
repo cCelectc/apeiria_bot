@@ -134,8 +134,14 @@ def _column_names(connection: sqlite3.Connection, table_name: str) -> set[str]:
     }
 
 
-def _ensure_current_schema_shape(connection: sqlite3.Connection) -> None:
+def _ensure_current_schema_shape(connection: sqlite3.Connection) -> None:  # noqa: C901
     """Apply additive JSON metadata columns for in-development v1 databases."""
+
+    existing_tables = _table_names(connection)
+    if "ai_future_task" not in existing_tables:
+        _create_future_task_tables(connection)
+    if "ai_turn_trace" not in existing_tables:
+        _create_turn_trace_tables(connection)
 
     source_columns = _column_names(connection, "ai_source")
     if "adapter_kind" not in source_columns:
@@ -262,6 +268,8 @@ def _create_current_schema(connection: sqlite3.Connection) -> None:
     _create_tool_execution_tables(connection)
     _create_relationship_person_tables(connection)
     _create_memory_item_tables(connection)
+    _create_future_task_tables(connection)
+    _create_turn_trace_tables(connection)
 
 
 def _create_governance_tables(connection: sqlite3.Connection) -> None:
@@ -828,5 +836,96 @@ def _create_memory_item_tables(connection: sqlite3.Connection) -> None:
         """
         CREATE INDEX idx_ai_memory_item_created_at
         ON ai_memory_item(created_at)
+        """
+    )
+
+
+def _create_future_task_tables(connection: sqlite3.Connection) -> None:
+    connection.execute(
+        """
+        CREATE TABLE ai_future_task (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            task_id TEXT NOT NULL UNIQUE,
+            session_id TEXT NOT NULL,
+            platform TEXT NOT NULL,
+            scene_type TEXT NOT NULL CHECK(scene_type IN ('group', 'private')),
+            scene_id TEXT NOT NULL,
+            user_id TEXT,
+            title TEXT NOT NULL,
+            description TEXT NOT NULL,
+            trigger_at TEXT NOT NULL,
+            status TEXT NOT NULL CHECK(
+                status IN ('pending', 'running', 'sent', 'cancelled', 'failed')
+            ),
+            source_message_id TEXT,
+            scheduler_job_id TEXT,
+            last_error TEXT,
+            claim_count INTEGER NOT NULL DEFAULT 0 CHECK(claim_count >= 0),
+            claimed_at TEXT,
+            completed_at TEXT,
+            recovery_reason TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+        """
+    )
+    connection.execute(
+        """
+        CREATE INDEX idx_ai_future_task_session
+        ON ai_future_task(session_id)
+        """
+    )
+    connection.execute(
+        """
+        CREATE INDEX idx_ai_future_task_status_trigger
+        ON ai_future_task(status, trigger_at)
+        """
+    )
+    connection.execute(
+        """
+        CREATE INDEX idx_ai_future_task_updated_at
+        ON ai_future_task(updated_at)
+        """
+    )
+
+
+def _create_turn_trace_tables(connection: sqlite3.Connection) -> None:
+    reason_codes_check = _json_check(connection, "strategy_reason_codes_json")
+    diagnostics_check = _json_check(connection, "diagnostics_json")
+    connection.execute(
+        f"""
+        CREATE TABLE ai_turn_trace (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            trace_id TEXT NOT NULL UNIQUE,
+            session_id TEXT NOT NULL,
+            runtime_mode TEXT NOT NULL,
+            terminal_status TEXT NOT NULL,
+            strategy_action TEXT NOT NULL,
+            strategy_reason_codes_json TEXT NOT NULL DEFAULT '[]'
+                CHECK({reason_codes_check}),
+            model_attempt_count INTEGER NOT NULL DEFAULT 0
+                CHECK(model_attempt_count >= 0),
+            tool_attempt_count INTEGER NOT NULL DEFAULT 0
+                CHECK(tool_attempt_count >= 0),
+            final_response_source TEXT,
+            skip_reason TEXT,
+            delivery_status TEXT,
+            commit_status TEXT,
+            diagnostics_json TEXT NOT NULL DEFAULT '{{}}'
+                CHECK({diagnostics_check}),
+            created_at TEXT NOT NULL
+        )
+        """
+    )
+    connection.execute(
+        """
+        CREATE INDEX idx_ai_turn_trace_session
+        ON ai_turn_trace(session_id, created_at)
+        """
+    )
+    connection.execute(
+        """
+        CREATE INDEX idx_ai_turn_trace_created_at
+        ON ai_turn_trace(created_at)
         """
     )

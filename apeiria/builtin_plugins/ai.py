@@ -12,14 +12,16 @@ under :mod:`apeiria.app.ai`, and HTTP route ownership lives under
 :mod:`apeiria.webui.routes.ai`.
 """
 
-from nonebot import require
+from nonebot import get_driver, require
 from nonebot.adapters import Bot, Event
+from nonebot.log import logger
 from nonebot.permission import SUPERUSER
 from nonebot.plugin import PluginMetadata, inherit_supported_adapters
 from nonebot.plugin.on import on_command, on_message
 
 from apeiria.ai import ai_service
 from apeiria.ai.config import AIPluginConfig
+from apeiria.app.ai.future_task import ai_future_task_service
 from apeiria.app.ai.pipeline import AITraceContext, ai_runtime_service
 from apeiria.plugins.metadata.api import (
     ConfigExtra,
@@ -159,6 +161,21 @@ ai_message = on_message(priority=50, block=False)
 # plugin import time — when this plugin is disabled, the registration never
 # runs and `/api/ai/*` stays off.
 register_plugin_router("/ai", ai_webui_router, tags=("ai",))
+
+
+async def _recover_ai_future_tasks() -> None:
+    """Recover durable AI future-task scheduler jobs during startup."""
+
+    result = await ai_future_task_service.recover_scheduled_tasks()
+    if result.rescheduled_task_ids or result.failed_task_ids:
+        logger.info(
+            "Recovered AI future tasks: rescheduled={} failed={}",
+            len(result.rescheduled_task_ids),
+            len(result.failed_task_ids),
+        )
+
+
+get_driver().on_startup(_recover_ai_future_tasks)
 
 
 @ai_status.handle()

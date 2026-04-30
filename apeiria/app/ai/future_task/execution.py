@@ -13,7 +13,9 @@ async def execute_future_task(task_id: str) -> None:
     task = await ai_future_task_service.get_task(task_id=task_id)
     if task is None or task.status != "pending":
         return
-    await ai_future_task_service.mark_task_running(task_id=task_id)
+    claimed = await ai_future_task_service.claim_task(task_id=task_id)
+    if claimed is None:
+        return
 
     try:
         from apeiria.app.ai.pipeline import AITraceContext

@@ -48,6 +48,10 @@ class AIFutureTaskDefinition:
     last_error: str | None
     created_at: datetime
     updated_at: datetime
+    claim_count: int = 0
+    claimed_at: datetime | None = None
+    completed_at: datetime | None = None
+    recovery_reason: str | None = None
 
 
 @dataclass(frozen=True)
