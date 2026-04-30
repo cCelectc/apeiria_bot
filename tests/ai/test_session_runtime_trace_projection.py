@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from apeiria.ai.turn_records import ModelAttempt, PromptSafeObservation, ToolAttempt
 from apeiria.app.ai.agent_turn import AgentTurnResult
 from apeiria.app.ai.pipeline.delivery_steps import DeliveryOutcome
@@ -85,6 +87,63 @@ def test_project_turn_trace_records_skips_and_delivery_failures() -> None:
     assert trace.delivery_status == "failed"
 
 
+@pytest.mark.parametrize(
+    ("action", "reason_codes", "evidence", "expected"),
+    [
+        ("drop", ("bot_self_message",), {}, {"skip_reason": "bot_self_message"}),
+        (
+            "observe",
+            ("ambient_cooldown",),
+            {},
+            {"skip_reason": "ambient_cooldown"},
+        ),
+        (
+            "merge",
+            ("ambient_merge_window",),
+            {"merged_message_count": 2},
+            {
+                "skip_reason": "ambient_merge_window",
+                "merge_reason": "ambient_merge_window",
+                "merged_message_count": 2,
+            },
+        ),
+        (
+            "defer",
+            ("session_busy",),
+            {},
+            {"skip_reason": "session_busy", "defer_reason": "session_busy"},
+        ),
+    ],
+)
+def test_project_turn_trace_records_hard_rule_outcomes_without_assistant_message(
+    action: str,
+    reason_codes: tuple[str, ...],
+    evidence: dict[str, object],
+    expected: dict[str, object],
+) -> None:
+    strategy = RuntimeHardRuleDecision(
+        action=action,  # type: ignore[arg-type]
+        reason_codes=reason_codes,  # type: ignore[arg-type]
+        reason_text="terminal",
+        evidence=evidence,
+        should_observe=action != "drop",
+        should_reply=False,
+    )
+
+    metadata = project_turn_trace(
+        session_id="session-1",
+        strategy_decision=strategy,
+        turn_result=None,
+        trace_id=f"trace-{action}",
+        runtime_mode="message",
+    ).to_metadata()
+
+    for key, value in expected.items():
+        assert metadata[key] == value
+    assert metadata["model_attempt_count"] == 0
+    assert metadata["tool_attempt_count"] == 0
+
+
 def test_project_turn_trace_records_social_policy_suppression() -> None:
     strategy = RuntimeHardRuleDecision(
         action="continue",
@@ -146,6 +205,93 @@ def test_project_turn_trace_records_tool_loop_failure() -> None:
     assert trace.final_response_source == "tool_loop"
     assert trace.to_metadata()["tool_attempt_count"] == 1
     assert trace.to_metadata()["delivery_status"] == "not_required"
+
+
+@pytest.mark.parametrize(
+    "finish_reason",
+    [
+        "no_model_selected",
+        "empty_response",
+        "model_failed",
+    ],
+)
+def test_project_turn_trace_records_model_terminal_outcomes(
+    finish_reason: str,
+) -> None:
+    strategy = RuntimeHardRuleDecision(
+        action="continue",
+        reason_codes=("direct_signal",),
+        reason_text="direct",
+        evidence={},
+        should_observe=True,
+        should_reply=True,
+    )
+    turn = AgentTurnResult(
+        trace_id=f"trace-{finish_reason}",
+        runtime_mode="message",
+        status="failed",
+        finish_reason=finish_reason,
+        model_attempts=(
+            ModelAttempt(
+                attempt_index=1,
+                model_ref="source:gpt",
+                status="failed",
+                response_source="direct",
+                reason=finish_reason,
+            ),
+        ),
+        response_source="direct",
+    )
+
+    metadata = project_turn_trace(
+        session_id="session-1",
+        strategy_decision=strategy,
+        turn_result=turn,
+    ).to_metadata()
+
+    assert metadata["trace_id"] == f"trace-{finish_reason}"
+    assert metadata["model_attempt_count"] == 1
+    assert metadata["final_response_source"] == "direct"
+    assert metadata["delivery_status"] == "not_required"
+
+
+def test_future_task_delivery_failure_is_not_model_generation_failure() -> None:
+    strategy = RuntimeHardRuleDecision(
+        action="continue",
+        reason_codes=("future_task",),
+        reason_text="future task",
+        evidence={},
+        should_observe=True,
+        should_reply=True,
+    )
+    turn = AgentTurnResult(
+        trace_id="trace-delivery-failed",
+        runtime_mode="future_task",
+        status="completed",
+        finish_reason="direct_model_completed",
+        model_attempts=(
+            ModelAttempt(
+                attempt_index=1,
+                model_ref="source:gpt",
+                status="success",
+                response_source="direct",
+            ),
+        ),
+        response_source="direct",
+    )
+
+    metadata = project_turn_trace(
+        session_id="session-1",
+        strategy_decision=strategy,
+        turn_result=turn,
+        delivery_result=DeliveryOutcome(delivered=False, error="bot_not_connected"),
+    ).to_metadata()
+
+    assert metadata["runtime_mode"] == "future_task"
+    assert metadata["model_attempt_count"] == 1
+    assert metadata["delivery_status"] == "failed"
+    assert metadata["skip_reason"] is None
+    assert metadata["final_response_source"] == "direct"
 
 
 def test_turn_trace_metadata_omits_provider_diagnostics() -> None:

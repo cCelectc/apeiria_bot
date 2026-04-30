@@ -16,9 +16,16 @@ from apeiria.app.ai.session_runtime import (
     AISessionRuntime,
     DeliveryTarget,
     MergeMetadata,
+    RuntimeCommitResult,
+    RuntimeContextBundle,
+    RuntimeExecutionOutcome,
     RuntimeHardRuleAction,
     RuntimeHardRuleDecision,
     RuntimeHardRuleReasonCode,
+    RuntimePolicyOutcome,
+    RuntimeStageName,
+    RuntimeTraceOutcome,
+    RuntimeTurnPlan,
     RuntimeTurnSource,
     ToolExposurePlan,
     TurnContext,
@@ -76,6 +83,93 @@ def test_turn_context_is_frozen_and_provider_neutral() -> None:
 
     with pytest.raises(FrozenInstanceError):
         context.trace_id = "mutated"  # type: ignore[misc]
+
+
+def test_runtime_stage_contracts_are_explicit_and_provider_neutral() -> None:
+    assert RuntimeStageName.__args__ == (
+        "ingress",
+        "policy",
+        "context",
+        "planning",
+        "execution",
+        "commit",
+        "trace",
+    )
+
+    source = RuntimeTurnSource(
+        runtime_mode="message",
+        message_text="hello",
+        source_message_id="msg-1",
+        user_id="user-1",
+        direct_signal=True,
+    )
+    decision = RuntimeHardRuleDecision(
+        action="continue",
+        reason_codes=("direct_signal",),
+        reason_text="direct",
+        evidence={"direct_signal": True},
+        should_observe=True,
+        should_reply=True,
+    )
+    policy = RuntimePolicyOutcome(
+        stage="policy",
+        source=source,
+        decision=decision,
+    )
+
+    assert policy.should_continue is True
+    assert policy.source.runtime_mode == "message"
+    assert "nonebot" not in repr(policy).lower()
+
+
+def test_runtime_plan_and_outcome_contracts_do_not_need_platform_events() -> None:
+    selected = object()
+    skill_runtime = object()
+    plan = RuntimeTurnPlan(
+        stage="planning",
+        selected=selected,  # type: ignore[arg-type]
+        fallback_models=(),
+        skill_runtime=skill_runtime,  # type: ignore[arg-type]
+        skill_activation=None,
+        pre_tool_task_class="reply_default",
+        prompt_messages=(AIModelMessage(role="user", content="hello"),),
+        prompt_diagnostics={"prompt_purpose": "reply_final"},
+        tool_exposure_plan=ToolExposurePlan(),
+    )
+    context_bundle = RuntimeContextBundle(
+        stage="context",
+        inputs=object(),  # type: ignore[arg-type]
+        diagnostics={"source": "test"},
+    )
+    execution = RuntimeExecutionOutcome(
+        stage="execution",
+        response=None,
+        skill_runtime=skill_runtime,  # type: ignore[arg-type]
+        post_tool_task_class=None,
+        delivery_result=None,
+    )
+    commit = RuntimeCommitResult(
+        stage="commit",
+        reply_text="hello",
+        delivery_result=None,
+    )
+    trace = RuntimeTraceOutcome(
+        stage="trace",
+        trace=TurnTrace(
+            trace_id="trace-1",
+            session_id="session-1",
+            runtime_mode="message",
+            strategy_action="continue",
+            strategy_reason_codes=("direct_signal",),
+        ),
+    )
+
+    assert plan.selected is selected
+    assert plan.has_executable_tools is False
+    assert context_bundle.diagnostics["source"] == "test"
+    assert execution.response is None
+    assert commit.reply_text == "hello"
+    assert trace.trace.to_metadata()["trace_id"] == "trace-1"
 
 
 def test_hard_rule_decision_vocabulary_and_observe_reply_split() -> None:

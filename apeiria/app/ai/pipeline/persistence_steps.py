@@ -2,10 +2,16 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from apeiria.app.ai.pipeline.context_window_steps import build_and_store_context_window
-from apeiria.app.ai.session_runtime import TurnTrace
+from apeiria.app.ai.pipeline.delivery_steps import DeliveryOutcome
+from apeiria.app.ai.pipeline.tool_steps import append_tool_observation_turns
+from apeiria.app.ai.session_runtime import (
+    RuntimeHardRuleDecision,
+    RuntimeHardRuleReasonCode,
+    project_turn_trace,
+)
 from apeiria.conversation.service import ChatMessageCreate, chat_session_service
 
 if TYPE_CHECKING:
@@ -37,6 +43,12 @@ async def persist_reply(  # noqa: PLR0913
 
     identity = request.identity
     delivery = gen.delivery_result
+    if gen.skill_runtime.turns:
+        await append_tool_observation_turns(
+            identity=identity,
+            trace_id=trace_id,
+            tool_turns=gen.skill_runtime.turns,
+        )
     await chat_session_service.append_message(
         identity,
         ChatMessageCreate(
@@ -94,25 +106,32 @@ def _turn_trace_meta(  # noqa: PLR0913
     turn: "AgentTurnResult | None",
     delivery_delivered: bool | None,
 ) -> dict[str, object]:
-    trace = TurnTrace(
+    decision = RuntimeHardRuleDecision(
+        action="continue" if social_decision.should_speak else "observe",
+        reason_codes=cast(
+            "tuple[RuntimeHardRuleReasonCode, ...]",
+            tuple(str(code) for code in social_decision.reason_codes),
+        ),
+        reason_text=social_decision.reason_text,
+        evidence=social_decision.evidence,
+        should_observe=True,
+        should_reply=social_decision.should_speak,
+    )
+    trace = project_turn_trace(
         trace_id=trace_id,
         session_id=session_id,
         runtime_mode=runtime_mode,
-        strategy_action="continue" if social_decision.should_speak else "observe",
-        strategy_reason_codes=tuple(str(code) for code in social_decision.reason_codes),
-        model_attempts=turn.model_attempts if turn else (),
-        tool_attempts=turn.tool_attempts if turn else (),
-        final_response_source=turn.response_source if turn else None,
-        skip_reason=turn.finish_reason if turn and turn.status == "skipped" else None,
-        delivery_status=_delivery_status(delivered=delivery_delivered),
+        strategy_decision=decision,
+        turn_result=turn,
+        delivery_result=_delivery_result_from_bool(delivered=delivery_delivered),
     )
     return {"turn_trace": trace.to_metadata()}
 
 
-def _delivery_status(*, delivered: bool | None) -> str:
+def _delivery_result_from_bool(*, delivered: bool | None) -> DeliveryOutcome | None:
     if delivered is None:
-        return "not_required"
-    return "delivered" if delivered else "failed"
+        return None
+    return DeliveryOutcome(delivered=delivered)
 
 
 def _agent_turn_meta(turn: "AgentTurnResult | None") -> dict[str, object]:

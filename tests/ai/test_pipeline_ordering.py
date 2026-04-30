@@ -21,6 +21,8 @@ from apeiria.app.ai.pipeline.service import (
 from apeiria.app.ai.reply_strategy import WakeContext
 from apeiria.conversation.models import ChatSessionIdentity
 
+KNOWLEDGE_RETRIEVAL_ERROR = "recall timestamp stamping must not query knowledge"
+
 
 def _identity() -> ChatSessionIdentity:
     return ChatSessionIdentity(
@@ -119,7 +121,10 @@ def test_message_entrypoint_extracts_memory_before_reply_pipeline(
     result = asyncio.run(
         ServiceSpy().handle_message(
             SimpleNamespace(self_id="bot-1"),  # type: ignore[arg-type]
-            SimpleNamespace(get_user_id=lambda: "user-1", is_tome=lambda: True),
+            SimpleNamespace(  # type: ignore[arg-type]
+                get_user_id=lambda: "user-1",
+                is_tome=lambda: True,
+            ),
         )
     )
 
@@ -127,7 +132,7 @@ def test_message_entrypoint_extracts_memory_before_reply_pipeline(
     assert order == ["memory_extraction", "reply_pipeline"]
 
 
-def test_reply_input_gathering_preserves_mutating_step_order(  # noqa: C901
+def test_reply_input_gathering_is_read_oriented_except_summary(  # noqa: C901
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     order: list[str] = []
@@ -162,7 +167,11 @@ def test_reply_input_gathering_preserves_mutating_step_order(  # noqa: C901
         order.append("relationship_update")
 
     async def recall_memories(*_args: Any, **_kwargs: Any) -> list[Any]:
-        order.append("memory_recall")
+        order.append("memory_recall_mutation")
+        return []
+
+    async def retrieve_memories(*_args: Any, **_kwargs: Any) -> list[Any]:
+        order.append("memory_retrieve")
         return []
 
     async def load_relationship(*_args: Any, **_kwargs: Any) -> str:
@@ -194,8 +203,19 @@ def test_reply_input_gathering_preserves_mutating_step_order(  # noqa: C901
     monkeypatch.setattr(input_steps, "build_model_binding_target", build_model_target)
     monkeypatch.setattr(input_steps, "resolve_tool_policy", resolve_tool_policy)
     monkeypatch.setattr(input_steps, "load_persona_bundle", load_persona)
-    monkeypatch.setattr(input_steps, "update_relationship_state", update_relationship)
-    monkeypatch.setattr(input_steps, "recall_memories", recall_memories)
+    monkeypatch.setattr(
+        input_steps,
+        "update_relationship_state",
+        update_relationship,
+        raising=False,
+    )
+    monkeypatch.setattr(input_steps, "recall_memories", recall_memories, raising=False)
+    monkeypatch.setattr(
+        input_steps,
+        "retrieve_memories_for_context",
+        retrieve_memories,
+        raising=False,
+    )
     monkeypatch.setattr(input_steps, "load_relationship_context", load_relationship)
     monkeypatch.setattr(
         input_steps,
@@ -224,10 +244,38 @@ def test_reply_input_gathering_preserves_mutating_step_order(  # noqa: C901
         "model_target",
         "tool_policy",
         "persona",
-        "relationship_update",
-        "memory_recall",
+        "memory_retrieve",
         "relationship_context",
         "person_profile",
         "allowed_tools",
         "initiative_bias",
     ]
+
+
+def test_live_memory_recall_stamping_skips_knowledge_retrieval(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    layers: list[str] = []
+
+    async def collect_layer_memories(*_args: Any, memory_layer: str, **_kwargs: Any):
+        layers.append(memory_layer)
+        return []
+
+    class MemoryService:
+        async def retrieve_knowledge_memories(self, **_kwargs: Any) -> list[Any]:
+            raise AssertionError(KNOWLEDGE_RETRIEVAL_ERROR)
+
+    from apeiria.app.ai.pipeline import memory_steps
+
+    monkeypatch.setattr(memory_steps, "_collect_layer_memories", collect_layer_memories)
+    monkeypatch.setattr(memory_steps, "ai_memory_service", MemoryService())
+
+    asyncio.run(
+        memory_steps.record_live_memory_recall(
+            identity=_identity(),
+            user_id="user-1",
+            query_text="hello",
+        )
+    )
+
+    assert layers == ["operator", "summary", "long_term"]

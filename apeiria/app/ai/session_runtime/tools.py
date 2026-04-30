@@ -13,12 +13,11 @@ from apeiria.ai.tools.function_calling import (
 from apeiria.ai.turn_records import PromptSafeObservation
 
 if TYPE_CHECKING:
-    from apeiria.ai.model import AIModelMessage, AIModelToolDefinition, AISelectedModel
+    from apeiria.ai.model import AIModelToolDefinition
     from apeiria.ai.tools import (
         AIToolPolicy,
         AIToolSpec,
         ToolGatewayRequest,
-        ToolGatewayResult,
     )
 
 
@@ -212,37 +211,12 @@ def _policy_denial_reason(
     return None
 
 
-@dataclass(frozen=True, slots=True)
-class ToolGatewayMigrationAdapter:
-    """Adapter that invokes the existing ToolGateway with selected tools only."""
-
-    gateway: Any
-
-    async def run_tool_loop(
-        self,
-        *,
-        request: "ToolGatewayRequest",
-        messages: tuple["AIModelMessage", ...],
-        exposure_plan: ToolExposurePlan,
-        selected_model: "AISelectedModel",
-        fallback_models: tuple["AISelectedModel", ...],
-    ) -> "ToolGatewayResult":
-        """Run the existing gateway using the orchestrator-selected definitions."""
-
-        request = _with_exposure_allowlist(request, exposure_plan)
-        return await self.gateway.run_tool_loop(
-            request,
-            messages=list(messages),
-            tools=compile_tool_exposure_provider_schema(exposure_plan),
-            selected=selected_model,
-            fallback_models=fallback_models,
-        )
-
-
-def _with_exposure_allowlist(
+def apply_tool_exposure_allowlist(
     request: "ToolGatewayRequest",
     plan: ToolExposurePlan,
 ) -> "ToolGatewayRequest":
+    """Return a gateway request constrained by the runtime exposure plan."""
+
     if not hasattr(request, "executable_tool_names"):
         return request
     return replace(

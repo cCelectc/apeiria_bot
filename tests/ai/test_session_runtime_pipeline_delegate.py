@@ -8,10 +8,10 @@ import pytest
 
 from apeiria.app.ai.pipeline.service import (
     AIRuntimeReplyRequest,
-    AIRuntimeReplyResult,
     AIRuntimeService,
     AITraceContext,
 )
+from apeiria.app.ai.session_runtime import RuntimeCommitResult
 from apeiria.conversation.models import ChatSessionIdentity
 
 
@@ -34,18 +34,16 @@ class _Resolver:
         return self.runtime
 
 
-class _DelegatingService(AIRuntimeService):
+class _Engine:
     def __init__(
         self,
         *,
-        resolver: _Resolver,
-        reply_result: AIRuntimeReplyResult | None,
+        commit_result: RuntimeCommitResult | None,
     ) -> None:
-        super().__init__(session_runtime_resolver=resolver)
-        self.reply_result = reply_result
-        self.turn_calls: list[AIRuntimeReplyRequest] = []
+        self.commit_result = commit_result
+        self.calls: list[AIRuntimeReplyRequest] = []
 
-    async def _run_reply_pipeline_turn(  # noqa: PLR0913
+    async def run_reply_turn(  # noqa: PLR0913
         self,
         *,
         trace_id: str,
@@ -54,10 +52,10 @@ class _DelegatingService(AIRuntimeService):
         wake_context: object | None = None,
         current_time: datetime,
         session_runtime: object | None = None,
-    ) -> AIRuntimeReplyResult | None:
+    ) -> RuntimeCommitResult | None:
         del trace_id, trace, wake_context, current_time, session_runtime
-        self.turn_calls.append(request)
-        return self.reply_result
+        self.calls.append(request)
+        return self.commit_result
 
 
 def _request() -> AIRuntimeReplyRequest:
@@ -79,18 +77,26 @@ def _request() -> AIRuntimeReplyRequest:
 
 
 @pytest.mark.parametrize(
-    "reply_result",
+    "commit_result",
     [
-        AIRuntimeReplyResult(reply_text="hello back"),
+        RuntimeCommitResult(
+            stage="commit",
+            reply_text="hello back",
+            delivery_result=None,
+        ),
         None,
     ],
 )
-def test_reply_pipeline_delegates_through_session_runtime(
-    reply_result: AIRuntimeReplyResult | None,
+def test_reply_pipeline_delegates_to_engine(
+    commit_result: RuntimeCommitResult | None,
 ) -> None:
     runtime = _SerializedRuntime()
     resolver = _Resolver(runtime)
-    service = _DelegatingService(resolver=resolver, reply_result=reply_result)
+    engine = _Engine(commit_result=commit_result)
+    service = AIRuntimeService(
+        session_runtime_resolver=resolver,
+        turn_engine=engine,  # type: ignore[arg-type]
+    )
     request = _request()
 
     result = asyncio.run(
@@ -101,9 +107,60 @@ def test_reply_pipeline_delegates_through_session_runtime(
         )
     )
 
-    assert result is reply_result
-    assert service.turn_calls == [request]
+    assert (result.reply_text if result is not None else None) == (
+        commit_result.reply_text if commit_result is not None else None
+    )
+    assert engine.calls == [request]
     assert len(resolver.resolved) == 1
     assert resolver.resolved[0][0] == "session-1"
+    assert runtime.calls == []
+
+
+def test_turn_engine_owns_session_serialization() -> None:
+    class _SerializingEngine(_Engine):
+        async def run_reply_turn(  # noqa: PLR0913
+            self,
+            *,
+            trace_id: str,
+            trace: AITraceContext,
+            request: AIRuntimeReplyRequest,
+            wake_context: object | None = None,
+            current_time: datetime,
+            session_runtime: object | None = None,
+        ) -> RuntimeCommitResult | None:
+            del trace_id, trace, wake_context
+
+            async def operation() -> RuntimeCommitResult | None:
+                self.calls.append(request)
+                return self.commit_result
+
+            assert session_runtime is not None
+            return await session_runtime.run_serialized(operation, now=current_time)
+
+    runtime = _SerializedRuntime()
+    resolver = _Resolver(runtime)
+    engine = _SerializingEngine(
+        commit_result=RuntimeCommitResult(
+            stage="commit",
+            reply_text="hello back",
+            delivery_result=None,
+        )
+    )
+    service = AIRuntimeService(
+        session_runtime_resolver=resolver,
+        turn_engine=engine,  # type: ignore[arg-type]
+    )
+
+    result = asyncio.run(
+        service._run_reply_pipeline(
+            trace_id="trace-1",
+            trace=AITraceContext(kind="test", trigger="unit"),
+            request=_request(),
+        )
+    )
+
+    assert result is not None
+    assert result.reply_text == "hello back"
+    assert engine.calls == [_request()]
     assert len(runtime.calls) == 1
     assert runtime.calls[0].tzinfo == timezone.utc

@@ -10,6 +10,7 @@ from .context import (
     TurnContext,
 )
 from .context_adapter import build_turn_context
+from .engine import AISessionTurnEngine
 from .hard_rules import (
     decide_runtime_hard_rule,
     map_legacy_skip_to_runtime_decision,
@@ -24,6 +25,15 @@ from .runtime import (
     SessionRuntimePolicy,
     WaitState,
 )
+from .stages import (
+    RuntimeCommitResult,
+    RuntimeContextBundle,
+    RuntimeExecutionOutcome,
+    RuntimePolicyOutcome,
+    RuntimeStageName,
+    RuntimeTraceOutcome,
+    RuntimeTurnPlan,
+)
 from .strategy import (
     MAX_HARD_RULE_EVIDENCE_ITEMS,
     RuntimeHardRuleAction,
@@ -33,8 +43,8 @@ from .strategy import (
 from .tools import (
     DEFAULT_TOOL_AWARENESS_CATEGORIES,
     ToolExposurePlan,
-    ToolGatewayMigrationAdapter,
     ToolOrchestrator,
+    apply_tool_exposure_allowlist,
     build_default_tool_exposure_plan,
     compile_tool_exposure_provider_schema,
 )
@@ -44,6 +54,7 @@ __all__ = [
     "DEFAULT_TOOL_AWARENESS_CATEGORIES",
     "MAX_HARD_RULE_EVIDENCE_ITEMS",
     "AISessionRuntime",
+    "AISessionTurnEngine",
     "AgentRunner",
     "DeferState",
     "DeliveryTarget",
@@ -52,18 +63,25 @@ __all__ = [
     "MergeMetadata",
     "PendingAmbientMessage",
     "RuntimeAgentRunner",
+    "RuntimeCommitResult",
+    "RuntimeContextBundle",
+    "RuntimeExecutionOutcome",
     "RuntimeHardRuleAction",
     "RuntimeHardRuleDecision",
     "RuntimeHardRuleReasonCode",
     "RuntimeMode",
+    "RuntimePolicyOutcome",
+    "RuntimeStageName",
+    "RuntimeTraceOutcome",
+    "RuntimeTurnPlan",
     "RuntimeTurnSource",
     "SessionRuntimePolicy",
     "ToolExposurePlan",
-    "ToolGatewayMigrationAdapter",
     "ToolOrchestrator",
     "TurnContext",
     "TurnTrace",
     "WaitState",
+    "apply_tool_exposure_allowlist",
     "build_default_tool_exposure_plan",
     "build_turn_context",
     "compile_tool_exposure_provider_schema",

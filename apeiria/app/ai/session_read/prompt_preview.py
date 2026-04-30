@@ -6,9 +6,8 @@ from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
 from apeiria.access.groups import group_service
-from apeiria.ai.model import AIModelBindingTarget, AIModelRouteQuery, ai_model_facade
+from apeiria.ai.model import AIModelRouteQuery, ai_model_facade
 from apeiria.ai.persona import (
-    AIPersonaBindingTarget,
     ai_persona_service,
     build_persona_render_context,
 )
@@ -16,6 +15,7 @@ from apeiria.ai.prompting import render_flat
 from apeiria.ai.tools import (
     AIToolPolicyBindingTarget,
     AIToolSceneContext,
+    ToolGatewayResult,
     ai_tool_policy_binding_service,
     ai_tool_service,
     summarize_tool_policy,
@@ -27,11 +27,19 @@ from apeiria.app.ai.admin.workbench import (
 )
 from apeiria.app.ai.pipeline.composer import (
     AIRuntimeComposeInput,
-    build_pre_tool_reply_packet,
     build_roleplay_reply_packet,
 )
+from apeiria.app.ai.pipeline.generation_steps import (
+    ReplyPromptPlanningInput,
+    build_initial_reply_prompt_packet,
+)
+from apeiria.app.ai.pipeline.input_steps import ReplyInputs
 from apeiria.app.ai.pipeline.memory_steps import retrieve_memories_for_preview
 from apeiria.app.ai.pipeline.person_profile_steps import load_person_profile_for_prompt
+from apeiria.app.ai.pipeline.persona_steps import (
+    build_model_binding_target,
+    build_persona_binding_target,
+)
 from apeiria.app.ai.pipeline.relationship_steps import (
     build_relationship_target,
     load_relationship_context,
@@ -40,9 +48,11 @@ from apeiria.app.ai.pipeline.routing import (
     select_post_tool_reply_task_class,
     select_pre_tool_reply_task_class,
 )
+from apeiria.app.ai.pipeline.service import AIRuntimeReplyRequest
 from apeiria.app.ai.reply_strategy import summarize_reply_strategy_decision
 from apeiria.app.ai.reply_strategy.models import ReplyStrategyDecision, WakeContext
 from apeiria.app.ai.session_runtime import (
+    RuntimeContextBundle,
     RuntimeHardRuleDecision,
     RuntimeTurnSource,
     decide_runtime_hard_rule,
@@ -88,6 +98,82 @@ async def _load_group_name(identity: "ChatSessionIdentity") -> str | None:
     return group.group_name if group is not None else None
 
 
+def _preview_direct_signal(
+    *,
+    identity: "ChatSessionIdentity",
+    latest_user_turn: "ChatMessageDetailView | None",
+) -> bool:
+    return identity.scene_type == "private" or bool(
+        latest_user_turn is not None
+        and (latest_user_turn.directed_to_bot or latest_user_turn.mentions_bot)
+    )
+
+
+def _build_preview_request(
+    *,
+    identity: "ChatSessionIdentity",
+    latest_user_turn: "ChatMessageDetailView | None",
+    latest_user_message: str | None,
+    user_id: str,
+) -> AIRuntimeReplyRequest:
+    """Normalize preview inputs into the same request shape as live runtime."""
+
+    return AIRuntimeReplyRequest(
+        identity=identity,
+        message_text=latest_user_message or "",
+        source_message_id=(
+            latest_user_turn.message_id if latest_user_turn is not None else None
+        ),
+        user_id=user_id,
+        sender_id=identity.bot_id,
+        runtime_mode="message",
+        is_tome=_preview_direct_signal(
+            identity=identity,
+            latest_user_turn=latest_user_turn,
+        ),
+        event_dedupe_key=(
+            latest_user_turn.platform_message_id
+            if latest_user_turn is not None
+            else None
+        ),
+        event_dedupe_claimed=True,
+    )
+
+
+def _build_preview_context_bundle(  # noqa: PLR0913
+    *,
+    request: AIRuntimeReplyRequest,
+    turns: list["ChatContextMessageView"],
+    conversation_summary: str | None,
+    relationship_target: object,
+    tool_policy: object,
+    persona: object | None,
+    memories: "Sequence[object]",
+    relationship_context: str | None,
+    person_profile: tuple[str, ...],
+    allowed_tools: "Sequence[object]",
+) -> RuntimeContextBundle:
+    """Build preview-safe context without mutating runtime state."""
+
+    return RuntimeContextBundle(
+        stage="context",
+        inputs=ReplyInputs(
+            turns=turns,  # type: ignore[arg-type]
+            conversation_summary=conversation_summary,
+            relationship_target=relationship_target,  # type: ignore[arg-type]
+            model_target=build_model_binding_target(request.identity, request.user_id),
+            tool_policy=tool_policy,  # type: ignore[arg-type]
+            persona=persona,  # type: ignore[arg-type]
+            recalled_memories=memories,  # type: ignore[arg-type]
+            relationship_context=relationship_context,
+            person_profile=person_profile,
+            allowed_tools=allowed_tools,  # type: ignore[arg-type]
+            initiative_bias=0.0,
+        ),
+        diagnostics={"preview_safe": True, "summary_source": "session_read"},
+    )
+
+
 def _build_preview_hard_rule_decision(
     *,
     identity: "ChatSessionIdentity",
@@ -99,9 +185,9 @@ def _build_preview_hard_rule_decision(
     """Evaluate preview-safe hard rules without touching session runtime state."""
 
     is_private = identity.scene_type == "private"
-    direct_signal = is_private or bool(
-        latest_user_turn is not None
-        and (latest_user_turn.directed_to_bot or latest_user_turn.mentions_bot)
+    direct_signal = _preview_direct_signal(
+        identity=identity,
+        latest_user_turn=latest_user_turn,
     )
     resolved_user_id = user_id or identity.subject_id or identity.scene_id
     message_text = latest_user_message or ""
@@ -244,9 +330,11 @@ def _suppressed_prompt_diagnostics() -> AISessionPromptDiagnostics:
     )
 
 
-def _build_preview_prompt_outputs(
+def _build_preview_prompt_outputs(  # noqa: PLR0913
     *,
-    compose_input: AIRuntimeComposeInput,
+    request: AIRuntimeReplyRequest,
+    inputs: ReplyInputs,
+    prompt_planning: ReplyPromptPlanningInput,
     has_tools: bool,
     hard_rule_decision: RuntimeHardRuleDecision,
     social_decision: ReplyStrategyDecision | None,
@@ -258,12 +346,18 @@ def _build_preview_prompt_outputs(
     str,
     str | None,
 ]:
-    planning_packet = build_pre_tool_reply_packet(compose_input, has_tools=has_tools)
     planning_mode = "planner" if has_tools else "roleplay"
     should_show_prompt = hard_rule_decision.should_reply and (
-        social_decision is None or social_decision.should_speak
+        social_decision is not None and social_decision.should_speak
     )
     if should_show_prompt:
+        assert social_decision is not None
+        planning_packet = build_initial_reply_prompt_packet(
+            request=request,
+            inputs=inputs,
+            social_decision=social_decision,
+            prep=prompt_planning,
+        )
         planning_channels, planning_prompt_diagnostics = (
             project_prompt_packet_to_preview(planning_packet, mode=planning_mode)
         )
@@ -281,6 +375,22 @@ def _build_preview_prompt_outputs(
         planning_prompt_diagnostics = _suppressed_prompt_diagnostics()
         rendered_prompt = suppression_text
 
+    compose_input = AIRuntimeComposeInput(
+        persona=inputs.persona,
+        scene_type=request.identity.scene_type,
+        person_profile=inputs.person_profile,
+        relationship=inputs.relationship_context,
+        tool_policy=prompt_planning.skill_runtime.policy_text,
+        tool_results=prompt_planning.skill_runtime.result_lines,
+        memories=inputs.recalled_memories,
+        conversation_summary=inputs.conversation_summary,
+        social_policy_summary=(
+            summarize_reply_strategy_decision(social_decision)
+            if social_decision is not None
+            else None
+        ),
+        turns=inputs.turns,
+    )
     roleplay_packet = build_roleplay_reply_packet(compose_input)
     if has_tools and should_show_prompt:
         roleplay_channels, roleplay_prompt_diagnostics = (
@@ -324,20 +434,21 @@ async def build_scene_prompt_preview(
     user_id = identity.subject_id or (
         latest_user_turn.author_id if latest_user_turn is not None else None
     )
+    resolved_user_id = user_id or identity.scene_id
+    request = _build_preview_request(
+        identity=identity,
+        latest_user_turn=latest_user_turn,
+        latest_user_message=latest_user_message,
+        user_id=resolved_user_id,
+    )
     prompt_time = turns[-1].created_at if turns else datetime.now(timezone.utc)
     group_name = await _load_group_name(identity)
-    relationship_context = None
-    if user_id is not None:
-        relationship_target = build_relationship_target(identity, user_id)
-        relationship_context = await load_relationship_context(
-            target=relationship_target,
-        )
+    relationship_target = build_relationship_target(identity, resolved_user_id)
+    relationship_context = await load_relationship_context(
+        target=relationship_target,
+    )
     persona = await ai_persona_service.build_persona_prompt_bundle(
-        target=AIPersonaBindingTarget(
-            conversation_id=identity.session_id,
-            group_id=identity.scene_id if identity.scene_type == "group" else None,
-            user_id=user_id,
-        ),
+        target=build_persona_binding_target(identity, resolved_user_id),
         render_context=build_persona_render_context(
             bot_id=identity.bot_id,
             current_time=prompt_time,
@@ -346,11 +457,9 @@ async def build_scene_prompt_preview(
             scene_id=identity.scene_id,
             session_id=identity.session_id,
             group_name=group_name,
-            user_id=user_id,
-            user_name=(
-                _find_recent_user_name(turns, user_id) if user_id is not None else None
-            )
-            or user_id,
+            user_id=resolved_user_id,
+            user_name=_find_recent_user_name(turns, resolved_user_id)
+            or resolved_user_id,
         ),
     )
     tool_policy = await ai_tool_policy_binding_service.resolve_scene_policy(
@@ -361,16 +470,16 @@ async def build_scene_prompt_preview(
         target=AIToolPolicyBindingTarget(
             conversation_id=identity.session_id,
             group_id=identity.scene_id if identity.scene_type == "group" else None,
-            user_id=user_id,
+            user_id=resolved_user_id,
         ),
     )
     memories = (
         await retrieve_memories_for_preview(
             identity=identity,
-            user_id=user_id,
+            user_id=resolved_user_id,
             query_text=latest_user_message or "",
         )
-        if latest_user_message and user_id is not None
+        if latest_user_message
         else []
     )
     tool_results = extract_tool_result_lines(turns)
@@ -378,33 +487,21 @@ async def build_scene_prompt_preview(
         ai_tool_service.registry.list_tools(),
         tool_policy,
     )
-    person_profile = (
-        await load_person_profile_for_prompt(
-            identity=identity,
-            user_id=user_id,
-        )
-        if user_id is not None
-        else ()
+    person_profile = await load_person_profile_for_prompt(
+        identity=identity,
+        user_id=resolved_user_id,
     )
     allowed_tools = ai_tool_service.list_allowed_tools(tool_policy)
     has_tools = bool(allowed_tools)
     pre_tool_task_class = select_pre_tool_reply_task_class(has_tools=has_tools)
     selected = await ai_model_facade.select_model(
         query=AIModelRouteQuery(task_class=pre_tool_task_class),
-        target=AIModelBindingTarget(
-            conversation_id=identity.session_id,
-            group_id=identity.scene_id if identity.scene_type == "group" else None,
-            user_id=user_id,
-        ),
+        target=build_model_binding_target(identity, resolved_user_id),
     )
     roleplay_selected = (
         await ai_model_facade.select_model(
             query=AIModelRouteQuery(task_class=select_post_tool_reply_task_class()),
-            target=AIModelBindingTarget(
-                conversation_id=identity.session_id,
-                group_id=identity.scene_id if identity.scene_type == "group" else None,
-                user_id=user_id,
-            ),
+            target=build_model_binding_target(identity, resolved_user_id),
         )
         if has_tools
         else None
@@ -414,7 +511,7 @@ async def build_scene_prompt_preview(
         identity=identity,
         latest_user_turn=latest_user_turn,
         latest_user_message=latest_user_message,
-        user_id=user_id,
+        user_id=resolved_user_id,
         now=prompt_time,
     )
     social_decision = _build_preview_social_decision(
@@ -427,21 +524,27 @@ async def build_scene_prompt_preview(
         hard_rule_decision=hard_rule_decision,
         social_decision=social_decision,
     )
-    compose_input = AIRuntimeComposeInput(
-        persona=persona,
-        scene_type=identity.scene_type,
-        person_profile=person_profile,
-        relationship=relationship_context,
-        tool_policy=tool_policy_text,
-        tool_results=tool_results,
-        memories=memories,
-        conversation_summary=conversation.summary_text,
-        social_policy_summary=(
-            summarize_reply_strategy_decision(social_decision)
-            if social_decision is not None
-            else None
-        ),
+    context_bundle = _build_preview_context_bundle(
+        request=request,
         turns=context_turns,
+        conversation_summary=conversation.summary_text,
+        relationship_target=relationship_target,
+        tool_policy=tool_policy,
+        persona=persona,
+        memories=memories,
+        relationship_context=relationship_context,
+        person_profile=person_profile,
+        allowed_tools=tuple(allowed_tools),
+    )
+    inputs = context_bundle.inputs
+    prompt_planning = ReplyPromptPlanningInput(
+        skill_runtime=ToolGatewayResult(
+            policy_text=tool_policy_text,
+            result_lines=tool_results,
+            turns=(),
+        ),
+        skill_activation=None,
+        has_tools=has_tools,
     )
     (
         planning_channels,
@@ -451,7 +554,9 @@ async def build_scene_prompt_preview(
         rendered_prompt,
         rendered_roleplay_prompt,
     ) = _build_preview_prompt_outputs(
-        compose_input=compose_input,
+        request=request,
+        inputs=inputs,
+        prompt_planning=prompt_planning,
         has_tools=has_tools,
         hard_rule_decision=hard_rule_decision,
         social_decision=social_decision,

@@ -146,6 +146,59 @@ async def recall_memories(
 ) -> list["AIMemoryDefinition"]:
     """Recall memories for the current runtime turn."""
 
+    return await _retrieve_memories(
+        identity=identity,
+        user_id=user_id,
+        query_text=query_text,
+        mutate_recall=True,
+    )
+
+
+async def retrieve_memories_for_context(
+    *,
+    identity: "ChatSessionIdentity",
+    user_id: str,
+    query_text: str,
+) -> list["AIMemoryDefinition"]:
+    """Retrieve prompt memories without mutating recall timestamps."""
+
+    return await _retrieve_memories(
+        identity=identity,
+        user_id=user_id,
+        query_text=query_text,
+        mutate_recall=False,
+    )
+
+
+async def record_live_memory_recall(
+    *,
+    identity: "ChatSessionIdentity",
+    user_id: str,
+    query_text: str,
+) -> None:
+    """Stamp live recall timestamps outside read-oriented context assembly."""
+
+    for memory_layer in _RECALL_LAYER_ORDER:
+        if memory_layer == "knowledge":
+            continue
+        await _collect_layer_memories(
+            identity=identity,
+            user_id=user_id,
+            query_text=query_text,
+            memory_layer=memory_layer,
+            mutate_recall=True,
+        )
+
+
+async def _retrieve_memories(
+    *,
+    identity: "ChatSessionIdentity",
+    user_id: str,
+    query_text: str,
+    mutate_recall: bool,
+) -> list["AIMemoryDefinition"]:
+    """Retrieve runtime memories, optionally applying live recall mutation."""
+
     recalled: list[AIMemoryDefinition] = []
     seen_ids: set[str] = set()
 
@@ -162,7 +215,7 @@ async def recall_memories(
                 user_id=user_id,
                 query_text=query_text,
                 memory_layer=memory_layer,
-                mutate_recall=True,
+                mutate_recall=mutate_recall,
             )
         for memory in apply_memory_budget(
             [item for item in layer_rows if item.memory_id not in seen_ids],
@@ -182,32 +235,11 @@ async def retrieve_memories_for_preview(
 ) -> list["AIMemoryDefinition"]:
     """Retrieve preview memories without mutating recall timestamps."""
 
-    recalled: list[AIMemoryDefinition] = []
-    seen_ids: set[str] = set()
-
-    for memory_layer in _RECALL_LAYER_ORDER:
-        if memory_layer == "knowledge":
-            layer_rows = await ai_memory_service.retrieve_knowledge_memories(
-                targets=_build_knowledge_targets(identity, user_id),
-                query_text=query_text,
-                limit=_LAYER_RECALL_LIMITS[memory_layer],
-            )
-        else:
-            layer_rows = await _collect_layer_memories(
-                identity=identity,
-                user_id=user_id,
-                query_text=query_text,
-                memory_layer=memory_layer,
-                mutate_recall=False,
-            )
-        for memory in apply_memory_budget(
-            [item for item in layer_rows if item.memory_id not in seen_ids],
-            max_memories=_LAYER_RECALL_LIMITS[memory_layer],
-        ):
-            seen_ids.add(memory.memory_id)
-            recalled.append(memory)
-
-    return recalled
+    return await retrieve_memories_for_context(
+        identity=identity,
+        user_id=user_id,
+        query_text=query_text,
+    )
 
 
 async def _collect_layer_memories(

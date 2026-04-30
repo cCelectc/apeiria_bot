@@ -43,9 +43,25 @@ def _request(
     )
 
 
+async def _noop_observation_effects(*_args: object, **_kwargs: object) -> None:
+    return None
+
+
 @pytest.mark.parametrize(
     ("runtime_request", "wake_context"),
     [
+        (
+            _request(),
+            WakeContext(
+                bot_self_id="bot-1",
+                user_id="user-1",
+                message_text="ambient",
+                is_tome=False,
+                is_private=False,
+                is_future_task=False,
+                allow_group_initiative=True,
+            ),
+        ),
         (
             _request(is_tome=True),
             WakeContext(
@@ -94,6 +110,11 @@ def test_current_serialized_priority_turn_does_not_self_defer(
     async def gather_reply_inputs(*_args: object, **_kwargs: object) -> object:
         raise _InputGatheredError
 
+    monkeypatch.setattr(
+        service_module,
+        "apply_reply_observation_effects",
+        _noop_observation_effects,
+    )
     monkeypatch.setattr(service_module, "gather_reply_inputs", gather_reply_inputs)
 
     with pytest.raises(_InputGatheredError):

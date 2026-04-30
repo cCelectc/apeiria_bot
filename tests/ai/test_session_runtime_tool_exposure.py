@@ -2,14 +2,17 @@
 
 from __future__ import annotations
 
-import asyncio
+import inspect
+from datetime import datetime, timezone
 
-from apeiria.ai.model import AIModelMessage, AIModelToolDefinition
-from apeiria.ai.tools import AIToolPolicy, AIToolSpec, ToolGatewayResult
+from apeiria.ai.model import AIModelToolDefinition
+from apeiria.ai.tools import AIToolPolicy, AIToolSpec, ToolGatewayRequest
+from apeiria.app.ai import session_runtime
+from apeiria.app.ai.pipeline import generation_steps
 from apeiria.app.ai.session_runtime import (
     ToolExposurePlan,
-    ToolGatewayMigrationAdapter,
     ToolOrchestrator,
+    apply_tool_exposure_allowlist,
     build_default_tool_exposure_plan,
     compile_tool_exposure_provider_schema,
 )
@@ -169,16 +172,7 @@ def test_tool_orchestrator_records_unavailable_tools_before_schema_compile() -> 
     assert plan.diagnostics["execution_timeout_seconds"] == 3.0
 
 
-def test_tool_gateway_migration_adapter_uses_selected_tools_only() -> None:
-    class _Gateway:
-        def __init__(self) -> None:
-            self.tools: tuple[AIModelToolDefinition, ...] | None = None
-
-        async def run_tool_loop(self, request: object, **kwargs: object) -> object:
-            del request
-            self.tools = kwargs["tools"]  # type: ignore[assignment]
-            return ToolGatewayResult(policy_text="", result_lines=(), turns=())
-
+def test_tool_exposure_allowlist_uses_selected_tools_only() -> None:
     selected_tool = AIModelToolDefinition(
         name="memory_query",
         description="Recall memory",
@@ -189,21 +183,25 @@ def test_tool_gateway_migration_adapter_uses_selected_tools_only() -> None:
         description="Reload project",
         parameters={"type": "object", "properties": {}},
     )
-    gateway = _Gateway()
-    adapter = ToolGatewayMigrationAdapter(gateway=gateway)
-
-    result = asyncio.run(
-        adapter.run_tool_loop(
-            request=object(),
-            messages=(AIModelMessage(role="user", content="hello"),),
-            exposure_plan=ToolExposurePlan(
-                selected_tools=(selected_tool,),
-                hidden_reasons={hidden_tool.name: "excluded_from_ambient_group"},
-            ),
-            selected_model=object(),
-            fallback_models=(),
-        )
+    request = ToolGatewayRequest(
+        session_id="session-1",
+        source_message_id="msg-1",
+        trace_id="trace-1",
+        message_text="hello",
+        policy=AIToolPolicy(execution_enabled=True),
+        recalled_memories=(),
+        relationship_context=None,
+        current_time=datetime(2026, 4, 29, tzinfo=timezone.utc),
     )
+    plan = ToolExposurePlan(
+        selected_tools=(selected_tool,),
+        hidden_reasons={hidden_tool.name: "excluded_from_ambient_group"},
+    )
+    constrained = apply_tool_exposure_allowlist(request, plan)
 
-    assert isinstance(result, ToolGatewayResult)
-    assert gateway.tools == (selected_tool,)
+    assert constrained.executable_tool_names == frozenset({"memory.query"})
+
+
+def test_tool_gateway_migration_adapter_is_not_live_runtime_surface() -> None:
+    assert not hasattr(session_runtime, "ToolGatewayMigrationAdapter")
+    assert "ToolGatewayMigrationAdapter" not in inspect.getsource(generation_steps)

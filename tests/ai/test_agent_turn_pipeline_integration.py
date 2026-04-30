@@ -19,16 +19,46 @@ from apeiria.app.ai.agent_turn import (
 from apeiria.app.ai.pipeline.delivery_steps import DeliveryOutcome
 from apeiria.app.ai.pipeline.generation_steps import ReplyPreparation
 from apeiria.app.ai.pipeline.input_steps import ReplyInputs
+from apeiria.app.ai.pipeline.relationship_steps import AIRelationshipTarget
 from apeiria.app.ai.pipeline.service import AIRuntimeReplyRequest
 from apeiria.app.ai.reply_strategy import ReplyStrategyDecision
 from apeiria.app.ai.session_runtime import (
     DeliveryTarget,
+    RuntimeTurnPlan,
     RuntimeTurnSource,
     ToolExposurePlan,
     TurnContext,
 )
 from apeiria.conversation.models import ChatSessionIdentity
 from tests.ai.agent_turn_helpers import model_response, selected_model
+
+
+def _plan_from_preparation(
+    prep: ReplyPreparation,
+    *,
+    prompt_messages: tuple[AIModelMessage, ...],
+    exposure_plan: ToolExposurePlan | None = None,
+) -> RuntimeTurnPlan:
+    return RuntimeTurnPlan(
+        stage="planning",
+        selected=prep.selected,
+        fallback_models=(),
+        skill_runtime=prep.skill_runtime,
+        skill_activation=prep.skill_activation,
+        pre_tool_task_class=prep.pre_tool_task_class,
+        prompt_messages=prompt_messages,
+        prompt_diagnostics={},
+        tool_exposure_plan=exposure_plan or ToolExposurePlan(),
+    )
+
+
+def _relationship_target() -> AIRelationshipTarget:
+    return AIRelationshipTarget(
+        platform="test",
+        group_id=None,
+        user_id="user-1",
+        is_private=True,
+    )
 
 
 def test_direct_generation_records_future_task_runtime_mode(monkeypatch: Any) -> None:
@@ -92,7 +122,7 @@ def test_direct_generation_records_future_task_runtime_mode(monkeypatch: Any) ->
     inputs = ReplyInputs(
         turns=[],
         conversation_summary=None,
-        relationship_target=object(),
+        relationship_target=_relationship_target(),
         model_target=AIModelBindingTarget(
             conversation_id="session-1",
             group_id=None,
@@ -121,14 +151,39 @@ def test_direct_generation_records_future_task_runtime_mode(monkeypatch: Any) ->
         evidence={},
         decision_source="fallback",
     )
+    prompt_messages = generation_steps.build_initial_reply_prompt_messages(
+        request=request,
+        inputs=inputs,
+        social_decision=social_decision,
+        prep=prep,
+    )
+    plan = _plan_from_preparation(prep, prompt_messages=prompt_messages)
+    context = TurnContext(
+        trace_id="trace-future",
+        identity=identity,
+        source=RuntimeTurnSource(
+            runtime_mode="future_task",
+            message_text="future task",
+            source_message_id=None,
+            user_id="user-1",
+        ),
+        delivery_target=DeliveryTarget(
+            session_id="session-1",
+            delivery_channel="future_task",
+        ),
+        current_time=datetime(2026, 4, 28, tzinfo=timezone.utc),
+        model_target=inputs.model_target,
+        tool_policy=inputs.tool_policy,
+        tool_exposure_plan=plan.tool_exposure_plan,
+        prompt_messages=plan.prompt_messages,
+    )
 
     result = asyncio.run(
         generation_steps._generate_direct(
             request=request,
             inputs=inputs,
-            social_decision=social_decision,
-            prep=prep,
-            trace_id="trace-future",
+            prep=plan,
+            turn_context=context,
         )
     )
 
@@ -209,7 +264,7 @@ def test_direct_generation_uses_turn_context_messages_through_runner(
     )
     request = AIRuntimeReplyRequest(
         identity=identity,
-        message_text="legacy request text",
+        message_text="runtime request text",
         source_message_id="msg-1",
         user_id="user-1",
         sender_id="bot-1",
@@ -219,7 +274,7 @@ def test_direct_generation_uses_turn_context_messages_through_runner(
     inputs = ReplyInputs(
         turns=[],
         conversation_summary=None,
-        relationship_target=object(),
+        relationship_target=_relationship_target(),
         model_target=AIModelBindingTarget(
             conversation_id="session-1",
             group_id=None,
@@ -253,7 +308,7 @@ def test_direct_generation_uses_turn_context_messages_through_runner(
         identity=identity,
         source=RuntimeTurnSource(
             runtime_mode="message",
-            message_text="legacy request text",
+            message_text="runtime request text",
             source_message_id="msg-1",
             user_id="user-1",
             direct_signal=True,
@@ -270,16 +325,18 @@ def test_direct_generation_uses_turn_context_messages_through_runner(
         tool_exposure_plan=ToolExposurePlan(),
         prompt_messages=(AIModelMessage(role="user", content="context-only prompt"),),
     )
+    plan = _plan_from_preparation(prep, prompt_messages=context.prompt_messages)
 
     result = asyncio.run(
         generation_steps.generate_reply(
             request=request,
             inputs=inputs,
             social_decision=social_decision,
-            prep=prep,
+            prep=plan,
             current_time=datetime(2026, 4, 28, tzinfo=timezone.utc),
-            trace_id="trace-legacy",
+            trace_id="trace-runtime",
             turn_context=context,
+            turn_plan=plan,
         )
     )
 
@@ -360,9 +417,6 @@ def test_tool_planner_and_refinement_use_messages_and_runtime_mode(
         del task_class, target
         return selected
 
-    async def append_tool_turns(**_kwargs: object) -> None:
-        return None
-
     async def deliver_reply(
         _request: AIRuntimeReplyRequest,
         _reply_text: str,
@@ -377,11 +431,6 @@ def test_tool_planner_and_refinement_use_messages_and_runtime_mode(
         select_fallbacks,
     )
     monkeypatch.setattr(generation_steps, "select_pipeline_model", select_model)
-    monkeypatch.setattr(
-        generation_steps,
-        "append_tool_observation_turns",
-        append_tool_turns,
-    )
     monkeypatch.setattr(generation_steps, "record_context_usage", lambda *_, **__: None)
     monkeypatch.setattr(generation_steps, "deliver_generated_reply", deliver_reply)
 
@@ -404,7 +453,7 @@ def test_tool_planner_and_refinement_use_messages_and_runtime_mode(
     inputs = ReplyInputs(
         turns=[],
         conversation_summary=None,
-        relationship_target=object(),
+        relationship_target=_relationship_target(),
         model_target=AIModelBindingTarget(
             conversation_id="session-1",
             group_id=None,
@@ -438,15 +487,48 @@ def test_tool_planner_and_refinement_use_messages_and_runtime_mode(
         evidence={},
         decision_source="fallback",
     )
+    exposure_plan = ToolExposurePlan(selected_tools=(tool_definition,))
+    prompt_messages = generation_steps.build_initial_reply_prompt_messages(
+        request=request,
+        inputs=inputs,
+        social_decision=social_decision,
+        prep=prep,
+    )
+    plan = _plan_from_preparation(
+        prep,
+        prompt_messages=prompt_messages,
+        exposure_plan=exposure_plan,
+    )
+    context = TurnContext(
+        trace_id="trace-tools",
+        identity=identity,
+        source=RuntimeTurnSource(
+            runtime_mode="future_task",
+            message_text="future task",
+            source_message_id=None,
+            user_id="user-1",
+        ),
+        delivery_target=DeliveryTarget(
+            session_id="session-1",
+            delivery_channel="future_task",
+        ),
+        current_time=datetime(2026, 4, 28, tzinfo=timezone.utc),
+        model_target=inputs.model_target,
+        tool_policy=inputs.tool_policy,
+        tool_exposure_plan=exposure_plan,
+        prompt_messages=prompt_messages,
+    )
 
     result = asyncio.run(
         generation_steps._generate_with_tool_loop(
             request=request,
             inputs=inputs,
             social_decision=social_decision,
-            prep=prep,
+            prep=plan,
             current_time=datetime(2026, 4, 28, tzinfo=timezone.utc),
             trace_id="trace-tools",
+            turn_context=context,
+            turn_plan=plan,
         )
     )
 
@@ -462,7 +544,9 @@ def test_tool_planner_and_refinement_use_messages_and_runtime_mode(
     assert result.delivery_result == DeliveryOutcome(delivered=True)
 
 
-def test_tool_generation_uses_runner_and_exposure_adapter(monkeypatch: Any) -> None:
+def test_tool_generation_uses_runner_and_native_exposure_plan(
+    monkeypatch: Any,
+) -> None:
     from apeiria.app.ai.pipeline import generation_steps
 
     selected = selected_model("main")
@@ -473,7 +557,8 @@ def test_tool_generation_uses_runner_and_exposure_adapter(monkeypatch: Any) -> N
     )
     exposure_plan = ToolExposurePlan(selected_tools=(tool_definition,))
     runner_contexts: list[TurnContext] = []
-    adapter_plans: list[ToolExposurePlan] = []
+    gateway_tools: list[tuple[AIModelToolDefinition, ...]] = []
+    gateway_allowlists: list[frozenset[str] | None] = []
 
     class RunnerSpy:
         def __init__(self, *, direct_executor: Any, tool_capable_executor: Any) -> None:
@@ -484,29 +569,25 @@ def test_tool_generation_uses_runner_and_exposure_adapter(monkeypatch: Any) -> N
             runner_contexts.append(context)
             return await self.tool_capable_executor(context)
 
-    class AdapterSpy:
-        def __init__(self, *, gateway: Any) -> None:
-            self.gateway = gateway
-
-        async def run_tool_loop(
-            self,
-            *,
-            request: Any,
-            messages: tuple[Any, ...],
-            exposure_plan: ToolExposurePlan,
-            selected_model: AISelectedModel,
-            fallback_models: tuple[AISelectedModel, ...],
-        ) -> ToolGatewayResult:
-            del request, messages, fallback_models
-            adapter_plans.append(exposure_plan)
-            return ToolGatewayResult(
-                policy_text="allowed: memory.query",
-                result_lines=(),
-                turns=(),
-                available_tools=(),
-                final_response=model_response(selected_model, "tool answer"),
-                loop_finish_reason="final_response",
-            )
+    async def run_tool_loop(
+        request: Any,
+        *,
+        messages: list[Any],
+        tools: tuple[AIModelToolDefinition, ...],
+        selected: AISelectedModel,
+        fallback_models: tuple[AISelectedModel, ...],
+    ) -> ToolGatewayResult:
+        del messages, fallback_models
+        gateway_allowlists.append(request.executable_tool_names)
+        gateway_tools.append(tools)
+        return ToolGatewayResult(
+            policy_text="allowed: memory.query",
+            result_lines=(),
+            turns=(),
+            available_tools=(),
+            final_response=model_response(selected, "tool answer"),
+            loop_finish_reason="final_response",
+        )
 
     async def select_fallbacks(
         _selected: AISelectedModel,
@@ -520,7 +601,7 @@ def test_tool_generation_uses_runner_and_exposure_adapter(monkeypatch: Any) -> N
         return DeliveryOutcome(delivered=True)
 
     monkeypatch.setattr(generation_steps, "RuntimeAgentRunner", RunnerSpy)
-    monkeypatch.setattr(generation_steps, "ToolGatewayMigrationAdapter", AdapterSpy)
+    monkeypatch.setattr(generation_steps.tool_gateway, "run_tool_loop", run_tool_loop)
     monkeypatch.setattr(
         generation_steps,
         "select_pipeline_fallback_models",
@@ -549,7 +630,7 @@ def test_tool_generation_uses_runner_and_exposure_adapter(monkeypatch: Any) -> N
     inputs = ReplyInputs(
         turns=[],
         conversation_summary=None,
-        relationship_target=object(),
+        relationship_target=_relationship_target(),
         model_target=AIModelBindingTarget(
             conversation_id="session-1",
             group_id=None,
@@ -605,21 +686,28 @@ def test_tool_generation_uses_runner_and_exposure_adapter(monkeypatch: Any) -> N
         tool_exposure_plan=exposure_plan,
         prompt_messages=(AIModelMessage(role="user", content="tool prompt"),),
     )
+    plan = _plan_from_preparation(
+        prep,
+        prompt_messages=context.prompt_messages,
+        exposure_plan=exposure_plan,
+    )
 
     result = asyncio.run(
         generation_steps.generate_reply(
             request=request,
             inputs=inputs,
             social_decision=social_decision,
-            prep=prep,
+            prep=plan,
             current_time=datetime(2026, 4, 28, tzinfo=timezone.utc),
-            trace_id="trace-legacy",
+            trace_id="trace-runtime",
             turn_context=context,
+            turn_plan=plan,
         )
     )
 
     assert runner_contexts == [context]
-    assert adapter_plans == [exposure_plan]
+    assert gateway_tools == [(tool_definition,)]
+    assert gateway_allowlists == [frozenset({"memory.query"})]
     assert result.response is not None
     assert result.response.content == "tool answer"
     assert result.turn_result is not None

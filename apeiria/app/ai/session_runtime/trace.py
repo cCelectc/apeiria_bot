@@ -90,6 +90,22 @@ def project_turn_trace(  # noqa: PLR0913
         runtime_mode=resolved_runtime_mode,
         strategy_action=strategy_decision.action,
         strategy_reason_codes=strategy_decision.reason_codes,
+        merged_message_count=_int_evidence(strategy_decision, "merged_message_count"),
+        merge_reason=(
+            strategy_decision.reason_codes[0]
+            if strategy_decision.action == "merge" and strategy_decision.reason_codes
+            else None
+        ),
+        wait_reason=(
+            strategy_decision.reason_codes[0]
+            if strategy_decision.action == "wait" and strategy_decision.reason_codes
+            else None
+        ),
+        defer_reason=(
+            strategy_decision.reason_codes[0]
+            if strategy_decision.action == "defer" and strategy_decision.reason_codes
+            else None
+        ),
         model_attempts=turn_result.model_attempts if turn_result else (),
         tool_attempts=turn_result.tool_attempts if turn_result else (),
         final_response_source=turn_result.response_source if turn_result else None,
@@ -102,6 +118,14 @@ def project_turn_trace(  # noqa: PLR0913
             else None
         ),
     )
+
+
+def _int_evidence(
+    strategy_decision: "RuntimeHardRuleDecision",
+    key: str,
+) -> int:
+    value = strategy_decision.evidence.get(key)
+    return value if isinstance(value, int) else 0
 
 
 def _delivery_status(delivery_result: "DeliveryOutcome | None") -> str:

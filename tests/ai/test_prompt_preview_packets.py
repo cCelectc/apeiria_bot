@@ -9,7 +9,8 @@ from typing import TYPE_CHECKING
 
 from apeiria.ai.persona.service import AIPersonaPromptBundle
 from apeiria.ai.prompting import PromptPacket, PromptSection, render_flat
-from apeiria.ai.tools import AIToolPolicy
+from apeiria.ai.tools import AIToolPolicy, ToolGatewayResult
+from apeiria.app.ai.pipeline.generation_steps import ReplyPromptPlanningInput
 from apeiria.conversation.models import (
     ChatContextMessageView,
     ChatMessageDetailView,
@@ -210,9 +211,121 @@ def test_prompt_preview_uses_central_packet_projection() -> None:
     ).read_text(encoding="utf-8")
 
     assert "project_prompt_packet_to_preview" in preview_source
+    assert "build_initial_reply_prompt_packet" in preview_source
+    assert "build_pre_tool_reply_packet" not in preview_source
     assert "_to_prompt_channel_preview" not in preview_source
     assert "def _section_text" not in preview_source
     assert "def _section_lines" not in preview_source
+
+
+def test_prompt_preview_planning_matches_runtime_prompt_projection() -> None:
+    module = importlib.import_module("apeiria.app.ai.session_read.prompt_preview")
+    projection = importlib.import_module(
+        "apeiria.app.ai.session_read.prompt_projection"
+    )
+    generation_steps = importlib.import_module(
+        "apeiria.app.ai.pipeline.generation_steps"
+    )
+    now = datetime(2026, 4, 29, 12, 0, tzinfo=timezone.utc)
+    identity = ChatSessionIdentity(
+        session_id="session-1",
+        platform="test",
+        bot_id="bot-1",
+        scene_type="private",
+        scene_id="user-1",
+        subject_id="user-1",
+    )
+    turn = ChatMessageDetailView(
+        message_id="msg-1",
+        session_id="session-1",
+        platform_message_id="platform-msg-1",
+        reply_to_message_id=None,
+        platform_reply_id=None,
+        author_role="user",
+        author_id="user-1",
+        author_name="User",
+        message_kind="text",
+        directed_to_bot=True,
+        mentions_bot=True,
+        has_media=False,
+        text_content="hello",
+        content=None,
+        meta=None,
+        raw_data=None,
+        created_at=now,
+    )
+    request = module._build_preview_request(
+        identity=identity,
+        latest_user_turn=turn,
+        latest_user_message="hello",
+        user_id="user-1",
+    )
+    context_bundle = module._build_preview_context_bundle(
+        request=request,
+        turns=[
+            ChatContextMessageView(
+                message_id="msg-1",
+                author_role="user",
+                author_id="user-1",
+                author_name="User",
+                text_content="hello",
+                content=None,
+                created_at=now,
+            )
+        ],
+        conversation_summary="Conversation summary.",
+        relationship_target=object(),
+        tool_policy=AIToolPolicy(execution_enabled=False),
+        persona=None,
+        memories=[],
+        relationship_context="Relationship context.",
+        person_profile=("Profile line.",),
+        allowed_tools=(),
+    )
+    hard_rule_decision = module._build_preview_hard_rule_decision(
+        identity=identity,
+        latest_user_turn=turn,
+        latest_user_message="hello",
+        user_id="user-1",
+        now=now,
+    )
+    social_decision = module._build_preview_social_decision(
+        hard_rule_decision=hard_rule_decision,
+        has_latest_user_message=True,
+    )
+    prompt_planning = ReplyPromptPlanningInput(
+        skill_runtime=ToolGatewayResult(
+            policy_text="Tool policy.",
+            result_lines=(),
+            turns=(),
+        ),
+        skill_activation=None,
+        has_tools=False,
+    )
+
+    preview_channels, preview_diagnostics, *_ = module._build_preview_prompt_outputs(
+        request=request,
+        inputs=context_bundle.inputs,
+        prompt_planning=prompt_planning,
+        has_tools=False,
+        hard_rule_decision=hard_rule_decision,
+        social_decision=social_decision,
+    )
+    packet = generation_steps.build_initial_reply_prompt_packet(
+        request=request,
+        inputs=context_bundle.inputs,
+        social_decision=social_decision,
+        prep=prompt_planning,
+    )
+    expected_channels, expected_diagnostics = (
+        projection.project_prompt_packet_to_preview(
+            packet,
+            mode="roleplay",
+        )
+    )
+
+    assert preview_channels.sections == expected_channels.sections
+    assert preview_diagnostics == expected_diagnostics
 
 
 def test_prompt_preview_keeps_mutating_runtime_steps_out_of_read_path() -> None:

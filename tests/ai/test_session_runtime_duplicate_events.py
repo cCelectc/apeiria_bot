@@ -12,6 +12,7 @@ from apeiria.app.ai.pipeline import service as service_module
 from apeiria.app.ai.pipeline.service import AIRuntimeService
 from apeiria.app.ai.reply_strategy import ReplyStrategyDecision, WakeContext
 from apeiria.conversation.models import ChatSessionIdentity
+from tests.ai.agent_turn_helpers import selected_model
 
 
 class _FakeChatSessionService:
@@ -32,6 +33,10 @@ class _FakeChatSessionService:
             message_id=f"local-msg-{self.calls}",
             platform_message_id="platform-msg-1",
         )
+
+
+async def _noop_observation_effects(*_args: Any, **_kwargs: Any) -> None:
+    return None
 
 
 def test_duplicate_platform_event_stops_before_ai_side_effects(
@@ -126,7 +131,9 @@ def test_duplicate_platform_event_stops_before_ai_side_effects(
                 turns=(),
                 available_tools=(),
             ),
+            selected=selected_model("duplicate"),
             skill_activation=None,
+            pre_tool_task_class="reply_default",
         )
 
     async def generate_reply(*_args: Any, **_kwargs: Any) -> object:
@@ -139,6 +146,8 @@ def test_duplicate_platform_event_stops_before_ai_side_effects(
             ),
             delivery_result=None,
             skill_runtime=SimpleNamespace(turns=[]),
+            post_tool_task_class=None,
+            turn_result=None,
         )
 
     async def persist_reply(*_args: Any, **_kwargs: Any) -> None:
@@ -148,6 +157,11 @@ def test_duplicate_platform_event_stops_before_ai_side_effects(
         service_module,
         "store_extracted_memories",
         store_extracted_memories,
+    )
+    monkeypatch.setattr(
+        service_module,
+        "apply_reply_observation_effects",
+        _noop_observation_effects,
     )
     monkeypatch.setattr(service_module, "gather_reply_inputs", gather_reply_inputs)
     monkeypatch.setattr(

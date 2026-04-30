@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 
 from apeiria.ai.tools import ai_tool_service
 from apeiria.app.ai.pipeline.context_window_steps import build_and_store_context_window
-from apeiria.app.ai.pipeline.memory_steps import recall_memories
+from apeiria.app.ai.pipeline.memory_steps import retrieve_memories_for_context
 from apeiria.app.ai.pipeline.person_profile_steps import load_person_profile_for_prompt
 from apeiria.app.ai.pipeline.persona_steps import (
     build_model_binding_target,
@@ -16,7 +16,6 @@ from apeiria.app.ai.pipeline.persona_steps import (
 from apeiria.app.ai.pipeline.relationship_steps import (
     build_relationship_target,
     load_relationship_context,
-    update_relationship_state,
 )
 from apeiria.app.ai.pipeline.reply_strategy_steps import resolve_initiative_bias
 from apeiria.app.ai.pipeline.tool_steps import resolve_tool_policy
@@ -72,13 +71,7 @@ async def gather_reply_inputs(
         current_time=current_time,
         turns=turns,
     )
-    if request.runtime_mode == "message" and request.sentiment is not None:
-        await update_relationship_state(
-            target=relationship_target,
-            sentiment=request.sentiment,
-            is_tome=request.is_tome,
-        )
-    recalled_memories = await recall_memories(
+    recalled_memories = await retrieve_memories_for_context(
         identity=identity,
         user_id=request.user_id,
         query_text=request.message_text,
