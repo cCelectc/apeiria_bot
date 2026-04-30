@@ -3,19 +3,18 @@ from __future__ import annotations
 import asyncio
 from datetime import datetime, timezone
 from types import SimpleNamespace
-from typing import TYPE_CHECKING, Any
+from typing import Any
+
+import pytest
 
 from apeiria.ai.config import AIPluginConfig
 from apeiria.ai.model import AIModelBindingTarget
-from apeiria.ai.service import AIService
+from apeiria.ai.service import AIRuntimeDependencyStatus, AIService
 from apeiria.ai.tools import AIToolPolicy, ToolGatewayResult
 from apeiria.app.ai.pipeline.input_steps import ReplyInputs
 from apeiria.app.ai.pipeline.service import AIRuntimeReplyRequest
 from apeiria.app.ai.reply_strategy import ReplyStrategyDecision
 from apeiria.conversation.models import ChatSessionIdentity
-
-if TYPE_CHECKING:
-    import pytest
 
 
 class _ModelGatewayStub:
@@ -29,13 +28,67 @@ class _ModelGatewayStub:
         return self.selected
 
 
-def test_ai_service_status_reports_ready_reply_runtime() -> None:
-    selected = SimpleNamespace(
+class _RuntimeReadinessProbeStub:
+    def __init__(
+        self,
+        components: tuple[AIRuntimeDependencyStatus, ...],
+    ) -> None:
+        self.components = components
+        self.calls = 0
+
+    def inspect(self) -> tuple[AIRuntimeDependencyStatus, ...]:
+        self.calls += 1
+        return self.components
+
+
+def _ready_components() -> tuple[AIRuntimeDependencyStatus, ...]:
+    return (
+        AIRuntimeDependencyStatus(
+            key="future_task_storage",
+            available=True,
+            detail="available",
+        ),
+        AIRuntimeDependencyStatus(
+            key="scheduler_recovery",
+            available=True,
+            detail="registered",
+        ),
+        AIRuntimeDependencyStatus(
+            key="delivery_gateway",
+            available=True,
+            detail="onebot",
+        ),
+        AIRuntimeDependencyStatus(
+            key="trace_storage",
+            available=True,
+            detail="available",
+        ),
+    )
+
+
+def _components_with(
+    degraded: AIRuntimeDependencyStatus,
+) -> tuple[AIRuntimeDependencyStatus, ...]:
+    return tuple(
+        degraded if component.key == degraded.key else component
+        for component in _ready_components()
+    )
+
+
+def _selected_model() -> SimpleNamespace:
+    return SimpleNamespace(
         source=SimpleNamespace(source_id="source-main"),
         profile=SimpleNamespace(profile_id="reply-default", model_id="model-main"),
         resolved_model_name="gpt-main",
     )
-    service = AIService(model_gateway=_ModelGatewayStub(selected))
+
+
+def test_ai_service_status_reports_ready_reply_runtime() -> None:
+    probe = _RuntimeReadinessProbeStub(_ready_components())
+    service = AIService(
+        model_gateway=_ModelGatewayStub(_selected_model()),
+        runtime_readiness_probe=probe,
+    )
 
     status = asyncio.run(service.get_status())
 
@@ -43,11 +96,19 @@ def test_ai_service_status_reports_ready_reply_runtime() -> None:
     assert status.ready is True
     assert "reply generation has a selectable model" in status.summary
     assert "source-main:gpt-main" in status.summary
+    assert "future-task storage available" in status.summary
+    assert "scheduler recovery registered" in status.summary
+    assert "delivery gateway available" in status.summary
+    assert "trace storage available" in status.summary
+    assert probe.calls == 1
 
 
 def test_ai_service_status_reports_degraded_without_reply_model() -> None:
     gateway = _ModelGatewayStub(None)
-    service = AIService(model_gateway=gateway)
+    service = AIService(
+        model_gateway=gateway,
+        runtime_readiness_probe=_RuntimeReadinessProbeStub(_ready_components()),
+    )
 
     status = asyncio.run(service.get_status())
 
@@ -55,6 +116,80 @@ def test_ai_service_status_reports_degraded_without_reply_model() -> None:
     assert status.ready is False
     assert "Configure or enable a chat model" in status.summary
     assert len(gateway.calls) == 1
+
+
+@pytest.mark.parametrize(
+    ("degraded", "expected_summary"),
+    [
+        (
+            AIRuntimeDependencyStatus(
+                key="future_task_storage",
+                available=False,
+                detail="unavailable",
+                next_step="Run `apeiria check` to initialize runtime storage.",
+            ),
+            "future-task storage unavailable",
+        ),
+        (
+            AIRuntimeDependencyStatus(
+                key="delivery_gateway",
+                available=False,
+                detail="adapter_unavailable",
+                next_step="Enable a proactive delivery adapter.",
+            ),
+            "delivery gateway unavailable",
+        ),
+        (
+            AIRuntimeDependencyStatus(
+                key="trace_storage",
+                available=False,
+                detail="unavailable",
+                next_step="Run `apeiria check` to repair trace storage.",
+            ),
+            "trace storage unavailable",
+        ),
+        (
+            AIRuntimeDependencyStatus(
+                key="scheduler_recovery",
+                available=False,
+                detail="not_registered",
+                next_step="Load the AI plugin startup recovery hook.",
+            ),
+            "scheduler recovery not_registered",
+        ),
+    ],
+)
+def test_ai_service_status_reports_degraded_runtime_dependency(
+    degraded: AIRuntimeDependencyStatus,
+    expected_summary: str,
+) -> None:
+    service = AIService(
+        model_gateway=_ModelGatewayStub(_selected_model()),
+        runtime_readiness_probe=_RuntimeReadinessProbeStub(_components_with(degraded)),
+    )
+
+    status = asyncio.run(service.get_status())
+
+    assert status.phase == "runtime_degraded"
+    assert status.ready is False
+    assert expected_summary in status.summary
+    assert status.next_step == degraded.next_step
+
+
+def test_ai_service_status_does_not_initialize_missing_runtime_storage(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Any,
+) -> None:
+    from apeiria.db.runtime import database_runtime
+
+    monkeypatch.setattr(database_runtime, "_project_root", tmp_path)
+    service = AIService(model_gateway=_ModelGatewayStub(_selected_model()))
+
+    status = asyncio.run(service.get_status())
+
+    assert status.phase == "runtime_degraded"
+    assert "future-task storage unavailable" in status.summary
+    assert not database_runtime.database_path().exists()
 
 
 def test_reply_preparation_records_no_model_diagnostic(

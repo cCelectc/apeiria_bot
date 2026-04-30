@@ -84,9 +84,41 @@ class _ModelGatewayStub:
         )
 
 
+class _RuntimeReadinessProbeStub:
+    def __init__(self, module: Any) -> None:
+        self._module = module
+
+    def inspect(self) -> tuple[Any, ...]:
+        return (
+            self._module.AIRuntimeDependencyStatus(
+                key="future_task_storage",
+                available=True,
+                detail="available",
+            ),
+            self._module.AIRuntimeDependencyStatus(
+                key="scheduler_recovery",
+                available=True,
+                detail="registered",
+            ),
+            self._module.AIRuntimeDependencyStatus(
+                key="delivery_gateway",
+                available=True,
+                detail="onebot",
+            ),
+            self._module.AIRuntimeDependencyStatus(
+                key="trace_storage",
+                available=True,
+                detail="available",
+            ),
+        )
+
+
 def test_ai_service_status_reports_model_readiness() -> None:
     module = importlib.import_module("apeiria.ai.service")
-    service = module.AIService(model_gateway=_ModelGatewayStub())
+    service = module.AIService(
+        model_gateway=_ModelGatewayStub(),
+        runtime_readiness_probe=_RuntimeReadinessProbeStub(module),
+    )
 
     status = asyncio.run(service.get_status())
 
