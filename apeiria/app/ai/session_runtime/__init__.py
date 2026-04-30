@@ -10,7 +10,16 @@ from .context import (
     TurnContext,
 )
 from .context_adapter import build_turn_context
-from .engine import AISessionTurnEngine
+from .engine import (
+    AISessionTurnEngine,
+    DefaultRuntimeCommitStage,
+    DefaultRuntimeContextStage,
+    DefaultRuntimeExecutionStage,
+    DefaultRuntimeObservationStage,
+    DefaultRuntimePlanningStage,
+    DefaultRuntimePolicyStage,
+    DefaultRuntimeTraceStage,
+)
 from .hard_rules import (
     decide_runtime_hard_rule,
     map_legacy_skip_to_runtime_decision,
@@ -27,11 +36,18 @@ from .runtime import (
 )
 from .stages import (
     RuntimeCommitResult,
+    RuntimeCommitStage,
     RuntimeContextBundle,
+    RuntimeContextStage,
     RuntimeExecutionOutcome,
+    RuntimeExecutionStage,
+    RuntimeObservationStage,
+    RuntimePlanningStage,
     RuntimePolicyOutcome,
+    RuntimePolicyStage,
     RuntimeStageName,
     RuntimeTraceOutcome,
+    RuntimeTraceStage,
     RuntimeTurnPlan,
 )
 from .strategy import (
@@ -56,6 +72,13 @@ __all__ = [
     "AISessionRuntime",
     "AISessionTurnEngine",
     "AgentRunner",
+    "DefaultRuntimeCommitStage",
+    "DefaultRuntimeContextStage",
+    "DefaultRuntimeExecutionStage",
+    "DefaultRuntimeObservationStage",
+    "DefaultRuntimePlanningStage",
+    "DefaultRuntimePolicyStage",
+    "DefaultRuntimeTraceStage",
     "DeferState",
     "DeliveryTarget",
     "InMemoryAISessionRuntime",
@@ -64,15 +87,22 @@ __all__ = [
     "PendingAmbientMessage",
     "RuntimeAgentRunner",
     "RuntimeCommitResult",
+    "RuntimeCommitStage",
     "RuntimeContextBundle",
+    "RuntimeContextStage",
     "RuntimeExecutionOutcome",
+    "RuntimeExecutionStage",
     "RuntimeHardRuleAction",
     "RuntimeHardRuleDecision",
     "RuntimeHardRuleReasonCode",
     "RuntimeMode",
+    "RuntimeObservationStage",
+    "RuntimePlanningStage",
     "RuntimePolicyOutcome",
+    "RuntimePolicyStage",
     "RuntimeStageName",
     "RuntimeTraceOutcome",
+    "RuntimeTraceStage",
     "RuntimeTurnPlan",
     "RuntimeTurnSource",
     "SessionRuntimePolicy",

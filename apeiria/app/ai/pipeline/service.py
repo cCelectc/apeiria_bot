@@ -13,11 +13,13 @@ from apeiria.ai.config import get_ai_plugin_config
 from apeiria.ai.retention import ai_retention_service
 from apeiria.ai.skills import ai_skill_service
 from apeiria.app.ai.future_task import ai_future_task_service
+from apeiria.app.ai.pipeline.context_window_steps import record_context_usage
+from apeiria.app.ai.pipeline.delivery_steps import deliver_generated_reply
 from apeiria.app.ai.pipeline.generation_steps import generate_reply, prepare_generation
 from apeiria.app.ai.pipeline.input_steps import gather_reply_inputs
 from apeiria.app.ai.pipeline.memory_steps import store_extracted_memories
 from apeiria.app.ai.pipeline.observation_steps import apply_reply_observation_effects
-from apeiria.app.ai.pipeline.persistence_steps import persist_reply
+from apeiria.app.ai.pipeline.persistence_steps import AssistantReplyPersistenceStage
 from apeiria.app.ai.pipeline.reply_strategy_steps import (
     decide_whether_to_speak,
 )
@@ -28,9 +30,17 @@ from apeiria.app.ai.reply_strategy import (
 from apeiria.app.ai.reply_strategy.wake_gate import evaluate_wake
 from apeiria.app.ai.session_runtime import (
     AISessionTurnEngine,
+    DefaultRuntimeCommitStage,
+    DefaultRuntimeContextStage,
+    DefaultRuntimeExecutionStage,
+    DefaultRuntimeObservationStage,
+    DefaultRuntimePlanningStage,
+    DefaultRuntimePolicyStage,
+    DefaultRuntimeTraceStage,
     InMemoryAISessionRuntimeResolver,
     SessionRuntimePolicy,
 )
+from apeiria.app.ai.session_runtime.trace_store import turn_trace_repository
 from apeiria.app.ai.tooling import ensure_app_ai_tools_loaded
 from apeiria.conversation.service import chat_session_service
 
@@ -271,13 +281,26 @@ class AIRuntimeService:
         if self._turn_engine is not None:
             return self._turn_engine
         return AISessionTurnEngine(
-            gather_reply_inputs=gather_reply_inputs,
-            decide_whether_to_speak=decide_whether_to_speak,
-            prepare_generation=prepare_generation,
-            generate_reply=generate_reply,
-            persist_reply=persist_reply,
-            reply_strategy_service=reply_strategy_service,
-            apply_observation_effects=apply_reply_observation_effects,
+            policy_stage=DefaultRuntimePolicyStage(
+                reply_decider=decide_whether_to_speak,
+            ),
+            observation_stage=DefaultRuntimeObservationStage(
+                apply_observation_effects=apply_reply_observation_effects,
+            ),
+            context_stage=DefaultRuntimeContextStage(
+                gather_reply_inputs=gather_reply_inputs,
+            ),
+            planning_stage=DefaultRuntimePlanningStage(
+                prepare_generation=prepare_generation,
+            ),
+            execution_stage=DefaultRuntimeExecutionStage(generate_reply=generate_reply),
+            commit_stage=DefaultRuntimeCommitStage(
+                reply_persistence=AssistantReplyPersistenceStage(),
+                reply_strategy_service=reply_strategy_service,
+                deliver_reply=deliver_generated_reply,
+                record_context_usage=record_context_usage,
+            ),
+            trace_stage=DefaultRuntimeTraceStage(trace_store=turn_trace_repository),
         )
 
 

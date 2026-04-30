@@ -150,8 +150,15 @@ def test_duplicate_platform_event_stops_before_ai_side_effects(
             turn_result=None,
         )
 
-    async def persist_reply(*_args: Any, **_kwargs: Any) -> None:
-        counts["assistant"] += 1
+    class ReplyPersistenceStage:
+        async def persist_tool_observations(self, **_: object) -> str:
+            return "not_required"
+
+        async def persist_assistant_message(self, **_: object) -> None:
+            counts["assistant"] += 1
+
+        async def rebuild_context_window(self, **_: object) -> None:
+            return None
 
     monkeypatch.setattr(
         service_module,
@@ -171,7 +178,11 @@ def test_duplicate_platform_event_stops_before_ai_side_effects(
     )
     monkeypatch.setattr(service_module, "prepare_generation", prepare_generation)
     monkeypatch.setattr(service_module, "generate_reply", generate_reply)
-    monkeypatch.setattr(service_module, "persist_reply", persist_reply)
+    monkeypatch.setattr(
+        service_module,
+        "AssistantReplyPersistenceStage",
+        ReplyPersistenceStage,
+    )
 
     bot = SimpleNamespace(self_id="bot-1")
     event = SimpleNamespace(get_user_id=lambda: "user-1", is_tome=lambda: True)

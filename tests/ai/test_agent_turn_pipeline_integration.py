@@ -16,7 +16,6 @@ from apeiria.app.ai.agent_turn import (
     AgentModelGenerationResult,
     AgentTurnResult,
 )
-from apeiria.app.ai.pipeline.delivery_steps import DeliveryOutcome
 from apeiria.app.ai.pipeline.generation_steps import ReplyPreparation
 from apeiria.app.ai.pipeline.input_steps import ReplyInputs
 from apeiria.app.ai.pipeline.relationship_steps import AIRelationshipTarget
@@ -88,20 +87,12 @@ def test_direct_generation_records_future_task_runtime_mode(monkeypatch: Any) ->
     ) -> tuple[AISelectedModel, ...]:
         return ()
 
-    async def deliver_reply(
-        _request: AIRuntimeReplyRequest,
-        _reply_text: str,
-    ) -> DeliveryOutcome:
-        return DeliveryOutcome(delivered=True)
-
     monkeypatch.setattr(generation_steps, "generate_model_turn", generate_model_turn)
     monkeypatch.setattr(
         generation_steps,
         "select_pipeline_fallback_models",
         select_fallbacks,
     )
-    monkeypatch.setattr(generation_steps, "record_context_usage", lambda *_, **__: None)
-    monkeypatch.setattr(generation_steps, "deliver_generated_reply", deliver_reply)
 
     identity = ChatSessionIdentity(
         session_id="session-1",
@@ -238,12 +229,6 @@ def test_direct_generation_uses_turn_context_messages_through_runner(
     ) -> tuple[AISelectedModel, ...]:
         return ()
 
-    async def deliver_reply(
-        _request: AIRuntimeReplyRequest,
-        _reply_text: str,
-    ) -> DeliveryOutcome:
-        return DeliveryOutcome(delivered=True)
-
     monkeypatch.setattr(generation_steps, "RuntimeAgentRunner", RunnerSpy)
     monkeypatch.setattr(generation_steps, "generate_model_turn", generate_model_turn)
     monkeypatch.setattr(
@@ -251,8 +236,6 @@ def test_direct_generation_uses_turn_context_messages_through_runner(
         "select_pipeline_fallback_models",
         select_fallbacks,
     )
-    monkeypatch.setattr(generation_steps, "record_context_usage", lambda *_, **__: None)
-    monkeypatch.setattr(generation_steps, "deliver_generated_reply", deliver_reply)
 
     identity = ChatSessionIdentity(
         session_id="session-1",
@@ -417,12 +400,6 @@ def test_tool_planner_and_refinement_use_messages_and_runtime_mode(
         del task_class, target
         return selected
 
-    async def deliver_reply(
-        _request: AIRuntimeReplyRequest,
-        _reply_text: str,
-    ) -> DeliveryOutcome:
-        return DeliveryOutcome(delivered=True)
-
     monkeypatch.setattr(generation_steps.tool_gateway, "run_tool_loop", run_tool_loop)
     monkeypatch.setattr(generation_steps, "generate_model_turn", generate_model_turn)
     monkeypatch.setattr(
@@ -431,8 +408,6 @@ def test_tool_planner_and_refinement_use_messages_and_runtime_mode(
         select_fallbacks,
     )
     monkeypatch.setattr(generation_steps, "select_pipeline_model", select_model)
-    monkeypatch.setattr(generation_steps, "record_context_usage", lambda *_, **__: None)
-    monkeypatch.setattr(generation_steps, "deliver_generated_reply", deliver_reply)
 
     identity = ChatSessionIdentity(
         session_id="session-1",
@@ -541,7 +516,7 @@ def test_tool_planner_and_refinement_use_messages_and_runtime_mode(
     assert refinement_requests[0].messages[-1].role == "user"
     assert result.turn_result is not None
     assert result.turn_result.runtime_mode == "future_task"
-    assert result.delivery_result == DeliveryOutcome(delivered=True)
+    assert result.delivery_result is None
 
 
 def test_tool_generation_uses_runner_and_native_exposure_plan(
@@ -594,12 +569,6 @@ def test_tool_generation_uses_runner_and_native_exposure_plan(
     ) -> tuple[AISelectedModel, ...]:
         return ()
 
-    async def deliver_reply(
-        _request: AIRuntimeReplyRequest,
-        _reply_text: str,
-    ) -> DeliveryOutcome:
-        return DeliveryOutcome(delivered=True)
-
     monkeypatch.setattr(generation_steps, "RuntimeAgentRunner", RunnerSpy)
     monkeypatch.setattr(generation_steps.tool_gateway, "run_tool_loop", run_tool_loop)
     monkeypatch.setattr(
@@ -607,8 +576,6 @@ def test_tool_generation_uses_runner_and_native_exposure_plan(
         "select_pipeline_fallback_models",
         select_fallbacks,
     )
-    monkeypatch.setattr(generation_steps, "record_context_usage", lambda *_, **__: None)
-    monkeypatch.setattr(generation_steps, "deliver_generated_reply", deliver_reply)
 
     identity = ChatSessionIdentity(
         session_id="session-1",

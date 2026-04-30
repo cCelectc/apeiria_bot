@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any, Literal, Protocol, runtime_checkable
 
 from .context import RuntimeTurnSource, TurnContext  # noqa: TC001
 from .strategy import RuntimeHardRuleDecision  # noqa: TC001
@@ -11,6 +11,8 @@ from .tools import ToolExposurePlan  # noqa: TC001
 from .trace import TurnTrace  # noqa: TC001
 
 if TYPE_CHECKING:
+    from datetime import datetime
+
     from apeiria.ai.model import (
         AIModelMessage,
         AIModelTaskClass,
@@ -21,7 +23,8 @@ if TYPE_CHECKING:
     from apeiria.app.ai.agent_turn import AgentTurnResult
     from apeiria.app.ai.pipeline.delivery_steps import DeliveryOutcome
     from apeiria.app.ai.pipeline.input_steps import ReplyInputs
-    from apeiria.app.ai.reply_strategy.models import ReplyStrategyDecision
+    from apeiria.app.ai.pipeline.service import AIRuntimeReplyRequest
+    from apeiria.app.ai.reply_strategy.models import ReplyStrategyDecision, WakeContext
 
 
 RuntimeStageName = Literal[
@@ -102,6 +105,8 @@ class RuntimeCommitResult:
     reply_text: str
     delivery_result: "DeliveryOutcome | None"
     trace: TurnTrace | None = None
+    commit_status: str = "committed"
+    substeps: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass(frozen=True, slots=True)
@@ -114,12 +119,134 @@ class RuntimeTraceOutcome:
     social_decision: "ReplyStrategyDecision | None" = None
 
 
+@runtime_checkable
+class RuntimePolicyStage(Protocol):
+    """Deterministic and social policy boundary for one turn."""
+
+    def evaluate(
+        self,
+        *,
+        request: "AIRuntimeReplyRequest",
+        wake_context: "WakeContext",
+        current_time: "datetime",
+        session_runtime: Any | None,
+    ) -> RuntimePolicyOutcome: ...
+
+    async def decide_reply(
+        self,
+        *,
+        request: "AIRuntimeReplyRequest",
+        wake_context: "WakeContext",
+        context: RuntimeContextBundle,
+        current_time: "datetime",
+        trace_id: str,
+    ) -> Any: ...
+
+
+@runtime_checkable
+class RuntimeObservationStage(Protocol):
+    """Live observation side-effect boundary before read context assembly."""
+
+    async def apply(
+        self,
+        *,
+        request: "AIRuntimeReplyRequest",
+        current_time: "datetime",
+    ) -> None: ...
+
+
+@runtime_checkable
+class RuntimeContextStage(Protocol):
+    """Read-oriented context assembly boundary for one turn."""
+
+    async def assemble(
+        self,
+        *,
+        request: "AIRuntimeReplyRequest",
+        current_time: "datetime",
+    ) -> RuntimeContextBundle: ...
+
+
+@runtime_checkable
+class RuntimePlanningStage(Protocol):
+    """Prompt/model/tool planning boundary for one turn."""
+
+    async def plan(
+        self,
+        *,
+        trace_id: str,
+        request: "AIRuntimeReplyRequest",
+        inputs: Any,
+        social_decision: Any,
+        current_time: "datetime",
+    ) -> RuntimeTurnPlan | None: ...
+
+
+@runtime_checkable
+class RuntimeExecutionStage(Protocol):
+    """Model/tool execution boundary for one turn."""
+
+    async def execute(  # noqa: PLR0913
+        self,
+        *,
+        request: "AIRuntimeReplyRequest",
+        inputs: Any,
+        social_decision: Any,
+        plan: RuntimeTurnPlan,
+        current_time: "datetime",
+        trace_id: str,
+        turn_context: TurnContext,
+    ) -> RuntimeExecutionOutcome: ...
+
+
+@runtime_checkable
+class RuntimeCommitStage(Protocol):
+    """Post-execution side-effect boundary for one generated turn."""
+
+    async def commit(  # noqa: PLR0913
+        self,
+        *,
+        request: "AIRuntimeReplyRequest",
+        inputs: Any,
+        social_decision: Any,
+        plan: RuntimeTurnPlan,
+        generation: RuntimeExecutionOutcome,
+        trace_id: str,
+        hard_decision: RuntimeHardRuleDecision,
+        current_time: "datetime",
+        session_runtime: Any | None,
+    ) -> RuntimeCommitResult: ...
+
+
+@runtime_checkable
+class RuntimeTraceStage(Protocol):
+    """Terminal compact trace projection and persistence boundary."""
+
+    def project(  # noqa: PLR0913
+        self,
+        *,
+        trace_id: str,
+        request: "AIRuntimeReplyRequest",
+        strategy_decision: RuntimeHardRuleDecision,
+        turn_result: "AgentTurnResult | None",
+        delivery_result: "DeliveryOutcome | None" = None,
+        commit_status: str | None = None,
+    ) -> RuntimeTraceOutcome: ...
+
+
 __all__ = [
     "RuntimeCommitResult",
+    "RuntimeCommitStage",
     "RuntimeContextBundle",
+    "RuntimeContextStage",
     "RuntimeExecutionOutcome",
+    "RuntimeExecutionStage",
+    "RuntimeObservationStage",
+    "RuntimePlanningStage",
     "RuntimePolicyOutcome",
+    "RuntimePolicyStage",
     "RuntimeStageName",
     "RuntimeTraceOutcome",
+    "RuntimeTraceStage",
     "RuntimeTurnPlan",
 ]

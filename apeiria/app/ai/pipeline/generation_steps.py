@@ -25,11 +25,6 @@ from apeiria.app.ai.pipeline.composer import (
     build_pre_tool_reply_packet,
     build_roleplay_reply_messages,
 )
-from apeiria.app.ai.pipeline.context_window_steps import record_context_usage
-from apeiria.app.ai.pipeline.delivery_steps import (
-    DeliveryOutcome,
-    deliver_generated_reply,
-)
 from apeiria.app.ai.pipeline.model_steps import (
     GenerationRequest,
     build_no_model_diagnostic,
@@ -61,6 +56,7 @@ if TYPE_CHECKING:
     )
     from apeiria.ai.prompting import PromptPacket
     from apeiria.app.ai.future_task.models import AIFutureTaskDefinition
+    from apeiria.app.ai.pipeline.delivery_steps import DeliveryOutcome
     from apeiria.app.ai.pipeline.input_steps import ReplyInputs
     from apeiria.app.ai.pipeline.service import AIRuntimeReplyRequest
     from apeiria.app.ai.reply_strategy import ReplyStrategyDecision
@@ -93,7 +89,7 @@ class ReplyGeneration:
     response: "AIModelGenerateResponse | None"
     skill_runtime: ToolGatewayResult
     post_tool_task_class: "AIModelTaskClass | None"
-    delivery_result: DeliveryOutcome | None
+    delivery_result: "DeliveryOutcome | None"
     turn_result: AgentTurnResult | None = None
 
 
@@ -260,6 +256,7 @@ async def _generate_direct(
     turn_context: "TurnContext",
 ) -> ReplyGeneration:
     """Single-shot generation path (no tool loop)."""
+    del request, inputs
     turn_result = await _run_direct_turn_context(
         context=turn_context,
         prep=prep,
@@ -274,20 +271,11 @@ async def _generate_direct(
             turn_result=turn_result,
         )
 
-    record_context_usage(
-        request.identity.session_id,
-        response=response,
-        message_count=len(inputs.turns),
-    )
-    delivery_result = await deliver_generated_reply(
-        request,
-        response.content.strip() if response.content else "",
-    )
     return ReplyGeneration(
         response=response,
         skill_runtime=prep.skill_runtime,
         post_tool_task_class=None,
-        delivery_result=delivery_result,
+        delivery_result=None,
         turn_result=turn_result,
     )
 
@@ -338,13 +326,6 @@ async def _generate_with_tool_loop(  # noqa: PLR0913
         skill_runtime=skill_runtime,
     )
     post_tool_task_class: AIModelTaskClass | None = None
-
-    if response is not None:
-        record_context_usage(
-            request.identity.session_id,
-            response=response,
-            message_count=len(inputs.turns),
-        )
 
     if skill_runtime.turns:
         post_tool_task_class = select_post_tool_reply_task_class()
@@ -405,15 +386,11 @@ async def _generate_with_tool_loop(  # noqa: PLR0913
             delivery_result=None,
             turn_result=turn_result,
         )
-    delivery_result = await deliver_generated_reply(
-        request,
-        response.content.strip() if response.content else "",
-    )
     return ReplyGeneration(
         response=response,
         skill_runtime=skill_runtime,
         post_tool_task_class=post_tool_task_class,
-        delivery_result=delivery_result,
+        delivery_result=None,
         turn_result=turn_result,
     )
 

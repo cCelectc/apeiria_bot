@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, cast
 
 from apeiria.app.ai.pipeline.context_window_steps import build_and_store_context_window
@@ -23,6 +24,101 @@ if TYPE_CHECKING:
     )
     from apeiria.app.ai.pipeline.service import AIRuntimeReplyRequest
     from apeiria.app.ai.reply_strategy import ReplyStrategyDecision
+    from apeiria.conversation.models import ChatSessionIdentity
+
+
+@dataclass(frozen=True, slots=True)
+class AssistantReplyPersistenceStage:
+    """Persist generated reply state in explicit commit substeps."""
+
+    async def persist_tool_observations(
+        self,
+        *,
+        request: "AIRuntimeReplyRequest",
+        generation: "ReplyGeneration",
+        trace_id: str,
+    ) -> str:
+        if not generation.skill_runtime.turns:
+            return "not_required"
+        await append_tool_observation_turns(
+            identity=request.identity,
+            trace_id=trace_id,
+            tool_turns=generation.skill_runtime.turns,
+        )
+        return "committed"
+
+    async def persist_assistant_message(  # noqa: PLR0913
+        self,
+        *,
+        request: "AIRuntimeReplyRequest",
+        inputs: "ReplyInputs",
+        social_decision: "ReplyStrategyDecision",
+        plan: "ReplyPreparation",
+        generation: "ReplyGeneration",
+        trace_id: str,
+    ) -> None:
+        response = generation.response
+        if response is None:
+            return
+
+        identity = request.identity
+        delivery = generation.delivery_result
+        await chat_session_service.append_message(
+            identity,
+            ChatMessageCreate(
+                author_role="assistant",
+                author_id=request.sender_id,
+                text_content=response.content.strip(),
+                meta={
+                    "trace_id": trace_id,
+                    "source_id": response.source_id,
+                    "model_name": response.model_name,
+                    "task_class": (
+                        generation.post_tool_task_class
+                        if generation.skill_runtime.turns
+                        else plan.pre_tool_task_class
+                    ),
+                    "recalled_memory_count": len(inputs.recalled_memories),
+                    "tool_observation_count": len(generation.skill_runtime.turns),
+                    "social_action": social_decision.action,
+                    "social_tool_mode": social_decision.tool_mode,
+                    "social_reason_text": social_decision.reason_text,
+                    "social_reason_codes": list(social_decision.reason_codes),
+                    "social_policy_source": social_decision.evidence.get(
+                        "policy_source"
+                    ),
+                    "runtime_mode": request.runtime_mode,
+                    "future_task_id": (
+                        request.future_task.task_id if request.future_task else None
+                    ),
+                    "future_task_status": (
+                        request.future_task.status if request.future_task else None
+                    ),
+                    "delivery_channel": delivery.channel if delivery else None,
+                    "delivery_delivered": delivery.delivered if delivery else None,
+                    "delivery_error": delivery.error if delivery else None,
+                    "delivery_remote_message_id": (
+                        delivery.remote_message_id if delivery else None
+                    ),
+                    **_turn_trace_meta(
+                        trace_id=trace_id,
+                        session_id=identity.session_id,
+                        runtime_mode=request.runtime_mode,
+                        social_decision=social_decision,
+                        turn=generation.turn_result,
+                        delivery_delivered=delivery.delivered if delivery else None,
+                    ),
+                    **_agent_turn_meta(generation.turn_result),
+                },
+            ),
+        )
+
+    async def rebuild_context_window(
+        self,
+        *,
+        identity: "ChatSessionIdentity",
+    ) -> None:
+        await build_and_store_context_window(identity=identity)
 
 
 async def persist_reply(  # noqa: PLR0913
@@ -37,64 +133,21 @@ async def persist_reply(  # noqa: PLR0913
     """Write the assistant message with full trace/social/delivery meta,
     then rebuild the context window so next turn sees the fresh reply."""
 
-    response = gen.response
-    if response is None:
-        return
-
-    identity = request.identity
-    delivery = gen.delivery_result
-    if gen.skill_runtime.turns:
-        await append_tool_observation_turns(
-            identity=identity,
-            trace_id=trace_id,
-            tool_turns=gen.skill_runtime.turns,
-        )
-    await chat_session_service.append_message(
-        identity,
-        ChatMessageCreate(
-            author_role="assistant",
-            author_id=request.sender_id,
-            text_content=response.content.strip(),
-            meta={
-                "trace_id": trace_id,
-                "source_id": response.source_id,
-                "model_name": response.model_name,
-                "task_class": (
-                    gen.post_tool_task_class
-                    if gen.skill_runtime.turns
-                    else prep.pre_tool_task_class
-                ),
-                "recalled_memory_count": len(inputs.recalled_memories),
-                "tool_observation_count": len(gen.skill_runtime.turns),
-                "social_action": social_decision.action,
-                "social_tool_mode": social_decision.tool_mode,
-                "social_reason_text": social_decision.reason_text,
-                "social_reason_codes": list(social_decision.reason_codes),
-                "social_policy_source": social_decision.evidence.get("policy_source"),
-                "runtime_mode": request.runtime_mode,
-                "future_task_id": (
-                    request.future_task.task_id if request.future_task else None
-                ),
-                "future_task_status": (
-                    request.future_task.status if request.future_task else None
-                ),
-                "delivery_channel": None,
-                "delivery_delivered": delivery.delivered if delivery else None,
-                "delivery_error": delivery.error if delivery else None,
-                "delivery_remote_message_id": None,
-                **_turn_trace_meta(
-                    trace_id=trace_id,
-                    session_id=identity.session_id,
-                    runtime_mode=request.runtime_mode,
-                    social_decision=social_decision,
-                    turn=gen.turn_result,
-                    delivery_delivered=delivery.delivered if delivery else None,
-                ),
-                **_agent_turn_meta(gen.turn_result),
-            },
-        ),
+    stage = AssistantReplyPersistenceStage()
+    await stage.persist_tool_observations(
+        request=request,
+        generation=gen,
+        trace_id=trace_id,
     )
-    await build_and_store_context_window(identity=identity)
+    await stage.persist_assistant_message(
+        request=request,
+        inputs=inputs,
+        social_decision=social_decision,
+        plan=prep,
+        generation=gen,
+        trace_id=trace_id,
+    )
+    await stage.rebuild_context_window(identity=request.identity)
 
 
 def _turn_trace_meta(  # noqa: PLR0913

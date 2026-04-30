@@ -14,6 +14,7 @@ def test_generation_steps_delegate_reply_delivery() -> None:
 
     assert hasattr(delivery_module, "DeliveryOutcome")
     assert hasattr(delivery_module, "deliver_generated_reply")
+    assert "deliver_generated_reply" not in generation_source
     assert "_deliver_generated_reply" not in generation_source
     assert "nonebot.get_bots" not in generation_source
     assert "send_group_msg" not in generation_source

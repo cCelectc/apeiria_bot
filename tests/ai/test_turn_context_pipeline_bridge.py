@@ -26,6 +26,13 @@ from apeiria.app.ai.pipeline.service import (
 from apeiria.app.ai.reply_strategy import ReplyStrategyDecision, WakeContext
 from apeiria.app.ai.session_runtime import (
     AISessionTurnEngine,
+    DefaultRuntimeCommitStage,
+    DefaultRuntimeContextStage,
+    DefaultRuntimeExecutionStage,
+    DefaultRuntimeObservationStage,
+    DefaultRuntimePlanningStage,
+    DefaultRuntimePolicyStage,
+    DefaultRuntimeTraceStage,
     RuntimeTurnPlan,
     TurnContext,
 )
@@ -100,6 +107,56 @@ async def _noop_observation_effects(*_args: Any, **_kwargs: Any) -> None:
     return None
 
 
+class _ReplyPersistenceStage:
+    def __init__(self, persist_reply: Any | None = None) -> None:
+        self._persist_reply = persist_reply
+
+    async def persist_tool_observations(
+        self,
+        **_: Any,
+    ) -> str:
+        return "not_required"
+
+    async def persist_assistant_message(
+        self,
+        *,
+        plan: RuntimeTurnPlan,
+        generation: Any,
+        **kwargs: Any,
+    ) -> None:
+        if self._persist_reply is None:
+            return
+        await self._persist_reply(prep=plan, gen=generation, **kwargs)
+
+    async def rebuild_context_window(self, **_: Any) -> None:
+        return None
+
+
+def _engine_from_stages(  # noqa: PLR0913
+    *,
+    gather_reply_inputs: Any,
+    decide_whether_to_speak: Any,
+    prepare_generation: Any,
+    generate_reply: Any,
+    persist_reply: Any | None = None,
+    apply_observation_effects: Any | None = None,
+) -> AISessionTurnEngine:
+    return AISessionTurnEngine(
+        policy_stage=DefaultRuntimePolicyStage(decide_whether_to_speak),
+        observation_stage=DefaultRuntimeObservationStage(apply_observation_effects),
+        context_stage=DefaultRuntimeContextStage(gather_reply_inputs),
+        planning_stage=DefaultRuntimePlanningStage(prepare_generation),
+        execution_stage=DefaultRuntimeExecutionStage(generate_reply),
+        commit_stage=DefaultRuntimeCommitStage(
+            reply_persistence=_ReplyPersistenceStage(persist_reply),
+            reply_strategy_service=SimpleNamespace(
+                notify_replied=lambda _session_id: None
+            ),
+        ),
+        trace_stage=DefaultRuntimeTraceStage(),
+    )
+
+
 def test_reply_pipeline_passes_turn_context_to_generation(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -159,7 +216,11 @@ def test_reply_pipeline_passes_turn_context_to_generation(
     )
     monkeypatch.setattr(service_module, "prepare_generation", prepare_generation)
     monkeypatch.setattr(service_module, "generate_reply", generate_reply)
-    monkeypatch.setattr(service_module, "persist_reply", persist_reply)
+    monkeypatch.setattr(
+        service_module,
+        "AssistantReplyPersistenceStage",
+        lambda: _ReplyPersistenceStage(persist_reply),
+    )
     monkeypatch.setattr(
         service_module,
         "apply_reply_observation_effects",
@@ -254,9 +315,6 @@ def test_reply_pipeline_persists_runner_turn_result(
     async def select_fallbacks(_selected: Any) -> tuple[Any, ...]:
         return ()
 
-    async def deliver_generated_reply(*_args: Any, **_kwargs: Any) -> None:
-        return None
-
     async def persist_reply(*_args: Any, gen: ReplyGeneration, **_kwargs: Any) -> None:
         captured["turn_result"] = gen.turn_result
 
@@ -267,7 +325,11 @@ def test_reply_pipeline_persists_runner_turn_result(
         decide_whether_to_speak,
     )
     monkeypatch.setattr(service_module, "prepare_generation", prepare_generation)
-    monkeypatch.setattr(service_module, "persist_reply", persist_reply)
+    monkeypatch.setattr(
+        service_module,
+        "AssistantReplyPersistenceStage",
+        lambda: _ReplyPersistenceStage(persist_reply),
+    )
     monkeypatch.setattr(
         service_module,
         "apply_reply_observation_effects",
@@ -278,12 +340,6 @@ def test_reply_pipeline_persists_runner_turn_result(
         generation_steps,
         "select_pipeline_fallback_models",
         select_fallbacks,
-    )
-    monkeypatch.setattr(generation_steps, "record_context_usage", lambda *_, **__: None)
-    monkeypatch.setattr(
-        generation_steps,
-        "deliver_generated_reply",
-        deliver_generated_reply,
     )
     monkeypatch.setattr(
         service_module,
@@ -370,13 +426,12 @@ def test_turn_engine_passes_runtime_plan_through_execution_and_commit() -> None:
         assert prep is captured_plan["plan"]
         assert gen.stage == "execution"
 
-    engine = AISessionTurnEngine(
+    engine = _engine_from_stages(
         gather_reply_inputs=gather_reply_inputs,
         decide_whether_to_speak=decide_whether_to_speak,
         prepare_generation=prepare_generation,
         generate_reply=generate_reply,
         persist_reply=persist_reply,
-        reply_strategy_service=SimpleNamespace(notify_replied=lambda _session_id: None),
     )
 
     commit = asyncio.run(
@@ -442,13 +497,12 @@ def test_turn_engine_applies_observation_effects_before_context() -> None:
     async def persist_reply(*_args: Any, **_kwargs: Any) -> None:
         order.append("commit")
 
-    engine = AISessionTurnEngine(
+    engine = _engine_from_stages(
         gather_reply_inputs=gather_reply_inputs,
         decide_whether_to_speak=decide_whether_to_speak,
         prepare_generation=prepare_generation,
         generate_reply=generate_reply,
         persist_reply=persist_reply,
-        reply_strategy_service=SimpleNamespace(notify_replied=lambda _session_id: None),
         apply_observation_effects=apply_observation_effects,
     )
 
@@ -507,12 +561,7 @@ def test_turn_planning_is_side_effect_free_and_matches_prompt_messages(
         raise AssertionError("planning must not execute or persist")  # noqa: TRY003
 
     engine = AISessionTurnEngine(
-        gather_reply_inputs=fail_later_stage,
-        decide_whether_to_speak=fail_later_stage,
-        prepare_generation=prepare_generation,
-        generate_reply=fail_later_stage,
-        persist_reply=fail_later_stage,
-        reply_strategy_service=SimpleNamespace(notify_replied=lambda _session_id: None),
+        planning_stage=DefaultRuntimePlanningStage(prepare_generation),
     )
 
     inputs = _inputs()
