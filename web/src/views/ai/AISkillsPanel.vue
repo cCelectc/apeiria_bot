@@ -17,7 +17,6 @@
         v-for="item in skills"
         :key="item.name"
         class="surface-gradient-card pa-4"
-        rounded="lg"
       >
         <div class="d-flex flex-wrap justify-space-between ga-3">
           <div>
@@ -63,7 +62,7 @@
       </v-sheet>
     </div>
 
-    <v-sheet v-else class="surface-gradient-card pa-4" rounded="lg">
+    <v-sheet v-else class="surface-gradient-card pa-4">
       <div class="empty-state-text">{{ t('ai.noSkills') }}</div>
     </v-sheet>
   </div>

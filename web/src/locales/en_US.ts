@@ -15,6 +15,10 @@ const enUS = {
     pageText: '{0}-{1} / {2}',
     unknownError: 'Unknown error',
     delete: 'Delete',
+    actions: 'Actions',
+    filters: 'Filters',
+    moreActions: 'More actions',
+    applyFilters: 'Apply filters',
   },
   layout: {
     brand: 'Apeiria Bot',
@@ -195,6 +199,7 @@ const enUS = {
     sourceConfigApiBaseHint: 'Custom API endpoint URL for the current provider source',
     sourceAdvancedConfig: 'Advanced Configuration',
     saveSourceConfig: 'Save Config',
+    sourceCapabilitySelector: 'Model capability',
     sourceCapabilityChat: 'Chat',
     sourceCapabilityEmbedding: 'Embedding',
     sourceCapabilityStt: 'Speech to Text',
@@ -725,6 +730,7 @@ const enUS = {
     settingsTitle: '{name} Configuration',
     settingsBasicTab: 'Basic',
     settingsAdvancedTab: 'Advanced',
+    settingsAdvancedAction: 'Advanced Editor',
     settingsEmpty: 'No settings available.',
     settingsAdvancedDescription: 'Edit the current config section as raw TOML. Save validates syntax and section scope.',
     settingsSource: 'Definition',
@@ -783,7 +789,6 @@ const enUS = {
   },
   pluginStore: {
     title: 'Plugin Store',
-    subtitle: 'Browse available plugin sources, inspect package details, and install them into the current project.',
     backToPlugins: 'Back to Plugins',
     warning: 'Even trusted default sources cannot guarantee plugin stability or safety. Review carefully before installing.',
     allPlugins: 'All Plugins',
@@ -829,7 +834,6 @@ const enUS = {
   },
   adapterStore: {
     title: 'Adapter Packages',
-    subtitle: 'Browse adapter packages, inspect project state, and schedule adapter package changes for the current project.',
     source: 'Source',
     search: 'Search adapters',
     uninstalledOnly: 'Hide installed adapters',

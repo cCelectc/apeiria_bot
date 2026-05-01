@@ -3,9 +3,10 @@
     v-model="drawer"
     class="app-drawer"
     :class="{ 'app-drawer--rail': rail }"
-    permanent
+    :permanent="!mobile"
     :rail="rail"
     :rail-width="56"
+    :temporary="mobile"
     :width="228"
   >
     <div class="app-drawer__hero">
@@ -156,6 +157,29 @@
 
   <v-main class="app-main">
     <v-container class="app-container" fluid>
+      <div v-if="mobile" class="app-mobile-bar">
+        <v-btn
+          icon="mdi-menu"
+          size="small"
+          :title="t('layout.navigation')"
+          variant="text"
+          @click="drawer = true"
+        />
+
+        <div class="app-mobile-bar__title">
+          <span>{{ t('layout.brand') }}</span>
+          <small>{{ currentRouteTitle }}</small>
+        </div>
+
+        <v-btn
+          icon="mdi-theme-light-dark"
+          size="small"
+          :title="themeToggleLabel"
+          variant="text"
+          @click="toggleTheme"
+        />
+      </div>
+
       <v-alert
         v-if="restartStore.hasPendingRestart"
         class="app-restart-banner"
@@ -227,10 +251,10 @@
 
 <script setup lang="ts">
   import type { SupportedLocale } from '@/plugins/i18n'
-  import { computed, ref, watch } from 'vue'
+  import { computed, ref, watch, watchEffect } from 'vue'
   import { useI18n } from 'vue-i18n'
   import { useRoute, useRouter } from 'vue-router'
-  import { useTheme } from 'vuetify'
+  import { useDisplay, useTheme } from 'vuetify'
   import { useRestartController } from '@/composables/useRestartController'
   import { useAuthStore } from '@/stores/auth'
   import { useNoticeStore } from '@/stores/notice'
@@ -241,6 +265,7 @@
   const openedGroups = ref<string[]>([])
   const { t, locale } = useI18n()
   const theme = useTheme()
+  const { mobile } = useDisplay()
   const router = useRouter()
   const route = useRoute()
   const authStore = useAuthStore()
@@ -289,6 +314,10 @@
   const currentLocaleLabel = computed(() => (
     locale.value === 'zh_CN' ? t('layout.chinese') : t('layout.english')
   ))
+  const currentRouteTitle = computed(() => {
+    const titleKey = typeof route.meta.titleKey === 'string' ? route.meta.titleKey : ''
+    return titleKey ? t(titleKey) : t('layout.defaultTitle')
+  })
   const currentRoleLabel = computed(() => {
     if (authStore.role === 'owner') {
       return t('accounts.roles.owner')
@@ -312,6 +341,15 @@
     },
     { immediate: true },
   )
+
+  watchEffect(() => {
+    if (mobile.value) {
+      rail.value = false
+      drawer.value = false
+    } else {
+      drawer.value = true
+    }
+  })
 
   async function handleRestart () {
     if (!window.confirm(t('dashboard.restartConfirm'))) return
@@ -647,6 +685,46 @@
   padding: var(--page-gutter);
 }
 
+.app-mobile-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  margin-bottom: 14px;
+  padding: 8px 10px;
+  border: 1px solid rgba(var(--v-theme-outline-variant), 0.24);
+  border-radius: var(--shape-large);
+  background: rgba(var(--v-theme-surface-container), 0.92);
+  box-shadow: var(--elevation-soft);
+}
+
+.app-mobile-bar__title {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 1px;
+  line-height: 1.2;
+}
+
+.app-mobile-bar__title span,
+.app-mobile-bar__title small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.app-mobile-bar__title span {
+  color: rgb(var(--v-theme-on-surface));
+  font-size: 0.95rem;
+  font-weight: 720;
+}
+
+.app-mobile-bar__title small {
+  color: rgba(var(--v-theme-on-surface), 0.62);
+  font-size: 0.76rem;
+}
+
 .locale-menu {
   min-width: 144px;
 }
@@ -654,6 +732,12 @@
 @media (max-width: 960px) {
   .app-container {
     padding: 16px;
+  }
+}
+
+@media (max-width: 600px) {
+  .app-container {
+    padding: 12px;
   }
 }
 </style>

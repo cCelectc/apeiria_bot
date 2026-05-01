@@ -1,41 +1,45 @@
 <template>
-  <div class="page-view">
-    <div class="page-header">
-      <h1 class="page-title">{{ t('ai.title') }}</h1>
-      <div class="page-actions">
-        <v-btn :loading="loading" variant="tonal" @click="loadData">
-          {{ t('common.refresh') }}
-        </v-btn>
-      </div>
-    </div>
+  <PageScaffold :error-message="errorMessage" :title="t('ai.title')">
+    <template #actions>
+      <v-btn :loading="loading" variant="tonal" @click="loadData">
+        {{ t('common.refresh') }}
+      </v-btn>
+    </template>
 
-    <v-alert v-if="errorMessage" density="comfortable" type="error" variant="tonal">
-      {{ errorMessage }}
-    </v-alert>
+    <MetricStrip compact :items="aiMetrics" />
 
     <v-card class="page-panel">
-      <v-tabs v-model="topTab" color="primary">
-        <v-tab value="sources">{{ t('ai.providersTab') }}</v-tab>
-        <v-tab value="personas">{{ t('ai.personasTab') }}</v-tab>
-        <v-tab value="memories">{{ t('ai.memoryTab') }}</v-tab>
-        <v-tab value="relationships">{{ t('ai.relationshipTab') }}</v-tab>
-        <v-tab value="profiles">{{ t('ai.personProfileTab') }}</v-tab>
-        <v-tab value="skills">{{ t('ai.skillsTab') }}</v-tab>
-        <v-tab value="debug">{{ t('ai.debugTab') }}</v-tab>
+      <v-tabs
+        v-model="topTab"
+        class="ai-section-tabs"
+        color="primary"
+        show-arrows
+      >
+        <v-tab
+          v-for="item in topTabOptions"
+          :key="item.value"
+          :value="item.value"
+        >
+          {{ item.title }}
+        </v-tab>
       </v-tabs>
 
       <template v-if="topTab === 'sources'">
         <v-card-text>
-          <v-tabs v-model="sourceCapabilityTab" class="mb-4" color="primary">
-            <v-tab value="chat">{{ t('ai.sourceCapabilityChat') }}</v-tab>
-            <v-tab value="embedding">{{ t('ai.sourceCapabilityEmbedding') }}</v-tab>
-            <v-tab value="stt">{{ t('ai.sourceCapabilityStt') }}</v-tab>
-            <v-tab value="tts">{{ t('ai.sourceCapabilityTts') }}</v-tab>
-            <v-tab value="rerank">{{ t('ai.sourceCapabilityRerank') }}</v-tab>
-          </v-tabs>
+          <div class="ai-source-toolbar">
+            <v-select
+              v-model="sourceCapabilityTab"
+              class="ai-source-toolbar__selector compact-field--toolbar"
+              density="compact"
+              hide-details
+              :items="sourceCapabilityOptions"
+              :label="t('ai.sourceCapabilitySelector')"
+              :menu-props="{ contentClass: 'ai-source-capability-menu' }"
+            />
+          </div>
 
           <template v-if="!sourceCapabilityReady">
-            <v-sheet class="surface-gradient-card pa-4" rounded="lg">
+            <v-sheet class="surface-gradient-card pa-4">
               <div class="empty-state-text">{{ t('ai.sourceCapabilityComingSoon') }}</div>
               <div class="empty-state-hint mt-2">{{ t('ai.sourceCapabilityComingSoonHint') }}</div>
             </v-sheet>
@@ -287,15 +291,17 @@
       </template>
 
     </v-card>
-  </div>
+  </PageScaffold>
 </template>
 
 <script setup lang="ts">
+  import type { WorkbenchMetricItem } from '@/components/workbench'
   import type { LocationQueryRaw } from 'vue-router'
   import { computed, onMounted, ref, watch } from 'vue'
   import { useI18n } from 'vue-i18n'
   import { useRoute, useRouter } from 'vue-router'
   import { getErrorMessage } from '@/api/client'
+  import { MetricStrip, PageScaffold } from '@/components/workbench'
   import { useAIDebugTab } from '@/composables/useAIDebugTab'
   import { useAIDebugToolsTab } from '@/composables/useAIDebugToolsTab'
   import { useAIFutureTasksTab } from '@/composables/useAIFutureTasksTab'
@@ -545,6 +551,46 @@
     || sourceCapabilityTab.value === 'tts'
     || sourceCapabilityTab.value === 'rerank'
   ))
+  const aiMetrics = computed<WorkbenchMetricItem[]>(() => [
+    {
+      key: 'sources',
+      label: t('ai.providersTab'),
+      value: sources.value.length,
+      icon: 'mdi-server-network',
+    },
+    {
+      key: 'models',
+      label: t('ai.sourceModelsTitle'),
+      value: sourceModels.value.length,
+      icon: 'mdi-cube-outline',
+      color: 'info',
+    },
+    {
+      key: 'personas',
+      label: t('ai.personasTab'),
+      value: personas.value.length,
+      icon: 'mdi-account-voice',
+    },
+    {
+      key: 'memories',
+      label: t('ai.memoryTab'),
+      value: memories.value.length,
+      icon: 'mdi-brain',
+      color: 'warning',
+    },
+    {
+      key: 'profiles',
+      label: t('ai.personProfileTab'),
+      value: personProfiles.value.length,
+      icon: 'mdi-account-box-outline',
+    },
+    {
+      key: 'skills',
+      label: t('ai.skillsTab'),
+      value: skills.value.length,
+      icon: 'mdi-tools',
+    },
+  ])
 
   const {
     cancelFutureTask,
@@ -625,6 +671,22 @@
     title: item.display_name,
     value: item.preset_type,
   })))
+  const sourceCapabilityOptions = computed(() => [
+    { title: t('ai.sourceCapabilityChat'), value: 'chat' as const },
+    { title: t('ai.sourceCapabilityEmbedding'), value: 'embedding' as const },
+    { title: t('ai.sourceCapabilityStt'), value: 'stt' as const },
+    { title: t('ai.sourceCapabilityTts'), value: 'tts' as const },
+    { title: t('ai.sourceCapabilityRerank'), value: 'rerank' as const },
+  ])
+  const topTabOptions = computed<{ title: string, value: AITopTab }[]>(() => [
+    { title: t('ai.providersTab'), value: 'sources' },
+    { title: t('ai.personasTab'), value: 'personas' },
+    { title: t('ai.memoryTab'), value: 'memories' },
+    { title: t('ai.relationshipTab'), value: 'relationships' },
+    { title: t('ai.personProfileTab'), value: 'profiles' },
+    { title: t('ai.skillsTab'), value: 'skills' },
+    { title: t('ai.debugTab'), value: 'debug' },
+  ])
 
   function sourcePresetLabel (value: string) {
     return sourcePresets.value.find(item => item.preset_type === value)?.display_name ?? value
@@ -696,7 +758,50 @@
 </script>
 
 <style scoped>
+.ai-section-tabs {
+  border-bottom: 1px solid rgba(var(--v-theme-outline-variant), 0.24);
+  padding-inline: 8px;
+}
+
+.ai-source-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 16px;
+}
+
+.ai-source-toolbar__selector {
+  width: min(100%, 260px);
+  min-width: 0;
+}
+
+.ai-source-toolbar__selector :deep(.v-label),
+.ai-source-toolbar__selector :deep(.v-field-label) {
+  color: rgba(var(--v-theme-on-surface), 0.84) !important;
+  opacity: 1;
+}
+
 :deep(.page-table .v-data-table-footer__info) {
   display: none;
+}
+
+@media (max-width: 640px) {
+  .ai-section-tabs {
+    padding-inline: 4px;
+  }
+
+  .ai-source-toolbar {
+    justify-content: stretch;
+  }
+
+  .ai-source-toolbar__selector {
+    width: 100%;
+  }
+}
+</style>
+
+<style>
+.ai-source-capability-menu .v-list-item-title {
+  color: rgba(var(--v-theme-on-surface), 0.9);
+  font-weight: 600;
 }
 </style>

@@ -1,54 +1,34 @@
 <template>
-  <div class="page-view">
-    <div class="page-header">
-      <h1 class="page-title">{{ t('accounts.title') }}</h1>
-      <div class="page-actions">
-        <v-btn :loading="loading" variant="tonal" @click="loadData">
-          {{ t('common.refresh') }}
-        </v-btn>
-      </div>
-    </div>
+  <PageScaffold :error-message="errorMessage" :title="t('accounts.title')">
+    <template #actions>
+      <v-btn :loading="loading" variant="tonal" @click="loadData">
+        {{ t('common.refresh') }}
+      </v-btn>
+    </template>
 
-    <v-alert v-if="errorMessage" density="comfortable" type="error" variant="tonal">
-      {{ errorMessage }}
-    </v-alert>
-
-    <div class="page-summary-grid mb-4">
-      <v-sheet class="summary-card" rounded="lg">
-        <div class="summary-card__label">{{ t('accounts.currentRole') }}</div>
-        <div class="summary-card__value summary-card__value--text">{{ roleLabel(authStore.role) }}</div>
-      </v-sheet>
-      <v-sheet class="summary-card" rounded="lg">
-        <div class="summary-card__label">{{ t('accounts.username') }}</div>
-        <div class="summary-card__value summary-card__value--text">{{ currentAccount?.username || t('common.none') }}</div>
-      </v-sheet>
-      <v-sheet class="summary-card" rounded="lg">
-        <div class="summary-card__label">{{ t('accounts.lastLogin') }}</div>
-        <div class="summary-card__value summary-card__value--text">{{ formatTimestamp(currentAccount?.last_login_at) }}</div>
-      </v-sheet>
-      <v-sheet class="summary-card" rounded="lg">
-        <div class="summary-card__label">{{ t('accounts.passwordChangedAt') }}</div>
-        <div class="summary-card__value summary-card__value--text">{{ formatTimestamp(currentAccount?.password_changed_at) }}</div>
-      </v-sheet>
-    </div>
+    <MetricStrip :items="accountMetrics" />
 
     <v-row>
       <v-col cols="12" lg="5">
         <v-card class="page-panel">
           <v-card-title class="page-panel__title">{{ t('accounts.profileTitle') }}</v-card-title>
+
           <v-card-text class="d-flex flex-column ga-4">
             <div class="security-stat">
               <div class="security-stat__label">{{ t('accounts.username') }}</div>
               <div class="security-stat__value">{{ currentAccount?.username || t('common.none') }}</div>
             </div>
+
             <div class="security-stat">
               <div class="security-stat__label">{{ t('accounts.currentRole') }}</div>
               <div class="security-stat__value">{{ roleLabel(authStore.role) }}</div>
             </div>
+
             <div class="security-stat">
               <div class="security-stat__label">{{ t('accounts.lastLogin') }}</div>
               <div class="security-stat__value">{{ formatTimestamp(currentAccount?.last_login_at) }}</div>
             </div>
+
             <div class="security-stat">
               <div class="security-stat__label">{{ t('accounts.passwordChangedAt') }}</div>
               <div class="security-stat__value">{{ formatTimestamp(currentAccount?.password_changed_at) }}</div>
@@ -58,6 +38,7 @@
 
         <v-card class="page-panel mt-4">
           <v-card-title class="page-panel__title">{{ t('accounts.securityTitle') }}</v-card-title>
+
           <v-card-text class="d-flex flex-column ga-3">
             <div class="d-flex justify-end">
               <v-btn color="warning" :loading="revokingSessions" variant="tonal" @click="handleRevokeOtherSessions">
@@ -71,23 +52,27 @@
       <v-col cols="12" lg="7">
         <v-card class="page-panel">
           <v-card-title class="page-panel__title">{{ t('accounts.passwordTitle') }}</v-card-title>
+
           <v-card-text class="d-flex flex-column ga-3">
             <v-text-field
               v-model="passwordForm.current_password"
               :label="t('accounts.currentPassword')"
               type="password"
             />
+
             <v-text-field
               v-model="passwordForm.new_password"
               :label="t('accounts.newPassword')"
               type="password"
             />
+
             <v-text-field
               v-model="confirmPassword"
               :error-messages="passwordError"
               :label="t('accounts.confirmPassword')"
               type="password"
             />
+
             <div class="d-flex justify-end">
               <v-btn color="primary" :loading="passwordSaving" @click="submitPassword">
                 {{ t('accounts.changePassword') }}
@@ -100,9 +85,10 @@
 
     <v-card class="page-panel mt-4">
       <v-card-title class="page-panel__title">{{ t('accounts.auditTitle') }}</v-card-title>
+
       <v-card-text>
         <v-data-table
-          class="page-table"
+          class="page-table accounts-audit-table"
           density="compact"
           :headers="auditHeaders"
           :items="auditEvents"
@@ -111,26 +97,67 @@
           <template #item.event_type="{ value }">
             <span>{{ auditEventLabel(value) }}</span>
           </template>
+
           <template #item.occurred_at="{ value }">
             <span>{{ formatTimestamp(value) }}</span>
           </template>
+
           <template #item.actor_username="{ value }">
             <span>{{ value || t('common.none') }}</span>
           </template>
+
           <template #item.target_username="{ value }">
             <span>{{ value || t('common.none') }}</span>
           </template>
+
           <template #item.detail="{ value }">
             <span>{{ value || t('common.none') }}</span>
           </template>
         </v-data-table>
+
+        <div class="accounts-audit-cards">
+          <article
+            v-for="event in auditEvents"
+            :key="`${event.event_type}:${event.occurred_at}:${event.actor_username}:${event.target_username}`"
+            class="accounts-audit-card"
+          >
+            <div class="accounts-audit-card__header">
+              <div>
+                <div class="accounts-audit-card__title">{{ auditEventLabel(event.event_type) }}</div>
+                <div class="accounts-audit-card__time">{{ formatTimestamp(event.occurred_at) }}</div>
+              </div>
+            </div>
+
+            <div class="accounts-audit-card__grid">
+              <div>
+                <span>{{ t('accounts.auditActor') }}</span>
+                <strong>{{ event.actor_username || t('common.none') }}</strong>
+              </div>
+
+              <div>
+                <span>{{ t('accounts.auditTarget') }}</span>
+                <strong>{{ event.target_username || t('common.none') }}</strong>
+              </div>
+
+              <div>
+                <span>{{ t('accounts.auditDetail') }}</span>
+                <strong>{{ event.detail || t('common.none') }}</strong>
+              </div>
+            </div>
+          </article>
+
+          <div v-if="auditEvents.length === 0" class="accounts-audit-empty">
+            {{ t('common.noData') }}
+          </div>
+        </div>
       </v-card-text>
     </v-card>
-  </div>
+  </PageScaffold>
 </template>
 
 <script setup lang="ts">
   import type { SecurityAuditEventItem, WebUIAccountItem } from '@/api/auth'
+  import type { WorkbenchMetricItem } from '@/components/workbench'
   import { computed, onMounted, reactive, ref } from 'vue'
   import { useI18n } from 'vue-i18n'
   import {
@@ -140,6 +167,7 @@
     revokeOtherSessions,
   } from '@/api/auth'
   import { getErrorMessage } from '@/api/client'
+  import { MetricStrip, PageScaffold } from '@/components/workbench'
   import { useAuthStore } from '@/stores/auth'
   import { useNoticeStore } from '@/stores/notice'
 
@@ -166,6 +194,32 @@
     { title: t('accounts.auditActor'), key: 'actor_username', sortable: false },
     { title: t('accounts.auditTarget'), key: 'target_username', sortable: false },
     { title: t('accounts.auditDetail'), key: 'detail', sortable: false },
+  ])
+  const accountMetrics = computed<WorkbenchMetricItem[]>(() => [
+    {
+      key: 'role',
+      label: t('accounts.currentRole'),
+      value: roleLabel(authStore.role),
+      icon: 'mdi-shield-account-outline',
+    },
+    {
+      key: 'username',
+      label: t('accounts.username'),
+      value: currentAccount.value?.username || t('common.none'),
+      icon: 'mdi-account-outline',
+    },
+    {
+      key: 'last-login',
+      label: t('accounts.lastLogin'),
+      value: formatTimestamp(currentAccount.value?.last_login_at),
+      icon: 'mdi-login',
+    },
+    {
+      key: 'password-changed',
+      label: t('accounts.passwordChangedAt'),
+      value: formatTimestamp(currentAccount.value?.password_changed_at),
+      icon: 'mdi-lock-reset',
+    },
   ])
   function roleLabel (role: string) {
     if (role === 'owner') {
@@ -263,5 +317,58 @@
 
 .security-stat__value {
   font-weight: 600;
+}
+
+.accounts-audit-cards {
+  display: none;
+}
+
+@media (max-width: 760px) {
+  .accounts-audit-table {
+    display: none;
+  }
+
+  .accounts-audit-cards {
+    display: grid;
+    gap: 10px;
+  }
+
+  .accounts-audit-card {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 12px;
+    padding: 12px;
+    border: 1px solid rgba(var(--v-theme-outline-variant), var(--surface-border-opacity));
+    border-radius: var(--shape-panel);
+    background: rgb(var(--v-theme-surface-container-low));
+  }
+
+  .accounts-audit-card__title {
+    font-weight: 700;
+  }
+
+  .accounts-audit-card__time,
+  .accounts-audit-card__grid span,
+  .accounts-audit-empty {
+    color: rgba(var(--v-theme-on-surface), 0.64);
+    font-size: 0.82rem;
+  }
+
+  .accounts-audit-card__grid {
+    display: grid;
+    gap: 9px;
+  }
+
+  .accounts-audit-card__grid > div {
+    display: grid;
+    min-width: 0;
+    gap: 3px;
+  }
+
+  .accounts-audit-card__grid strong {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
 }
 </style>

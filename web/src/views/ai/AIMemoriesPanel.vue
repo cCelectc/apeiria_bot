@@ -1,7 +1,7 @@
 <template>
   <v-row>
     <v-col cols="12" lg="4">
-      <v-sheet class="surface-gradient-card pa-2" rounded="lg">
+      <v-sheet class="surface-gradient-card pa-2">
         <div class="d-flex align-center justify-space-between px-2 py-2">
           <div class="text-body-2 text-medium-emphasis">{{ t('ai.recentTargets') }}</div>
           <v-btn
@@ -18,7 +18,6 @@
               v-for="item in recentTargets"
               :key="`${item.anchor_type}:${item.anchor_id}`"
               :active="selectedRecentTargetId === `${item.anchor_type}:${item.anchor_id}`"
-              rounded="lg"
               @click="selectRecentTarget(item)"
             >
               <v-list-item-title>{{ item.title }}</v-list-item-title>
@@ -163,7 +162,7 @@
         </template>
       </div>
 
-      <v-sheet class="surface-gradient-card pa-4" rounded="lg">
+      <v-sheet class="surface-gradient-card pa-4">
         <div class="ai-binding-form ai-memory-toolbar">
           <v-select
             v-model="memoryDraft.memory_layer"
@@ -198,7 +197,7 @@
         </div>
       </v-sheet>
 
-      <v-sheet class="surface-gradient-card pa-4" rounded="lg">
+      <v-sheet class="surface-gradient-card pa-4">
         <div class="text-subtitle-2 font-weight-medium">
           {{ t('ai.memoryLayerWorking') }}
         </div>
@@ -212,7 +211,6 @@
           v-for="section in memoryLayerSections"
           :key="section.layer"
           class="surface-gradient-card pa-4"
-          rounded="lg"
         >
           <div class="text-subtitle-2 font-weight-medium mb-3">
             {{ section.title }} · {{ section.items.length }}
@@ -227,7 +225,6 @@
               v-for="item in section.items"
               :key="item.memory_id"
               class="surface-gradient-card pa-4"
-              rounded="lg"
             >
               <div class="d-flex flex-wrap justify-space-between ga-3">
                 <div class="d-flex flex-wrap ga-2 align-center">
@@ -352,7 +349,7 @@
         </v-sheet>
       </div>
 
-      <v-sheet v-else class="surface-gradient-card pa-4" rounded="lg">
+      <v-sheet v-else class="surface-gradient-card pa-4">
         <div class="empty-state-text mb-3">
           {{ canLoadMemories ? t('ai.noMemories') : t('ai.selectMemoryTarget') }}
         </div>

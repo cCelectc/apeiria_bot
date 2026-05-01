@@ -6,14 +6,13 @@
           {{ t('ai.createPersona') }}
         </v-btn>
       </div>
-      <v-sheet class="surface-gradient-card pa-2" rounded="lg">
+      <v-sheet class="surface-gradient-card pa-2">
         <template v-if="personas.length > 0">
           <v-list class="bg-transparent" density="comfortable" lines="two">
             <v-list-item
               v-for="item in personas"
               :key="item.persona_id"
               :active="item.persona_id === personaForm.persona_id"
-              rounded="lg"
               @click="selectPersona(item)"
             >
               <v-list-item-title>{{ item.name }}</v-list-item-title>
@@ -34,7 +33,7 @@
     </v-col>
 
     <v-col cols="12" lg="8">
-      <v-sheet class="surface-gradient-card pa-4" rounded="lg">
+      <v-sheet class="surface-gradient-card pa-4">
         <div class="d-flex flex-wrap ga-2 mb-4">
           <v-chip color="primary" size="small" variant="tonal">
             {{ isCreatingPersona ? t('ai.creatingPersona') : t('ai.editingPersona') }}

@@ -1,21 +1,19 @@
 <template>
-  <div class="dashboard-view page-view">
-    <section class="dashboard-hero">
-      <div class="dashboard-hero__top">
-        <div class="dashboard-hero__intro">
-          <span class="text-overline dashboard-kicker">{{ t('layout.brand') }}</span>
-          <h1 class="page-title">{{ t('dashboard.title') }}</h1>
-        </div>
-        <div class="page-actions">
-          <v-btn color="warning" :loading="restarting" variant="tonal" @click="handleRestart">
-            {{ t('dashboard.restart') }}
-          </v-btn>
-          <v-btn :loading="loading" variant="tonal" @click="refreshDashboard">
-            {{ t('common.refresh') }}
-          </v-btn>
-        </div>
-      </div>
-    </section>
+  <PageScaffold
+    class="dashboard-view"
+    :error-message="dashboardError"
+    :kicker="t('layout.brand')"
+    :title="t('dashboard.title')"
+  >
+    <template #actions>
+      <v-btn color="warning" :loading="restarting" variant="tonal" @click="handleRestart">
+        {{ t('dashboard.restart') }}
+      </v-btn>
+
+      <v-btn :loading="loading" variant="tonal" @click="refreshDashboard">
+        {{ t('common.refresh') }}
+      </v-btn>
+    </template>
 
     <section v-if="showWebUIBuildCard" class="dashboard-section">
       <v-card class="dashboard-build-card">
@@ -24,6 +22,7 @@
             <div class="text-subtitle-1 font-weight-medium">{{ webuiBuildHeadline }}</div>
             <div class="text-body-2 text-medium-emphasis">{{ webuiBuildDescription }}</div>
           </div>
+
           <v-btn
             color="warning"
             :disabled="!webuiBuildStatus?.can_build"
@@ -40,21 +39,26 @@
     <v-dialog v-model="buildDialogVisible" max-width="920">
       <v-card>
         <v-card-title>{{ t('dashboard.rebuildWebUI') }}</v-card-title>
+
         <v-card-text class="d-flex flex-column ga-4">
           <div class="text-body-2 text-medium-emphasis">
             {{ buildDialogStatus }}
           </div>
+
           <v-progress-linear
             v-if="rebuildingWebUI"
             color="warning"
             indeterminate
           />
+
           <div ref="buildLogCardRef" class="build-log-card">
             <pre class="build-log-card__content">{{ buildLogs || t('dashboard.webuiBuildWaiting') }}</pre>
           </div>
         </v-card-text>
+
         <v-card-actions>
           <v-spacer />
+
           <v-btn :disabled="rebuildingWebUI" variant="text" @click="buildDialogVisible = false">
             {{ t('common.close') }}
           </v-btn>
@@ -66,78 +70,15 @@
       <div class="dashboard-section__header">
         <div class="dashboard-section__title">{{ t('dashboard.overview') }}</div>
       </div>
-      <v-alert
-        v-if="dashboardError"
-        class="mb-4"
-        density="comfortable"
-        type="warning"
-        variant="tonal"
-      >
-        {{ dashboardError }}
-      </v-alert>
-      <v-row class="dashboard-overview">
-        <v-col cols="12" md="3" sm="6">
-          <v-card class="metric-card metric-card--status">
-            <v-card-text class="metric-card__body">
-              <div class="metric-card__topline">
-                <div class="metric-card__label">{{ t('dashboard.status') }}</div>
-                <div class="metric-card__icon" :class="`metric-card__icon--${statusColor}`">
-                  <v-icon size="28">{{ statusIcon }}</v-icon>
-                </div>
-              </div>
-              <div class="metric-card__value metric-card__value--status">{{ status?.status || '...' }}</div>
-            </v-card-text>
-          </v-card>
-        </v-col>
 
-        <v-col cols="12" md="3" sm="6">
-          <v-card class="metric-card">
-            <v-card-text class="metric-card__body">
-              <div class="metric-card__topline">
-                <div class="metric-card__label">{{ t('dashboard.uptime') }}</div>
-                <div class="metric-card__icon metric-card__icon--primary">
-                  <v-icon size="28">mdi-clock-outline</v-icon>
-                </div>
-              </div>
-              <div class="metric-card__value">{{ formatUptime(status?.uptime) }}</div>
-            </v-card-text>
-          </v-card>
-        </v-col>
-
-        <v-col cols="12" md="3" sm="6">
-          <v-card class="metric-card">
-            <v-card-text class="metric-card__body">
-              <div class="metric-card__topline">
-                <div class="metric-card__label">{{ t('dashboard.plugins') }}</div>
-                <div class="metric-card__icon metric-card__icon--accent">
-                  <v-icon size="28">mdi-puzzle</v-icon>
-                </div>
-              </div>
-              <div class="metric-card__value metric-card__value--number">{{ status?.plugins_count ?? '...' }}</div>
-            </v-card-text>
-          </v-card>
-        </v-col>
-
-        <v-col cols="12" md="3" sm="6">
-          <v-card class="metric-card">
-            <v-card-text class="metric-card__body">
-              <div class="metric-card__topline">
-                <div class="metric-card__label">{{ t('dashboard.adapters') }}</div>
-                <div class="metric-card__icon metric-card__icon--info">
-                  <v-icon size="28">mdi-connection</v-icon>
-                </div>
-              </div>
-              <div class="metric-card__value metric-card__value--number">{{ status?.adapters?.length ?? '...' }}</div>
-            </v-card-text>
-          </v-card>
-        </v-col>
-      </v-row>
+      <MetricStrip :items="dashboardMetrics" />
     </section>
 
     <section class="dashboard-grid">
       <v-card v-if="status?.adapters?.length" class="surface-card dashboard-grid__main">
         <v-card-text class="d-flex flex-column ga-3">
           <div class="surface-card__title">{{ t('dashboard.adapterList') }}</div>
+
           <div class="dashboard-adapter-list">
             <v-chip
               v-for="adapter in status.adapters"
@@ -156,43 +97,8 @@
         <div class="dashboard-section__header dashboard-section__header--tight">
           <div class="dashboard-section__title">{{ t('dashboard.extraStats') }}</div>
         </div>
-        <v-row>
-          <v-col cols="12" md="6" sm="6">
-            <v-card class="compact-metric-card">
-              <v-card-text class="compact-metric-card__body">
-                <div class="compact-metric-card__label">{{ t('dashboard.disabledPlugins') }}</div>
-                <div class="compact-metric-card__value">{{ status?.disabled_plugins_count ?? '...' }}</div>
-              </v-card-text>
-            </v-card>
-          </v-col>
 
-          <v-col cols="12" md="6" sm="6">
-            <v-card class="compact-metric-card">
-              <v-card-text class="compact-metric-card__body">
-                <div class="compact-metric-card__label">{{ t('dashboard.groups') }}</div>
-                <div class="compact-metric-card__value">{{ status?.groups_count ?? '...' }}</div>
-              </v-card-text>
-            </v-card>
-          </v-col>
-
-          <v-col cols="12" md="6" sm="6">
-            <v-card class="compact-metric-card">
-              <v-card-text class="compact-metric-card__body">
-                <div class="compact-metric-card__label">{{ t('dashboard.disabledGroups') }}</div>
-                <div class="compact-metric-card__value">{{ status?.disabled_groups_count ?? '...' }}</div>
-              </v-card-text>
-            </v-card>
-          </v-col>
-
-          <v-col cols="12" md="6" sm="6">
-            <v-card class="compact-metric-card">
-              <v-card-text class="compact-metric-card__body">
-                <div class="compact-metric-card__label">{{ t('dashboard.accessRules') }}</div>
-                <div class="compact-metric-card__value">{{ status?.access_rules_count ?? '...' }}</div>
-              </v-card-text>
-            </v-card>
-          </v-col>
-        </v-row>
+        <MetricStrip compact :items="dashboardSecondaryMetrics" />
       </div>
     </section>
 
@@ -200,10 +106,14 @@
       <div class="dashboard-section__header">
         <div class="dashboard-section__title">{{ t('dashboard.recentEvents') }}</div>
       </div>
+
       <v-card class="page-panel dashboard-events-card">
-        <div v-if="recentEvents.length === 0" class="pa-6 text-body-2 text-medium-emphasis text-center">
-          {{ t('dashboard.noEvents') }}
-        </div>
+        <EmptyState
+          v-if="recentEvents.length === 0"
+          icon="mdi-calendar-blank-outline"
+          :title="t('dashboard.noEvents')"
+        />
+
         <div v-else class="dashboard-events-list">
           <article
             v-for="event in recentEvents"
@@ -220,8 +130,10 @@
                 {{ event.level }}
               </v-chip>
             </div>
+
             <div class="dashboard-event__content">
               <div class="dashboard-event__title">{{ event.message }}</div>
+
               <div class="dashboard-event__meta">
                 <span>{{ event.timestamp }}</span>
                 <span>{{ t('dashboard.eventSource') }}: {{ event.source }}</span>
@@ -231,15 +143,17 @@
         </div>
       </v-card>
     </section>
-  </div>
+  </PageScaffold>
 </template>
 
 <script setup lang="ts">
   import type { DashboardEventItem, DashboardStatus, WebUIBuildStatus } from '@/api/dashboard'
+  import type { WorkbenchMetricItem } from '@/components/workbench'
   import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
   import { useI18n } from 'vue-i18n'
   import { getErrorMessage } from '@/api/client'
   import { getDashboardEvents, getStatus, getWebUIBuildStatus, streamRebuildWebUI } from '@/api/dashboard'
+  import { EmptyState, MetricStrip, PageScaffold } from '@/components/workbench'
   import { useRestartController } from '@/composables/useRestartController'
   import { useNoticeStore } from '@/stores/notice'
 
@@ -260,6 +174,56 @@
 
   const statusColor = computed(() => status.value?.status === 'running' ? 'success' : 'warning')
   const statusIcon = computed(() => status.value?.status === 'running' ? 'mdi-check-circle' : 'mdi-alert-circle')
+  const dashboardMetrics = computed<WorkbenchMetricItem[]>(() => [
+    {
+      key: 'status',
+      label: t('dashboard.status'),
+      value: status.value?.status || '...',
+      icon: statusIcon.value,
+      color: statusColor.value,
+    },
+    {
+      key: 'uptime',
+      label: t('dashboard.uptime'),
+      value: formatUptime(status.value?.uptime),
+      icon: 'mdi-clock-outline',
+    },
+    {
+      key: 'plugins',
+      label: t('dashboard.plugins'),
+      value: status.value?.plugins_count ?? '...',
+      icon: 'mdi-puzzle',
+    },
+    {
+      key: 'adapters',
+      label: t('dashboard.adapters'),
+      value: status.value?.adapters?.length ?? '...',
+      icon: 'mdi-connection',
+      color: 'info',
+    },
+  ])
+  const dashboardSecondaryMetrics = computed<WorkbenchMetricItem[]>(() => [
+    {
+      key: 'disabled-plugins',
+      label: t('dashboard.disabledPlugins'),
+      value: status.value?.disabled_plugins_count ?? '...',
+    },
+    {
+      key: 'groups',
+      label: t('dashboard.groups'),
+      value: status.value?.groups_count ?? '...',
+    },
+    {
+      key: 'disabled-groups',
+      label: t('dashboard.disabledGroups'),
+      value: status.value?.disabled_groups_count ?? '...',
+    },
+    {
+      key: 'access-rules',
+      label: t('dashboard.accessRules'),
+      value: status.value?.access_rules_count ?? '...',
+    },
+  ])
   const webuiBuildHeadline = computed(() => {
     if (!webuiBuildStatus.value) return ''
     if (!webuiBuildStatus.value.is_built) return t('dashboard.webuiBuildMissing')
@@ -444,9 +408,7 @@
   padding: 16px;
   border-radius: var(--shape-large);
   background: rgb(var(--v-theme-surface-container));
-  box-shadow:
-    0 1px 2px rgba(15, 23, 42, 0.04),
-    0 2px 8px rgba(15, 23, 42, 0.05);
+  box-shadow: none;
 }
 
 .dashboard-kicker {
@@ -530,9 +492,7 @@
 }
 
 .dashboard-grid__main {
-  box-shadow:
-    0 1px 2px rgba(15, 23, 42, 0.04),
-    0 8px 20px rgba(21, 101, 192, 0.08) !important;
+  box-shadow: none !important;
 }
 
 .dashboard-adapter-list {

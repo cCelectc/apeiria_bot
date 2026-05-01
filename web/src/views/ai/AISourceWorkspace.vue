@@ -1,5 +1,5 @@
 <template>
-  <v-sheet class="surface-gradient-card pa-4 mb-4 source-workspace" rounded="lg">
+  <v-sheet class="surface-gradient-card pa-4 mb-4 source-workspace">
     <div class="d-flex flex-wrap justify-space-between align-start ga-3 mb-4">
       <div>
         <div class="text-h6 font-weight-medium">
@@ -102,7 +102,7 @@
     </div>
 
     <v-dialog v-model="sourceApiKeysDialog" max-width="760">
-      <v-card rounded="xl">
+      <v-card>
         <v-card-title class="text-h5 pt-6 px-6">
           {{ t('ai.sourceApiKeyManageTitle') }}
         </v-card-title>

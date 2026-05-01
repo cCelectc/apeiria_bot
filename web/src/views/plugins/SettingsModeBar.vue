@@ -1,21 +1,21 @@
 <template>
   <div class="settings-mode-bar">
-    <div :aria-label="tablistLabel" class="settings-mode-tabs segmented-control" role="tablist">
+    <div :aria-label="tablistLabel" class="settings-mode-tabs segmented-control" role="radiogroup">
       <button
-        :aria-selected="modelValue === 'basic'"
+        :aria-checked="modelValue === 'basic'"
         class="settings-mode-tab segmented-control__tab"
         :class="{ 'settings-mode-tab--active segmented-control__tab--active': modelValue === 'basic' }"
-        role="tab"
+        role="radio"
         type="button"
         @click="$emit('update:modelValue', 'basic')"
       >
         {{ basicLabel }}
       </button>
       <button
-        :aria-selected="modelValue === 'advanced'"
+        :aria-checked="modelValue === 'advanced'"
         class="settings-mode-tab segmented-control__tab"
         :class="{ 'settings-mode-tab--active segmented-control__tab--active': modelValue === 'advanced' }"
-        role="tab"
+        role="radio"
         type="button"
         @click="$emit('update:modelValue', 'advanced')"
       >

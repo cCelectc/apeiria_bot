@@ -15,6 +15,10 @@ const zhCN = {
     pageText: '{0}-{1} / {2}',
     unknownError: '未知错误',
     delete: '删除',
+    actions: '操作',
+    filters: '筛选',
+    moreActions: '更多操作',
+    applyFilters: '应用筛选',
   },
   layout: {
     brand: 'Apeiria Bot',
@@ -195,6 +199,7 @@ const zhCN = {
     sourceConfigApiBaseHint: '当前提供商源的自定义 API 端点 URL',
     sourceAdvancedConfig: '高级配置',
     saveSourceConfig: '保存配置',
+    sourceCapabilitySelector: '模型能力',
     sourceCapabilityChat: '对话',
     sourceCapabilityEmbedding: '嵌入',
     sourceCapabilityStt: '语音转文字',
@@ -725,6 +730,7 @@ const zhCN = {
     settingsTitle: '{name} 配置',
     settingsBasicTab: '基础',
     settingsAdvancedTab: '高级',
+    settingsAdvancedAction: '高级编辑',
     settingsEmpty: '暂无可用配置。',
     settingsAdvancedDescription: '直接编辑当前配置分段的 TOML 源文本。保存前会做语法和分段校验。',
     settingsSource: '定义来源',
@@ -783,7 +789,6 @@ const zhCN = {
   },
   pluginStore: {
     title: '插件商店',
-    subtitle: '浏览当前可接入的插件源，查看插件信息，并在确认后安装到当前项目。',
     backToPlugins: '返回插件管理',
     warning: '即使是默认插件源，我们也不能完全保证插件的稳定性和安全性，使用前请谨慎核查。',
     allPlugins: '全部插件',
@@ -829,7 +834,6 @@ const zhCN = {
   },
   adapterStore: {
     title: '适配器安装包',
-    subtitle: '浏览适配器安装包、查看项目状态，并把适配器包变更登记到当前项目。',
     source: '来源',
     search: '搜索适配器',
     uninstalledOnly: '隐藏已安装适配器',

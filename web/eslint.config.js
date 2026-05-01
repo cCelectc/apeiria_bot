@@ -1,7 +1,3 @@
-import {
-  defineConfigWithVueTs,
-  vueTsConfigs,
-} from '@vue/eslint-config-typescript'
 import vuetify from 'eslint-config-vuetify'
 
 export default await vuetify(
@@ -10,5 +6,9 @@ export default await vuetify(
       extendIgnore: ['package.json', 'pnpm-lock.yaml'],
     },
   },
-  ...defineConfigWithVueTs(vueTsConfigs.recommended),
+  {
+    rules: {
+      'vue/padding-line-between-tags': 'off',
+    },
+  },
 )

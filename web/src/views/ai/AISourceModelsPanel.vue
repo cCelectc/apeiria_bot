@@ -1,5 +1,5 @@
 <template>
-  <v-sheet class="surface-gradient-card pa-4 source-models-panel" rounded="lg">
+  <v-sheet class="surface-gradient-card pa-4 source-models-panel">
     <template v-if="!sourceForm.source_id">
       <div class="text-subtitle-1 font-weight-medium mb-3">{{ t('ai.sourceModelsTitle') }}</div>
       <div class="empty-state-text">{{ t('ai.selectSourceFirst') }}</div>
@@ -63,7 +63,7 @@
           class="source-model-editor-inline"
           variant="accordion"
         >
-          <v-expansion-panel rounded="xl">
+          <v-expansion-panel>
             <v-expansion-panel-title>
               {{ isCreatingModel ? t('ai.createModel') : t('ai.editModel') }}
             </v-expansion-panel-title>
@@ -154,7 +154,6 @@
               'source-model-row--active': item.kind === 'configured' && item.model_id === modelForm.model_id,
               'source-model-row--importable': item.kind === 'importable',
             }"
-            rounded="xl"
             @click="item.kind === 'configured' ? openEditSourceModel(item) : undefined"
           >
             <div class="source-model-row__body">
@@ -251,7 +250,7 @@
       </div>
 
       <v-dialog v-model="modelDeleteDialog" max-width="420">
-        <v-card rounded="xl">
+        <v-card>
           <v-card-title class="text-h6 pt-6 px-6">
             {{ t('ai.deleteModelConfirmTitle') }}
           </v-card-title>
@@ -273,7 +272,6 @@
       <v-sheet
         v-if="isChatCapability"
         class="surface-gradient-card pa-4 mt-4"
-        rounded="lg"
       >
         <div class="d-flex flex-wrap justify-space-between align-center ga-3 mb-4">
           <div class="d-flex flex-wrap ga-2">
@@ -302,7 +300,6 @@
               :key="item.profile_id"
               class="source-model-row px-4 py-3"
               :class="{ 'source-model-row--active': item.profile_id === profileForm.profile_id }"
-              rounded="xl"
               @click="selectModelProfile(item)"
             >
               <div class="source-model-row__body">

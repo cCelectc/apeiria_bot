@@ -13,14 +13,13 @@
           @click="loadProfiles"
         />
       </div>
-      <v-sheet class="surface-gradient-card pa-2" rounded="lg">
+      <v-sheet class="surface-gradient-card pa-2">
         <template v-if="profiles.length > 0">
           <v-list class="bg-transparent" density="comfortable" lines="two">
             <v-list-item
               v-for="item in profiles"
               :key="item.person_id"
               :active="selectedPersonId === item.person_id"
-              rounded="lg"
               @click="selectProfile(item)"
             >
               <v-list-item-title>
@@ -50,7 +49,7 @@
 
     <v-col cols="12" lg="8">
       <template v-if="selectedProfile">
-        <v-sheet class="surface-gradient-card pa-4" rounded="lg">
+        <v-sheet class="surface-gradient-card pa-4">
           <div class="d-flex flex-wrap ga-2 mb-4">
             <v-chip color="primary" size="small" variant="tonal">
               {{ t('ai.personProfilePlatform') }}: {{ selectedProfile.platform }}
@@ -96,7 +95,6 @@
                 v-for="(point, index) in editForm.memory_points"
                 :key="index"
                 class="surface-gradient-card pa-3"
-                rounded="lg"
               >
                 <div class="d-flex ga-3 align-center">
                   <v-select
@@ -159,7 +157,7 @@
           </div>
         </v-sheet>
       </template>
-      <v-sheet v-else class="surface-gradient-card pa-4" rounded="lg">
+      <v-sheet v-else class="surface-gradient-card pa-4">
         <div class="empty-state-text">{{ t('ai.personProfileSelectHint') }}</div>
       </v-sheet>
     </v-col>

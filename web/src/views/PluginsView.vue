@@ -1,323 +1,324 @@
 <template>
-  <div class="page-view">
-    <div class="page-header">
-      <h1 class="page-title">{{ t('plugins.title') }}</h1>
-    </div>
+  <PageScaffold :error-message="errorMessage" :title="t('plugins.title')">
+    <MetricStrip :items="pluginMetrics" />
 
-    <v-alert v-if="errorMessage" density="comfortable" type="error" variant="tonal">
-      {{ errorMessage }}
-    </v-alert>
+    <FilterBar compact inline :title="t('plugins.configTitle')">
+      <template #filters>
+        <v-text-field
+          v-model.trim="pluginSearch"
+          class="plugin-search compact-field--toolbar"
+          density="compact"
+          hide-details
+          :label="t('plugins.search')"
+          prepend-inner-icon="mdi-magnify"
+        />
+      </template>
 
-    <v-card class="page-panel">
-      <v-card-text class="d-flex flex-column ga-5">
-        <div class="page-summary-grid">
-          <v-sheet class="summary-card" rounded="lg">
-            <div class="summary-card__label">{{ t('plugins.coreProtectedCount') }}</div>
-            <div class="summary-card__value">{{ systemPlugins.length }}</div>
-          </v-sheet>
-          <v-sheet class="summary-card" rounded="lg">
-            <div class="summary-card__label">{{ t('plugins.userManagedCount') }}</div>
-            <div class="summary-card__value">{{ nonSystemPlugins.length }}</div>
-          </v-sheet>
-          <v-sheet class="summary-card" rounded="lg">
-            <div class="summary-card__label">{{ t('plugins.visibleCount') }}</div>
-            <div class="summary-card__value">{{ visiblePlugins.length }}</div>
-          </v-sheet>
-        </div>
-
-        <div class="section-heading">
-          <div class="section-heading__main">
-            <div class="text-subtitle-1 font-weight-medium">{{ t('plugins.configTitle') }}</div>
-            <v-text-field
-              v-model.trim="pluginSearch"
-              class="plugin-search"
-              density="comfortable"
-              hide-details
-              :label="t('plugins.search')"
-              prepend-inner-icon="mdi-magnify"
-            />
-            <v-btn
-              v-if="authStore.role === 'owner'"
-              color="primary"
-              variant="tonal"
-              @click="openManualInstallDialog"
-            >
-              {{ t('plugins.manualInstall') }}
-            </v-btn>
-            <v-btn
-              v-if="authStore.role === 'owner'"
-              color="warning"
-              variant="text"
-              @click="openOrphanConfigDialog"
-            >
-              {{ t('plugins.orphanConfigCleanup') }}
-            </v-btn>
-            <v-btn
-              v-if="authStore.role === 'owner'"
-              color="primary"
-              :loading="updateCheckLoading"
-              variant="text"
-              @click="runPluginUpdateCheck(true)"
-            >
-              {{ updateCheckLoading ? t('plugins.checkingUpdates') : t('plugins.checkUpdates') }}
-            </v-btn>
-          </div>
-          <div class="section-heading__actions">
-            <div :aria-label="t('plugins.scopeTabs')" class="plugin-scope-tabs segmented-control" role="tablist">
-              <button
-                :aria-selected="pluginScopeTab === 'managed'"
-                class="plugin-scope-tab segmented-control__tab"
-                :class="{ 'plugin-scope-tab--active segmented-control__tab--active': pluginScopeTab === 'managed' }"
-                role="tab"
-                type="button"
-                @click="pluginScopeTab = 'managed'"
-              >
-                {{ t('plugins.tabManaged') }}
-              </button>
-              <button
-                :aria-selected="pluginScopeTab === 'framework'"
-                class="plugin-scope-tab segmented-control__tab"
-                :class="{ 'plugin-scope-tab--active segmented-control__tab--active': pluginScopeTab === 'framework' }"
-                role="tab"
-                type="button"
-                @click="pluginScopeTab = 'framework'"
-              >
-                {{ t('plugins.tabFramework') }}
-              </button>
-            </div>
-          </div>
-        </div>
-
-        <div v-if="visiblePlugins.length > 0" class="plugins-grid">
-          <article
-            v-for="item in visiblePlugins"
-            :key="item.module_name"
-            class="plugin-card surface-gradient-card"
+      <template #presets>
+        <div :aria-label="t('plugins.scopeTabs')" class="plugin-scope-tabs segmented-control" role="tablist">
+          <button
+            :aria-selected="pluginScopeTab === 'managed'"
+            class="plugin-scope-tab segmented-control__tab"
+            :class="{ 'plugin-scope-tab--active segmented-control__tab--active': pluginScopeTab === 'managed' }"
+            role="tab"
+            type="button"
+            @click="pluginScopeTab = 'managed'"
           >
-            <div class="plugin-card__top">
-              <div class="plugin-card__headline">
-                <div class="plugin-card__title-row">
-                  <h2 class="plugin-card__title">{{ item.name || item.module_name }}</h2>
-                  <v-chip
-                    v-if="item.admin_level > 0"
-                    color="secondary"
-                    size="x-small"
-                    variant="tonal"
-                  >
-                    Lv.{{ item.admin_level }}
-                  </v-chip>
-                  <v-chip
-                    :color="item.plugin_type === 'admin' || item.plugin_type === 'superuser' ? 'warning' : 'default'"
-                    size="x-small"
-                    variant="tonal"
-                  >
-                    {{ item.plugin_type }}
-                  </v-chip>
-                  <v-chip
-                    :color="item.is_loaded ? 'success' : 'default'"
-                    size="x-small"
-                    variant="tonal"
-                  >
-                    {{ item.is_loaded ? t('plugins.loaded') : t('plugins.notLoaded') }}
-                  </v-chip>
-                  <v-chip
-                    v-if="item.is_explicit"
-                    color="primary"
-                    size="x-small"
-                    variant="tonal"
-                  >
-                    {{ t('plugins.explicit') }}
-                  </v-chip>
-                  <v-chip
-                    v-if="item.is_dependency"
-                    color="info"
-                    size="x-small"
-                    variant="tonal"
-                  >
-                    {{ t('plugins.dependency') }}
-                  </v-chip>
-                  <v-chip
-                    v-if="item.is_protected"
-                    color="warning"
-                    size="x-small"
-                    variant="tonal"
-                  >
-                    {{ t('plugins.protected') }}
-                    <v-tooltip v-if="pluginToggleHint(item)" activator="parent" location="top">
-                      {{ pluginToggleHint(item) }}
-                    </v-tooltip>
-                  </v-chip>
-                  <v-chip
-                    v-if="item.is_pending_uninstall"
-                    color="warning"
-                    size="x-small"
-                    variant="flat"
-                  >
-                    {{ t('plugins.pendingUninstall') }}
-                    <v-tooltip activator="parent" location="top">
-                      {{ t('plugins.pendingUninstallHint') }}
-                    </v-tooltip>
-                  </v-chip>
-                </div>
-                <div class="plugin-card__subline text-caption text-medium-emphasis">
-                  {{ item.module_name }}
-                </div>
-                <div v-if="pluginMetaSummary(item)" class="plugin-card__subline text-caption text-medium-emphasis">
-                  {{ pluginMetaSummary(item) }}
-                </div>
-                <div
-                  v-if="item.child_plugins.length > 0"
-                  class="plugin-card__subline text-caption text-medium-emphasis"
-                >
-                  {{ t('plugins.childPluginCount', { count: item.child_plugins.length }) }}
-                </div>
-              </div>
+            {{ t('plugins.tabManaged') }}
+          </button>
 
-              <v-chip :color="sourceColor(item.source)" size="small" variant="tonal">
-                {{ sourceLabel(item.source) }}
-              </v-chip>
-            </div>
+          <button
+            :aria-selected="pluginScopeTab === 'framework'"
+            class="plugin-scope-tab segmented-control__tab"
+            :class="{ 'plugin-scope-tab--active segmented-control__tab--active': pluginScopeTab === 'framework' }"
+            role="tab"
+            type="button"
+            @click="pluginScopeTab = 'framework'"
+          >
+            {{ t('plugins.tabFramework') }}
+          </button>
+        </div>
+      </template>
 
-            <p v-if="item.description" class="plugin-card__description">
-              {{ item.description }}
-            </p>
+      <template #actions>
+        <ActionCluster :overflow-label="t('common.moreActions')">
+          <v-btn
+            v-if="authStore.role === 'owner'"
+            color="primary"
+            density="comfortable"
+            variant="tonal"
+            @click="openManualInstallDialog"
+          >
+            {{ t('plugins.manualInstall') }}
+          </v-btn>
 
-            <div
-              v-if="item.child_plugins.length > 0 || item.required_plugins.length > 0 || item.dependent_plugins.length > 0"
-              class="plugin-card__relations"
-            >
+          <template #overflow>
+            <v-list-item
+              v-if="authStore.role === 'owner'"
+              prepend-icon="mdi-broom"
+              :title="t('plugins.orphanConfigCleanup')"
+              @click="openOrphanConfigDialog"
+            />
+
+            <v-list-item
+              v-if="authStore.role === 'owner'"
+              prepend-icon="mdi-update"
+              :title="updateCheckLoading ? t('plugins.checkingUpdates') : t('plugins.checkUpdates')"
+              @click="runPluginUpdateCheck(true)"
+            />
+          </template>
+        </ActionCluster>
+      </template>
+    </FilterBar>
+
+    <div v-if="visiblePlugins.length > 0" class="plugins-grid">
+      <article
+        v-for="item in visiblePlugins"
+        :key="item.module_name"
+        class="plugin-card surface-gradient-card"
+      >
+        <div class="plugin-card__top">
+          <div class="plugin-card__headline">
+            <div class="plugin-card__title-row">
+              <h2 class="plugin-card__title">{{ item.name || item.module_name }}</h2>
+
               <v-chip
-                v-for="childPlugin in item.child_plugins"
-                :key="`child:${item.module_name}:${childPlugin}`"
+                v-if="item.admin_level > 0"
                 color="secondary"
                 size="x-small"
                 variant="tonal"
               >
-                {{ t('plugins.childPlugins') }}: {{ childPlugin }}
+                Lv.{{ item.admin_level }}
               </v-chip>
+
               <v-chip
-                v-for="dependency in item.required_plugins"
-                :key="`req:${item.module_name}:${dependency}`"
+                :color="item.plugin_type === 'admin' || item.plugin_type === 'superuser' ? 'warning' : 'default'"
+                size="x-small"
+                variant="tonal"
+              >
+                {{ item.plugin_type }}
+              </v-chip>
+
+              <v-chip
+                :color="item.is_loaded ? 'success' : 'default'"
+                size="x-small"
+                variant="tonal"
+              >
+                {{ item.is_loaded ? t('plugins.loaded') : t('plugins.notLoaded') }}
+              </v-chip>
+
+              <v-chip
+                v-if="item.is_explicit"
+                color="primary"
+                size="x-small"
+                variant="tonal"
+              >
+                {{ t('plugins.explicit') }}
+              </v-chip>
+
+              <v-chip
+                v-if="item.is_dependency"
                 color="info"
                 size="x-small"
                 variant="tonal"
               >
-                {{ t('plugins.requires', { name: dependency }) }}
+                {{ t('plugins.dependency') }}
               </v-chip>
+
               <v-chip
-                v-for="dependent in item.dependent_plugins"
-                :key="`dep:${item.module_name}:${dependent}`"
+                v-if="item.is_protected"
                 color="warning"
                 size="x-small"
                 variant="tonal"
               >
-                {{ t('plugins.requiredBy', { name: dependent }) }}
+                {{ t('plugins.protected') }}
+                <v-tooltip v-if="pluginToggleHint(item)" activator="parent" location="top">
+                  {{ pluginToggleHint(item) }}
+                </v-tooltip>
+              </v-chip>
+
+              <v-chip
+                v-if="item.is_pending_uninstall"
+                color="warning"
+                size="x-small"
+                variant="flat"
+              >
+                {{ t('plugins.pendingUninstall') }}
+                <v-tooltip activator="parent" location="top">
+                  {{ t('plugins.pendingUninstallHint') }}
+                </v-tooltip>
               </v-chip>
             </div>
 
-            <div class="plugin-card__footer">
-              <div class="plugin-card__footer-bar">
-                <div class="plugin-card__actions">
-                  <v-tooltip v-if="canUninstallPlugin(item)" location="top">
-                    <template #activator="{ props }">
-                      <v-btn
-                        v-bind="props"
-                        color="warning"
-                        icon="mdi-trash-can-outline"
-                        :loading="uninstallingModule === item.module_name"
-                        size="small"
-                        variant="text"
-                        @click="uninstallPluginItem(item)"
-                      />
-                    </template>
-                    {{ t('plugins.settingsUninstall') }}
-                  </v-tooltip>
-                  <v-tooltip v-if="pluginProjectUrl(item)" location="top">
-                    <template #activator="{ props }">
-                      <v-btn
-                        v-bind="props"
-                        color="primary"
-                        :href="pluginProjectUrl(item)"
-                        icon="mdi-open-in-new"
-                        rel="noopener noreferrer"
-                        size="small"
-                        target="_blank"
-                        variant="text"
-                      />
-                    </template>
-                    {{ t('plugins.projectPage') }}
-                  </v-tooltip>
-                  <v-tooltip v-if="item.can_view_readme" location="top">
-                    <template #activator="{ props }">
-                      <v-btn
-                        v-bind="props"
-                        color="primary"
-                        icon="mdi-file-document-outline"
-                        :loading="readmeLoadingModule === item.module_name"
-                        size="small"
-                        variant="text"
-                        @click="openReadme(item)"
-                      />
-                    </template>
-                    {{ t('plugins.readme') }}
-                  </v-tooltip>
-                  <v-tooltip v-if="canUpdatePlugin(item)" location="top">
-                    <template #activator="{ props }">
-                      <span v-bind="props" class="plugin-card__action-anchor">
-                        <v-btn
-                          :color="hasPluginUpdate(item) ? 'primary' : undefined"
-                          :disabled="updateCheckLoading || !hasPluginUpdate(item)"
-                          icon="mdi-update"
-                          :loading="packageUpdatingModule === item.module_name"
-                          size="small"
-                          :variant="hasPluginUpdate(item) ? 'tonal' : 'text'"
-                          @click="updatePluginItem(item)"
-                        />
-                      </span>
-                    </template>
-                    {{ updateButtonTooltip(item) }}
-                  </v-tooltip>
-                  <v-tooltip v-if="item.can_edit_config" location="top">
-                    <template #activator="{ props }">
-                      <v-btn
-                        v-bind="props"
-                        color="primary"
-                        icon="mdi-cog-outline"
-                        :loading="settingsLoadingModule === item.module_name"
-                        size="small"
-                        variant="text"
-                        @click="openSettings(item)"
-                      />
-                    </template>
-                    {{ t('plugins.settings') }}
-                  </v-tooltip>
-                </div>
-                <div class="plugin-card__switch-wrap">
-                  <v-switch
-                    v-if="item.can_enable_disable || item.is_protected || item.is_pending_uninstall"
-                    class="plugin-card__switch"
-                    color="success"
-                    :disabled="!item.can_enable_disable || item.is_protected || item.is_pending_uninstall"
-                    hide-details
-                    inset
-                    :loading="pendingModule === item.module_name"
-                    :model-value="item.is_global_enabled"
-                    @update:model-value="togglePlugin(item, $event)"
-                  />
-                  <v-tooltip v-if="pluginToggleHint(item)" activator="parent" location="top">
-                    {{ pluginToggleHint(item) }}
-                  </v-tooltip>
-                </div>
-              </div>
+            <div class="plugin-card__subline text-caption text-medium-emphasis">
+              {{ item.module_name }}
             </div>
-          </article>
+
+            <div v-if="pluginMetaSummary(item)" class="plugin-card__subline text-caption text-medium-emphasis">
+              {{ pluginMetaSummary(item) }}
+            </div>
+
+            <div
+              v-if="item.child_plugins.length > 0"
+              class="plugin-card__subline text-caption text-medium-emphasis"
+            >
+              {{ t('plugins.childPluginCount', { count: item.child_plugins.length }) }}
+            </div>
+          </div>
+
+          <v-chip :color="sourceColor(item.source)" size="small" variant="tonal">
+            {{ sourceLabel(item.source) }}
+          </v-chip>
         </div>
 
-        <div v-else class="py-6 text-body-2 text-medium-emphasis text-center">
-          {{ t('plugins.noVisiblePlugins') }}
+        <p v-if="item.description" class="plugin-card__description">
+          {{ item.description }}
+        </p>
+
+        <div
+          v-if="item.child_plugins.length > 0 || item.required_plugins.length > 0 || item.dependent_plugins.length > 0"
+          class="plugin-card__relations"
+        >
+          <v-chip
+            v-for="childPlugin in item.child_plugins"
+            :key="`child:${item.module_name}:${childPlugin}`"
+            color="secondary"
+            size="x-small"
+            variant="tonal"
+          >
+            {{ t('plugins.childPlugins') }}: {{ childPlugin }}
+          </v-chip>
+
+          <v-chip
+            v-for="dependency in item.required_plugins"
+            :key="`req:${item.module_name}:${dependency}`"
+            color="info"
+            size="x-small"
+            variant="tonal"
+          >
+            {{ t('plugins.requires', { name: dependency }) }}
+          </v-chip>
+
+          <v-chip
+            v-for="dependent in item.dependent_plugins"
+            :key="`dep:${item.module_name}:${dependent}`"
+            color="warning"
+            size="x-small"
+            variant="tonal"
+          >
+            {{ t('plugins.requiredBy', { name: dependent }) }}
+          </v-chip>
         </div>
-      </v-card-text>
-    </v-card>
+
+        <div class="plugin-card__footer">
+          <div class="plugin-card__footer-bar">
+            <div class="plugin-card__actions">
+              <v-tooltip v-if="canUninstallPlugin(item)" location="top">
+                <template #activator="{ props }">
+                  <v-btn
+                    v-bind="props"
+                    color="warning"
+                    icon="mdi-trash-can-outline"
+                    :loading="uninstallingModule === item.module_name"
+                    size="small"
+                    variant="text"
+                    @click="uninstallPluginItem(item)"
+                  />
+                </template>
+                {{ t('plugins.settingsUninstall') }}
+              </v-tooltip>
+
+              <v-tooltip v-if="pluginProjectUrl(item)" location="top">
+                <template #activator="{ props }">
+                  <v-btn
+                    v-bind="props"
+                    color="primary"
+                    :href="pluginProjectUrl(item)"
+                    icon="mdi-open-in-new"
+                    rel="noopener noreferrer"
+                    size="small"
+                    target="_blank"
+                    variant="text"
+                  />
+                </template>
+                {{ t('plugins.projectPage') }}
+              </v-tooltip>
+
+              <v-tooltip v-if="item.can_view_readme" location="top">
+                <template #activator="{ props }">
+                  <v-btn
+                    v-bind="props"
+                    color="primary"
+                    icon="mdi-file-document-outline"
+                    :loading="readmeLoadingModule === item.module_name"
+                    size="small"
+                    variant="text"
+                    @click="openReadme(item)"
+                  />
+                </template>
+                {{ t('plugins.readme') }}
+              </v-tooltip>
+
+              <v-tooltip v-if="canUpdatePlugin(item)" location="top">
+                <template #activator="{ props }">
+                  <span v-bind="props" class="plugin-card__action-anchor">
+                    <v-btn
+                      :color="hasPluginUpdate(item) ? 'primary' : undefined"
+                      :disabled="updateCheckLoading || !hasPluginUpdate(item)"
+                      icon="mdi-update"
+                      :loading="packageUpdatingModule === item.module_name"
+                      size="small"
+                      :variant="hasPluginUpdate(item) ? 'tonal' : 'text'"
+                      @click="updatePluginItem(item)"
+                    />
+                  </span>
+                </template>
+                {{ updateButtonTooltip(item) }}
+              </v-tooltip>
+
+              <v-tooltip v-if="item.can_edit_config" location="top">
+                <template #activator="{ props }">
+                  <v-btn
+                    v-bind="props"
+                    color="primary"
+                    icon="mdi-cog-outline"
+                    :loading="settingsLoadingModule === item.module_name"
+                    size="small"
+                    variant="text"
+                    @click="openSettings(item)"
+                  />
+                </template>
+                {{ t('plugins.settings') }}
+              </v-tooltip>
+            </div>
+
+            <div class="plugin-card__switch-wrap">
+              <v-switch
+                v-if="item.can_enable_disable || item.is_protected || item.is_pending_uninstall"
+                class="plugin-card__switch"
+                color="success"
+                :disabled="!item.can_enable_disable || item.is_protected || item.is_pending_uninstall"
+                hide-details
+                inset
+                :loading="pendingModule === item.module_name"
+                :model-value="item.is_global_enabled"
+                @update:model-value="togglePlugin(item, $event)"
+              />
+
+              <v-tooltip v-if="pluginToggleHint(item)" activator="parent" location="top">
+                {{ pluginToggleHint(item) }}
+              </v-tooltip>
+            </div>
+          </div>
+        </div>
+      </article>
+    </div>
+
+    <EmptyState
+      v-else
+      icon="mdi-puzzle-outline"
+      :title="t('plugins.noVisiblePlugins')"
+    />
 
     <v-dialog v-model="settingsDialogVisible" max-width="920">
       <v-card class="settings-dialog-card">
@@ -327,6 +328,7 @@
               <span class="settings-dialog-header__title">
                 {{ t('plugins.settingsTitle', { name: settingsPlugin?.name || settingsPlugin?.module_name || '' }) }}
               </span>
+
               <span class="settings-dialog-header__module text-caption text-medium-emphasis">
                 {{ settingsPlugin?.module_name }}
               </span>
@@ -336,6 +338,7 @@
               <v-chip v-if="settingsState" color="primary" size="small" variant="tonal">
                 {{ settingsState.section }}
               </v-chip>
+
               <v-chip
                 v-if="settingsState"
                 color="default"
@@ -344,6 +347,7 @@
               >
                 {{ settingsSourceLabel(settingsState.config_source) }}
               </v-chip>
+
               <v-chip
                 v-if="settingsPlugin?.admin_level"
                 color="secondary"
@@ -352,6 +356,7 @@
               >
                 Lv.{{ settingsPlugin.admin_level }}
               </v-chip>
+
               <v-chip
                 v-if="settingsPlugin?.plugin_type"
                 :color="settingsPlugin.plugin_type === 'admin' || settingsPlugin.plugin_type === 'superuser' ? 'warning' : 'default'"
@@ -360,9 +365,11 @@
               >
                 {{ settingsPlugin.plugin_type }}
               </v-chip>
+
               <span v-if="settingsPlugin" class="settings-dialog-header__summary text-caption text-medium-emphasis">
                 {{ pluginMetaSummary(settingsPlugin) || 'unknown' }}
               </span>
+
               <span
                 v-if="settingsPlugin?.installed_package"
                 class="settings-dialog-header__summary text-caption text-medium-emphasis"
@@ -377,6 +384,7 @@
             >
               <div v-if="settingsPlugin.child_plugins.length > 0" class="plugin-detail-tags">
                 <span class="text-caption text-medium-emphasis">{{ t('plugins.childPlugins') }}</span>
+
                 <v-chip
                   v-for="childPlugin in settingsPlugin.child_plugins"
                   :key="`detail-child:${childPlugin}`"
@@ -387,8 +395,10 @@
                   {{ childPlugin }}
                 </v-chip>
               </div>
+
               <div v-if="settingsPlugin.required_plugins.length > 0" class="plugin-detail-tags">
                 <span class="text-caption text-medium-emphasis">{{ t('plugins.requiredPlugins') }}</span>
+
                 <v-chip
                   v-for="dependency in settingsPlugin.required_plugins"
                   :key="`detail-required:${dependency}`"
@@ -399,8 +409,10 @@
                   {{ dependency }}
                 </v-chip>
               </div>
+
               <div v-if="settingsPlugin.dependent_plugins.length > 0" class="plugin-detail-tags">
                 <span class="text-caption text-medium-emphasis">{{ t('plugins.dependentPlugins') }}</span>
+
                 <v-chip
                   v-for="dependency in settingsPlugin.dependent_plugins"
                   :key="`detail-dependent:${dependency}`"
@@ -425,6 +437,7 @@
           </div>
 
         </v-card-title>
+
         <v-card-text class="settings-dialog-card__body d-flex flex-column ga-4">
           <v-alert v-if="settingsErrorMessage" density="comfortable" type="error" variant="tonal">
             {{ settingsErrorMessage }}
@@ -468,9 +481,11 @@
                       <div class="settings-list-row__label text-subtitle-2 font-weight-medium">
                         {{ field.label || field.key }}
                       </div>
+
                       <div v-if="field.help" class="settings-list-row__description text-caption text-medium-emphasis">
                         {{ field.help }}
                       </div>
+
                       <div class="settings-list-row__status">
                         <v-chip
                           v-if="field.has_local_override || pluginEditor.isFieldEditing(field)"
@@ -480,6 +495,7 @@
                         >
                           {{ t('plugins.settingsLocalShort') }}
                         </v-chip>
+
                         <v-chip
                           v-if="!field.editable"
                           color="warning"
@@ -489,6 +505,7 @@
                           {{ t('plugins.settingsReadonly') }}
                         </v-chip>
                       </div>
+
                       <div class="settings-list-row__meta text-caption text-medium-emphasis">
                         <span>{{ t('plugins.settingsType') }}: {{ field.type }}</span>
                         <span>{{ t('plugins.settingsValueSource') }}: {{ settingsValueSourceLabel(field.value_source) }}</span>
@@ -508,6 +525,7 @@
                         >
                           {{ t('plugins.settingsAddOverride') }}
                         </v-btn>
+
                         <v-btn
                           v-if="pluginEditor.isFieldEditing(field)"
                           class="settings-action"
@@ -517,6 +535,7 @@
                         >
                           {{ t('common.cancel') }}
                         </v-btn>
+
                         <v-btn
                           v-if="field.has_local_override"
                           class="settings-action"
@@ -562,6 +581,7 @@
             </template>
           </div>
         </v-card-text>
+
         <v-card-actions>
           <v-spacer />
           <v-btn variant="text" @click="settingsDialogVisible = false">{{ t('common.cancel') }}</v-btn>
@@ -589,16 +609,19 @@
     <v-dialog v-model="toggleConfirmVisible" max-width="560">
       <v-card>
         <v-card-title>{{ toggleConfirmTitle }}</v-card-title>
+
         <v-card-text class="d-flex flex-column ga-4">
           <v-alert density="comfortable" type="warning" variant="tonal">
             {{ toggleConfirmSummary }}
           </v-alert>
+
           <div v-if="toggleConfirmItem" class="confirm-plugin-list">
             <div class="confirm-plugin-item">
               <div class="confirm-plugin-item__title">
                 <span class="font-weight-medium">{{ toggleConfirmItem.name || toggleConfirmItem.module_name }}</span>
                 <span class="text-caption text-medium-emphasis">{{ toggleConfirmItem.module_name }}</span>
               </div>
+
               <div v-if="toggleConfirmDependencies.length > 0" class="confirm-plugin-item__relations">
                 <v-chip
                   v-for="dependency in toggleConfirmDependencies"
@@ -613,9 +636,11 @@
             </div>
           </div>
         </v-card-text>
+
         <v-card-actions>
           <v-btn variant="text" @click="closeToggleConfirm">{{ t('common.cancel') }}</v-btn>
           <v-spacer />
+
           <v-btn :color="toggleConfirmNextValue ? 'primary' : 'warning'" :loading="toggleConfirmLoading" @click="confirmToggleAction">
             {{ toggleConfirmNextValue ? t('plugins.confirmEnable') : t('plugins.confirmDisable') }}
           </v-btn>
@@ -626,10 +651,12 @@
     <v-dialog v-model="uninstallConfirmVisible" max-width="560">
       <v-card>
         <v-card-title>{{ t('plugins.settingsUninstall') }}</v-card-title>
+
         <v-card-text class="d-flex flex-column ga-4">
           <v-alert density="comfortable" type="warning" variant="tonal">
             {{ uninstallConfirmSummary }}
           </v-alert>
+
           <v-checkbox
             v-model="uninstallRemoveConfig"
             color="warning"
@@ -637,13 +664,16 @@
             hide-details
             :label="t('plugins.settingsUninstallRemoveConfig')"
           />
+
           <div class="text-body-2 text-medium-emphasis">
             {{ t('plugins.settingsUninstallRemoveConfigHint') }}
           </div>
         </v-card-text>
+
         <v-card-actions>
           <v-btn variant="text" @click="closeUninstallConfirm">{{ t('common.cancel') }}</v-btn>
           <v-spacer />
+
           <v-btn
             color="warning"
             :loading="Boolean(uninstallingModule)"
@@ -658,21 +688,25 @@
     <v-dialog v-model="orphanConfigDialogVisible" max-width="680">
       <v-card>
         <v-card-title>{{ t('plugins.orphanConfigCleanup') }}</v-card-title>
+
         <v-card-text class="d-flex flex-column ga-4">
           <v-alert density="comfortable" type="info" variant="tonal">
             {{ t('plugins.orphanConfigCleanupHint') }}
           </v-alert>
+
           <v-progress-linear
             v-if="orphanConfigLoading"
             color="primary"
             indeterminate
           />
+
           <div
             v-else-if="orphanConfigItems.length === 0"
             class="text-body-2 text-medium-emphasis"
           >
             {{ t('plugins.orphanConfigCleanupEmpty') }}
           </div>
+
           <div v-else class="confirm-plugin-list">
             <div
               v-for="item in orphanConfigItems"
@@ -681,19 +715,23 @@
             >
               <div class="confirm-plugin-item__title">
                 <span class="font-weight-medium">[plugins.{{ item.section }}]</span>
+
                 <span class="text-caption text-medium-emphasis">
                   {{ item.module_name || t('plugins.orphanConfigNoModule') }}
                 </span>
               </div>
+
               <div class="text-caption text-medium-emphasis">
                 {{ item.reason }}
               </div>
             </div>
           </div>
         </v-card-text>
+
         <v-card-actions>
           <v-btn variant="text" @click="orphanConfigDialogVisible = false">{{ t('common.cancel') }}</v-btn>
           <v-spacer />
+
           <v-btn
             color="warning"
             :disabled="orphanConfigItems.length === 0"
@@ -707,12 +745,14 @@
     </v-dialog>
 
     <v-dialog v-model="manualInstallDialogVisible" max-width="640">
-      <v-card rounded="xl">
+      <v-card>
         <v-card-title>{{ t('plugins.manualInstall') }}</v-card-title>
+
         <v-card-text class="d-flex flex-column ga-4">
           <v-alert density="comfortable" type="info" variant="tonal">
             {{ t('plugins.manualInstallHint') }}
           </v-alert>
+
           <v-select
             v-model="manualInstallSourceType"
             density="comfortable"
@@ -722,6 +762,7 @@
             :items="manualInstallSourceOptions"
             :label="t('plugins.manualInstallSourceType')"
           />
+
           <v-text-field
             v-model.trim="manualInstallRequirement"
             density="comfortable"
@@ -729,6 +770,7 @@
             :label="manualInstallRequirementLabel"
             persistent-hint
           />
+
           <v-text-field
             v-model.trim="manualInstallModuleName"
             density="comfortable"
@@ -737,16 +779,18 @@
             persistent-hint
           />
         </v-card-text>
+
         <v-card-actions>
-          <v-btn rounded="xl" variant="text" @click="manualInstallDialogVisible = false">
+          <v-btn variant="text" @click="manualInstallDialogVisible = false">
             {{ t('common.cancel') }}
           </v-btn>
+
           <v-spacer />
+
           <v-btn
             color="primary"
             :disabled="!canSubmitManualInstall"
             :loading="manualInstallSubmitting"
-            rounded="xl"
             @click="submitManualInstall"
           >
             {{ t('plugins.manualInstallSubmit') }}
@@ -755,103 +799,86 @@
       </v-card>
     </v-dialog>
 
-    <v-dialog v-model="manualInstallTaskDialogVisible" max-width="840">
-      <v-card rounded="xl">
-        <v-card-title>{{ manualInstallTask?.title || t('plugins.manualInstallTaskTitle') }}</v-card-title>
-        <v-card-text class="d-flex flex-column ga-4">
-          <div class="text-body-2 text-medium-emphasis">
-            {{ manualInstallTaskStatusLabel }}
-          </div>
-          <v-alert
-            v-if="manualInstallTaskErrorSummary"
-            density="comfortable"
-            type="error"
-            variant="tonal"
-          >
-            {{ manualInstallTaskErrorSummary }}
-          </v-alert>
-          <v-progress-linear
-            v-if="manualInstallTask?.status === 'pending' || manualInstallTask?.status === 'running'"
-            color="primary"
-            indeterminate
-          />
-          <v-sheet class="task-log-card" rounded="lg">
-            <pre class="task-log-card__content">{{ manualInstallTask?.logs || t('plugins.manualInstallWaiting') }}</pre>
-          </v-sheet>
-        </v-card-text>
-        <v-card-actions>
-          <v-btn rounded="xl" variant="text" @click="manualInstallTaskDialogVisible = false">
-            {{ t('common.close') }}
-          </v-btn>
-        </v-card-actions>
-      </v-card>
-    </v-dialog>
+    <TaskDialog
+      v-model="manualInstallTaskDialogVisible"
+      :close-label="t('common.close')"
+      :loading="manualInstallTask?.status === 'pending' || manualInstallTask?.status === 'running'"
+      :logs="manualInstallTask?.logs || ''"
+      :status="manualInstallTaskStatusLabel"
+      :status-color="manualInstallTaskErrorSummary ? 'error' : 'primary'"
+      :title="manualInstallTask?.title || t('plugins.manualInstallTaskTitle')"
+      :waiting-text="t('plugins.manualInstallWaiting')"
+    >
+      <template v-if="manualInstallTaskErrorSummary" #details>
+        <v-alert density="comfortable" type="error" variant="tonal">
+          {{ manualInstallTaskErrorSummary }}
+        </v-alert>
+      </template>
+    </TaskDialog>
 
-    <v-dialog v-model="packageUpdateTaskDialogVisible" max-width="840">
-      <v-card rounded="xl">
-        <v-card-title>{{ packageUpdateTask?.title || t('plugins.packageUpdateTaskTitle') }}</v-card-title>
-        <v-card-text class="d-flex flex-column ga-4">
-          <div class="text-body-2 text-medium-emphasis">
-            {{ packageUpdateTaskStatusLabel }}
-          </div>
-          <v-alert
-            v-if="packageUpdateTaskErrorSummary"
-            density="comfortable"
-            type="error"
-            variant="tonal"
-          >
-            {{ packageUpdateTaskErrorSummary }}
-          </v-alert>
-          <v-progress-linear
-            v-if="packageUpdateTask?.status === 'pending' || packageUpdateTask?.status === 'running'"
-            color="primary"
-            indeterminate
-          />
-          <v-sheet class="task-log-card" rounded="lg">
-            <pre class="task-log-card__content">{{ packageUpdateTask?.logs || t('plugins.packageUpdateWaiting') }}</pre>
-          </v-sheet>
-        </v-card-text>
-        <v-card-actions>
-          <v-btn rounded="xl" variant="text" @click="packageUpdateTaskDialogVisible = false">
-            {{ t('common.close') }}
-          </v-btn>
-        </v-card-actions>
-      </v-card>
-    </v-dialog>
+    <TaskDialog
+      v-model="packageUpdateTaskDialogVisible"
+      :close-label="t('common.close')"
+      :loading="packageUpdateTask?.status === 'pending' || packageUpdateTask?.status === 'running'"
+      :logs="packageUpdateTask?.logs || ''"
+      :status="packageUpdateTaskStatusLabel"
+      :status-color="packageUpdateTaskErrorSummary ? 'error' : 'primary'"
+      :title="packageUpdateTask?.title || t('plugins.packageUpdateTaskTitle')"
+      :waiting-text="t('plugins.packageUpdateWaiting')"
+    >
+      <template v-if="packageUpdateTaskErrorSummary" #details>
+        <v-alert density="comfortable" type="error" variant="tonal">
+          {{ packageUpdateTaskErrorSummary }}
+        </v-alert>
+      </template>
+    </TaskDialog>
 
     <v-dialog v-model="readmeDialogVisible" max-width="960">
-      <v-card rounded="xl">
+      <v-card>
         <v-card-title class="d-flex align-center justify-space-between ga-4">
           <div class="d-flex flex-column">
             <span>{{ readmeDialogTitle }}</span>
             <span v-if="readmeFilename" class="text-caption text-medium-emphasis">{{ readmeFilename }}</span>
           </div>
+
           <v-btn icon="mdi-close" variant="text" @click="readmeDialogVisible = false" />
         </v-card-title>
+
         <v-card-text class="readme-dialog__body">
           <v-alert v-if="readmeErrorMessage" density="comfortable" type="error" variant="tonal">
             {{ readmeErrorMessage }}
           </v-alert>
+
           <v-progress-linear v-else-if="readmeLoading" color="primary" indeterminate />
           <div v-else class="readme-card__content markdown-content" v-html="readmeHtml" />
         </v-card-text>
+
         <v-card-actions>
-          <v-btn rounded="xl" variant="text" @click="readmeDialogVisible = false">
+          <v-btn variant="text" @click="readmeDialogVisible = false">
             {{ t('common.close') }}
           </v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>
-  </div>
+  </PageScaffold>
 </template>
 
 <script setup lang="ts">
   import type { PluginItem } from '@/api/plugins'
-  import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
+  import type { WorkbenchMetricItem } from '@/components/workbench'
+  import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
   import { useI18n } from 'vue-i18n'
   import { useRoute } from 'vue-router'
   import { getErrorMessage } from '@/api/client'
   import { getPlugins } from '@/api/plugins'
+  import {
+    ActionCluster,
+    EmptyState,
+    FilterBar,
+    MetricStrip,
+    PageScaffold,
+    TaskDialog,
+  } from '@/components/workbench'
   import { useAuthStore } from '@/stores/auth'
   import { useNoticeStore } from '@/stores/notice'
   import { useRestartStore } from '@/stores/restart'
@@ -895,6 +922,28 @@
     systemPlugins,
     visiblePlugins,
   } = usePluginListState(plugins, route)
+  const pluginMetrics = computed<WorkbenchMetricItem[]>(() => [
+    {
+      key: 'system',
+      label: t('plugins.coreProtectedCount'),
+      value: systemPlugins.value.length,
+      icon: 'mdi-shield-lock-outline',
+      color: 'warning',
+    },
+    {
+      key: 'managed',
+      label: t('plugins.userManagedCount'),
+      value: nonSystemPlugins.value.length,
+      icon: 'mdi-puzzle-outline',
+    },
+    {
+      key: 'visible',
+      label: t('plugins.visibleCount'),
+      value: visiblePlugins.value.length,
+      icon: 'mdi-eye-outline',
+      color: 'info',
+    },
+  ])
 
   const {
     hasPluginUpdate,
@@ -1173,9 +1222,7 @@
 .settings-list-row {
   padding: 18px 20px;
   border-bottom: 1px solid rgba(var(--v-theme-outline), 0.12);
-  background:
-    linear-gradient(180deg, rgba(var(--v-theme-surface), 0.94), rgba(var(--v-theme-surface), 0.94)),
-    linear-gradient(135deg, rgba(var(--v-theme-primary), 0.015), rgba(var(--v-theme-secondary), 0.015));
+  background: rgba(var(--v-theme-surface), 0.88);
 }
 
 .settings-list-row:last-child {
@@ -1272,15 +1319,19 @@
 
 .plugin-scope-tabs {
   flex: 0 0 auto;
-  --segmented-max-width: 420px;
+  --segmented-max-width: 214px;
+  padding: 3px;
 }
 
 .plugin-scope-tab {
+  height: 32px;
   min-width: 0;
+  padding: 0 14px;
+  font-size: 0.875rem;
 }
 
 .plugin-search {
-  width: 240px;
+  width: 100%;
 }
 
 .plugins-grid {

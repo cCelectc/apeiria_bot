@@ -1,61 +1,31 @@
 <template>
-  <div class="page-view">
-    <div class="page-header">
-      <h1 class="page-title">{{ t('logs.historyTitle') }}</h1>
-      <div class="page-actions">
-        <v-btn
-          :disabled="entries.length === 0"
-          prepend-icon="mdi-download-outline"
-          variant="text"
-          @click="exportLogs"
-        >
-          {{ t('logs.export') }}
-        </v-btn>
-      </div>
-    </div>
+  <PageScaffold
+    class="log-history-page"
+    :error-message="errorMessage"
+    full-height
+    :title="t('logs.historyTitle')"
+  >
+    <template #actions>
+      <v-btn
+        :disabled="entries.length === 0"
+        prepend-icon="mdi-download-outline"
+        variant="text"
+        @click="exportLogs"
+      >
+        {{ t('logs.export') }}
+      </v-btn>
+    </template>
 
-    <div class="page-summary-grid mb-4">
-      <v-sheet class="summary-card" rounded="lg">
-        <div class="summary-card__label">{{ t('logs.totalRecords') }}</div>
-        <div class="summary-card__value">{{ total }}</div>
-      </v-sheet>
-      <v-sheet class="summary-card" rounded="lg">
-        <div class="summary-card__label">{{ t('logs.visibleCount') }}</div>
-        <div class="summary-card__value">{{ entries.length }}</div>
-      </v-sheet>
-      <v-sheet class="summary-card" rounded="lg">
-        <div class="summary-card__label">{{ t('logs.errorCount') }}</div>
-        <div class="summary-card__value">{{ highSignalCount }}</div>
-      </v-sheet>
-      <v-sheet class="summary-card" rounded="lg">
-        <div class="summary-card__label">{{ t('logs.currentPage') }}</div>
-        <div class="summary-card__value">{{ currentPage }} / {{ totalPages }}</div>
-      </v-sheet>
-    </div>
+    <MetricStrip :items="historyMetrics" />
 
-    <v-card class="page-panel history-query-card" rounded="xl">
-      <div class="history-query-card__header">
-        <div class="history-query-card__title">{{ t('logs.queryHistory') }}</div>
-        <div class="history-query-card__actions">
-          <v-btn
-            :disabled="!hasPendingChanges || loading"
-            :loading="loading"
-            prepend-icon="mdi-magnify"
-            @click="runQuery"
-          >
-            {{ t('logs.query') }}
-          </v-btn>
-          <v-btn
-            :disabled="!hasAnyFilter || loading"
-            variant="text"
-            @click="resetFilters"
-          >
-            {{ t('logs.resetFilters') }}
-          </v-btn>
-        </div>
-      </div>
-
-      <div class="page-toolbar-form history-toolbar">
+    <FilterBar
+      :apply-label="t('common.applyFilters')"
+      :close-label="t('common.close')"
+      :overflow-label="t('common.filters')"
+      :overflow-title="t('logs.queryHistory')"
+      :title="t('logs.queryHistory')"
+    >
+      <template #filters>
         <v-text-field
           v-model.trim="draftFilters.search"
           density="compact"
@@ -64,18 +34,18 @@
           prepend-inner-icon="mdi-magnify"
           @keydown.enter.prevent="runQuery"
         />
+
         <v-select
           v-model="draftFilters.level"
-          class="history-field"
           clearable
           density="compact"
           hide-details
           :items="levelOptions"
           :label="t('logs.level')"
         />
+
         <v-select
           v-model="draftFilters.source"
-          class="history-field"
           clearable
           density="compact"
           hide-details
@@ -83,25 +53,44 @@
           :label="t('logs.source')"
           :placeholder="t('logs.sourceHint')"
         />
+      </template>
+
+      <template #actions>
+        <v-btn
+          :disabled="!hasPendingChanges || loading"
+          :loading="loading"
+          prepend-icon="mdi-magnify"
+          @click="runQuery"
+        >
+          {{ t('logs.query') }}
+        </v-btn>
+
+        <v-btn
+          :disabled="!hasAnyFilter || loading"
+          variant="text"
+          @click="resetFilters"
+        >
+          {{ t('logs.resetFilters') }}
+        </v-btn>
+      </template>
+
+      <template #overflow>
         <v-text-field
           v-model="draftFilters.start"
-          class="history-field"
           density="compact"
           hide-details
           :label="t('logs.startTime')"
           type="datetime-local"
         />
+
         <v-text-field
           v-model="draftFilters.end"
-          class="history-field"
           density="compact"
           hide-details
           :label="t('logs.endTime')"
           type="datetime-local"
         />
-      </div>
 
-      <div class="history-presets">
         <v-switch
           v-model="showAccessLogs"
           class="history-presets__switch"
@@ -111,6 +100,7 @@
           inset
           :label="t('logs.showAccessLogs')"
         />
+
         <v-chip
           v-for="preset in timePresets"
           :key="preset.key"
@@ -121,6 +111,7 @@
         >
           {{ t(preset.labelKey) }}
         </v-chip>
+
         <v-btn
           v-if="draftFilters.start || draftFilters.end"
           size="small"
@@ -129,11 +120,10 @@
         >
           {{ t('logs.clearTimeRange') }}
         </v-btn>
-      </div>
+      </template>
 
       <v-alert
         v-if="validationMessage"
-        class="mt-4"
         density="comfortable"
         type="warning"
         variant="tonal"
@@ -151,17 +141,7 @@
           {{ chip.label }}
         </v-chip>
       </div>
-    </v-card>
-
-    <v-alert
-      v-if="errorMessage"
-      class="mb-4"
-      density="comfortable"
-      type="warning"
-      variant="tonal"
-    >
-      {{ errorMessage }}
-    </v-alert>
+    </FilterBar>
 
     <v-card class="page-panel log-card">
       <div class="history-result-bar">
@@ -198,6 +178,7 @@
                 {{ entry.level }}
               </v-chip>
             </span>
+
             <span class="history-list-row__source">{{ entry.source }}</span>
             <span class="history-list-row__time">{{ entry.timestamp }}</span>
             <span class="history-list-row__message">{{ entry.message }}</span>
@@ -213,9 +194,11 @@
               >
                 {{ entry.level }}
               </v-chip>
+
               <span class="history-detail-panel__source">{{ entry.source }}</span>
               <span class="history-detail-panel__time">{{ entry.timestamp }}</span>
             </div>
+
             <div class="history-detail-panel__message">{{ entry.message }}</div>
             <pre class="history-log-card__raw">{{ entry.raw }}</pre>
             <pre v-if="Object.keys(entry.extra).length > 0" class="history-log-card__raw">{{ JSON.stringify(entry.extra, null, 2) }}</pre>
@@ -227,6 +210,7 @@
         <span class="history-pagination__status">
           {{ t('logs.paginationStatus', { page: currentPage, totalPages, total }) }}
         </span>
+
         <div class="history-pagination__actions">
           <v-btn
             :disabled="loading || !canGoPrev"
@@ -235,6 +219,7 @@
           >
             {{ t('logs.firstPage') }}
           </v-btn>
+
           <v-btn
             :disabled="loading || !canGoPrev"
             variant="text"
@@ -242,6 +227,7 @@
           >
             {{ t('logs.prevPage') }}
           </v-btn>
+
           <v-btn
             :disabled="loading || !canGoNext"
             variant="tonal"
@@ -249,6 +235,7 @@
           >
             {{ t('logs.nextPage') }}
           </v-btn>
+
           <v-btn
             :disabled="loading || !canGoNext"
             variant="text"
@@ -259,17 +246,19 @@
         </div>
       </div>
     </v-card>
-  </div>
+  </PageScaffold>
 </template>
 
 <script setup lang="ts">
   import type { LogHistoryQuery, LogItem } from '@/api/logs'
+  import type { WorkbenchMetricItem } from '@/components/workbench'
   import axios from 'axios'
   import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
   import { useI18n } from 'vue-i18n'
   import { useRoute, useRouter } from 'vue-router'
   import { getErrorMessage } from '@/api/client'
   import { getLogHistory, getLogSources } from '@/api/logs'
+  import { FilterBar, MetricStrip, PageScaffold } from '@/components/workbench'
 
   interface HistoryLogEntry extends LogItem {
     id: string
@@ -326,6 +315,34 @@
   const highSignalCount = computed(() =>
     entries.value.filter(entry => entry.level === 'ERROR' || entry.level === 'CRITICAL' || entry.level === 'WARNING').length,
   )
+  const historyMetrics = computed<WorkbenchMetricItem[]>(() => [
+    {
+      key: 'total',
+      label: t('logs.totalRecords'),
+      value: total.value,
+      icon: 'mdi-database-outline',
+    },
+    {
+      key: 'visible',
+      label: t('logs.visibleCount'),
+      value: entries.value.length,
+      icon: 'mdi-eye-outline',
+      color: 'info',
+    },
+    {
+      key: 'signal',
+      label: t('logs.errorCount'),
+      value: highSignalCount.value,
+      icon: 'mdi-alert-outline',
+      color: highSignalCount.value > 0 ? 'warning' : 'success',
+    },
+    {
+      key: 'page',
+      label: t('logs.currentPage'),
+      value: `${currentPage.value} / ${totalPages.value}`,
+      icon: 'mdi-book-open-page-variant-outline',
+    },
+  ])
   const totalPages = computed(() => Math.max(1, Math.ceil(total.value / PAGE_SIZE)))
   const currentPage = computed(() => Math.floor(beforeOffset.value / PAGE_SIZE) + 1)
   const canGoPrev = computed(() => currentPage.value > 1)
@@ -624,46 +641,8 @@
 </script>
 
 <style scoped>
-.history-query-card {
-  margin-bottom: 16px;
-  padding: 18px;
-  background:
-    linear-gradient(135deg, rgba(var(--v-theme-primary), 0.05), transparent 40%),
-    rgb(var(--v-theme-surface-container-low));
-}
-
-.history-query-card__header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  margin-bottom: 16px;
-}
-
-.history-query-card__title {
-  font-size: 1rem;
-  font-weight: 700;
-}
-
-.history-query-card__actions {
-  display: flex;
-  gap: 8px;
-}
-
-.history-toolbar {
-  align-items: center;
-}
-
-.history-field {
-  min-width: 180px;
-}
-
-.history-presets {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-  margin-top: 12px;
+.log-history-page {
+  --workbench-frame-offset: calc(var(--page-gutter) * 2);
 }
 
 .history-presets__chip {
@@ -674,12 +653,15 @@
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  margin-top: 14px;
 }
 
 .log-card {
+  display: flex;
+  min-height: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  overflow: hidden;
   background: rgb(var(--v-theme-surface-container-low));
-  min-height: 60vh;
 }
 
 .history-result-bar {
@@ -695,32 +677,26 @@
 .history-list-shell {
   display: flex;
   flex-direction: column;
-  height: min(68vh, 1320px);
-  min-height: 620px;
+  min-height: 0;
+  flex: 1 1 auto;
   overflow-y: auto;
-  padding: 0 20px 16px;
+  padding: 0 14px 14px;
 }
 
 .history-list-item {
   border-bottom: 1px solid rgba(var(--v-theme-outline-variant), 0.24);
-  background:
-    linear-gradient(135deg, rgba(var(--v-theme-primary), 0.05), transparent 55%),
-    rgba(var(--v-theme-surface), 0.58);
+  background: rgba(var(--v-theme-surface), 0.58);
   transition:
     background var(--motion-base) var(--motion-ease),
     box-shadow var(--motion-base) var(--motion-ease);
 }
 
 .history-list-item:hover {
-  background:
-    linear-gradient(135deg, rgba(var(--v-theme-primary), 0.08), transparent 55%),
-    rgba(var(--v-theme-surface), 0.68);
+  background: rgba(var(--v-theme-surface), 0.7);
 }
 
 .history-list-item--active {
-  background:
-    linear-gradient(135deg, rgba(var(--v-theme-primary), 0.12), transparent 55%),
-    rgba(var(--v-theme-surface), 0.8);
+  background: rgba(var(--v-theme-primary), 0.08);
 }
 
 .history-list-row {
@@ -787,7 +763,7 @@
 .history-detail-panel {
   margin: 0 16px 14px;
   padding: 14px 16px;
-  border-radius: var(--shape-large);
+  border-radius: var(--shape-medium);
   background: rgba(var(--v-theme-on-surface), 0.05);
   border: 1px solid rgba(var(--v-theme-outline-variant), 0.28);
 }
@@ -832,9 +808,8 @@
   gap: 16px;
   margin: 0 20px 20px;
   padding: 16px 20px;
-  border-radius: var(--shape-2xlarge);
+  border-radius: var(--shape-large);
   background: rgba(var(--v-theme-surface), 0.72);
-  backdrop-filter: blur(10px);
 }
 
 .history-pagination__status {
@@ -875,6 +850,17 @@
 
   .history-list-row__message {
     white-space: normal;
+  }
+}
+
+@media (max-width: 760px) {
+  .log-card {
+    min-height: 60vh;
+    overflow: hidden;
+  }
+
+  .history-list-shell {
+    max-height: 68vh;
   }
 }
 </style>

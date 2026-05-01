@@ -1,28 +1,24 @@
 <template>
-  <section class="chat-page">
-    <header class="page-header">
-      <div>
-        <h1 class="page-title">{{ t('chat.title') }}</h1>
-      </div>
-      <div class="page-actions">
-        <v-btn
-          :loading="reconnecting"
-          prepend-icon="mdi-refresh"
-          variant="text"
-          @click="reconnect"
-        >
-          {{ t('chat.reconnect') }}
-        </v-btn>
-        <v-btn
-          :disabled="!authenticated"
-          prepend-icon="mdi-plus"
-          variant="tonal"
-          @click="startNewSession"
-        >
-          {{ t('chat.newSession') }}
-        </v-btn>
-      </div>
-    </header>
+  <PageScaffold class="chat-page" dense full-height :title="t('chat.title')">
+    <template #actions>
+      <v-btn
+        :loading="reconnecting"
+        prepend-icon="mdi-refresh"
+        variant="text"
+        @click="reconnect"
+      >
+        {{ t('chat.reconnect') }}
+      </v-btn>
+
+      <v-btn
+        :disabled="!authenticated"
+        prepend-icon="mdi-plus"
+        variant="tonal"
+        @click="startNewSession"
+      >
+        {{ t('chat.newSession') }}
+      </v-btn>
+    </template>
 
     <div class="chat-shell">
       <aside class="chat-sidebar">
@@ -34,7 +30,6 @@
               :active="activeSessionId === recent.session.session_id"
               class="chat-session-list__item"
               :disabled="!authenticated"
-              rounded="lg"
               @click="switchToSession(recent)"
             >
               <template #append>
@@ -51,6 +46,7 @@
               <v-list-item-title class="chat-session-list__title">
                 {{ formatSessionTitle(recent, t) }}
               </v-list-item-title>
+
               <v-list-item-subtitle>
                 {{ formatSessionTime(recent.last_message_at || recent.session.updated_at || recent.session.created_at) || t('chat.justNow') }}
               </v-list-item-subtitle>
@@ -65,16 +61,19 @@
         <div class="chat-sidebar__footer">
           <div class="chat-session-info">
             <div class="chat-session-info__label">{{ t('chat.sessionInfo') }}</div>
+
             <template v-if="activeSessionInfo">
               <div class="chat-session-info__item">
                 <span class="chat-session-info__key">{{ t('chat.sidLabel') }}</span>
                 <code class="chat-session-info__value">{{ activeSessionInfo.session_id }}</code>
               </div>
+
               <div class="chat-session-info__item">
                 <span class="chat-session-info__key">{{ t('chat.targetLabel') }}</span>
                 <span class="chat-session-info__value">{{ activeSessionInfo.target_user_id }}</span>
               </div>
             </template>
+
             <div v-else class="chat-session-info__empty">
               {{ t('chat.noActiveSessionInfo') }}
             </div>
@@ -98,6 +97,7 @@
               <div class="pending-reply__label">{{ t('chat.replyMessage') }}</div>
               <div class="pending-reply__text">{{ summarizeReplyMessage(pendingReply, t) }}</div>
             </div>
+
             <button
               class="pending-reply__jump"
               type="button"
@@ -105,6 +105,7 @@
             >
               {{ t('chat.viewOriginalMessage') }}
             </button>
+
             <v-btn icon="mdi-close" size="small" variant="text" @click="clearPendingReply" />
           </div>
 
@@ -117,22 +118,26 @@
               @click="selectComposerImage(image.id)"
             >
               <div class="composer-attachment-index">{{ t('chat.imageIndex', { index: index + 1 }) }}</div>
+
               <img
                 :alt="image.name"
                 class="composer-attachment-thumb"
                 :src="image.previewUrl"
                 @click="openImagePreviewFromPending(image)"
               >
+
               <div class="composer-attachment-meta">
                 <div class="composer-attachment-name">{{ image.name }}</div>
                 <div class="composer-attachment-size">{{ formatBytes(image.size) || t('chat.imageFallback') }}</div>
               </div>
+
               <v-btn
                 icon="mdi-cursor-move"
                 size="x-small"
                 variant="text"
                 @click.stop="moveComposerImageToCursor(image.id)"
               />
+
               <v-btn
                 icon="mdi-close"
                 size="x-small"
@@ -175,7 +180,9 @@
             >
               {{ t('chat.pickImage') }}
             </v-btn>
+
             <v-spacer />
+
             <v-btn
               color="primary"
               :disabled="!chatReady || autoCreatingSession || !composerHasContent"
@@ -195,6 +202,7 @@
           <div class="text-caption text-medium-emphasis">
             {{ t('chat.zoom', { value: Math.round(previewScale * 100) }) }}
           </div>
+
           <div class="d-flex align-center ga-1">
             <v-btn icon="mdi-magnify-minus-outline" variant="text" @click="zoomOutPreview" />
             <v-btn icon="mdi-fit-to-screen-outline" variant="text" @click="resetPreviewTransform" />
@@ -203,14 +211,17 @@
             <v-btn icon="mdi-close" variant="text" @click="closeImagePreview" />
           </div>
         </div>
+
         <div class="preview-meta text-caption text-medium-emphasis">
           <span v-if="previewImageNaturalWidth && previewImageNaturalHeight">
             {{ previewImageNaturalWidth }} × {{ previewImageNaturalHeight }}
           </span>
+
           <span v-if="previewImageSizeText">
             {{ previewImageSizeText }}
           </span>
         </div>
+
         <div ref="previewWrapRef" class="preview-image-wrap">
           <img
             v-if="imagePreviewSrc"
@@ -229,7 +240,7 @@
         </div>
       </v-card>
     </v-dialog>
-  </section>
+  </PageScaffold>
 </template>
 
 <script setup lang="ts">
@@ -242,6 +253,7 @@
   } from '@/types/chat'
   import { nextTick, onMounted, onUnmounted, ref } from 'vue'
   import { useI18n } from 'vue-i18n'
+  import { PageScaffold } from '@/components/workbench'
   import ChatMessageList from '@/views/chat/ChatMessageList.vue'
   import {
     formatBytes,
@@ -497,11 +509,10 @@
 
 <style scoped>
 .chat-page {
+  --workbench-frame-offset: calc(var(--page-gutter) * 2);
   display: flex;
   flex-direction: column;
   gap: var(--stack-gap);
-  height: calc(100dvh - 48px);
-  min-height: 680px;
   overflow: hidden;
 }
 
@@ -517,9 +528,7 @@
 .chat-panel {
   min-height: 0;
   background: rgb(var(--v-theme-surface-container-low));
-  box-shadow:
-    0 1px 2px rgba(15, 23, 42, 0.04),
-    0 4px 12px rgba(15, 23, 42, 0.05);
+  border: 1px solid rgba(var(--v-theme-outline-variant), var(--surface-border-opacity));
 }
 
 .chat-sidebar {
@@ -833,7 +842,7 @@
 }
 
 :deep(.composer-image-token--selected) {
-  box-shadow: 0 0 0 2px rgba(var(--v-theme-secondary), 0.12);
+  box-shadow: var(--focus-ring);
 }
 
 :deep(.composer-image-token__label),

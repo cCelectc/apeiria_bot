@@ -1,235 +1,223 @@
 <template>
-  <div class="store-view">
-    <section class="store-hero">
-      <div class="store-hero__content">
-        <div class="store-hero__title-row">
-          <h1 class="store-hero__title">{{ t('pluginStore.title') }}</h1>
-          <div class="store-hero__chips">
-            <v-chip
-              color="primary"
-              prepend-icon="mdi-source-branch"
-              rounded="xl"
-              variant="tonal"
-            >
+  <PageScaffold
+    class="store-view"
+    :error-message="errorMessage"
+    :kicker="currentSourceLabel"
+    :title="t('pluginStore.title')"
+  >
+    <ResourceWorkbench
+      :count="totalItems"
+      :empty="pagedItems.length === 0"
+      empty-icon="mdi-store-search-outline"
+      :empty-text="t('pluginStore.emptyHint')"
+      :empty-title="t('pluginStore.empty')"
+      icon="mdi-package-variant-closed"
+      :loading="loading && pagedItems.length === 0"
+      :title="t('pluginStore.allPlugins')"
+    >
+      <template #filters>
+        <FilterBar
+          :apply-label="t('common.applyFilters')"
+          :close-label="t('common.close')"
+          compact
+          :overflow-label="t('common.filters')"
+          :overflow-title="t('pluginStore.allPlugins')"
+        >
+          <template #filters>
+            <v-text-field
+              v-model.trim="search"
+              class="store-search"
+              density="comfortable"
+              hide-details
+              :label="t('pluginStore.search')"
+              prepend-inner-icon="mdi-magnify"
+            />
+          </template>
+
+          <template #summary>
+            <v-chip size="small" variant="tonal">
               {{ currentSourceLabel }}
             </v-chip>
+
+            <v-chip v-if="selectedCategory" size="small" variant="tonal">
+              {{ selectedCategory }}
+            </v-chip>
+
             <v-chip
               :color="uninstalledOnly ? 'primary' : undefined"
-              :prepend-icon="uninstalledOnly ? 'mdi-eye-off-outline' : 'mdi-eye-outline'"
-              rounded="xl"
+              size="small"
               variant="tonal"
-              @click="uninstalledOnly = !uninstalledOnly"
             >
               {{ t('pluginStore.uninstalledOnly') }}
             </v-chip>
+          </template>
+
+          <template #overflow>
+            <v-select
+              v-model="selectedSource"
+              density="comfortable"
+              hide-details
+              item-title="label"
+              item-value="value"
+              :items="sourceOptions"
+              :label="t('pluginStore.allSources')"
+            />
+
+            <v-select
+              v-model="selectedCategory"
+              density="comfortable"
+              hide-details
+              item-title="label"
+              item-value="value"
+              :items="categoryOptions"
+              :label="t('pluginStore.category')"
+            />
+
+            <v-select
+              v-model="sortMode"
+              density="comfortable"
+              hide-details
+              item-title="label"
+              item-value="value"
+              :items="sortOptions"
+              :label="t('pluginStore.sort')"
+            />
+
+            <v-switch
+              v-model="uninstalledOnly"
+              color="primary"
+              hide-details
+              :label="t('pluginStore.uninstalledOnly')"
+            />
+          </template>
+        </FilterBar>
+      </template>
+
+      <div class="store-grid">
+        <article
+          v-for="item in pagedItems"
+          :key="`${item.source_id}:${item.plugin_id}`"
+          class="store-card surface-gradient-card"
+        >
+          <div class="store-card__header">
+            <div class="store-card__avatar">
+              <img
+                v-if="pluginIcon(item)"
+                :alt="item.name"
+                :src="pluginIcon(item) || undefined"
+              >
+
+              <v-icon v-else icon="mdi-puzzle-outline" />
+            </div>
+
+            <div class="store-card__meta">
+              <div class="store-card__title-row">
+                <h2 class="store-card__title">{{ item.name }}</h2>
+
+                <v-chip
+                  v-if="item.is_official"
+                  color="warning"
+                  size="x-small"
+                  variant="flat"
+                >
+                  {{ t('pluginStore.official') }}
+                </v-chip>
+
+                <v-chip
+                  v-if="item.is_installed"
+                  color="success"
+                  size="x-small"
+                  variant="flat"
+                >
+                  {{ t('pluginStore.installed') }}
+                </v-chip>
+              </div>
+
+              <div class="store-card__subline">
+                <a
+                  v-if="authorUrl(item) && item.author"
+                  class="store-card__author store-card__author--link"
+                  :href="authorUrl(item)"
+                  rel="noopener noreferrer"
+                  target="_blank"
+                >
+                  {{ item.author }}
+                </a>
+
+                <span v-else-if="item.author" class="store-card__author">{{ item.author }}</span>
+                <span v-if="item.version">{{ item.version }}</span>
+                <span v-if="item.publish_time">{{ formatPublishTime(item.publish_time) }}</span>
+              </div>
+
+              <div class="store-card__module">{{ item.module_name }}</div>
+            </div>
           </div>
-        </div>
-      </div>
 
-      <div class="store-hero__actions">
-        <v-text-field
-          v-model.trim="search"
-          class="store-search"
-          density="comfortable"
-          hide-details
-          :label="t('pluginStore.search')"
-          prepend-inner-icon="mdi-magnify"
-          rounded="xl"
-          variant="solo-filled"
-        />
-      </div>
-    </section>
+          <p class="store-card__description">
+            {{ item.description || t('pluginStore.noDescription') }}
+          </p>
 
-    <v-alert v-if="errorMessage" density="comfortable" type="error" variant="tonal">
-      {{ errorMessage }}
-    </v-alert>
-
-    <section class="store-toolbar">
-      <div class="store-toolbar__heading">
-        <div class="store-toolbar__title">
-          <v-icon icon="mdi-package-variant-closed" />
-          <span>{{ t('pluginStore.allPlugins') }}</span>
-          <span class="store-toolbar__count">{{ totalItems }}</span>
-        </div>
-      </div>
-
-      <div class="store-toolbar__filters">
-        <v-select
-          v-model="selectedSource"
-          class="store-select"
-          density="comfortable"
-          hide-details
-          item-title="label"
-          item-value="value"
-          :items="sourceOptions"
-          :label="t('pluginStore.allSources')"
-          rounded="xl"
-          variant="outlined"
-        />
-        <v-select
-          v-model="selectedCategory"
-          class="store-select"
-          density="comfortable"
-          hide-details
-          item-title="label"
-          item-value="value"
-          :items="categoryOptions"
-          :label="t('pluginStore.category')"
-          rounded="xl"
-          variant="outlined"
-        />
-        <v-select
-          v-model="sortMode"
-          class="store-select"
-          density="comfortable"
-          hide-details
-          item-title="label"
-          item-value="value"
-          :items="sortOptions"
-          :label="t('pluginStore.sort')"
-          rounded="xl"
-          variant="outlined"
-        />
-      </div>
-    </section>
-
-    <div v-if="loading && pagedItems.length === 0" class="store-grid store-grid--loading">
-      <v-skeleton-loader
-        v-for="index in 16"
-        :key="index"
-        class="store-card surface-gradient-card"
-        type="article"
-      />
-    </div>
-
-    <div v-else-if="pagedItems.length > 0" class="store-grid">
-      <article
-        v-for="item in pagedItems"
-        :key="`${item.source_id}:${item.plugin_id}`"
-        class="store-card surface-gradient-card"
-      >
-        <div class="store-card__header">
-          <div class="store-card__avatar">
-            <img
-              v-if="pluginIcon(item)"
-              :alt="item.name"
-              :src="pluginIcon(item) || undefined"
+          <div class="store-card__tags">
+            <v-chip
+              v-for="tag in visibleTags(item)"
+              :key="tag"
+              size="small"
+              variant="tonal"
             >
-            <v-icon v-else icon="mdi-puzzle-outline" />
+              {{ tag }}
+            </v-chip>
+
+            <v-chip
+              v-if="hiddenTagCount(item) > 0"
+              size="small"
+              variant="tonal"
+            >
+              +{{ hiddenTagCount(item) }}
+            </v-chip>
           </div>
 
-          <div class="store-card__meta">
-            <div class="store-card__title-row">
-              <h2 class="store-card__title">{{ item.name }}</h2>
-              <v-chip
-                v-if="item.is_official"
-                color="warning"
-                rounded="pill"
-                size="x-small"
-                variant="flat"
-              >
-                {{ t('pluginStore.official') }}
-              </v-chip>
-              <v-chip
-                v-if="item.is_installed"
-                color="success"
-                rounded="pill"
-                size="x-small"
-                variant="flat"
-              >
-                {{ t('pluginStore.installed') }}
-              </v-chip>
-            </div>
+          <div class="store-card__actions">
+            <a
+              v-if="externalProjectUrl(item)"
+              class="store-card__link"
+              :href="externalProjectUrl(item)"
+              rel="noopener noreferrer"
+              target="_blank"
+            >
+              <v-icon icon="mdi-github" start />
+              {{ t('pluginStore.openProject') }}
+            </a>
 
-            <div class="store-card__subline">
-              <a
-                v-if="authorUrl(item) && item.author"
-                class="store-card__author store-card__author--link"
-                :href="authorUrl(item)"
-                rel="noopener noreferrer"
-                target="_blank"
-              >
-                {{ item.author }}
-              </a>
-              <span v-else-if="item.author" class="store-card__author">{{ item.author }}</span>
-              <span v-if="item.version">{{ item.version }}</span>
-              <span v-if="item.publish_time">{{ formatPublishTime(item.publish_time) }}</span>
-            </div>
-            <div class="store-card__module">{{ item.module_name }}</div>
+            <span v-else class="store-card__link store-card__link--muted">
+              <v-icon icon="mdi-link-variant-off" start />
+              {{ t('pluginStore.noProjectLink') }}
+            </span>
+
+            <v-btn
+              color="primary"
+              :disabled="(!item.can_update && item.is_installed) || actionLocked"
+              variant="flat"
+              @click="openActionDialog(item)"
+            >
+              {{ actionLabel(item) }}
+            </v-btn>
           </div>
-        </div>
-
-        <p class="store-card__description">
-          {{ item.description || t('pluginStore.noDescription') }}
-        </p>
-
-        <div class="store-card__tags">
-          <v-chip
-            v-for="tag in visibleTags(item)"
-            :key="tag"
-            rounded="pill"
-            size="small"
-            variant="tonal"
-          >
-            {{ tag }}
-          </v-chip>
-          <v-chip
-            v-if="hiddenTagCount(item) > 0"
-            rounded="pill"
-            size="small"
-            variant="tonal"
-          >
-            +{{ hiddenTagCount(item) }}
-          </v-chip>
-        </div>
-
-        <div class="store-card__actions">
-          <a
-            v-if="externalProjectUrl(item)"
-            class="store-card__link"
-            :href="externalProjectUrl(item)"
-            rel="noopener noreferrer"
-            target="_blank"
-          >
-            <v-icon icon="mdi-github" start />
-            {{ t('pluginStore.openProject') }}
-          </a>
-          <span v-else class="store-card__link store-card__link--muted">
-            <v-icon icon="mdi-link-variant-off" start />
-            {{ t('pluginStore.noProjectLink') }}
-          </span>
-
-          <v-btn
-            color="primary"
-            :disabled="(!item.can_update && item.is_installed) || actionLocked"
-            rounded="xl"
-            variant="flat"
-            @click="openActionDialog(item)"
-          >
-            {{ actionLabel(item) }}
-          </v-btn>
-        </div>
-      </article>
-    </div>
-
-    <div v-else class="store-empty">
-      <v-icon class="store-empty__icon" icon="mdi-store-search-outline" />
-      <div class="store-empty__title">{{ t('pluginStore.empty') }}</div>
-      <div class="store-empty__text">{{ t('pluginStore.emptyHint') }}</div>
-    </div>
+        </article>
+      </div>
+    </ResourceWorkbench>
 
     <div v-if="pageCount > 1" class="store-pagination">
       <v-pagination
         v-model="currentPage"
         :length="pageCount"
-        rounded="circle"
         total-visible="7"
       />
     </div>
 
     <v-dialog v-model="installDialogVisible" max-width="640">
-      <v-card rounded="xl">
+      <v-card>
         <v-card-title>{{ dialogTitle }}</v-card-title>
+
         <v-card-text class="d-flex flex-column ga-4">
           <div v-if="selectedItem" class="d-flex flex-column ga-2">
             <div class="font-weight-medium">{{ selectedItem.name }}</div>
@@ -238,39 +226,28 @@
             <div class="text-body-2">{{ t('pluginStore.source') }}: {{ selectedItem.source_name }}</div>
           </div>
         </v-card-text>
+
         <v-card-actions>
-          <v-btn rounded="xl" variant="text" @click="installDialogVisible = false">{{ t('common.cancel') }}</v-btn>
+          <v-btn variant="text" @click="installDialogVisible = false">{{ t('common.cancel') }}</v-btn>
           <v-spacer />
-          <v-btn color="primary" :loading="installPending" rounded="xl" @click="startAction">
+
+          <v-btn color="primary" :loading="installPending" @click="startAction">
             {{ dialogActionLabel }}
           </v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>
 
-    <v-dialog v-model="taskDialogVisible" max-width="840">
-      <v-card rounded="xl">
-        <v-card-title>{{ activeTask?.title || taskDialogTitle }}</v-card-title>
-        <v-card-text class="d-flex flex-column ga-4">
-          <div class="text-body-2 text-medium-emphasis">
-            {{ taskStatusLabel }}
-          </div>
-          <v-progress-linear
-            v-if="activeTask?.status === 'pending' || activeTask?.status === 'running'"
-            color="primary"
-            indeterminate
-          />
-          <div class="task-log-card">
-            <pre class="task-log-card__content">{{ activeTask?.logs || taskWaitingLabel }}</pre>
-          </div>
-        </v-card-text>
-        <v-card-actions>
-          <v-spacer />
-          <v-btn rounded="xl" variant="text" @click="taskDialogVisible = false">{{ t('common.close') }}</v-btn>
-        </v-card-actions>
-      </v-card>
-    </v-dialog>
-  </div>
+    <TaskDialog
+      v-model="taskDialogVisible"
+      :close-label="t('common.close')"
+      :loading="activeTask?.status === 'pending' || activeTask?.status === 'running'"
+      :logs="activeTask?.logs || ''"
+      :status="taskStatusLabel"
+      :title="activeTask?.title || taskDialogTitle"
+      :waiting-text="taskWaitingLabel"
+    />
+  </PageScaffold>
 </template>
 
 <script setup lang="ts">
@@ -289,6 +266,12 @@
     type PluginStoreTask,
     updatePluginStoreItem,
   } from '@/api/plugins'
+  import {
+    FilterBar,
+    PageScaffold,
+    ResourceWorkbench,
+    TaskDialog,
+  } from '@/components/workbench'
   import { useNoticeStore } from '@/stores/notice'
   import { useRestartStore } from '@/stores/restart'
 
@@ -674,52 +657,6 @@
   width: min(100%, 360px);
 }
 
-.store-search:deep(.v-field) {
-  border-radius: var(--shape-large);
-  background: rgba(var(--v-theme-surface), 0.92);
-  box-shadow: none;
-}
-
-.store-toolbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  flex-wrap: wrap;
-}
-
-.store-toolbar__heading {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.store-toolbar__title {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font-size: 1.55rem;
-  line-height: 1;
-  font-weight: 800;
-  letter-spacing: -0.04em;
-}
-
-.store-toolbar__count {
-  color: rgba(var(--v-theme-on-surface), 0.48);
-  font-size: 1.2rem;
-  font-weight: 700;
-}
-
-.store-toolbar__filters {
-  display: flex;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-
-.store-select {
-  min-width: 190px;
-}
-
 .store-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -766,7 +703,7 @@
   height: 52px;
   overflow: hidden;
   border-radius: var(--shape-medium);
-  background: linear-gradient(135deg, rgba(var(--v-theme-primary), 0.14), rgba(var(--v-theme-secondary), 0.1));
+  background: rgba(var(--v-theme-primary), 0.12);
   color: rgb(var(--v-theme-primary));
 }
 
@@ -912,31 +849,6 @@
   background: transparent;
 }
 
-.store-empty {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-direction: column;
-  gap: 10px;
-  min-height: 320px;
-  border: 1px dashed rgba(var(--v-theme-outline-variant), 0.7);
-  border-radius: var(--shape-2xlarge);
-  color: rgba(var(--v-theme-on-surface), 0.58);
-}
-
-.store-empty__icon {
-  font-size: 48px;
-}
-
-.store-empty__title {
-  font-size: 1.1rem;
-  font-weight: 700;
-}
-
-.store-empty__text {
-  font-size: 0.95rem;
-}
-
 .store-pagination {
   display: flex;
   justify-content: center;
@@ -948,11 +860,6 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .store-toolbar__title {
-    font-size: 1.55rem;
-  }
-
-  .store-toolbar__filters,
   .store-hero__actions {
     width: 100%;
   }

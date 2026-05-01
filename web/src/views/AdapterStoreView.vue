@@ -1,212 +1,237 @@
 <template>
-  <div class="page-view adapter-store-view">
-    <div class="page-header">
-      <div class="adapter-store-view__title-wrap">
-        <v-btn
-          icon="mdi-arrow-left"
-          size="small"
-          variant="text"
-          @click="goBack"
-        />
-        <div>
-          <h1 class="page-title">{{ t('adapterStore.title') }}</h1>
-          <div class="text-body-2 text-medium-emphasis">
-            {{ t('adapterStore.subtitle') }}
+  <PageScaffold
+    class="adapter-store-view"
+    :error-message="errorMessage"
+    :title="t('adapterStore.title')"
+  >
+    <template #actions>
+      <v-btn
+        icon="mdi-arrow-left"
+        size="small"
+        variant="text"
+        @click="goBack"
+      />
+
+      <v-btn :loading="loading" variant="tonal" @click="loadStore">
+        {{ t('common.refresh') }}
+      </v-btn>
+    </template>
+
+    <ResourceWorkbench
+      :count="totalItems"
+      :empty="items.length === 0"
+      empty-icon="mdi-connection"
+      :empty-title="t('adapterStore.empty')"
+      icon="mdi-package-variant-closed"
+      :loading="loading && items.length === 0"
+      :title="t('adapterStore.title')"
+    >
+      <template #filters>
+        <FilterBar
+          :apply-label="t('common.applyFilters')"
+          :close-label="t('common.close')"
+          compact
+          :overflow-label="t('common.filters')"
+          :overflow-title="t('adapterStore.title')"
+        >
+          <template #filters>
+            <v-text-field
+              v-model.trim="search"
+              class="adapter-store-view__search"
+              density="comfortable"
+              hide-details
+              :label="t('adapterStore.search')"
+              prepend-inner-icon="mdi-magnify"
+            />
+          </template>
+
+          <template #summary>
+            <v-chip size="small" variant="tonal">
+              {{ currentSourceLabel }}
+            </v-chip>
+
+            <v-chip v-if="selectedCategory" size="small" variant="tonal">
+              {{ selectedCategory }}
+            </v-chip>
+
+            <v-chip
+              :color="uninstalledOnly ? 'primary' : undefined"
+              size="small"
+              variant="tonal"
+            >
+              {{ t('adapterStore.uninstalledOnly') }}
+            </v-chip>
+          </template>
+
+          <template #overflow>
+            <v-select
+              v-model="selectedSource"
+              density="comfortable"
+              hide-details
+              item-title="label"
+              item-value="value"
+              :items="sourceOptions"
+              :label="t('adapterStore.allSources')"
+            />
+
+            <v-select
+              v-model="selectedCategory"
+              density="comfortable"
+              hide-details
+              item-title="label"
+              item-value="value"
+              :items="categoryOptions"
+              :label="t('adapterStore.category')"
+            />
+
+            <v-select
+              v-model="sortMode"
+              density="comfortable"
+              hide-details
+              item-title="label"
+              item-value="value"
+              :items="sortOptions"
+              :label="t('adapterStore.sort')"
+            />
+
+            <v-switch
+              v-model="uninstalledOnly"
+              color="primary"
+              hide-details
+              :label="t('adapterStore.uninstalledOnly')"
+            />
+          </template>
+        </FilterBar>
+      </template>
+
+      <div class="adapter-store-grid">
+        <article
+          v-for="item in items"
+          :key="`${item.source_id}:${item.adapter_id}`"
+          class="adapter-store-card"
+        >
+          <div class="adapter-store-card__header">
+            <div>
+              <h2 class="adapter-store-card__title">{{ item.name }}</h2>
+              <div class="text-caption text-medium-emphasis">{{ item.module_name }}</div>
+            </div>
+
+            <v-chip v-if="item.is_official" color="warning" size="x-small" variant="tonal">
+              {{ t('adapterStore.official') }}
+            </v-chip>
           </div>
-        </div>
-      </div>
 
-      <div class="page-actions">
-        <v-btn :loading="loading" variant="tonal" @click="loadStore">
-          {{ t('common.refresh') }}
-        </v-btn>
+          <div class="text-body-2 text-medium-emphasis">
+            {{ item.package_name }}
+          </div>
+
+          <p class="adapter-store-card__description">
+            {{ item.description || t('adapterStore.noDescription') }}
+          </p>
+
+          <div class="adapter-store-card__chips">
+            <v-chip
+              v-if="item.is_installed"
+              color="success"
+              size="x-small"
+              variant="tonal"
+            >
+              {{ t('adapterStore.installed') }}
+            </v-chip>
+
+            <v-chip
+              v-if="item.is_registered"
+              color="primary"
+              size="x-small"
+              variant="tonal"
+            >
+              {{ t('adapterStore.registered') }}
+            </v-chip>
+
+            <v-chip
+              v-if="item.can_update"
+              color="warning"
+              size="x-small"
+              variant="tonal"
+            >
+              {{ t('adapterStore.updateAvailable') }}
+            </v-chip>
+
+            <v-chip
+              v-for="tag in item.tags.slice(0, 2)"
+              :key="tag"
+              size="x-small"
+              variant="outlined"
+            >
+              {{ tag }}
+            </v-chip>
+          </div>
+
+          <div class="adapter-store-card__meta text-caption text-medium-emphasis">
+            <span>{{ t('adapterStore.source') }}: {{ item.source_name }}</span>
+            <span v-if="item.author">{{ item.author }}</span>
+            <span v-if="item.version">{{ item.version }}</span>
+          </div>
+
+          <div class="adapter-store-card__actions">
+            <v-btn
+              v-if="projectUrl(item)"
+              :href="projectUrl(item)"
+              rel="noopener noreferrer"
+              target="_blank"
+              variant="text"
+            >
+              {{ t('adapterStore.openProject') }}
+            </v-btn>
+
+            <v-spacer />
+
+            <v-btn
+              v-if="!item.is_installed"
+              color="primary"
+              :disabled="!authStore.isOwner || actionLocked"
+              variant="tonal"
+              @click="openActionDialog(item, 'install')"
+            >
+              {{ t('adapterStore.install') }}
+            </v-btn>
+
+            <v-btn
+              v-if="item.can_update"
+              color="primary"
+              :disabled="!authStore.isOwner || actionLocked"
+              variant="tonal"
+              @click="openActionDialog(item, 'update')"
+            >
+              {{ t('adapterStore.update') }}
+            </v-btn>
+
+            <v-btn
+              v-if="canUninstall(item)"
+              color="warning"
+              :disabled="!authStore.isOwner || actionLocked"
+              variant="text"
+              @click="openActionDialog(item, 'uninstall')"
+            >
+              {{ t('adapterStore.uninstall') }}
+            </v-btn>
+          </div>
+        </article>
       </div>
+    </ResourceWorkbench>
+
+    <div v-if="pageCount > 1" class="d-flex justify-center">
+      <v-pagination
+        v-model="currentPage"
+        :length="pageCount"
+        total-visible="7"
+      />
     </div>
-
-    <v-alert v-if="errorMessage" density="comfortable" type="error" variant="tonal">
-      {{ errorMessage }}
-    </v-alert>
-
-    <v-card class="page-panel">
-      <v-card-text class="d-flex flex-column ga-4">
-        <div class="adapter-store-view__filters">
-          <v-text-field
-            v-model.trim="search"
-            class="adapter-store-view__search"
-            density="comfortable"
-            hide-details
-            :label="t('adapterStore.search')"
-            prepend-inner-icon="mdi-magnify"
-          />
-          <v-select
-            v-model="selectedSource"
-            density="comfortable"
-            hide-details
-            item-title="label"
-            item-value="value"
-            :items="sourceOptions"
-            :label="t('adapterStore.allSources')"
-          />
-          <v-select
-            v-model="selectedCategory"
-            density="comfortable"
-            hide-details
-            item-title="label"
-            item-value="value"
-            :items="categoryOptions"
-            :label="t('adapterStore.category')"
-          />
-          <v-select
-            v-model="sortMode"
-            density="comfortable"
-            hide-details
-            item-title="label"
-            item-value="value"
-            :items="sortOptions"
-            :label="t('adapterStore.sort')"
-          />
-          <v-switch
-            v-model="uninstalledOnly"
-            color="primary"
-            hide-details
-            :label="t('adapterStore.uninstalledOnly')"
-          />
-        </div>
-
-        <div v-if="loading && items.length === 0" class="adapter-store-grid">
-          <v-skeleton-loader
-            v-for="index in 8"
-            :key="index"
-            class="adapter-store-card"
-            type="article"
-          />
-        </div>
-
-        <div v-else-if="items.length > 0" class="adapter-store-grid">
-          <article
-            v-for="item in items"
-            :key="`${item.source_id}:${item.adapter_id}`"
-            class="adapter-store-card"
-          >
-            <div class="adapter-store-card__header">
-              <div>
-                <h2 class="adapter-store-card__title">{{ item.name }}</h2>
-                <div class="text-caption text-medium-emphasis">{{ item.module_name }}</div>
-              </div>
-              <v-chip v-if="item.is_official" color="warning" size="x-small" variant="tonal">
-                {{ t('adapterStore.official') }}
-              </v-chip>
-            </div>
-
-            <div class="text-body-2 text-medium-emphasis">
-              {{ item.package_name }}
-            </div>
-
-            <p class="adapter-store-card__description">
-              {{ item.description || t('adapterStore.noDescription') }}
-            </p>
-
-            <div class="adapter-store-card__chips">
-              <v-chip
-                v-if="item.is_installed"
-                color="success"
-                size="x-small"
-                variant="tonal"
-              >
-                {{ t('adapterStore.installed') }}
-              </v-chip>
-              <v-chip
-                v-if="item.is_registered"
-                color="primary"
-                size="x-small"
-                variant="tonal"
-              >
-                {{ t('adapterStore.registered') }}
-              </v-chip>
-              <v-chip
-                v-if="item.can_update"
-                color="warning"
-                size="x-small"
-                variant="tonal"
-              >
-                {{ t('adapterStore.updateAvailable') }}
-              </v-chip>
-              <v-chip
-                v-for="tag in item.tags.slice(0, 2)"
-                :key="tag"
-                size="x-small"
-                variant="outlined"
-              >
-                {{ tag }}
-              </v-chip>
-            </div>
-
-            <div class="adapter-store-card__meta text-caption text-medium-emphasis">
-              <span>{{ t('adapterStore.source') }}: {{ item.source_name }}</span>
-              <span v-if="item.author">{{ item.author }}</span>
-              <span v-if="item.version">{{ item.version }}</span>
-            </div>
-
-            <div class="adapter-store-card__actions">
-              <v-btn
-                v-if="projectUrl(item)"
-                :href="projectUrl(item)"
-                rel="noopener noreferrer"
-                target="_blank"
-                variant="text"
-              >
-                {{ t('adapterStore.openProject') }}
-              </v-btn>
-              <v-spacer />
-              <v-btn
-                v-if="!item.is_installed"
-                color="primary"
-                :disabled="!authStore.isOwner || actionLocked"
-                variant="tonal"
-                @click="openActionDialog(item, 'install')"
-              >
-                {{ t('adapterStore.install') }}
-              </v-btn>
-              <v-btn
-                v-if="item.can_update"
-                color="primary"
-                :disabled="!authStore.isOwner || actionLocked"
-                variant="tonal"
-                @click="openActionDialog(item, 'update')"
-              >
-                {{ t('adapterStore.update') }}
-              </v-btn>
-              <v-btn
-                v-if="canUninstall(item)"
-                color="warning"
-                :disabled="!authStore.isOwner || actionLocked"
-                variant="text"
-                @click="openActionDialog(item, 'uninstall')"
-              >
-                {{ t('adapterStore.uninstall') }}
-              </v-btn>
-            </div>
-          </article>
-        </div>
-
-        <div v-else class="adapter-store-view__empty">
-          {{ t('adapterStore.empty') }}
-        </div>
-
-        <div v-if="pageCount > 1" class="d-flex justify-center">
-          <v-pagination
-            v-model="currentPage"
-            :length="pageCount"
-            rounded="circle"
-            total-visible="7"
-          />
-        </div>
-      </v-card-text>
-    </v-card>
 
     <v-dialog v-model="actionDialogVisible" max-width="640">
       <v-card>
         <v-card-title>{{ actionDialogTitle }}</v-card-title>
+
         <v-card-text class="d-flex flex-column ga-3">
           <div v-if="selectedItem" class="d-flex flex-column ga-2">
             <div class="font-weight-medium">{{ selectedItem.name }}</div>
@@ -215,11 +240,14 @@
             <div class="text-body-2">{{ t('adapterStore.source') }}: {{ selectedItem.source_name }}</div>
           </div>
         </v-card-text>
+
         <v-card-actions>
           <v-btn variant="text" @click="actionDialogVisible = false">
             {{ t('common.cancel') }}
           </v-btn>
+
           <v-spacer />
+
           <v-btn color="primary" :loading="actionPending" @click="startAction">
             {{ actionDialogConfirmLabel }}
           </v-btn>
@@ -227,31 +255,16 @@
       </v-card>
     </v-dialog>
 
-    <v-dialog v-model="taskDialogVisible" max-width="840">
-      <v-card>
-        <v-card-title>{{ activeTask?.title || t('adapterStore.taskTitle') }}</v-card-title>
-        <v-card-text class="d-flex flex-column ga-4">
-          <div class="text-body-2 text-medium-emphasis">
-            {{ taskStatusLabel }}
-          </div>
-          <v-progress-linear
-            v-if="activeTask?.status === 'pending' || activeTask?.status === 'running'"
-            color="primary"
-            indeterminate
-          />
-          <div class="adapter-store-task-log">
-            <pre>{{ activeTask?.logs || t('adapterStore.taskWaiting') }}</pre>
-          </div>
-        </v-card-text>
-        <v-card-actions>
-          <v-spacer />
-          <v-btn variant="text" @click="taskDialogVisible = false">
-            {{ t('common.close') }}
-          </v-btn>
-        </v-card-actions>
-      </v-card>
-    </v-dialog>
-  </div>
+    <TaskDialog
+      v-model="taskDialogVisible"
+      :close-label="t('common.close')"
+      :loading="activeTask?.status === 'pending' || activeTask?.status === 'running'"
+      :logs="activeTask?.logs || ''"
+      :status="taskStatusLabel"
+      :title="activeTask?.title || t('adapterStore.taskTitle')"
+      :waiting-text="t('adapterStore.taskWaiting')"
+    />
+  </PageScaffold>
 </template>
 
 <script setup lang="ts">
@@ -269,6 +282,12 @@
     updateAdapterStoreItem,
   } from '@/api/adapters'
   import { getErrorMessage } from '@/api/client'
+  import {
+    FilterBar,
+    PageScaffold,
+    ResourceWorkbench,
+    TaskDialog,
+  } from '@/components/workbench'
   import { useAuthStore } from '@/stores/auth'
   import { useNoticeStore } from '@/stores/notice'
   import { useRestartStore } from '@/stores/restart'
@@ -310,6 +329,10 @@
       label: item.name,
     })),
   ])
+  const currentSourceLabel = computed(() => {
+    const matched = sources.value.find(item => item.source_id === selectedSource.value)
+    return matched?.name || t('adapterStore.allSources')
+  })
   const categoryOptions = computed(() => [
     { value: '', label: t('adapterStore.allCategories') },
     ...categories.value.map(item => ({
@@ -577,19 +600,6 @@
   gap: 20px;
 }
 
-.adapter-store-view__title-wrap {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.adapter-store-view__filters {
-  display: grid;
-  grid-template-columns: minmax(220px, 2fr) repeat(3, minmax(160px, 1fr)) auto;
-  gap: 12px;
-  align-items: center;
-}
-
 .adapter-store-view__search {
   min-width: 0;
 }
@@ -605,9 +615,19 @@
   flex-direction: column;
   gap: 12px;
   padding: 16px;
-  border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+  border: 1px solid rgba(var(--v-theme-outline-variant), var(--surface-border-opacity));
   border-radius: var(--shape-medium);
-  background: rgba(var(--v-theme-on-surface), 0.02);
+  background: rgb(var(--v-theme-surface-container-low));
+  transition:
+    border-color var(--motion-base) var(--motion-ease),
+    background-color var(--motion-base) var(--motion-ease),
+    transform var(--motion-base) var(--motion-ease);
+}
+
+.adapter-store-card:hover {
+  border-color: rgba(var(--v-theme-primary), 0.26);
+  background: rgb(var(--v-theme-surface));
+  transform: translateY(-1px);
 }
 
 .adapter-store-card__header {
@@ -654,33 +674,13 @@
   color: rgba(var(--v-theme-on-surface), 0.65);
 }
 
-.adapter-store-task-log {
-  max-height: 360px;
-  overflow: auto;
-  padding: 12px;
-  border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
-  border-radius: var(--shape-medium);
-  background: rgba(var(--v-theme-on-surface), 0.03);
-}
-
-.adapter-store-task-log pre {
-  margin: 0;
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-
 @media (max-width: 1120px) {
-  .adapter-store-view__filters {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
   .adapter-store-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
 @media (max-width: 760px) {
-  .adapter-store-view__filters,
   .adapter-store-grid {
     grid-template-columns: 1fr;
   }

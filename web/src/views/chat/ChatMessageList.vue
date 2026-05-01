@@ -18,7 +18,7 @@
 
       <div v-else-if="message.role === 'error'" class="chat-message-row chat-message-row--bot">
         <div class="chat-message-stack chat-message-stack--bot">
-          <v-card class="chat-bubble chat-bubble--error" color="error" rounded="lg" variant="tonal">
+          <v-card class="chat-bubble chat-bubble--error" color="error" variant="tonal">
             <template v-for="(segment, index) in message.segments" :key="index">
               <div v-if="segment.type === 'text'" class="text-body-2">{{ segment.text }}</div>
             </template>
@@ -38,7 +38,6 @@
               'chat-bubble--bot': message.role === 'bot',
               'chat-bubble--image': hasImageSegment(message.segments),
             }"
-            rounded="lg"
             :variant="message.role === 'user' ? 'flat' : 'flat'"
           >
             <div class="chat-bubble__content">
@@ -194,10 +193,9 @@
 
 .chat-bubble {
   padding: 11px 13px 7px;
+  border: 1px solid rgba(var(--v-theme-outline-variant), var(--surface-border-opacity));
   border-radius: var(--shape-medium) !important;
-  box-shadow:
-    0 1px 2px rgba(15, 23, 42, 0.04),
-    0 2px 8px rgba(15, 23, 42, 0.05);
+  box-shadow: none;
 }
 
 .chat-bubble--image {

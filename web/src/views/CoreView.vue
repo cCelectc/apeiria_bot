@@ -1,15 +1,8 @@
 <template>
-  <div class="page-view">
-    <div class="page-header">
-      <h1 class="page-title">{{ t('core.title') }}</h1>
-      <div class="page-actions">
-        <v-btn :loading="loading" variant="tonal" @click="handleRefresh">{{ t('common.refresh') }}</v-btn>
-      </div>
-    </div>
-
-    <v-alert v-if="errorMessage" density="comfortable" type="error" variant="tonal">
-      {{ errorMessage }}
-    </v-alert>
+  <PageScaffold :error-message="errorMessage" :title="t('core.title')">
+    <template #actions>
+      <v-btn :loading="loading" variant="tonal" @click="handleRefresh">{{ t('common.refresh') }}</v-btn>
+    </template>
 
     <v-card class="page-panel">
       <v-tabs v-model="sectionTab" color="primary">
@@ -23,22 +16,18 @@
       <v-window v-model="sectionTab">
         <v-window-item value="core">
           <v-card-text class="d-flex flex-column ga-3">
-            <div class="settings-shell">
-              <div class="settings-shell__toolbar">
-                <div class="settings-shell__headline">
-                  <div class="text-subtitle-1 font-weight-medium">{{ t('core.coreTab') }}</div>
-                </div>
-              </div>
-
-              <SettingsModeBar
-                v-model="coreEditorMode"
-                :advanced-label="t('plugins.settingsAdvancedTab')"
-                :basic-label="t('plugins.settingsBasicTab')"
-                :tablist-label="t('core.coreTab')"
-              >
-                <template #actions>
+            <SettingsWorkbench>
+              <template #actions>
+                <div class="core-settings-actions">
                   <v-btn
-                    v-if="coreEditorMode === 'basic'"
+                    prepend-icon="mdi-file-document-edit-outline"
+                    variant="tonal"
+                    @click="coreRawDialogVisible = true"
+                  >
+                    {{ t('plugins.settingsAdvancedAction') }}
+                  </v-btn>
+
+                  <v-btn
                     color="primary"
                     :disabled="!hasPendingCoreChanges"
                     :loading="coreSaving"
@@ -46,122 +35,107 @@
                   >
                     {{ t('plugins.settingsSave') }}
                   </v-btn>
-                </template>
-              </SettingsModeBar>
-
-              <template v-if="coreEditorMode === 'basic'">
-                <v-alert v-if="coreErrorMessage" density="comfortable" type="error" variant="tonal">
-                  {{ coreErrorMessage }}
-                </v-alert>
-
-                <v-progress-linear v-if="coreLoading" color="primary" indeterminate />
-
-                <div v-else class="settings-list-panel">
-                  <section
-                    v-for="field in coreFields"
-                    :key="field.key"
-                    class="settings-list-row"
-                  >
-                    <div class="settings-list-row__main">
-                      <div class="settings-list-row__info">
-                        <div class="settings-list-row__label text-subtitle-2 font-weight-medium">
-                          {{ field.label || field.key }}
-                        </div>
-                        <div v-if="field.help" class="settings-list-row__description text-caption text-medium-emphasis">
-                          {{ field.help }}
-                        </div>
-                        <div class="settings-list-row__status">
-                          <v-chip
-                            v-if="field.has_local_override || coreEditor.isFieldEditing(field)"
-                            color="primary"
-                            size="x-small"
-                            variant="tonal"
-                          >
-                            {{ t('plugins.settingsLocalShort') }}
-                          </v-chip>
-                          <v-chip
-                            v-if="!field.editable"
-                            color="warning"
-                            size="x-small"
-                            variant="tonal"
-                          >
-                            {{ t('plugins.settingsReadonly') }}
-                          </v-chip>
-                        </div>
-                        <div class="settings-list-row__meta text-caption text-medium-emphasis">
-                          <span>{{ t('plugins.settingsType') }}: {{ field.type }}</span>
-                          <span>{{ t('plugins.settingsValueSource') }}: {{ settingsValueSourceLabel(field.value_source) }}</span>
-                          <span v-if="field.choices.length > 0">{{ t('plugins.settingsChoices') }}: {{ formatFieldChoices(field.choices) }}</span>
-                          <span>{{ t('plugins.settingsCurrent') }}: {{ displayFieldValue(field.current_value) }}</span>
-                          <span v-if="field.has_local_override">{{ t('plugins.settingsLocal') }}: {{ displayFieldValue(field.local_value) }}</span>
-                        </div>
-                      </div>
-
-                      <div class="settings-list-row__control">
-                        <div class="settings-list-row__actions">
-                          <v-btn
-                            v-if="!coreEditor.isFieldEditing(field) && field.editable"
-                            class="settings-action settings-action--primary"
-                            color="primary"
-                            size="small"
-                            variant="tonal"
-                            @click="coreEditor.startOverride(field)"
-                          >
-                            {{ t('plugins.settingsAddOverride') }}
-                          </v-btn>
-                          <v-btn
-                            v-if="coreEditor.isFieldEditing(field)"
-                            class="settings-action"
-                            size="small"
-                            variant="text"
-                            @click="coreEditor.cancelField(field)"
-                          >
-                            {{ t('common.cancel') }}
-                          </v-btn>
-                          <v-btn
-                            v-if="field.has_local_override"
-                            class="settings-action"
-                            color="warning"
-                            size="small"
-                            variant="text"
-                            @click="clearCoreField(field)"
-                          >
-                            {{ t('plugins.settingsClear') }}
-                          </v-btn>
-                        </div>
-
-                        <SettingsFieldEditor
-                          v-model="coreForm[field.key]"
-                          :array-hint="t('plugins.settingsArrayHint')"
-                          :editing="coreEditor.isFieldEditing(field)"
-                          :field="field"
-                          :json-hint="t('plugins.settingsJsonHint')"
-                        />
-                      </div>
-                    </div>
-                  </section>
                 </div>
               </template>
 
-              <template v-else>
-                <RawSettingsEditor
-                  v-model="coreRawText"
-                  :description="t('plugins.settingsAdvancedDescription')"
-                  :dirty="hasPendingCoreRawChanges"
-                  :error-message="coreRawErrorMessage"
-                  :loading="coreRawLoading"
-                  :reload-label="t('common.refresh')"
-                  :save-label="t('plugins.settingsSave')"
-                  :saving="coreRawSaving"
-                  :validation-error-column="coreRawValidationColumn"
-                  :validation-error-line="coreRawValidationLine"
-                  :validation-error-message="coreRawValidationMessage"
-                  :validation-pending="coreRawValidationPending"
-                  @reload="loadCoreRawSettings"
-                  @save="openCoreRawPreview"
-                />
-              </template>
-            </div>
+              <v-alert v-if="coreErrorMessage" density="comfortable" type="error" variant="tonal">
+                {{ coreErrorMessage }}
+              </v-alert>
+
+              <v-progress-linear v-if="coreLoading" color="primary" indeterminate />
+
+              <div v-else class="settings-list-panel">
+                <section
+                  v-for="field in coreFields"
+                  :key="field.key"
+                  class="settings-list-row"
+                >
+                  <div class="settings-list-row__main">
+                    <div class="settings-list-row__info">
+                      <div class="settings-list-row__label text-subtitle-2 font-weight-medium">
+                        {{ field.label || field.key }}
+                      </div>
+
+                      <div v-if="field.help" class="settings-list-row__description text-caption text-medium-emphasis">
+                        {{ field.help }}
+                      </div>
+
+                      <div class="settings-list-row__status">
+                        <v-chip
+                          v-if="field.has_local_override || coreEditor.isFieldEditing(field)"
+                          color="primary"
+                          size="x-small"
+                          variant="tonal"
+                        >
+                          {{ t('plugins.settingsLocalShort') }}
+                        </v-chip>
+
+                        <v-chip
+                          v-if="!field.editable"
+                          color="warning"
+                          size="x-small"
+                          variant="tonal"
+                        >
+                          {{ t('plugins.settingsReadonly') }}
+                        </v-chip>
+                      </div>
+
+                      <div class="settings-list-row__meta text-caption text-medium-emphasis">
+                        <span>{{ t('plugins.settingsType') }}: {{ field.type }}</span>
+                        <span>{{ t('plugins.settingsValueSource') }}: {{ settingsValueSourceLabel(field.value_source) }}</span>
+                        <span v-if="field.choices.length > 0">{{ t('plugins.settingsChoices') }}: {{ formatFieldChoices(field.choices) }}</span>
+                        <span>{{ t('plugins.settingsCurrent') }}: {{ displayFieldValue(field.current_value) }}</span>
+                        <span v-if="field.has_local_override">{{ t('plugins.settingsLocal') }}: {{ displayFieldValue(field.local_value) }}</span>
+                      </div>
+                    </div>
+
+                    <div class="settings-list-row__control">
+                      <div class="settings-list-row__actions">
+                        <v-btn
+                          v-if="!coreEditor.isFieldEditing(field) && field.editable"
+                          class="settings-action settings-action--primary"
+                          color="primary"
+                          size="small"
+                          variant="tonal"
+                          @click="coreEditor.startOverride(field)"
+                        >
+                          {{ t('plugins.settingsAddOverride') }}
+                        </v-btn>
+
+                        <v-btn
+                          v-if="coreEditor.isFieldEditing(field)"
+                          class="settings-action"
+                          size="small"
+                          variant="text"
+                          @click="coreEditor.cancelField(field)"
+                        >
+                          {{ t('common.cancel') }}
+                        </v-btn>
+
+                        <v-btn
+                          v-if="field.has_local_override"
+                          class="settings-action"
+                          color="warning"
+                          size="small"
+                          variant="text"
+                          @click="clearCoreField(field)"
+                        >
+                          {{ t('plugins.settingsClear') }}
+                        </v-btn>
+                      </div>
+
+                      <SettingsFieldEditor
+                        v-model="coreForm[field.key]"
+                        :array-hint="t('plugins.settingsArrayHint')"
+                        :editing="coreEditor.isFieldEditing(field)"
+                        :field="field"
+                        :json-hint="t('plugins.settingsJsonHint')"
+                      />
+                    </div>
+                  </div>
+                </section>
+              </div>
+            </SettingsWorkbench>
           </v-card-text>
         </v-window-item>
 
@@ -175,11 +149,13 @@
           <v-card-text class="d-flex flex-column ga-5">
             <div class="d-flex justify-space-between align-center flex-wrap ga-3">
               <div class="text-subtitle-1 font-weight-medium">{{ t('core.driversTab') }}</div>
-              <v-sheet class="summary-card" rounded="lg">
+
+              <v-sheet class="summary-card">
                 <div class="summary-card__label">{{ t('plugins.driverCount') }}</div>
                 <div class="summary-card__value">{{ driverBuiltin.length }}</div>
               </v-sheet>
             </div>
+
             <div class="config-chip-row">
               <v-chip
                 v-for="driverItem in driverBuiltin"
@@ -192,6 +168,7 @@
                   {{ driverStatusText(driverItem) }}
                 </v-tooltip>
               </v-chip>
+
               <span v-if="driverBuiltin.length === 0" class="text-body-2 text-medium-emphasis">
                 {{ t('plugins.emptyDriverBuiltin') }}
               </span>
@@ -217,7 +194,31 @@
       @cancel="previewDialogVisible = false"
       @confirm="confirmPreviewSave"
     />
-  </div>
+
+    <PopupPanel
+      v-model="coreRawDialogVisible"
+      :close-label="t('common.close')"
+      max-width="980"
+      :title="t('plugins.settingsAdvancedAction')"
+    >
+      <RawSettingsEditor
+        v-model="coreRawText"
+        :description="t('plugins.settingsAdvancedDescription')"
+        :dirty="hasPendingCoreRawChanges"
+        :error-message="coreRawErrorMessage"
+        :loading="coreRawLoading"
+        :reload-label="t('common.refresh')"
+        :save-label="t('plugins.settingsSave')"
+        :saving="coreRawSaving"
+        :validation-error-column="coreRawValidationColumn"
+        :validation-error-line="coreRawValidationLine"
+        :validation-error-message="coreRawValidationMessage"
+        :validation-pending="coreRawValidationPending"
+        @reload="loadCoreRawSettings"
+        @save="openCoreRawPreview"
+      />
+    </PopupPanel>
+  </PageScaffold>
 </template>
 
 <script setup lang="ts">
@@ -235,6 +236,7 @@
     updateCoreSettingsRaw,
     validateCoreSettingsRaw,
   } from '@/api/core'
+  import { PageScaffold, PopupPanel, SettingsWorkbench } from '@/components/workbench'
   import { useRawTomlValidation } from '@/composables/useRawTomlValidation'
   import { useNoticeStore } from '@/stores/notice'
   import { useRestartStore } from '@/stores/restart'
@@ -249,7 +251,6 @@
     type PluginSettingField,
   } from '@/views/plugins/settingsEditor'
   import SettingsFieldEditor from '@/views/plugins/SettingsFieldEditor.vue'
-  import SettingsModeBar from '@/views/plugins/SettingsModeBar.vue'
   import SettingsPreviewDialog from '@/views/plugins/SettingsPreviewDialog.vue'
   import { useSettingsEditor } from '@/views/plugins/useSettingsEditor'
 
@@ -257,7 +258,7 @@
   const errorMessage = ref('')
   const adapterManagementPanel = ref<{ reload: () => Promise<void> } | null>(null)
   const driverBuiltin = ref<DriverConfigItem[]>([])
-  const coreEditorMode = ref<'basic' | 'advanced'>('basic')
+  const coreRawDialogVisible = ref(false)
   const coreRawText = ref('')
   const coreRawInitialText = ref('')
   const coreRawLoading = ref(false)
@@ -500,20 +501,6 @@
   gap: 16px;
 }
 
-.settings-shell__toolbar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-
-.settings-shell__headline {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
 .settings-list-panel {
   display: flex;
   flex-direction: column;
@@ -526,9 +513,7 @@
 .settings-list-row {
   padding: 18px 20px;
   border-bottom: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
-  background:
-    linear-gradient(180deg, rgba(var(--v-theme-surface), 0.98), rgba(var(--v-theme-surface), 0.98)),
-    linear-gradient(135deg, rgba(var(--v-theme-primary), 0.02), rgba(var(--v-theme-secondary), 0.02));
+  background: rgba(var(--v-theme-surface), 0.92);
 }
 
 .settings-list-row:last-child {

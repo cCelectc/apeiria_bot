@@ -1,83 +1,123 @@
 <template>
-  <div class="page-view">
-    <div class="page-header">
-      <h1 class="page-title">{{ t('logs.liveTitle') }}</h1>
-      <div class="page-actions">
-        <v-chip :color="connected ? 'success' : 'error'" size="small" variant="tonal">
-          {{ connected ? t('logs.connected') : t('logs.disconnected') }}
-        </v-chip>
-        <v-btn
-          :prepend-icon="connected ? 'mdi-lan-disconnect' : 'mdi-connection'"
-          size="small"
-          variant="text"
-          @click="toggleConnection"
-        >
-          {{ connected ? t('logs.disconnect') : t('logs.connect') }}
-        </v-btn>
-        <v-btn
-          :disabled="filteredLogs.length === 0"
-          prepend-icon="mdi-download-outline"
-          size="small"
-          variant="text"
-          @click="exportLogs"
-        >
-          {{ t('logs.export') }}
-        </v-btn>
-        <v-btn
-          :disabled="logs.length === 0"
-          prepend-icon="mdi-delete-sweep"
-          size="small"
-          variant="text"
-          @click="clearLogs"
-        >
-          {{ t('logs.clear') }}
-        </v-btn>
-      </div>
-    </div>
+  <PageScaffold class="live-logs-page" full-height :title="t('logs.liveTitle')">
+    <template #actions>
+      <v-chip :color="connected ? 'success' : 'error'" size="small" variant="tonal">
+        {{ connected ? t('logs.connected') : t('logs.disconnected') }}
+      </v-chip>
 
-    <div class="page-toolbar-form live-toolbar">
-      <v-text-field
-        v-model.trim="search"
-        density="compact"
-        hide-details
-        :label="t('logs.search')"
-        prepend-inner-icon="mdi-magnify"
-      />
-      <v-select
-        v-model="selectedLevels"
-        chips
-        class="logs-filter"
-        density="compact"
-        hide-details
-        :items="levelOptions"
-        :label="t('logs.level')"
-        multiple
-      />
-      <v-select
-        v-model="selectedSources"
-        chips
-        class="logs-filter"
-        density="compact"
-        hide-details
-        :items="sourceOptions"
-        :label="t('logs.source')"
-        multiple
-      />
-      <v-switch
-        v-model="autoScroll"
-        color="primary"
-        hide-details
-        inset
-        :label="t('logs.autoScroll')"
-      />
-      <v-switch
-        v-model="showAccessLogs"
-        color="primary"
-        hide-details
-        inset
-        :label="t('logs.showAccessLogs')"
-      />
-    </div>
+      <v-btn
+        :prepend-icon="connected ? 'mdi-lan-disconnect' : 'mdi-connection'"
+        size="small"
+        variant="text"
+        @click="toggleConnection"
+      >
+        {{ connected ? t('logs.disconnect') : t('logs.connect') }}
+      </v-btn>
+
+      <v-btn
+        :disabled="filteredLogs.length === 0"
+        prepend-icon="mdi-download-outline"
+        size="small"
+        variant="text"
+        @click="exportLogs"
+      >
+        {{ t('logs.export') }}
+      </v-btn>
+
+      <v-btn
+        :disabled="logs.length === 0"
+        prepend-icon="mdi-delete-sweep"
+        size="small"
+        variant="text"
+        @click="clearLogs"
+      >
+        {{ t('logs.clear') }}
+      </v-btn>
+    </template>
+
+    <FilterBar
+      :apply-label="t('common.applyFilters')"
+      :close-label="t('common.close')"
+      compact
+      :overflow-label="t('common.filters')"
+      :overflow-title="t('logs.liveTitle')"
+    >
+      <template #filters>
+        <v-text-field
+          v-model.trim="search"
+          density="compact"
+          hide-details
+          :label="t('logs.search')"
+          prepend-inner-icon="mdi-magnify"
+        />
+      </template>
+
+      <template #summary>
+        <v-chip
+          v-if="selectedLevels.length > 0"
+          size="small"
+          variant="tonal"
+        >
+          {{ t('logs.level') }}: {{ selectedLevels.length }}
+        </v-chip>
+
+        <v-chip
+          v-if="selectedSources.length > 0"
+          size="small"
+          variant="tonal"
+        >
+          {{ t('logs.source') }}: {{ selectedSources.length }}
+        </v-chip>
+
+        <v-chip
+          :color="autoScroll ? 'primary' : undefined"
+          size="small"
+          variant="tonal"
+        >
+          {{ t('logs.autoScroll') }}
+        </v-chip>
+      </template>
+
+      <template #overflow>
+        <v-select
+          v-model="selectedLevels"
+          chips
+          density="compact"
+          hide-details
+          :items="levelOptions"
+          :label="t('logs.level')"
+          multiple
+        />
+
+        <v-select
+          v-model="selectedSources"
+          chips
+          density="compact"
+          hide-details
+          :items="sourceOptions"
+          :label="t('logs.source')"
+          multiple
+        />
+
+        <v-switch
+          v-model="autoScroll"
+          color="primary"
+          density="compact"
+          hide-details
+          inset
+          :label="t('logs.autoScroll')"
+        />
+
+        <v-switch
+          v-model="showAccessLogs"
+          color="primary"
+          density="compact"
+          hide-details
+          inset
+          :label="t('logs.showAccessLogs')"
+        />
+      </template>
+    </FilterBar>
 
     <v-alert
       v-if="bootstrapError"
@@ -89,36 +129,31 @@
       {{ bootstrapError }}
     </v-alert>
 
-    <v-card class="page-panel live-log-viewer">
-      <div class="live-log-viewer__head">
-        <div class="live-log-viewer__dots">
-          <span />
-          <span />
-          <span />
-        </div>
-        <span class="live-log-viewer__title">logs://live</span>
-      </div>
-
-      <div v-if="filteredLogs.length === 0" class="text-medium-emphasis text-center pa-8">
-        {{ loadingHistory ? t('common.loading') : t('logs.waiting') }}
-      </div>
-
-      <div v-else ref="logContainer" class="live-log-stream">
+    <LogPanel
+      :empty="filteredLogs.length === 0"
+      :empty-title="t('logs.waiting')"
+      :loading="loadingHistory"
+      :loading-text="t('common.loading')"
+      title="logs://live"
+    >
+      <div ref="logContainer" class="live-log-stream">
         <div
           v-for="entry in filteredLogs"
           :key="entry.id"
           class="live-log-row"
         >
           <span class="live-log-row__time">[{{ entry.timestamp.slice(11) }}]</span>
+
           <span class="live-log-row__level" :class="`live-log-row__level--${entry.level.toLowerCase()}`">
             {{ entry.level }}
           </span>
+
           <span class="live-log-row__source">{{ entry.source }}</span>
           <span class="live-log-row__message">{{ entry.message }}</span>
         </div>
       </div>
-    </v-card>
-  </div>
+    </LogPanel>
+  </PageScaffold>
 </template>
 
 <script setup lang="ts">
@@ -127,6 +162,7 @@
   import { useI18n } from 'vue-i18n'
   import { getErrorMessage } from '@/api/client'
   import { getLogHistory } from '@/api/logs'
+  import { FilterBar, LogPanel, PageScaffold } from '@/components/workbench'
 
   interface LogEntry {
     id: string
@@ -377,64 +413,14 @@
 </script>
 
 <style scoped>
-.live-toolbar {
-  margin-bottom: 16px;
-}
-
-.logs-filter {
-  min-width: 180px;
-}
-
-.live-log-viewer {
-  overflow: hidden;
-  background:
-    linear-gradient(135deg, rgba(var(--v-theme-primary), 0.05), transparent 40%),
-    rgb(var(--v-theme-surface-container-low));
-}
-
-.live-log-viewer__head {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 12px 16px;
-  border-bottom: 1px solid rgba(var(--v-theme-outline-variant), 0.3);
-  background: rgba(var(--v-theme-on-surface), 0.05);
-}
-
-.live-log-viewer__dots {
-  display: flex;
-  gap: 6px;
-}
-
-.live-log-viewer__dots span {
-  width: 10px;
-  height: 10px;
-  border-radius: var(--shape-pill);
-  background: rgba(var(--v-theme-on-surface), 0.3);
-}
-
-.live-log-viewer__dots span:nth-child(1) {
-  background: rgb(var(--v-theme-error));
-}
-
-.live-log-viewer__dots span:nth-child(2) {
-  background: rgb(var(--v-theme-warning));
-}
-
-.live-log-viewer__dots span:nth-child(3) {
-  background: rgb(var(--v-theme-success));
-}
-
-.live-log-viewer__title {
-  font-family: var(--font-family-mono);
-  font-size: 0.82rem;
-  color: rgba(var(--v-theme-on-surface), 0.62);
+.live-logs-page {
+  --workbench-frame-offset: calc(var(--page-gutter) * 2);
 }
 
 .live-log-stream {
-  max-height: 72vh;
+  height: 100%;
+  min-height: 0;
   overflow-y: auto;
-  padding: 12px 16px 16px;
 }
 
 .live-log-row {
@@ -442,10 +428,19 @@
   grid-template-columns: 92px 76px 180px minmax(0, 1fr);
   gap: 12px;
   align-items: start;
-  padding: 6px 0;
+  padding: 8px 14px;
+  border-bottom: 1px solid rgba(var(--v-theme-outline-variant), 0.2);
   font-family: var(--font-family-mono);
   font-size: 0.94rem;
   line-height: 1.55;
+}
+
+.live-log-row:last-child {
+  border-bottom: 0;
+}
+
+.live-log-row:hover {
+  background: rgba(var(--v-theme-primary), 0.04);
 }
 
 .live-log-row__time,
@@ -495,6 +490,12 @@
     grid-template-columns: 1fr;
     gap: 4px;
     padding: 10px 0;
+  }
+}
+
+@media (max-width: 760px) {
+  .live-log-stream {
+    max-height: 72vh;
   }
 }
 </style>

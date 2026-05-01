@@ -8,7 +8,7 @@
         {{ t('ai.createSource') }}
       </v-btn>
     </div>
-    <v-sheet class="surface-gradient-card pa-2 source-list-panel" rounded="lg">
+    <v-sheet class="surface-gradient-card pa-2 source-list-panel">
       <template v-if="sources.length > 0">
         <v-list class="bg-transparent" density="comfortable" lines="two">
           <v-list-item
@@ -16,7 +16,6 @@
             :key="item.source_id"
             :active="item.source_id === activeSourceId"
             class="source-list-item"
-            rounded="lg"
             @click="selectSource(item)"
           >
             <template #prepend>

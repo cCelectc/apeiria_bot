@@ -1,7 +1,7 @@
 <template>
   <v-row>
     <v-col cols="12" lg="4">
-      <v-sheet class="surface-gradient-card pa-2" rounded="lg">
+      <v-sheet class="surface-gradient-card pa-2">
         <div class="d-flex align-center justify-space-between px-2 py-2">
           <div class="text-body-2 text-medium-emphasis">{{ t('ai.recentTargets') }}</div>
           <v-btn
@@ -17,7 +17,6 @@
             <v-list-item
               v-for="item in recentRelationshipTargets"
               :key="`${item.anchor_type}:${item.anchor_id}`"
-              rounded="lg"
               @click="loadRelationshipForTarget(item)"
             >
               <v-list-item-title>{{ item.title }}</v-list-item-title>
@@ -33,7 +32,7 @@
     </v-col>
 
     <v-col cols="12" lg="8">
-      <v-sheet class="surface-gradient-card pa-4" rounded="lg">
+      <v-sheet class="surface-gradient-card pa-4">
         <div v-if="relationship" class="d-flex flex-column ga-4">
           <div class="d-flex flex-wrap ga-2">
             <v-chip color="primary" size="small" variant="tonal">
@@ -135,7 +134,6 @@
               <v-list-item
                 v-for="event in relationshipEvents"
                 :key="event.event_id"
-                rounded="lg"
               >
                 <v-list-item-title class="d-flex flex-wrap ga-2 align-center">
                   <span>{{ formatRelationshipEventType(event.event_type) }}</span>

@@ -257,10 +257,11 @@ function normalizeSequenceValue (field: PluginSettingField, rawValue: unknown) {
   if (rawValue == null && field.allows_null) {
     return null
   }
-  let values: unknown[] = []
-  if (isSequenceChipField(field)) {
-    values = Array.isArray(rawValue) ? rawValue : []
-  } else {
+
+  const values = (() => {
+    if (isSequenceChipField(field)) {
+      return Array.isArray(rawValue) ? rawValue : []
+    }
     if (typeof rawValue !== 'string' || !rawValue.trim()) {
       return null
     }
@@ -268,7 +269,10 @@ function normalizeSequenceValue (field: PluginSettingField, rawValue: unknown) {
     if (!Array.isArray(parsed)) {
       throw new TypeError('invalid array')
     }
-    values = parsed
+    return parsed
+  })()
+  if (values === null) {
+    return null
   }
   return values
     .map(item => coercePrimitiveValue(field.item_type, item))
@@ -489,7 +493,7 @@ export function buildSettingsUpdate (
       value = normalizeFieldValueForSave(field, value)
     } catch (error) {
       const message = error instanceof Error ? error.message : invalidJsonMessage
-      throw new Error(`${field.key}: ${message}`)
+      throw new Error(`${field.key}: ${message}`, { cause: error })
     }
     value = resolveNullableFieldValue(field, value)
     const currentValue = normalizeComparableFieldValue(field, field.current_value)

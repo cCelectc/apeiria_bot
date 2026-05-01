@@ -119,7 +119,7 @@ export function useSettingsEditor (options: UseSettingsEditorOptions) {
 
   async function submit () {
     const editingFields = fields.value.filter(field => isFieldEditing(field))
-    let payload = { values: {} as Record<string, unknown>, clear: [] as string[] }
+    let payload: { values: Record<string, unknown>, clear: string[] }
     try {
       payload = buildSettingsUpdate(
         editingFields,

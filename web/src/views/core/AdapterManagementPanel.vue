@@ -9,7 +9,7 @@
       </div>
 
       <div class="adapter-panel__actions">
-        <v-sheet class="summary-card" rounded="lg">
+        <v-sheet class="summary-card">
           <div class="summary-card__label">{{ t('plugins.adapterCount') }}</div>
           <div class="summary-card__value">{{ adapterCount }}</div>
         </v-sheet>
