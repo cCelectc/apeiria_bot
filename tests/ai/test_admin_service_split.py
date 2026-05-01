@@ -70,6 +70,7 @@ def test_control_plane_route_files_import_control_service() -> None:
         "apeiria/webui/routes/ai/memories.py": "ai_runtime_admin_service",
         "apeiria/webui/routes/ai/person_profiles.py": "ai_runtime_admin_service",
         "apeiria/webui/routes/ai/relationships.py": "ai_runtime_admin_service",
+        "apeiria/webui/routes/ai/traces.py": "ai_runtime_admin_service",
         "apeiria/webui/routes/ai/sessions.py": "ai_session_read_service",
     }
 

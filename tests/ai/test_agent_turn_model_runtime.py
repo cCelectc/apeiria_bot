@@ -20,6 +20,16 @@ from tests.ai.agent_turn_helpers import (
 )
 
 
+class ProviderConfigError(RuntimeError):
+    pass
+
+
+class UpstreamError(RuntimeError):
+    def __init__(self, message: str, *, status_code: int) -> None:
+        super().__init__(message)
+        self.status_code = status_code
+
+
 def test_agent_turn_result_can_record_strategy_skip() -> None:
     result = AgentTurnResult.skipped(
         trace_id="trace-skip",
@@ -112,6 +122,117 @@ def test_model_runtime_sanitizes_provider_exception() -> None:
     assert "api_key=<redacted>" in diagnostic
 
 
+def test_model_runtime_classifies_configuration_error() -> None:
+    selected = selected_model("main")
+    gateway = ModelGatewayStub([ProviderConfigError("missing api_key=secret-token")])
+    runtime = AgentTurnModelRuntime(model_gateway=gateway)
+
+    result = asyncio.run(
+        runtime.generate(
+            AgentModelGenerationRequest(
+                trace_id="trace-config",
+                session_id="session-1",
+                runtime_mode="message",
+                selected=selected,
+                prompt="Say hello",
+            )
+        )
+    )
+
+    assert result.response is None
+    assert result.turn.finish_reason == "configuration_error"
+    assert result.turn.model_attempts[0].reason == "configuration_error"
+    assert "secret-token" not in (result.turn.model_attempts[0].diagnostic or "")
+
+
+def test_model_runtime_classifies_timeout() -> None:
+    selected = selected_model("main")
+    gateway = ModelGatewayStub([TimeoutError("request timed out")])
+    runtime = AgentTurnModelRuntime(model_gateway=gateway)
+
+    result = asyncio.run(
+        runtime.generate(
+            AgentModelGenerationRequest(
+                trace_id="trace-timeout",
+                session_id="session-1",
+                runtime_mode="message",
+                selected=selected,
+                prompt="Say hello",
+            )
+        )
+    )
+
+    assert result.response is None
+    assert result.turn.finish_reason == "model_timeout"
+    assert result.turn.model_attempts[0].reason == "model_timeout"
+
+
+def test_model_runtime_classifies_temporary_upstream_error() -> None:
+    selected = selected_model("main")
+    gateway = ModelGatewayStub([UpstreamError("upstream unavailable", status_code=503)])
+    runtime = AgentTurnModelRuntime(model_gateway=gateway)
+
+    result = asyncio.run(
+        runtime.generate(
+            AgentModelGenerationRequest(
+                trace_id="trace-temp",
+                session_id="session-1",
+                runtime_mode="message",
+                selected=selected,
+                prompt="Say hello",
+            )
+        )
+    )
+
+    assert result.response is None
+    assert result.turn.finish_reason == "upstream_temporary_error"
+    assert result.turn.model_attempts[0].reason == "upstream_temporary_error"
+
+
+def test_model_runtime_classifies_permanent_upstream_error() -> None:
+    selected = selected_model("main")
+    gateway = ModelGatewayStub([UpstreamError("unauthorized", status_code=401)])
+    runtime = AgentTurnModelRuntime(model_gateway=gateway)
+
+    result = asyncio.run(
+        runtime.generate(
+            AgentModelGenerationRequest(
+                trace_id="trace-perm",
+                session_id="session-1",
+                runtime_mode="message",
+                selected=selected,
+                prompt="Say hello",
+            )
+        )
+    )
+
+    assert result.response is None
+    assert result.turn.finish_reason == "upstream_permanent_error"
+    assert result.turn.model_attempts[0].reason == "upstream_permanent_error"
+
+
+def test_model_runtime_unknown_provider_error_uses_generic_reason() -> None:
+    selected = selected_model("main")
+    gateway = ModelGatewayStub([RuntimeError("provider exploded")])
+    runtime = AgentTurnModelRuntime(model_gateway=gateway)
+
+    result = asyncio.run(
+        runtime.generate(
+            AgentModelGenerationRequest(
+                trace_id="trace-unknown",
+                session_id="session-1",
+                runtime_mode="message",
+                selected=selected,
+                prompt="Say hello",
+            )
+        )
+    )
+
+    assert result.response is None
+    assert result.turn.finish_reason == "model_error"
+    assert result.turn.model_attempts[0].reason == "model_error"
+
+
 def test_model_runtime_uses_configured_fallback_candidate() -> None:
     primary = selected_model("primary", fallback_profile_id="profile-fallback")
     fallback = selected_model("fallback")
@@ -144,10 +265,41 @@ def test_model_runtime_uses_configured_fallback_candidate() -> None:
         "failed",
         "success",
     ]
+    assert result.turn.model_attempts[0].reason == "model_error"
     assert [attempt.model_ref for attempt in result.turn.model_attempts] == [
         "source-primary:model-primary",
         "source-fallback:model-fallback",
     ]
+
+
+def test_model_runtime_preserves_fallback_after_temporary_error() -> None:
+    primary = selected_model("primary", fallback_profile_id="profile-fallback")
+    fallback = selected_model("fallback")
+    gateway = ModelGatewayStub(
+        [
+            UpstreamError("try again later", status_code=503),
+            model_response(fallback, "fallback answer"),
+        ]
+    )
+    runtime = AgentTurnModelRuntime(model_gateway=gateway)
+
+    result = asyncio.run(
+        runtime.generate(
+            AgentModelGenerationRequest(
+                trace_id="trace-temp-fallback",
+                session_id="session-1",
+                runtime_mode="message",
+                selected=primary,
+                prompt="Say hello",
+                fallback_models=(fallback,),
+            )
+        )
+    )
+
+    assert result.response is not None
+    assert result.turn.finish_reason == "fallback_model_completed"
+    assert result.turn.model_attempts[0].reason == "upstream_temporary_error"
+    assert result.turn.model_attempts[1].status == "success"
 
 
 def test_model_runtime_exposes_direct_capability_degradations() -> None:

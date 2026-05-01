@@ -72,6 +72,12 @@ class PlanningGatewayStub:
         )
 
 
+class UpstreamError(RuntimeError):
+    def __init__(self, message: str, *, status_code: int) -> None:
+        super().__init__(message)
+        self.status_code = status_code
+
+
 def test_tool_loop_records_final_response_finish_reason() -> None:
     selected = selected_model("main")
     gateway = ModelGatewayStub(
@@ -112,6 +118,25 @@ def test_tool_loop_records_final_response_finish_reason() -> None:
     ]
     assert result.tool_attempts[0].tool_name == "memory.query"
     assert result.tool_attempts[0].status == "success"
+
+
+def test_tool_loop_model_failure_uses_shared_taxonomy() -> None:
+    selected = selected_model("main")
+    gateway = ModelGatewayStub([UpstreamError("upstream overloaded", status_code=503)])
+    tool_gateway = ToolGateway(model_gateway=gateway, tool_service=ToolServiceStub([]))
+
+    result = asyncio.run(
+        tool_gateway.run_tool_loop(
+            tool_request(),
+            messages=[],
+            tools=(),
+            selected=selected,
+        )
+    )
+
+    assert result.final_response is None
+    assert result.loop_finish_reason == "upstream_temporary_error"
+    assert result.model_attempts[0].reason == "upstream_temporary_error"
 
 
 def test_tool_loop_uses_capable_fallback_for_required_tools() -> None:

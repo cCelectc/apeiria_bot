@@ -56,6 +56,7 @@ class AIRuntimeReadinessProbe:
     def inspect(self) -> tuple[AIRuntimeDependencyStatus, ...]:
         return (
             self._future_task_storage_status(),
+            self._delivery_attempt_storage_status(),
             self._scheduler_recovery_status(),
             self._delivery_gateway_status(),
             self._trace_storage_status(),
@@ -79,6 +80,27 @@ class AIRuntimeReadinessProbe:
             next_step="Run `apeiria check` to initialize runtime storage.",
         )
 
+    def _delivery_attempt_storage_status(self) -> AIRuntimeDependencyStatus:
+        return _sqlite_table_status(
+            key="delivery_attempt_storage",
+            table_name="ai_delivery_attempt",
+            required_columns={
+                "attempt_id",
+                "task_id",
+                "trace_id",
+                "session_id",
+                "delivery_intent",
+                "status",
+                "diagnostics_json",
+                "remote_message_id",
+                "attempt_count",
+                "created_at",
+                "updated_at",
+            },
+            unavailable_detail="unavailable",
+            next_step="Run `apeiria check` to initialize delivery attempts.",
+        )
+
     def _trace_storage_status(self) -> AIRuntimeDependencyStatus:
         return _sqlite_table_status(
             key="trace_storage",
@@ -88,8 +110,13 @@ class AIRuntimeReadinessProbe:
                 "session_id",
                 "runtime_mode",
                 "terminal_status",
+                "delivery_status",
                 "commit_status",
+                "model_attempt_count",
+                "tool_attempt_count",
+                "skip_reason",
                 "diagnostics_json",
+                "created_at",
             },
             unavailable_detail="unavailable",
             next_step="Run `apeiria check` to repair trace storage.",
@@ -208,6 +235,7 @@ def _format_dependency_summary(
 ) -> str:
     labels = {
         "future_task_storage": "future-task storage",
+        "delivery_attempt_storage": "delivery attempt storage",
         "scheduler_recovery": "scheduler recovery",
         "delivery_gateway": "delivery gateway",
         "trace_storage": "trace storage",
@@ -221,6 +249,7 @@ def _format_dependency_summary(
             detail = "available"
         elif dependency.key in {
             "future_task_storage",
+            "delivery_attempt_storage",
             "delivery_gateway",
             "trace_storage",
         }:

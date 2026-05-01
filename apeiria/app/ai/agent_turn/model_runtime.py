@@ -6,6 +6,7 @@ from typing import Any
 
 from apeiria.ai.model.runtime.capabilities import AIModelCapabilityPlanningError
 from apeiria.ai.model.runtime.capability_sources import classify_capability_mismatch
+from apeiria.ai.model.runtime.failures import classify_model_failure
 from apeiria.ai.turn_records import (
     is_empty_model_response,
     model_ref,
@@ -65,6 +66,7 @@ class AgentTurnModelRuntime:
                 continue
             except Exception as exc:  # noqa: BLE001
                 diagnostic = sanitize_model_diagnostic(str(exc))
+                reason = classify_model_failure(exc)
                 observation = classify_capability_mismatch(
                     exc,
                     planned_feature=_planned_feature_for_request(request),
@@ -76,18 +78,12 @@ class AgentTurnModelRuntime:
                         model_ref=model_ref(selected),
                         status="failed",
                         response_source=request.response_source,
-                        reason=(
-                            "capability_mismatch"
-                            if observation is not None
-                            else "model_error"
-                        ),
+                        reason=reason,
                         diagnostic=diagnostic,
                         capability_observation=observation,
                     )
                 )
-                last_finish_reason = (
-                    "capability_mismatch" if observation is not None else "model_error"
-                )
+                last_finish_reason = reason
                 last_diagnostic = diagnostic
                 continue
 

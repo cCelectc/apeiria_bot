@@ -10,6 +10,7 @@ from zoneinfo import ZoneInfo
 
 from nonebot.log import logger
 
+from apeiria.ai.diagnostics import sanitize_runtime_diagnostic
 from apeiria.app.ai.future_task.models import (
     AIFutureTaskCreateInput,
     AIFutureTaskDefinition,
@@ -255,10 +256,13 @@ class AIFutureTaskService:
         task_id: str,
         error: str,
     ) -> AIFutureTaskDefinition | None:
+        sanitized_error = sanitize_runtime_diagnostic(error)
         return self._update_task_status(
             task_id=task_id,
             status="failed",
-            last_error=error,
+            last_error=(
+                sanitized_error if isinstance(sanitized_error, str) else str(error)
+            ),
         )
 
     @staticmethod

@@ -5,6 +5,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, cast
 
+from apeiria.ai.diagnostics import (
+    sanitize_runtime_diagnostic,
+    sanitize_runtime_diagnostics,
+)
 from apeiria.app.ai.pipeline.context_window_steps import build_and_store_context_window
 from apeiria.app.ai.pipeline.delivery_steps import DeliveryOutcome
 from apeiria.app.ai.pipeline.tool_steps import append_tool_observation_turns
@@ -69,47 +73,51 @@ class AssistantReplyPersistenceStage:
                 author_role="assistant",
                 author_id=request.sender_id,
                 text_content=response.content.strip(),
-                meta={
-                    "trace_id": trace_id,
-                    "source_id": response.source_id,
-                    "model_name": response.model_name,
-                    "task_class": (
-                        generation.post_tool_task_class
-                        if generation.skill_runtime.turns
-                        else plan.pre_tool_task_class
-                    ),
-                    "recalled_memory_count": len(inputs.recalled_memories),
-                    "tool_observation_count": len(generation.skill_runtime.turns),
-                    "social_action": social_decision.action,
-                    "social_tool_mode": social_decision.tool_mode,
-                    "social_reason_text": social_decision.reason_text,
-                    "social_reason_codes": list(social_decision.reason_codes),
-                    "social_policy_source": social_decision.evidence.get(
-                        "policy_source"
-                    ),
-                    "runtime_mode": request.runtime_mode,
-                    "future_task_id": (
-                        request.future_task.task_id if request.future_task else None
-                    ),
-                    "future_task_status": (
-                        request.future_task.status if request.future_task else None
-                    ),
-                    "delivery_channel": delivery.channel if delivery else None,
-                    "delivery_delivered": delivery.delivered if delivery else None,
-                    "delivery_error": delivery.error if delivery else None,
-                    "delivery_remote_message_id": (
-                        delivery.remote_message_id if delivery else None
-                    ),
-                    **_turn_trace_meta(
-                        trace_id=trace_id,
-                        session_id=identity.session_id,
-                        runtime_mode=request.runtime_mode,
-                        social_decision=social_decision,
-                        turn=generation.turn_result,
-                        delivery_delivered=delivery.delivered if delivery else None,
-                    ),
-                    **_agent_turn_meta(generation.turn_result),
-                },
+                meta=sanitize_runtime_diagnostics(
+                    {
+                        "trace_id": trace_id,
+                        "source_id": response.source_id,
+                        "model_name": response.model_name,
+                        "task_class": (
+                            generation.post_tool_task_class
+                            if generation.skill_runtime.turns
+                            else plan.pre_tool_task_class
+                        ),
+                        "recalled_memory_count": len(inputs.recalled_memories),
+                        "tool_observation_count": len(generation.skill_runtime.turns),
+                        "social_action": social_decision.action,
+                        "social_tool_mode": social_decision.tool_mode,
+                        "social_reason_text": social_decision.reason_text,
+                        "social_reason_codes": list(social_decision.reason_codes),
+                        "social_policy_source": social_decision.evidence.get(
+                            "policy_source"
+                        ),
+                        "runtime_mode": request.runtime_mode,
+                        "future_task_id": (
+                            request.future_task.task_id if request.future_task else None
+                        ),
+                        "future_task_status": (
+                            request.future_task.status if request.future_task else None
+                        ),
+                        "delivery_channel": delivery.channel if delivery else None,
+                        "delivery_delivered": delivery.delivered if delivery else None,
+                        "delivery_error": delivery.error if delivery else None,
+                        "delivery_remote_message_id": (
+                            delivery.remote_message_id if delivery else None
+                        ),
+                        **_turn_trace_meta(
+                            trace_id=trace_id,
+                            session_id=identity.session_id,
+                            runtime_mode=request.runtime_mode,
+                            social_decision=social_decision,
+                            turn=generation.turn_result,
+                            delivery_delivered=(
+                                delivery.delivered if delivery else None
+                            ),
+                        ),
+                        **_agent_turn_meta(generation.turn_result),
+                    }
+                ),
             ),
         )
 
@@ -178,7 +186,7 @@ def _turn_trace_meta(  # noqa: PLR0913
         turn_result=turn,
         delivery_result=_delivery_result_from_bool(delivered=delivery_delivered),
     )
-    return {"turn_trace": trace.to_metadata()}
+    return {"turn_trace": sanitize_runtime_diagnostic(trace.to_metadata())}
 
 
 def _delivery_result_from_bool(*, delivered: bool | None) -> DeliveryOutcome | None:
@@ -190,40 +198,42 @@ def _delivery_result_from_bool(*, delivered: bool | None) -> DeliveryOutcome | N
 def _agent_turn_meta(turn: "AgentTurnResult | None") -> dict[str, object]:
     if turn is None:
         return {}
-    return {
-        "agent_turn_status": turn.status,
-        "agent_turn_finish_reason": turn.finish_reason,
-        "agent_turn_response_source": turn.response_source,
-        "agent_turn_model_attempts": [
-            {
-                "index": attempt.attempt_index,
-                "model_ref": attempt.model_ref,
-                "status": attempt.status,
-                "response_source": attempt.response_source,
-                "reason": attempt.reason,
-                "diagnostic": attempt.diagnostic,
-                "capability_observation": (
-                    attempt.capability_observation.to_metadata()
-                    if attempt.capability_observation is not None
-                    else None
-                ),
-            }
-            for attempt in turn.model_attempts
-        ],
-        "agent_turn_tool_attempts": [
-            {
-                "tool_call_id": attempt.tool_call_id,
-                "tool_name": attempt.tool_name,
-                "status": attempt.status,
-                "arguments_summary": attempt.arguments_summary,
-                "repetition_count": attempt.repetition_count,
-                "repeated": attempt.repeated,
-                "diagnostic": attempt.diagnostic,
-                "observation": attempt.observation.content,
-                "observation_truncated": attempt.observation.truncated,
-                "observation_original_length": attempt.observation.original_length,
-            }
-            for attempt in turn.tool_attempts
-        ],
-        "agent_turn_metadata": turn.metadata,
-    }
+    return sanitize_runtime_diagnostics(
+        {
+            "agent_turn_status": turn.status,
+            "agent_turn_finish_reason": turn.finish_reason,
+            "agent_turn_response_source": turn.response_source,
+            "agent_turn_model_attempts": [
+                {
+                    "index": attempt.attempt_index,
+                    "model_ref": attempt.model_ref,
+                    "status": attempt.status,
+                    "response_source": attempt.response_source,
+                    "reason": attempt.reason,
+                    "diagnostic": attempt.diagnostic,
+                    "capability_observation": (
+                        attempt.capability_observation.to_metadata()
+                        if attempt.capability_observation is not None
+                        else None
+                    ),
+                }
+                for attempt in turn.model_attempts
+            ],
+            "agent_turn_tool_attempts": [
+                {
+                    "tool_call_id": attempt.tool_call_id,
+                    "tool_name": attempt.tool_name,
+                    "status": attempt.status,
+                    "arguments_summary": attempt.arguments_summary,
+                    "repetition_count": attempt.repetition_count,
+                    "repeated": attempt.repeated,
+                    "diagnostic": attempt.diagnostic,
+                    "observation": attempt.observation.content,
+                    "observation_truncated": attempt.observation.truncated,
+                    "observation_original_length": attempt.observation.original_length,
+                }
+                for attempt in turn.tool_attempts
+            ],
+            "agent_turn_metadata": turn.metadata,
+        }
+    )

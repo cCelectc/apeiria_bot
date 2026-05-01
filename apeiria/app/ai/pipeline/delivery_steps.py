@@ -2,8 +2,16 @@
 
 from __future__ import annotations
 
+import hashlib
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any, Protocol
+
+from apeiria.ai.diagnostics import sanitize_runtime_diagnostic
+from apeiria.app.ai.future_task.delivery_attempts import (
+    AIDeliveryAttemptCreateInput,
+    delivery_attempt_repository,
+)
 
 if TYPE_CHECKING:
     from apeiria.app.ai.pipeline.service import AIRuntimeReplyRequest
@@ -145,18 +153,87 @@ async def deliver_generated_reply(
     if request.runtime_mode != "future_task" or not reply_text.strip():
         return None
 
-    return await delivery_gateway.deliver(
-        DeliveryRequest(
+    delivery_request = DeliveryRequest(
+        trace_id=trace_id,
+        session_id=request.identity.session_id,
+        runtime_mode=request.runtime_mode,
+        bot_id=request.identity.bot_id,
+        platform=request.identity.platform,
+        scene_type=request.identity.scene_type,
+        scene_id=request.identity.scene_id,
+        message_text=reply_text,
+    )
+    future_task = request.future_task
+    if future_task is None:
+        return await delivery_gateway.deliver(delivery_request)
+
+    delivery_intent = _delivery_intent_for_task(future_task.task_id)
+    delivered_attempt = delivery_attempt_repository.get_delivered_attempt(
+        task_id=future_task.task_id,
+        delivery_intent=delivery_intent,
+    )
+    if delivered_attempt is not None:
+        return DeliveryOutcome(
+            delivered=True,
+            status="delivered",
+            reason="already_delivered",
+            channel=delivered_attempt.channel,
+            remote_message_id=delivered_attempt.remote_message_id,
+        )
+
+    attempt = delivery_attempt_repository.create_or_reuse_pending(
+        AIDeliveryAttemptCreateInput(
+            task_id=future_task.task_id,
             trace_id=trace_id,
             session_id=request.identity.session_id,
-            runtime_mode=request.runtime_mode,
-            bot_id=request.identity.bot_id,
+            delivery_intent=delivery_intent,
             platform=request.identity.platform,
             scene_type=request.identity.scene_type,
             scene_id=request.identity.scene_id,
-            message_text=reply_text,
+            message_preview=_message_preview(reply_text),
+            message_hash=_message_hash(reply_text),
+            created_at=_utcnow(),
         )
     )
+    try:
+        outcome = await delivery_gateway.deliver(delivery_request)
+    except Exception as exc:  # noqa: BLE001
+        error = _bounded_error(str(exc))
+        delivery_attempt_repository.mark_failed(
+            attempt_id=attempt.attempt_id,
+            reason="delivery_error",
+            diagnostics={
+                "error": error,
+                "exception_type": type(exc).__name__,
+            },
+            failed_at=_utcnow(),
+        )
+        return DeliveryOutcome(
+            delivered=False,
+            error=error,
+            reason="delivery_error",
+        )
+
+    if outcome.delivered:
+        delivery_attempt_repository.mark_delivered(
+            attempt_id=attempt.attempt_id,
+            channel=outcome.channel,
+            remote_message_id=outcome.remote_message_id,
+            delivered_at=_utcnow(),
+        )
+    else:
+        delivery_attempt_repository.mark_failed(
+            attempt_id=attempt.attempt_id,
+            reason=outcome.reason or outcome.error or "delivery_failed",
+            diagnostics={
+                "status": outcome.status,
+                "reason": outcome.reason,
+                "error": outcome.error,
+                "channel": outcome.channel,
+            },
+            failed_at=_utcnow(),
+        )
+    return outcome
 
 
 def _get_nonebot_bots() -> dict[str, Any]:
@@ -174,7 +251,26 @@ def _remote_message_id(response: object) -> str | None:
 
 
 def _bounded_error(error: str) -> str:
-    return error[:200] if error else "adapter_error"
+    sanitized = sanitize_runtime_diagnostic(error)
+    if isinstance(sanitized, str) and sanitized:
+        return sanitized
+    return "adapter_error"
+
+
+def _delivery_intent_for_task(task_id: str) -> str:
+    return f"future_task:{task_id}:reply"
+
+
+def _message_preview(message_text: str) -> str:
+    return message_text.strip()[:200]
+
+
+def _message_hash(message_text: str) -> str:
+    return hashlib.sha256(message_text.encode("utf-8")).hexdigest()
+
+
+def _utcnow() -> datetime:
+    return datetime.now(timezone.utc).replace(microsecond=0)
 
 
 delivery_gateway = DeliveryGateway(adapters=(OneBotDeliveryAdapter(),))

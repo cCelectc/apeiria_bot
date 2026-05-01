@@ -4,8 +4,10 @@ import asyncio
 from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any
 
 from apeiria.ai.model import AIModelMessage
+from apeiria.app.ai.future_task.models import AIFutureTaskDefinition
 from apeiria.app.ai.pipeline.delivery_steps import DeliveryOutcome
 from apeiria.app.ai.pipeline.service import AIRuntimeReplyRequest
 from apeiria.app.ai.session_runtime import (
@@ -27,7 +29,11 @@ class ContextRebuildFailedError(RuntimeError):
     pass
 
 
-def _request(*, runtime_mode: str = "future_task") -> AIRuntimeReplyRequest:
+def _request(
+    *,
+    runtime_mode: str = "future_task",
+    future_task: AIFutureTaskDefinition | None = None,
+) -> AIRuntimeReplyRequest:
     return AIRuntimeReplyRequest(
         identity=ChatSessionIdentity(
             session_id="session-1",
@@ -42,6 +48,28 @@ def _request(*, runtime_mode: str = "future_task") -> AIRuntimeReplyRequest:
         user_id="10001",
         sender_id="bot-1",
         runtime_mode=runtime_mode,  # type: ignore[arg-type]
+        future_task=future_task,
+    )
+
+
+def _future_task() -> AIFutureTaskDefinition:
+    now = datetime(2026, 5, 1, 8, 30, tzinfo=timezone.utc)
+    return AIFutureTaskDefinition(
+        task_id="task-1",
+        session_id="session-1",
+        platform="onebot",
+        scene_type="private",
+        scene_id="10001",
+        user_id="10001",
+        title="Wake",
+        description="wake",
+        trigger_at=now,
+        status="running",
+        source_message_id="message-1",
+        scheduler_job_id=None,
+        last_error=None,
+        created_at=now,
+        updated_at=now,
     )
 
 
@@ -203,3 +231,65 @@ def test_commit_failure_does_not_rewrite_execution_attempts() -> None:
     assert commit.commit_status == "failed"
     assert commit.substeps["assistant_message"] == "failed"
     assert _execution().turn_result.status == "completed"
+
+
+def test_delivered_attempt_survives_later_commit_failure(
+    monkeypatch: Any,
+    tmp_path: Path,
+) -> None:
+    from apeiria.app.ai.future_task.delivery_attempts import (
+        delivery_attempt_repository,
+    )
+    from apeiria.app.ai.pipeline import delivery_steps
+    from apeiria.db.runtime import database_runtime
+
+    monkeypatch.setattr(database_runtime, "_project_root", tmp_path)
+    database_runtime.ensure_ready()
+
+    class FakeGateway:
+        async def deliver(
+            self,
+            _request: delivery_steps.DeliveryRequest,
+        ) -> delivery_steps.DeliveryOutcome:
+            return delivery_steps.DeliveryOutcome(
+                delivered=True,
+                channel="onebot",
+                remote_message_id="123",
+            )
+
+    monkeypatch.setattr(delivery_steps, "delivery_gateway", FakeGateway())
+    engine = AISessionTurnEngine(
+        commit_stage=DefaultRuntimeCommitStage(
+            reply_persistence=_CommitPersistenceStage(fail_assistant_message=True),
+            reply_strategy_service=SimpleNamespace(
+                notify_replied=lambda _session_id: None
+            ),
+            deliver_reply=delivery_steps.deliver_generated_reply,
+            record_context_usage=lambda *_args, **_kwargs: None,
+        )
+    )
+
+    commit = asyncio.run(
+        engine.commit_turn(
+            request=_request(future_task=_future_task()),
+            inputs=SimpleNamespace(turns=[]),
+            social_decision=object(),
+            plan=_plan(),
+            generation=_execution(),
+            trace_id="trace-1",
+            hard_decision=_hard_decision(),
+            current_time=datetime(2026, 5, 1, 8, 30, tzinfo=timezone.utc),
+            session_runtime=None,
+        )
+    )
+    attempt = delivery_attempt_repository.get_delivered_attempt(
+        task_id="task-1",
+        delivery_intent="future_task:task-1:reply",
+    )
+
+    assert commit.commit_status == "failed"
+    assert commit.substeps["delivery"] == "committed"
+    assert commit.substeps["assistant_message"] == "failed"
+    assert attempt is not None
+    assert attempt.status == "delivered"
+    assert attempt.remote_message_id == "123"

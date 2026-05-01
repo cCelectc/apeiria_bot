@@ -13,6 +13,7 @@ from apeiria.ai.model.runtime.capabilities import (
     AIModelCapabilityPlanningError,
 )
 from apeiria.ai.model.runtime.capability_sources import classify_capability_mismatch
+from apeiria.ai.model.runtime.failures import classify_model_failure
 from apeiria.ai.tools.function_calling import (
     build_function_tools,
     build_intents_from_tool_calls,
@@ -453,6 +454,11 @@ class ToolGateway:
                 except Exception as exc:  # noqa: BLE001
                     diagnostic = sanitize_model_diagnostic(str(exc))
                     is_context_pressure = is_context_pressure_error(diagnostic)
+                    reason = (
+                        "context_pressure"
+                        if is_context_pressure
+                        else classify_model_failure(exc)
+                    )
                     observation = (
                         None
                         if is_context_pressure
@@ -472,28 +478,12 @@ class ToolGateway:
                             model_ref=model_ref(candidate),
                             status="failed",
                             response_source=response_source,
-                            reason=(
-                                "context_pressure"
-                                if is_context_pressure
-                                else (
-                                    "capability_mismatch"
-                                    if observation is not None
-                                    else "model_error"
-                                )
-                            ),
+                            reason=reason,
                             diagnostic=diagnostic,
                             capability_observation=observation,
                         )
                     )
-                    last_finish_reason = (
-                        "context_pressure"
-                        if is_context_pressure
-                        else (
-                            "capability_mismatch"
-                            if observation is not None
-                            else "model_error"
-                        )
-                    )
+                    last_finish_reason = reason
                     if (
                         is_context_pressure
                         and allow_context_recovery

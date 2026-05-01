@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from apeiria.ai.tools import AIToolObservationResult, ToolGatewayResult
+from apeiria.ai.turn_records import ModelAttempt
 from apeiria.app.ai.agent_turn import (
     AgentTurnResult,
     PromptSafeObservation,
@@ -8,6 +9,8 @@ from apeiria.app.ai.agent_turn import (
 )
 from apeiria.app.ai.reply_strategy import ReplyStrategyDecision
 from tests.ai.agent_turn_helpers import model_response, selected_model
+
+_MAX_DIAGNOSTIC_LENGTH = 200
 
 
 def test_tool_loop_metadata_is_available_to_persistence() -> None:
@@ -114,3 +117,52 @@ def test_compact_turn_trace_metadata_is_available_to_persistence() -> None:
         "skip_reason": "contract_test",
         "delivery_status": "not_required",
     }
+
+
+def test_agent_turn_metadata_is_sanitized_for_assistant_persistence() -> None:
+    from apeiria.app.ai.pipeline.persistence_steps import _agent_turn_meta
+
+    turn = AgentTurnResult(
+        trace_id="trace-secret",
+        runtime_mode="message",
+        status="failed",
+        finish_reason="model_failed",
+        model_attempts=(
+            ModelAttempt(
+                attempt_index=1,
+                model_ref="source:gpt",
+                status="failed",
+                response_source="direct",
+                reason="model_error",
+                diagnostic="api_key=sk-secret " + "x" * 400,
+            ),
+        ),
+        tool_attempts=(
+            ToolAttempt(
+                tool_call_id="call-1",
+                tool_name="memory.query",
+                status="error",
+                arguments_summary="{}",
+                observation=PromptSafeObservation(content="safe observation"),
+                diagnostic="Authorization: Bearer sk-secret",
+            ),
+        ),
+        metadata={
+            "password": "hidden",
+            "nested": {"token": "secret-value"},
+            "long": "x" * 400,
+        },
+    )
+
+    persisted = _agent_turn_meta(turn)
+
+    model_diagnostic = persisted["agent_turn_model_attempts"][0]["diagnostic"]
+    assert str(model_diagnostic).startswith("api_key=[redacted] ")
+    assert len(str(model_diagnostic)) == _MAX_DIAGNOSTIC_LENGTH
+    assert (
+        persisted["agent_turn_tool_attempts"][0]["diagnostic"]
+        == "Authorization: Bearer [redacted]"
+    )
+    assert persisted["agent_turn_metadata"]["password"] == "[redacted]"
+    assert persisted["agent_turn_metadata"]["nested"] == {"token": "[redacted]"}
+    assert persisted["agent_turn_metadata"]["long"] == "x" * 200

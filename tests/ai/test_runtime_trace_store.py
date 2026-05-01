@@ -86,12 +86,61 @@ def test_turn_trace_repository_sanitizes_diagnostics(
         terminal_status="skipped",
         diagnostics={
             "api_key": "sk-secret",
+            "adapter_error": "Authorization: Bearer sk-secret",
+            "nested": {"password": "secret-value"},
             "safe": "x" * 600,
         },
     )
 
     assert stored.diagnostics["api_key"] == "[redacted]"
+    assert stored.diagnostics["adapter_error"] == "Authorization: Bearer [redacted]"
+    assert stored.diagnostics["nested"] == {"password": "[redacted]"}
     assert stored.diagnostics["safe"] == "x" * 500
+
+
+def test_turn_trace_repository_lists_and_filters_compact_traces(
+    monkeypatch: Any,
+    tmp_path: Path,
+) -> None:
+    from apeiria.app.ai.session_runtime.trace_store import TurnTraceRepository
+
+    monkeypatch.setattr(database_runtime, "_project_root", tmp_path)
+    database_runtime.ensure_ready()
+    repository = TurnTraceRepository()
+    first = repository.store_trace(
+        TurnTrace(
+            trace_id="trace-1",
+            session_id="session-1",
+            runtime_mode="message",
+            strategy_action="continue",
+            strategy_reason_codes=("direct_signal",),
+            final_response_source="direct",
+        ),
+        terminal_status="generated",
+        commit_status="committed",
+        diagnostics={"token": "secret-value"},
+    )
+    second = repository.store_trace(
+        TurnTrace(
+            trace_id="trace-2",
+            session_id="session-2",
+            runtime_mode="future_task",
+            strategy_action="continue",
+            strategy_reason_codes=("future_task",),
+            delivery_status="failed",
+        ),
+        terminal_status="delivery_failed",
+        commit_status="partial",
+    )
+
+    assert repository.list_traces(limit=10) == [second, first]
+    assert repository.list_traces(limit=10, session_id="session-1") == [first]
+    assert repository.list_traces(limit=10, runtime_mode="future_task") == [second]
+    assert repository.list_traces(limit=10, terminal_status="generated") == [first]
+    assert repository.list_traces(limit=10, commit_status="partial") == [second]
+    assert repository.list_traces(limit=10, trace_id="trace-1") == [first]
+    assert first.diagnostics["token"] == "[redacted]"
+    assert repository.get_trace(trace_id="missing") is None
 
 
 def test_engine_persists_hard_rule_trace_without_assistant_message(

@@ -96,6 +96,11 @@ class _RuntimeReadinessProbeStub:
                 detail="available",
             ),
             self._module.AIRuntimeDependencyStatus(
+                key="delivery_attempt_storage",
+                available=True,
+                detail="available",
+            ),
+            self._module.AIRuntimeDependencyStatus(
                 key="scheduler_recovery",
                 available=True,
                 detail="registered",

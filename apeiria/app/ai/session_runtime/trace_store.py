@@ -10,13 +10,11 @@ from typing import TYPE_CHECKING
 
 from nonebot.log import logger
 
+from apeiria.ai.diagnostics import sanitize_runtime_diagnostics
 from apeiria.db.runtime import database_runtime
 
 if TYPE_CHECKING:
     from apeiria.app.ai.session_runtime.trace import TurnTrace
-
-_MAX_DIAGNOSTIC_TEXT_LENGTH = 500
-_SECRET_KEY_PARTS = ("secret", "token", "api_key", "apikey", "password")
 
 
 @dataclass(frozen=True)
@@ -50,9 +48,17 @@ class TurnTraceRepository:
         commit_status: str | None = None,
         diagnostics: dict[str, object] | None = None,
     ) -> TurnTraceRecord:
-        metadata = _sanitize_mapping(trace.to_metadata())
+        metadata = sanitize_runtime_diagnostics(
+            trace.to_metadata(),
+            max_string_length=500,
+        )
         if diagnostics:
-            metadata.update(_sanitize_mapping(diagnostics))
+            metadata.update(
+                sanitize_runtime_diagnostics(
+                    diagnostics,
+                    max_string_length=500,
+                )
+            )
         record = TurnTraceRecord(
             trace_id=trace.trace_id,
             session_id=trace.session_id,
@@ -122,6 +128,40 @@ class TurnTraceRepository:
             ).fetchone()
         return None if row is None else row_to_record(row)
 
+    def list_traces(  # noqa: PLR0913
+        self,
+        *,
+        limit: int,
+        trace_id: str | None = None,
+        session_id: str | None = None,
+        runtime_mode: str | None = None,
+        terminal_status: str | None = None,
+        commit_status: str | None = None,
+    ) -> list[TurnTraceRecord]:
+        clauses: list[str] = []
+        params: list[object] = []
+        for column_name, value in (
+            ("trace_id", trace_id),
+            ("session_id", session_id),
+            ("runtime_mode", runtime_mode),
+            ("terminal_status", terminal_status),
+            ("commit_status", commit_status),
+        ):
+            if value is not None:
+                clauses.append(f"{column_name} = ?")
+                params.append(value)
+        where = " WHERE " + " AND ".join(clauses) if clauses else ""
+        bounded_limit = min(max(limit, 1), 100)
+        params.append(bounded_limit)
+        with database_runtime.connect_sync() as connection:
+            rows = connection.execute(
+                _SELECT_TRACE_FIELDS
+                + where
+                + " ORDER BY created_at DESC, id DESC LIMIT ?",
+                tuple(params),
+            ).fetchall()
+        return [row_to_record(row) for row in rows]
+
 
 _SELECT_TRACE_FIELDS = """
 SELECT
@@ -189,29 +229,6 @@ def _terminal_status_for_trace(trace: "TurnTrace") -> str:
     if trace.model_attempts or trace.tool_attempts or trace.final_response_source:
         return "generated"
     return "terminal"
-
-
-def _sanitize_mapping(payload: dict[str, object]) -> dict[str, object]:
-    return {
-        str(key): _sanitize_value(str(key), value) for key, value in payload.items()
-    }
-
-
-def _sanitize_value(key: str, value: object) -> object:  # noqa: PLR0911
-    lowered_key = key.lower()
-    if any(secret_part in lowered_key for secret_part in _SECRET_KEY_PARTS):
-        return "[redacted]"
-    if isinstance(value, str):
-        return value[:_MAX_DIAGNOSTIC_TEXT_LENGTH]
-    if isinstance(value, dict):
-        return _sanitize_mapping(value)
-    if isinstance(value, list):
-        return [_sanitize_value(key, item) for item in value[:20]]
-    if isinstance(value, tuple):
-        return [_sanitize_value(key, item) for item in value[:20]]
-    if isinstance(value, bool | int | float) or value is None:
-        return value
-    return str(value)[:_MAX_DIAGNOSTIC_TEXT_LENGTH]
 
 
 def _load_json_list(value: object) -> list[object]:

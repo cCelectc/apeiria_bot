@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
+from apeiria.ai.diagnostics import sanitize_runtime_diagnostic
 from apeiria.ai.tools.models import AIToolExecutionView
 from apeiria.db.runtime import database_runtime
 
@@ -111,11 +112,13 @@ def _serialize_execution_payload(
     if payload is None:
         return None
     return json.dumps(
-        _to_jsonable_payload(
-            {
-                "trace_id": trace_id,
-                "payload": payload,
-            }
+        sanitize_runtime_diagnostic(
+            _to_jsonable_payload(
+                {
+                    "trace_id": trace_id,
+                    "payload": payload,
+                }
+            )
         ),
         ensure_ascii=False,
         sort_keys=True,

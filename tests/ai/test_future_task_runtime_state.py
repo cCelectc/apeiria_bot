@@ -10,6 +10,8 @@ from typing import Any
 
 import pytest
 
+_MAX_DIAGNOSTIC_LENGTH = 200
+
 
 def test_future_task_service_import_is_safe_without_nonebot_plugin_orm() -> None:
     original_import = builtins.__import__
@@ -224,6 +226,56 @@ def test_future_tasks_survive_service_reinstantiation(
         assert failed is not None
         assert failed.status == "failed"
         assert failed.last_error == "delivery failed"
+
+    asyncio.run(scenario())
+
+
+def test_future_task_failure_error_is_sanitized(
+    monkeypatch: Any,
+    tmp_path: Path,
+) -> None:
+    import apeiria.app.ai.future_task.service as future_task_module
+    from apeiria.app.ai.future_task.models import AIFutureTaskCreateInput
+    from apeiria.db.runtime import database_runtime
+
+    monkeypatch.setattr(database_runtime, "_project_root", tmp_path)
+    database_runtime.ensure_ready()
+
+    class FakeSchedulerService:
+        def add_job(self, *_: object, **kwargs: object) -> str:
+            return f"job:{kwargs['id']}"
+
+    monkeypatch.setattr(
+        future_task_module,
+        "_get_scheduler_service",
+        FakeSchedulerService,
+    )
+
+    async def scenario() -> None:
+        trigger_at = datetime(2026, 5, 1, 8, 30, tzinfo=timezone.utc)
+        created = await future_task_module.AIFutureTaskService().create_task(
+            AIFutureTaskCreateInput(
+                session_id="session-1",
+                platform="test",
+                scene_type="private",
+                scene_id="scene-1",
+                user_id="user-1",
+                title="Wake",
+                description="send a reminder",
+                trigger_at=trigger_at,
+                source_message_id="message-1",
+            )
+        )
+
+        failed = await future_task_module.AIFutureTaskService().mark_task_failed(
+            task_id=created.task.task_id,
+            error="api_key=sk-secret " + "x" * 400,
+        )
+
+        assert failed is not None
+        assert failed.last_error is not None
+        assert failed.last_error.startswith("api_key=[redacted] ")
+        assert len(failed.last_error) == _MAX_DIAGNOSTIC_LENGTH
 
     asyncio.run(scenario())
 

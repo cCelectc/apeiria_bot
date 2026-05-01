@@ -597,7 +597,7 @@ def test_runtime_records_capability_mismatch_observation_with_fallback() -> None
 
     observation = result.turn.model_attempts[0].capability_observation
     assert result.response is not None
-    assert result.turn.model_attempts[0].reason == "capability_mismatch"
+    assert result.turn.model_attempts[0].reason == "capability_unavailable"
     assert observation is not None
     assert observation.planned_feature == "tool_calling"
     assert observation.model_ref == "source-primary:model-primary"

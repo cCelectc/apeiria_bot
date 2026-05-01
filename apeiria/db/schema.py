@@ -140,6 +140,8 @@ def _ensure_current_schema_shape(connection: sqlite3.Connection) -> None:  # noq
     existing_tables = _table_names(connection)
     if "ai_future_task" not in existing_tables:
         _create_future_task_tables(connection)
+    if "ai_delivery_attempt" not in existing_tables:
+        _create_delivery_attempt_tables(connection)
     if "ai_turn_trace" not in existing_tables:
         _create_turn_trace_tables(connection)
 
@@ -269,6 +271,7 @@ def _create_current_schema(connection: sqlite3.Connection) -> None:
     _create_relationship_person_tables(connection)
     _create_memory_item_tables(connection)
     _create_future_task_tables(connection)
+    _create_delivery_attempt_tables(connection)
     _create_turn_trace_tables(connection)
 
 
@@ -885,6 +888,66 @@ def _create_future_task_tables(connection: sqlite3.Connection) -> None:
         """
         CREATE INDEX idx_ai_future_task_updated_at
         ON ai_future_task(updated_at)
+        """
+    )
+
+
+def _create_delivery_attempt_tables(connection: sqlite3.Connection) -> None:
+    diagnostics_check = _json_check(connection, "diagnostics_json")
+    connection.execute(
+        f"""
+        CREATE TABLE ai_delivery_attempt (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            attempt_id TEXT NOT NULL UNIQUE,
+            task_id TEXT NOT NULL,
+            trace_id TEXT NOT NULL,
+            session_id TEXT NOT NULL,
+            delivery_intent TEXT NOT NULL,
+            platform TEXT NOT NULL,
+            scene_type TEXT NOT NULL CHECK(scene_type IN ('group', 'private')),
+            scene_id TEXT NOT NULL,
+            message_preview TEXT NOT NULL,
+            message_hash TEXT NOT NULL,
+            status TEXT NOT NULL CHECK(
+                status IN ('pending', 'delivered', 'failed')
+            ),
+            reason TEXT,
+            diagnostics_json TEXT NOT NULL DEFAULT '{{}}'
+                CHECK({diagnostics_check}),
+            channel TEXT,
+            remote_message_id TEXT,
+            attempt_count INTEGER NOT NULL DEFAULT 0 CHECK(attempt_count >= 0),
+            delivered_at TEXT,
+            failed_at TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+        """
+    )
+    connection.execute(
+        """
+        CREATE INDEX idx_ai_delivery_attempt_task_intent
+        ON ai_delivery_attempt(task_id, delivery_intent, status)
+        """
+    )
+    connection.execute(
+        """
+        CREATE UNIQUE INDEX idx_ai_delivery_attempt_pending
+        ON ai_delivery_attempt(task_id, delivery_intent)
+        WHERE status = 'pending'
+        """
+    )
+    connection.execute(
+        """
+        CREATE UNIQUE INDEX idx_ai_delivery_attempt_delivered
+        ON ai_delivery_attempt(task_id, delivery_intent)
+        WHERE status = 'delivered'
+        """
+    )
+    connection.execute(
+        """
+        CREATE INDEX idx_ai_delivery_attempt_updated_at
+        ON ai_delivery_attempt(updated_at)
         """
     )
 

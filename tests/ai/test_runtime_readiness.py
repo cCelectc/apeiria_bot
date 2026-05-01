@@ -49,6 +49,11 @@ def _ready_components() -> tuple[AIRuntimeDependencyStatus, ...]:
             detail="available",
         ),
         AIRuntimeDependencyStatus(
+            key="delivery_attempt_storage",
+            available=True,
+            detail="available",
+        ),
+        AIRuntimeDependencyStatus(
             key="scheduler_recovery",
             available=True,
             detail="registered",
@@ -97,6 +102,7 @@ def test_ai_service_status_reports_ready_reply_runtime() -> None:
     assert "reply generation has a selectable model" in status.summary
     assert "source-main:gpt-main" in status.summary
     assert "future-task storage available" in status.summary
+    assert "delivery attempt storage available" in status.summary
     assert "scheduler recovery registered" in status.summary
     assert "delivery gateway available" in status.summary
     assert "trace storage available" in status.summary
@@ -129,6 +135,15 @@ def test_ai_service_status_reports_degraded_without_reply_model() -> None:
                 next_step="Run `apeiria check` to initialize runtime storage.",
             ),
             "future-task storage unavailable",
+        ),
+        (
+            AIRuntimeDependencyStatus(
+                key="delivery_attempt_storage",
+                available=False,
+                detail="unavailable",
+                next_step="Run `apeiria check` to initialize delivery attempts.",
+            ),
+            "delivery attempt storage unavailable",
         ),
         (
             AIRuntimeDependencyStatus(
@@ -190,6 +205,61 @@ def test_ai_service_status_does_not_initialize_missing_runtime_storage(
     assert status.phase == "runtime_degraded"
     assert "future-task storage unavailable" in status.summary
     assert not database_runtime.database_path().exists()
+
+
+def test_runtime_readiness_inspects_failure_operation_storage(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Any,
+) -> None:
+    from apeiria.ai.service import AIRuntimeReadinessProbe
+    from apeiria.db.runtime import database_runtime
+
+    monkeypatch.setattr(database_runtime, "_project_root", tmp_path)
+    database_runtime.ensure_ready()
+
+    statuses = {item.key: item for item in AIRuntimeReadinessProbe().inspect()}
+
+    assert statuses["delivery_attempt_storage"].available is True
+    assert statuses["trace_storage"].available is True
+
+
+def test_runtime_readiness_reports_degraded_delivery_attempt_storage(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Any,
+) -> None:
+    import sqlite3
+
+    from apeiria.ai.service import AIRuntimeReadinessProbe
+    from apeiria.db.runtime import database_runtime
+
+    monkeypatch.setattr(database_runtime, "_project_root", tmp_path)
+    database_runtime.ensure_parent_dir()
+    with sqlite3.connect(database_runtime.database_path()) as connection:
+        connection.execute(
+            """
+            CREATE TABLE apeiria_schema_meta (
+                id INTEGER PRIMARY KEY,
+                schema_line TEXT NOT NULL,
+                schema_version INTEGER NOT NULL,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+            """
+        )
+        connection.execute(
+            """
+            INSERT INTO apeiria_schema_meta
+            VALUES (1, 'apeiria_v1', 1, '2026-05-01T00:00:00+00:00',
+                '2026-05-01T00:00:00+00:00')
+            """
+        )
+
+    statuses = {item.key: item for item in AIRuntimeReadinessProbe().inspect()}
+
+    assert statuses["delivery_attempt_storage"].available is False
+    assert statuses["delivery_attempt_storage"].next_step == (
+        "Run `apeiria check` to initialize delivery attempts."
+    )
 
 
 def test_reply_preparation_records_no_model_diagnostic(

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING
 
@@ -39,6 +40,48 @@ def test_tool_executions_use_sqlite_runtime(
         assert rows == [created]
         assert rows[0].input_json is not None
         assert rows[0].output_json is not None
+
+    asyncio.run(scenario())
+
+
+def test_tool_execution_payloads_are_sanitized(
+    tmp_path: Path,
+    monkeypatch: "MonkeyPatch",
+) -> None:
+    from apeiria.ai.tools.service import AIToolExecutionCreateInput, AIToolService
+
+    monkeypatch.setattr(database_runtime, "_project_root", tmp_path)
+    database_runtime.ensure_ready()
+    _seed_chat_session("session-1")
+
+    async def scenario() -> None:
+        service = AIToolService()
+        await service.record_execution(
+            AIToolExecutionCreateInput(
+                session_id="session-1",
+                tool_name="memory.query",
+                status="error",
+                trace_id="trace-1",
+                input_payload={"api_key": "sk-secret", "query": "hello"},
+                output_payload={
+                    "error": "Authorization: Bearer sk-secret",
+                    "items": list(range(25)),
+                    "long": "x" * 400,
+                },
+            ),
+        )
+        rows = await service.list_executions(session_id="session-1")
+
+        assert rows[0].input_json is not None
+        assert rows[0].output_json is not None
+        input_payload = json.loads(rows[0].input_json)
+        output_payload = json.loads(rows[0].output_json)
+        assert input_payload["payload"]["api_key"] == "[redacted]"
+        assert output_payload["payload"]["error"] == (
+            "Authorization: Bearer [redacted]"
+        )
+        assert output_payload["payload"]["items"] == list(range(20))
+        assert output_payload["payload"]["long"] == "x" * 200
 
     asyncio.run(scenario())
 
