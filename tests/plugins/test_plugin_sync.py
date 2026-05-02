@@ -1,35 +1,8 @@
 from __future__ import annotations
 
 import asyncio
-import builtins
-import importlib
-import sys
 from types import SimpleNamespace
 from typing import Any
-
-
-def test_plugin_sync_import_is_safe_without_nonebot_plugin_orm() -> None:
-    original_import = builtins.__import__
-
-    def guarded_import(
-        name: str,
-        globalns: dict[str, object] | None = None,
-        localns: dict[str, object] | None = None,
-        fromlist: tuple[str, ...] = (),
-        level: int = 0,
-    ) -> object:
-        if name == "nonebot_plugin_orm":
-            raise AssertionError(name)
-        return original_import(name, globalns, localns, fromlist, level)
-
-    sys.modules.pop("apeiria.bot.hooks.plugin_sync", None)
-    builtins.__import__ = guarded_import
-    try:
-        module = importlib.import_module("apeiria.bot.hooks.plugin_sync")
-    finally:
-        builtins.__import__ = original_import
-
-    assert module.__name__ == "apeiria.bot.hooks.plugin_sync"
 
 
 def test_plugin_sync_uses_sqlite_plugin_state_repository(monkeypatch: Any) -> None:

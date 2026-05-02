@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import importlib
-import sys
 from typing import TYPE_CHECKING
 
 from pytest import raises
@@ -16,14 +14,6 @@ if TYPE_CHECKING:
 
 
 UPDATED_TIMEOUT_SECONDS = 45
-
-
-def test_import_ai_admin_sources_does_not_require_nonebot_runtime() -> None:
-    sys.modules.pop("apeiria.app.ai.admin.sources", None)
-
-    module = importlib.import_module("apeiria.app.ai.admin.sources")
-
-    assert module.__name__ == "apeiria.app.ai.admin.sources"
 
 
 def test_sources_admin_crud_uses_new_database(

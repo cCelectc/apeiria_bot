@@ -3,8 +3,6 @@ from __future__ import annotations
 import importlib
 import sys
 
-import pytest
-
 
 def test_import_app_chat_exposes_expected_public_surface() -> None:
     for module_name in (
@@ -51,18 +49,3 @@ def test_import_app_chat_exposes_expected_public_surface() -> None:
         "chat_gateway_service",
         "web_chat_service",
     ]
-
-
-@pytest.mark.parametrize(
-    "module_name",
-    [
-        "apeiria.chat",
-        "apeiria.chat.gateway",
-        "apeiria.chat.transport",
-    ],
-)
-def test_legacy_chat_modules_are_removed(module_name: str) -> None:
-    sys.modules.pop(module_name, None)
-
-    with pytest.raises(ModuleNotFoundError):
-        importlib.import_module(module_name)

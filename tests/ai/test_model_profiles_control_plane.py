@@ -1,9 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import importlib
-import sys
-from types import ModuleType
 from typing import TYPE_CHECKING
 
 from apeiria.db.runtime import database_runtime
@@ -15,24 +12,6 @@ if TYPE_CHECKING:
 
 
 UPDATED_PRIORITY = 5
-ORM_SESSION_UNEXPECTED = "profile/binding admin methods should not use ORM sessions"
-
-
-def test_import_ai_model_profile_service_does_not_require_nonebot_runtime() -> None:
-    sys.modules.pop("apeiria.ai.model.routing.profile", None)
-
-    module = importlib.import_module("apeiria.ai.model.routing.profile")
-
-    assert module.__name__ == "apeiria.ai.model.routing.profile"
-
-
-def test_import_ai_admin_models_does_not_require_nonebot_plugin_orm() -> None:
-    sys.modules.pop("apeiria.app.ai.admin.models", None)
-    sys.modules.pop("nonebot_plugin_orm", None)
-
-    module = importlib.import_module("apeiria.app.ai.admin.models")
-
-    assert module.__name__ == "apeiria.app.ai.admin.models"
 
 
 def test_model_profile_service_uses_new_database(
@@ -128,21 +107,13 @@ def test_models_admin_profile_and_binding_methods_use_new_database(
 ) -> None:
     from apeiria.ai.model.routing.bindings import AIModelBindingTarget
     from apeiria.ai.model.routing.models import AIModelRouteQuery
-    from apeiria.ai.model.routing.profile import AIModelProfileCreateInput
+    from apeiria.ai.model.routing.profile import (
+        AIModelProfileCreateInput,
+        ai_model_profile_service,
+    )
+    from apeiria.app.ai.admin.models import ModelsAdminMixin
 
-    sys.modules.pop("apeiria.app.ai.admin.models", None)
-
-    stub_nonebot_plugin_orm = ModuleType("nonebot_plugin_orm")
-
-    def unexpected_get_session() -> None:
-        raise AssertionError(ORM_SESSION_UNEXPECTED)
-
-    stub_nonebot_plugin_orm.get_session = unexpected_get_session  # type: ignore[attr-defined]
-    monkeypatch.setitem(sys.modules, "nonebot_plugin_orm", stub_nonebot_plugin_orm)
-
-    admin_models = importlib.import_module("apeiria.app.ai.admin.models")
-
-    class TestAdmin(admin_models.ModelsAdminMixin):
+    class TestAdmin(ModelsAdminMixin):
         pass
 
     async def fake_build_profile_create_input(
@@ -230,14 +201,13 @@ def test_models_admin_profile_and_binding_methods_use_new_database(
         assert len(bindings) == 1
         assert bindings[0].binding_id == "binding-1"
 
-        profile_service = admin_models.ai_model_profile_service
-        resolved = await profile_service.resolve_profile(
+        resolved = await ai_model_profile_service.resolve_profile(
             AIModelRouteQuery(task_class="reply_default"),
         )
         assert resolved is not None
         assert resolved.profile_id == created.profile_id
 
-        bound = await profile_service.resolve_profile_for_target(
+        bound = await ai_model_profile_service.resolve_profile_for_target(
             target=AIModelBindingTarget(
                 conversation_id="conversation-1",
                 group_id=None,

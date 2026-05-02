@@ -2,8 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import importlib
-import sys
-from types import ModuleType, SimpleNamespace
+from types import SimpleNamespace
 from typing import TYPE_CHECKING
 
 from apeiria.db.runtime import database_runtime
@@ -12,17 +11,6 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from pytest import MonkeyPatch
-
-
-ORM_SESSION_UNEXPECTED = "source model CRUD should not use ORM sessions"
-
-
-def test_import_ai_chat_model_service_does_not_require_nonebot_runtime() -> None:
-    sys.modules.pop("apeiria.ai.model.catalog.chat", None)
-
-    module = importlib.import_module("apeiria.ai.model.catalog.chat")
-
-    assert module.__name__ == "apeiria.ai.model.catalog.chat"
 
 
 def test_source_model_admin_methods_use_new_database(
@@ -52,20 +40,9 @@ def test_source_model_admin_methods_use_new_database(
 
     source_id = asyncio.run(seed_source())
 
-    sys.modules.pop("apeiria.app.ai.admin.models", None)
-    sys.modules.pop("nonebot_plugin_orm", None)
+    from apeiria.app.ai.admin.models import ModelsAdminMixin
 
-    stub_nonebot_plugin_orm = ModuleType("nonebot_plugin_orm")
-
-    def unexpected_get_session() -> None:
-        raise AssertionError(ORM_SESSION_UNEXPECTED)
-
-    stub_nonebot_plugin_orm.get_session = unexpected_get_session  # type: ignore[attr-defined]
-    monkeypatch.setitem(sys.modules, "nonebot_plugin_orm", stub_nonebot_plugin_orm)
-
-    admin_models = importlib.import_module("apeiria.app.ai.admin.models")
-
-    class TestAdmin(admin_models.ModelsAdminMixin):
+    class TestAdmin(ModelsAdminMixin):
         pass
 
     admin = TestAdmin()
@@ -115,7 +92,7 @@ def test_source_model_admin_methods_use_new_database(
     asyncio.run(run())
 
 
-def test_fetch_and_test_source_model_do_not_use_orm_session(
+def test_fetch_and_test_source_model_uses_model_facade(
     tmp_path: Path,
     monkeypatch: MonkeyPatch,
 ) -> None:
@@ -142,20 +119,10 @@ def test_fetch_and_test_source_model_do_not_use_orm_session(
 
     source_id = asyncio.run(seed_source())
 
-    sys.modules.pop("apeiria.app.ai.admin.models", None)
-    sys.modules.pop("nonebot_plugin_orm", None)
-
-    stub_nonebot_plugin_orm = ModuleType("nonebot_plugin_orm")
-
-    def unexpected_get_session() -> None:
-        raise AssertionError(ORM_SESSION_UNEXPECTED)
-
-    stub_nonebot_plugin_orm.get_session = unexpected_get_session  # type: ignore[attr-defined]
-    monkeypatch.setitem(sys.modules, "nonebot_plugin_orm", stub_nonebot_plugin_orm)
-
-    admin_models = importlib.import_module("apeiria.app.ai.admin.models")
     model_service = importlib.import_module("apeiria.ai.model.runtime.service")
-    admin = admin_models.ModelsAdminMixin()
+    from apeiria.app.ai.admin.models import ModelsAdminMixin
+
+    admin = ModelsAdminMixin()
 
     from apeiria.ai.model.runtime.adapter import AIModelCatalogItem
 

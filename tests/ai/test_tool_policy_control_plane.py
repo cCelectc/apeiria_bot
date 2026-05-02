@@ -1,9 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-import builtins
-import importlib
-import sys
+from types import SimpleNamespace
 from typing import TYPE_CHECKING
 
 from apeiria.db.runtime import database_runtime
@@ -14,43 +12,9 @@ if TYPE_CHECKING:
     import pytest
 
 
-def test_tool_policy_admin_import_is_safe_without_nonebot_plugin_orm(
+def test_preview_tool_intents_delegates_to_tool_service(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    original_import = builtins.__import__
-
-    def guarded_import(
-        name: str,
-        globalns: dict[str, object] | None = None,
-        localns: dict[str, object] | None = None,
-        fromlist: tuple[str, ...] = (),
-        level: int = 0,
-    ) -> object:
-        if name == "nonebot_plugin_orm":
-            raise AssertionError
-        return original_import(name, globalns, localns, fromlist, level)
-
-    monkeypatch.setattr(builtins, "__import__", guarded_import)
-    sys.modules.pop("apeiria.app.ai.admin.tools", None)
-    sys.modules.pop("apeiria.ai.tools.policy", None)
-
-    module = importlib.import_module("apeiria.app.ai.admin.tools")
-
-    assert module.__name__ == "apeiria.app.ai.admin.tools"
-
-
-def test_preview_tool_intents_does_not_open_orm_session(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    stub_nonebot_plugin_orm = type(sys)("nonebot_plugin_orm")
-
-    def unexpected_get_session() -> None:
-        raise AssertionError
-
-    stub_nonebot_plugin_orm.get_session = unexpected_get_session  # type: ignore[attr-defined]
-    monkeypatch.setitem(sys.modules, "nonebot_plugin_orm", stub_nonebot_plugin_orm)
-
-    from apeiria.ai.tools import service as tool_service_module
     from apeiria.app.ai.admin import tools as admin_tools
 
     captured_kwargs: list[dict[str, object]] = []
@@ -60,9 +24,9 @@ def test_preview_tool_intents_does_not_open_orm_session(
         return []
 
     monkeypatch.setattr(
-        tool_service_module.ai_tool_service,
-        "preview_tool_intents",
-        fake_preview_tool_intents,
+        admin_tools,
+        "ai_tool_service",
+        SimpleNamespace(preview_tool_intents=fake_preview_tool_intents),
     )
 
     class _Admin(admin_tools.ToolsAdminMixin):

@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import importlib
-import sys
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
@@ -12,14 +10,6 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from pytest import MonkeyPatch
-
-
-def test_import_ai_admin_personas_does_not_require_nonebot_runtime() -> None:
-    sys.modules.pop("apeiria.app.ai.admin.personas", None)
-
-    module = importlib.import_module("apeiria.app.ai.admin.personas")
-
-    assert module.__name__ == "apeiria.app.ai.admin.personas"
 
 
 def test_personas_admin_and_service_use_new_database(

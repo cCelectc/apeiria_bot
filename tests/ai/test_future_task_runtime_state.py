@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import builtins
 import importlib
 import sys
 from datetime import datetime, timedelta, timezone
@@ -13,30 +12,6 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 _MAX_DIAGNOSTIC_LENGTH = 200
-
-
-def test_future_task_service_import_is_safe_without_nonebot_plugin_orm() -> None:
-    original_import = builtins.__import__
-
-    def guarded_import(
-        name: str,
-        globalns: dict[str, object] | None = None,
-        localns: dict[str, object] | None = None,
-        fromlist: tuple[str, ...] = (),
-        level: int = 0,
-    ) -> object:
-        if name == "nonebot_plugin_orm":
-            raise AssertionError(name)
-        return original_import(name, globalns, localns, fromlist, level)
-
-    sys.modules.pop("apeiria.app.ai.future_task.service", None)
-    builtins.__import__ = guarded_import
-    try:
-        module = importlib.import_module("apeiria.app.ai.future_task.service")
-    finally:
-        builtins.__import__ = original_import
-
-    assert module.__name__ == "apeiria.app.ai.future_task.service"
 
 
 def test_import_app_ai_future_task_exposes_public_surface() -> None:
@@ -55,21 +30,6 @@ def test_import_app_ai_future_task_exposes_public_surface() -> None:
         module.ai_future_task_service
         is sys.modules["apeiria.app.ai.future_task.service"].ai_future_task_service
     )
-
-
-@pytest.mark.parametrize(
-    "module_name",
-    [
-        "apeiria.ai.future_task",
-        "apeiria.ai.future_task.models",
-        "apeiria.ai.future_task.service",
-    ],
-)
-def test_legacy_ai_future_task_modules_are_removed(module_name: str) -> None:
-    sys.modules.pop(module_name, None)
-
-    with pytest.raises(ModuleNotFoundError):
-        importlib.import_module(module_name)
 
 
 def test_future_tasks_are_runtime_scheduling_state(

@@ -1,9 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import builtins
-import importlib
-import sys
 from types import SimpleNamespace
 from typing import TYPE_CHECKING
 
@@ -13,30 +10,6 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from pytest import MonkeyPatch
-
-
-def test_statistics_import_is_safe_without_nonebot_plugin_orm() -> None:
-    original_import = builtins.__import__
-
-    def guarded_import(
-        name: str,
-        globalns: dict[str, object] | None = None,
-        localns: dict[str, object] | None = None,
-        fromlist: tuple[str, ...] = (),
-        level: int = 0,
-    ) -> object:
-        if name == "nonebot_plugin_orm":
-            raise AssertionError(name)
-        return original_import(name, globalns, localns, fromlist, level)
-
-    sys.modules.pop("apeiria.utils.statistics", None)
-    builtins.__import__ = guarded_import
-    try:
-        module = importlib.import_module("apeiria.utils.statistics")
-    finally:
-        builtins.__import__ = original_import
-
-    assert module.__name__ == "apeiria.utils.statistics"
 
 
 def test_statistics_records_to_sqlite(

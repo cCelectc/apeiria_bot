@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import sys
 from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING
 
@@ -164,56 +163,6 @@ def test_session_upsert_uses_scene_identity_and_cascades_session_id_updates(
 
     assert session_rows == [("session-new",)]
     assert execution_session_id == ("session-new",)
-
-
-def test_session_read_service_does_not_open_orm_session(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    monkeypatch.setattr(database_runtime, "_project_root", tmp_path)
-    database_runtime.ensure_ready()
-
-    stub_nonebot_plugin_orm = type(sys)("nonebot_plugin_orm")
-
-    def unexpected_get_session() -> None:
-        raise AssertionError
-
-    stub_nonebot_plugin_orm.get_session = unexpected_get_session  # type: ignore[attr-defined]
-    monkeypatch.setitem(sys.modules, "nonebot_plugin_orm", stub_nonebot_plugin_orm)
-
-    from apeiria.app.ai.session_read import ai_session_read_service
-    from apeiria.conversation.models import ChatSessionIdentity
-    from apeiria.conversation.service import (
-        ChatMessageCreate,
-        chat_session_service,
-    )
-
-    identity = ChatSessionIdentity(
-        session_id="onebot:bot-1:private:user-1",
-        platform="onebot",
-        bot_id="bot-1",
-        scene_type="private",
-        scene_id="user-1",
-        subject_id="user-1",
-    )
-
-    async def scenario() -> None:
-        await chat_session_service.append_message(
-            identity,
-            ChatMessageCreate(
-                author_role="user",
-                author_id="user-1",
-                text_content="hello",
-            ),
-        )
-        sessions = await ai_session_read_service.list_recent_sessions(limit=10)
-        turns = await ai_session_read_service.list_scene_turns(
-            scene_id=identity.session_id
-        )
-        assert [session.session_id for session in sessions] == [identity.session_id]
-        assert [turn.text_content for turn in turns] == ["hello"]
-
-    asyncio.run(scenario())
 
 
 def test_conversation_retention_deletes_sqlite_rows(

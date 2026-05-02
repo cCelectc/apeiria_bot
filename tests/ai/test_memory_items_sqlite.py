@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import sys
 from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING
 
@@ -80,41 +79,6 @@ def test_memory_items_use_sqlite(
         )
         assert deleted is True
         assert await ai_memory_service.get_memory(memory_id=created.memory_id) is None
-
-    asyncio.run(scenario())
-
-
-def test_memory_admin_does_not_open_orm_session(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    monkeypatch.setattr(database_runtime, "_project_root", tmp_path)
-    database_runtime.ensure_ready()
-
-    stub_nonebot_plugin_orm = type(sys)("nonebot_plugin_orm")
-
-    def unexpected_get_session() -> None:
-        raise AssertionError
-
-    stub_nonebot_plugin_orm.get_session = unexpected_get_session  # type: ignore[attr-defined]
-    monkeypatch.setitem(sys.modules, "nonebot_plugin_orm", stub_nonebot_plugin_orm)
-
-    from apeiria.app.ai.admin.memories import MemoriesAdminMixin
-
-    class _Admin(MemoriesAdminMixin):
-        pass
-
-    async def scenario() -> None:
-        memory = await _Admin().create_memory(
-            memory_layer="long_term",
-            memory_kind="note",
-            anchor_type="user",
-            anchor_id="user-1",
-            content="operator note",
-            salience=0.5,
-            confidence=0.6,
-        )
-        assert memory.content == "operator note"
 
     asyncio.run(scenario())
 

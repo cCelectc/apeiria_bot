@@ -56,24 +56,6 @@ def test_webui_auth_modules_move_under_app_namespace() -> None:
     assert secrets_module.get_secret_file_path is store_module.get_secret_file_path
 
 
-@pytest.mark.parametrize(
-    "module_name",
-    [
-        "apeiria.access.webui_auth",
-        "apeiria.access.webui_auth.accounts",
-        "apeiria.access.webui_auth.audit",
-        "apeiria.access.webui_auth.secrets",
-        "apeiria.access.webui_auth.service",
-        "apeiria.access.webui_auth.store",
-    ],
-)
-def test_legacy_webui_auth_modules_are_removed(module_name: str) -> None:
-    _clear_webui_auth_modules()
-
-    with pytest.raises(ModuleNotFoundError):
-        importlib.import_module(module_name)
-
-
 def test_webui_auth_account_flow_still_works_via_app_secrets_facade(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

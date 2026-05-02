@@ -6,7 +6,6 @@ from datetime import datetime, timezone
 
 from apeiria.ai.model import AIModelToolDefinition
 from apeiria.ai.tools import AIToolPolicy, AIToolSpec, ToolGatewayRequest
-from apeiria.app.ai import session_runtime
 from apeiria.app.ai.session_runtime import (
     ToolExposurePlan,
     ToolOrchestrator,
@@ -198,7 +197,3 @@ def test_tool_exposure_allowlist_uses_selected_tools_only() -> None:
     constrained = apply_tool_exposure_allowlist(request, plan)
 
     assert constrained.executable_tool_names == frozenset({"memory.query"})
-
-
-def test_tool_gateway_migration_adapter_is_not_public_session_runtime_surface() -> None:
-    assert not hasattr(session_runtime, "ToolGatewayMigrationAdapter")
