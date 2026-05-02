@@ -59,6 +59,21 @@ def _ready_components() -> tuple[AIRuntimeDependencyStatus, ...]:
             detail="registered",
         ),
         AIRuntimeDependencyStatus(
+            key="tool_registry",
+            available=True,
+            detail="3_tools",
+        ),
+        AIRuntimeDependencyStatus(
+            key="skill_catalog",
+            available=True,
+            detail="initialized",
+        ),
+        AIRuntimeDependencyStatus(
+            key="capability_bridge",
+            available=True,
+            detail="2_capabilities",
+        ),
+        AIRuntimeDependencyStatus(
             key="delivery_gateway",
             available=True,
             detail="onebot",
@@ -104,6 +119,9 @@ def test_ai_service_status_reports_ready_reply_runtime() -> None:
     assert "future-task storage available" in status.summary
     assert "delivery attempt storage available" in status.summary
     assert "scheduler recovery registered" in status.summary
+    assert "tool registry available" in status.summary
+    assert "skill catalog available" in status.summary
+    assert "capability bridge available" in status.summary
     assert "delivery gateway available" in status.summary
     assert "trace storage available" in status.summary
     assert probe.calls == 1
@@ -171,6 +189,33 @@ def test_ai_service_status_reports_degraded_without_reply_model() -> None:
                 next_step="Load the AI plugin startup recovery hook.",
             ),
             "scheduler recovery not_registered",
+        ),
+        (
+            AIRuntimeDependencyStatus(
+                key="tool_registry",
+                available=False,
+                detail="not_initialized",
+                next_step="Load the AI plugin startup lifecycle hook.",
+            ),
+            "tool registry not_initialized",
+        ),
+        (
+            AIRuntimeDependencyStatus(
+                key="skill_catalog",
+                available=False,
+                detail="not_initialized",
+                next_step="Load the AI plugin startup lifecycle hook.",
+            ),
+            "skill catalog not_initialized",
+        ),
+        (
+            AIRuntimeDependencyStatus(
+                key="capability_bridge",
+                available=False,
+                detail="not_initialized",
+                next_step="Load the AI plugin startup lifecycle hook.",
+            ),
+            "capability bridge not_initialized",
         ),
     ],
 )

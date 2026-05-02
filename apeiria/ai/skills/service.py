@@ -12,7 +12,7 @@ from apeiria.ai.skills.contracts import (
 )
 from apeiria.ai.skills.loader import (
     get_default_skills_directory,
-    load_skills_from_directory,
+    load_skills_from_sources,
 )
 from apeiria.ai.skills.runtime import ai_skill_runtime
 
@@ -41,25 +41,38 @@ class AISkillService:
 
     def __init__(self) -> None:
         self._initialized = False
+        self._loaded_skill_sources: set[Path] = set()
 
     def ensure_initialized(
         self,
         *,
         skills_dir: "Path | None" = None,
+        skill_sources: tuple["Path", ...] = (),
     ) -> None:
         """Load file-based skills and sync tool-based skills.
 
-        Safe to call multiple times; only the first call takes effect.
+        Safe to call multiple times. New skill sources may be supplied by the
+        plugin lifecycle coordinator and are scanned once.
         """
 
         was_initialized = self._initialized
-        if not was_initialized:
-            root = skills_dir or get_default_skills_directory()
-            file_skills = load_skills_from_directory(root)
+        sources = _skill_sources(
+            skills_dir=skills_dir,
+            extra_sources=skill_sources,
+        )
+        new_sources = tuple(
+            source for source in sources if source not in self._loaded_skill_sources
+        )
+        if new_sources:
+            file_skills = load_skills_from_sources(new_sources)
             ai_skill_runtime.register_file_skills(file_skills)
-            self._initialized = True
-        else:
+            self._loaded_skill_sources.update(new_sources)
+        elif was_initialized:
             file_skills = ai_skill_runtime.list_file_skills()
+        else:
+            file_skills = []
+
+        self._initialized = True
 
         tool_specs = self._sync_tool_skills()
         if not was_initialized:
@@ -144,5 +157,17 @@ class AISkillService:
 
 
 ai_skill_service = AISkillService()
+
+
+def _skill_sources(
+    *,
+    skills_dir: "Path | None",
+    extra_sources: tuple["Path", ...],
+) -> tuple["Path", ...]:
+    primary = skills_dir or get_default_skills_directory()
+    resolved = [primary.resolve(strict=False)]
+    resolved.extend(source.resolve(strict=False) for source in extra_sources)
+    return tuple(dict.fromkeys(resolved))
+
 
 __all__ = ["AISkillService", "ai_skill_service"]

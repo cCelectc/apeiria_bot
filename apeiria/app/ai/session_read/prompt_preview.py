@@ -25,6 +25,7 @@ from apeiria.app.ai.admin.workbench import (
     select_latest_user_turn,
     to_context_turns,
 )
+from apeiria.app.ai.lifecycle import ensure_ai_runtime_support_initialized
 from apeiria.app.ai.pipeline.composer import (
     AIRuntimeComposeInput,
     build_roleplay_reply_packet,
@@ -57,7 +58,6 @@ from apeiria.app.ai.session_runtime import (
     RuntimeTurnSource,
     decide_runtime_hard_rule,
 )
-from apeiria.app.ai.tooling import ensure_app_ai_tools_loaded
 from apeiria.conversation.service import chat_session_service
 
 from .models import (
@@ -76,6 +76,12 @@ if TYPE_CHECKING:
         ChatMessageDetailView,
         ChatSessionIdentity,
     )
+
+
+def ensure_app_ai_tools_loaded() -> None:
+    """Compatibility fallback that now enters through the AI lifecycle."""
+
+    ensure_ai_runtime_support_initialized(source="admin_fallback")
 
 
 def _find_recent_user_name(

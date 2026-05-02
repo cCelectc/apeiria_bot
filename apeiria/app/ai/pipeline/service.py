@@ -13,6 +13,7 @@ from apeiria.ai.config import get_ai_plugin_config
 from apeiria.ai.retention import ai_retention_service
 from apeiria.ai.skills import ai_skill_service
 from apeiria.app.ai.future_task import ai_future_task_service
+from apeiria.app.ai.lifecycle import ensure_ai_runtime_support_initialized
 from apeiria.app.ai.pipeline.context_window_steps import record_context_usage
 from apeiria.app.ai.pipeline.delivery_steps import deliver_generated_reply
 from apeiria.app.ai.pipeline.generation_steps import generate_reply, prepare_generation
@@ -41,7 +42,6 @@ from apeiria.app.ai.session_runtime import (
     SessionRuntimePolicy,
 )
 from apeiria.app.ai.session_runtime.trace_store import turn_trace_repository
-from apeiria.app.ai.tooling import ensure_app_ai_tools_loaded
 from apeiria.conversation.service import chat_session_service
 
 if TYPE_CHECKING:
@@ -70,6 +70,12 @@ _DEFAULT_FUTURE_TASK_TRACE = AITraceContext(
     kind="conversation",
     trigger="ai_future_task",
 )
+
+
+def ensure_app_ai_tools_loaded() -> None:
+    """Compatibility fallback that now enters through the AI lifecycle."""
+
+    ensure_ai_runtime_support_initialized(source="runtime_fallback")
 
 
 @dataclass(frozen=True)

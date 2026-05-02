@@ -58,6 +58,7 @@ class AIRuntimeReadinessProbe:
             self._future_task_storage_status(),
             self._delivery_attempt_storage_status(),
             self._scheduler_recovery_status(),
+            *self._plugin_lifecycle_statuses(),
             self._delivery_gateway_status(),
             self._trace_storage_status(),
         )
@@ -152,6 +153,20 @@ class AIRuntimeReadinessProbe:
             next_step="Enable a proactive delivery adapter.",
         )
 
+    def _plugin_lifecycle_statuses(self) -> tuple[AIRuntimeDependencyStatus, ...]:
+        from apeiria.app.ai.lifecycle import ai_lifecycle_coordinator
+
+        snapshot = ai_lifecycle_coordinator.inspect()
+        return tuple(
+            AIRuntimeDependencyStatus(
+                key=component.key,
+                available=component.available,
+                detail=component.detail,
+                next_step=component.next_step,
+            )
+            for component in snapshot.components
+        )
+
 
 class AIService:
     """Service for reporting the current AI runtime status."""
@@ -237,6 +252,9 @@ def _format_dependency_summary(
         "future_task_storage": "future-task storage",
         "delivery_attempt_storage": "delivery attempt storage",
         "scheduler_recovery": "scheduler recovery",
+        "tool_registry": "tool registry",
+        "skill_catalog": "skill catalog",
+        "capability_bridge": "capability bridge",
         "delivery_gateway": "delivery gateway",
         "trace_storage": "trace storage",
     }
@@ -323,8 +341,8 @@ def _ai_plugin_registers_recovery_hook() -> bool:
     except OSError:
         return False
     return (
-        "recover_scheduled_tasks" in source
-        and "on_startup(_recover_ai_future_tasks)" in source
+        "ai_lifecycle_coordinator" in source
+        and "on_startup(_run_ai_lifecycle_startup)" in source
     )
 
 

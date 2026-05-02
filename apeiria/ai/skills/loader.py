@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from nonebot.log import logger
 
@@ -11,6 +12,9 @@ from apeiria.ai.skills.parser import (
     SkillParseError,
     parse_skill_file,
 )
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable
 
 SKILL_FILENAME = "SKILL.md"
 
@@ -38,20 +42,26 @@ def load_skills_from_directory(root: Path) -> list[AISkillFileDefinition]:
         Successfully parsed skill definitions, sorted by name.
     """
 
-    if not root.is_dir():
-        logger.debug("Skill directory does not exist: {}", root)
-        return []
-
-    skills: list[AISkillFileDefinition] = []
-
-    for skill_file in root.rglob(SKILL_FILENAME):
-        skill = _try_load_skill_file(skill_file)
-        if skill is not None:
-            skills.append(skill)
-
-    skills.sort(key=lambda s: s.skill_name)
+    skills = load_skills_from_sources((root,))
     logger.info("Loaded {} skill(s) from {}", len(skills), root)
     return skills
+
+
+def load_skills_from_sources(
+    sources: "Iterable[Path]",
+) -> list[AISkillFileDefinition]:
+    """Load skills from directories or individual ``SKILL.md`` files.
+
+    Missing sources and malformed skill files are skipped so one bad plugin
+    skill file cannot abort AI lifecycle initialization.
+    """
+
+    loaded_by_name: dict[str, AISkillFileDefinition] = {}
+    for skill_file in _iter_skill_files(sources):
+        skill = _try_load_skill_file(skill_file)
+        if skill is not None:
+            loaded_by_name[skill.skill_name] = skill
+    return [loaded_by_name[name] for name in sorted(loaded_by_name)]
 
 
 def _try_load_skill_file(
@@ -75,6 +85,22 @@ def _try_load_skill_file(
         skill_file,
     )
     return definition
+
+
+def _iter_skill_files(sources: "Iterable[Path]") -> list[Path]:
+    skill_files: set[Path] = set()
+    for source in sources:
+        path = Path(source).resolve(strict=False)
+        if path.is_dir():
+            skill_files.update(
+                item.resolve(strict=False) for item in path.rglob(SKILL_FILENAME)
+            )
+            continue
+        if path.is_file() and path.name == SKILL_FILENAME:
+            skill_files.add(path)
+            continue
+        logger.debug("Skill source does not exist or is not a SKILL.md file: {}", path)
+    return sorted(skill_files)
 
 
 def get_default_skills_directory() -> Path:

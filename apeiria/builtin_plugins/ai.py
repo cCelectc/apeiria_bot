@@ -14,14 +14,13 @@ under :mod:`apeiria.app.ai`, and HTTP route ownership lives under
 
 from nonebot import get_driver, require
 from nonebot.adapters import Bot, Event
-from nonebot.log import logger
 from nonebot.permission import SUPERUSER
 from nonebot.plugin import PluginMetadata, inherit_supported_adapters
 from nonebot.plugin.on import on_command, on_message
 
 from apeiria.ai import ai_service
 from apeiria.ai.config import AIPluginConfig
-from apeiria.app.ai.future_task import ai_future_task_service
+from apeiria.app.ai.lifecycle import ai_lifecycle_coordinator
 from apeiria.app.ai.pipeline import AITraceContext, ai_runtime_service
 from apeiria.plugins.metadata.api import (
     ConfigExtra,
@@ -163,19 +162,13 @@ ai_message = on_message(priority=50, block=False)
 register_plugin_router("/ai", ai_webui_router, tags=("ai",))
 
 
-async def _recover_ai_future_tasks() -> None:
-    """Recover durable AI future-task scheduler jobs during startup."""
+async def _run_ai_lifecycle_startup() -> None:
+    """Prepare AI startup support after configured user plugins are loaded."""
 
-    result = await ai_future_task_service.recover_scheduled_tasks()
-    if result.rescheduled_task_ids or result.failed_task_ids:
-        logger.info(
-            "Recovered AI future tasks: rescheduled={} failed={}",
-            len(result.rescheduled_task_ids),
-            len(result.failed_task_ids),
-        )
+    await ai_lifecycle_coordinator.startup()
 
 
-get_driver().on_startup(_recover_ai_future_tasks)
+get_driver().on_startup(_run_ai_lifecycle_startup)
 
 
 @ai_status.handle()
