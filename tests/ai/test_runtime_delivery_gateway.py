@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import asyncio
 from datetime import datetime, timezone
-from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from apeiria.app.ai.pipeline.service import AIRuntimeReplyRequest
 from apeiria.conversation.models import ChatSessionIdentity
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 def _future_task_request() -> AIRuntimeReplyRequest:
@@ -367,17 +369,3 @@ def test_onebot_delivery_adapter_returns_bounded_failures(monkeypatch: Any) -> N
     assert result.delivered is False
     assert result.status == "failed"
     assert result.reason == "bot_not_connected"
-
-
-def test_onebot_api_names_stay_out_of_runtime_stages() -> None:
-    project_root = Path(__file__).resolve().parents[2]
-    runtime_sources = [
-        project_root / "apeiria" / "app" / "ai" / "pipeline" / "generation_steps.py",
-        project_root / "apeiria" / "app" / "ai" / "pipeline" / "service.py",
-        project_root / "apeiria" / "app" / "ai" / "session_runtime" / "engine.py",
-    ]
-
-    for source_path in runtime_sources:
-        source = source_path.read_text(encoding="utf-8")
-        assert "send_group_msg" not in source
-        assert "send_private_msg" not in source

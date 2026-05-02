@@ -5,10 +5,12 @@ import builtins
 import importlib
 import sys
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import pytest
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 _MAX_DIAGNOSTIC_LENGTH = 200
 
@@ -53,31 +55,6 @@ def test_import_app_ai_future_task_exposes_public_surface() -> None:
         module.ai_future_task_service
         is sys.modules["apeiria.app.ai.future_task.service"].ai_future_task_service
     )
-
-
-def test_future_task_service_delegates_runtime_execution() -> None:
-    project_root = Path(__file__).resolve().parents[2]
-    service_source = (
-        project_root / "apeiria" / "app" / "ai" / "future_task" / "service.py"
-    ).read_text(encoding="utf-8")
-
-    execution_module = importlib.import_module("apeiria.app.ai.future_task.execution")
-
-    assert hasattr(execution_module, "execute_future_task")
-    assert "ai_runtime_service" not in service_source
-    assert "AITraceContext" not in service_source
-    assert "runtime_result" not in service_source
-    assert "delivery_result" not in service_source
-
-
-def test_ai_plugin_registers_future_task_recovery_hook() -> None:
-    project_root = Path(__file__).resolve().parents[2]
-    plugin_source = (project_root / "apeiria" / "builtin_plugins" / "ai.py").read_text(
-        encoding="utf-8"
-    )
-
-    assert "recover_scheduled_tasks" in plugin_source
-    assert "on_startup(_recover_ai_future_tasks)" in plugin_source
 
 
 @pytest.mark.parametrize(

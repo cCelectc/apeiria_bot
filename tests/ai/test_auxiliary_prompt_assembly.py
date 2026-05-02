@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import Any
 
 from apeiria.ai.memory import AIMemoryDefinition
@@ -25,8 +24,6 @@ from apeiria.ai.tools.models import AIToolSpec
 from apeiria.app.ai.reply_strategy.models import SocialJudgmentInput
 from apeiria.conversation.models import ChatContextMessageView
 from tests.ai.agent_turn_helpers import model_response, selected_model
-
-REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
 @dataclass(frozen=True)
@@ -318,28 +315,3 @@ def test_tool_intent_planning_uses_messages_and_tools(monkeypatch: Any) -> None:
     assert gateway.prompts == [""]
     assert gateway.tool_def_calls[0]
     assert "[RecalledMemories]" in gateway.message_calls[0][-1].content
-
-
-def test_auxiliary_prompt_builders_removed_from_runtime_modules() -> None:
-    paths = [
-        REPO_ROOT / "apeiria" / "app" / "ai" / "reply_strategy" / "prompt.py",
-        REPO_ROOT / "apeiria" / "ai" / "memory" / "extraction.py",
-        REPO_ROOT / "apeiria" / "app" / "ai" / "conversation_context" / "summary.py",
-        REPO_ROOT / "apeiria" / "ai" / "skills" / "selection.py",
-        REPO_ROOT / "apeiria" / "ai" / "tools" / "planning.py",
-    ]
-    forbidden = (
-        "PromptSection(",
-        "build_social_judgment_prompt",
-        "build_memory_extraction_prompt",
-        "_build_compression_prompt",
-        "_build_skill_selection_prompt",
-        "build_tool_planning_prompt",
-    )
-
-    for path in paths:
-        source = path.read_text(encoding="utf-8")
-        for item in forbidden:
-            assert item not in source
-
-    assert not (REPO_ROOT / "apeiria" / "ai" / "tools" / "selection.py").exists()

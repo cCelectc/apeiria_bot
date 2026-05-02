@@ -32,7 +32,7 @@ def _clear_webui_auth_modules() -> None:
         sys.modules.pop(module_name, None)
 
 
-def test_webui_auth_split_modules_move_under_app_namespace() -> None:
+def test_webui_auth_modules_move_under_app_namespace() -> None:
     _clear_webui_auth_modules()
 
     accounts_module = importlib.import_module("apeiria.app.access.webui_auth.accounts")

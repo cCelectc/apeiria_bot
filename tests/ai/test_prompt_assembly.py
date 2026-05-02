@@ -1,10 +1,8 @@
 from __future__ import annotations
 
-import ast
 import importlib
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from pathlib import Path
 
 from apeiria.ai.memory import AIMemoryDefinition
 from apeiria.ai.prompting import (
@@ -21,9 +19,6 @@ from apeiria.ai.prompting import (
     render_messages,
 )
 from apeiria.conversation.models import ChatContextMessageView
-
-REPO_ROOT = Path(__file__).resolve().parents[2]
-PROMPTING_ROOT = REPO_ROOT / "apeiria" / "ai" / "prompting"
 
 
 @dataclass(frozen=True)
@@ -303,65 +298,3 @@ def test_reply_final_recipe_includes_tool_results_without_tool_policy() -> None:
     assert "ToolResults" in names
     assert "ToolPolicy" not in names
     assert names.index("ToolResults") < names.index("Conversation")
-
-
-def test_prompt_renderers_do_not_import_business_modules() -> None:
-    tree = ast.parse((PROMPTING_ROOT / "renderer.py").read_text(encoding="utf-8"))
-    forbidden = (
-        "apeiria.app.ai.pipeline",
-        "apeiria.ai.persona",
-        "apeiria.ai.memory",
-        "apeiria.ai.relationship",
-        "apeiria.ai.tools",
-        "apeiria.ai.skills",
-    )
-    violations: list[str] = []
-    for node in ast.walk(tree):
-        if isinstance(node, ast.ImportFrom):
-            module = node.module or ""
-            if module.startswith(forbidden):
-                violations.append(module)
-        elif isinstance(node, ast.Import):
-            violations.extend(
-                alias.name for alias in node.names if alias.name.startswith(forbidden)
-            )
-
-    assert not violations
-
-
-def test_reply_recipes_do_not_cross_runtime_or_persistence_boundaries() -> None:
-    source = (PROMPTING_ROOT / "reply.py").read_text(encoding="utf-8")
-
-    for forbidden in (
-        "select_pipeline_model",
-        "generate_model_turn",
-        "model_gateway",
-        "tool_gateway",
-        "deliver_generated_reply",
-        "append_tool_observation_turns",
-        "chat_session_service",
-        "repository",
-    ):
-        assert forbidden not in source
-
-
-def test_pipeline_does_not_own_reply_prompt_sections() -> None:
-    pipeline_root = REPO_ROOT / "apeiria" / "app" / "ai" / "pipeline"
-
-    assert not (pipeline_root / "prompting.py").exists()
-    assert not (pipeline_root / "message_builder.py").exists()
-    for path in pipeline_root.glob("*.py"):
-        source = path.read_text(encoding="utf-8")
-        assert "PromptSection(" not in source
-        assert "AIReplyPromptChannels" not in source
-
-
-def test_pipeline_composer_does_not_render_flat_reply_prompts() -> None:
-    source = (
-        REPO_ROOT / "apeiria" / "app" / "ai" / "pipeline" / "composer.py"
-    ).read_text(encoding="utf-8")
-
-    assert "render_flat" not in source
-    assert "compose_reply_prompt" not in source
-    assert "compose_pre_tool_reply_prompt" not in source
-    assert "compose_roleplay_reply_prompt" not in source

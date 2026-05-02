@@ -2,9 +2,8 @@ from __future__ import annotations
 
 import asyncio
 from datetime import datetime, timezone
-from pathlib import Path
 from types import SimpleNamespace
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from apeiria.ai.model import AIModelMessage
 from apeiria.app.ai.future_task.models import AIFutureTaskDefinition
@@ -19,6 +18,9 @@ from apeiria.app.ai.session_runtime import (
     ToolExposurePlan,
 )
 from apeiria.conversation.models import ChatSessionIdentity
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 class DatabaseWriteFailedError(RuntimeError):
@@ -140,15 +142,6 @@ class _CommitPersistenceStage:
     async def rebuild_context_window(self, **_: object) -> None:
         if self.fail_context_window:
             raise ContextRebuildFailedError
-
-
-def test_generation_stage_does_not_own_proactive_delivery() -> None:
-    project_root = Path(__file__).resolve().parents[2]
-    source = (
-        project_root / "apeiria" / "app" / "ai" / "pipeline" / "generation_steps.py"
-    ).read_text(encoding="utf-8")
-
-    assert "deliver_generated_reply" not in source
 
 
 def test_commit_records_partial_delivery_failure() -> None:

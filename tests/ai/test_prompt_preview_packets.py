@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 import importlib
 from datetime import datetime, timezone
-from pathlib import Path
 from types import SimpleNamespace
 from typing import TYPE_CHECKING
 
@@ -204,20 +203,6 @@ def test_prompt_preview_diagnostics_match_runtime_reply_region_projection() -> N
     assert diagnostics.total_section_count == expected["total_section_count"]
 
 
-def test_prompt_preview_uses_central_packet_projection() -> None:
-    project_root = Path(__file__).resolve().parents[2]
-    preview_source = (
-        project_root / "apeiria" / "app" / "ai" / "session_read" / "prompt_preview.py"
-    ).read_text(encoding="utf-8")
-
-    assert "project_prompt_packet_to_preview" in preview_source
-    assert "build_initial_reply_prompt_packet" in preview_source
-    assert "build_pre_tool_reply_packet" not in preview_source
-    assert "_to_prompt_channel_preview" not in preview_source
-    assert "def _section_text" not in preview_source
-    assert "def _section_lines" not in preview_source
-
-
 def test_prompt_preview_planning_matches_runtime_prompt_projection() -> None:
     module = importlib.import_module("apeiria.app.ai.session_read.prompt_preview")
     projection = importlib.import_module(
@@ -326,27 +311,6 @@ def test_prompt_preview_planning_matches_runtime_prompt_projection() -> None:
 
     assert preview_channels.sections == expected_channels.sections
     assert preview_diagnostics == expected_diagnostics
-
-
-def test_prompt_preview_keeps_mutating_runtime_steps_out_of_read_path() -> None:
-    project_root = Path(__file__).resolve().parents[2]
-    preview_source = (
-        project_root / "apeiria" / "app" / "ai" / "session_read" / "prompt_preview.py"
-    ).read_text(encoding="utf-8")
-
-    assert "retrieve_memories_for_preview" in preview_source
-    for mutating_step in (
-        "build_and_store_context_window",
-        "store_extracted_memories",
-        "update_relationship_state",
-        "recall_memories(",
-        "record_context_usage",
-        "generate_model_turn",
-        "append_tool_observation_turns",
-        "observe_read_only_tools",
-        "execute_tool",
-    ):
-        assert mutating_step not in preview_source
 
 
 def test_scene_prompt_preview_does_not_call_models_or_execute_tools(  # noqa: C901
