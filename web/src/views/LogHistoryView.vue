@@ -26,33 +26,45 @@
       :title="t('logs.queryHistory')"
     >
       <template #filters>
-        <v-text-field
-          v-model.trim="draftFilters.search"
-          density="compact"
-          hide-details
-          :label="t('logs.search')"
-          prepend-inner-icon="mdi-magnify"
-          @keydown.enter.prevent="runQuery"
-        />
+        <label class="workbench-field">
+          <span class="workbench-field__title">{{ t('logs.search') }}</span>
+          <v-text-field
+            v-model.trim="draftFilters.search"
+            :aria-label="t('logs.search')"
+            class="workbench-field__control"
+            density="compact"
+            hide-details
+            prepend-inner-icon="mdi-magnify"
+            @keydown.enter.prevent="runQuery"
+          />
+        </label>
 
-        <v-select
-          v-model="draftFilters.level"
-          clearable
-          density="compact"
-          hide-details
-          :items="levelOptions"
-          :label="t('logs.level')"
-        />
+        <label class="workbench-field">
+          <span class="workbench-field__title">{{ t('logs.level') }}</span>
+          <v-select
+            v-model="draftFilters.level"
+            :aria-label="t('logs.level')"
+            class="workbench-field__control"
+            clearable
+            density="compact"
+            hide-details
+            :items="levelOptions"
+          />
+        </label>
 
-        <v-select
-          v-model="draftFilters.source"
-          clearable
-          density="compact"
-          hide-details
-          :items="visibleSourceOptions"
-          :label="t('logs.source')"
-          :placeholder="t('logs.sourceHint')"
-        />
+        <label class="workbench-field">
+          <span class="workbench-field__title">{{ t('logs.source') }}</span>
+          <v-select
+            v-model="draftFilters.source"
+            :aria-label="t('logs.source')"
+            class="workbench-field__control"
+            clearable
+            density="compact"
+            hide-details
+            :items="visibleSourceOptions"
+            :placeholder="t('logs.sourceHint')"
+          />
+        </label>
       </template>
 
       <template #actions>
@@ -75,31 +87,42 @@
       </template>
 
       <template #overflow>
-        <v-text-field
-          v-model="draftFilters.start"
-          density="compact"
-          hide-details
-          :label="t('logs.startTime')"
-          type="datetime-local"
-        />
+        <label class="workbench-field">
+          <span class="workbench-field__title">{{ t('logs.startTime') }}</span>
+          <v-text-field
+            v-model="draftFilters.start"
+            :aria-label="t('logs.startTime')"
+            class="workbench-field__control"
+            density="compact"
+            hide-details
+            type="datetime-local"
+          />
+        </label>
 
-        <v-text-field
-          v-model="draftFilters.end"
-          density="compact"
-          hide-details
-          :label="t('logs.endTime')"
-          type="datetime-local"
-        />
+        <label class="workbench-field">
+          <span class="workbench-field__title">{{ t('logs.endTime') }}</span>
+          <v-text-field
+            v-model="draftFilters.end"
+            :aria-label="t('logs.endTime')"
+            class="workbench-field__control"
+            density="compact"
+            hide-details
+            type="datetime-local"
+          />
+        </label>
 
-        <v-switch
-          v-model="showAccessLogs"
-          class="history-presets__switch"
-          color="primary"
-          density="compact"
-          hide-details
-          inset
-          :label="t('logs.showAccessLogs')"
-        />
+        <div class="workbench-field workbench-field--switch history-presets__switch">
+          <span class="workbench-field__title">{{ t('logs.showAccessLogs') }}</span>
+          <v-switch
+            v-model="showAccessLogs"
+            :aria-label="t('logs.showAccessLogs')"
+            class="workbench-field__control"
+            color="primary"
+            density="compact"
+            hide-details
+            inset
+          />
+        </div>
 
         <v-chip
           v-for="preset in timePresets"

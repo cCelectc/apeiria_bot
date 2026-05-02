@@ -51,15 +51,16 @@
       <div
         v-for="field in schema.fields"
         :key="field.key"
-        class="structured-object__row"
+        class="structured-object__row workbench-field-row"
       >
-        <div class="structured-object__meta">
-          <div class="structured-object__label">{{ field.label || field.key }}</div>
-          <div v-if="field.help" class="structured-object__help text-caption text-medium-emphasis">
+        <div class="structured-object__meta workbench-field-row__meta">
+          <div class="workbench-field__title">{{ field.label || field.key }}</div>
+          <div v-if="field.help" class="workbench-field__helper">
             {{ field.help }}
           </div>
         </div>
         <SettingsStructuredEditor
+          class="workbench-field-row__control"
           :model-value="objectValue[field.key]"
           :readonly="readonly"
           :schema="field.schema"
@@ -75,7 +76,7 @@
         class="structured-list__item"
       >
         <div class="structured-list__item-toolbar">
-          <span class="text-caption text-medium-emphasis">#{{ index + 1 }}</span>
+          <span class="workbench-field__title">#{{ index + 1 }}</span>
           <v-btn
             v-if="!readonly"
             color="warning"
@@ -111,15 +112,19 @@
         :key="`${entry.key}:${index}`"
         class="structured-map__row"
       >
-        <v-text-field
-          class="structured-map__key"
-          density="comfortable"
-          hide-details
-          :model-value="entry.key"
-          :readonly="readonly"
-          variant="outlined"
-          @update:model-value="updateMappingKey(index, String($event ?? ''))"
-        />
+        <label class="workbench-field structured-map__key">
+          <span class="workbench-field__title">Key</span>
+          <v-text-field
+            :aria-label="`Key ${index + 1}`"
+            class="workbench-field__control"
+            density="comfortable"
+            hide-details
+            :model-value="entry.key"
+            :readonly="readonly"
+            variant="outlined"
+            @update:model-value="updateMappingKey(index, String($event ?? ''))"
+          />
+        </label>
         <SettingsStructuredEditor
           v-if="valueSchema"
           class="structured-map__value"
@@ -337,9 +342,6 @@
 .structured-object__row,
 .structured-list__item,
 .structured-map__row {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
   padding: 10px;
   border-radius: var(--shape-small);
   border: 1px solid rgba(var(--v-theme-outline), 0.18);
@@ -347,6 +349,13 @@
   transition:
     border-color var(--motion-fast) var(--motion-ease),
     box-shadow var(--motion-fast) var(--motion-ease);
+}
+
+.structured-list__item,
+.structured-map__row {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
 .structured-object__row:focus-within,
@@ -359,17 +368,7 @@
 .structured-object__meta {
   display: flex;
   flex-direction: column;
-  gap: 2px;
-}
-
-.structured-object__label {
-  font-size: 0.875rem;
-  font-weight: 600;
-  line-height: 1.35;
-}
-
-.structured-object__help {
-  line-height: 1.4;
+  gap: 4px;
 }
 
 .structured-list__item-toolbar {

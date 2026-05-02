@@ -38,6 +38,16 @@ Dialogs, forms, task feedback, data panels, and log panels should preserve the
 existing route/API behavior while standardizing action placement, loading,
 empty, warning, error, and success states through these primitives.
 
+Form fields should use the shared field-title contract in `app.css` when a
+route presents editable configuration, filters, dialogs, auth, or account
+forms. Use `.workbench-field` for ordinary above-control labels,
+`.workbench-field-row` when a dense desktop layout needs a metadata column, and
+`.workbench-field__helper` for task guidance that would make the title too
+long. Keep Vuetify validation on the same control and provide `aria-label` when
+the visible title replaces the Vuetify floating label. Floating Vuetify labels
+are still acceptable for unmigrated incidental controls or cases where they are
+the only concise accessible label.
+
 ## Layout Rules
 
 - A management page may use one primary tab-like layer. Secondary choices should

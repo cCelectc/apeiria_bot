@@ -65,19 +65,27 @@
             </v-chip>
           </div>
 
-          <div class="d-flex flex-column ga-3">
-            <v-text-field
-              v-model.trim="editForm.person_name"
-              density="comfortable"
-              hide-details
-              :label="t('ai.personProfileName')"
-            />
-            <v-text-field
-              v-model.trim="editForm.nickname"
-              density="comfortable"
-              hide-details
-              :label="t('ai.personProfileNickname')"
-            />
+          <div class="workbench-form-grid workbench-form-grid--single">
+            <label class="workbench-field">
+              <span class="workbench-field__title">{{ t('ai.personProfileName') }}</span>
+              <v-text-field
+                v-model.trim="editForm.person_name"
+                :aria-label="t('ai.personProfileName')"
+                class="workbench-field__control"
+                density="comfortable"
+                hide-details
+              />
+            </label>
+            <label class="workbench-field">
+              <span class="workbench-field__title">{{ t('ai.personProfileNickname') }}</span>
+              <v-text-field
+                v-model.trim="editForm.nickname"
+                :aria-label="t('ai.personProfileNickname')"
+                class="workbench-field__control"
+                density="comfortable"
+                hide-details
+              />
+            </label>
           </div>
 
           <div class="mt-4">
@@ -96,32 +104,42 @@
                 :key="index"
                 class="surface-gradient-card pa-3"
               >
-                <div class="d-flex ga-3 align-center">
-                  <v-select
-                    v-model="point.category"
-                    density="comfortable"
-                    hide-details
-                    :items="personProfilePointCategoryOptions"
-                    :label="t('ai.personProfilePointCategory')"
-                    style="max-width: 160px"
-                  />
-                  <v-text-field
-                    v-model.trim="point.content"
-                    density="comfortable"
-                    hide-details
-                    :label="t('ai.personProfilePointContent')"
-                  />
-                  <v-text-field
-                    v-model.number="point.confidence"
-                    density="comfortable"
-                    hide-details
-                    :label="t('ai.personProfilePointConfidence')"
-                    max="1"
-                    min="0"
-                    step="0.1"
-                    style="max-width: 100px"
-                    type="number"
-                  />
+                <div class="person-profile-point-row">
+                  <label class="workbench-field">
+                    <span class="workbench-field__title">{{ t('ai.personProfilePointCategory') }}</span>
+                    <v-select
+                      v-model="point.category"
+                      :aria-label="t('ai.personProfilePointCategory')"
+                      class="workbench-field__control"
+                      density="comfortable"
+                      hide-details
+                      :items="personProfilePointCategoryOptions"
+                    />
+                  </label>
+                  <label class="workbench-field">
+                    <span class="workbench-field__title">{{ t('ai.personProfilePointContent') }}</span>
+                    <v-text-field
+                      v-model.trim="point.content"
+                      :aria-label="t('ai.personProfilePointContent')"
+                      class="workbench-field__control"
+                      density="comfortable"
+                      hide-details
+                    />
+                  </label>
+                  <label class="workbench-field">
+                    <span class="workbench-field__title">{{ t('ai.personProfilePointConfidence') }}</span>
+                    <v-text-field
+                      v-model.number="point.confidence"
+                      :aria-label="t('ai.personProfilePointConfidence')"
+                      class="workbench-field__control"
+                      density="comfortable"
+                      hide-details
+                      max="1"
+                      min="0"
+                      step="0.1"
+                      type="number"
+                    />
+                  </label>
                   <v-btn
                     color="error"
                     icon="mdi-delete-outline"
@@ -198,3 +216,18 @@
 
   const { t } = useI18n()
 </script>
+
+<style scoped>
+.person-profile-point-row {
+  display: grid;
+  gap: 12px;
+  align-items: end;
+  grid-template-columns: minmax(120px, 160px) minmax(0, 1fr) minmax(92px, 120px) auto;
+}
+
+@media (max-width: 960px) {
+  .person-profile-point-row {
+    grid-template-columns: 1fr;
+  }
+}
+</style>

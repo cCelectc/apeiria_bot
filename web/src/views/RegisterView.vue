@@ -12,35 +12,51 @@
           </v-card-title>
 
           <v-card-text>
-            <v-form @submit.prevent="handleRegister">
-              <v-text-field
-                v-model.trim="registrationCode"
-                autocomplete="one-time-code"
-                autofocus
-                :label="t('register.registrationCode')"
-                prepend-inner-icon="mdi-ticket-confirmation-outline"
-              />
-              <v-text-field
-                v-model.trim="username"
-                autocomplete="username"
-                :label="t('register.username')"
-                prepend-inner-icon="mdi-account"
-              />
-              <v-text-field
-                v-model="password"
-                autocomplete="new-password"
-                :label="t('register.password')"
-                prepend-inner-icon="mdi-lock"
-                type="password"
-              />
-              <v-text-field
-                v-model="confirmPassword"
-                autocomplete="new-password"
-                :error-messages="error"
-                :label="t('register.confirmPassword')"
-                prepend-inner-icon="mdi-lock-check"
-                type="password"
-              />
+            <v-form class="auth-form" @submit.prevent="handleRegister">
+              <label class="workbench-field">
+                <span class="workbench-field__title">{{ t('register.registrationCode') }}</span>
+                <v-text-field
+                  v-model.trim="registrationCode"
+                  :aria-label="t('register.registrationCode')"
+                  autocomplete="one-time-code"
+                  autofocus
+                  class="workbench-field__control"
+                  prepend-inner-icon="mdi-ticket-confirmation-outline"
+                />
+              </label>
+              <label class="workbench-field">
+                <span class="workbench-field__title">{{ t('register.username') }}</span>
+                <v-text-field
+                  v-model.trim="username"
+                  :aria-label="t('register.username')"
+                  autocomplete="username"
+                  class="workbench-field__control"
+                  prepend-inner-icon="mdi-account"
+                />
+              </label>
+              <label class="workbench-field">
+                <span class="workbench-field__title">{{ t('register.password') }}</span>
+                <v-text-field
+                  v-model="password"
+                  :aria-label="t('register.password')"
+                  autocomplete="new-password"
+                  class="workbench-field__control"
+                  prepend-inner-icon="mdi-lock"
+                  type="password"
+                />
+              </label>
+              <label class="workbench-field">
+                <span class="workbench-field__title">{{ t('register.confirmPassword') }}</span>
+                <v-text-field
+                  v-model="confirmPassword"
+                  :aria-label="t('register.confirmPassword')"
+                  autocomplete="new-password"
+                  class="workbench-field__control"
+                  :error-messages="error"
+                  prepend-inner-icon="mdi-lock-check"
+                  type="password"
+                />
+              </label>
               <v-btn
                 block
                 class="mt-4"
@@ -112,3 +128,10 @@
     }
   }
 </script>
+
+<style scoped>
+.auth-form {
+  display: grid;
+  gap: 14px;
+}
+</style>

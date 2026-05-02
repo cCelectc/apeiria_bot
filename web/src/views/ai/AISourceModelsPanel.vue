@@ -39,15 +39,18 @@
           </div>
         </div>
         <div class="d-flex flex-wrap align-center ga-3">
-          <v-text-field
-            v-model.trim="sourceModelSearch"
-            class="source-model-search"
-            clearable
-            density="comfortable"
-            hide-details
-            :label="t('ai.modelSearch')"
-            prepend-inner-icon="mdi-magnify"
-          />
+          <label class="workbench-field source-model-search">
+            <span class="workbench-field__title">{{ t('ai.modelSearch') }}</span>
+            <v-text-field
+              v-model.trim="sourceModelSearch"
+              :aria-label="t('ai.modelSearch')"
+              class="workbench-field__control"
+              clearable
+              density="comfortable"
+              hide-details
+              prepend-inner-icon="mdi-magnify"
+            />
+          </label>
           <div class="text-body-2 text-medium-emphasis">
             {{ t('ai.sourceModelsCount') }}：{{ unifiedSourceModels.length }}
           </div>
@@ -68,72 +71,97 @@
               {{ isCreatingModel ? t('ai.createModel') : t('ai.editModel') }}
             </v-expansion-panel-title>
             <v-expansion-panel-text>
-              <div class="source-model-form pt-2">
-                <v-text-field
-                  v-model.trim="modelForm.model_identifier"
-                  density="comfortable"
-                  :disabled="savingModel"
-                  :error-messages="displayedModelErrors.model_identifier ? [displayedModelErrors.model_identifier] : []"
-                  :label="t('ai.modelIdentifier')"
-                  @blur="touchModelField('model_identifier')"
-                />
-                <v-text-field
-                  v-model.trim="modelForm.display_name"
-                  density="comfortable"
-                  :disabled="savingModel"
-                  :error-messages="displayedModelErrors.display_name ? [displayedModelErrors.display_name] : []"
-                  :label="t('ai.modelDisplayName')"
-                  @blur="touchModelField('display_name')"
-                />
-                <v-textarea
-                  v-model="modelForm.capability_metadata_json"
-                  auto-grow
-                  class="source-model-form__wide"
-                  density="comfortable"
-                  :disabled="savingModel"
-                  hide-details
-                  :label="t('ai.capabilityMetadata')"
-                  rows="2"
-                />
-                <v-textarea
-                  v-model="modelForm.default_options_json"
-                  auto-grow
-                  class="source-model-form__wide"
-                  density="comfortable"
-                  :disabled="savingModel"
-                  hide-details
-                  :label="t('ai.defaultOptions')"
-                  rows="2"
-                />
-                <v-textarea
-                  v-model="modelForm.capability_provenance_json"
-                  auto-grow
-                  class="source-model-form__wide"
-                  density="comfortable"
-                  :disabled="savingModel"
-                  hide-details
-                  :label="t('ai.capabilityProvenance')"
-                  rows="2"
-                />
+              <div class="source-model-form workbench-form-grid pt-2">
+                <label class="workbench-field">
+                  <span class="workbench-field__title">{{ t('ai.modelIdentifier') }}</span>
+                  <v-text-field
+                    v-model.trim="modelForm.model_identifier"
+                    :aria-label="t('ai.modelIdentifier')"
+                    class="workbench-field__control"
+                    density="comfortable"
+                    :disabled="savingModel"
+                    :error-messages="displayedModelErrors.model_identifier ? [displayedModelErrors.model_identifier] : []"
+                    @blur="touchModelField('model_identifier')"
+                  />
+                </label>
+                <label class="workbench-field">
+                  <span class="workbench-field__title">{{ t('ai.modelDisplayName') }}</span>
+                  <v-text-field
+                    v-model.trim="modelForm.display_name"
+                    :aria-label="t('ai.modelDisplayName')"
+                    class="workbench-field__control"
+                    density="comfortable"
+                    :disabled="savingModel"
+                    :error-messages="displayedModelErrors.display_name ? [displayedModelErrors.display_name] : []"
+                    @blur="touchModelField('display_name')"
+                  />
+                </label>
+                <label class="workbench-field workbench-field--wide">
+                  <span class="workbench-field__title">{{ t('ai.capabilityMetadata') }}</span>
+                  <v-textarea
+                    v-model="modelForm.capability_metadata_json"
+                    :aria-label="t('ai.capabilityMetadata')"
+                    auto-grow
+                    class="workbench-field__control"
+                    density="comfortable"
+                    :disabled="savingModel"
+                    hide-details
+                    rows="2"
+                  />
+                </label>
+                <label class="workbench-field workbench-field--wide">
+                  <span class="workbench-field__title">{{ t('ai.defaultOptions') }}</span>
+                  <v-textarea
+                    v-model="modelForm.default_options_json"
+                    :aria-label="t('ai.defaultOptions')"
+                    auto-grow
+                    class="workbench-field__control"
+                    density="comfortable"
+                    :disabled="savingModel"
+                    hide-details
+                    rows="2"
+                  />
+                </label>
+                <label class="workbench-field workbench-field--wide">
+                  <span class="workbench-field__title">{{ t('ai.capabilityProvenance') }}</span>
+                  <v-textarea
+                    v-model="modelForm.capability_provenance_json"
+                    :aria-label="t('ai.capabilityProvenance')"
+                    auto-grow
+                    class="workbench-field__control"
+                    density="comfortable"
+                    :disabled="savingModel"
+                    hide-details
+                    rows="2"
+                  />
+                </label>
               </div>
 
-              <div class="d-flex flex-wrap ga-4 mt-3">
-                <v-switch
-                  v-model="modelForm.enabled"
-                  color="primary"
-                  density="comfortable"
-                  :disabled="savingModel"
-                  hide-details
-                  :label="t('ai.modelEnabled')"
-                />
-                <v-switch
-                  v-model="modelForm.is_default"
-                  color="primary"
-                  density="comfortable"
-                  :disabled="savingModel"
-                  hide-details
-                  :label="t('ai.modelDefault')"
-                />
+              <div class="source-model-switches">
+                <div class="workbench-field workbench-field--switch">
+                  <span class="workbench-field__title">{{ t('ai.modelEnabled') }}</span>
+                  <v-switch
+                    v-model="modelForm.enabled"
+                    :aria-label="t('ai.modelEnabled')"
+                    class="workbench-field__control"
+                    color="primary"
+                    density="comfortable"
+                    :disabled="savingModel"
+                    hide-details
+                  />
+                </div>
+                <div class="workbench-field workbench-field--switch">
+                  <span class="workbench-field__title">{{ t('ai.modelDefault') }}</span>
+                  <v-switch
+                    v-model="modelForm.is_default"
+                    :aria-label="t('ai.modelDefault')"
+                    class="workbench-field__control"
+                    color="primary"
+                    density="comfortable"
+                    :disabled="savingModel"
+                    hide-details
+                  />
+                </div>
               </div>
 
               <div class="d-flex justify-end mt-4">
@@ -322,54 +350,78 @@
             {{ t('ai.noModelProfiles') }}
           </div>
 
-          <div class="source-model-form">
-            <v-text-field
-              v-model.trim="profileForm.name"
-              density="comfortable"
-              :disabled="savingProfile"
-              :error-messages="displayedProfileErrors.name ? [displayedProfileErrors.name] : []"
-              :label="t('ai.modelProfileName')"
-              @blur="touchProfileField('name')"
-            />
-            <v-select
-              v-model="profileForm.model_id"
-              density="comfortable"
-              :disabled="savingProfile"
-              :error-messages="displayedProfileErrors.model_id ? [displayedProfileErrors.model_id] : []"
-              :items="profileModelOptions"
-              :label="t('ai.modelName')"
-              @blur="touchProfileField('model_id')"
-            />
-            <v-select
-              v-model="profileForm.task_class"
-              density="comfortable"
-              :disabled="savingProfile"
-              :items="taskClassOptions"
-              :label="t('ai.modelTaskClass')"
-            />
-            <v-text-field
-              v-model.number="profileForm.priority"
-              density="comfortable"
-              :disabled="savingProfile"
-              :label="t('ai.modelProfilePriority')"
-              type="number"
-            />
-            <v-select
-              v-model="profileForm.fallback_profile_id"
-              clearable
-              density="comfortable"
-              :disabled="savingProfile"
-              :items="fallbackProfileOptions"
-              :label="t('ai.modelProfileFallback')"
-            />
-            <v-switch
-              v-model="profileForm.enabled"
-              color="primary"
-              density="comfortable"
-              :disabled="savingProfile"
-              hide-details
-              :label="t('ai.modelProfileEnabled')"
-            />
+          <div class="source-model-form workbench-form-grid">
+            <label class="workbench-field">
+              <span class="workbench-field__title">{{ t('ai.modelProfileName') }}</span>
+              <v-text-field
+                v-model.trim="profileForm.name"
+                :aria-label="t('ai.modelProfileName')"
+                class="workbench-field__control"
+                density="comfortable"
+                :disabled="savingProfile"
+                :error-messages="displayedProfileErrors.name ? [displayedProfileErrors.name] : []"
+                @blur="touchProfileField('name')"
+              />
+            </label>
+            <label class="workbench-field">
+              <span class="workbench-field__title">{{ t('ai.modelName') }}</span>
+              <v-select
+                v-model="profileForm.model_id"
+                :aria-label="t('ai.modelName')"
+                class="workbench-field__control"
+                density="comfortable"
+                :disabled="savingProfile"
+                :error-messages="displayedProfileErrors.model_id ? [displayedProfileErrors.model_id] : []"
+                :items="profileModelOptions"
+                @blur="touchProfileField('model_id')"
+              />
+            </label>
+            <label class="workbench-field">
+              <span class="workbench-field__title">{{ t('ai.modelTaskClass') }}</span>
+              <v-select
+                v-model="profileForm.task_class"
+                :aria-label="t('ai.modelTaskClass')"
+                class="workbench-field__control"
+                density="comfortable"
+                :disabled="savingProfile"
+                :items="taskClassOptions"
+              />
+            </label>
+            <label class="workbench-field">
+              <span class="workbench-field__title">{{ t('ai.modelProfilePriority') }}</span>
+              <v-text-field
+                v-model.number="profileForm.priority"
+                :aria-label="t('ai.modelProfilePriority')"
+                class="workbench-field__control"
+                density="comfortable"
+                :disabled="savingProfile"
+                type="number"
+              />
+            </label>
+            <label class="workbench-field">
+              <span class="workbench-field__title">{{ t('ai.modelProfileFallback') }}</span>
+              <v-select
+                v-model="profileForm.fallback_profile_id"
+                :aria-label="t('ai.modelProfileFallback')"
+                class="workbench-field__control"
+                clearable
+                density="comfortable"
+                :disabled="savingProfile"
+                :items="fallbackProfileOptions"
+              />
+            </label>
+            <div class="workbench-field workbench-field--switch">
+              <span class="workbench-field__title">{{ t('ai.modelProfileEnabled') }}</span>
+              <v-switch
+                v-model="profileForm.enabled"
+                :aria-label="t('ai.modelProfileEnabled')"
+                class="workbench-field__control"
+                color="primary"
+                density="comfortable"
+                :disabled="savingProfile"
+                hide-details
+              />
+            </div>
           </div>
 
           <div class="d-flex justify-end mt-4">
@@ -595,18 +647,15 @@
   gap: 12px;
 }
 
-.source-model-form {
-  display: grid;
-  gap: 12px;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-
-.source-model-form__wide {
-  grid-column: 1 / -1;
-}
-
 .source-model-editor-inline {
   margin-bottom: 4px;
+}
+
+.source-model-switches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 18px;
+  margin-top: 14px;
 }
 
 .source-model-row {
@@ -712,15 +761,11 @@
   min-height: 72px;
 }
 
-:deep(.source-model-search) {
+.source-model-search {
   min-width: min(420px, 100%);
 }
 
 @media (max-width: 960px) {
-  .source-model-form {
-    grid-template-columns: 1fr;
-  }
-
   .source-model-row {
     grid-template-columns: 1fr;
   }

@@ -43,13 +43,17 @@
       :overflow-title="t('logs.liveTitle')"
     >
       <template #filters>
-        <v-text-field
-          v-model.trim="search"
-          density="compact"
-          hide-details
-          :label="t('logs.search')"
-          prepend-inner-icon="mdi-magnify"
-        />
+        <label class="workbench-field">
+          <span class="workbench-field__title">{{ t('logs.search') }}</span>
+          <v-text-field
+            v-model.trim="search"
+            :aria-label="t('logs.search')"
+            class="workbench-field__control"
+            density="compact"
+            hide-details
+            prepend-inner-icon="mdi-magnify"
+          />
+        </label>
       </template>
 
       <template #summary>
@@ -79,43 +83,59 @@
       </template>
 
       <template #overflow>
-        <v-select
-          v-model="selectedLevels"
-          chips
-          density="compact"
-          hide-details
-          :items="levelOptions"
-          :label="t('logs.level')"
-          multiple
-        />
+        <label class="workbench-field">
+          <span class="workbench-field__title">{{ t('logs.level') }}</span>
+          <v-select
+            v-model="selectedLevels"
+            :aria-label="t('logs.level')"
+            chips
+            class="workbench-field__control"
+            density="compact"
+            hide-details
+            :items="levelOptions"
+            multiple
+          />
+        </label>
 
-        <v-select
-          v-model="selectedSources"
-          chips
-          density="compact"
-          hide-details
-          :items="sourceOptions"
-          :label="t('logs.source')"
-          multiple
-        />
+        <label class="workbench-field">
+          <span class="workbench-field__title">{{ t('logs.source') }}</span>
+          <v-select
+            v-model="selectedSources"
+            :aria-label="t('logs.source')"
+            chips
+            class="workbench-field__control"
+            density="compact"
+            hide-details
+            :items="sourceOptions"
+            multiple
+          />
+        </label>
 
-        <v-switch
-          v-model="autoScroll"
-          color="primary"
-          density="compact"
-          hide-details
-          inset
-          :label="t('logs.autoScroll')"
-        />
+        <div class="workbench-field workbench-field--switch">
+          <span class="workbench-field__title">{{ t('logs.autoScroll') }}</span>
+          <v-switch
+            v-model="autoScroll"
+            :aria-label="t('logs.autoScroll')"
+            class="workbench-field__control"
+            color="primary"
+            density="compact"
+            hide-details
+            inset
+          />
+        </div>
 
-        <v-switch
-          v-model="showAccessLogs"
-          color="primary"
-          density="compact"
-          hide-details
-          inset
-          :label="t('logs.showAccessLogs')"
-        />
+        <div class="workbench-field workbench-field--switch">
+          <span class="workbench-field__title">{{ t('logs.showAccessLogs') }}</span>
+          <v-switch
+            v-model="showAccessLogs"
+            :aria-label="t('logs.showAccessLogs')"
+            class="workbench-field__control"
+            color="primary"
+            density="compact"
+            hide-details
+            inset
+          />
+        </div>
       </template>
     </FilterBar>
 

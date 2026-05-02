@@ -18,23 +18,31 @@
     <div class="ai-debug-content">
       <template v-if="debugTab === 'conversations'">
         <div class="d-flex flex-column ga-5">
-          <div class="ai-binding-form">
-            <v-text-field
-              v-model.number="debugForm.limit"
-              density="comfortable"
-              hide-details
-              :label="t('ai.workbenchConversationLimit')"
-              min="1"
-              type="number"
-            />
-            <v-text-field
-              v-model.number="debugForm.turnLimit"
-              density="comfortable"
-              hide-details
-              :label="t('ai.workbenchTurnLimit')"
-              min="1"
-              type="number"
-            />
+          <div class="ai-binding-form workbench-form-grid">
+            <label class="workbench-field">
+              <span class="workbench-field__title">{{ t('ai.workbenchConversationLimit') }}</span>
+              <v-text-field
+                v-model.number="debugForm.limit"
+                :aria-label="t('ai.workbenchConversationLimit')"
+                class="workbench-field__control"
+                density="comfortable"
+                hide-details
+                min="1"
+                type="number"
+              />
+            </label>
+            <label class="workbench-field">
+              <span class="workbench-field__title">{{ t('ai.workbenchTurnLimit') }}</span>
+              <v-text-field
+                v-model.number="debugForm.turnLimit"
+                :aria-label="t('ai.workbenchTurnLimit')"
+                class="workbench-field__control"
+                density="comfortable"
+                hide-details
+                min="1"
+                type="number"
+              />
+            </label>
           </div>
 
           <div class="d-flex flex-wrap justify-space-between align-center ga-3">
@@ -384,34 +392,50 @@
             {{ t('ai.advancedDebugHint') }}
           </div>
 
-          <div class="ai-binding-form">
-            <v-select
-              v-model="bindingForm.scope_type"
-              density="comfortable"
-              hide-details
-              :items="scopeOptions"
-              :label="t('ai.scopeType')"
-            />
-            <v-text-field
-              v-model.trim="bindingForm.scope_id"
-              density="comfortable"
-              hide-details
-              :label="t('ai.scopeId')"
-            />
-            <v-switch
-              v-model="bindingForm.allow_read_only_tools"
-              color="primary"
-              density="comfortable"
-              hide-details
-              :label="t('ai.allowReadOnlyTools')"
-            />
-            <v-select
-              v-model="bindingForm.capability_mode"
-              density="comfortable"
-              hide-details
-              :items="capabilityModeOptions"
-              :label="t('ai.capabilityMode')"
-            />
+          <div class="ai-binding-form workbench-form-grid">
+            <label class="workbench-field">
+              <span class="workbench-field__title">{{ t('ai.scopeType') }}</span>
+              <v-select
+                v-model="bindingForm.scope_type"
+                :aria-label="t('ai.scopeType')"
+                class="workbench-field__control"
+                density="comfortable"
+                hide-details
+                :items="scopeOptions"
+              />
+            </label>
+            <label class="workbench-field">
+              <span class="workbench-field__title">{{ t('ai.scopeId') }}</span>
+              <v-text-field
+                v-model.trim="bindingForm.scope_id"
+                :aria-label="t('ai.scopeId')"
+                class="workbench-field__control"
+                density="comfortable"
+                hide-details
+              />
+            </label>
+            <div class="workbench-field workbench-field--switch">
+              <span class="workbench-field__title">{{ t('ai.allowReadOnlyTools') }}</span>
+              <v-switch
+                v-model="bindingForm.allow_read_only_tools"
+                :aria-label="t('ai.allowReadOnlyTools')"
+                class="workbench-field__control"
+                color="primary"
+                density="comfortable"
+                hide-details
+              />
+            </div>
+            <label class="workbench-field">
+              <span class="workbench-field__title">{{ t('ai.capabilityMode') }}</span>
+              <v-select
+                v-model="bindingForm.capability_mode"
+                :aria-label="t('ai.capabilityMode')"
+                class="workbench-field__control"
+                density="comfortable"
+                hide-details
+                :items="capabilityModeOptions"
+              />
+            </label>
           </div>
 
           <div class="d-flex ga-3 justify-end">
@@ -461,50 +485,74 @@
             </template>
           </v-data-table>
 
-          <div class="ai-binding-form">
-            <v-select
-              v-model="previewForm.scope_type"
-              density="comfortable"
-              hide-details
-              :items="scopeOptions"
-              :label="t('ai.scopeType')"
-            />
-            <v-switch
-              v-model="previewForm.is_tome"
-              color="primary"
-              density="comfortable"
-              hide-details
-              :label="t('ai.isTome')"
-            />
-            <v-switch
-              v-model="previewForm.allow_read_only_tools"
-              color="primary"
-              density="comfortable"
-              hide-details
-              :label="t('ai.allowReadOnlyTools')"
-            />
-            <v-select
-              v-model="previewForm.capability_mode"
-              density="comfortable"
-              hide-details
-              :items="capabilityModeOptions"
-              :label="t('ai.capabilityMode')"
-            />
-            <v-select
-              v-model="capabilityPreviewName"
-              density="comfortable"
-              hide-details
-              item-title="capability_name"
-              item-value="capability_name"
-              :items="capabilities"
-              :label="t('ai.capabilityName')"
-            />
-            <v-text-field
-              v-model.trim="intentPreviewForm.message_text"
-              density="comfortable"
-              hide-details
-              :label="t('ai.intentPreviewMessage')"
-            />
+          <div class="ai-binding-form workbench-form-grid">
+            <label class="workbench-field">
+              <span class="workbench-field__title">{{ t('ai.scopeType') }}</span>
+              <v-select
+                v-model="previewForm.scope_type"
+                :aria-label="t('ai.scopeType')"
+                class="workbench-field__control"
+                density="comfortable"
+                hide-details
+                :items="scopeOptions"
+              />
+            </label>
+            <div class="workbench-field workbench-field--switch">
+              <span class="workbench-field__title">{{ t('ai.isTome') }}</span>
+              <v-switch
+                v-model="previewForm.is_tome"
+                :aria-label="t('ai.isTome')"
+                class="workbench-field__control"
+                color="primary"
+                density="comfortable"
+                hide-details
+              />
+            </div>
+            <div class="workbench-field workbench-field--switch">
+              <span class="workbench-field__title">{{ t('ai.allowReadOnlyTools') }}</span>
+              <v-switch
+                v-model="previewForm.allow_read_only_tools"
+                :aria-label="t('ai.allowReadOnlyTools')"
+                class="workbench-field__control"
+                color="primary"
+                density="comfortable"
+                hide-details
+              />
+            </div>
+            <label class="workbench-field">
+              <span class="workbench-field__title">{{ t('ai.capabilityMode') }}</span>
+              <v-select
+                v-model="previewForm.capability_mode"
+                :aria-label="t('ai.capabilityMode')"
+                class="workbench-field__control"
+                density="comfortable"
+                hide-details
+                :items="capabilityModeOptions"
+              />
+            </label>
+            <label class="workbench-field">
+              <span class="workbench-field__title">{{ t('ai.capabilityName') }}</span>
+              <v-select
+                v-model="capabilityPreviewName"
+                :aria-label="t('ai.capabilityName')"
+                class="workbench-field__control"
+                density="comfortable"
+                hide-details
+                item-title="capability_name"
+                item-value="capability_name"
+                :items="capabilities"
+              />
+            </label>
+            <label class="workbench-field">
+              <span class="workbench-field__title">{{ t('ai.intentPreviewMessage') }}</span>
+              <v-text-field
+                v-model.trim="intentPreviewForm.message_text"
+                :aria-label="t('ai.intentPreviewMessage')"
+                class="workbench-field__control"
+                density="comfortable"
+                hide-details
+              />
+            </label>
           </div>
 
           <div class="d-flex ga-3 justify-end">

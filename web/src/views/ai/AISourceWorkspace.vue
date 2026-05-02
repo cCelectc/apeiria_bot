@@ -30,14 +30,15 @@
     </div>
 
     <div class="source-config-list">
-      <div class="source-config-row">
-        <div class="source-config-row__meta">
-          <div class="source-config-row__label">{{ t('ai.sourceName') }}</div>
-          <div class="source-config-row__hint">{{ t('ai.sourceConfigNameHint') }}</div>
+      <div class="source-config-row workbench-field-row">
+        <div class="workbench-field-row__meta">
+          <div class="workbench-field__title">{{ t('ai.sourceName') }}</div>
+          <div class="workbench-field__helper">{{ t('ai.sourceConfigNameHint') }}</div>
         </div>
         <v-text-field
           v-model.trim="sourceForm.name"
-          class="source-config-row__field"
+          :aria-label="t('ai.sourceName')"
+          class="workbench-field-row__control"
           density="comfortable"
           :disabled="savingSource"
           :error-messages="displayedSourceErrors.name ? [displayedSourceErrors.name] : []"
@@ -46,14 +47,15 @@
         />
       </div>
 
-      <div class="source-config-row">
-        <div class="source-config-row__meta">
-          <div class="source-config-row__label">{{ t('ai.sourcePreset') }}</div>
-          <div class="source-config-row__hint">{{ t('ai.sourceConfigPresetHint') }}</div>
+      <div class="source-config-row workbench-field-row">
+        <div class="workbench-field-row__meta">
+          <div class="workbench-field__title">{{ t('ai.sourcePreset') }}</div>
+          <div class="workbench-field__helper">{{ t('ai.sourceConfigPresetHint') }}</div>
         </div>
         <v-select
           v-model="sourceForm.preset_type"
-          class="source-config-row__field"
+          :aria-label="t('ai.sourcePreset')"
+          class="workbench-field-row__control"
           density="comfortable"
           :disabled="savingSource"
           :error-messages="displayedSourceErrors.preset_type ? [displayedSourceErrors.preset_type] : []"
@@ -63,13 +65,14 @@
         />
       </div>
 
-      <div class="source-config-row">
-        <div class="source-config-row__meta">
-          <div class="source-config-row__label">{{ t('ai.sourceApiKey') }}</div>
-          <div class="source-config-row__hint">{{ t('ai.sourceConfigApiKeyHint') }}</div>
+      <div class="source-config-row workbench-field-row">
+        <div class="workbench-field-row__meta">
+          <div class="workbench-field__title">{{ t('ai.sourceApiKey') }}</div>
+          <div class="workbench-field__helper">{{ t('ai.sourceConfigApiKeyHint') }}</div>
         </div>
-        <div class="source-config-row__field source-api-key-field">
+        <div class="workbench-field-row__control source-api-key-field workbench-field-action-row">
           <v-text-field
+            :aria-label="t('ai.sourceApiKey')"
             density="comfortable"
             hide-details
             :model-value="sourcePrimaryApiKey"
@@ -86,14 +89,15 @@
         </div>
       </div>
 
-      <div class="source-config-row">
-        <div class="source-config-row__meta">
-          <div class="source-config-row__label">{{ t('ai.sourceApiBase') }}</div>
-          <div class="source-config-row__hint">{{ t('ai.sourceConfigApiBaseHint') }}</div>
+      <div class="source-config-row workbench-field-row">
+        <div class="workbench-field-row__meta">
+          <div class="workbench-field__title">{{ t('ai.sourceApiBase') }}</div>
+          <div class="workbench-field__helper">{{ t('ai.sourceConfigApiBaseHint') }}</div>
         </div>
         <v-text-field
           v-model.trim="sourceForm.api_base"
-          class="source-config-row__field"
+          :aria-label="t('ai.sourceApiBase')"
+          class="workbench-field-row__control"
           density="comfortable"
           :disabled="savingSource"
           hide-details
@@ -108,14 +112,18 @@
         </v-card-title>
         <v-card-text class="px-6">
           <div class="source-api-key-editor">
-            <div class="source-api-key-editor__composer">
-              <v-text-field
-                v-model.trim="sourceApiKeyDraftInput"
-                density="comfortable"
-                hide-details
-                :label="t('ai.sourceApiKeyNew')"
-                @keydown.enter.prevent="appendSourceApiKeyDraft"
-              />
+            <div class="source-api-key-editor__composer workbench-field-action-row">
+              <label class="workbench-field">
+                <span class="workbench-field__title">{{ t('ai.sourceApiKeyNew') }}</span>
+                <v-text-field
+                  v-model.trim="sourceApiKeyDraftInput"
+                  :aria-label="t('ai.sourceApiKeyNew')"
+                  class="workbench-field__control"
+                  density="comfortable"
+                  hide-details
+                  @keydown.enter.prevent="appendSourceApiKeyDraft"
+                />
+              </label>
               <v-btn
                 color="primary"
                 variant="tonal"
@@ -160,115 +168,179 @@
       <v-expansion-panel>
         <v-expansion-panel-title>{{ t('ai.sourceAdvancedConfig') }}</v-expansion-panel-title>
         <v-expansion-panel-text>
-          <div class="source-advanced-form pt-2">
-            <v-text-field
-              v-model.trim="sourceForm.adapter_kind"
-              density="comfortable"
-              :disabled="savingSource"
-              hide-details
-              :label="t('ai.sourceAdapterKind')"
-            />
-            <v-textarea
-              v-model="sourceForm.capability_metadata_json"
-              auto-grow
-              density="comfortable"
-              :disabled="savingSource"
-              hide-details
-              :label="t('ai.capabilityMetadata')"
-              rows="2"
-            />
-            <v-textarea
-              v-model="sourceForm.default_options_json"
-              auto-grow
-              density="comfortable"
-              :disabled="savingSource"
-              hide-details
-              :label="t('ai.defaultOptions')"
-              rows="2"
-            />
-            <v-textarea
-              v-model="sourceForm.capability_provenance_json"
-              auto-grow
-              density="comfortable"
-              :disabled="savingSource"
-              hide-details
-              :label="t('ai.capabilityProvenance')"
-              rows="2"
-            />
-            <v-text-field
-              v-model.number="sourceForm.timeout_seconds"
-              density="comfortable"
-              :disabled="savingSource"
-              hide-details
-              :label="t('ai.sourceTimeoutSeconds')"
-              type="number"
-            />
-            <v-switch
-              v-model="sourceForm.enabled"
-              color="primary"
-              density="comfortable"
-              :disabled="savingSource"
-              hide-details
-              :label="t('ai.sourceEnabled')"
-            />
-            <v-text-field
-              v-model.trim="sourceForm.proxy"
-              density="comfortable"
-              :disabled="savingSource"
-              hide-details
-              :label="t('ai.sourceProxy')"
-            />
-            <v-text-field
+          <div class="source-advanced-form workbench-form-grid pt-2">
+            <label class="workbench-field">
+              <span class="workbench-field__title">{{ t('ai.sourceAdapterKind') }}</span>
+              <v-text-field
+                v-model.trim="sourceForm.adapter_kind"
+                :aria-label="t('ai.sourceAdapterKind')"
+                class="workbench-field__control"
+                density="comfortable"
+                :disabled="savingSource"
+                hide-details
+              />
+            </label>
+            <label class="workbench-field workbench-field--wide">
+              <span class="workbench-field__title">{{ t('ai.capabilityMetadata') }}</span>
+              <v-textarea
+                v-model="sourceForm.capability_metadata_json"
+                :aria-label="t('ai.capabilityMetadata')"
+                auto-grow
+                class="workbench-field__control"
+                density="comfortable"
+                :disabled="savingSource"
+                hide-details
+                rows="2"
+              />
+            </label>
+            <label class="workbench-field workbench-field--wide">
+              <span class="workbench-field__title">{{ t('ai.defaultOptions') }}</span>
+              <v-textarea
+                v-model="sourceForm.default_options_json"
+                :aria-label="t('ai.defaultOptions')"
+                auto-grow
+                class="workbench-field__control"
+                density="comfortable"
+                :disabled="savingSource"
+                hide-details
+                rows="2"
+              />
+            </label>
+            <label class="workbench-field workbench-field--wide">
+              <span class="workbench-field__title">{{ t('ai.capabilityProvenance') }}</span>
+              <v-textarea
+                v-model="sourceForm.capability_provenance_json"
+                :aria-label="t('ai.capabilityProvenance')"
+                auto-grow
+                class="workbench-field__control"
+                density="comfortable"
+                :disabled="savingSource"
+                hide-details
+                rows="2"
+              />
+            </label>
+            <label class="workbench-field">
+              <span class="workbench-field__title">{{ t('ai.sourceTimeoutSeconds') }}</span>
+              <v-text-field
+                v-model.number="sourceForm.timeout_seconds"
+                :aria-label="t('ai.sourceTimeoutSeconds')"
+                class="workbench-field__control"
+                density="comfortable"
+                :disabled="savingSource"
+                hide-details
+                type="number"
+              />
+            </label>
+            <div class="workbench-field workbench-field--switch">
+              <span class="workbench-field__title">{{ t('ai.sourceEnabled') }}</span>
+              <v-switch
+                v-model="sourceForm.enabled"
+                :aria-label="t('ai.sourceEnabled')"
+                class="workbench-field__control"
+                color="primary"
+                density="comfortable"
+                :disabled="savingSource"
+                hide-details
+              />
+            </div>
+            <label class="workbench-field">
+              <span class="workbench-field__title">{{ t('ai.sourceProxy') }}</span>
+              <v-text-field
+                v-model.trim="sourceForm.proxy"
+                :aria-label="t('ai.sourceProxy')"
+                class="workbench-field__control"
+                density="comfortable"
+                :disabled="savingSource"
+                hide-details
+              />
+            </label>
+            <label
               v-if="sourceForm.capability_type === 'embedding'"
-              v-model.number="sourceForm.embedding_dimensions"
-              density="comfortable"
-              :disabled="savingSource"
-              hide-details
-              :label="t('ai.sourceEmbeddingDimensions')"
-              type="number"
-            />
-            <v-text-field
+              class="workbench-field"
+            >
+              <span class="workbench-field__title">{{ t('ai.sourceEmbeddingDimensions') }}</span>
+              <v-text-field
+                v-model.number="sourceForm.embedding_dimensions"
+                :aria-label="t('ai.sourceEmbeddingDimensions')"
+                class="workbench-field__control"
+                density="comfortable"
+                :disabled="savingSource"
+                hide-details
+                type="number"
+              />
+            </label>
+            <label
               v-if="sourceForm.capability_type === 'speech_to_text'"
-              v-model.trim="sourceForm.stt_language"
-              density="comfortable"
-              :disabled="savingSource"
-              hide-details
-              :label="t('ai.sourceSttLanguage')"
-            />
-            <v-text-field
+              class="workbench-field"
+            >
+              <span class="workbench-field__title">{{ t('ai.sourceSttLanguage') }}</span>
+              <v-text-field
+                v-model.trim="sourceForm.stt_language"
+                :aria-label="t('ai.sourceSttLanguage')"
+                class="workbench-field__control"
+                density="comfortable"
+                :disabled="savingSource"
+                hide-details
+              />
+            </label>
+            <label
               v-if="sourceForm.capability_type === 'text_to_speech'"
-              v-model.trim="sourceForm.tts_voice"
-              density="comfortable"
-              :disabled="savingSource"
-              hide-details
-              :label="t('ai.sourceTtsVoice')"
-            />
-            <v-select
+              class="workbench-field"
+            >
+              <span class="workbench-field__title">{{ t('ai.sourceTtsVoice') }}</span>
+              <v-text-field
+                v-model.trim="sourceForm.tts_voice"
+                :aria-label="t('ai.sourceTtsVoice')"
+                class="workbench-field__control"
+                density="comfortable"
+                :disabled="savingSource"
+                hide-details
+              />
+            </label>
+            <label
               v-if="sourceForm.capability_type === 'text_to_speech'"
-              v-model="sourceForm.tts_response_format"
-              density="comfortable"
-              :disabled="savingSource"
-              hide-details
-              :items="ttsResponseFormatOptions"
-              :label="t('ai.sourceTtsFormat')"
-            />
-            <v-text-field
+              class="workbench-field"
+            >
+              <span class="workbench-field__title">{{ t('ai.sourceTtsFormat') }}</span>
+              <v-select
+                v-model="sourceForm.tts_response_format"
+                :aria-label="t('ai.sourceTtsFormat')"
+                class="workbench-field__control"
+                density="comfortable"
+                :disabled="savingSource"
+                hide-details
+                :items="ttsResponseFormatOptions"
+              />
+            </label>
+            <label
               v-if="sourceForm.capability_type === 'rerank'"
-              v-model.trim="sourceForm.rerank_api_suffix"
-              density="comfortable"
-              :disabled="savingSource"
-              hide-details
-              :label="t('ai.sourceRerankApiSuffix')"
-            />
-            <v-text-field
+              class="workbench-field"
+            >
+              <span class="workbench-field__title">{{ t('ai.sourceRerankApiSuffix') }}</span>
+              <v-text-field
+                v-model.trim="sourceForm.rerank_api_suffix"
+                :aria-label="t('ai.sourceRerankApiSuffix')"
+                class="workbench-field__control"
+                density="comfortable"
+                :disabled="savingSource"
+                hide-details
+              />
+            </label>
+            <label
               v-if="sourceForm.capability_type === 'rerank'"
-              v-model.number="sourceForm.rerank_top_n"
-              density="comfortable"
-              :disabled="savingSource"
-              hide-details
-              :label="t('ai.sourceRerankTopN')"
-              type="number"
-            />
+              class="workbench-field"
+            >
+              <span class="workbench-field__title">{{ t('ai.sourceRerankTopN') }}</span>
+              <v-text-field
+                v-model.number="sourceForm.rerank_top_n"
+                :aria-label="t('ai.sourceRerankTopN')"
+                class="workbench-field__control"
+                density="comfortable"
+                :disabled="savingSource"
+                hide-details
+                type="number"
+              />
+            </label>
           </div>
         </v-expansion-panel-text>
       </v-expansion-panel>
@@ -358,39 +430,8 @@
   gap: 14px;
 }
 
-.source-config-row {
-  align-items: center;
-  display: grid;
-  gap: 20px;
-  grid-template-columns: minmax(0, 220px) minmax(0, 1fr);
-}
-
-.source-config-row__meta {
-  min-width: 0;
-}
-
-.source-config-row__label {
-  font-size: 1rem;
-  font-weight: 600;
-  line-height: 1.5;
-}
-
-.source-config-row__hint {
-  color: rgba(var(--v-theme-on-surface), 0.54);
-  font-size: 0.85rem;
-  line-height: 1.5;
-  margin-top: 4px;
-}
-
-.source-config-row__field {
-  min-width: 0;
-}
-
 .source-api-key-field {
-  align-items: center;
-  display: grid;
-  gap: 12px;
-  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
 }
 
 .source-api-key-field__action {
@@ -403,10 +444,7 @@
 }
 
 .source-api-key-editor__composer {
-  align-items: center;
-  display: grid;
-  gap: 12px;
-  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
 }
 
 .source-api-key-editor__list {
@@ -431,18 +469,4 @@
   white-space: nowrap;
 }
 
-.source-advanced-form {
-  display: grid;
-  gap: 12px;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-
-@media (max-width: 960px) {
-  .source-config-row,
-  .source-api-key-field,
-  .source-api-key-editor__composer,
-  .source-advanced-form {
-    grid-template-columns: 1fr;
-  }
-}
 </style>

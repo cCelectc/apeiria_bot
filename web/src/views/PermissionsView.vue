@@ -216,36 +216,52 @@
               <v-card-title>{{ t('permissions.createRuleTitle') }}</v-card-title>
 
               <v-card-text class="permission-form-grid">
-                <v-select
-                  v-model="pluginRuleForm.subject_type"
-                  density="comfortable"
-                  hide-details
-                  :items="subjectTypeOptions"
-                  :label="t('permissions.subjectType')"
-                />
+                <label class="workbench-field">
+                  <span class="workbench-field__title">{{ t('permissions.subjectType') }}</span>
+                  <v-select
+                    v-model="pluginRuleForm.subject_type"
+                    :aria-label="t('permissions.subjectType')"
+                    class="workbench-field__control"
+                    density="comfortable"
+                    hide-details
+                    :items="subjectTypeOptions"
+                  />
+                </label>
 
-                <v-text-field
-                  v-model="pluginRuleForm.subject_id"
-                  density="comfortable"
-                  hide-details
-                  :label="t('permissions.subjectId')"
-                  :placeholder="pluginRuleForm.subject_type === 'group' ? t('permissions.groupIdPlaceholder') : t('permissions.userIdPlaceholder')"
-                />
+                <label class="workbench-field">
+                  <span class="workbench-field__title">{{ t('permissions.subjectId') }}</span>
+                  <v-text-field
+                    v-model="pluginRuleForm.subject_id"
+                    :aria-label="t('permissions.subjectId')"
+                    class="workbench-field__control"
+                    density="comfortable"
+                    hide-details
+                    :placeholder="pluginRuleForm.subject_type === 'group' ? t('permissions.groupIdPlaceholder') : t('permissions.userIdPlaceholder')"
+                  />
+                </label>
 
-                <v-select
-                  v-model="pluginRuleForm.effect"
-                  density="comfortable"
-                  hide-details
-                  :items="effectOptions"
-                  :label="t('permissions.effect')"
-                />
+                <label class="workbench-field">
+                  <span class="workbench-field__title">{{ t('permissions.effect') }}</span>
+                  <v-select
+                    v-model="pluginRuleForm.effect"
+                    :aria-label="t('permissions.effect')"
+                    class="workbench-field__control"
+                    density="comfortable"
+                    hide-details
+                    :items="effectOptions"
+                  />
+                </label>
 
-                <v-text-field
-                  v-model="pluginRuleForm.note"
-                  density="comfortable"
-                  hide-details
-                  :label="t('permissions.note')"
-                />
+                <label class="workbench-field">
+                  <span class="workbench-field__title">{{ t('permissions.note') }}</span>
+                  <v-text-field
+                    v-model="pluginRuleForm.note"
+                    :aria-label="t('permissions.note')"
+                    class="workbench-field__control"
+                    density="comfortable"
+                    hide-details
+                  />
+                </label>
 
                 <div class="permission-form-grid__actions">
                   <v-btn
@@ -315,31 +331,43 @@
                 <v-card-title>{{ t('permissions.createRuleTitle') }}</v-card-title>
 
                 <v-card-text class="permission-form-grid">
-                  <v-select
-                    v-model="userRuleForm.effect"
-                    density="comfortable"
-                    hide-details
-                    :items="effectOptions"
-                    :label="t('permissions.effect')"
-                  />
+                  <label class="workbench-field">
+                    <span class="workbench-field__title">{{ t('permissions.effect') }}</span>
+                    <v-select
+                      v-model="userRuleForm.effect"
+                      :aria-label="t('permissions.effect')"
+                      class="workbench-field__control"
+                      density="comfortable"
+                      hide-details
+                      :items="effectOptions"
+                    />
+                  </label>
 
-                  <v-autocomplete
-                    v-model="userRuleForm.plugin_module"
-                    clearable
-                    density="comfortable"
-                    hide-details
-                    item-title="title"
-                    item-value="value"
-                    :items="pluginModuleOptions"
-                    :label="t('permissions.pluginModule')"
-                  />
+                  <label class="workbench-field">
+                    <span class="workbench-field__title">{{ t('permissions.pluginModule') }}</span>
+                    <v-autocomplete
+                      v-model="userRuleForm.plugin_module"
+                      :aria-label="t('permissions.pluginModule')"
+                      class="workbench-field__control"
+                      clearable
+                      density="comfortable"
+                      hide-details
+                      item-title="title"
+                      item-value="value"
+                      :items="pluginModuleOptions"
+                    />
+                  </label>
 
-                  <v-text-field
-                    v-model="userRuleForm.note"
-                    density="comfortable"
-                    hide-details
-                    :label="t('permissions.note')"
-                  />
+                  <label class="workbench-field">
+                    <span class="workbench-field__title">{{ t('permissions.note') }}</span>
+                    <v-text-field
+                      v-model="userRuleForm.note"
+                      :aria-label="t('permissions.note')"
+                      class="workbench-field__control"
+                      density="comfortable"
+                      hide-details
+                    />
+                  </label>
 
                   <div class="permission-form-grid__actions">
                     <v-btn
@@ -422,14 +450,18 @@
               :overflow-title="t('permissions.rulesView')"
             >
               <template #filters>
-                <v-text-field
-                  v-model="ruleSearch"
-                  clearable
-                  density="comfortable"
-                  hide-details
-                  :label="t('permissions.searchRules')"
-                  prepend-inner-icon="mdi-magnify"
-                />
+                <label class="workbench-field">
+                  <span class="workbench-field__title">{{ t('permissions.searchRules') }}</span>
+                  <v-text-field
+                    v-model="ruleSearch"
+                    :aria-label="t('permissions.searchRules')"
+                    class="workbench-field__control"
+                    clearable
+                    density="comfortable"
+                    hide-details
+                    prepend-inner-icon="mdi-magnify"
+                  />
+                </label>
               </template>
 
               <template #summary>
@@ -439,13 +471,17 @@
               </template>
 
               <template #overflow>
-                <v-select
-                  v-model="ruleEffectFilter"
-                  density="comfortable"
-                  hide-details
-                  :items="ruleEffectOptions"
-                  :label="t('permissions.effect')"
-                />
+                <label class="workbench-field">
+                  <span class="workbench-field__title">{{ t('permissions.effect') }}</span>
+                  <v-select
+                    v-model="ruleEffectFilter"
+                    :aria-label="t('permissions.effect')"
+                    class="workbench-field__control"
+                    density="comfortable"
+                    hide-details
+                    :items="ruleEffectOptions"
+                  />
+                </label>
               </template>
             </FilterBar>
 
@@ -871,12 +907,12 @@
 .permission-form-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
+  gap: 14px;
 }
 
 .permission-form-grid__actions {
   display: flex;
-  align-items: center;
+  align-items: end;
 }
 
 .permission-rule-columns {

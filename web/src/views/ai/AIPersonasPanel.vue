@@ -43,59 +43,77 @@
           </v-chip>
         </div>
 
-        <v-text-field
-          v-model.trim="personaForm.name"
-          density="comfortable"
-          :disabled="savingPersona"
-          :error-messages="displayedPersonaErrors.name ? [displayedPersonaErrors.name] : []"
-          :label="t('ai.personaName')"
-          @blur="touchPersonaField('name')"
-        />
-        <v-text-field
-          v-model.trim="personaForm.description"
-          class="mt-3"
-          density="comfortable"
-          :disabled="savingPersona"
-          :error-messages="displayedPersonaErrors.description ? [displayedPersonaErrors.description] : []"
-          :label="t('ai.personaDescription')"
-          @blur="touchPersonaField('description')"
-        />
-        <v-textarea
-          v-model.trim="personaForm.system_prompt"
-          auto-grow
-          class="mt-3"
-          density="comfortable"
-          :disabled="savingPersona"
-          :error-messages="displayedPersonaErrors.system_prompt ? [displayedPersonaErrors.system_prompt] : []"
-          :label="t('ai.personaSystemPrompt')"
-          rows="5"
-          @blur="touchPersonaField('system_prompt')"
-        />
-        <div class="mt-2 text-caption text-medium-emphasis">
-          {{ t('ai.personaTemplateVariablesHint') }}
+        <div class="persona-form workbench-form-grid workbench-form-grid--single">
+          <label class="workbench-field">
+            <span class="workbench-field__title">{{ t('ai.personaName') }}</span>
+            <v-text-field
+              v-model.trim="personaForm.name"
+              :aria-label="t('ai.personaName')"
+              class="workbench-field__control"
+              density="comfortable"
+              :disabled="savingPersona"
+              :error-messages="displayedPersonaErrors.name ? [displayedPersonaErrors.name] : []"
+              @blur="touchPersonaField('name')"
+            />
+          </label>
+          <label class="workbench-field">
+            <span class="workbench-field__title">{{ t('ai.personaDescription') }}</span>
+            <v-text-field
+              v-model.trim="personaForm.description"
+              :aria-label="t('ai.personaDescription')"
+              class="workbench-field__control"
+              density="comfortable"
+              :disabled="savingPersona"
+              :error-messages="displayedPersonaErrors.description ? [displayedPersonaErrors.description] : []"
+              @blur="touchPersonaField('description')"
+            />
+          </label>
+          <label class="workbench-field">
+            <span class="workbench-field__title">{{ t('ai.personaSystemPrompt') }}</span>
+            <v-textarea
+              v-model.trim="personaForm.system_prompt"
+              :aria-label="t('ai.personaSystemPrompt')"
+              auto-grow
+              class="workbench-field__control"
+              density="comfortable"
+              :disabled="savingPersona"
+              :error-messages="displayedPersonaErrors.system_prompt ? [displayedPersonaErrors.system_prompt] : []"
+              rows="5"
+              @blur="touchPersonaField('system_prompt')"
+            />
+            <span class="workbench-field__helper">
+              {{ t('ai.personaTemplateVariablesHint') }}
+            </span>
+          </label>
+          <label class="workbench-field">
+            <span class="workbench-field__title">{{ t('ai.personaStylePrompt') }}</span>
+            <v-textarea
+              v-model.trim="personaForm.style_prompt"
+              :aria-label="t('ai.personaStylePrompt')"
+              auto-grow
+              class="workbench-field__control"
+              density="comfortable"
+              :disabled="savingPersona"
+              hide-details
+              rows="4"
+            />
+            <span class="workbench-field__helper">
+              {{ t('ai.personaTemplateVariablesHint') }}
+            </span>
+          </label>
+          <div class="workbench-field workbench-field--switch">
+            <span class="workbench-field__title">{{ t('ai.personaEnabled') }}</span>
+            <v-switch
+              v-model="personaForm.enabled"
+              :aria-label="t('ai.personaEnabled')"
+              class="workbench-field__control"
+              color="primary"
+              density="comfortable"
+              :disabled="savingPersona"
+              hide-details
+            />
+          </div>
         </div>
-        <v-textarea
-          v-model.trim="personaForm.style_prompt"
-          auto-grow
-          class="mt-3"
-          density="comfortable"
-          :disabled="savingPersona"
-          hide-details
-          :label="t('ai.personaStylePrompt')"
-          rows="4"
-        />
-        <div class="mt-2 text-caption text-medium-emphasis">
-          {{ t('ai.personaTemplateVariablesHint') }}
-        </div>
-        <v-switch
-          v-model="personaForm.enabled"
-          class="mt-3"
-          color="primary"
-          density="comfortable"
-          :disabled="savingPersona"
-          hide-details
-          :label="t('ai.personaEnabled')"
-        />
         <div class="d-flex justify-end mt-4">
           <v-btn color="primary" :disabled="!canSavePersona" :loading="savingPersona" @click="savePersona">
             {{ t('common.save') }}

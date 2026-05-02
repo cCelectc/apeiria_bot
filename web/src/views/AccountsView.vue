@@ -53,25 +53,37 @@
         <v-card class="page-panel">
           <v-card-title class="page-panel__title">{{ t('accounts.passwordTitle') }}</v-card-title>
 
-          <v-card-text class="d-flex flex-column ga-3">
-            <v-text-field
-              v-model="passwordForm.current_password"
-              :label="t('accounts.currentPassword')"
-              type="password"
-            />
+          <v-card-text class="workbench-form-grid workbench-form-grid--single">
+            <label class="workbench-field">
+              <span class="workbench-field__title">{{ t('accounts.currentPassword') }}</span>
+              <v-text-field
+                v-model="passwordForm.current_password"
+                :aria-label="t('accounts.currentPassword')"
+                class="workbench-field__control"
+                type="password"
+              />
+            </label>
 
-            <v-text-field
-              v-model="passwordForm.new_password"
-              :label="t('accounts.newPassword')"
-              type="password"
-            />
+            <label class="workbench-field">
+              <span class="workbench-field__title">{{ t('accounts.newPassword') }}</span>
+              <v-text-field
+                v-model="passwordForm.new_password"
+                :aria-label="t('accounts.newPassword')"
+                class="workbench-field__control"
+                type="password"
+              />
+            </label>
 
-            <v-text-field
-              v-model="confirmPassword"
-              :error-messages="passwordError"
-              :label="t('accounts.confirmPassword')"
-              type="password"
-            />
+            <label class="workbench-field">
+              <span class="workbench-field__title">{{ t('accounts.confirmPassword') }}</span>
+              <v-text-field
+                v-model="confirmPassword"
+                :aria-label="t('accounts.confirmPassword')"
+                class="workbench-field__control"
+                :error-messages="passwordError"
+                type="password"
+              />
+            </label>
 
             <div class="d-flex justify-end">
               <v-btn color="primary" :loading="passwordSaving" @click="submitPassword">

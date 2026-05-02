@@ -12,22 +12,30 @@
           </v-card-title>
 
           <v-card-text>
-            <v-form @submit.prevent="handleLogin">
-              <v-text-field
-                v-model.trim="username"
-                autocomplete="username"
-                autofocus
-                :label="t('login.username')"
-                prepend-inner-icon="mdi-account"
-              />
-              <v-text-field
-                v-model="password"
-                autocomplete="current-password"
-                :error-messages="error"
-                :label="t('login.password')"
-                prepend-inner-icon="mdi-lock"
-                type="password"
-              />
+            <v-form class="auth-form" @submit.prevent="handleLogin">
+              <label class="workbench-field">
+                <span class="workbench-field__title">{{ t('login.username') }}</span>
+                <v-text-field
+                  v-model.trim="username"
+                  :aria-label="t('login.username')"
+                  autocomplete="username"
+                  autofocus
+                  class="workbench-field__control"
+                  prepend-inner-icon="mdi-account"
+                />
+              </label>
+              <label class="workbench-field">
+                <span class="workbench-field__title">{{ t('login.password') }}</span>
+                <v-text-field
+                  v-model="password"
+                  :aria-label="t('login.password')"
+                  autocomplete="current-password"
+                  class="workbench-field__control"
+                  :error-messages="error"
+                  prepend-inner-icon="mdi-lock"
+                  type="password"
+                />
+              </label>
               <v-btn
                 block
                 class="mt-4"
@@ -98,4 +106,8 @@
 </script>
 
 <style scoped>
+.auth-form {
+  display: grid;
+  gap: 14px;
+}
 </style>

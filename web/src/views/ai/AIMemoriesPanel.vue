@@ -48,47 +48,71 @@
         <v-expansion-panel>
           <v-expansion-panel-title>{{ t('ai.advancedInput') }}</v-expansion-panel-title>
           <v-expansion-panel-text>
-            <div class="ai-binding-form ai-memory-toolbar pt-2">
-              <v-select
-                v-model="memoryForm.anchor_type"
-                density="comfortable"
-                hide-details
-                :items="memorySubjectOptions"
-                :label="t('ai.memoryAnchorType')"
-              />
-              <v-select
-                v-model="memoryForm.memory_layer"
-                density="comfortable"
-                hide-details
-                :items="memoryDomainOptions"
-                :label="t('ai.memoryLayer')"
-              />
-              <v-text-field
-                v-model.trim="memoryForm.anchor_id"
-                density="comfortable"
-                hide-details
-                :label="t('ai.memoryAnchorId')"
-              />
-              <v-text-field
-                v-model.trim="memoryForm.query"
-                density="comfortable"
-                hide-details
-                :label="t('ai.memoryQuery')"
-              />
-              <v-select
-                v-model="memoryForm.memory_kind"
-                density="comfortable"
-                hide-details
-                :items="memoryTypeFilterOptions"
-                :label="t('ai.memoryKind')"
-              />
-              <v-select
-                v-model="memoryForm.limit"
-                density="comfortable"
-                hide-details
-                :items="memoryLimitOptions"
-                :label="t('ai.memoryLimit')"
-              />
+            <div class="ai-binding-form ai-memory-toolbar workbench-form-grid pt-2">
+              <label class="workbench-field">
+                <span class="workbench-field__title">{{ t('ai.memoryAnchorType') }}</span>
+                <v-select
+                  v-model="memoryForm.anchor_type"
+                  :aria-label="t('ai.memoryAnchorType')"
+                  class="workbench-field__control"
+                  density="comfortable"
+                  hide-details
+                  :items="memorySubjectOptions"
+                />
+              </label>
+              <label class="workbench-field">
+                <span class="workbench-field__title">{{ t('ai.memoryLayer') }}</span>
+                <v-select
+                  v-model="memoryForm.memory_layer"
+                  :aria-label="t('ai.memoryLayer')"
+                  class="workbench-field__control"
+                  density="comfortable"
+                  hide-details
+                  :items="memoryDomainOptions"
+                />
+              </label>
+              <label class="workbench-field">
+                <span class="workbench-field__title">{{ t('ai.memoryAnchorId') }}</span>
+                <v-text-field
+                  v-model.trim="memoryForm.anchor_id"
+                  :aria-label="t('ai.memoryAnchorId')"
+                  class="workbench-field__control"
+                  density="comfortable"
+                  hide-details
+                />
+              </label>
+              <label class="workbench-field">
+                <span class="workbench-field__title">{{ t('ai.memoryQuery') }}</span>
+                <v-text-field
+                  v-model.trim="memoryForm.query"
+                  :aria-label="t('ai.memoryQuery')"
+                  class="workbench-field__control"
+                  density="comfortable"
+                  hide-details
+                />
+              </label>
+              <label class="workbench-field">
+                <span class="workbench-field__title">{{ t('ai.memoryKind') }}</span>
+                <v-select
+                  v-model="memoryForm.memory_kind"
+                  :aria-label="t('ai.memoryKind')"
+                  class="workbench-field__control"
+                  density="comfortable"
+                  hide-details
+                  :items="memoryTypeFilterOptions"
+                />
+              </label>
+              <label class="workbench-field">
+                <span class="workbench-field__title">{{ t('ai.memoryLimit') }}</span>
+                <v-select
+                  v-model="memoryForm.limit"
+                  :aria-label="t('ai.memoryLimit')"
+                  class="workbench-field__control"
+                  density="comfortable"
+                  hide-details
+                  :items="memoryLimitOptions"
+                />
+              </label>
             </div>
           </v-expansion-panel-text>
         </v-expansion-panel>
@@ -163,29 +187,41 @@
       </div>
 
       <v-sheet class="surface-gradient-card pa-4">
-        <div class="ai-binding-form ai-memory-toolbar">
-          <v-select
-            v-model="memoryDraft.memory_layer"
-            density="comfortable"
-            hide-details
-            :items="memoryDraftLayerOptions"
-            :label="t('ai.memoryLayer')"
-          />
-          <v-select
-            v-model="memoryDraft.memory_kind"
-            density="comfortable"
-            hide-details
-            :items="memoryTypeOptions"
-            :label="t('ai.memoryKind')"
-          />
-          <v-textarea
-            v-model.trim="memoryDraft.content"
-            auto-grow
-            density="comfortable"
-            hide-details
-            :label="t('ai.memoryContent')"
-            rows="2"
-          />
+        <div class="ai-binding-form ai-memory-toolbar workbench-form-grid">
+          <label class="workbench-field">
+            <span class="workbench-field__title">{{ t('ai.memoryLayer') }}</span>
+            <v-select
+              v-model="memoryDraft.memory_layer"
+              :aria-label="t('ai.memoryLayer')"
+              class="workbench-field__control"
+              density="comfortable"
+              hide-details
+              :items="memoryDraftLayerOptions"
+            />
+          </label>
+          <label class="workbench-field">
+            <span class="workbench-field__title">{{ t('ai.memoryKind') }}</span>
+            <v-select
+              v-model="memoryDraft.memory_kind"
+              :aria-label="t('ai.memoryKind')"
+              class="workbench-field__control"
+              density="comfortable"
+              hide-details
+              :items="memoryTypeOptions"
+            />
+          </label>
+          <label class="workbench-field workbench-field--wide">
+            <span class="workbench-field__title">{{ t('ai.memoryContent') }}</span>
+            <v-textarea
+              v-model.trim="memoryDraft.content"
+              :aria-label="t('ai.memoryContent')"
+              auto-grow
+              class="workbench-field__control"
+              density="comfortable"
+              hide-details
+              rows="2"
+            />
+          </label>
           <v-btn
             color="primary"
             :disabled="!canSaveMemory"
@@ -260,35 +296,47 @@
 
               <div class="text-body-1 mt-3 memory-content-text">{{ item.content }}</div>
               <div v-if="editingMemoryId === item.memory_id" class="d-flex flex-column ga-3 mt-3">
-                <v-textarea
-                  v-model.trim="memoryEditDraft.content"
-                  auto-grow
-                  density="comfortable"
-                  hide-details
-                  :label="t('ai.memoryContent')"
-                  rows="3"
-                />
-                <div class="ai-binding-form">
-                  <v-text-field
-                    v-model.number="memoryEditDraft.salience"
+                <label class="workbench-field">
+                  <span class="workbench-field__title">{{ t('ai.memoryContent') }}</span>
+                  <v-textarea
+                    v-model.trim="memoryEditDraft.content"
+                    :aria-label="t('ai.memoryContent')"
+                    auto-grow
+                    class="workbench-field__control"
                     density="comfortable"
                     hide-details
-                    :label="t('ai.memorySalience')"
-                    max="1"
-                    min="0"
-                    step="0.1"
-                    type="number"
+                    rows="3"
                   />
-                  <v-text-field
-                    v-model.number="memoryEditDraft.confidence"
-                    density="comfortable"
-                    hide-details
-                    :label="t('ai.memoryConfidence')"
-                    max="1"
-                    min="0"
-                    step="0.1"
-                    type="number"
-                  />
+                </label>
+                <div class="ai-binding-form workbench-form-grid">
+                  <label class="workbench-field">
+                    <span class="workbench-field__title">{{ t('ai.memorySalience') }}</span>
+                    <v-text-field
+                      v-model.number="memoryEditDraft.salience"
+                      :aria-label="t('ai.memorySalience')"
+                      class="workbench-field__control"
+                      density="comfortable"
+                      hide-details
+                      max="1"
+                      min="0"
+                      step="0.1"
+                      type="number"
+                    />
+                  </label>
+                  <label class="workbench-field">
+                    <span class="workbench-field__title">{{ t('ai.memoryConfidence') }}</span>
+                    <v-text-field
+                      v-model.number="memoryEditDraft.confidence"
+                      :aria-label="t('ai.memoryConfidence')"
+                      class="workbench-field__control"
+                      density="comfortable"
+                      hide-details
+                      max="1"
+                      min="0"
+                      step="0.1"
+                      type="number"
+                    />
+                  </label>
                 </div>
               </div>
 
