@@ -48,7 +48,7 @@
                 <section
                   v-for="field in coreFields"
                   :key="field.key"
-                  class="settings-list-row"
+                  class="settings-list-row settings-list-row--compact"
                 >
                   <div class="settings-list-row__main">
                     <div class="settings-list-row__info">
@@ -80,12 +80,8 @@
                         </v-chip>
                       </div>
 
-                      <div class="settings-list-row__meta text-caption text-medium-emphasis">
-                        <span>{{ t('plugins.settingsType') }}: {{ field.type }}</span>
-                        <span>{{ t('plugins.settingsValueSource') }}: {{ settingsValueSourceLabel(field.value_source) }}</span>
-                        <span v-if="field.choices.length > 0">{{ t('plugins.settingsChoices') }}: {{ formatFieldChoices(field.choices) }}</span>
-                        <span>{{ t('plugins.settingsCurrent') }}: {{ displayFieldValue(field.current_value) }}</span>
-                        <span v-if="field.has_local_override">{{ t('plugins.settingsLocal') }}: {{ displayFieldValue(field.local_value) }}</span>
+                      <div class="settings-list-row__value-summary text-caption">
+                        {{ t('plugins.settingsCurrent') }}: {{ displayFieldValue(field.current_value) }}
                       </div>
                     </div>
 
@@ -127,12 +123,32 @@
                       <SettingsFieldEditor
                         v-model="coreForm[field.key]"
                         :array-hint="t('plugins.settingsArrayHint')"
+                        density="compact"
                         :editing="coreEditor.isFieldEditing(field)"
                         :field="field"
                         :json-hint="t('plugins.settingsJsonHint')"
                       />
                     </div>
                   </div>
+
+                  <details class="settings-list-row__advanced">
+                    <summary class="settings-list-row__advanced-summary">
+                      <span class="settings-list-row__advanced-label settings-list-row__advanced-label--closed">
+                        {{ t('core.showAdvancedDetails') }}
+                      </span>
+                      <span class="settings-list-row__advanced-label settings-list-row__advanced-label--open">
+                        {{ t('core.hideAdvancedDetails') }}
+                      </span>
+                      <v-icon icon="mdi-chevron-down" size="18" />
+                    </summary>
+                    <div class="settings-list-row__meta text-caption text-medium-emphasis">
+                      <span>{{ t('plugins.settingsType') }}: {{ field.type }}</span>
+                      <span>{{ t('plugins.settingsValueSource') }}: {{ settingsValueSourceLabel(field.value_source) }}</span>
+                      <span v-if="field.choices.length > 0">{{ t('plugins.settingsChoices') }}: {{ formatFieldChoices(field.choices) }}</span>
+                      <span>{{ t('plugins.settingsCurrent') }}: {{ displayFieldValue(field.current_value) }}</span>
+                      <span v-if="field.has_local_override">{{ t('plugins.settingsLocal') }}: {{ displayFieldValue(field.local_value) }}</span>
+                    </div>
+                  </details>
                 </section>
               </div>
             </SettingsWorkbench>
@@ -505,19 +521,35 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  background: rgb(var(--v-theme-surface));
-  border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+  background: rgb(var(--v-theme-surface-container-low));
+  border: 1px solid rgba(var(--v-theme-outline), 0.14);
   border-radius: var(--shape-medium);
 }
 
 .settings-list-row {
-  padding: 18px 20px;
-  border-bottom: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
-  background: rgba(var(--v-theme-surface), 0.92);
+  padding: 10px 14px;
+  border-bottom: 1px solid rgba(var(--v-theme-outline), 0.12);
+  background: rgba(var(--v-theme-surface), 0.88);
+  transition:
+    box-shadow var(--motion-fast) var(--motion-ease),
+    background-color var(--motion-fast) var(--motion-ease);
+}
+
+.settings-list-row--compact {
+  padding: 10px 14px;
 }
 
 .settings-list-row:last-child {
   border-bottom: 0;
+}
+
+.settings-list-row:hover {
+  background: rgba(var(--v-theme-surface), 0.94);
+}
+
+.settings-list-row:focus-within {
+  background: rgba(var(--v-theme-surface), 0.96);
+  box-shadow: inset 3px 0 0 rgba(var(--v-theme-primary), 0.78);
 }
 
 .settings-list-row__main {
@@ -525,6 +557,7 @@
   grid-template-columns: minmax(200px, 260px) minmax(0, 1fr);
   gap: 20px;
   align-items: start;
+  row-gap: 8px;
 }
 
 .settings-list-row__info {
@@ -543,6 +576,12 @@
   line-height: 1.45;
 }
 
+.settings-list-row__value-summary {
+  color: rgba(var(--v-theme-on-surface), 0.66);
+  line-height: 1.35;
+  word-break: break-word;
+}
+
 .settings-list-row__status {
   display: flex;
   align-items: center;
@@ -554,12 +593,12 @@
 .settings-list-row__control {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
   min-width: 0;
-  padding: 14px;
+  padding: 2px 0;
   border-radius: var(--shape-medium);
-  background: rgba(var(--v-theme-on-surface), 0.025);
-  border: 1px solid rgba(var(--v-border-color), 0.65);
+  background: transparent;
+  border: 0;
 }
 
 .settings-list-row__actions {
@@ -572,6 +611,7 @@
 
 .settings-action {
   min-width: 68px;
+  min-height: 36px;
 }
 
 .settings-action--primary {
@@ -582,8 +622,60 @@
   display: flex;
   flex-wrap: wrap;
   gap: 6px 12px;
+  padding-top: 8px;
   line-height: 1.35;
   word-break: break-word;
+}
+
+.settings-list-row__advanced {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed rgba(var(--v-theme-outline), 0.16);
+}
+
+.settings-list-row__advanced-summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: rgba(var(--v-theme-on-surface), 0.62);
+  cursor: pointer;
+  font-size: 0.78rem;
+  font-weight: 600;
+  line-height: 1.3;
+  list-style: none;
+  transition: color var(--motion-fast) var(--motion-ease);
+}
+
+.settings-list-row__advanced-summary::-webkit-details-marker {
+  display: none;
+}
+
+.settings-list-row__advanced-summary:hover,
+.settings-list-row__advanced-summary:focus-visible {
+  color: rgb(var(--v-theme-primary));
+}
+
+.settings-list-row__advanced-summary:focus-visible {
+  border-radius: var(--shape-compact);
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.settings-list-row__advanced-summary .v-icon {
+  transition: transform var(--motion-fast) var(--motion-ease);
+}
+
+.settings-list-row__advanced[open] .settings-list-row__advanced-summary .v-icon {
+  transform: rotate(180deg);
+}
+
+.settings-list-row__advanced-label--open,
+.settings-list-row__advanced[open] .settings-list-row__advanced-label--closed {
+  display: none;
+}
+
+.settings-list-row__advanced[open] .settings-list-row__advanced-label--open {
+  display: inline;
 }
 
 .settings-list-row__control :deep(.settings-field-editor) {
@@ -593,6 +685,10 @@
 .settings-list-row__control :deep(.v-field),
 .settings-list-row__control :deep(.v-selection-control) {
   width: 100%;
+}
+
+.settings-list-row__control :deep(.v-field--variant-outlined .v-field__outline) {
+  color: rgba(var(--v-theme-outline), 0.26);
 }
 
 .config-chip-row {
@@ -606,6 +702,10 @@
 @media (max-width: 960px) {
   .settings-list-row__main {
     grid-template-columns: 1fr;
+  }
+
+  .settings-list-row__control {
+    padding: 2px 0;
   }
 }
 </style>

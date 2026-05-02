@@ -48,6 +48,13 @@ the visible title replaces the Vuetify floating label. Floating Vuetify labels
 are still acceptable for unmigrated incidental controls or cases where they are
 the only concise accessible label.
 
+Management forms should use progressive disclosure for low-frequency technical
+detail. Keep default rows focused on the task label, helper text, effective
+value, status, and relevant actions. Move type/source diagnostics, normalization
+details, raw current/local values, and other troubleshooting data behind an
+advanced disclosure or a save preview when those details would make the primary
+editing path harder to scan.
+
 ## Layout Rules
 
 - A management page may use one primary tab-like layer. Secondary choices should

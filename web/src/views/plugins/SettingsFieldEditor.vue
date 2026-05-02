@@ -11,7 +11,7 @@
 
     <v-select
       v-else-if="editing && field.editable && isNullableBoolField(field)"
-      density="comfortable"
+      :density="density"
       hide-details
       item-title="title"
       item-value="value"
@@ -23,7 +23,7 @@
 
     <v-select
       v-else-if="editing && field.editable && field.editor === 'select'"
-      density="comfortable"
+      :density="density"
       hide-details
       item-title="title"
       item-value="value"
@@ -35,7 +35,7 @@
 
     <v-text-field
       v-else-if="editing && field.editable && isTextInputField(field)"
-      density="comfortable"
+      :density="density"
       hide-details
       :model-value="modelValue"
       :placeholder="field.secret ? '' : displayFieldValue(field.current_value)"
@@ -48,7 +48,7 @@
       v-else-if="editing && field.editable && isSequenceChipField(field)"
       chips
       closable-chips
-      density="comfortable"
+      :density="density"
       hide-details
       :model-value="modelValue"
       multiple
@@ -67,7 +67,7 @@
     <v-textarea
       v-else-if="editing && field.editable && field.editor === 'json_array'"
       auto-grow
-      density="comfortable"
+      :density="density"
       :hint="arrayHint"
       :model-value="modelValue"
       persistent-hint
@@ -79,7 +79,7 @@
     <v-textarea
       v-else-if="editing && field.editable && field.editor === 'json_object'"
       auto-grow
-      density="comfortable"
+      :density="density"
       :hint="jsonHint"
       :model-value="modelValue"
       persistent-hint
@@ -91,7 +91,7 @@
     <v-textarea
       v-else-if="showReadonly && useReadonlyTextarea(field)"
       auto-grow
-      density="comfortable"
+      :density="density"
       hide-details
       :model-value="displayFieldValue(field.current_value)"
       readonly
@@ -101,7 +101,7 @@
 
     <v-text-field
       v-else-if="showReadonly"
-      density="comfortable"
+      :density="density"
       hide-details
       :model-value="displayFieldValue(field.current_value)"
       readonly
@@ -124,6 +124,7 @@
 
   withDefaults(defineProps<{
     arrayHint: string
+    density?: 'default' | 'comfortable' | 'compact'
     editing: boolean
     field: PluginSettingField
     jsonHint: string
@@ -131,6 +132,7 @@
     readonlyRows?: number
     showReadonly?: boolean
   }>(), {
+    density: 'comfortable',
     readonlyRows: 2,
     showReadonly: true,
   })

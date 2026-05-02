@@ -6,6 +6,7 @@ import { getAdapterConfig, updateAdapterConfig } from '@/api/adapters'
 import { getErrorMessage } from '@/api/client'
 import {
   adapterStatusSummary,
+  buildAdapterDraftDiagnostics,
   normalizeAdapterModules,
 } from '@/views/core/adapterStatus'
 
@@ -42,7 +43,48 @@ export function useAdapterManagement (options: {
   const statusByName = computed(() => new Map(
     adapterModules.value.map(item => [item.name, item] as const),
   ))
+  const configuredModules = computed(() => adapterModules.value)
   const adapterCount = computed(() => adapterModules.value.length)
+  const diagnostics = computed(() => buildAdapterDraftDiagnostics(
+    draftRows.value.map(item => item.value),
+    savedModules.value,
+  ))
+  const blankRowCount = computed(() => diagnostics.value.blankRowCount)
+  const duplicateModules = computed(() => diagnostics.value.duplicateModules)
+  const addedModules = computed(() => diagnostics.value.addedModules)
+  const removedModules = computed(() => diagnostics.value.removedModules)
+  const unchangedModules = computed(() => diagnostics.value.unchangedModules)
+  const normalizationNotes = computed(() => {
+    const notes: string[] = []
+    if (blankRowCount.value > 0) {
+      notes.push(options.t('core.adapterIgnoredBlankRows', { count: blankRowCount.value }))
+    }
+    if (duplicateModules.value.length > 0) {
+      notes.push(options.t('core.adapterDuplicateRows', { modules: duplicateModules.value.join(', ') }))
+    }
+    if (hasPendingChanges.value) {
+      notes.push(options.t('core.adapterRestartRequired'))
+    }
+    return notes
+  })
+  const previewItems = computed(() => [
+    {
+      key: options.t('core.adapterPreviewCurrent'),
+      value: savedModules.value,
+    },
+    {
+      key: options.t('core.adapterPreviewNext'),
+      value: normalizedDraft.value,
+    },
+    {
+      key: options.t('core.adapterPreviewAdded'),
+      value: addedModules.value,
+    },
+    {
+      key: options.t('core.adapterPreviewRemoved'),
+      value: removedModules.value,
+    },
+  ])
 
   function setDraftRows (modules: string[]) {
     draftRows.value = modules.map(value => ({
@@ -131,16 +173,25 @@ export function useAdapterManagement (options: {
 
   return {
     addDraftRow,
+    addedModules,
     adapterCount,
+    blankRowCount,
+    configuredModules,
+    diagnostics,
+    duplicateModules,
     draftRows,
     errorMessage,
     hasPendingChanges,
     loading,
+    normalizationNotes,
+    previewItems,
     reload,
     removeDraftRow,
+    removedModules,
     rowState,
     rowStatusSummary,
     save,
     saving,
+    unchangedModules,
   }
 }
