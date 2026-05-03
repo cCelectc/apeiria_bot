@@ -4,7 +4,7 @@ import type {
   AIModelProfileItem,
   AISourceModelItem,
 } from '@/api/ai/types'
-import { computed, ref, type Ref } from 'vue'
+import { computed, reactive, ref, type Ref, watch } from 'vue'
 import {
   getAIModelBindings,
   getAIModelProfiles,
@@ -17,6 +17,11 @@ import {
 import { getErrorMessage } from '@/api/client'
 import { useNoticeStore } from '@/stores/notice'
 import { useAIModelProfileState } from './aiModels/profileState'
+import {
+  type AIWorkflowOperationResult,
+  type AIWorkflowResultStage,
+  deriveAISetupWorkflow,
+} from './aiModels/setupWorkflow'
 import { useAISourceModelState } from './aiModels/sourceModelState'
 import { useAISourceState } from './aiModels/sourceState'
 
@@ -31,8 +36,31 @@ export function useAIModelsTab (
   const modelBindings = ref<AIModelBindingItem[]>([])
 
   const loadingSourceModels = ref(false)
+  const workflowResults = reactive<Record<AIWorkflowResultStage, AIWorkflowOperationResult | null>>({
+    discovery: null,
+    model: null,
+    profile: null,
+    provider: null,
+    validation: null,
+  })
   const notify = (message: string, level: 'error' | 'success' | 'warning') => {
     noticeStore.show(message, level)
+  }
+
+  function reportWorkflowResult (
+    stage: AIWorkflowResultStage,
+    result: AIWorkflowOperationResult,
+  ) {
+    workflowResults[stage] = result
+  }
+
+  function clearWorkflowResults (...stages: AIWorkflowResultStage[]) {
+    const targetStages = stages.length > 0
+      ? stages
+      : Object.keys(workflowResults) as AIWorkflowResultStage[]
+    for (const stage of targetStages) {
+      workflowResults[stage] = null
+    }
   }
 
   function startCreateSourceModel () {
@@ -111,6 +139,7 @@ export function useAIModelsTab (
     fetchedSourceModels,
     loadModelsData,
     loadSourceModelsFor,
+    reportWorkflowResult,
     startCreateSourceModel,
     startCreateModelProfile,
     syncActiveCapabilitySelection,
@@ -126,6 +155,7 @@ export function useAIModelsTab (
     normalizedSourceApiKeys: sourceState.normalizedSourceApiKeys,
     normalizedSourceExtraConfig: sourceState.normalizedSourceExtraConfig,
     loadSourceModelsFor,
+    reportWorkflowResult,
   })
 
   const profileState = useAIModelProfileState({
@@ -135,6 +165,7 @@ export function useAIModelsTab (
     sourceModels,
     modelProfiles,
     modelBindings,
+    reportWorkflowResult,
   })
 
   const canFetchSourceModels = computed(() => (
@@ -142,11 +173,43 @@ export function useAIModelsTab (
     && !modelState.fetchingSourceModels.value
   ))
 
+  const setupWorkflow = computed(() => deriveAISetupWorkflow({
+    canFetchSourceModels: canFetchSourceModels.value,
+    canSaveModel: modelState.canSaveModel.value,
+    canSaveProfile: profileState.canSaveProfile.value,
+    canSaveSource: sourceState.canSaveSource.value,
+    capability: sourceCapabilityTab.value,
+    capabilityType: sourceState.currentSourceCapability.value,
+    fetchedSourceModelCount: fetchedSourceModels.value.length,
+    modelProfiles: modelProfiles.value,
+    selectedSource: sourceState.sourceForm.source_id
+      ? {
+          api_base: sourceState.sourceForm.api_base,
+          api_key_env_name: sourceState.sourceForm.api_key_env_name,
+          api_keys: sourceState.sourceForm.api_keys,
+          enabled: sourceState.sourceForm.enabled,
+          name: sourceState.sourceForm.name,
+          preset_type: sourceState.sourceForm.preset_type,
+          source_id: sourceState.sourceForm.source_id,
+        }
+      : null,
+    sourceCount: sourceState.sources.value.length,
+    sourceModels: sourceModels.value,
+  }))
+
+  watch(() => [
+    sourceCapabilityTab.value,
+    sourceState.sourceForm.source_id,
+  ], () => {
+    clearWorkflowResults()
+  })
+
   return {
     canFetchSourceModels,
     canSaveModel: modelState.canSaveModel,
     canSaveProfile: profileState.canSaveProfile,
     canSaveSource: sourceState.canSaveSource,
+    clearWorkflowResults,
     defaultSourceModel: modelState.defaultSourceModel,
     deletingModelId: modelState.deletingModelId,
     deletingSource: sourceState.deletingSource,
@@ -184,6 +247,7 @@ export function useAIModelsTab (
     selectedModelBindingCount: profileState.selectedModelBindingCount,
     selectedModelProfile: profileState.selectedModelProfile,
     selectedSource: sourceState.selectedSource,
+    setupWorkflow,
     sourceForm: sourceState.sourceForm,
     sourceModels,
     sourcePresets: sourceState.sourcePresets,
@@ -199,5 +263,6 @@ export function useAIModelsTab (
     touchSourceField: sourceState.touchSourceField,
     fallbackProfileOptions: profileState.fallbackProfileOptions,
     filteredModelProfiles: profileState.filteredModelProfiles,
+    workflowResults,
   }
 }

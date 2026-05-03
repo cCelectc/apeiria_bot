@@ -1,4 +1,8 @@
 import type {
+  AIWorkflowOperationResult,
+  AIWorkflowResultStage,
+} from './setupWorkflow'
+import type {
   AIModelCatalogItem,
   AISourceItem,
   AISourceModelItem,
@@ -32,6 +36,10 @@ interface UseAISourceStateOptions {
   fetchedSourceModels: Ref<AIModelCatalogItem[]>
   loadModelsData: () => Promise<void>
   loadSourceModelsFor: (sourceId: string) => Promise<void>
+  reportWorkflowResult: (
+    stage: AIWorkflowResultStage,
+    result: AIWorkflowOperationResult,
+  ) => void
   startCreateSourceModel: () => void
   startCreateModelProfile: () => void
   syncActiveCapabilitySelection: () => Promise<void>
@@ -45,6 +53,7 @@ export function useAISourceState ({
   fetchedSourceModels,
   loadModelsData,
   loadSourceModelsFor,
+  reportWorkflowResult,
   startCreateSourceModel,
   startCreateModelProfile,
   syncActiveCapabilitySelection,
@@ -235,8 +244,11 @@ export function useAISourceState ({
     await loadSourceModelsFor(item.source_id)
   }
 
-  function startCreateSource () {
-    const defaultPreset = sourcePresets.value[0]
+  function startCreateSource (presetType?: string) {
+    const defaultPreset = (
+      sourcePresets.value.find(item => item.preset_type === presetType)
+      ?? sourcePresets.value[0]
+    )
     sourceForm.source_id = ''
     sourceForm.name = ''
     sourceForm.preset_type
@@ -276,12 +288,13 @@ export function useAISourceState ({
   async function saveSource () {
     sourceSubmitAttempted.value = true
     if (!sourceValid.value) {
-      notify(
+      const message = (
         sourceErrors.value.name
         || sourceErrors.value.preset_type
-        || t('ai.sourceSaveFailed'),
-        'error',
+        || t('ai.sourceSaveFailed')
       )
+      reportWorkflowResult('provider', { message, status: 'error' })
+      notify(message, 'error')
       return
     }
     if (!sourceDirty.value) {
@@ -314,9 +327,13 @@ export function useAISourceState ({
         await loadModelsData()
         await selectSource(response.data)
       }
-      notify(t('ai.sourceSaved'), 'success')
+      const message = t('ai.sourceSaved')
+      reportWorkflowResult('provider', { message, status: 'success' })
+      notify(message, 'success')
     } catch (error) {
-      notify(getErrorMessage(error, t('ai.sourceSaveFailed')), 'error')
+      const message = getErrorMessage(error, t('ai.sourceSaveFailed'))
+      reportWorkflowResult('provider', { message, status: 'error' })
+      notify(message, 'error')
     } finally {
       savingSource.value = false
     }
@@ -330,9 +347,13 @@ export function useAISourceState ({
     try {
       await deleteAISource(sourceForm.source_id)
       await loadModelsData()
-      notify(t('ai.sourceDeleted'), 'success')
+      const message = t('ai.sourceDeleted')
+      reportWorkflowResult('provider', { message, status: 'success' })
+      notify(message, 'success')
     } catch (error) {
-      notify(getErrorMessage(error, t('ai.sourceDeleteFailed')), 'error')
+      const message = getErrorMessage(error, t('ai.sourceDeleteFailed'))
+      reportWorkflowResult('provider', { message, status: 'error' })
+      notify(message, 'error')
     } finally {
       deletingSource.value = false
     }

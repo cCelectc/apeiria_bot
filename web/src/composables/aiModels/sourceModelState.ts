@@ -1,3 +1,7 @@
+import type {
+  AIWorkflowOperationResult,
+  AIWorkflowResultStage,
+} from './setupWorkflow'
 import type { AIModelCatalogItem, AISourceModelItem } from '@/api/ai/types'
 import { computed, type ComputedRef, reactive, ref, type Ref } from 'vue'
 import {
@@ -29,6 +33,10 @@ interface UseAISourceModelStateOptions {
   normalizedSourceApiKeys: Readonly<ComputedRef<string[]>>
   normalizedSourceExtraConfig: Readonly<ComputedRef<Record<string, unknown>>>
   loadSourceModelsFor: (sourceId: string) => Promise<void>
+  reportWorkflowResult: (
+    stage: AIWorkflowResultStage,
+    result: AIWorkflowOperationResult,
+  ) => void
 }
 
 export function useAISourceModelState ({
@@ -41,6 +49,7 @@ export function useAISourceModelState ({
   normalizedSourceApiKeys,
   normalizedSourceExtraConfig,
   loadSourceModelsFor,
+  reportWorkflowResult,
 }: UseAISourceModelStateOptions) {
   const fetchingSourceModels = ref(false)
   const savingModel = ref(false)
@@ -155,12 +164,13 @@ export function useAISourceModelState ({
   async function saveSourceModel () {
     modelSubmitAttempted.value = true
     if (!modelValid.value) {
-      notify(
+      const message = (
         modelErrors.value.model_identifier
         || modelErrors.value.display_name
-        || t('ai.modelSaveFailed'),
-        'error',
+        || t('ai.modelSaveFailed')
       )
+      reportWorkflowResult('model', { message, status: 'error' })
+      notify(message, 'error')
       return
     }
     if (!modelDirty.value) {
@@ -189,9 +199,13 @@ export function useAISourceModelState ({
         await loadSourceModelsFor(sourceForm.source_id)
         selectSourceModel(response.data)
       }
-      notify(t('ai.modelSaved'), 'success')
+      const message = t('ai.modelSaved')
+      reportWorkflowResult('model', { message, status: 'success' })
+      notify(message, 'success')
     } catch (error) {
-      notify(getErrorMessage(error, t('ai.modelSaveFailed')), 'error')
+      const message = getErrorMessage(error, t('ai.modelSaveFailed'))
+      reportWorkflowResult('model', { message, status: 'error' })
+      notify(message, 'error')
     } finally {
       savingModel.value = false
     }
@@ -202,9 +216,13 @@ export function useAISourceModelState ({
     try {
       await deleteAISourceModel(modelId, sourceForm.source_id || undefined)
       await loadSourceModelsFor(sourceForm.source_id)
-      notify(t('ai.modelDeleted'), 'success')
+      const message = t('ai.modelDeleted')
+      reportWorkflowResult('model', { message, status: 'success' })
+      notify(message, 'success')
     } catch (error) {
-      notify(getErrorMessage(error, t('ai.modelDeleteFailed')), 'error')
+      const message = getErrorMessage(error, t('ai.modelDeleteFailed'))
+      reportWorkflowResult('model', { message, status: 'error' })
+      notify(message, 'error')
     } finally {
       deletingModelId.value = ''
     }
@@ -233,9 +251,17 @@ export function useAISourceModelState ({
           current => current.id !== item.id,
         )
       }
-      notify(t('ai.modelSaved'), 'success')
+      const message = t('ai.modelSaved')
+      reportWorkflowResult('model', {
+        detail: item.name || item.id,
+        message,
+        status: 'success',
+      })
+      notify(message, 'success')
     } catch (error) {
-      notify(getErrorMessage(error, t('ai.modelSaveFailed')), 'error')
+      const message = getErrorMessage(error, t('ai.modelSaveFailed'))
+      reportWorkflowResult('model', { message, status: 'error' })
+      notify(message, 'error')
     } finally {
       importingModelIdentifier.value = ''
     }
@@ -256,14 +282,20 @@ export function useAISourceModelState ({
         extra_config: normalizedSourceExtraConfig.value,
       })
       fetchedSourceModels.value = response.data
-      notify(
-        response.data.length > 0
-          ? t('ai.modelsFetched')
-          : t('ai.modelFetchEmpty'),
-        response.data.length > 0 ? 'success' : 'warning',
-      )
+      const message = response.data.length > 0
+        ? t('ai.modelsFetched')
+        : t('ai.modelFetchEmpty')
+      const status = response.data.length > 0 ? 'success' : 'warning'
+      reportWorkflowResult('discovery', {
+        detail: String(response.data.length),
+        message,
+        status,
+      })
+      notify(message, status)
     } catch (error) {
-      notify(getErrorMessage(error, t('ai.modelFetchFailed')), 'error')
+      const message = getErrorMessage(error, t('ai.modelFetchFailed'))
+      reportWorkflowResult('discovery', { message, status: 'error' })
+      notify(message, 'error')
     } finally {
       fetchingSourceModels.value = false
     }
@@ -286,14 +318,19 @@ export function useAISourceModelState ({
         model_identifier: resolvedModelIdentifier,
       })
       const output = response.data.content.trim()
-      notify(
-        output
-          ? t('ai.modelTestSucceededWithOutput', { output })
-          : t('ai.modelTestSucceeded'),
-        'success',
-      )
+      const message = output
+        ? t('ai.modelTestSucceededWithOutput', { output })
+        : t('ai.modelTestSucceeded')
+      reportWorkflowResult('validation', {
+        detail: output,
+        message: t('ai.modelTestSucceeded'),
+        status: 'success',
+      })
+      notify(message, 'success')
     } catch (error) {
-      notify(getErrorMessage(error, t('ai.modelTestFailed')), 'error')
+      const message = getErrorMessage(error, t('ai.modelTestFailed'))
+      reportWorkflowResult('validation', { message, status: 'error' })
+      notify(message, 'error')
     } finally {
       testingModelIdentifier.value = ''
     }

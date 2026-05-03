@@ -7,10 +7,23 @@
     </template>
 
     <template v-else>
+      <div
+        class="source-workflow-step source-workflow-step--section mb-4"
+        :class="{ 'source-workflow-step--focused': focusedStep === 'discovery' }"
+      >
+        <v-chip color="primary" size="small" variant="tonal">
+          {{ t('ai.setupStep.discovery') }}
+        </v-chip>
+        <div class="source-workflow-step__text">
+          {{ t('ai.modelDiscoveryWorkflowHint') }}
+        </div>
+      </div>
+
       <div class="d-flex flex-wrap justify-space-between align-center ga-3 mb-4">
         <div class="text-subtitle-1 font-weight-medium">{{ t('ai.sourceModelsTitle') }}</div>
         <div class="d-flex flex-wrap ga-2">
           <v-btn
+            :color="highlight === 'fetch' ? 'primary' : undefined"
             :disabled="!canFetchSourceModels"
             :loading="fetchingSourceModels"
             variant="tonal"
@@ -28,6 +41,10 @@
           </v-btn>
         </div>
       </div>
+      <div v-if="modelFetchDisabledReason" class="disabled-reason mb-3">
+        {{ modelFetchDisabledReason }}
+      </div>
+      <AIWorkflowResultAlert :result="workflowResults.discovery" />
 
       <div class="d-flex flex-wrap justify-space-between align-center ga-3 mb-3">
         <div class="d-flex align-center ga-3 source-models-toolbar">
@@ -64,6 +81,7 @@
         <v-expansion-panels
           v-model="sourceModelEditorPanel"
           class="source-model-editor-inline"
+          :class="{ 'source-model-editor-inline--focused': focusedStep === 'model' || focusedStep === 'defaultModel' }"
           variant="accordion"
         >
           <v-expansion-panel>
@@ -169,9 +187,16 @@
                   {{ t('common.save') }}
                 </v-btn>
               </div>
+              <div v-if="modelSaveDisabledReason" class="disabled-reason mt-3">
+                {{ modelSaveDisabledReason }}
+              </div>
             </v-expansion-panel-text>
           </v-expansion-panel>
         </v-expansion-panels>
+        <AIWorkflowResultAlert :result="workflowResults.model" />
+        <div v-if="modelImportDisabledReason" class="disabled-reason mt-3">
+          {{ modelImportDisabledReason }}
+        </div>
 
         <template v-if="unifiedSourceModels.length > 0">
           <v-sheet
@@ -180,7 +205,9 @@
             class="source-model-row px-4 py-3"
             :class="{
               'source-model-row--active': item.kind === 'configured' && item.model_id === modelForm.model_id,
+              'source-model-row--focused': focusedStep === 'defaultModel' && item.kind === 'configured' && item.model_id === modelForm.model_id,
               'source-model-row--importable': item.kind === 'importable',
+              'source-model-row--import-target': highlight === 'import' && item.kind === 'importable',
             }"
             @click="item.kind === 'configured' ? openEditSourceModel(item) : undefined"
           >
@@ -235,6 +262,7 @@
                 />
                 <v-btn
                   color="primary"
+                  :disabled="!canTestModels"
                   icon="mdi-flask-outline"
                   :loading="testingModelIdentifier === item.model_identifier"
                   size="small"
@@ -254,6 +282,7 @@
               <template v-else>
                 <v-btn
                   color="primary"
+                  :disabled="!!importingModelIdentifier && importingModelIdentifier !== item.model_identifier"
                   :loading="importingModelIdentifier === item.model_identifier"
                   prepend-icon="mdi-plus"
                   size="small"
@@ -300,7 +329,17 @@
       <v-sheet
         v-if="isChatCapability"
         class="surface-gradient-card pa-4 mt-4"
+        :class="{ 'source-model-stage--focused': focusedStep === 'profile' }"
       >
+        <div class="source-workflow-step mb-4">
+          <v-chip color="primary" size="small" variant="tonal">
+            {{ t('ai.setupStep.profile') }}
+          </v-chip>
+          <div class="source-workflow-step__text">
+            {{ t('ai.profileWorkflowHint') }}
+          </div>
+        </div>
+
         <div class="d-flex flex-wrap justify-space-between align-center ga-3 mb-4">
           <div class="d-flex flex-wrap ga-2">
             <v-chip color="primary" size="small" variant="tonal">
@@ -327,7 +366,10 @@
               v-for="item in filteredModelProfiles"
               :key="item.profile_id"
               class="source-model-row px-4 py-3"
-              :class="{ 'source-model-row--active': item.profile_id === profileForm.profile_id }"
+              :class="{
+                'source-model-row--active': item.profile_id === profileForm.profile_id,
+                'source-model-row--focused': focusedStep === 'profile' && item.profile_id === profileForm.profile_id,
+              }"
               @click="selectModelProfile(item)"
             >
               <div class="source-model-row__body">
@@ -429,7 +471,42 @@
               {{ t('common.save') }}
             </v-btn>
           </div>
+          <div v-if="profileSaveDisabledReason" class="disabled-reason mt-3">
+            {{ profileSaveDisabledReason }}
+          </div>
+          <AIWorkflowResultAlert :result="workflowResults.profile" />
         </template>
+      </v-sheet>
+
+      <v-sheet
+        v-if="workflow.selectedModel"
+        class="surface-gradient-card pa-4 mt-4 model-validation-panel"
+        :class="{ 'source-model-stage--focused': focusedStep === 'validation' }"
+      >
+        <div class="d-flex flex-wrap justify-space-between align-center ga-3">
+          <div>
+            <div class="text-subtitle-1 font-weight-medium">
+              {{ t('ai.setupStep.validation') }}
+            </div>
+            <div class="empty-state-hint mt-1">
+              {{ t('ai.modelValidationHint', { model: workflow.selectedModel.display_name }) }}
+            </div>
+          </div>
+          <v-btn
+            color="primary"
+            :disabled="!canTestModels"
+            :loading="testingModelIdentifier === workflow.selectedModel.model_identifier"
+            prepend-icon="mdi-flask-outline"
+            variant="tonal"
+            @click="testSourceModel(workflow.selectedModel.model_identifier)"
+          >
+            {{ t('ai.testModel') }}
+          </v-btn>
+        </div>
+        <div v-if="modelTestDisabledReason" class="disabled-reason mt-3">
+          {{ modelTestDisabledReason }}
+        </div>
+        <AIWorkflowResultAlert :result="workflowResults.validation" />
       </v-sheet>
     </template>
   </v-sheet>
@@ -446,8 +523,14 @@
     ProfileFormState,
     SourceFormState,
   } from '@/composables/aiModels/formState'
-  import { computed, ref } from 'vue'
+  import type {
+    AISetupWorkflow,
+    AIWorkflowOperationResult,
+    AIWorkflowResultStage,
+  } from '@/composables/aiModels/setupWorkflow'
+  import { computed, ref, watch } from 'vue'
   import { useI18n } from 'vue-i18n'
+  import AIWorkflowResultAlert from './AIWorkflowResultAlert.vue'
 
   interface ConfiguredSourceModelRow extends AISourceModelItem {
     key: string
@@ -484,6 +567,8 @@
     fetchedSourceModels: AIModelCatalogItem[]
     fetchingSourceModels: boolean
     filteredModelProfiles: AIModelProfileItem[]
+    focusedStep?: AISetupWorkflow['nextAction']['targetStep']
+    highlight?: string
     importingModelIdentifier: string
     isChatCapability: boolean
     isCreatingModel: boolean
@@ -516,6 +601,8 @@
     touchModelField: (field: 'model_identifier' | 'display_name') => void
     touchProfileField: (field: 'name' | 'model_id') => void
     importSourceModelCatalogItem: (item: AIModelCatalogItem) => void | Promise<void>
+    workflow: AISetupWorkflow
+    workflowResults: Record<AIWorkflowResultStage, AIWorkflowOperationResult | null>
   }>()
 
   const modelForm = defineModel<ModelFormState>('modelForm', { required: true })
@@ -527,6 +614,10 @@
   const sourceModelSearch = ref('')
   const modelDeleteDialog = ref(false)
   const pendingDeleteModel = ref<{ modelId: string, label: string } | null>(null)
+  const shouldOpenModelEditor = computed(() => (
+    props.focusedStep === 'model'
+    || props.focusedStep === 'defaultModel'
+  ))
 
   const filteredSourceModels = computed(() => {
     const keyword = sourceModelSearch.value.trim().toLowerCase()
@@ -573,6 +664,64 @@
   ])
 
   const availableImportModelCount = computed(() => importableSourceModels.value.length)
+  const canTestModels = computed(() => (
+    props.canFetchSourceModels && !props.testingModelIdentifier
+  ))
+  const modelFetchDisabledReason = computed(() => {
+    if (props.fetchingSourceModels || props.canFetchSourceModels) {
+      return ''
+    }
+    if (!props.sourceForm.source_id) {
+      return t('ai.selectSourceFirstHint')
+    }
+    if (props.workflow.connectionIssues.length > 0) {
+      return t('ai.modelFetchDisabledConnection')
+    }
+    return t('ai.modelFetchDisabled')
+  })
+  const modelSaveDisabledReason = computed(() => {
+    if (props.savingModel || props.canSaveModel) {
+      return ''
+    }
+    if (!modelForm.value.model_identifier.trim()) {
+      return t('ai.modelIdentifierRequired')
+    }
+    if (!modelForm.value.display_name.trim()) {
+      return t('ai.modelDisplayNameRequired')
+    }
+    return props.displayedModelErrors.model_identifier
+      || props.displayedModelErrors.display_name
+      || (props.sourceForm.source_id ? t('ai.modelSaveDisabledNoChanges') : t('ai.selectSourceFirstHint'))
+  })
+  const modelImportDisabledReason = computed(() => (
+    props.importingModelIdentifier ? t('ai.modelImportRunning') : ''
+  ))
+  const profileSaveDisabledReason = computed(() => {
+    if (props.savingProfile || props.canSaveProfile) {
+      return ''
+    }
+    if (!profileForm.value.name.trim()) {
+      return t('ai.modelProfileNameRequired')
+    }
+    if (!profileForm.value.model_id.trim()) {
+      return t('ai.modelProfileModelRequired')
+    }
+    return props.displayedProfileErrors.name
+      || props.displayedProfileErrors.model_id
+      || t('ai.profileSaveDisabledNoChanges')
+  })
+  const modelTestDisabledReason = computed(() => {
+    if (canTestModels.value) {
+      return ''
+    }
+    if (props.workflow.connectionIssues.length > 0) {
+      return t('ai.modelTestDisabledConnection')
+    }
+    if (props.testingModelIdentifier) {
+      return t('ai.modelTestRunning')
+    }
+    return t('ai.modelTestDisabled')
+  })
 
   function openCreateSourceModel () {
     props.startCreateSourceModel()
@@ -605,6 +754,12 @@
     pendingDeleteModel.value = null
     await props.removeSourceModel(target.modelId)
   }
+
+  watch(shouldOpenModelEditor, shouldOpen => {
+    if (shouldOpen) {
+      sourceModelEditorPanel.value = 0
+    }
+  }, { immediate: true })
 
   function capabilityProvenanceSources (value: Record<string, unknown> | undefined) {
     if (!value || typeof value !== 'object') {
@@ -651,11 +806,50 @@
   margin-bottom: 4px;
 }
 
+.source-model-editor-inline--focused {
+  border: 1px solid rgba(var(--v-theme-primary), 0.34);
+  box-shadow: inset 0 0 0 1px rgba(var(--v-theme-primary), 0.12);
+}
+
 .source-model-switches {
   display: flex;
   flex-wrap: wrap;
   gap: 18px;
   margin-top: 14px;
+}
+
+.source-workflow-step {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.source-workflow-step--section {
+  border: 1px solid transparent;
+  padding: 10px 12px;
+}
+
+.source-workflow-step--focused,
+.source-model-stage--focused {
+  border-color: rgba(var(--v-theme-primary), 0.36) !important;
+  box-shadow: inset 0 0 0 1px rgba(var(--v-theme-primary), 0.12);
+}
+
+.source-workflow-step__text {
+  color: rgba(var(--v-theme-on-surface), 0.62);
+  font-size: 0.88rem;
+  line-height: 1.5;
+}
+
+.disabled-reason {
+  color: rgba(var(--v-theme-on-surface), 0.58);
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+
+.model-validation-panel {
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.08);
 }
 
 .source-model-row {
@@ -679,6 +873,12 @@
 
 .source-model-row--importable {
   background: rgba(var(--v-theme-primary), 0.03);
+}
+
+.source-model-row--focused,
+.source-model-row--import-target {
+  border-color: rgba(var(--v-theme-primary), 0.56);
+  box-shadow: inset 0 0 0 1px rgba(var(--v-theme-primary), 0.18);
 }
 
 .source-model-row__body {

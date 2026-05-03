@@ -1,4 +1,8 @@
 import type {
+  AIWorkflowOperationResult,
+  AIWorkflowResultStage,
+} from './setupWorkflow'
+import type {
   AIModelBindingItem,
   AIModelProfileItem,
   AISourceModelItem,
@@ -21,6 +25,10 @@ interface UseAIModelProfileStateOptions {
   sourceModels: Ref<AISourceModelItem[]>
   modelProfiles: Ref<AIModelProfileItem[]>
   modelBindings: Ref<AIModelBindingItem[]>
+  reportWorkflowResult: (
+    stage: AIWorkflowResultStage,
+    result: AIWorkflowOperationResult,
+  ) => void
 }
 
 export function useAIModelProfileState ({
@@ -30,6 +38,7 @@ export function useAIModelProfileState ({
   sourceModels,
   modelProfiles,
   modelBindings,
+  reportWorkflowResult,
 }: UseAIModelProfileStateOptions) {
   const savingProfile = ref(false)
 
@@ -191,12 +200,13 @@ export function useAIModelProfileState ({
   async function saveModelProfile () {
     profileSubmitAttempted.value = true
     if (!profileValid.value) {
-      notify(
+      const message = (
         profileErrors.value.name
         || profileErrors.value.model_id
-        || t('ai.modelProfileSaveFailed'),
-        'error',
+        || t('ai.modelProfileSaveFailed')
       )
+      reportWorkflowResult('profile', { message, status: 'error' })
+      notify(message, 'error')
       return
     }
     if (!profileDirty.value) {
@@ -218,9 +228,13 @@ export function useAIModelProfileState ({
         modelProfiles.value = profilesResponse.data
         selectModelProfile(response.data)
       }
-      notify(t('ai.modelProfileSaved'), 'success')
+      const message = t('ai.modelProfileSaved')
+      reportWorkflowResult('profile', { message, status: 'success' })
+      notify(message, 'success')
     } catch (error) {
-      notify(getErrorMessage(error, t('ai.modelProfileSaveFailed')), 'error')
+      const message = getErrorMessage(error, t('ai.modelProfileSaveFailed'))
+      reportWorkflowResult('profile', { message, status: 'error' })
+      notify(message, 'error')
     } finally {
       savingProfile.value = false
     }

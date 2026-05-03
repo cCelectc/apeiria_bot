@@ -259,6 +259,7 @@
   import { useAuthStore } from '@/stores/auth'
   import { useNoticeStore } from '@/stores/notice'
   import { useRestartStore } from '@/stores/restart'
+  import { aiManagementPageDescriptors } from '@/views/ai/routeState'
 
   const drawer = ref(true)
   const rail = ref(false)
@@ -276,7 +277,16 @@
   const navItems = computed(() => [
     { key: 'dashboard', icon: 'mdi-view-dashboard', title: t('layout.dashboard'), to: '/dashboard' },
     { key: 'core', icon: 'mdi-cog-outline', title: t('layout.core'), to: '/core' },
-    { key: 'ai', icon: 'mdi-robot-outline', title: t('layout.ai'), to: '/ai' },
+    {
+      key: 'ai-group',
+      icon: 'mdi-robot-outline',
+      title: t('layout.aiGroup'),
+      children: aiManagementPageDescriptors.map(item => ({
+        icon: item.icon,
+        title: t(item.titleKey),
+        to: item.path,
+      })),
+    },
     {
       key: 'plugins-group',
       icon: 'mdi-puzzle',
@@ -331,6 +341,9 @@
     nextPath => {
       if (nextPath.startsWith('/plugins')) {
         openedGroups.value = Array.from(new Set([...openedGroups.value, 'plugins-group']))
+      }
+      if (nextPath.startsWith('/ai')) {
+        openedGroups.value = Array.from(new Set([...openedGroups.value, 'ai-group']))
       }
       if (nextPath.startsWith('/logs')) {
         openedGroups.value = Array.from(new Set([...openedGroups.value, 'logs-group']))

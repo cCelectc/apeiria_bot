@@ -1,5 +1,17 @@
 <template>
-  <v-sheet class="surface-gradient-card pa-4 mb-4 source-workspace">
+  <v-sheet
+    class="surface-gradient-card pa-4 mb-4 source-workspace"
+    :class="{ 'source-workspace--focused': focused }"
+  >
+    <div class="source-workflow-step mb-4">
+      <v-chip color="primary" size="small" variant="tonal">
+        {{ t(focused ? 'ai.setupStep.connection' : 'ai.setupStep.provider') }}
+      </v-chip>
+      <div class="source-workflow-step__text">
+        {{ t(focused ? 'ai.modelFlowStepHint.connection' : 'ai.providerWorkflowHint') }}
+      </div>
+    </div>
+
     <div class="d-flex flex-wrap justify-space-between align-start ga-3 mb-4">
       <div>
         <div class="text-h6 font-weight-medium">
@@ -27,6 +39,18 @@
           {{ t('ai.saveSourceConfig') }}
         </v-btn>
       </div>
+    </div>
+
+    <div v-if="workflow.connectionIssues.length > 0" class="source-issue-list mb-4">
+      <v-chip
+        v-for="issue in workflow.connectionIssues"
+        :key="issue"
+        color="warning"
+        size="small"
+        variant="tonal"
+      >
+        {{ connectionIssueLabel(issue) }}
+      </v-chip>
     </div>
 
     <div class="source-config-list">
@@ -80,6 +104,7 @@
           />
           <v-btn
             class="source-api-key-field__action"
+            :class="{ 'source-api-key-field__action--highlighted': highlight === 'connection' }"
             color="primary"
             variant="tonal"
             @click="openSourceApiKeysEditor"
@@ -104,6 +129,11 @@
         />
       </div>
     </div>
+
+    <div v-if="providerSaveDisabledReason" class="disabled-reason mt-3">
+      {{ providerSaveDisabledReason }}
+    </div>
+    <AIWorkflowResultAlert :result="workflowResult" />
 
     <v-dialog v-model="sourceApiKeysDialog" max-width="760">
       <v-card>
@@ -350,10 +380,15 @@
 
 <script setup lang="ts">
   import type { SourceFormState } from '@/composables/aiModels/formState'
+  import type {
+    AISetupWorkflow,
+    AIWorkflowOperationResult,
+  } from '@/composables/aiModels/setupWorkflow'
   import { computed, ref } from 'vue'
   import { useI18n } from 'vue-i18n'
+  import AIWorkflowResultAlert from './AIWorkflowResultAlert.vue'
 
-  defineProps<{
+  const props = defineProps<{
     canSaveSource: boolean
     deletingSource: boolean
     displayedSourceErrors: {
@@ -364,12 +399,16 @@
     removeSource: () => void | Promise<void>
     saveSource: () => void | Promise<void>
     savingSource: boolean
+    focused?: boolean
+    highlight?: string
     sourcePresetLabel: (value: string) => string
     sourcePresetOptions: Array<{
       title: string
       value: string
     }>
     touchSourceField: (field: 'name' | 'preset_type') => void
+    workflow: AISetupWorkflow
+    workflowResult: AIWorkflowOperationResult | null
   }>()
 
   const { t } = useI18n()
@@ -380,6 +419,20 @@
   const sourceApiKeyDraftInput = ref('')
 
   const sourcePrimaryApiKey = computed(() => sourceForm.value.api_keys[0] ?? '')
+  const providerSaveDisabledReason = computed(() => {
+    if (props.savingSource || props.canSaveSource) {
+      return ''
+    }
+    if (!sourceForm.value.name.trim()) {
+      return t('ai.sourceNameRequired')
+    }
+    if (!sourceForm.value.preset_type.trim()) {
+      return t('ai.sourcePresetRequired')
+    }
+    return props.displayedSourceErrors.name
+      || props.displayedSourceErrors.preset_type
+      || t('ai.sourceSaveDisabledNoChanges')
+  })
   const ttsResponseFormatOptions = [
     { title: 'wav', value: 'wav' },
     { title: 'mp3', value: 'mp3' },
@@ -412,6 +465,10 @@
     sourceForm.value.api_keys = [...sourceApiKeyDraft.value]
     sourceApiKeysDialog.value = false
   }
+
+  function connectionIssueLabel (issue: AISetupWorkflow['connectionIssues'][number]) {
+    return t(`ai.connectionIssue.${issue}`)
+  }
 </script>
 
 <style scoped>
@@ -419,10 +476,40 @@
   border: 1px solid rgba(var(--v-theme-on-surface), 0.08);
 }
 
+.source-workspace--focused {
+  border-color: rgba(var(--v-theme-primary), 0.38);
+  box-shadow: inset 0 0 0 1px rgba(var(--v-theme-primary), 0.12);
+}
+
 .source-summary-line {
   color: rgba(var(--v-theme-on-surface), 0.64);
   font-size: 0.9rem;
   line-height: 1.6;
+}
+
+.source-workflow-step {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.source-workflow-step__text {
+  color: rgba(var(--v-theme-on-surface), 0.62);
+  font-size: 0.88rem;
+  line-height: 1.5;
+}
+
+.source-issue-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.disabled-reason {
+  color: rgba(var(--v-theme-on-surface), 0.58);
+  font-size: 0.82rem;
+  line-height: 1.5;
 }
 
 .source-config-list {
@@ -436,6 +523,10 @@
 
 .source-api-key-field__action {
   min-width: 112px;
+}
+
+.source-api-key-field__action--highlighted {
+  box-shadow: inset 0 0 0 1px rgba(var(--v-theme-primary), 0.34);
 }
 
 .source-api-key-editor {
