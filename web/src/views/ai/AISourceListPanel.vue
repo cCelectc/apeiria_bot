@@ -1,74 +1,71 @@
 <template>
-  <div>
-    <div class="d-flex justify-space-between align-center mb-3">
-      <div class="text-subtitle-1 font-weight-medium">
-        {{ t('ai.sourcesTitle') }}
-      </div>
-      <v-btn color="primary" variant="tonal" @click="openSourcePresetDialog">
-        {{ t('ai.createSource') }}
-      </v-btn>
-    </div>
-    <v-sheet class="surface-gradient-card pa-2 source-list-panel">
-      <template v-if="sources.length > 0">
-        <v-list class="bg-transparent" density="comfortable" lines="two">
-          <v-list-item
-            v-for="item in sources"
-            :key="item.source_id"
-            :active="item.source_id === activeSourceId"
-            class="source-list-item"
-            @click="selectSource(item)"
-          >
-            <template #prepend>
-              <v-avatar class="source-list-item__avatar" color="primary" size="36" variant="tonal">
-                {{ sourcePresetInitial(item.preset_type) }}
-              </v-avatar>
-            </template>
-            <div class="source-list-item__body">
-              <div class="source-list-item__header">
-                <v-list-item-title>{{ item.name }}</v-list-item-title>
-                <v-chip
-                  :color="item.enabled ? 'success' : 'default'"
-                  size="x-small"
-                  variant="tonal"
-                >
-                  {{ item.enabled ? t('ai.enabled') : t('ai.disabled') }}
-                </v-chip>
-              </div>
-              <v-list-item-subtitle class="source-list-item__subtitle">
-                {{ item.api_base || t('common.none') }}
-              </v-list-item-subtitle>
-              <div class="source-list-item__meta">
-                <v-chip color="primary" size="x-small" variant="tonal">
-                  {{ sourcePresetLabel(item.preset_type) }}
-                </v-chip>
-              </div>
-            </div>
-            <template #append>
-              <v-btn
-                color="error"
-                icon="mdi-delete-outline"
-                size="small"
-                variant="text"
-                @click.stop="removeSourceItem(item)"
-              />
-            </template>
-          </v-list-item>
-        </v-list>
-      </template>
-      <div v-else class="pa-4">
-        <div class="empty-state-text">{{ t('ai.noSources') }}</div>
-        <div class="empty-state-hint mt-2">{{ t('ai.noSourcesHint') }}</div>
-        <v-btn
-          class="mt-4"
-          color="primary"
-          prepend-icon="mdi-server-plus"
-          variant="tonal"
-          @click="openSourcePresetDialog"
-        >
-          {{ emptyActionLabel }}
+  <div class="source-list-panel">
+    <SelectableList
+      :subtitle="t('ai.sourceListHint')"
+      :title="t('ai.sourcesTitle')"
+    >
+      <template #actions>
+        <v-btn color="primary" prepend-icon="mdi-server-plus" variant="tonal" @click="openSourcePresetDialog">
+          {{ t('ai.createSource') }}
         </v-btn>
-      </div>
-    </v-sheet>
+      </template>
+
+      <template v-if="sources.length > 0">
+        <SelectableListItem
+          v-for="item in sources"
+          :key="item.source_id"
+          :active="item.source_id === activeSourceId"
+          :subtitle="item.api_base || t('common.none')"
+          :title="item.name"
+          :warning="!item.enabled"
+          @click="selectSource(item)"
+        >
+          <template #meta>
+            <v-chip
+              :color="item.enabled ? 'success' : 'default'"
+              size="x-small"
+              variant="tonal"
+            >
+              {{ item.enabled ? t('ai.enabled') : t('ai.disabled') }}
+            </v-chip>
+            <v-chip color="primary" size="x-small" variant="tonal">
+              {{ sourcePresetLabel(item.preset_type) }}
+            </v-chip>
+            <v-menu location="bottom end" offset="8">
+              <template #activator="{ props: menuProps }">
+                <v-btn
+                  v-bind="menuProps"
+                  :aria-label="t('common.moreActions')"
+                  density="comfortable"
+                  icon="mdi-dots-horizontal"
+                  size="small"
+                  variant="text"
+                  @click.stop
+                />
+              </template>
+              <v-list density="compact">
+                <v-list-item
+                  base-color="error"
+                  prepend-icon="mdi-delete-outline"
+                  :title="t('common.delete')"
+                  @click="removeSourceItem(item)"
+                />
+              </v-list>
+            </v-menu>
+          </template>
+        </SelectableListItem>
+      </template>
+
+      <EmptyState
+        v-else
+        action-icon="mdi-server-plus"
+        :action-label="emptyActionLabel"
+        icon="mdi-server-network-off"
+        :text="t('ai.noSourcesHint')"
+        :title="t('ai.noSources')"
+        @action="openSourcePresetDialog"
+      />
+    </SelectableList>
 
     <v-dialog v-model="sourcePresetDialog" max-width="840">
       <v-card class="source-preset-dialog">
@@ -126,6 +123,11 @@
   import type { AISourceItem, AISourcePresetItem } from '@/api/ai/types'
   import { ref } from 'vue'
   import { useI18n } from 'vue-i18n'
+  import {
+    EmptyState,
+    SelectableList,
+    SelectableListItem,
+  } from '@/components/workbench'
 
   const props = defineProps<{
     activeSourceId: string
@@ -158,46 +160,8 @@
 
 <style scoped>
 .source-list-panel {
-  min-height: 100%;
-}
-
-.source-list-item {
-  margin-bottom: 6px;
-}
-
-.source-list-item__avatar {
-  flex-shrink: 0;
-}
-
-.source-list-item__body {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
   min-width: 0;
-  width: 100%;
-}
-
-.source-list-item__header {
-  align-items: center;
-  display: flex;
-  gap: 8px;
-  justify-content: space-between;
-}
-
-.source-list-item__subtitle {
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  line-height: 1.5;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  word-break: break-all;
-}
-
-.source-list-item__meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
+  min-height: 100%;
 }
 
 .source-preset-dialog__header {

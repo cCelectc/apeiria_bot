@@ -33,9 +33,9 @@ export function useAISourceCapabilityOptions (
 ) {
   const sourceCapabilityOptions = computed(() => [
     { icon: 'mdi-message-text-outline', title: t('ai.sourceCapabilityChat'), value: 'chat' as const },
-    { icon: 'mdi-vector-braces', title: t('ai.sourceCapabilityEmbedding'), value: 'embedding' as const },
     { icon: 'mdi-microphone-outline', title: t('ai.sourceCapabilityStt'), value: 'stt' as const },
     { icon: 'mdi-volume-high', title: t('ai.sourceCapabilityTts'), value: 'tts' as const },
+    { icon: 'mdi-vector-polyline', title: t('ai.sourceCapabilityEmbedding'), value: 'embedding' as const },
     { icon: 'mdi-sort-variant', title: t('ai.sourceCapabilityRerank'), value: 'rerank' as const },
   ])
 

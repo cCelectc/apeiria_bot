@@ -128,7 +128,7 @@ export function useAIModelsTab (
       await sourceState.selectSource(sourceState.sources.value[0])
       return
     }
-    sourceState.startCreateSource()
+    sourceState.clearSourceSelection()
   }
 
   const sourceState = useAISourceState({
@@ -209,6 +209,7 @@ export function useAIModelsTab (
     canSaveModel: modelState.canSaveModel,
     canSaveProfile: profileState.canSaveProfile,
     canSaveSource: sourceState.canSaveSource,
+    clearSourceSelection: sourceState.clearSourceSelection,
     clearWorkflowResults,
     defaultSourceModel: modelState.defaultSourceModel,
     deletingModelId: modelState.deletingModelId,
@@ -232,6 +233,7 @@ export function useAIModelsTab (
     modelProfiles,
     pullSourceModels: modelState.pullSourceModels,
     profileForm: profileState.profileForm,
+    providerDetailMode: sourceState.providerDetailMode,
     profileModelOptions: profileState.profileModelOptions,
     removeSource: sourceState.removeSource,
     removeSourceModel: modelState.removeSourceModel,

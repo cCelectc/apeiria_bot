@@ -27,6 +27,7 @@ import {
 
 type NoticeLevel = 'error' | 'success' | 'warning'
 type SourceTouchedField = 'name' | 'preset_type'
+export type AIProviderDetailMode = 'creating' | 'empty' | 'selected'
 
 interface UseAISourceStateOptions {
   sourceCapabilityTab: Readonly<Ref<string>>
@@ -64,6 +65,7 @@ export function useAISourceState ({
   const loadingSources = ref(false)
   const savingSource = ref(false)
   const deletingSource = ref(false)
+  const providerDetailMode = ref<AIProviderDetailMode>('empty')
 
   const sourceBaseline = ref('')
   const sourceSubmitAttempted = ref(false)
@@ -205,7 +207,38 @@ export function useAISourceState ({
     sourceTouched[field] = true
   }
 
+  function clearSourceSelection () {
+    providerDetailMode.value = 'empty'
+    sourceForm.source_id = ''
+    sourceForm.name = ''
+    sourceForm.preset_type = ''
+    sourceForm.capability_type = currentSourceCapability.value
+    sourceForm.adapter_kind = 'openai_compatible'
+    sourceForm.api_base = ''
+    sourceForm.api_keys = []
+    sourceForm.api_key_env_name = ''
+    sourceForm.proxy = ''
+    sourceForm.enabled = true
+    sourceForm.timeout_seconds = 120
+    sourceForm.embedding_dimensions = null
+    sourceForm.stt_language = ''
+    sourceForm.tts_voice = 'alloy'
+    sourceForm.tts_response_format = 'wav'
+    sourceForm.rerank_api_suffix = '/rerank'
+    sourceForm.rerank_top_n = 2
+    sourceForm.capability_metadata_json = '{}'
+    sourceForm.default_options_json = '{}'
+    sourceForm.capability_provenance_json = '{}'
+    syncSourceBaseline()
+    resetSourceValidation()
+    sourceModels.value = []
+    fetchedSourceModels.value = []
+    startCreateSourceModel()
+    startCreateModelProfile()
+  }
+
   async function selectSource (item: AISourceItem) {
+    providerDetailMode.value = 'selected'
     sourceForm.source_id = item.source_id
     sourceForm.name = item.name
     sourceForm.preset_type = item.preset_type
@@ -245,6 +278,7 @@ export function useAISourceState ({
   }
 
   function startCreateSource (presetType?: string) {
+    providerDetailMode.value = 'creating'
     const defaultPreset = (
       sourcePresets.value.find(item => item.preset_type === presetType)
       ?? sourcePresets.value[0]
@@ -364,6 +398,7 @@ export function useAISourceState ({
     allSources,
     canFetchSourceModels,
     canSaveSource,
+    clearSourceSelection,
     currentSourceCapability,
     deletingSource,
     displayedSourceErrors,
@@ -371,6 +406,7 @@ export function useAISourceState ({
     loadingSources,
     normalizedSourceApiKeys,
     normalizedSourceExtraConfig,
+    providerDetailMode,
     removeSource,
     saveSource,
     savingSource,

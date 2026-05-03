@@ -114,45 +114,6 @@
                     @blur="touchModelField('display_name')"
                   />
                 </label>
-                <label class="workbench-field workbench-field--wide">
-                  <span class="workbench-field__title">{{ t('ai.capabilityMetadata') }}</span>
-                  <v-textarea
-                    v-model="modelForm.capability_metadata_json"
-                    :aria-label="t('ai.capabilityMetadata')"
-                    auto-grow
-                    class="workbench-field__control"
-                    density="comfortable"
-                    :disabled="savingModel"
-                    hide-details
-                    rows="2"
-                  />
-                </label>
-                <label class="workbench-field workbench-field--wide">
-                  <span class="workbench-field__title">{{ t('ai.defaultOptions') }}</span>
-                  <v-textarea
-                    v-model="modelForm.default_options_json"
-                    :aria-label="t('ai.defaultOptions')"
-                    auto-grow
-                    class="workbench-field__control"
-                    density="comfortable"
-                    :disabled="savingModel"
-                    hide-details
-                    rows="2"
-                  />
-                </label>
-                <label class="workbench-field workbench-field--wide">
-                  <span class="workbench-field__title">{{ t('ai.capabilityProvenance') }}</span>
-                  <v-textarea
-                    v-model="modelForm.capability_provenance_json"
-                    :aria-label="t('ai.capabilityProvenance')"
-                    auto-grow
-                    class="workbench-field__control"
-                    density="comfortable"
-                    :disabled="savingModel"
-                    hide-details
-                    rows="2"
-                  />
-                </label>
               </div>
 
               <div class="source-model-switches">
@@ -180,6 +141,12 @@
                     hide-details
                   />
                 </div>
+              </div>
+
+              <div class="source-model-secondary-actions mt-4">
+                <v-btn prepend-icon="mdi-tune-variant" variant="tonal" @click="modelAdvancedDialog = true">
+                  {{ t('ai.modelAdvancedConfigAction') }}
+                </v-btn>
               </div>
 
               <div class="d-flex justify-end mt-4">
@@ -301,9 +268,15 @@
             </div>
           </v-sheet>
         </template>
-        <div v-else class="source-model-empty-state py-6">
-          <div class="empty-state-text">{{ t('common.noData') }}</div>
-        </div>
+        <EmptyState
+          v-else
+          action-icon="mdi-plus"
+          :action-label="t('ai.customModel')"
+          icon="mdi-cube-outline"
+          :text="modelEmptyText"
+          :title="t('ai.modelEmptyTitle')"
+          @action="openCreateSourceModel"
+        />
       </div>
 
       <v-dialog v-model="modelDeleteDialog" max-width="420">
@@ -357,9 +330,12 @@
           </v-btn>
         </div>
 
-        <div v-if="sourceModels.length === 0" class="empty-state-text">
-          {{ t('ai.modelProfileRequiresModel') }}
-        </div>
+        <EmptyState
+          v-if="sourceModels.length === 0"
+          icon="mdi-account-cog-outline"
+          :text="t('ai.modelProfileRequiresModel')"
+          :title="t('ai.profileEmptyTitle')"
+        />
         <template v-else>
           <div v-if="filteredModelProfiles.length > 0" class="d-flex flex-column ga-3 mb-4">
             <v-sheet
@@ -388,9 +364,16 @@
               </div>
             </v-sheet>
           </div>
-          <div v-else class="empty-state-text mb-4">
-            {{ t('ai.noModelProfiles') }}
-          </div>
+          <EmptyState
+            v-else
+            action-icon="mdi-plus"
+            :action-label="t('ai.createModelProfile')"
+            class="mb-4"
+            icon="mdi-account-cog-outline"
+            :text="t('ai.profileEmptyText')"
+            :title="t('ai.profileEmptyTitle')"
+            @action="startCreateModelProfile"
+          />
 
           <div class="source-model-form workbench-form-grid">
             <label class="workbench-field">
@@ -508,6 +491,55 @@
         </div>
         <AIWorkflowResultAlert :result="workflowResults.validation" />
       </v-sheet>
+
+      <PopupPanel
+        v-model="modelAdvancedDialog"
+        :close-label="t('common.close')"
+        max-width="860"
+        :title="t('ai.modelAdvancedConfigAction')"
+      >
+        <div class="source-model-form workbench-form-grid">
+          <label class="workbench-field workbench-field--wide">
+            <span class="workbench-field__title">{{ t('ai.capabilityMetadata') }}</span>
+            <v-textarea
+              v-model="modelForm.capability_metadata_json"
+              :aria-label="t('ai.capabilityMetadata')"
+              auto-grow
+              class="workbench-field__control"
+              density="comfortable"
+              :disabled="savingModel"
+              hide-details
+              rows="3"
+            />
+          </label>
+          <label class="workbench-field workbench-field--wide">
+            <span class="workbench-field__title">{{ t('ai.defaultOptions') }}</span>
+            <v-textarea
+              v-model="modelForm.default_options_json"
+              :aria-label="t('ai.defaultOptions')"
+              auto-grow
+              class="workbench-field__control"
+              density="comfortable"
+              :disabled="savingModel"
+              hide-details
+              rows="3"
+            />
+          </label>
+          <label class="workbench-field workbench-field--wide">
+            <span class="workbench-field__title">{{ t('ai.capabilityProvenance') }}</span>
+            <v-textarea
+              v-model="modelForm.capability_provenance_json"
+              :aria-label="t('ai.capabilityProvenance')"
+              auto-grow
+              class="workbench-field__control"
+              density="comfortable"
+              :disabled="savingModel"
+              hide-details
+              rows="3"
+            />
+          </label>
+        </div>
+      </PopupPanel>
     </template>
   </v-sheet>
 </template>
@@ -530,6 +562,7 @@
   } from '@/composables/aiModels/setupWorkflow'
   import { computed, ref, watch } from 'vue'
   import { useI18n } from 'vue-i18n'
+  import { EmptyState, PopupPanel } from '@/components/workbench'
   import AIWorkflowResultAlert from './AIWorkflowResultAlert.vue'
 
   interface ConfiguredSourceModelRow extends AISourceModelItem {
@@ -612,6 +645,7 @@
 
   const sourceModelEditorPanel = ref<number | null>(null)
   const sourceModelSearch = ref('')
+  const modelAdvancedDialog = ref(false)
   const modelDeleteDialog = ref(false)
   const pendingDeleteModel = ref<{ modelId: string, label: string } | null>(null)
   const shouldOpenModelEditor = computed(() => (
@@ -695,6 +729,11 @@
   })
   const modelImportDisabledReason = computed(() => (
     props.importingModelIdentifier ? t('ai.modelImportRunning') : ''
+  ))
+  const modelEmptyText = computed(() => (
+    props.workflow.connectionIssues.length > 0
+      ? t('ai.modelEmptyConnectionText')
+      : t('ai.modelEmptyText')
   ))
   const profileSaveDisabledReason = computed(() => {
     if (props.savingProfile || props.canSaveProfile) {
@@ -816,6 +855,11 @@
   flex-wrap: wrap;
   gap: 18px;
   margin-top: 14px;
+}
+
+.source-model-secondary-actions {
+  display: flex;
+  justify-content: flex-start;
 }
 
 .source-workflow-step {
