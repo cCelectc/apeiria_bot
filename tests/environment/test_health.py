@@ -8,14 +8,14 @@ from typing import TYPE_CHECKING
 
 from apeiria.db import CURRENT_SCHEMA_LINE, CURRENT_SCHEMA_VERSION
 from apeiria.db.runtime import ApeiriaDatabase
-from apeiria.environment.frontend_build import (
+from apeiria.environment.health import HealthService
+from apeiria.environment.manager import EnvironmentService
+from apeiria.webui.frontend_build import (
     build_meta_path,
     compute_frontend_fingerprint,
     read_frontend_build_status,
     write_frontend_build_meta,
 )
-from apeiria.environment.health import HealthService
-from apeiria.environment.manager import EnvironmentService
 
 if TYPE_CHECKING:
     from apeiria.environment.models import HealthCheck, HealthSnapshot
@@ -170,6 +170,62 @@ def test_webui_build_metadata_entrypoint_refreshes_stale_metadata(
     meta = json.loads(build_meta_path(tmp_path).read_text(encoding="utf-8"))
     assert meta["fingerprint"] == compute_frontend_fingerprint(tmp_path)
     assert read_frontend_build_status(tmp_path).detail == "current"
+
+
+def test_webui_build_metadata_entrypoint_does_not_import_nonebot(
+    tmp_path: Path,
+) -> None:
+    _create_frontend_fixture(tmp_path)
+    script = (
+        Path(__file__).resolve().parents[2] / "scripts" / "write-webui-build-meta.py"
+    )
+    runner = tmp_path / "run_build_meta_without_nonebot.py"
+    runner.write_text(
+        "\n".join(
+            [
+                "from __future__ import annotations",
+                "",
+                "import builtins",
+                "import runpy",
+                "import sys",
+                "",
+                "_original_import = builtins.__import__",
+                "",
+                "def _guarded_import(",
+                "    name, globals=None, locals=None, fromlist=(), level=0",
+                "):",
+                "    if name == 'nonebot' or name.startswith('nonebot.'):",
+                "        raise AssertionError(f'unexpected import: {name}')",
+                "    return _original_import(name, globals, locals, fromlist, level)",
+                "",
+                "builtins.__import__ = _guarded_import",
+                "sys.argv = [sys.argv[1], *sys.argv[2:]]",
+                "runpy.run_path(sys.argv[0], run_name='__main__')",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    subprocess.run(
+        [
+            sys.executable,
+            "-S",
+            str(runner),
+            str(script),
+            "--project-root",
+            str(tmp_path),
+        ],
+        check=True,
+        env={
+            "PYTHONPATH": str(Path(__file__).resolve().parents[2]),
+            "PYTHONSTARTUP": "",
+            "PYTHONWARNINGS": "error",
+        },
+    )
+
+    meta = json.loads(build_meta_path(tmp_path).read_text(encoding="utf-8"))
+    assert meta["fingerprint"] == compute_frontend_fingerprint(tmp_path)
 
 
 def test_web_package_build_runs_metadata_writer() -> None:

@@ -21,13 +21,13 @@ from apeiria.app.access.webui_auth.service import (
     AuthSessionContext,
     auth_session_service,
 )
-from apeiria.environment.frontend_build import frontend_workspace_name
 from apeiria.i18n import t
 from apeiria.webui.auth import (
     create_auth_session_token,
     require_auth,
     require_control_panel,
 )
+from apeiria.webui.frontend_build import frontend_workspace_name
 from apeiria.webui.login_guard import (
     is_login_allowed,
     record_login_failure,

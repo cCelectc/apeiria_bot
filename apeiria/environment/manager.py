@@ -16,12 +16,6 @@ from apeiria.db import ApeiriaDatabase, ensure_database_ready
 from apeiria.environment.extension_project import (
     find_uv_executable,
 )
-from apeiria.environment.frontend_build import (
-    frontend_workspace_dir,
-    frontend_workspace_name,
-    read_frontend_build_status,
-    write_frontend_build_meta,
-)
 from apeiria.environment.models import (
     EnvironmentRepairPlan,
     EnvironmentSnapshot,
@@ -31,6 +25,12 @@ from apeiria.environment.models import (
     ProjectConfigBootstrapResult,
 )
 from apeiria.utils.project_context import current_project_root
+from apeiria.webui.frontend_build import (
+    frontend_workspace_dir,
+    frontend_workspace_name,
+    read_frontend_build_status,
+    write_frontend_build_meta,
+)
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator

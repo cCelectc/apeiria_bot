@@ -13,7 +13,7 @@ def main(argv: list[str] | None = None) -> int:
     if str(repo_root) not in sys.path:
         sys.path.insert(0, str(repo_root))
 
-    from apeiria.environment.frontend_build import write_frontend_build_meta
+    from apeiria.webui.frontend_build import write_frontend_build_meta
 
     parser = argparse.ArgumentParser()
     parser.add_argument(

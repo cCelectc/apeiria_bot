@@ -9,7 +9,6 @@ from nonebot.plugin import PluginMetadata
 
 from apeiria.config.plugins import plugin_config_service
 from apeiria.config.webui_config import WebUIConfig
-from apeiria.environment.frontend_build import serving_dist_dir
 from apeiria.i18n import load_locales, t
 from apeiria.plugins.metadata.api import (
     ConfigExtra,
@@ -19,6 +18,7 @@ from apeiria.plugins.metadata.api import (
     UiExtra,
 )
 from apeiria.utils.plugin_introspection import prewarm_plugin_module_caches
+from apeiria.webui.frontend_build import serving_dist_dir
 
 require("nonebot_plugin_localstore")
 
