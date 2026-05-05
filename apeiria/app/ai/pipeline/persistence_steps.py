@@ -21,13 +21,10 @@ from apeiria.conversation.service import ChatMessageCreate, chat_session_service
 
 if TYPE_CHECKING:
     from apeiria.app.ai.agent_turn import AgentTurnResult
-    from apeiria.app.ai.pipeline.generation_steps import (
-        ReplyGeneration,
-        ReplyInputs,
-        ReplyPreparation,
-    )
+    from apeiria.app.ai.pipeline.input_steps import ReplyInputs
     from apeiria.app.ai.pipeline.service import AIRuntimeReplyRequest
     from apeiria.app.ai.reply_strategy import ReplyStrategyDecision
+    from apeiria.app.ai.session_runtime import RuntimeExecutionOutcome, RuntimeTurnPlan
     from apeiria.conversation.models import ChatSessionIdentity
 
 
@@ -39,7 +36,7 @@ class AssistantReplyPersistenceStage:
         self,
         *,
         request: "AIRuntimeReplyRequest",
-        generation: "ReplyGeneration",
+        generation: "RuntimeExecutionOutcome",
         trace_id: str,
     ) -> str:
         if not generation.skill_runtime.turns:
@@ -57,8 +54,8 @@ class AssistantReplyPersistenceStage:
         request: "AIRuntimeReplyRequest",
         inputs: "ReplyInputs",
         social_decision: "ReplyStrategyDecision",
-        plan: "ReplyPreparation",
-        generation: "ReplyGeneration",
+        plan: "RuntimeTurnPlan",
+        generation: "RuntimeExecutionOutcome",
         trace_id: str,
     ) -> None:
         response = generation.response
@@ -134,8 +131,8 @@ async def persist_reply(  # noqa: PLR0913
     request: "AIRuntimeReplyRequest",
     inputs: "ReplyInputs",
     social_decision: "ReplyStrategyDecision",
-    prep: "ReplyPreparation",
-    gen: "ReplyGeneration",
+    prep: "RuntimeTurnPlan",
+    gen: "RuntimeExecutionOutcome",
     trace_id: str,
 ) -> None:
     """Write the assistant message with full trace/social/delivery meta,

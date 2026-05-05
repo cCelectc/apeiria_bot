@@ -7,12 +7,27 @@ from typing import Any
 import pytest  # noqa: TC002
 
 from apeiria.ai.config import AIPluginConfig
+from apeiria.ai.model import AIModelMessage
 from apeiria.ai.tools import AIToolPolicy
 from apeiria.app.ai.pipeline import service as service_module
 from apeiria.app.ai.pipeline.service import AIRuntimeService
 from apeiria.app.ai.reply_strategy import ReplyStrategyDecision, WakeContext
+from apeiria.app.ai.session_runtime import (
+    AISessionTurnEngine,
+    DefaultRuntimeCommitStage,
+    DefaultRuntimeContextStage,
+    DefaultRuntimeExecutionStage,
+    DefaultRuntimeObservationStage,
+    DefaultRuntimePlanningStage,
+    DefaultRuntimePolicyStage,
+    DefaultRuntimeTraceStage,
+    RuntimeExecutionOutcome,
+    RuntimeTurnPlan,
+    ToolExposurePlan,
+)
+from apeiria.app.ai.session_runtime import engine as engine_module
 from apeiria.conversation.models import ChatSessionIdentity
-from tests.ai.agent_turn_helpers import selected_model
+from tests.ai.agent_turn_helpers import model_response, selected_model
 
 
 class _FakeChatSessionService:
@@ -49,10 +64,13 @@ def test_duplicate_platform_event_stops_before_ai_side_effects(
         "model": 0,
         "assistant": 0,
     }
-    service = AIRuntimeService()
     chat_service = _FakeChatSessionService()
 
-    monkeypatch.setattr(service_module, "ensure_app_ai_tools_loaded", lambda: None)
+    monkeypatch.setattr(
+        service_module,
+        "ensure_ai_runtime_support_initialized",
+        lambda **_kwargs: None,
+    )
     monkeypatch.setattr(
         service_module,
         "ai_skill_service",
@@ -123,30 +141,31 @@ def test_duplicate_platform_event_stops_before_ai_side_effects(
             decision_source="llm",
         )
 
-    async def prepare_generation(*_args: Any, **_kwargs: Any) -> object:
-        return SimpleNamespace(
-            skill_runtime=SimpleNamespace(
-                policy_text="No tools.",
-                result_lines=(),
-                turns=(),
-                available_tools=(),
-            ),
+    async def prepare_generation(*_args: Any, **_kwargs: Any) -> RuntimeTurnPlan:
+        return RuntimeTurnPlan(
+            stage="planning",
             selected=selected_model("duplicate"),
+            fallback_models=(),
+            skill_runtime=SimpleNamespace(turns=()),
             skill_activation=None,
             pre_tool_task_class="reply_default",
+            prompt_messages=(AIModelMessage(role="user", content="hello"),),
+            prompt_diagnostics={},
+            tool_exposure_plan=ToolExposurePlan(),
         )
 
-    async def generate_reply(*_args: Any, **_kwargs: Any) -> object:
+    async def execute_runtime_turn(
+        *_args: Any,
+        **_kwargs: Any,
+    ) -> RuntimeExecutionOutcome:
         counts["model"] += 1
-        return SimpleNamespace(
-            response=SimpleNamespace(
-                content="reply",
-                source_id="source-1",
-                model_name="model-1",
-            ),
-            delivery_result=None,
+        selected = selected_model("duplicate")
+        return RuntimeExecutionOutcome(
+            stage="execution",
+            response=model_response(selected, "reply"),
             skill_runtime=SimpleNamespace(turns=[]),
             post_tool_task_class=None,
+            delivery_result=None,
             turn_result=None,
         )
 
@@ -165,23 +184,24 @@ def test_duplicate_platform_event_stops_before_ai_side_effects(
         "store_extracted_memories",
         store_extracted_memories,
     )
-    monkeypatch.setattr(
-        service_module,
-        "apply_reply_observation_effects",
-        _noop_observation_effects,
-    )
-    monkeypatch.setattr(service_module, "gather_reply_inputs", gather_reply_inputs)
-    monkeypatch.setattr(
-        service_module,
-        "decide_whether_to_speak",
-        decide_whether_to_speak,
-    )
-    monkeypatch.setattr(service_module, "prepare_generation", prepare_generation)
-    monkeypatch.setattr(service_module, "generate_reply", generate_reply)
-    monkeypatch.setattr(
-        service_module,
-        "AssistantReplyPersistenceStage",
-        ReplyPersistenceStage,
+    monkeypatch.setattr(engine_module, "execute_runtime_turn", execute_runtime_turn)
+    service = AIRuntimeService(
+        turn_engine=AISessionTurnEngine(
+            policy_stage=DefaultRuntimePolicyStage(decide_whether_to_speak),
+            observation_stage=DefaultRuntimeObservationStage(
+                _noop_observation_effects,
+            ),
+            context_stage=DefaultRuntimeContextStage(gather_reply_inputs),
+            planning_stage=DefaultRuntimePlanningStage(prepare_generation),
+            execution_stage=DefaultRuntimeExecutionStage(),
+            commit_stage=DefaultRuntimeCommitStage(
+                reply_persistence=ReplyPersistenceStage(),
+                reply_strategy_service=SimpleNamespace(
+                    notify_replied=lambda _session_id: None
+                ),
+            ),
+            trace_stage=DefaultRuntimeTraceStage(),
+        )
     )
 
     bot = SimpleNamespace(self_id="bot-1")

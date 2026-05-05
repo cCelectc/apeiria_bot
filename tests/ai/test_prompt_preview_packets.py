@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 from apeiria.ai.persona.service import AIPersonaPromptBundle
 from apeiria.ai.prompting import PromptPacket, PromptSection, render_flat
 from apeiria.ai.tools import AIToolPolicy, ToolGatewayResult
-from apeiria.app.ai.pipeline.generation_steps import ReplyPromptPlanningInput
+from apeiria.app.ai.session_runtime import RuntimePromptPlanningInput
 from apeiria.conversation.models import (
     ChatContextMessageView,
     ChatMessageDetailView,
@@ -208,9 +208,7 @@ def test_prompt_preview_planning_matches_runtime_prompt_projection() -> None:
     projection = importlib.import_module(
         "apeiria.app.ai.session_read.prompt_projection"
     )
-    generation_steps = importlib.import_module(
-        "apeiria.app.ai.pipeline.generation_steps"
-    )
+    planning = importlib.import_module("apeiria.app.ai.session_runtime.planning")
     now = datetime(2026, 4, 29, 12, 0, tzinfo=timezone.utc)
     identity = ChatSessionIdentity(
         session_id="session-1",
@@ -278,7 +276,7 @@ def test_prompt_preview_planning_matches_runtime_prompt_projection() -> None:
         hard_rule_decision=hard_rule_decision,
         has_latest_user_message=True,
     )
-    prompt_planning = ReplyPromptPlanningInput(
+    prompt_planning = RuntimePromptPlanningInput(
         skill_runtime=ToolGatewayResult(
             policy_text="Tool policy.",
             result_lines=(),
@@ -296,11 +294,11 @@ def test_prompt_preview_planning_matches_runtime_prompt_projection() -> None:
         hard_rule_decision=hard_rule_decision,
         social_decision=social_decision,
     )
-    packet = generation_steps.build_initial_reply_prompt_packet(
+    packet = planning.build_initial_runtime_reply_prompt_packet(
         request=request,
         inputs=context_bundle.inputs,
         social_decision=social_decision,
-        prep=prompt_planning,
+        prompt_input=prompt_planning,
     )
     expected_channels, expected_diagnostics = (
         projection.project_prompt_packet_to_preview(
@@ -421,7 +419,11 @@ def test_scene_prompt_preview_does_not_call_models_or_execute_tools(  # noqa: C9
     async def _retrieve_memories_for_preview(**_kwargs: object):
         return []
 
-    monkeypatch.setattr(module, "ensure_app_ai_tools_loaded", lambda: None)
+    monkeypatch.setattr(
+        module,
+        "ensure_ai_runtime_support_initialized",
+        lambda **_kwargs: None,
+    )
     monkeypatch.setattr(module, "chat_session_service", _ChatSessionService())
     monkeypatch.setattr(module, "ai_persona_service", _PersonaService())
     monkeypatch.setattr(

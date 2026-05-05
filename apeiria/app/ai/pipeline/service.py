@@ -16,7 +16,6 @@ from apeiria.app.ai.future_task import ai_future_task_service
 from apeiria.app.ai.lifecycle import ensure_ai_runtime_support_initialized
 from apeiria.app.ai.pipeline.context_window_steps import record_context_usage
 from apeiria.app.ai.pipeline.delivery_steps import deliver_generated_reply
-from apeiria.app.ai.pipeline.generation_steps import generate_reply, prepare_generation
 from apeiria.app.ai.pipeline.input_steps import gather_reply_inputs
 from apeiria.app.ai.pipeline.memory_steps import store_extracted_memories
 from apeiria.app.ai.pipeline.observation_steps import apply_reply_observation_effects
@@ -72,12 +71,6 @@ _DEFAULT_FUTURE_TASK_TRACE = AITraceContext(
 )
 
 
-def ensure_app_ai_tools_loaded() -> None:
-    """Compatibility fallback that now enters through the AI lifecycle."""
-
-    ensure_ai_runtime_support_initialized(source="runtime_fallback")
-
-
 @dataclass(frozen=True)
 class AIRuntimeReplyRequest:
     """Normalized runtime request shared by message and future-task entrypoints."""
@@ -128,7 +121,7 @@ class AIRuntimeService:
     ) -> str | None:
         """Handle one runtime message and optionally return a reply."""
 
-        ensure_app_ai_tools_loaded()
+        ensure_ai_runtime_support_initialized(source="runtime_fallback")
         ai_skill_service.ensure_initialized()
         config = get_ai_plugin_config()
         wake_context = build_wake_context(
@@ -207,7 +200,7 @@ class AIRuntimeService:
     ) -> AIRuntimeReplyResult | None:
         """Handle one due future task by running the normal reply pipeline."""
 
-        ensure_app_ai_tools_loaded()
+        ensure_ai_runtime_support_initialized(source="runtime_fallback")
         ai_retention_service.maybe_schedule_cleanup(config=get_ai_plugin_config())
         task = await ai_future_task_service.get_task(task_id=task_id)
         if task is None or task.status != "running":
@@ -296,10 +289,8 @@ class AIRuntimeService:
             context_stage=DefaultRuntimeContextStage(
                 gather_reply_inputs=gather_reply_inputs,
             ),
-            planning_stage=DefaultRuntimePlanningStage(
-                prepare_generation=prepare_generation,
-            ),
-            execution_stage=DefaultRuntimeExecutionStage(generate_reply=generate_reply),
+            planning_stage=DefaultRuntimePlanningStage(),
+            execution_stage=DefaultRuntimeExecutionStage(),
             commit_stage=DefaultRuntimeCommitStage(
                 reply_persistence=AssistantReplyPersistenceStage(),
                 reply_strategy_service=reply_strategy_service,

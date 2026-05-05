@@ -10,7 +10,9 @@ from nonebot.log import logger
 
 from .context import DeliveryTarget, RuntimeTurnSource
 from .context_adapter import build_turn_context
+from .execution import execute_runtime_turn
 from .hard_rules import decide_runtime_hard_rule, map_legacy_skip_to_runtime_decision
+from .planning import plan_runtime_turn
 from .stages import (
     RuntimeCommitResult,
     RuntimeCommitStage,
@@ -26,7 +28,6 @@ from .stages import (
     RuntimeTraceStage,
     RuntimeTurnPlan,
 )
-from .tools import ToolExposurePlan
 from .trace import project_turn_trace
 
 if TYPE_CHECKING:
@@ -34,7 +35,6 @@ if TYPE_CHECKING:
 
     from apeiria.app.ai.agent_turn import AgentTurnResult
     from apeiria.app.ai.pipeline.delivery_steps import DeliveryOutcome
-    from apeiria.app.ai.pipeline.generation_steps import ReplyGeneration
     from apeiria.app.ai.reply_strategy.models import WakeContext
     from apeiria.app.ai.session_runtime.strategy import RuntimeHardRuleDecision
 
@@ -173,7 +173,7 @@ class DefaultRuntimeContextStage:
 class DefaultRuntimePlanningStage:
     """Plan prompt/model/tool materials for execution."""
 
-    prepare_generation: Any
+    prepare_generation: Any = plan_runtime_turn
 
     async def plan(
         self,
@@ -184,42 +184,12 @@ class DefaultRuntimePlanningStage:
         social_decision: Any,
         current_time: "datetime",
     ) -> RuntimeTurnPlan | None:
-        prep = await self.prepare_generation(
+        return await self.prepare_generation(
             request=request,
             inputs=inputs,
             social_decision=social_decision,
             current_time=current_time,
             trace_id=trace_id,
-        )
-        if prep is None:
-            return None
-
-        from apeiria.app.ai.pipeline.generation_steps import (
-            build_initial_reply_prompt_diagnostics,
-            build_initial_reply_prompt_messages,
-            select_pipeline_fallback_models,
-        )
-
-        return RuntimeTurnPlan(
-            stage="planning",
-            selected=prep.selected,
-            fallback_models=await select_pipeline_fallback_models(prep.selected),
-            skill_runtime=prep.skill_runtime,
-            skill_activation=prep.skill_activation,
-            pre_tool_task_class=prep.pre_tool_task_class,
-            prompt_messages=build_initial_reply_prompt_messages(
-                request=request,
-                inputs=inputs,
-                social_decision=social_decision,
-                prep=prep,
-            ),
-            prompt_diagnostics=build_initial_reply_prompt_diagnostics(
-                request=request,
-                inputs=inputs,
-                social_decision=social_decision,
-                prep=prep,
-            ),
-            tool_exposure_plan=_tool_exposure_plan_from_preparation(prep),
         )
 
 
@@ -227,36 +197,15 @@ class DefaultRuntimePlanningStage:
 class DefaultRuntimeExecutionStage:
     """Run the model/tool execution path for a planned turn."""
 
-    generate_reply: Any
-
-    async def execute(  # noqa: PLR0913
+    async def execute(
         self,
         *,
-        request: Any,
-        inputs: Any,
-        social_decision: Any,
-        plan: RuntimeTurnPlan,
-        current_time: "datetime",
-        trace_id: str,
         turn_context: Any,
+        plan: RuntimeTurnPlan,
     ) -> RuntimeExecutionOutcome:
-        generation: "ReplyGeneration" = await self.generate_reply(
-            request=request,
-            inputs=inputs,
-            social_decision=social_decision,
-            prep=plan,
-            current_time=current_time,
-            trace_id=trace_id,
+        return await execute_runtime_turn(
             turn_context=turn_context,
-            turn_plan=plan,
-        )
-        return RuntimeExecutionOutcome(
-            stage="execution",
-            response=generation.response,
-            skill_runtime=generation.skill_runtime,
-            post_tool_task_class=generation.post_tool_task_class,
-            delivery_result=generation.delivery_result,
-            turn_result=generation.turn_result,
+            plan=plan,
         )
 
 
@@ -655,15 +604,7 @@ class AISessionTurnEngine:
             current_time=current_time,
             prompt_diagnostics=plan.prompt_diagnostics,
         )
-        execution = await self.execute_turn(
-            request=request,
-            inputs=inputs,
-            social_decision=social_decision,
-            plan=plan,
-            current_time=current_time,
-            trace_id=trace_id,
-            turn_context=turn_context,
-        )
+        execution = await self.execute_turn(turn_context=turn_context, plan=plan)
         response = execution.response
         if response is None or not response.content.strip():
             logger.debug(
@@ -783,27 +724,17 @@ class AISessionTurnEngine:
             current_time=current_time,
         )
 
-    async def execute_turn(  # noqa: PLR0913
+    async def execute_turn(
         self,
         *,
-        request: Any,
-        inputs: Any,
-        social_decision: Any,
-        plan: RuntimeTurnPlan,
-        current_time: "datetime",
-        trace_id: str,
         turn_context: Any,
+        plan: RuntimeTurnPlan,
     ) -> RuntimeExecutionOutcome:
         """Execute one direct or tool-capable turn."""
 
         return await self.execution_stage.execute(
-            request=request,
-            inputs=inputs,
-            social_decision=social_decision,
-            plan=plan,
-            current_time=current_time,
-            trace_id=trace_id,
             turn_context=turn_context,
+            plan=plan,
         )
 
     async def commit_turn(  # noqa: PLR0913
@@ -873,16 +804,6 @@ def _delivery_target_for_request(request: Any) -> DeliveryTarget:
         session_id=request.identity.session_id,
         reply_to_message_id=request.source_message_id,
         delivery_channel="message",
-    )
-
-
-def _tool_exposure_plan_from_preparation(prep: Any) -> ToolExposurePlan:
-    return ToolExposurePlan(
-        selected_tools=prep.skill_runtime.available_tools,
-        diagnostics={
-            "selected_tool_count": len(prep.skill_runtime.available_tools),
-            "source": "tool_gateway_prepare",
-        },
     )
 
 

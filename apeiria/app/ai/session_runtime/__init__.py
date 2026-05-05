@@ -24,6 +24,13 @@ from .hard_rules import (
     decide_runtime_hard_rule,
     map_legacy_skip_to_runtime_decision,
 )
+from .planning import (
+    RuntimePromptPlanningInput,
+    build_initial_runtime_reply_prompt_diagnostics,
+    build_initial_runtime_reply_prompt_messages,
+    build_initial_runtime_reply_prompt_packet,
+    plan_runtime_turn,
+)
 from .runner import AgentRunner, RuntimeAgentRunner
 from .runtime import (
     AISessionRuntime,
@@ -100,6 +107,7 @@ __all__ = [
     "RuntimePlanningStage",
     "RuntimePolicyOutcome",
     "RuntimePolicyStage",
+    "RuntimePromptPlanningInput",
     "RuntimeStageName",
     "RuntimeTraceOutcome",
     "RuntimeTraceStage",
@@ -113,9 +121,13 @@ __all__ = [
     "WaitState",
     "apply_tool_exposure_allowlist",
     "build_default_tool_exposure_plan",
+    "build_initial_runtime_reply_prompt_diagnostics",
+    "build_initial_runtime_reply_prompt_messages",
+    "build_initial_runtime_reply_prompt_packet",
     "build_turn_context",
     "compile_tool_exposure_provider_schema",
     "decide_runtime_hard_rule",
     "map_legacy_skip_to_runtime_decision",
+    "plan_runtime_turn",
     "project_turn_trace",
 ]

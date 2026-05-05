@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from apeiria.ai.tools import AIToolObservationResult, ToolGatewayResult
+from apeiria.ai.tools import AIToolObservationResult
 from apeiria.ai.turn_records import ModelAttempt
 from apeiria.app.ai.agent_turn import (
     AgentTurnResult,
@@ -14,46 +14,43 @@ _MAX_DIAGNOSTIC_LENGTH = 200
 
 
 def test_tool_loop_metadata_is_available_to_persistence() -> None:
-    from apeiria.app.ai.pipeline import generation_steps
     from apeiria.app.ai.pipeline.persistence_steps import _agent_turn_meta
 
     selected = selected_model("main")
     raw_payload = "raw-large-tool-output"
     original_observation_length = 4096
-    turn = generation_steps._build_tool_loop_turn_result(
+    turn = AgentTurnResult(
         trace_id="trace-tools",
         runtime_mode="message",
-        skill_runtime=ToolGatewayResult(
-            policy_text="",
-            result_lines=(),
-            turns=(),
-            final_response=model_response(selected, "done"),
-            loop_finish_reason="max_rounds_reached",
-            model_attempts=(),
-            tool_attempts=(
-                ToolAttempt(
-                    tool_call_id="call-1",
+        status="completed",
+        finish_reason="max_rounds_reached",
+        response=model_response(selected, "done"),
+        response_source="tool_loop",
+        tool_attempts=(
+            ToolAttempt(
+                tool_call_id="call-1",
+                tool_name="memory.query",
+                status="success",
+                arguments_summary="{}",
+                observation=PromptSafeObservation(
+                    content="- [memory.query] preview\n[truncated]",
+                    truncated=True,
+                    original_length=original_observation_length,
+                ),
+                native_observation=AIToolObservationResult(
                     tool_name="memory.query",
-                    status="success",
-                    arguments_summary="{}",
-                    observation=PromptSafeObservation(
-                        content="- [memory.query] preview\n[truncated]",
-                        truncated=True,
-                        original_length=original_observation_length,
-                    ),
-                    native_observation=AIToolObservationResult(
-                        tool_name="memory.query",
-                        summary=raw_payload,
-                        input_payload={},
-                        output_payload={"raw": raw_payload},
-                    ),
+                    summary=raw_payload,
+                    input_payload={},
+                    output_payload={"raw": raw_payload},
                 ),
             ),
-            metadata={
-                "tool_loop_context_recovery_attempted": True,
-                "tool_loop_model_retry_count": 1,
-            },
         ),
+        metadata={
+            "tool_observation_count": 0,
+            "tool_message_count": 0,
+            "tool_loop_context_recovery_attempted": True,
+            "tool_loop_model_retry_count": 1,
+        },
     )
 
     persisted = _agent_turn_meta(turn)

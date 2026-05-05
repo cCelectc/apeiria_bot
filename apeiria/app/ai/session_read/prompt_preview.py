@@ -30,10 +30,6 @@ from apeiria.app.ai.pipeline.composer import (
     AIRuntimeComposeInput,
     build_roleplay_reply_packet,
 )
-from apeiria.app.ai.pipeline.generation_steps import (
-    ReplyPromptPlanningInput,
-    build_initial_reply_prompt_packet,
-)
 from apeiria.app.ai.pipeline.input_steps import ReplyInputs
 from apeiria.app.ai.pipeline.memory_steps import retrieve_memories_for_preview
 from apeiria.app.ai.pipeline.person_profile_steps import load_person_profile_for_prompt
@@ -55,7 +51,9 @@ from apeiria.app.ai.reply_strategy.models import ReplyStrategyDecision, WakeCont
 from apeiria.app.ai.session_runtime import (
     RuntimeContextBundle,
     RuntimeHardRuleDecision,
+    RuntimePromptPlanningInput,
     RuntimeTurnSource,
+    build_initial_runtime_reply_prompt_packet,
     decide_runtime_hard_rule,
 )
 from apeiria.conversation.service import chat_session_service
@@ -76,12 +74,6 @@ if TYPE_CHECKING:
         ChatMessageDetailView,
         ChatSessionIdentity,
     )
-
-
-def ensure_app_ai_tools_loaded() -> None:
-    """Compatibility fallback that now enters through the AI lifecycle."""
-
-    ensure_ai_runtime_support_initialized(source="admin_fallback")
 
 
 def _find_recent_user_name(
@@ -340,7 +332,7 @@ def _build_preview_prompt_outputs(  # noqa: PLR0913
     *,
     request: AIRuntimeReplyRequest,
     inputs: ReplyInputs,
-    prompt_planning: ReplyPromptPlanningInput,
+    prompt_planning: RuntimePromptPlanningInput,
     has_tools: bool,
     hard_rule_decision: RuntimeHardRuleDecision,
     social_decision: ReplyStrategyDecision | None,
@@ -358,11 +350,11 @@ def _build_preview_prompt_outputs(  # noqa: PLR0913
     )
     if should_show_prompt:
         assert social_decision is not None
-        planning_packet = build_initial_reply_prompt_packet(
+        planning_packet = build_initial_runtime_reply_prompt_packet(
             request=request,
             inputs=inputs,
             social_decision=social_decision,
-            prep=prompt_planning,
+            prompt_input=prompt_planning,
         )
         planning_channels, planning_prompt_diagnostics = (
             project_prompt_packet_to_preview(planning_packet, mode=planning_mode)
@@ -422,7 +414,7 @@ async def build_scene_prompt_preview(
     scene_id: str,
     turn_limit: int = 50,
 ) -> AISessionPromptPreview | None:
-    ensure_app_ai_tools_loaded()
+    ensure_ai_runtime_support_initialized(source="admin_fallback")
     conversation = await chat_session_service.get_session_view(session_id=scene_id)
     if conversation is None:
         return None
@@ -543,7 +535,7 @@ async def build_scene_prompt_preview(
         allowed_tools=tuple(allowed_tools),
     )
     inputs = context_bundle.inputs
-    prompt_planning = ReplyPromptPlanningInput(
+    prompt_planning = RuntimePromptPlanningInput(
         skill_runtime=ToolGatewayResult(
             policy_text=tool_policy_text,
             result_lines=tool_results,

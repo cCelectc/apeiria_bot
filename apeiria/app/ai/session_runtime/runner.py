@@ -2,34 +2,53 @@
 
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable  # noqa: TC003
 from dataclasses import dataclass
-from typing import Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
-from apeiria.app.ai.agent_turn import AgentTurnResult  # noqa: TC001
+if TYPE_CHECKING:
+    from types import ModuleType
 
-from .context import TurnContext  # noqa: TC001
+    from .context import TurnContext
+    from .stages import RuntimeExecutionOutcome, RuntimeTurnPlan
+
+
+def _execution_paths() -> "ModuleType":
+    from . import execution
+
+    return execution
 
 
 @runtime_checkable
 class AgentRunner(Protocol):
     """Protocol implemented by one-turn model/tool execution runners."""
 
-    async def run_turn(self, context: TurnContext) -> AgentTurnResult:
-        """Run one turn from a frozen context."""
+    async def run_turn(
+        self,
+        context: "TurnContext",
+        plan: "RuntimeTurnPlan",
+    ) -> "RuntimeExecutionOutcome":
+        """Run one turn from a frozen context and runtime-owned plan."""
         ...
 
 
 @dataclass(frozen=True, slots=True)
 class RuntimeAgentRunner:
-    """Route one frozen turn to direct or tool-capable execution."""
+    """Route one frozen turn to native direct or tool-capable execution."""
 
-    direct_executor: Callable[[TurnContext], Awaitable[AgentTurnResult]]
-    tool_capable_executor: Callable[[TurnContext], Awaitable[AgentTurnResult]]
-
-    async def run_turn(self, context: TurnContext) -> AgentTurnResult:
+    async def run_turn(
+        self,
+        context: "TurnContext",
+        plan: "RuntimeTurnPlan",
+    ) -> "RuntimeExecutionOutcome":
         """Run the turn through the selected execution path."""
 
-        if context.tool_exposure_plan.has_executable_tools:
-            return await self.tool_capable_executor(context)
-        return await self.direct_executor(context)
+        execution = _execution_paths()
+        if plan.has_executable_tools:
+            return await execution.execute_tool_capable_runtime_turn(
+                turn_context=context,
+                plan=plan,
+            )
+        return await execution.execute_direct_runtime_turn(
+            turn_context=context,
+            plan=plan,
+        )

@@ -310,7 +310,7 @@ def test_runtime_readiness_reports_degraded_delivery_attempt_storage(
 def test_reply_preparation_records_no_model_diagnostic(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from apeiria.app.ai.pipeline import generation_steps
+    from apeiria.app.ai.session_runtime import planning as planning_module
 
     identity = ChatSessionIdentity(
         session_id="scene-1",
@@ -365,13 +365,13 @@ def test_reply_preparation_records_no_model_diagnostic(
     def record_debug(message: str, *args: object) -> None:
         diagnostics.append(message.format(*args) if args else message)
 
-    monkeypatch.setattr(generation_steps, "get_ai_plugin_config", AIPluginConfig)
-    monkeypatch.setattr(generation_steps.tool_gateway, "prepare", prepare_tools)
-    monkeypatch.setattr(generation_steps, "select_pipeline_model", select_model)
-    monkeypatch.setattr(generation_steps.logger, "debug", record_debug)
+    monkeypatch.setattr(planning_module, "get_ai_plugin_config", AIPluginConfig)
+    monkeypatch.setattr(planning_module.tool_gateway, "prepare", prepare_tools)
+    monkeypatch.setattr(planning_module, "select_pipeline_model", select_model)
+    monkeypatch.setattr(planning_module.logger, "debug", record_debug)
 
     result = asyncio.run(
-        generation_steps.prepare_generation(
+        planning_module.plan_runtime_turn(
             request=request,
             inputs=inputs,
             social_decision=social_decision,

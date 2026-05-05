@@ -2,21 +2,26 @@ from __future__ import annotations
 
 import asyncio
 from datetime import datetime, timezone
+from types import SimpleNamespace
+from typing import Any
 
-from apeiria.ai.model import AIModelBindingTarget, AIModelToolDefinition
+from apeiria.ai.model import AIModelBindingTarget, AIModelMessage, AIModelToolDefinition
 from apeiria.ai.tools import AIToolPolicy
-from apeiria.app.ai.agent_turn import AgentTurnResult
 from apeiria.app.ai.session_runtime import (
     DeliveryTarget,
-    RuntimeAgentRunner,
+    RuntimeExecutionOutcome,
+    RuntimeTurnPlan,
     RuntimeTurnSource,
     ToolExposurePlan,
     TurnContext,
 )
+from apeiria.app.ai.session_runtime import execution as execution_module
+from apeiria.app.ai.session_runtime.runner import RuntimeAgentRunner
 from apeiria.conversation.models import ChatSessionIdentity
+from tests.ai.agent_turn_helpers import selected_model
 
 
-def _context(*, tools: tuple[AIModelToolDefinition, ...] = ()) -> TurnContext:
+def _context(*, exposure_plan: ToolExposurePlan | None = None) -> TurnContext:
     return TurnContext(
         trace_id="trace-1",
         identity=ChatSessionIdentity(
@@ -42,71 +47,100 @@ def _context(*, tools: tuple[AIModelToolDefinition, ...] = ()) -> TurnContext:
             group_id=None,
             user_id="user-1",
         ),
-        tool_policy=AIToolPolicy(execution_enabled=bool(tools)),
-        tool_exposure_plan=ToolExposurePlan(selected_tools=tools),
+        tool_policy=AIToolPolicy(execution_enabled=True),
+        tool_exposure_plan=exposure_plan or ToolExposurePlan(),
+        prompt_messages=(AIModelMessage(role="user", content="hello"),),
     )
 
 
-def test_agent_runner_uses_direct_executor_without_tools() -> None:
-    calls: list[str] = []
-
-    async def direct(context: TurnContext) -> AgentTurnResult:
-        calls.append(f"direct:{context.trace_id}")
-        return AgentTurnResult.skipped(
-            trace_id=context.trace_id,
-            runtime_mode=context.runtime_mode,
-            finish_reason="direct",
-        )
-
-    async def tool_capable(context: TurnContext) -> AgentTurnResult:
-        calls.append(f"tool:{context.trace_id}")
-        return AgentTurnResult.skipped(
-            trace_id=context.trace_id,
-            runtime_mode=context.runtime_mode,
-            finish_reason="tool",
-        )
-
-    runner = RuntimeAgentRunner(
-        direct_executor=direct,
-        tool_capable_executor=tool_capable,
+def _plan(*, exposure_plan: ToolExposurePlan | None = None) -> RuntimeTurnPlan:
+    return RuntimeTurnPlan(
+        stage="planning",
+        selected=selected_model("runner"),
+        fallback_models=(),
+        skill_runtime=SimpleNamespace(turns=()),
+        skill_activation=None,
+        pre_tool_task_class="reply_default",
+        prompt_messages=(AIModelMessage(role="user", content="hello"),),
+        prompt_diagnostics={},
+        tool_exposure_plan=exposure_plan or ToolExposurePlan(),
     )
 
-    result = asyncio.run(runner.run_turn(_context()))
 
-    assert result.finish_reason == "direct"
-    assert calls == ["direct:trace-1"]
-
-
-def test_agent_runner_uses_tool_capable_executor_with_selected_tools() -> None:
-    calls: list[str] = []
-
-    async def direct(context: TurnContext) -> AgentTurnResult:
-        calls.append(f"direct:{context.trace_id}")
-        return AgentTurnResult.skipped(
-            trace_id=context.trace_id,
-            runtime_mode=context.runtime_mode,
-            finish_reason="direct",
-        )
-
-    async def tool_capable(context: TurnContext) -> AgentTurnResult:
-        calls.append(f"tool:{context.tool_exposure_plan.selected_tool_names}")
-        return AgentTurnResult.skipped(
-            trace_id=context.trace_id,
-            runtime_mode=context.runtime_mode,
-            finish_reason="tool",
-        )
-
-    runner = RuntimeAgentRunner(
-        direct_executor=direct,
-        tool_capable_executor=tool_capable,
+def _outcome(source: str) -> RuntimeExecutionOutcome:
+    return RuntimeExecutionOutcome(
+        stage="execution",
+        response=None,
+        skill_runtime=SimpleNamespace(turns=()),
+        post_tool_task_class=None,
+        delivery_result=None,
+        turn_result=SimpleNamespace(response_source=source),
     )
+
+
+def test_agent_runner_uses_native_direct_path_without_tools(monkeypatch: Any) -> None:
+    calls: list[tuple[str, TurnContext, RuntimeTurnPlan]] = []
+
+    async def direct(
+        *,
+        turn_context: TurnContext,
+        plan: RuntimeTurnPlan,
+    ) -> RuntimeExecutionOutcome:
+        calls.append(("direct", turn_context, plan))
+        return _outcome("direct")
+
+    async def tool_capable(**_: object) -> RuntimeExecutionOutcome:
+        raise AssertionError("tool path should not run")  # noqa: TRY003
+
+    monkeypatch.setattr(execution_module, "execute_direct_runtime_turn", direct)
+    monkeypatch.setattr(
+        execution_module,
+        "execute_tool_capable_runtime_turn",
+        tool_capable,
+    )
+    context = _context()
+    plan = _plan()
+
+    result = asyncio.run(RuntimeAgentRunner().run_turn(context, plan))
+
+    assert result.turn_result is not None
+    assert result.turn_result.response_source == "direct"
+    assert calls == [("direct", context, plan)]
+
+
+def test_agent_runner_uses_native_tool_path_with_selected_tools(
+    monkeypatch: Any,
+) -> None:
     tool = AIModelToolDefinition(
         name="memory.query",
         description="Recall memory",
         parameters={"type": "object", "properties": {}},
     )
+    exposure_plan = ToolExposurePlan(selected_tools=(tool,))
+    calls: list[tuple[str, TurnContext, RuntimeTurnPlan]] = []
 
-    result = asyncio.run(runner.run_turn(_context(tools=(tool,))))
+    async def direct(**_: object) -> RuntimeExecutionOutcome:
+        raise AssertionError("direct path should not run")  # noqa: TRY003
 
-    assert result.finish_reason == "tool"
-    assert calls == ["tool:('memory.query',)"]
+    async def tool_capable(
+        *,
+        turn_context: TurnContext,
+        plan: RuntimeTurnPlan,
+    ) -> RuntimeExecutionOutcome:
+        calls.append(("tool", turn_context, plan))
+        return _outcome("tool_loop")
+
+    monkeypatch.setattr(execution_module, "execute_direct_runtime_turn", direct)
+    monkeypatch.setattr(
+        execution_module,
+        "execute_tool_capable_runtime_turn",
+        tool_capable,
+    )
+    context = _context(exposure_plan=exposure_plan)
+    plan = _plan(exposure_plan=exposure_plan)
+
+    result = asyncio.run(RuntimeAgentRunner().run_turn(context, plan))
+
+    assert result.turn_result is not None
+    assert result.turn_result.response_source == "tool_loop"
+    assert calls == [("tool", context, plan)]

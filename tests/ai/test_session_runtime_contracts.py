@@ -256,11 +256,22 @@ def test_tool_exposure_plan_splits_awareness_from_executable_tools() -> None:
 
 def test_agent_runner_protocol_owns_turn_execution() -> None:
     class _Runner:
-        async def run_turn(self, context: TurnContext) -> AgentTurnResult:
-            return AgentTurnResult.skipped(
-                trace_id=context.trace_id,
-                runtime_mode=context.runtime_mode,
-                finish_reason="contract_test",
+        async def run_turn(
+            self,
+            context: TurnContext,
+            plan: RuntimeTurnPlan,
+        ) -> RuntimeExecutionOutcome:
+            return RuntimeExecutionOutcome(
+                stage="execution",
+                response=None,
+                skill_runtime=plan.skill_runtime,
+                post_tool_task_class=None,
+                delivery_result=None,
+                turn_result=AgentTurnResult.skipped(
+                    trace_id=context.trace_id,
+                    runtime_mode=context.runtime_mode,
+                    finish_reason="contract_test",
+                ),
             )
 
     runner = _Runner()
@@ -272,11 +283,22 @@ def test_session_runtime_protocol_coordinates_context_and_runner() -> None:
     class _Runtime:
         session_id = "session-1"
 
-        async def run_turn(self, context: TurnContext) -> AgentTurnResult:
-            return AgentTurnResult.skipped(
-                trace_id=context.trace_id,
-                runtime_mode=context.runtime_mode,
-                finish_reason="contract_test",
+        async def run_turn(
+            self,
+            context: TurnContext,
+            plan: RuntimeTurnPlan,
+        ) -> RuntimeExecutionOutcome:
+            return RuntimeExecutionOutcome(
+                stage="execution",
+                response=None,
+                skill_runtime=plan.skill_runtime,
+                post_tool_task_class=None,
+                delivery_result=None,
+                turn_result=AgentTurnResult.skipped(
+                    trace_id=context.trace_id,
+                    runtime_mode=context.runtime_mode,
+                    finish_reason="contract_test",
+                ),
             )
 
     runtime = _Runtime()
@@ -338,11 +360,22 @@ def test_turn_trace_projects_provider_neutral_attempts() -> None:
 
 def test_protocol_methods_are_awaitable() -> None:
     class _Runner:
-        async def run_turn(self, context: TurnContext) -> AgentTurnResult:
-            return AgentTurnResult.skipped(
-                trace_id=context.trace_id,
-                runtime_mode=context.runtime_mode,
-                finish_reason="contract_test",
+        async def run_turn(
+            self,
+            context: TurnContext,
+            plan: RuntimeTurnPlan,
+        ) -> RuntimeExecutionOutcome:
+            return RuntimeExecutionOutcome(
+                stage="execution",
+                response=None,
+                skill_runtime=plan.skill_runtime,
+                post_tool_task_class=None,
+                delivery_result=None,
+                turn_result=AgentTurnResult.skipped(
+                    trace_id=context.trace_id,
+                    runtime_mode=context.runtime_mode,
+                    finish_reason="contract_test",
+                ),
             )
 
     assert inspect.iscoroutinefunction(_Runner().run_turn)

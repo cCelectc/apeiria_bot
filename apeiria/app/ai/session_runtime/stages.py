@@ -21,6 +21,7 @@ if TYPE_CHECKING:
     from apeiria.ai.prompting import PromptPacket
     from apeiria.ai.tools import ToolGatewayResult
     from apeiria.app.ai.agent_turn import AgentTurnResult
+    from apeiria.app.ai.pipeline.composer import AIRuntimeComposeInput
     from apeiria.app.ai.pipeline.delivery_steps import DeliveryOutcome
     from apeiria.app.ai.pipeline.input_steps import ReplyInputs
     from apeiria.app.ai.pipeline.service import AIRuntimeReplyRequest
@@ -75,7 +76,10 @@ class RuntimeTurnPlan:
     prompt_messages: tuple["AIModelMessage", ...]
     prompt_diagnostics: dict[str, object]
     tool_exposure_plan: ToolExposurePlan
+    reply_compose_input: "AIRuntimeComposeInput | None" = None
     prompt_packet: "PromptPacket | None" = None
+    tool_mode: str = "allow"
+    tool_execution_timeout_seconds: float | None = None
     post_tool_task_class: "AIModelTaskClass | None" = None
 
     @property
@@ -186,16 +190,11 @@ class RuntimePlanningStage(Protocol):
 class RuntimeExecutionStage(Protocol):
     """Model/tool execution boundary for one turn."""
 
-    async def execute(  # noqa: PLR0913
+    async def execute(
         self,
         *,
-        request: "AIRuntimeReplyRequest",
-        inputs: Any,
-        social_decision: Any,
-        plan: RuntimeTurnPlan,
-        current_time: "datetime",
-        trace_id: str,
         turn_context: TurnContext,
+        plan: RuntimeTurnPlan,
     ) -> RuntimeExecutionOutcome: ...
 
 

@@ -15,6 +15,10 @@ from .context import MergeMetadata, RuntimeTurnSource, TurnContext
 if TYPE_CHECKING:
     from apeiria.ai.config import AIPluginConfig
     from apeiria.app.ai.session_runtime.runner import AgentRunner
+    from apeiria.app.ai.session_runtime.stages import (
+        RuntimeExecutionOutcome,
+        RuntimeTurnPlan,
+    )
 
 
 ResultT = TypeVar("ResultT")
@@ -37,7 +41,11 @@ class AISessionRuntime(Protocol):
 
     session_id: str
 
-    async def run_turn(self, context: TurnContext) -> AgentTurnResult:
+    async def run_turn(
+        self,
+        context: TurnContext,
+        plan: "RuntimeTurnPlan",
+    ) -> "RuntimeExecutionOutcome":
         """Coordinate one AI turn inside the session boundary."""
         ...
 
@@ -123,18 +131,33 @@ class InMemoryAISessionRuntime:
         repr=False,
     )
 
-    async def run_turn(self, context: TurnContext) -> AgentTurnResult:
+    async def run_turn(
+        self,
+        context: TurnContext,
+        plan: "RuntimeTurnPlan",
+    ) -> "RuntimeExecutionOutcome":
         """Serialize one runner invocation inside the session."""
 
-        async def operation() -> AgentTurnResult:
+        async def operation() -> "RuntimeExecutionOutcome":
             if self.runner is None:
-                return AgentTurnResult.skipped(
-                    trace_id=context.trace_id,
-                    runtime_mode=context.runtime_mode,
-                    finish_reason="no_runner",
-                    diagnostic="No agent runner is configured for this session.",
+                from apeiria.app.ai.session_runtime.stages import (
+                    RuntimeExecutionOutcome,
                 )
-            return await self.runner.run_turn(context)
+
+                return RuntimeExecutionOutcome(
+                    stage="execution",
+                    response=None,
+                    skill_runtime=plan.skill_runtime,
+                    post_tool_task_class=None,
+                    delivery_result=None,
+                    turn_result=AgentTurnResult.skipped(
+                        trace_id=context.trace_id,
+                        runtime_mode=context.runtime_mode,
+                        finish_reason="no_runner",
+                        diagnostic="No agent runner is configured for this session.",
+                    ),
+                )
+            return await self.runner.run_turn(context, plan)
 
         return await self.run_serialized(operation, now=context.current_time)
 

@@ -81,7 +81,11 @@ def test_message_entrypoint_extracts_memory_before_reply_pipeline(
         order.append("memory_extraction")
         return SimpleNamespace(sentiment="sentiment")
 
-    monkeypatch.setattr(service_module, "ensure_app_ai_tools_loaded", lambda: None)
+    monkeypatch.setattr(
+        service_module,
+        "ensure_ai_runtime_support_initialized",
+        lambda **_kwargs: None,
+    )
     monkeypatch.setattr(
         service_module,
         "ai_skill_service",

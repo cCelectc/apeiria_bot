@@ -189,7 +189,11 @@ def test_future_task_entrypoint_reuses_session_serialization(
 
     monkeypatch.setattr(database_runtime, "_project_root", tmp_path)
     database_runtime.ensure_ready()
-    monkeypatch.setattr(service_module, "ensure_app_ai_tools_loaded", lambda: None)
+    monkeypatch.setattr(
+        service_module,
+        "ensure_ai_runtime_support_initialized",
+        lambda **_kwargs: None,
+    )
     monkeypatch.setattr(
         service_module.ai_retention_service,
         "maybe_schedule_cleanup",

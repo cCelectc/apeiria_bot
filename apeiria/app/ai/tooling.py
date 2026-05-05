@@ -23,10 +23,3 @@ def drain_pending_ai_tools() -> int:
     from apeiria.ai.tools import ai_tool_service
 
     return ai_tool_service.registry.register_pending_tools()
-
-
-def ensure_app_ai_tools_loaded() -> None:
-    """Compatibility helper for isolated tests and older internal callers."""
-
-    load_app_ai_tool_modules()
-    drain_pending_ai_tools()

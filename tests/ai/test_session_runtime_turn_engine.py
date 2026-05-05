@@ -7,16 +7,10 @@ from typing import Any
 
 import pytest
 
-from apeiria.ai.model import AIModelBindingTarget
+from apeiria.ai.model import AIModelBindingTarget, AIModelMessage
 from apeiria.ai.tools import AIToolPolicy
 from apeiria.ai.tools.gateway import ToolGatewayResult
-from apeiria.app.ai.agent_turn import AgentModelGenerationResult, AgentTurnResult
-from apeiria.app.ai.pipeline import generation_steps
-from apeiria.app.ai.pipeline import service as service_module
-from apeiria.app.ai.pipeline.generation_steps import (
-    ReplyGeneration,
-    ReplyPreparation,
-)
+from apeiria.app.ai.agent_turn import AgentTurnResult
 from apeiria.app.ai.pipeline.input_steps import ReplyInputs
 from apeiria.app.ai.pipeline.service import (
     AIRuntimeReplyRequest,
@@ -33,9 +27,12 @@ from apeiria.app.ai.session_runtime import (
     DefaultRuntimePlanningStage,
     DefaultRuntimePolicyStage,
     DefaultRuntimeTraceStage,
+    RuntimeExecutionOutcome,
     RuntimeTurnPlan,
+    ToolExposurePlan,
     TurnContext,
 )
+from apeiria.app.ai.session_runtime import engine as engine_module
 from apeiria.conversation.models import ChatSessionIdentity
 from tests.ai.agent_turn_helpers import model_response, selected_model
 
@@ -126,19 +123,17 @@ class _ReplyPersistenceStage:
     ) -> None:
         if self._persist_reply is None:
             return
-        await self._persist_reply(prep=plan, gen=generation, **kwargs)
+        await self._persist_reply(plan=plan, gen=generation, **kwargs)
 
     async def rebuild_context_window(self, **_: Any) -> None:
         return None
 
 
-def _engine_from_stages(  # noqa: PLR0913
+def _engine_from_stages(
     *,
     gather_reply_inputs: Any,
     decide_whether_to_speak: Any,
     prepare_generation: Any,
-    generate_reply: Any,
-    persist_reply: Any | None = None,
     apply_observation_effects: Any | None = None,
 ) -> AISessionTurnEngine:
     return AISessionTurnEngine(
@@ -146,14 +141,45 @@ def _engine_from_stages(  # noqa: PLR0913
         observation_stage=DefaultRuntimeObservationStage(apply_observation_effects),
         context_stage=DefaultRuntimeContextStage(gather_reply_inputs),
         planning_stage=DefaultRuntimePlanningStage(prepare_generation),
-        execution_stage=DefaultRuntimeExecutionStage(generate_reply),
+        execution_stage=DefaultRuntimeExecutionStage(),
         commit_stage=DefaultRuntimeCommitStage(
-            reply_persistence=_ReplyPersistenceStage(persist_reply),
+            reply_persistence=_ReplyPersistenceStage(),
             reply_strategy_service=SimpleNamespace(
                 notify_replied=lambda _session_id: None
             ),
         ),
         trace_stage=DefaultRuntimeTraceStage(),
+    )
+
+
+def _service_from_stages(
+    *,
+    gather_reply_inputs: Any,
+    decide_whether_to_speak: Any,
+    prepare_generation: Any,
+    persist_reply: Any | None = None,
+) -> AIRuntimeService:
+    engine = _engine_from_stages(
+        gather_reply_inputs=gather_reply_inputs,
+        decide_whether_to_speak=decide_whether_to_speak,
+        prepare_generation=prepare_generation,
+        apply_observation_effects=_noop_observation_effects,
+    )
+    return AIRuntimeService(
+        turn_engine=AISessionTurnEngine(
+            policy_stage=engine.policy_stage,
+            observation_stage=engine.observation_stage,
+            context_stage=engine.context_stage,
+            planning_stage=engine.planning_stage,
+            execution_stage=engine.execution_stage,
+            commit_stage=DefaultRuntimeCommitStage(
+                reply_persistence=_ReplyPersistenceStage(persist_reply),
+                reply_strategy_service=SimpleNamespace(
+                    notify_replied=lambda _session_id: None
+                ),
+            ),
+            trace_stage=engine.trace_stage,
+        )
     )
 
 
@@ -164,17 +190,25 @@ def test_reply_pipeline_passes_turn_context_to_generation(
     runtime_request = _request()
     inputs = _inputs()
     social_decision = _social_decision()
-    prep = ReplyPreparation(
+    plan = RuntimeTurnPlan(
+        stage="planning",
+        selected=selected,
+        fallback_models=(),
         skill_runtime=ToolGatewayResult(
             policy_text="No tools.",
             result_lines=(),
             turns=(),
         ),
-        selected=selected,
         skill_activation=None,
         pre_tool_task_class="reply_default",
+        prompt_messages=(AIModelMessage(role="user", content="hello"),),
+        prompt_diagnostics={"prompt_purpose": "reply_final"},
+        tool_exposure_plan=ToolExposurePlan(),
+        reply_compose_input=None,
+        tool_mode="avoid",
     )
     captured: dict[str, TurnContext] = {}
+    expected_plan = plan
 
     async def gather_reply_inputs(*_args: Any, **_kwargs: Any) -> ReplyInputs:
         return inputs
@@ -185,16 +219,18 @@ def test_reply_pipeline_passes_turn_context_to_generation(
     ) -> ReplyStrategyDecision:
         return social_decision
 
-    async def prepare_generation(*_args: Any, **_kwargs: Any) -> ReplyPreparation:
-        return prep
+    async def prepare_generation(*_args: Any, **_kwargs: Any) -> RuntimeTurnPlan:
+        return plan
 
-    async def generate_reply(
-        *_args: Any,
+    async def execute_runtime_turn(
+        *,
         turn_context: TurnContext,
-        **_kwargs: Any,
-    ) -> ReplyGeneration:
+        plan: RuntimeTurnPlan,
+    ) -> Any:
         captured["context"] = turn_context
-        return ReplyGeneration(
+        assert plan is expected_plan
+        return RuntimeExecutionOutcome(
+            stage="execution",
             response=model_response(selected, "reply"),
             skill_runtime=ToolGatewayResult(
                 policy_text="No tools.",
@@ -203,37 +239,34 @@ def test_reply_pipeline_passes_turn_context_to_generation(
             ),
             post_tool_task_class=None,
             delivery_result=None,
+            turn_result=AgentTurnResult(
+                trace_id=turn_context.trace_id,
+                runtime_mode=turn_context.runtime_mode,
+                status="completed",
+                finish_reason="direct_model_completed",
+                response=model_response(selected, "reply"),
+                response_source="direct",
+            ),
         )
+
+    monkeypatch.setattr(
+        engine_module,
+        "execute_runtime_turn",
+        execute_runtime_turn,
+    )
 
     async def persist_reply(*_args: Any, **_kwargs: Any) -> None:
         return None
 
-    monkeypatch.setattr(service_module, "gather_reply_inputs", gather_reply_inputs)
-    monkeypatch.setattr(
-        service_module,
-        "decide_whether_to_speak",
-        decide_whether_to_speak,
-    )
-    monkeypatch.setattr(service_module, "prepare_generation", prepare_generation)
-    monkeypatch.setattr(service_module, "generate_reply", generate_reply)
-    monkeypatch.setattr(
-        service_module,
-        "AssistantReplyPersistenceStage",
-        lambda: _ReplyPersistenceStage(persist_reply),
-    )
-    monkeypatch.setattr(
-        service_module,
-        "apply_reply_observation_effects",
-        _noop_observation_effects,
-    )
-    monkeypatch.setattr(
-        service_module,
-        "reply_strategy_service",
-        SimpleNamespace(notify_replied=lambda _session_id: None),
+    service = _service_from_stages(
+        gather_reply_inputs=gather_reply_inputs,
+        decide_whether_to_speak=decide_whether_to_speak,
+        prepare_generation=prepare_generation,
+        persist_reply=persist_reply,
     )
 
     result = asyncio.run(
-        AIRuntimeService()._run_reply_pipeline(
+        service._run_reply_pipeline(
             trace_id="trace-1",
             trace=AITraceContext(kind="test", trigger="unit"),
             request=runtime_request,
@@ -249,21 +282,8 @@ def test_reply_pipeline_passes_turn_context_to_generation(
     assert context.delivery_target.session_id == "session-1"
     assert context.delivery_target.reply_to_message_id == "msg-1"
     assert context.delivery_target.delivery_channel == "message"
-    expected_messages = generation_steps.build_initial_reply_prompt_messages(
-        request=runtime_request,
-        inputs=inputs,
-        social_decision=social_decision,
-        prep=prep,
-    )
-    assert context.prompt_messages == expected_messages
-    assert context.prompt_diagnostics == (
-        generation_steps.build_initial_reply_prompt_diagnostics(
-            request=runtime_request,
-            inputs=inputs,
-            social_decision=social_decision,
-            prep=prep,
-        )
-    )
+    assert context.prompt_messages == plan.prompt_messages
+    assert context.prompt_diagnostics == plan.prompt_diagnostics
     assert context.tool_exposure_plan.selected_tools == ()
     assert context.hard_rule_decision is not None
     assert context.social_decision == social_decision
@@ -284,71 +304,70 @@ def test_reply_pipeline_persists_runner_turn_result(
     ) -> ReplyStrategyDecision:
         return _social_decision()
 
-    async def prepare_generation(*_args: Any, **_kwargs: Any) -> ReplyPreparation:
-        return ReplyPreparation(
+    async def prepare_generation(*_args: Any, **_kwargs: Any) -> RuntimeTurnPlan:
+        return RuntimeTurnPlan(
+            stage="planning",
+            selected=selected,
+            fallback_models=(),
             skill_runtime=ToolGatewayResult(
                 policy_text="No tools.",
                 result_lines=(),
                 turns=(),
             ),
-            selected=selected,
             skill_activation=None,
             pre_tool_task_class="reply_default",
+            prompt_messages=(AIModelMessage(role="user", content="hello"),),
+            prompt_diagnostics={},
+            tool_exposure_plan=ToolExposurePlan(),
         )
 
-    async def generate_model_turn(request: Any) -> AgentModelGenerationResult:
-        response = model_response(selected, "runner reply")
-        return AgentModelGenerationResult(
-            response=response,
-            selected=selected,
-            turn=AgentTurnResult(
-                trace_id=request.trace_id,
-                runtime_mode=request.runtime_mode,
+    async def execute_runtime_turn(
+        *,
+        turn_context: TurnContext,
+        plan: RuntimeTurnPlan,
+    ) -> Any:
+        del plan
+        return RuntimeExecutionOutcome(
+            stage="execution",
+            response=model_response(selected, "runner reply"),
+            skill_runtime=ToolGatewayResult(
+                policy_text="No tools.",
+                result_lines=(),
+                turns=(),
+            ),
+            post_tool_task_class=None,
+            delivery_result=None,
+            turn_result=AgentTurnResult(
+                trace_id=turn_context.trace_id,
+                runtime_mode=turn_context.runtime_mode,
                 status="completed",
                 finish_reason="runner_direct_completed",
-                response=response,
-                response_source=request.response_source,
-                metadata={"runner": "direct"},
+                response=model_response(selected, "runner reply"),
+                response_source="direct",
+                metadata={
+                    "runner": "direct",
+                    "prompt_diagnostics": turn_context.prompt_diagnostics,
+                },
             ),
         )
 
-    async def select_fallbacks(_selected: Any) -> tuple[Any, ...]:
-        return ()
-
-    async def persist_reply(*_args: Any, gen: ReplyGeneration, **_kwargs: Any) -> None:
+    async def persist_reply(*_args: Any, gen: Any, **_kwargs: Any) -> None:
         captured["turn_result"] = gen.turn_result
 
-    monkeypatch.setattr(service_module, "gather_reply_inputs", gather_reply_inputs)
     monkeypatch.setattr(
-        service_module,
-        "decide_whether_to_speak",
-        decide_whether_to_speak,
+        engine_module,
+        "execute_runtime_turn",
+        execute_runtime_turn,
     )
-    monkeypatch.setattr(service_module, "prepare_generation", prepare_generation)
-    monkeypatch.setattr(
-        service_module,
-        "AssistantReplyPersistenceStage",
-        lambda: _ReplyPersistenceStage(persist_reply),
-    )
-    monkeypatch.setattr(
-        service_module,
-        "apply_reply_observation_effects",
-        _noop_observation_effects,
-    )
-    monkeypatch.setattr(generation_steps, "generate_model_turn", generate_model_turn)
-    monkeypatch.setattr(
-        generation_steps,
-        "select_pipeline_fallback_models",
-        select_fallbacks,
-    )
-    monkeypatch.setattr(
-        service_module,
-        "reply_strategy_service",
-        SimpleNamespace(notify_replied=lambda _session_id: None),
+    service = _service_from_stages(
+        gather_reply_inputs=gather_reply_inputs,
+        decide_whether_to_speak=decide_whether_to_speak,
+        prepare_generation=prepare_generation,
+        persist_reply=persist_reply,
     )
 
     result = asyncio.run(
-        AIRuntimeService()._run_reply_pipeline(
+        service._run_reply_pipeline(
             trace_id="trace-1",
             trace=AITraceContext(kind="test", trigger="unit"),
             request=_request(),
@@ -365,7 +384,9 @@ def test_reply_pipeline_persists_runner_turn_result(
     assert "prompt_diagnostics" in turn_result.metadata
 
 
-def test_turn_engine_passes_runtime_plan_through_execution_and_commit() -> None:
+def test_turn_engine_passes_runtime_plan_through_execution_and_commit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     selected = selected_model("engine")
     inputs = _inputs()
     social_decision = _social_decision()
@@ -374,14 +395,19 @@ def test_turn_engine_passes_runtime_plan_through_execution_and_commit() -> None:
         result_lines=(),
         turns=(),
     )
-    prep = ReplyPreparation(
-        skill_runtime=skill_runtime,
+    plan = RuntimeTurnPlan(
+        stage="planning",
         selected=selected,
+        fallback_models=(),
+        skill_runtime=skill_runtime,
         skill_activation=None,
         pre_tool_task_class="reply_default",
+        prompt_messages=(AIModelMessage(role="user", content="hello"),),
+        prompt_diagnostics={},
+        tool_exposure_plan=ToolExposurePlan(),
     )
     order: list[str] = []
-    captured_plan: dict[str, RuntimeTurnPlan] = {}
+    expected_plan = plan
 
     async def gather_reply_inputs(*_args: Any, **_kwargs: Any) -> ReplyInputs:
         order.append("context")
@@ -394,44 +420,66 @@ def test_turn_engine_passes_runtime_plan_through_execution_and_commit() -> None:
         order.append("social")
         return social_decision
 
-    async def prepare_generation(*_args: Any, **_kwargs: Any) -> ReplyPreparation:
+    async def prepare_generation(*_args: Any, **_kwargs: Any) -> RuntimeTurnPlan:
         order.append("planning")
-        return prep
+        return plan
 
-    async def generate_reply(
-        *_args: Any,
-        prep: RuntimeTurnPlan,
+    async def execute_runtime_turn(
+        *,
         turn_context: TurnContext,
-        turn_plan: RuntimeTurnPlan,
-        **_kwargs: Any,
-    ) -> ReplyGeneration:
+        plan: RuntimeTurnPlan,
+    ) -> Any:
         order.append("execution")
-        assert prep is turn_plan
-        assert turn_context.prompt_messages == turn_plan.prompt_messages
-        captured_plan["plan"] = turn_plan
-        return ReplyGeneration(
+        assert turn_context.prompt_messages == plan.prompt_messages
+        return RuntimeExecutionOutcome(
+            stage="execution",
             response=model_response(selected, "engine reply"),
             skill_runtime=skill_runtime,
             post_tool_task_class=None,
             delivery_result=None,
+            turn_result=AgentTurnResult(
+                trace_id=turn_context.trace_id,
+                runtime_mode=turn_context.runtime_mode,
+                status="completed",
+                finish_reason="engine_direct_completed",
+                response=model_response(selected, "engine reply"),
+                response_source="direct",
+            ),
         )
 
     async def persist_reply(
         *_args: Any,
-        prep: RuntimeTurnPlan,
+        plan: RuntimeTurnPlan,
         gen: Any,
         **_kwargs: Any,
     ) -> None:
         order.append("commit")
-        assert prep is captured_plan["plan"]
+        assert plan is expected_plan
         assert gen.stage == "execution"
 
+    monkeypatch.setattr(
+        engine_module,
+        "execute_runtime_turn",
+        execute_runtime_turn,
+    )
     engine = _engine_from_stages(
         gather_reply_inputs=gather_reply_inputs,
         decide_whether_to_speak=decide_whether_to_speak,
         prepare_generation=prepare_generation,
-        generate_reply=generate_reply,
-        persist_reply=persist_reply,
+    )
+    engine = engine.__class__(
+        policy_stage=engine.policy_stage,
+        observation_stage=engine.observation_stage,
+        context_stage=engine.context_stage,
+        planning_stage=engine.planning_stage,
+        execution_stage=engine.execution_stage,
+        commit_stage=DefaultRuntimeCommitStage(
+            reply_persistence=_ReplyPersistenceStage(persist_reply),
+            reply_strategy_service=SimpleNamespace(
+                notify_replied=lambda _session_id: None
+            ),
+        ),
+        trace_stage=engine.trace_stage,
     )
 
     commit = asyncio.run(
@@ -450,7 +498,9 @@ def test_turn_engine_passes_runtime_plan_through_execution_and_commit() -> None:
     assert commit.reply_text == "engine reply"
 
 
-def test_turn_engine_applies_observation_effects_before_context() -> None:
+def test_turn_engine_applies_observation_effects_before_context(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     selected = selected_model("engine")
     inputs = _inputs()
     social_decision = _social_decision()
@@ -459,11 +509,16 @@ def test_turn_engine_applies_observation_effects_before_context() -> None:
         result_lines=(),
         turns=(),
     )
-    prep = ReplyPreparation(
-        skill_runtime=skill_runtime,
+    plan = RuntimeTurnPlan(
+        stage="planning",
         selected=selected,
+        fallback_models=(),
+        skill_runtime=skill_runtime,
         skill_activation=None,
         pre_tool_task_class="reply_default",
+        prompt_messages=(AIModelMessage(role="user", content="hello"),),
+        prompt_diagnostics={},
+        tool_exposure_plan=ToolExposurePlan(),
     )
     order: list[str] = []
 
@@ -481,29 +536,54 @@ def test_turn_engine_applies_observation_effects_before_context() -> None:
         order.append("social")
         return social_decision
 
-    async def prepare_generation(*_args: Any, **_kwargs: Any) -> ReplyPreparation:
+    async def prepare_generation(*_args: Any, **_kwargs: Any) -> RuntimeTurnPlan:
         order.append("planning")
-        return prep
+        return plan
 
-    async def generate_reply(*_args: Any, **_kwargs: Any) -> ReplyGeneration:
+    async def execute_runtime_turn(
+        *,
+        turn_context: TurnContext,
+        plan: RuntimeTurnPlan,
+    ) -> Any:
+        del plan
         order.append("execution")
-        return ReplyGeneration(
+        return RuntimeExecutionOutcome(
+            stage="execution",
             response=model_response(selected, "engine reply"),
             skill_runtime=skill_runtime,
             post_tool_task_class=None,
             delivery_result=None,
+            turn_result=AgentTurnResult(
+                trace_id=turn_context.trace_id,
+                runtime_mode=turn_context.runtime_mode,
+                status="completed",
+                finish_reason="engine_direct_completed",
+                response=model_response(selected, "engine reply"),
+                response_source="direct",
+            ),
         )
 
     async def persist_reply(*_args: Any, **_kwargs: Any) -> None:
         order.append("commit")
 
-    engine = _engine_from_stages(
-        gather_reply_inputs=gather_reply_inputs,
-        decide_whether_to_speak=decide_whether_to_speak,
-        prepare_generation=prepare_generation,
-        generate_reply=generate_reply,
-        persist_reply=persist_reply,
-        apply_observation_effects=apply_observation_effects,
+    monkeypatch.setattr(
+        engine_module,
+        "execute_runtime_turn",
+        execute_runtime_turn,
+    )
+    engine = AISessionTurnEngine(
+        policy_stage=DefaultRuntimePolicyStage(decide_whether_to_speak),
+        observation_stage=DefaultRuntimeObservationStage(apply_observation_effects),
+        context_stage=DefaultRuntimeContextStage(gather_reply_inputs),
+        planning_stage=DefaultRuntimePlanningStage(prepare_generation),
+        execution_stage=DefaultRuntimeExecutionStage(),
+        commit_stage=DefaultRuntimeCommitStage(
+            reply_persistence=_ReplyPersistenceStage(persist_reply),
+            reply_strategy_service=SimpleNamespace(
+                notify_replied=lambda _session_id: None
+            ),
+        ),
+        trace_stage=DefaultRuntimeTraceStage(),
     )
 
     commit = asyncio.run(
@@ -545,20 +625,24 @@ def test_turn_planning_is_side_effect_free_and_matches_prompt_messages(
         turns=(),
         available_tools=(tool,) if has_tools else (),  # type: ignore[arg-type]
     )
-    prep = ReplyPreparation(
-        skill_runtime=skill_runtime,
+    plan = RuntimeTurnPlan(
+        stage="planning",
         selected=selected,
+        fallback_models=(),
+        skill_runtime=skill_runtime,
         skill_activation="Skill active.",
         pre_tool_task_class="tool_orchestration" if has_tools else "reply_default",
+        prompt_messages=(AIModelMessage(role="user", content="hello"),),
+        prompt_diagnostics={"prompt_purpose": "reply_final"},
+        tool_exposure_plan=ToolExposurePlan(
+            selected_tools=(tool,) if has_tools else (),  # type: ignore[arg-type]
+        ),
     )
     calls: list[str] = []
 
-    async def prepare_generation(*_args: Any, **_kwargs: Any) -> ReplyPreparation:
+    async def prepare_generation(*_args: Any, **_kwargs: Any) -> RuntimeTurnPlan:
         calls.append("planning")
-        return prep
-
-    async def fail_later_stage(*_args: Any, **_kwargs: Any) -> None:
-        raise AssertionError("planning must not execute or persist")  # noqa: TRY003
+        return plan
 
     engine = AISessionTurnEngine(
         planning_stage=DefaultRuntimePlanningStage(prepare_generation),
@@ -566,7 +650,7 @@ def test_turn_planning_is_side_effect_free_and_matches_prompt_messages(
 
     inputs = _inputs()
     social_decision = _social_decision()
-    plan = asyncio.run(
+    result = asyncio.run(
         engine.plan_turn(
             trace_id="trace-plan",
             request=_request(),
@@ -577,18 +661,6 @@ def test_turn_planning_is_side_effect_free_and_matches_prompt_messages(
     )
 
     assert calls == ["planning"]
-    assert plan is not None
-    assert plan.prompt_messages == generation_steps.build_initial_reply_prompt_messages(
-        request=_request(),
-        inputs=inputs,
-        social_decision=social_decision,
-        prep=prep,
-    )
-    assert plan.prompt_diagnostics == (
-        generation_steps.build_initial_reply_prompt_diagnostics(
-            request=_request(),
-            inputs=inputs,
-            social_decision=social_decision,
-            prep=prep,
-        )
-    )
+    assert result is not None
+    assert result.prompt_messages == plan.prompt_messages
+    assert result.prompt_diagnostics == plan.prompt_diagnostics
