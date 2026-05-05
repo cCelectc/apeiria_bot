@@ -64,6 +64,18 @@ class RuntimeContextBundle:
 
 
 @dataclass(frozen=True, slots=True)
+class RuntimePlanningInput:
+    """Typed planning-stage input normalized by the turn engine."""
+
+    stage: RuntimeStageName
+    trace_id: str
+    request: "AIRuntimeReplyRequest"
+    inputs: "ReplyInputs"
+    social_decision: "ReplyStrategyDecision"
+    current_time: "datetime"
+
+
+@dataclass(frozen=True, slots=True)
 class RuntimeTurnPlan:
     """Runtime-owned plan consumed by direct or tool-capable execution."""
 
@@ -178,11 +190,7 @@ class RuntimePlanningStage(Protocol):
     async def plan(
         self,
         *,
-        trace_id: str,
-        request: "AIRuntimeReplyRequest",
-        inputs: Any,
-        social_decision: Any,
-        current_time: "datetime",
+        planning_input: RuntimePlanningInput,
     ) -> RuntimeTurnPlan | None: ...
 
 
@@ -241,6 +249,7 @@ __all__ = [
     "RuntimeExecutionOutcome",
     "RuntimeExecutionStage",
     "RuntimeObservationStage",
+    "RuntimePlanningInput",
     "RuntimePlanningStage",
     "RuntimePolicyOutcome",
     "RuntimePolicyStage",

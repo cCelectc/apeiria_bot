@@ -8,12 +8,14 @@ from typing import Any
 import pytest
 
 from apeiria.ai.config import AIPluginConfig
-from apeiria.ai.model import AIModelBindingTarget
+from apeiria.ai.model import AIModelBindingTarget, AIModelRouteQuery
 from apeiria.ai.service import AIRuntimeDependencyStatus, AIService
 from apeiria.ai.tools import AIToolPolicy, ToolGatewayResult
 from apeiria.app.ai.pipeline.input_steps import ReplyInputs
+from apeiria.app.ai.pipeline.relationship_steps import build_relationship_target
 from apeiria.app.ai.pipeline.service import AIRuntimeReplyRequest
 from apeiria.app.ai.reply_strategy import ReplyStrategyDecision
+from apeiria.app.ai.session_runtime import RuntimePlanningInput
 from apeiria.conversation.models import ChatSessionIdentity
 
 
@@ -22,7 +24,12 @@ class _ModelGatewayStub:
         self.selected = selected
         self.calls: list[object] = []
 
-    async def select_model(self, *, query: object, target: object | None) -> Any:
+    async def select_model(
+        self,
+        *,
+        query: AIModelRouteQuery | None = None,
+        target: AIModelBindingTarget | None = None,
+    ) -> Any:
         self.calls.append(query)
         assert target is None
         return self.selected
@@ -331,7 +338,7 @@ def test_reply_preparation_records_no_model_diagnostic(
     inputs = ReplyInputs(
         turns=[],
         conversation_summary=None,
-        relationship_target=object(),
+        relationship_target=build_relationship_target(identity, "user-1"),
         model_target=AIModelBindingTarget(
             conversation_id="scene-1",
             group_id=None,
@@ -372,11 +379,14 @@ def test_reply_preparation_records_no_model_diagnostic(
 
     result = asyncio.run(
         planning_module.plan_runtime_turn(
-            request=request,
-            inputs=inputs,
-            social_decision=social_decision,
-            current_time=datetime(2026, 4, 27, tzinfo=timezone.utc),
-            trace_id="trace-1",
+            planning_input=RuntimePlanningInput(
+                stage="planning",
+                trace_id="trace-1",
+                request=request,
+                inputs=inputs,
+                social_decision=social_decision,
+                current_time=datetime(2026, 4, 27, tzinfo=timezone.utc),
+            ),
         )
     )
 

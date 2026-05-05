@@ -30,12 +30,13 @@ from apeiria.app.ai.pipeline.model_steps import (
 )
 from apeiria.app.ai.pipeline.routing import select_pre_tool_reply_task_class
 from apeiria.app.ai.reply_strategy import summarize_reply_strategy_decision
-from apeiria.app.ai.session_runtime.stages import RuntimeTurnPlan
+from apeiria.app.ai.session_runtime.stages import (
+    RuntimePlanningInput,
+    RuntimeTurnPlan,
+)
 from apeiria.app.ai.session_runtime.tools import ToolOrchestrator
 
 if TYPE_CHECKING:
-    from datetime import datetime
-
     from apeiria.ai.model import AIModelMessage
     from apeiria.ai.prompting import PromptPacket
     from apeiria.app.ai.future_task.models import AIFutureTaskDefinition
@@ -55,13 +56,15 @@ class RuntimePromptPlanningInput:
 
 async def plan_runtime_turn(
     *,
-    request: "AIRuntimeReplyRequest",
-    inputs: "ReplyInputs",
-    social_decision: "ReplyStrategyDecision",
-    current_time: "datetime",
-    trace_id: str,
+    planning_input: RuntimePlanningInput,
 ) -> RuntimeTurnPlan | None:
     """Resolve the runtime-owned model, prompt, and tool plan for one turn."""
+
+    request = planning_input.request
+    inputs = planning_input.inputs
+    social_decision = planning_input.social_decision
+    current_time = planning_input.current_time
+    trace_id = planning_input.trace_id
 
     identity = request.identity
     tool_execution_timeout_seconds = (
@@ -275,6 +278,7 @@ def _build_future_task_context(
 
 
 __all__ = [
+    "RuntimePlanningInput",
     "RuntimePromptPlanningInput",
     "build_initial_runtime_reply_prompt_diagnostics",
     "build_initial_runtime_reply_prompt_messages",

@@ -8,7 +8,7 @@ import pytest  # noqa: TC002
 
 from apeiria.ai.config import AIPluginConfig
 from apeiria.ai.model import AIModelMessage
-from apeiria.ai.tools import AIToolPolicy
+from apeiria.ai.tools import AIToolPolicy, ToolGatewayResult
 from apeiria.app.ai.pipeline import service as service_module
 from apeiria.app.ai.pipeline.service import AIRuntimeService
 from apeiria.app.ai.reply_strategy import ReplyStrategyDecision, WakeContext
@@ -22,6 +22,7 @@ from apeiria.app.ai.session_runtime import (
     DefaultRuntimePolicyStage,
     DefaultRuntimeTraceStage,
     RuntimeExecutionOutcome,
+    RuntimePlanningInput,
     RuntimeTurnPlan,
     ToolExposurePlan,
 )
@@ -52,6 +53,10 @@ class _FakeChatSessionService:
 
 async def _noop_observation_effects(*_args: Any, **_kwargs: Any) -> None:
     return None
+
+
+def _empty_tool_result() -> ToolGatewayResult:
+    return ToolGatewayResult(policy_text="", result_lines=(), turns=())
 
 
 def test_duplicate_platform_event_stops_before_ai_side_effects(
@@ -141,12 +146,16 @@ def test_duplicate_platform_event_stops_before_ai_side_effects(
             decision_source="llm",
         )
 
-    async def prepare_generation(*_args: Any, **_kwargs: Any) -> RuntimeTurnPlan:
+    async def prepare_generation(
+        *,
+        planning_input: RuntimePlanningInput,
+    ) -> RuntimeTurnPlan:
+        assert planning_input.inputs is not None
         return RuntimeTurnPlan(
             stage="planning",
             selected=selected_model("duplicate"),
             fallback_models=(),
-            skill_runtime=SimpleNamespace(turns=()),
+            skill_runtime=_empty_tool_result(),
             skill_activation=None,
             pre_tool_task_class="reply_default",
             prompt_messages=(AIModelMessage(role="user", content="hello"),),
@@ -163,7 +172,7 @@ def test_duplicate_platform_event_stops_before_ai_side_effects(
         return RuntimeExecutionOutcome(
             stage="execution",
             response=model_response(selected, "reply"),
-            skill_runtime=SimpleNamespace(turns=[]),
+            skill_runtime=_empty_tool_result(),
             post_tool_task_class=None,
             delivery_result=None,
             turn_result=None,

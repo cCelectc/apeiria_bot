@@ -28,6 +28,7 @@ from apeiria.app.ai.session_runtime import (
     DefaultRuntimePolicyStage,
     DefaultRuntimeTraceStage,
     RuntimeExecutionOutcome,
+    RuntimePlanningInput,
     RuntimeTurnPlan,
     ToolExposurePlan,
     TurnContext,
@@ -219,7 +220,13 @@ def test_reply_pipeline_passes_turn_context_to_generation(
     ) -> ReplyStrategyDecision:
         return social_decision
 
-    async def prepare_generation(*_args: Any, **_kwargs: Any) -> RuntimeTurnPlan:
+    async def prepare_generation(
+        *,
+        planning_input: RuntimePlanningInput,
+    ) -> RuntimeTurnPlan:
+        assert planning_input.request is runtime_request
+        assert planning_input.inputs is inputs
+        assert planning_input.social_decision is social_decision
         return plan
 
     async def execute_runtime_turn(
@@ -294,9 +301,10 @@ def test_reply_pipeline_persists_runner_turn_result(
 ) -> None:
     selected = selected_model("runner")
     captured: dict[str, AgentTurnResult | None] = {}
+    inputs = _inputs()
 
     async def gather_reply_inputs(*_args: Any, **_kwargs: Any) -> ReplyInputs:
-        return _inputs()
+        return inputs
 
     async def decide_whether_to_speak(
         *_args: Any,
@@ -304,7 +312,11 @@ def test_reply_pipeline_persists_runner_turn_result(
     ) -> ReplyStrategyDecision:
         return _social_decision()
 
-    async def prepare_generation(*_args: Any, **_kwargs: Any) -> RuntimeTurnPlan:
+    async def prepare_generation(
+        *,
+        planning_input: RuntimePlanningInput,
+    ) -> RuntimeTurnPlan:
+        assert planning_input.inputs is inputs
         return RuntimeTurnPlan(
             stage="planning",
             selected=selected,
@@ -420,8 +432,13 @@ def test_turn_engine_passes_runtime_plan_through_execution_and_commit(
         order.append("social")
         return social_decision
 
-    async def prepare_generation(*_args: Any, **_kwargs: Any) -> RuntimeTurnPlan:
+    async def prepare_generation(
+        *,
+        planning_input: RuntimePlanningInput,
+    ) -> RuntimeTurnPlan:
         order.append("planning")
+        assert planning_input.inputs is inputs
+        assert planning_input.social_decision is social_decision
         return plan
 
     async def execute_runtime_turn(
@@ -536,8 +553,13 @@ def test_turn_engine_applies_observation_effects_before_context(
         order.append("social")
         return social_decision
 
-    async def prepare_generation(*_args: Any, **_kwargs: Any) -> RuntimeTurnPlan:
+    async def prepare_generation(
+        *,
+        planning_input: RuntimePlanningInput,
+    ) -> RuntimeTurnPlan:
         order.append("planning")
+        assert planning_input.inputs is inputs
+        assert planning_input.social_decision is social_decision
         return plan
 
     async def execute_runtime_turn(
@@ -640,8 +662,13 @@ def test_turn_planning_is_side_effect_free_and_matches_prompt_messages(
     )
     calls: list[str] = []
 
-    async def prepare_generation(*_args: Any, **_kwargs: Any) -> RuntimeTurnPlan:
+    async def prepare_generation(
+        *,
+        planning_input: RuntimePlanningInput,
+    ) -> RuntimeTurnPlan:
         calls.append("planning")
+        assert planning_input.inputs is inputs
+        assert planning_input.social_decision is social_decision
         return plan
 
     engine = AISessionTurnEngine(
@@ -664,3 +691,60 @@ def test_turn_planning_is_side_effect_free_and_matches_prompt_messages(
     assert result is not None
     assert result.prompt_messages == plan.prompt_messages
     assert result.prompt_diagnostics == plan.prompt_diagnostics
+
+
+def test_default_planning_stage_receives_structured_planning_input() -> None:
+    selected = selected_model("planning-input")
+    inputs = _inputs()
+    social_decision = _social_decision()
+    runtime_request = _request()
+    current_time = datetime(2026, 4, 28, tzinfo=timezone.utc)
+    plan = RuntimeTurnPlan(
+        stage="planning",
+        selected=selected,
+        fallback_models=(),
+        skill_runtime=ToolGatewayResult(
+            policy_text="No tools.",
+            result_lines=(),
+            turns=(),
+        ),
+        skill_activation=None,
+        pre_tool_task_class="reply_default",
+        prompt_messages=(AIModelMessage(role="user", content="hello"),),
+        prompt_diagnostics={"prompt_purpose": "reply_final"},
+        tool_exposure_plan=ToolExposurePlan(),
+    )
+    captured: list[RuntimePlanningInput] = []
+
+    async def prepare_generation(
+        *,
+        planning_input: RuntimePlanningInput,
+    ) -> RuntimeTurnPlan:
+        captured.append(planning_input)
+        return plan
+
+    engine = AISessionTurnEngine(
+        planning_stage=DefaultRuntimePlanningStage(prepare_generation),
+    )
+
+    result = asyncio.run(
+        engine.plan_turn(
+            trace_id="trace-plan",
+            request=runtime_request,
+            inputs=inputs,
+            social_decision=social_decision,
+            current_time=current_time,
+        )
+    )
+
+    assert result is plan
+    assert captured == [
+        RuntimePlanningInput(
+            stage="planning",
+            trace_id="trace-plan",
+            request=runtime_request,
+            inputs=inputs,
+            social_decision=social_decision,
+            current_time=current_time,
+        )
+    ]

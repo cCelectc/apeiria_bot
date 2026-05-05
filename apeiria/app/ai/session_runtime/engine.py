@@ -21,6 +21,7 @@ from .stages import (
     RuntimeExecutionOutcome,
     RuntimeExecutionStage,
     RuntimeObservationStage,
+    RuntimePlanningInput,
     RuntimePlanningStage,
     RuntimePolicyOutcome,
     RuntimePolicyStage,
@@ -178,19 +179,9 @@ class DefaultRuntimePlanningStage:
     async def plan(
         self,
         *,
-        trace_id: str,
-        request: Any,
-        inputs: Any,
-        social_decision: Any,
-        current_time: "datetime",
+        planning_input: RuntimePlanningInput,
     ) -> RuntimeTurnPlan | None:
-        return await self.prepare_generation(
-            request=request,
-            inputs=inputs,
-            social_decision=social_decision,
-            current_time=current_time,
-            trace_id=trace_id,
-        )
+        return await self.prepare_generation(planning_input=planning_input)
 
 
 @dataclass(frozen=True, slots=True)
@@ -717,11 +708,14 @@ class AISessionTurnEngine:
         """Build the runtime-owned plan consumed by execution."""
 
         return await self.planning_stage.plan(
-            trace_id=trace_id,
-            request=request,
-            inputs=inputs,
-            social_decision=social_decision,
-            current_time=current_time,
+            planning_input=RuntimePlanningInput(
+                stage="planning",
+                trace_id=trace_id,
+                request=request,
+                inputs=inputs,
+                social_decision=social_decision,
+                current_time=current_time,
+            ),
         )
 
     async def execute_turn(

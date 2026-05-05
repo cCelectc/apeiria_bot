@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import inspect
 from dataclasses import fields
+from typing import get_type_hints
 
 from apeiria.app.ai.pipeline.service import AIRuntimeService
 from apeiria.app.ai.session_runtime import (
@@ -8,6 +10,7 @@ from apeiria.app.ai.session_runtime import (
     RuntimeContextStage,
     RuntimeExecutionStage,
     RuntimeObservationStage,
+    RuntimePlanningInput,
     RuntimePlanningStage,
     RuntimePolicyStage,
     RuntimeTraceStage,
@@ -45,3 +48,15 @@ def test_production_turn_engine_uses_native_stage_objects() -> None:
     assert isinstance(engine.trace_stage, RuntimeTraceStage)
     assert not hasattr(engine, "gather_reply_inputs")
     assert not hasattr(engine, "generate_reply")
+
+
+def test_planning_stage_accepts_one_runtime_planning_input() -> None:
+    planning_signature = inspect.signature(RuntimePlanningStage.plan)
+    annotations = get_type_hints(RuntimePlanningStage.plan)
+
+    assert tuple(planning_signature.parameters) == ("self", "planning_input")
+    assert annotations["planning_input"] is RuntimePlanningInput
+
+
+def test_runtime_planning_input_is_owned_by_stage_contracts() -> None:
+    assert RuntimePlanningInput.__module__ == "apeiria.app.ai.session_runtime.stages"
