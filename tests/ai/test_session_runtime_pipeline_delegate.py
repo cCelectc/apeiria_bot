@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from datetime import datetime, timezone
-from typing import Any
+from typing import TYPE_CHECKING, Any, TypeVar
 
 import pytest
 
@@ -14,12 +14,23 @@ from apeiria.app.ai.pipeline.service import (
 from apeiria.app.ai.session_runtime import RuntimeCommitResult
 from apeiria.conversation.models import ChatSessionIdentity
 
+if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable
+
+
+ResultT = TypeVar("ResultT")
+
 
 class _SerializedRuntime:
     def __init__(self) -> None:
         self.calls: list[datetime] = []
 
-    async def run_serialized(self, operation: Any, *, now: datetime) -> object:
+    async def run_serialized(
+        self,
+        operation: Callable[[], Awaitable[ResultT]],
+        *,
+        now: datetime,
+    ) -> ResultT:
         self.calls.append(now)
         return await operation()
 
@@ -51,7 +62,7 @@ class _Engine:
         request: AIRuntimeReplyRequest,
         wake_context: object | None = None,
         current_time: datetime,
-        session_runtime: object | None = None,
+        session_runtime: _SerializedRuntime | None = None,
     ) -> RuntimeCommitResult | None:
         del trace_id, trace, wake_context, current_time, session_runtime
         self.calls.append(request)
@@ -137,7 +148,7 @@ def test_turn_engine_owns_session_serialization() -> None:
             request: AIRuntimeReplyRequest,
             wake_context: object | None = None,
             current_time: datetime,
-            session_runtime: object | None = None,
+            session_runtime: _SerializedRuntime | None = None,
         ) -> RuntimeCommitResult | None:
             del trace_id, trace, wake_context
 
@@ -239,7 +250,7 @@ def test_future_task_entrypoint_reuses_session_serialization(
                 request: AIRuntimeReplyRequest,
                 wake_context: object | None = None,
                 current_time: datetime,
-                session_runtime: object | None = None,
+                session_runtime: _SerializedRuntime | None = None,
             ) -> RuntimeCommitResult | None:
                 del trace_id, trace, wake_context
 

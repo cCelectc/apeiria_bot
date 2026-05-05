@@ -3,7 +3,11 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from apeiria.ai.turn_records import ModelAttempt, PromptSafeObservation, ToolAttempt
-from apeiria.app.ai.session_runtime import RuntimeHardRuleDecision, TurnTrace
+from apeiria.app.ai.session_runtime import (
+    RuntimeHardRuleDecision,
+    RuntimeTraceInput,
+    TurnTrace,
+)
 from apeiria.conversation.models import ChatSessionIdentity
 from apeiria.db.runtime import database_runtime
 
@@ -186,10 +190,13 @@ def test_engine_persists_hard_rule_trace_without_assistant_message(
     )
 
     engine.project_trace(
-        trace_id="trace-hard-rule",
-        request=request,
-        strategy_decision=decision,
-        turn_result=None,
+        trace_input=RuntimeTraceInput(
+            stage="trace",
+            trace_id="trace-hard-rule",
+            request=request,
+            strategy_decision=decision,
+            turn_result=None,
+        ),
     )
 
     stored = repository.get_trace(trace_id="trace-hard-rule")

@@ -14,6 +14,7 @@ from .execution import execute_runtime_turn
 from .hard_rules import decide_runtime_hard_rule, map_legacy_skip_to_runtime_decision
 from .planning import plan_runtime_turn
 from .stages import (
+    RuntimeCommitInput,
     RuntimeCommitResult,
     RuntimeCommitStage,
     RuntimeContextBundle,
@@ -27,6 +28,7 @@ from .stages import (
     RuntimePolicyOutcome,
     RuntimePolicyStage,
     RuntimeSocialDecisionInput,
+    RuntimeTraceInput,
     RuntimeTraceOutcome,
     RuntimeTraceStage,
     RuntimeTurnPlan,
@@ -36,8 +38,6 @@ from .trace import project_turn_trace
 if TYPE_CHECKING:
     from datetime import datetime
 
-    from apeiria.app.ai.agent_turn import AgentTurnResult
-    from apeiria.app.ai.pipeline.delivery_steps import DeliveryOutcome
     from apeiria.app.ai.reply_strategy.models import WakeContext
     from apeiria.app.ai.session_runtime.strategy import RuntimeHardRuleDecision
 
@@ -206,19 +206,13 @@ class DefaultRuntimeCommitStage:
     deliver_reply: Any | None = None
     record_context_usage: Any | None = None
 
-    async def commit(  # noqa: PLR0913
+    async def commit(
         self,
         *,
-        request: Any,
-        inputs: Any,
-        social_decision: Any,
-        plan: RuntimeTurnPlan,
-        generation: RuntimeExecutionOutcome,
-        trace_id: str,
-        hard_decision: "RuntimeHardRuleDecision",
-        current_time: "datetime",
-        session_runtime: Any | None,
+        commit_input: RuntimeCommitInput,
     ) -> RuntimeCommitResult:
+        request = commit_input.request
+        generation = commit_input.generation
         response = generation.response
         reply_text = response.content.strip() if response is not None else ""
         substeps: dict[str, str] = {}
@@ -227,7 +221,7 @@ class DefaultRuntimeCommitStage:
         delivery_result = await self._commit_delivery(
             request=request,
             reply_text=reply_text,
-            trace_id=trace_id,
+            trace_id=commit_input.trace_id,
         )
         if delivery_result is None:
             substeps["delivery"] = "not_required"
@@ -240,11 +234,11 @@ class DefaultRuntimeCommitStage:
         generation_with_delivery = replace(generation, delivery_result=delivery_result)
         required_failed = await self._commit_required_persistence(
             request=request,
-            inputs=inputs,
-            social_decision=social_decision,
-            plan=plan,
+            inputs=commit_input.inputs,
+            social_decision=commit_input.social_decision,
+            plan=commit_input.plan,
             generation=generation_with_delivery,
-            trace_id=trace_id,
+            trace_id=commit_input.trace_id,
             substeps=substeps,
         )
         if required_failed:
@@ -263,11 +257,11 @@ class DefaultRuntimeCommitStage:
         self._commit_reply_accounting(
             request=request,
             response=response,
-            inputs=inputs,
+            inputs=commit_input.inputs,
             generation=generation_with_delivery,
-            hard_decision=hard_decision,
-            current_time=current_time,
-            session_runtime=session_runtime,
+            hard_decision=commit_input.hard_decision,
+            current_time=commit_input.current_time,
+            session_runtime=commit_input.session_runtime,
             substeps=substeps,
         )
         if any(status == "failed" for status in substeps.values()):
@@ -409,31 +403,30 @@ class DefaultRuntimeTraceStage:
     trace_observer: Any | None = None
     trace_store: Any | None = None
 
-    def project(  # noqa: PLR0913
+    def project(
         self,
         *,
-        trace_id: str,
-        request: Any,
-        strategy_decision: "RuntimeHardRuleDecision",
-        turn_result: "AgentTurnResult | None",
-        delivery_result: "DeliveryOutcome | None" = None,
-        commit_status: str | None = None,
+        trace_input: RuntimeTraceInput,
     ) -> RuntimeTraceOutcome:
+        request = trace_input.request
         outcome = RuntimeTraceOutcome(
             stage="trace",
             trace=project_turn_trace(
                 session_id=request.identity.session_id,
-                strategy_decision=strategy_decision,
-                turn_result=turn_result,
-                trace_id=trace_id,
+                strategy_decision=trace_input.strategy_decision,
+                turn_result=trace_input.turn_result,
+                trace_id=trace_input.trace_id,
                 runtime_mode=request.runtime_mode,
-                delivery_result=delivery_result,
+                delivery_result=trace_input.delivery_result,
             ),
         )
         if self.trace_observer is not None:
             self.trace_observer(outcome)
         if self.trace_store is not None:
-            self.trace_store.store_trace(outcome.trace, commit_status=commit_status)
+            self.trace_store.store_trace(
+                outcome.trace,
+                commit_status=trace_input.commit_status,
+            )
         return outcome
 
 
@@ -527,10 +520,13 @@ class AISessionTurnEngine:
                 hard_decision.reason_codes,
             )
             self.project_trace(
-                trace_id=trace_id,
-                request=request,
-                strategy_decision=hard_decision,
-                turn_result=None,
+                trace_input=RuntimeTraceInput(
+                    stage="trace",
+                    trace_id=trace_id,
+                    request=request,
+                    strategy_decision=hard_decision,
+                    turn_result=None,
+                ),
             )
             return None
 
@@ -562,10 +558,13 @@ class AISessionTurnEngine:
                 runtime_decision.reason_codes,
             )
             self.project_trace(
-                trace_id=trace_id,
-                request=request,
-                strategy_decision=runtime_decision,
-                turn_result=None,
+                trace_input=RuntimeTraceInput(
+                    stage="trace",
+                    trace_id=trace_id,
+                    request=request,
+                    strategy_decision=runtime_decision,
+                    turn_result=None,
+                ),
             )
             return None
 
@@ -578,10 +577,13 @@ class AISessionTurnEngine:
         )
         if plan is None:
             self.project_trace(
-                trace_id=trace_id,
-                request=request,
-                strategy_decision=hard_decision,
-                turn_result=None,
+                trace_input=RuntimeTraceInput(
+                    stage="trace",
+                    trace_id=trace_id,
+                    request=request,
+                    strategy_decision=hard_decision,
+                    turn_result=None,
+                ),
             )
             return None
 
@@ -609,32 +611,41 @@ class AISessionTurnEngine:
                 trace.trigger,
             )
             self.project_trace(
-                trace_id=trace_id,
-                request=request,
-                strategy_decision=hard_decision,
-                turn_result=execution.turn_result,
-                delivery_result=execution.delivery_result,
+                trace_input=RuntimeTraceInput(
+                    stage="trace",
+                    trace_id=trace_id,
+                    request=request,
+                    strategy_decision=hard_decision,
+                    turn_result=execution.turn_result,
+                    delivery_result=execution.delivery_result,
+                ),
             )
             return None
 
         commit = await self.commit_turn(
-            request=request,
-            inputs=inputs,
-            social_decision=social_decision,
-            plan=plan,
-            generation=execution,
-            trace_id=trace_id,
-            hard_decision=hard_decision,
-            current_time=current_time,
-            session_runtime=session_runtime,
+            commit_input=RuntimeCommitInput(
+                stage="commit",
+                trace_id=trace_id,
+                request=request,
+                inputs=inputs,
+                social_decision=social_decision,
+                plan=plan,
+                generation=execution,
+                hard_decision=hard_decision,
+                current_time=current_time,
+                session_runtime=session_runtime,
+            ),
         )
         trace_outcome = self.project_trace(
-            trace_id=trace_id,
-            request=request,
-            strategy_decision=hard_decision,
-            turn_result=execution.turn_result,
-            delivery_result=commit.delivery_result,
-            commit_status=commit.commit_status,
+            trace_input=RuntimeTraceInput(
+                stage="trace",
+                trace_id=trace_id,
+                request=request,
+                strategy_decision=hard_decision,
+                turn_result=execution.turn_result,
+                delivery_result=commit.delivery_result,
+                commit_status=commit.commit_status,
+            ),
         )
         commit = _with_commit_substep(commit, name="trace", status="committed")
         if commit.commit_status == "failed":
@@ -723,52 +734,26 @@ class AISessionTurnEngine:
             plan=plan,
         )
 
-    async def commit_turn(  # noqa: PLR0913
+    async def commit_turn(
         self,
         *,
-        request: Any,
-        inputs: Any,
-        social_decision: Any,
-        plan: RuntimeTurnPlan,
-        generation: RuntimeExecutionOutcome,
-        trace_id: str,
-        hard_decision: "RuntimeHardRuleDecision",
-        current_time: "datetime",
-        session_runtime: Any | None,
+        commit_input: RuntimeCommitInput,
     ) -> RuntimeCommitResult:
         """Persist one generated turn through the commit stage."""
 
         return await self.commit_stage.commit(
-            request=request,
-            inputs=inputs,
-            social_decision=social_decision,
-            plan=plan,
-            generation=generation,
-            trace_id=trace_id,
-            hard_decision=hard_decision,
-            current_time=current_time,
-            session_runtime=session_runtime,
+            commit_input=commit_input,
         )
 
-    def project_trace(  # noqa: PLR0913
+    def project_trace(
         self,
         *,
-        trace_id: str,
-        request: Any,
-        strategy_decision: "RuntimeHardRuleDecision",
-        turn_result: "AgentTurnResult | None",
-        delivery_result: "DeliveryOutcome | None" = None,
-        commit_status: str | None = None,
+        trace_input: RuntimeTraceInput,
     ) -> RuntimeTraceOutcome:
         """Project one terminal generated or non-generated outcome."""
 
         return self.trace_stage.project(
-            trace_id=trace_id,
-            request=request,
-            strategy_decision=strategy_decision,
-            turn_result=turn_result,
-            delivery_result=delivery_result,
-            commit_status=commit_status,
+            trace_input=trace_input,
         )
 
     @staticmethod

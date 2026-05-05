@@ -8,6 +8,7 @@ from apeiria.app.ai.pipeline.service import AIRuntimeService
 from apeiria.app.ai.reply_strategy.models import ReplyStrategyDecision
 from apeiria.app.ai.session_runtime import (
     DefaultRuntimeExecutionStage,
+    RuntimeCommitInput,
     RuntimeCommitStage,
     RuntimeContextStage,
     RuntimeExecutionStage,
@@ -17,6 +18,7 @@ from apeiria.app.ai.session_runtime import (
     RuntimePlanningStage,
     RuntimePolicyStage,
     RuntimeSocialDecisionInput,
+    RuntimeTraceInput,
     RuntimeTraceStage,
     TurnContext,
 )
@@ -115,3 +117,20 @@ def test_execution_helpers_accept_frozen_turn_context() -> None:
 
         assert "turn_context" in signature.parameters
         assert annotations["turn_context"] is TurnContext
+
+
+def test_commit_and_trace_stages_accept_one_runtime_input() -> None:
+    for stage, method_name, parameter_name, expected_input in (
+        (RuntimeCommitStage, "commit", "commit_input", RuntimeCommitInput),
+        (RuntimeTraceStage, "project", "trace_input", RuntimeTraceInput),
+    ):
+        signature = inspect.signature(getattr(stage, method_name))
+        annotations = get_type_hints(getattr(stage, method_name))
+
+        assert tuple(signature.parameters) == ("self", parameter_name)
+        assert annotations[parameter_name] is expected_input
+
+
+def test_runtime_commit_and_trace_inputs_are_owned_by_stage_contracts() -> None:
+    assert RuntimeCommitInput.__module__ == "apeiria.app.ai.session_runtime.stages"
+    assert RuntimeTraceInput.__module__ == "apeiria.app.ai.session_runtime.stages"

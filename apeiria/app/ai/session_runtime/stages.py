@@ -137,6 +137,22 @@ class RuntimeExecutionOutcome:
 
 
 @dataclass(frozen=True, slots=True)
+class RuntimeCommitInput:
+    """Typed input for committing one generated turn."""
+
+    stage: RuntimeStageName
+    trace_id: str
+    request: "AIRuntimeReplyRequest"
+    inputs: "ReplyInputs"
+    social_decision: "ReplyStrategyDecision"
+    plan: RuntimeTurnPlan
+    generation: RuntimeExecutionOutcome
+    hard_decision: RuntimeHardRuleDecision
+    current_time: "datetime"
+    session_runtime: "InMemoryAISessionRuntime | None" = None
+
+
+@dataclass(frozen=True, slots=True)
 class RuntimeCommitResult:
     """Output of committing a generated turn."""
 
@@ -156,6 +172,19 @@ class RuntimeTraceOutcome:
     trace: TurnTrace
     context: TurnContext | None = None
     social_decision: "ReplyStrategyDecision | None" = None
+
+
+@dataclass(frozen=True, slots=True)
+class RuntimeTraceInput:
+    """Typed input for terminal turn trace projection."""
+
+    stage: RuntimeStageName
+    trace_id: str
+    request: "AIRuntimeReplyRequest"
+    strategy_decision: RuntimeHardRuleDecision
+    turn_result: "AgentTurnResult | None"
+    delivery_result: "DeliveryOutcome | None" = None
+    commit_status: str | None = None
 
 
 @runtime_checkable
@@ -224,18 +253,10 @@ class RuntimeExecutionStage(Protocol):
 class RuntimeCommitStage(Protocol):
     """Post-execution side-effect boundary for one generated turn."""
 
-    async def commit(  # noqa: PLR0913
+    async def commit(
         self,
         *,
-        request: "AIRuntimeReplyRequest",
-        inputs: Any,
-        social_decision: Any,
-        plan: RuntimeTurnPlan,
-        generation: RuntimeExecutionOutcome,
-        trace_id: str,
-        hard_decision: RuntimeHardRuleDecision,
-        current_time: "datetime",
-        session_runtime: Any | None,
+        commit_input: RuntimeCommitInput,
     ) -> RuntimeCommitResult: ...
 
 
@@ -243,19 +264,15 @@ class RuntimeCommitStage(Protocol):
 class RuntimeTraceStage(Protocol):
     """Terminal compact trace projection and persistence boundary."""
 
-    def project(  # noqa: PLR0913
+    def project(
         self,
         *,
-        trace_id: str,
-        request: "AIRuntimeReplyRequest",
-        strategy_decision: RuntimeHardRuleDecision,
-        turn_result: "AgentTurnResult | None",
-        delivery_result: "DeliveryOutcome | None" = None,
-        commit_status: str | None = None,
+        trace_input: RuntimeTraceInput,
     ) -> RuntimeTraceOutcome: ...
 
 
 __all__ = [
+    "RuntimeCommitInput",
     "RuntimeCommitResult",
     "RuntimeCommitStage",
     "RuntimeContextBundle",
@@ -270,6 +287,7 @@ __all__ = [
     "RuntimePolicyStage",
     "RuntimeSocialDecisionInput",
     "RuntimeStageName",
+    "RuntimeTraceInput",
     "RuntimeTraceOutcome",
     "RuntimeTraceStage",
     "RuntimeTurnPlan",

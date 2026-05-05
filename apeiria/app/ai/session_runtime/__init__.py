@@ -42,6 +42,7 @@ from .runtime import (
     WaitState,
 )
 from .stages import (
+    RuntimeCommitInput,
     RuntimeCommitResult,
     RuntimeCommitStage,
     RuntimeContextBundle,
@@ -56,6 +57,7 @@ from .stages import (
     RuntimePolicyStage,
     RuntimeSocialDecisionInput,
     RuntimeStageName,
+    RuntimeTraceInput,
     RuntimeTraceOutcome,
     RuntimeTraceStage,
     RuntimeTurnPlan,
@@ -96,6 +98,7 @@ __all__ = [
     "MergeMetadata",
     "PendingAmbientMessage",
     "RuntimeAgentRunner",
+    "RuntimeCommitInput",
     "RuntimeCommitResult",
     "RuntimeCommitStage",
     "RuntimeContextBundle",
@@ -115,6 +118,7 @@ __all__ = [
     "RuntimePromptPlanningInput",
     "RuntimeSocialDecisionInput",
     "RuntimeStageName",
+    "RuntimeTraceInput",
     "RuntimeTraceOutcome",
     "RuntimeTraceStage",
     "RuntimeTurnPlan",

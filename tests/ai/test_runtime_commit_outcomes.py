@@ -5,13 +5,18 @@ from datetime import datetime, timezone
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any
 
-from apeiria.ai.model import AIModelMessage
+from apeiria.ai.model import AIModelBindingTarget, AIModelMessage
+from apeiria.ai.tools import AIToolPolicy, ToolGatewayResult
+from apeiria.app.ai.agent_turn import AgentTurnResult
 from apeiria.app.ai.future_task.models import AIFutureTaskDefinition
 from apeiria.app.ai.pipeline.delivery_steps import DeliveryOutcome
+from apeiria.app.ai.pipeline.input_steps import ReplyInputs
 from apeiria.app.ai.pipeline.service import AIRuntimeReplyRequest
+from apeiria.app.ai.reply_strategy import ReplyStrategyDecision
 from apeiria.app.ai.session_runtime import (
     AISessionTurnEngine,
     DefaultRuntimeCommitStage,
+    RuntimeCommitInput,
     RuntimeExecutionOutcome,
     RuntimeHardRuleDecision,
     RuntimeTurnPlan,
@@ -80,7 +85,11 @@ def _plan() -> RuntimeTurnPlan:
         stage="planning",
         selected=object(),  # type: ignore[arg-type]
         fallback_models=(),
-        skill_runtime=SimpleNamespace(turns=()),
+        skill_runtime=ToolGatewayResult(
+            policy_text="No tools.",
+            result_lines=(),
+            turns=(),
+        ),
         skill_activation=None,
         pre_tool_task_class="reply_default",
         prompt_messages=(AIModelMessage(role="user", content="hello"),),
@@ -97,17 +106,52 @@ def _execution() -> RuntimeExecutionOutcome:
             source_id="source-1",
             model_name="model-1",
         ),
-        skill_runtime=SimpleNamespace(turns=()),
+        skill_runtime=ToolGatewayResult(
+            policy_text="No tools.",
+            result_lines=(),
+            turns=(),
+        ),
         post_tool_task_class=None,
         delivery_result=None,
-        turn_result=SimpleNamespace(
-            metadata={},
-            model_attempts=(),
-            tool_attempts=(),
+        turn_result=AgentTurnResult(
+            trace_id="trace-1",
+            runtime_mode="future_task",
             status="completed",
             finish_reason="direct_model_completed",
             response_source="direct",
         ),
+    )
+
+
+def _inputs() -> ReplyInputs:
+    return ReplyInputs(
+        turns=[],
+        conversation_summary=None,
+        relationship_target=object(),  # type: ignore[arg-type]
+        model_target=AIModelBindingTarget(
+            conversation_id="session-1",
+            group_id=None,
+            user_id="10001",
+        ),
+        tool_policy=AIToolPolicy(execution_enabled=False),
+        persona=None,
+        recalled_memories=[],
+        relationship_context=None,
+        person_profile=(),
+        allowed_tools=(),
+        initiative_bias=0.0,
+    )
+
+
+def _social_decision() -> ReplyStrategyDecision:
+    return ReplyStrategyDecision(
+        action="reply",
+        should_speak=True,
+        tool_mode="avoid",
+        reason_codes=("direct",),
+        reason_text="direct",
+        evidence={},
+        decision_source="llm",
     )
 
 
@@ -119,6 +163,24 @@ def _hard_decision() -> RuntimeHardRuleDecision:
         evidence={},
         should_observe=True,
         should_reply=True,
+    )
+
+
+def _commit_input(
+    *,
+    request: AIRuntimeReplyRequest | None = None,
+) -> RuntimeCommitInput:
+    return RuntimeCommitInput(
+        stage="commit",
+        trace_id="trace-1",
+        request=request or _request(),
+        inputs=_inputs(),
+        social_decision=_social_decision(),
+        plan=_plan(),
+        generation=_execution(),
+        hard_decision=_hard_decision(),
+        current_time=datetime(2026, 5, 1, 8, 30, tzinfo=timezone.utc),
+        session_runtime=None,
     )
 
 
@@ -174,15 +236,7 @@ def test_commit_records_partial_delivery_failure() -> None:
 
     commit = asyncio.run(
         engine.commit_turn(
-            request=_request(),
-            inputs=SimpleNamespace(turns=[]),
-            social_decision=object(),
-            plan=_plan(),
-            generation=_execution(),
-            trace_id="trace-1",
-            hard_decision=_hard_decision(),
-            current_time=datetime(2026, 5, 1, 8, 30, tzinfo=timezone.utc),
-            session_runtime=None,
+            commit_input=_commit_input(),
         )
     )
 
@@ -209,21 +263,15 @@ def test_commit_failure_does_not_rewrite_execution_attempts() -> None:
 
     commit = asyncio.run(
         engine.commit_turn(
-            request=_request(runtime_mode="message"),
-            inputs=SimpleNamespace(turns=[]),
-            social_decision=object(),
-            plan=_plan(),
-            generation=_execution(),
-            trace_id="trace-1",
-            hard_decision=_hard_decision(),
-            current_time=datetime(2026, 5, 1, 8, 30, tzinfo=timezone.utc),
-            session_runtime=None,
+            commit_input=_commit_input(request=_request(runtime_mode="message")),
         )
     )
 
     assert commit.commit_status == "failed"
     assert commit.substeps["assistant_message"] == "failed"
-    assert _execution().turn_result.status == "completed"
+    turn_result = _execution().turn_result
+    assert turn_result is not None
+    assert turn_result.status == "completed"
 
 
 def test_delivered_attempt_survives_later_commit_failure(
@@ -264,15 +312,7 @@ def test_delivered_attempt_survives_later_commit_failure(
 
     commit = asyncio.run(
         engine.commit_turn(
-            request=_request(future_task=_future_task()),
-            inputs=SimpleNamespace(turns=[]),
-            social_decision=object(),
-            plan=_plan(),
-            generation=_execution(),
-            trace_id="trace-1",
-            hard_decision=_hard_decision(),
-            current_time=datetime(2026, 5, 1, 8, 30, tzinfo=timezone.utc),
-            session_runtime=None,
+            commit_input=_commit_input(request=_request(future_task=_future_task())),
         )
     )
     attempt = delivery_attempt_repository.get_delivered_attempt(
