@@ -7,6 +7,7 @@ from typing import get_type_hints
 from apeiria.app.ai.pipeline.service import AIRuntimeService
 from apeiria.app.ai.reply_strategy.models import ReplyStrategyDecision
 from apeiria.app.ai.session_runtime import (
+    DefaultRuntimeExecutionStage,
     RuntimeCommitStage,
     RuntimeContextStage,
     RuntimeExecutionStage,
@@ -17,6 +18,7 @@ from apeiria.app.ai.session_runtime import (
     RuntimePolicyStage,
     RuntimeSocialDecisionInput,
     RuntimeTraceStage,
+    TurnContext,
 )
 from apeiria.app.ai.session_runtime.engine import AISessionTurnEngine
 
@@ -100,3 +102,16 @@ def test_runtime_social_decision_input_is_owned_by_stage_contracts() -> None:
     assert (
         RuntimeSocialDecisionInput.__module__ == "apeiria.app.ai.session_runtime.stages"
     )
+
+
+def test_execution_helpers_accept_frozen_turn_context() -> None:
+    for target in (
+        RuntimeExecutionStage.execute,
+        DefaultRuntimeExecutionStage.execute,
+        AISessionTurnEngine.execute_turn,
+    ):
+        signature = inspect.signature(target)
+        annotations = get_type_hints(target)
+
+        assert "turn_context" in signature.parameters
+        assert annotations["turn_context"] is TurnContext

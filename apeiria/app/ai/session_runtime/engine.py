@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Any, NoReturn
 
 from nonebot.log import logger
 
-from .context import DeliveryTarget, RuntimeTurnSource
+from .context import DeliveryTarget, RuntimeTurnSource, TurnContext
 from .context_adapter import build_turn_context
 from .execution import execute_runtime_turn
 from .hard_rules import decide_runtime_hard_rule, map_legacy_skip_to_runtime_decision
@@ -188,7 +188,7 @@ class DefaultRuntimeExecutionStage:
     async def execute(
         self,
         *,
-        turn_context: Any,
+        turn_context: TurnContext,
         plan: RuntimeTurnPlan,
     ) -> RuntimeExecutionOutcome:
         return await execute_runtime_turn(
@@ -713,7 +713,7 @@ class AISessionTurnEngine:
     async def execute_turn(
         self,
         *,
-        turn_context: Any,
+        turn_context: TurnContext,
         plan: RuntimeTurnPlan,
     ) -> RuntimeExecutionOutcome:
         """Execute one direct or tool-capable turn."""
