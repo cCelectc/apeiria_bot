@@ -28,6 +28,7 @@ from apeiria.app.ai.session_runtime import (
     DefaultRuntimePolicyStage,
     DefaultRuntimeTraceStage,
     RuntimeExecutionOutcome,
+    RuntimeIngressInput,
     RuntimePlanningInput,
     RuntimeTurnPlan,
     ToolExposurePlan,
@@ -628,6 +629,132 @@ def test_turn_engine_applies_observation_effects_before_context(
         "commit",
     ]
     assert commit is not None
+
+
+def test_ingress_stages_share_structured_ingress_input(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    selected = selected_model("ingress")
+    inputs = _inputs()
+    social_decision = _social_decision()
+    skill_runtime = ToolGatewayResult(
+        policy_text="No tools.",
+        result_lines=(),
+        turns=(),
+    )
+    plan = RuntimeTurnPlan(
+        stage="planning",
+        selected=selected,
+        fallback_models=(),
+        skill_runtime=skill_runtime,
+        skill_activation=None,
+        pre_tool_task_class="reply_default",
+        prompt_messages=(AIModelMessage(role="user", content="hello"),),
+        prompt_diagnostics={},
+        tool_exposure_plan=ToolExposurePlan(),
+    )
+    captured: dict[str, RuntimeIngressInput] = {}
+
+    class PolicyStage(DefaultRuntimePolicyStage):
+        def evaluate(
+            self,
+            *,
+            ingress_input: RuntimeIngressInput,
+        ):
+            captured["policy"] = ingress_input
+            return super().evaluate(ingress_input=ingress_input)
+
+    class ObservationStage(DefaultRuntimeObservationStage):
+        async def apply(
+            self,
+            *,
+            ingress_input: RuntimeIngressInput,
+        ) -> None:
+            captured["observation"] = ingress_input
+            await super().apply(ingress_input=ingress_input)
+
+    class ContextStage(DefaultRuntimeContextStage):
+        async def assemble(
+            self,
+            *,
+            ingress_input: RuntimeIngressInput,
+        ):
+            captured["context"] = ingress_input
+            return await super().assemble(ingress_input=ingress_input)
+
+    async def gather_reply_inputs(*_args: Any, **_kwargs: Any) -> ReplyInputs:
+        return inputs
+
+    async def decide_whether_to_speak(
+        *_args: Any,
+        **_kwargs: Any,
+    ) -> ReplyStrategyDecision:
+        return social_decision
+
+    async def prepare_generation(
+        *,
+        planning_input: RuntimePlanningInput,
+    ) -> RuntimeTurnPlan:
+        assert planning_input.request is captured["policy"].request
+        return plan
+
+    async def execute_runtime_turn(
+        *,
+        turn_context: TurnContext,
+        plan: RuntimeTurnPlan,
+    ) -> RuntimeExecutionOutcome:
+        del plan
+        return RuntimeExecutionOutcome(
+            stage="execution",
+            response=model_response(selected, "ingress reply"),
+            skill_runtime=skill_runtime,
+            post_tool_task_class=None,
+            delivery_result=None,
+            turn_result=AgentTurnResult(
+                trace_id=turn_context.trace_id,
+                runtime_mode=turn_context.runtime_mode,
+                status="completed",
+                finish_reason="direct_model_completed",
+                response=model_response(selected, "ingress reply"),
+                response_source="direct",
+            ),
+        )
+
+    async def persist_reply(*_args: Any, **_kwargs: Any) -> None:
+        return None
+
+    monkeypatch.setattr(engine_module, "execute_runtime_turn", execute_runtime_turn)
+    engine = AISessionTurnEngine(
+        policy_stage=PolicyStage(decide_whether_to_speak),
+        observation_stage=ObservationStage(_noop_observation_effects),
+        context_stage=ContextStage(gather_reply_inputs),
+        planning_stage=DefaultRuntimePlanningStage(prepare_generation),
+        execution_stage=DefaultRuntimeExecutionStage(),
+        commit_stage=DefaultRuntimeCommitStage(
+            reply_persistence=_ReplyPersistenceStage(persist_reply),
+            reply_strategy_service=SimpleNamespace(
+                notify_replied=lambda _session_id: None
+            ),
+        ),
+        trace_stage=DefaultRuntimeTraceStage(),
+    )
+
+    commit = asyncio.run(
+        engine.run_reply_turn(
+            trace_id="trace-ingress",
+            trace=AITraceContext(kind="test", trigger="unit"),
+            request=_request(),
+            wake_context=_wake(),
+            current_time=datetime(2026, 4, 28, tzinfo=timezone.utc),
+            session_runtime=None,
+        )
+    )
+
+    assert commit is not None
+    assert captured["policy"] is captured["observation"]
+    assert captured["policy"] is captured["context"]
+    assert captured["policy"].request == _request()
+    assert captured["policy"].wake_context == _wake()
 
 
 @pytest.mark.parametrize("tool_count", [0, 1])

@@ -20,6 +20,7 @@ from .stages import (
     RuntimeContextStage,
     RuntimeExecutionOutcome,
     RuntimeExecutionStage,
+    RuntimeIngressInput,
     RuntimeObservationStage,
     RuntimePlanningInput,
     RuntimePlanningStage,
@@ -82,11 +83,9 @@ class DefaultRuntimePolicyStage:
     def evaluate(
         self,
         *,
-        request: Any,
-        wake_context: "WakeContext",
-        current_time: "datetime",
-        session_runtime: Any | None,
+        ingress_input: RuntimeIngressInput,
     ) -> RuntimePolicyOutcome:
+        request = ingress_input.request
         identity = request.identity
         source = RuntimeTurnSource(
             runtime_mode=request.runtime_mode,
@@ -102,10 +101,10 @@ class DefaultRuntimePolicyStage:
             stage="policy",
             source=source,
             decision=decide_runtime_hard_rule(
-                wake_context=wake_context,
+                wake_context=ingress_input.wake_context,
                 source=source,
-                session_runtime=session_runtime,
-                now=current_time,
+                session_runtime=ingress_input.session_runtime,
+                now=ingress_input.current_time,
             ),
         )
 
@@ -143,14 +142,13 @@ class DefaultRuntimeObservationStage:
     async def apply(
         self,
         *,
-        request: Any,
-        current_time: "datetime",
+        ingress_input: RuntimeIngressInput,
     ) -> None:
         if self.apply_observation_effects is None:
             return
         await self.apply_observation_effects(
-            request=request,
-            current_time=current_time,
+            request=ingress_input.request,
+            current_time=ingress_input.current_time,
         )
 
 
@@ -163,10 +161,12 @@ class DefaultRuntimeContextStage:
     async def assemble(
         self,
         *,
-        request: Any,
-        current_time: "datetime",
+        ingress_input: RuntimeIngressInput,
     ) -> RuntimeContextBundle:
-        inputs = await self.gather_reply_inputs(request, current_time)
+        inputs = await self.gather_reply_inputs(
+            ingress_input.request,
+            ingress_input.current_time,
+        )
         return RuntimeContextBundle(stage="context", inputs=inputs)
 
 
@@ -509,11 +509,15 @@ class AISessionTurnEngine:
 
         identity = request.identity
         wake_context = wake_context or self._build_fallback_wake_context(request)
-        policy = self.evaluate_policy(
+        ingress_input = RuntimeIngressInput(
+            stage="ingress",
             request=request,
             wake_context=wake_context,
             current_time=current_time,
             session_runtime=session_runtime,
+        )
+        policy = self.evaluate_policy(
+            ingress_input=ingress_input,
         )
         hard_decision = policy.decision
         if not policy.should_continue:
@@ -534,12 +538,10 @@ class AISessionTurnEngine:
             return None
 
         await self.apply_observation_side_effects(
-            request=request,
-            current_time=current_time,
+            ingress_input=ingress_input,
         )
         context_bundle = await self.assemble_context(
-            request=request,
-            current_time=current_time,
+            ingress_input=ingress_input,
         )
         inputs = context_bundle.inputs
         social_decision = await self.policy_stage.decide_reply(
@@ -656,44 +658,34 @@ class AISessionTurnEngine:
     def evaluate_policy(
         self,
         *,
-        request: Any,
-        wake_context: "WakeContext",
-        current_time: "datetime",
-        session_runtime: Any | None,
+        ingress_input: RuntimeIngressInput,
     ) -> RuntimePolicyOutcome:
         """Evaluate deterministic runtime policy for one turn."""
 
         return self.policy_stage.evaluate(
-            request=request,
-            wake_context=wake_context,
-            current_time=current_time,
-            session_runtime=session_runtime,
+            ingress_input=ingress_input,
         )
 
     async def apply_observation_side_effects(
         self,
         *,
-        request: Any,
-        current_time: "datetime",
+        ingress_input: RuntimeIngressInput,
     ) -> None:
         """Apply live observation writes outside read-oriented context assembly."""
 
         await self.observation_stage.apply(
-            request=request,
-            current_time=current_time,
+            ingress_input=ingress_input,
         )
 
     async def assemble_context(
         self,
         *,
-        request: Any,
-        current_time: "datetime",
+        ingress_input: RuntimeIngressInput,
     ) -> RuntimeContextBundle:
         """Gather prompt-facing context materials for one turn."""
 
         return await self.context_stage.assemble(
-            request=request,
-            current_time=current_time,
+            ingress_input=ingress_input,
         )
 
     async def plan_turn(

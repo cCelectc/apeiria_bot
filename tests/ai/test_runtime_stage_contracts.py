@@ -9,6 +9,7 @@ from apeiria.app.ai.session_runtime import (
     RuntimeCommitStage,
     RuntimeContextStage,
     RuntimeExecutionStage,
+    RuntimeIngressInput,
     RuntimeObservationStage,
     RuntimePlanningInput,
     RuntimePlanningStage,
@@ -60,3 +61,20 @@ def test_planning_stage_accepts_one_runtime_planning_input() -> None:
 
 def test_runtime_planning_input_is_owned_by_stage_contracts() -> None:
     assert RuntimePlanningInput.__module__ == "apeiria.app.ai.session_runtime.stages"
+
+
+def test_ingress_stages_accept_one_runtime_ingress_input() -> None:
+    for stage, method_name in (
+        (RuntimePolicyStage, "evaluate"),
+        (RuntimeObservationStage, "apply"),
+        (RuntimeContextStage, "assemble"),
+    ):
+        signature = inspect.signature(getattr(stage, method_name))
+        annotations = get_type_hints(getattr(stage, method_name))
+
+        assert tuple(signature.parameters) == ("self", "ingress_input")
+        assert annotations["ingress_input"] is RuntimeIngressInput
+
+
+def test_runtime_ingress_input_is_owned_by_stage_contracts() -> None:
+    assert RuntimeIngressInput.__module__ == "apeiria.app.ai.session_runtime.stages"

@@ -26,6 +26,7 @@ if TYPE_CHECKING:
     from apeiria.app.ai.pipeline.input_steps import ReplyInputs
     from apeiria.app.ai.pipeline.service import AIRuntimeReplyRequest
     from apeiria.app.ai.reply_strategy.models import ReplyStrategyDecision, WakeContext
+    from apeiria.app.ai.session_runtime.runtime import InMemoryAISessionRuntime
 
 
 RuntimeStageName = Literal[
@@ -61,6 +62,17 @@ class RuntimeContextBundle:
     stage: RuntimeStageName
     inputs: "ReplyInputs"
     diagnostics: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True, slots=True)
+class RuntimeIngressInput:
+    """Typed source input shared by pre-planning ingress stages."""
+
+    stage: RuntimeStageName
+    request: "AIRuntimeReplyRequest"
+    current_time: "datetime"
+    wake_context: "WakeContext"
+    session_runtime: "InMemoryAISessionRuntime | None" = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -142,10 +154,7 @@ class RuntimePolicyStage(Protocol):
     def evaluate(
         self,
         *,
-        request: "AIRuntimeReplyRequest",
-        wake_context: "WakeContext",
-        current_time: "datetime",
-        session_runtime: Any | None,
+        ingress_input: RuntimeIngressInput,
     ) -> RuntimePolicyOutcome: ...
 
     async def decide_reply(
@@ -166,8 +175,7 @@ class RuntimeObservationStage(Protocol):
     async def apply(
         self,
         *,
-        request: "AIRuntimeReplyRequest",
-        current_time: "datetime",
+        ingress_input: RuntimeIngressInput,
     ) -> None: ...
 
 
@@ -178,8 +186,7 @@ class RuntimeContextStage(Protocol):
     async def assemble(
         self,
         *,
-        request: "AIRuntimeReplyRequest",
-        current_time: "datetime",
+        ingress_input: RuntimeIngressInput,
     ) -> RuntimeContextBundle: ...
 
 
@@ -248,6 +255,7 @@ __all__ = [
     "RuntimeContextStage",
     "RuntimeExecutionOutcome",
     "RuntimeExecutionStage",
+    "RuntimeIngressInput",
     "RuntimeObservationStage",
     "RuntimePlanningInput",
     "RuntimePlanningStage",
