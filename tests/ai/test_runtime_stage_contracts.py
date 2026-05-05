@@ -5,6 +5,7 @@ from dataclasses import fields
 from typing import get_type_hints
 
 from apeiria.app.ai.pipeline.service import AIRuntimeService
+from apeiria.app.ai.reply_strategy.models import ReplyStrategyDecision
 from apeiria.app.ai.session_runtime import (
     RuntimeCommitStage,
     RuntimeContextStage,
@@ -14,6 +15,7 @@ from apeiria.app.ai.session_runtime import (
     RuntimePlanningInput,
     RuntimePlanningStage,
     RuntimePolicyStage,
+    RuntimeSocialDecisionInput,
     RuntimeTraceStage,
 )
 from apeiria.app.ai.session_runtime.engine import AISessionTurnEngine
@@ -78,3 +80,23 @@ def test_ingress_stages_accept_one_runtime_ingress_input() -> None:
 
 def test_runtime_ingress_input_is_owned_by_stage_contracts() -> None:
     assert RuntimeIngressInput.__module__ == "apeiria.app.ai.session_runtime.stages"
+
+
+def test_social_policy_stage_accepts_one_runtime_social_input() -> None:
+    signature = inspect.signature(RuntimePolicyStage.decide_reply)
+    annotations = get_type_hints(
+        RuntimePolicyStage.decide_reply,
+        globalns={
+            **RuntimePolicyStage.decide_reply.__globals__,
+            "ReplyStrategyDecision": ReplyStrategyDecision,
+        },
+    )
+
+    assert tuple(signature.parameters) == ("self", "social_input")
+    assert annotations["social_input"] is RuntimeSocialDecisionInput
+
+
+def test_runtime_social_decision_input_is_owned_by_stage_contracts() -> None:
+    assert (
+        RuntimeSocialDecisionInput.__module__ == "apeiria.app.ai.session_runtime.stages"
+    )

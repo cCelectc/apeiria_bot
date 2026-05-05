@@ -30,6 +30,7 @@ from apeiria.app.ai.session_runtime import (
     RuntimeExecutionOutcome,
     RuntimeIngressInput,
     RuntimePlanningInput,
+    RuntimeSocialDecisionInput,
     RuntimeTurnPlan,
     ToolExposurePlan,
     TurnContext,
@@ -755,6 +756,121 @@ def test_ingress_stages_share_structured_ingress_input(
     assert captured["policy"] is captured["context"]
     assert captured["policy"].request == _request()
     assert captured["policy"].wake_context == _wake()
+
+
+def test_turn_engine_passes_structured_social_policy_input(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    selected = selected_model("social")
+    inputs = _inputs()
+    social_decision = _social_decision()
+    skill_runtime = ToolGatewayResult(
+        policy_text="No tools.",
+        result_lines=(),
+        turns=(),
+    )
+    plan = RuntimeTurnPlan(
+        stage="planning",
+        selected=selected,
+        fallback_models=(),
+        skill_runtime=skill_runtime,
+        skill_activation=None,
+        pre_tool_task_class="reply_default",
+        prompt_messages=(AIModelMessage(role="user", content="hello"),),
+        prompt_diagnostics={},
+        tool_exposure_plan=ToolExposurePlan(),
+    )
+    captured: list[RuntimeSocialDecisionInput] = []
+    runtime_request = _request()
+    wake_context = _wake()
+    current_time = datetime(2026, 4, 28, tzinfo=timezone.utc)
+
+    async def gather_reply_inputs(*_args: Any, **_kwargs: Any) -> ReplyInputs:
+        return inputs
+
+    async def decide_whether_to_speak(
+        *_args: Any,
+        **_kwargs: Any,
+    ) -> ReplyStrategyDecision:
+        return social_decision
+
+    class PolicyStage(DefaultRuntimePolicyStage):
+        async def decide_reply(
+            self,
+            *,
+            social_input: RuntimeSocialDecisionInput,
+        ) -> ReplyStrategyDecision:
+            captured.append(social_input)
+            return await super().decide_reply(social_input=social_input)
+
+    async def prepare_generation(
+        *,
+        planning_input: RuntimePlanningInput,
+    ) -> RuntimeTurnPlan:
+        assert planning_input.social_decision is social_decision
+        return plan
+
+    async def execute_runtime_turn(
+        *,
+        turn_context: TurnContext,
+        plan: RuntimeTurnPlan,
+    ) -> RuntimeExecutionOutcome:
+        del plan
+        return RuntimeExecutionOutcome(
+            stage="execution",
+            response=model_response(selected, "social reply"),
+            skill_runtime=skill_runtime,
+            post_tool_task_class=None,
+            delivery_result=None,
+            turn_result=AgentTurnResult(
+                trace_id=turn_context.trace_id,
+                runtime_mode=turn_context.runtime_mode,
+                status="completed",
+                finish_reason="direct_model_completed",
+                response=model_response(selected, "social reply"),
+                response_source="direct",
+            ),
+        )
+
+    async def persist_reply(*_args: Any, **_kwargs: Any) -> None:
+        return None
+
+    monkeypatch.setattr(engine_module, "execute_runtime_turn", execute_runtime_turn)
+    engine = AISessionTurnEngine(
+        policy_stage=PolicyStage(decide_whether_to_speak),
+        observation_stage=DefaultRuntimeObservationStage(_noop_observation_effects),
+        context_stage=DefaultRuntimeContextStage(gather_reply_inputs),
+        planning_stage=DefaultRuntimePlanningStage(prepare_generation),
+        execution_stage=DefaultRuntimeExecutionStage(),
+        commit_stage=DefaultRuntimeCommitStage(
+            reply_persistence=_ReplyPersistenceStage(persist_reply),
+            reply_strategy_service=SimpleNamespace(
+                notify_replied=lambda _session_id: None
+            ),
+        ),
+        trace_stage=DefaultRuntimeTraceStage(),
+    )
+
+    commit = asyncio.run(
+        engine.run_reply_turn(
+            trace_id="trace-social",
+            trace=AITraceContext(kind="test", trigger="unit"),
+            request=runtime_request,
+            wake_context=wake_context,
+            current_time=current_time,
+            session_runtime=None,
+        )
+    )
+
+    assert commit is not None
+    assert len(captured) == 1
+    social_input = captured[0]
+    assert social_input.stage == "policy"
+    assert social_input.trace_id == "trace-social"
+    assert social_input.request is runtime_request
+    assert social_input.wake_context is wake_context
+    assert social_input.context.inputs is inputs
+    assert social_input.current_time is current_time
 
 
 @pytest.mark.parametrize("tool_count", [0, 1])

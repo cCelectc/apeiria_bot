@@ -26,6 +26,7 @@ from .stages import (
     RuntimePlanningStage,
     RuntimePolicyOutcome,
     RuntimePolicyStage,
+    RuntimeSocialDecisionInput,
     RuntimeTraceOutcome,
     RuntimeTraceStage,
     RuntimeTurnPlan,
@@ -111,16 +112,12 @@ class DefaultRuntimePolicyStage:
     async def decide_reply(
         self,
         *,
-        request: Any,
-        wake_context: "WakeContext",
-        context: RuntimeContextBundle,
-        current_time: "datetime",
-        trace_id: str,
+        social_input: RuntimeSocialDecisionInput,
     ) -> Any:
-        inputs = context.inputs
+        inputs = social_input.context.inputs
         return await self.reply_decider(
-            request=request,
-            wake_context=wake_context,
+            request=social_input.request,
+            wake_context=social_input.wake_context,
             turns=inputs.turns,
             conversation_summary=inputs.conversation_summary,
             relationship_context=inputs.relationship_context,
@@ -128,8 +125,8 @@ class DefaultRuntimePolicyStage:
             allowed_tools=inputs.allowed_tools,
             initiative_bias=inputs.initiative_bias,
             model_target=inputs.model_target,
-            current_time=current_time,
-            trace_id=trace_id,
+            current_time=social_input.current_time,
+            trace_id=social_input.trace_id,
         )
 
 
@@ -545,11 +542,14 @@ class AISessionTurnEngine:
         )
         inputs = context_bundle.inputs
         social_decision = await self.policy_stage.decide_reply(
-            request=request,
-            wake_context=wake_context,
-            context=context_bundle,
-            current_time=current_time,
-            trace_id=trace_id,
+            social_input=RuntimeSocialDecisionInput(
+                stage="policy",
+                trace_id=trace_id,
+                request=request,
+                wake_context=wake_context,
+                context=context_bundle,
+                current_time=current_time,
+            ),
         )
         if not social_decision.should_speak:
             runtime_decision = map_legacy_skip_to_runtime_decision(social_decision)

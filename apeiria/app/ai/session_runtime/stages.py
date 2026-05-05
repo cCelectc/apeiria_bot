@@ -28,7 +28,6 @@ if TYPE_CHECKING:
     from apeiria.app.ai.reply_strategy.models import ReplyStrategyDecision, WakeContext
     from apeiria.app.ai.session_runtime.runtime import InMemoryAISessionRuntime
 
-
 RuntimeStageName = Literal[
     "ingress",
     "policy",
@@ -84,6 +83,18 @@ class RuntimePlanningInput:
     request: "AIRuntimeReplyRequest"
     inputs: "ReplyInputs"
     social_decision: "ReplyStrategyDecision"
+    current_time: "datetime"
+
+
+@dataclass(frozen=True, slots=True)
+class RuntimeSocialDecisionInput:
+    """Typed input for social reply policy judgment."""
+
+    stage: RuntimeStageName
+    trace_id: str
+    request: "AIRuntimeReplyRequest"
+    wake_context: "WakeContext"
+    context: RuntimeContextBundle
     current_time: "datetime"
 
 
@@ -160,12 +171,8 @@ class RuntimePolicyStage(Protocol):
     async def decide_reply(
         self,
         *,
-        request: "AIRuntimeReplyRequest",
-        wake_context: "WakeContext",
-        context: RuntimeContextBundle,
-        current_time: "datetime",
-        trace_id: str,
-    ) -> Any: ...
+        social_input: RuntimeSocialDecisionInput,
+    ) -> "ReplyStrategyDecision": ...
 
 
 @runtime_checkable
@@ -261,6 +268,7 @@ __all__ = [
     "RuntimePlanningStage",
     "RuntimePolicyOutcome",
     "RuntimePolicyStage",
+    "RuntimeSocialDecisionInput",
     "RuntimeStageName",
     "RuntimeTraceOutcome",
     "RuntimeTraceStage",
