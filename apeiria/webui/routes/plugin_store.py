@@ -7,12 +7,13 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
-from apeiria.app.plugins.store.models import StoreInstallRequest, StoreQuery
+from apeiria.app.plugins.store.models import StoreInstallRequest
 from apeiria.app.plugins.store.tasks import plugin_store_task_service
-from apeiria.environment import (
-    PackageOperationRequest,
-    package_service,
-    store_service,
+from apeiria.app.plugins.store.workflows import (
+    PackageStoreItemRequest,
+    PackageStoreListRequest,
+    PackageStoreRevertRequest,
+    package_store_workflow,
 )
 from apeiria.i18n import t
 from apeiria.webui.auth import require_control_panel, require_owner
@@ -56,7 +57,10 @@ class PluginStoreRefreshRequest(BaseModel):
 async def list_plugin_store_sources(
     _: Annotated[Any, Depends(require_control_panel)],
 ) -> list[PluginStoreSourceItem]:
-    return [to_plugin_store_source_item(item) for item in store_service.list_sources()]
+    return [
+        to_plugin_store_source_item(item)
+        for item in package_store_workflow.list_sources()
+    ]
 
 
 @router.get("/items", response_model=PluginStoreItemsResponse)
@@ -64,9 +68,9 @@ async def list_plugin_store_items(
     _: Annotated[Any, Depends(require_control_panel)],
     params: Annotated[PluginStoreItemsQueryParams, Depends()],
 ) -> PluginStoreItemsResponse:
-    result = await store_service.list_items(
-        StoreQuery(
-            type="plugin",
+    result = await package_store_workflow.list_items(
+        PackageStoreListRequest(
+            item_type="plugin",
             source_id=params.source,
             keyword=params.search,
             category=params.category,
@@ -95,10 +99,12 @@ async def get_plugin_store_item(
     plugin_id: str,
     _: Annotated[Any, Depends(require_control_panel)],
 ) -> PluginStoreItem:
-    item = await store_service.get_item(
-        source_id=source_id,
-        plugin_id=plugin_id,
-        item_type="plugin",
+    item = await package_store_workflow.get_item(
+        PackageStoreItemRequest(
+            item_type="plugin",
+            source_id=source_id,
+            item_id=plugin_id,
+        )
     )
     if item is None:
         raise HTTPException(
@@ -115,8 +121,8 @@ async def refresh_plugin_store_sources(
 ) -> list[PluginStoreSourceItem]:
     return [
         to_plugin_store_source_item(item)
-        for item in await store_service.refresh_sources(
-            item_type="plugin",
+        for item in await package_store_workflow.refresh_sources(
+            "plugin",
             source_id=payload.source_id,
         )
     ]
@@ -169,7 +175,7 @@ async def get_plugin_store_task(
     task_id: str,
     _: Annotated[Any, Depends(require_control_panel)],
 ) -> PluginStoreTaskItem:
-    task = plugin_store_task_service.get_task(task_id)
+    task = package_store_workflow.get_task(task_id)
     if task is None:
         raise HTTPException(status_code=404, detail=t("web_ui.tasks.not_found"))
     return to_plugin_store_task_item(task)
@@ -181,11 +187,10 @@ async def revert_plugin_store_install(
     _: Annotated[Any, Depends(require_owner)],
 ) -> OperationStatusResponse:
     try:
-        package_service.uninstall(
-            PackageOperationRequest(
-                resource_kind="plugin",
-                operation="uninstall",
-                requirement=payload.package_name,
+        package_store_workflow.revert_install(
+            PackageStoreRevertRequest(
+                item_type="plugin",
+                package_requirement=payload.package_name,
                 binding_value=payload.module_name,
             )
         )

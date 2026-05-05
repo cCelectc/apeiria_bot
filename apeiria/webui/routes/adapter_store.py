@@ -7,12 +7,13 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
-from apeiria.app.plugins.store.models import StoreInstallRequest, StoreQuery
+from apeiria.app.plugins.store.models import StoreInstallRequest
 from apeiria.app.plugins.store.tasks import plugin_store_task_service
-from apeiria.environment import (
-    PackageOperationRequest,
-    package_service,
-    store_service,
+from apeiria.app.plugins.store.workflows import (
+    PackageStoreItemRequest,
+    PackageStoreListRequest,
+    PackageStoreRevertRequest,
+    package_store_workflow,
 )
 from apeiria.i18n import t
 from apeiria.webui.auth import require_control_panel, require_owner
@@ -58,7 +59,10 @@ class AdapterStoreRefreshRequest(BaseModel):
 async def list_adapter_store_sources(
     _: Annotated[Any, Depends(require_control_panel)],
 ) -> list[AdapterStoreSourceItem]:
-    return [to_adapter_store_source_item(item) for item in store_service.list_sources()]
+    return [
+        to_adapter_store_source_item(item)
+        for item in package_store_workflow.list_sources()
+    ]
 
 
 @router.get("/items", response_model=AdapterStoreItemsResponse)
@@ -66,9 +70,9 @@ async def list_adapter_store_items(
     _: Annotated[Any, Depends(require_control_panel)],
     params: Annotated[AdapterStoreItemsQueryParams, Depends()],
 ) -> AdapterStoreItemsResponse:
-    result = await store_service.list_items(
-        StoreQuery(
-            type="adapter",
+    result = await package_store_workflow.list_items(
+        PackageStoreListRequest(
+            item_type="adapter",
             source_id=params.source,
             keyword=params.search,
             category=params.category,
@@ -97,10 +101,12 @@ async def get_adapter_store_item(
     adapter_id: str,
     _: Annotated[Any, Depends(require_control_panel)],
 ) -> AdapterStoreItem:
-    item = await store_service.get_item(
-        source_id=source_id,
-        plugin_id=adapter_id,
-        item_type="adapter",
+    item = await package_store_workflow.get_item(
+        PackageStoreItemRequest(
+            item_type="adapter",
+            source_id=source_id,
+            item_id=adapter_id,
+        )
     )
     if item is None:
         raise HTTPException(
@@ -117,8 +123,8 @@ async def refresh_adapter_store_sources(
 ) -> list[AdapterStoreSourceItem]:
     return [
         to_adapter_store_source_item(item)
-        for item in await store_service.refresh_sources(
-            item_type="adapter",
+        for item in await package_store_workflow.refresh_sources(
+            "adapter",
             source_id=payload.source_id,
         )
     ]
@@ -203,7 +209,7 @@ async def get_adapter_store_task(
     task_id: str,
     _: Annotated[Any, Depends(require_control_panel)],
 ) -> AdapterStoreTaskItem:
-    task = plugin_store_task_service.get_task(task_id)
+    task = package_store_workflow.get_task(task_id)
     if task is None:
         raise HTTPException(status_code=404, detail=t("web_ui.tasks.not_found"))
     return to_adapter_store_task_item(task)
@@ -215,11 +221,10 @@ async def revert_adapter_store_install(
     _: Annotated[Any, Depends(require_owner)],
 ) -> OperationStatusResponse:
     try:
-        package_service.uninstall(
-            PackageOperationRequest(
-                resource_kind="adapter",
-                operation="uninstall",
-                requirement=payload.package_name,
+        package_store_workflow.revert_install(
+            PackageStoreRevertRequest(
+                item_type="adapter",
+                package_requirement=payload.package_name,
                 binding_value=payload.module_name,
             )
         )
