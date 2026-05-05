@@ -14,7 +14,7 @@ from apeiria.app.ai.future_task.delivery_attempts import (
 )
 
 if TYPE_CHECKING:
-    from apeiria.app.ai.pipeline.service import AIRuntimeReplyRequest
+    from apeiria.app.ai.session_runtime import RuntimeTurnInput
 
 
 @dataclass(frozen=True)
@@ -144,26 +144,26 @@ class OneBotDeliveryAdapter:
 
 
 async def deliver_generated_reply(
-    request: "AIRuntimeReplyRequest",
+    turn: "RuntimeTurnInput",
     reply_text: str,
     *,
     trace_id: str = "",
 ) -> DeliveryOutcome | None:
     """Deliver a proactive reply for future_task mode through the gateway."""
-    if request.runtime_mode != "future_task" or not reply_text.strip():
+    if turn.runtime_mode != "future_task" or not reply_text.strip():
         return None
 
     delivery_request = DeliveryRequest(
         trace_id=trace_id,
-        session_id=request.identity.session_id,
-        runtime_mode=request.runtime_mode,
-        bot_id=request.identity.bot_id,
-        platform=request.identity.platform,
-        scene_type=request.identity.scene_type,
-        scene_id=request.identity.scene_id,
+        session_id=turn.identity.session_id,
+        runtime_mode=turn.runtime_mode,
+        bot_id=turn.identity.bot_id,
+        platform=turn.identity.platform,
+        scene_type=turn.identity.scene_type,
+        scene_id=turn.identity.scene_id,
         message_text=reply_text,
     )
-    future_task = request.future_task
+    future_task = turn.future_task
     if future_task is None:
         return await delivery_gateway.deliver(delivery_request)
 
@@ -185,11 +185,11 @@ async def deliver_generated_reply(
         AIDeliveryAttemptCreateInput(
             task_id=future_task.task_id,
             trace_id=trace_id,
-            session_id=request.identity.session_id,
+            session_id=turn.identity.session_id,
             delivery_intent=delivery_intent,
-            platform=request.identity.platform,
-            scene_type=request.identity.scene_type,
-            scene_id=request.identity.scene_id,
+            platform=turn.identity.platform,
+            scene_type=turn.identity.scene_type,
+            scene_id=turn.identity.scene_id,
             message_preview=_message_preview(reply_text),
             message_hash=_message_hash(reply_text),
             created_at=_utcnow(),

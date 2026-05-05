@@ -38,6 +38,7 @@ from apeiria.app.ai.session_runtime import (
     DefaultRuntimePolicyStage,
     DefaultRuntimeTraceStage,
     InMemoryAISessionRuntimeResolver,
+    RuntimeTurnInput,
     SessionRuntimePolicy,
 )
 from apeiria.app.ai.session_runtime.trace_store import turn_trace_repository
@@ -86,6 +87,11 @@ class AIRuntimeReplyRequest:
     sentiment: "AIMessageSentiment | None" = None
     event_dedupe_key: str | None = None
     event_dedupe_claimed: bool = False
+
+    def to_runtime_turn_input(self) -> RuntimeTurnInput:
+        """Translate ingress request data into the runtime-owned turn input."""
+
+        return RuntimeTurnInput.from_reply_request(self)
 
 
 @dataclass(frozen=True)
@@ -264,7 +270,7 @@ class AIRuntimeService:
         commit = await self._resolve_turn_engine().run_reply_turn(
             trace_id=trace_id,
             trace=trace,
-            request=request,
+            turn=request.to_runtime_turn_input(),
             session_runtime=session_runtime,
             wake_context=wake_context,
             current_time=current_time,

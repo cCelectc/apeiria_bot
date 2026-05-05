@@ -10,7 +10,9 @@ from apeiria.app.ai.pipeline.service import AIRuntimeReplyRequest
 from apeiria.app.ai.reply_strategy import ReplyStrategyDecision
 from apeiria.app.ai.session_runtime import (
     DeliveryTarget,
+    RuntimeContextMaterials,
     RuntimeHardRuleDecision,
+    RuntimeTurnInput,
     ToolExposurePlan,
 )
 from apeiria.conversation.models import ChatSessionIdentity
@@ -105,8 +107,8 @@ def test_build_turn_context_freezes_message_turn_runtime_inputs() -> None:
 
     context = runtime_module.build_turn_context(
         trace_id="trace-1",
-        request=request,
-        inputs=_inputs(),
+        turn=RuntimeTurnInput.from_reply_request(request),
+        context=RuntimeContextMaterials.from_reply_inputs(_inputs()),
         hard_decision=_hard_decision(),
         social_decision=_social_decision(),
         delivery_target=delivery,
@@ -150,8 +152,8 @@ def test_build_turn_context_records_future_task_delivery_target() -> None:
 
     context = runtime_module.build_turn_context(
         trace_id="trace-future",
-        request=request,
-        inputs=_inputs(),
+        turn=RuntimeTurnInput.from_reply_request(request),
+        context=RuntimeContextMaterials.from_reply_inputs(_inputs()),
         hard_decision=_hard_decision(),
         social_decision=_social_decision(),
         delivery_target=delivery,

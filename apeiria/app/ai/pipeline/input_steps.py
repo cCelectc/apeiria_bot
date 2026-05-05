@@ -29,6 +29,7 @@ if TYPE_CHECKING:
     from apeiria.ai.tools import AIToolPolicy, AIToolSpec
     from apeiria.app.ai.pipeline.relationship_steps import AIRelationshipTarget
     from apeiria.app.ai.pipeline.service import AIRuntimeReplyRequest
+    from apeiria.app.ai.session_runtime import RuntimeContextMaterials, RuntimeTurnInput
     from apeiria.conversation.models import ChatContextMessageView
 
 
@@ -49,22 +50,23 @@ class ReplyInputs:
     initiative_bias: float
 
 
-async def gather_reply_inputs(
+async def collect_reply_inputs(
     request: "AIRuntimeReplyRequest",
     current_time: "datetime",
 ) -> ReplyInputs:
     """Collect all prompt-facing materials needed to decide and generate a reply."""
 
     identity = request.identity
+    turn = request.to_runtime_turn_input()
 
     turns, conversation_summary = await build_and_store_context_window(
         identity=identity,
     )
-    relationship_target = build_relationship_target(identity, request.user_id)
-    model_target = build_model_binding_target(identity, request.user_id)
+    relationship_target = build_relationship_target(identity, turn.user_id)
+    model_target = build_model_binding_target(identity, turn.user_id)
     tool_policy = await resolve_tool_policy(
         identity,
-        is_tome=request.is_tome,
+        is_tome=turn.is_tome,
     )
     persona = await load_persona_bundle(
         request=request,
@@ -73,15 +75,15 @@ async def gather_reply_inputs(
     )
     recalled_memories = await retrieve_memories_for_context(
         identity=identity,
-        user_id=request.user_id,
-        query_text=request.message_text,
+        user_id=turn.user_id,
+        query_text=turn.message_text,
     )
     relationship_context = await load_relationship_context(
         target=relationship_target,
     )
     person_profile = await load_person_profile_for_prompt(
         identity=identity,
-        user_id=request.user_id,
+        user_id=turn.user_id,
     )
     allowed_tools = tuple(ai_tool_service.list_allowed_tools(tool_policy))
     initiative_bias = await resolve_initiative_bias(
@@ -99,4 +101,17 @@ async def gather_reply_inputs(
         person_profile=person_profile,
         allowed_tools=allowed_tools,
         initiative_bias=initiative_bias,
+    )
+
+
+async def gather_reply_inputs(
+    turn: "RuntimeTurnInput",
+    current_time: "datetime",
+) -> "RuntimeContextMaterials":
+    """Collect and adapt prompt-facing materials for runtime context assembly."""
+
+    from apeiria.app.ai.session_runtime import RuntimeContextMaterials
+
+    return RuntimeContextMaterials.from_reply_inputs(
+        await collect_reply_inputs(turn.to_reply_request(), current_time)
     )

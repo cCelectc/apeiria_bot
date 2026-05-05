@@ -2,14 +2,24 @@ from __future__ import annotations
 
 import inspect
 from dataclasses import fields
-from typing import get_type_hints
+from datetime import datetime
+from typing import Any, get_args, get_type_hints
 
+from apeiria.app.ai.agent_turn import AgentTurnResult
+from apeiria.app.ai.pipeline.delivery_steps import DeliveryOutcome
 from apeiria.app.ai.pipeline.service import AIRuntimeService
-from apeiria.app.ai.reply_strategy.models import ReplyStrategyDecision
+from apeiria.app.ai.reply_strategy.models import ReplyStrategyDecision, WakeContext
 from apeiria.app.ai.session_runtime import (
+    DefaultRuntimeCommitStage,
+    DefaultRuntimeContextStage,
     DefaultRuntimeExecutionStage,
+    DefaultRuntimeObservationStage,
+    DefaultRuntimePlanningStage,
+    DefaultRuntimePolicyStage,
+    DefaultRuntimeTraceStage,
     RuntimeCommitInput,
     RuntimeCommitStage,
+    RuntimeContextMaterials,
     RuntimeContextStage,
     RuntimeExecutionStage,
     RuntimeIngressInput,
@@ -20,9 +30,32 @@ from apeiria.app.ai.session_runtime import (
     RuntimeSocialDecisionInput,
     RuntimeTraceInput,
     RuntimeTraceStage,
+    RuntimeTurnInput,
     TurnContext,
 )
 from apeiria.app.ai.session_runtime.engine import AISessionTurnEngine
+
+_STAGE_TYPE_GLOBALS = {
+    "AgentTurnResult": AgentTurnResult,
+    "datetime": datetime,
+    "DeliveryOutcome": DeliveryOutcome,
+    "ReplyStrategyDecision": ReplyStrategyDecision,
+    "WakeContext": WakeContext,
+}
+
+
+def _runtime_stage_type_hints(target: object) -> dict[str, object]:
+    globalns = getattr(target, "__globals__", None)
+    if globalns is None:
+        module = __import__(target.__module__, fromlist=["__dict__"])
+        globalns = module.__dict__
+    return get_type_hints(
+        target,
+        globalns={
+            **globalns,
+            **_STAGE_TYPE_GLOBALS,
+        },
+    )
 
 
 def test_turn_engine_declares_explicit_stage_contract_fields() -> None:
@@ -59,7 +92,7 @@ def test_production_turn_engine_uses_native_stage_objects() -> None:
 
 def test_planning_stage_accepts_one_runtime_planning_input() -> None:
     planning_signature = inspect.signature(RuntimePlanningStage.plan)
-    annotations = get_type_hints(RuntimePlanningStage.plan)
+    annotations = _runtime_stage_type_hints(RuntimePlanningStage.plan)
 
     assert tuple(planning_signature.parameters) == ("self", "planning_input")
     assert annotations["planning_input"] is RuntimePlanningInput
@@ -69,6 +102,30 @@ def test_runtime_planning_input_is_owned_by_stage_contracts() -> None:
     assert RuntimePlanningInput.__module__ == "apeiria.app.ai.session_runtime.stages"
 
 
+def test_runtime_stage_inputs_use_runtime_owned_records() -> None:
+    annotations = {
+        cls.__name__: _runtime_stage_type_hints(cls)
+        for cls in (
+            RuntimeIngressInput,
+            RuntimePlanningInput,
+            RuntimeSocialDecisionInput,
+            RuntimeCommitInput,
+            RuntimeTraceInput,
+        )
+    }
+
+    assert annotations["RuntimeIngressInput"]["turn"] is RuntimeTurnInput
+    assert "request" not in annotations["RuntimeIngressInput"]
+    assert annotations["RuntimePlanningInput"]["turn"] is RuntimeTurnInput
+    assert annotations["RuntimePlanningInput"]["context"] is RuntimeContextMaterials
+    assert "request" not in annotations["RuntimePlanningInput"]
+    assert "inputs" not in annotations["RuntimePlanningInput"]
+    assert annotations["RuntimeSocialDecisionInput"]["turn"] is RuntimeTurnInput
+    assert annotations["RuntimeCommitInput"]["turn"] is RuntimeTurnInput
+    assert annotations["RuntimeCommitInput"]["context"] is RuntimeContextMaterials
+    assert annotations["RuntimeTraceInput"]["turn"] is RuntimeTurnInput
+
+
 def test_ingress_stages_accept_one_runtime_ingress_input() -> None:
     for stage, method_name in (
         (RuntimePolicyStage, "evaluate"),
@@ -76,7 +133,7 @@ def test_ingress_stages_accept_one_runtime_ingress_input() -> None:
         (RuntimeContextStage, "assemble"),
     ):
         signature = inspect.signature(getattr(stage, method_name))
-        annotations = get_type_hints(getattr(stage, method_name))
+        annotations = _runtime_stage_type_hints(getattr(stage, method_name))
 
         assert tuple(signature.parameters) == ("self", "ingress_input")
         assert annotations["ingress_input"] is RuntimeIngressInput
@@ -88,13 +145,7 @@ def test_runtime_ingress_input_is_owned_by_stage_contracts() -> None:
 
 def test_social_policy_stage_accepts_one_runtime_social_input() -> None:
     signature = inspect.signature(RuntimePolicyStage.decide_reply)
-    annotations = get_type_hints(
-        RuntimePolicyStage.decide_reply,
-        globalns={
-            **RuntimePolicyStage.decide_reply.__globals__,
-            "ReplyStrategyDecision": ReplyStrategyDecision,
-        },
-    )
+    annotations = _runtime_stage_type_hints(RuntimePolicyStage.decide_reply)
 
     assert tuple(signature.parameters) == ("self", "social_input")
     assert annotations["social_input"] is RuntimeSocialDecisionInput
@@ -113,7 +164,7 @@ def test_execution_helpers_accept_frozen_turn_context() -> None:
         AISessionTurnEngine.execute_turn,
     ):
         signature = inspect.signature(target)
-        annotations = get_type_hints(target)
+        annotations = _runtime_stage_type_hints(target)
 
         assert "turn_context" in signature.parameters
         assert annotations["turn_context"] is TurnContext
@@ -125,7 +176,7 @@ def test_commit_and_trace_stages_accept_one_runtime_input() -> None:
         (RuntimeTraceStage, "project", "trace_input", RuntimeTraceInput),
     ):
         signature = inspect.signature(getattr(stage, method_name))
-        annotations = get_type_hints(getattr(stage, method_name))
+        annotations = _runtime_stage_type_hints(getattr(stage, method_name))
 
         assert tuple(signature.parameters) == ("self", parameter_name)
         assert annotations[parameter_name] is expected_input
@@ -134,3 +185,28 @@ def test_commit_and_trace_stages_accept_one_runtime_input() -> None:
 def test_runtime_commit_and_trace_inputs_are_owned_by_stage_contracts() -> None:
     assert RuntimeCommitInput.__module__ == "apeiria.app.ai.session_runtime.stages"
     assert RuntimeTraceInput.__module__ == "apeiria.app.ai.session_runtime.stages"
+
+
+def test_default_stage_dependencies_are_named_contracts() -> None:
+    for stage_cls in (
+        DefaultRuntimePolicyStage,
+        DefaultRuntimeObservationStage,
+        DefaultRuntimeContextStage,
+        DefaultRuntimePlanningStage,
+        DefaultRuntimeCommitStage,
+        DefaultRuntimeTraceStage,
+    ):
+        annotations = _runtime_stage_type_hints(stage_cls)
+        for name, annotation in annotations.items():
+            assert not _contains_any(annotation), (
+                f"{stage_cls.__name__}.{name} exposes broad Any"
+            )
+            assert "Callable" not in str(annotation), (
+                f"{stage_cls.__name__}.{name} exposes a loose Callable"
+            )
+
+
+def _contains_any(annotation: object) -> bool:
+    if annotation is Any:
+        return True
+    return any(_contains_any(arg) for arg in get_args(annotation))

@@ -6,6 +6,7 @@ from apeiria.ai.turn_records import ModelAttempt, PromptSafeObservation, ToolAtt
 from apeiria.app.ai.session_runtime import (
     RuntimeHardRuleDecision,
     RuntimeTraceInput,
+    RuntimeTurnInput,
     TurnTrace,
 )
 from apeiria.conversation.models import ChatSessionIdentity
@@ -193,7 +194,7 @@ def test_engine_persists_hard_rule_trace_without_assistant_message(
         trace_input=RuntimeTraceInput(
             stage="trace",
             trace_id="trace-hard-rule",
-            request=request,
+            turn=RuntimeTurnInput.from_reply_request(request),
             strategy_decision=decision,
             turn_result=None,
         ),

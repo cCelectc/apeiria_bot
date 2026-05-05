@@ -11,7 +11,7 @@ from apeiria.app.ai.pipeline.service import (
     AIRuntimeService,
     AITraceContext,
 )
-from apeiria.app.ai.session_runtime import RuntimeCommitResult
+from apeiria.app.ai.session_runtime import RuntimeCommitResult, RuntimeTurnInput
 from apeiria.conversation.models import ChatSessionIdentity
 
 if TYPE_CHECKING:
@@ -52,20 +52,20 @@ class _Engine:
         commit_result: RuntimeCommitResult | None,
     ) -> None:
         self.commit_result = commit_result
-        self.calls: list[AIRuntimeReplyRequest] = []
+        self.calls: list[RuntimeTurnInput] = []
 
     async def run_reply_turn(  # noqa: PLR0913
         self,
         *,
         trace_id: str,
         trace: AITraceContext,
-        request: AIRuntimeReplyRequest,
+        turn: RuntimeTurnInput,
         wake_context: object | None = None,
         current_time: datetime,
         session_runtime: _SerializedRuntime | None = None,
     ) -> RuntimeCommitResult | None:
         del trace_id, trace, wake_context, current_time, session_runtime
-        self.calls.append(request)
+        self.calls.append(turn)
         return self.commit_result
 
 
@@ -132,7 +132,7 @@ def test_reply_pipeline_delegates_to_engine(
     assert (result.reply_text if result is not None else None) == (
         commit_result.reply_text if commit_result is not None else None
     )
-    assert engine.calls == [request]
+    assert engine.calls == [RuntimeTurnInput.from_reply_request(request)]
     assert len(resolver.resolved) == 1
     assert resolver.resolved[0][0] == "session-1"
     assert runtime.calls == []
@@ -145,7 +145,7 @@ def test_turn_engine_owns_session_serialization() -> None:
             *,
             trace_id: str,
             trace: AITraceContext,
-            request: AIRuntimeReplyRequest,
+            turn: RuntimeTurnInput,
             wake_context: object | None = None,
             current_time: datetime,
             session_runtime: _SerializedRuntime | None = None,
@@ -153,7 +153,7 @@ def test_turn_engine_owns_session_serialization() -> None:
             del trace_id, trace, wake_context
 
             async def operation() -> RuntimeCommitResult | None:
-                self.calls.append(request)
+                self.calls.append(turn)
                 return self.commit_result
 
             assert session_runtime is not None
@@ -183,7 +183,7 @@ def test_turn_engine_owns_session_serialization() -> None:
 
     assert result is not None
     assert result.reply_text == "hello back"
-    assert engine.calls == [_request()]
+    assert engine.calls == [RuntimeTurnInput.from_reply_request(_request())]
     assert len(runtime.calls) == 1
     assert runtime.calls[0].tzinfo == timezone.utc
 
@@ -247,7 +247,7 @@ def test_future_task_entrypoint_reuses_session_serialization(
                 *,
                 trace_id: str,
                 trace: AITraceContext,
-                request: AIRuntimeReplyRequest,
+                turn: RuntimeTurnInput,
                 wake_context: object | None = None,
                 current_time: datetime,
                 session_runtime: _SerializedRuntime | None = None,
@@ -255,7 +255,7 @@ def test_future_task_entrypoint_reuses_session_serialization(
                 del trace_id, trace, wake_context
 
                 async def operation() -> RuntimeCommitResult | None:
-                    self.calls.append(request)
+                    self.calls.append(turn)
                     return self.commit_result
 
                 assert session_runtime is not None

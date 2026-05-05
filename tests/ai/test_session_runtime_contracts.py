@@ -18,6 +18,7 @@ from apeiria.app.ai.session_runtime import (
     MergeMetadata,
     RuntimeCommitResult,
     RuntimeContextBundle,
+    RuntimeContextMaterials,
     RuntimeExecutionOutcome,
     RuntimeHardRuleAction,
     RuntimeHardRuleDecision,
@@ -138,7 +139,23 @@ def test_runtime_plan_and_outcome_contracts_do_not_need_platform_events() -> Non
     )
     context_bundle = RuntimeContextBundle(
         stage="context",
-        inputs=object(),  # type: ignore[arg-type]
+        context=RuntimeContextMaterials(
+            turns=[],
+            conversation_summary=None,
+            relationship_target=object(),  # type: ignore[arg-type]
+            model_target=AIModelBindingTarget(
+                conversation_id="session-1",
+                group_id="group-1",
+                user_id="user-1",
+            ),
+            tool_policy=AIToolPolicy(execution_enabled=False),
+            persona=None,
+            recalled_memories=[],
+            relationship_context=None,
+            person_profile=(),
+            allowed_tools=(),
+            initiative_bias=0.0,
+        ),
         diagnostics={"source": "test"},
     )
     execution = RuntimeExecutionOutcome(

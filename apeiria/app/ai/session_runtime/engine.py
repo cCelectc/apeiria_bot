@@ -4,14 +4,19 @@ from __future__ import annotations
 
 import inspect
 from dataclasses import dataclass, field, replace
-from typing import TYPE_CHECKING, Any, NoReturn
+from typing import TYPE_CHECKING, Any, NoReturn, Protocol
 
 from nonebot.log import logger
 
-from .context import DeliveryTarget, RuntimeTurnSource, TurnContext
+from .context import (
+    DeliveryTarget,
+    RuntimeContextMaterials,
+    RuntimeTurnInput,
+    TurnContext,
+)
 from .context_adapter import build_turn_context
 from .execution import execute_runtime_turn
-from .hard_rules import decide_runtime_hard_rule, map_legacy_skip_to_runtime_decision
+from .hard_rules import decide_runtime_hard_rule, social_skip_to_runtime_decision
 from .planning import plan_runtime_turn
 from .stages import (
     RuntimeCommitInput,
@@ -36,10 +41,156 @@ from .stages import (
 from .trace import project_turn_trace
 
 if TYPE_CHECKING:
+    from collections.abc import Awaitable
     from datetime import datetime
 
-    from apeiria.app.ai.reply_strategy.models import WakeContext
+    from apeiria.ai.model import (
+        AIModelBindingTarget,
+        AIModelGenerateResponse,
+    )
+    from apeiria.ai.prompting import ReplyPersonaPromptBundleLike
+    from apeiria.ai.tools import AIToolSpec
+    from apeiria.app.ai.pipeline.delivery_steps import DeliveryOutcome
+    from apeiria.app.ai.reply_strategy.models import ReplyStrategyDecision, WakeContext
     from apeiria.app.ai.session_runtime.strategy import RuntimeHardRuleDecision
+    from apeiria.app.ai.session_runtime.trace import TurnTrace
+    from apeiria.app.ai.session_runtime.trace_store import TurnTraceRecord
+    from apeiria.conversation.models import ChatContextMessageView, ChatSessionIdentity
+
+
+class RuntimeReplyDecider(Protocol):
+    """Social reply policy collaborator for the default policy stage."""
+
+    async def __call__(  # noqa: PLR0913
+        self,
+        *,
+        turn: RuntimeTurnInput,
+        wake_context: "WakeContext | None",
+        turns: list["ChatContextMessageView"],
+        conversation_summary: str | None,
+        relationship_context: str | None,
+        persona: "ReplyPersonaPromptBundleLike | None",
+        allowed_tools: tuple["AIToolSpec", ...],
+        initiative_bias: float,
+        model_target: "AIModelBindingTarget",
+        current_time: "datetime",
+        trace_id: str,
+    ) -> "ReplyStrategyDecision": ...
+
+
+class RuntimeObservationEffects(Protocol):
+    """Observation side-effect collaborator for the default observation stage."""
+
+    async def __call__(
+        self,
+        *,
+        turn: RuntimeTurnInput,
+        current_time: "datetime",
+    ) -> None: ...
+
+
+class RuntimeContextCollector(Protocol):
+    """Context-material collector for the default context stage."""
+
+    async def __call__(
+        self,
+        turn: RuntimeTurnInput,
+        current_time: "datetime",
+    ) -> RuntimeContextMaterials: ...
+
+
+class RuntimePlanner(Protocol):
+    """Prompt/model/tool planner collaborator for the default planning stage."""
+
+    async def __call__(
+        self,
+        *,
+        planning_input: RuntimePlanningInput,
+    ) -> RuntimeTurnPlan | None: ...
+
+
+class RuntimeReplyPersistence(Protocol):
+    """Required persistence collaborator for the default commit stage."""
+
+    async def persist_tool_observations(
+        self,
+        *,
+        turn: RuntimeTurnInput,
+        generation: RuntimeExecutionOutcome,
+        trace_id: str,
+    ) -> str: ...
+
+    async def persist_assistant_message(  # noqa: PLR0913
+        self,
+        *,
+        turn: RuntimeTurnInput,
+        context: RuntimeContextMaterials,
+        social_decision: "ReplyStrategyDecision",
+        plan: RuntimeTurnPlan,
+        generation: RuntimeExecutionOutcome,
+        trace_id: str,
+    ) -> None: ...
+
+    async def rebuild_context_window(
+        self,
+        *,
+        identity: "ChatSessionIdentity",
+    ) -> None: ...
+
+
+class RuntimeReplyAccounting(Protocol):
+    """Reply-strategy accounting collaborator for generated turns."""
+
+    def notify_replied(self, session_id: str) -> None: ...
+
+
+class RuntimeDeliverySender(Protocol):
+    """Optional delivery collaborator for proactive generated replies."""
+
+    def __call__(
+        self,
+        turn: RuntimeTurnInput,
+        reply_text: str,
+        *,
+        trace_id: str = "",
+    ) -> "DeliveryOutcome | None | Awaitable[DeliveryOutcome | None]": ...
+
+
+class RuntimeContextUsageRecorder(Protocol):
+    """Optional prompt-window usage accounting collaborator."""
+
+    def __call__(
+        self,
+        session_id: str,
+        *,
+        response: "AIModelGenerateResponse",
+        message_count: int,
+    ) -> None: ...
+
+
+class RuntimeAmbientReplyRecorder(Protocol):
+    """Subset of session runtime accounting used by commit."""
+
+    def record_ambient_reply(self, *, now: "datetime") -> None: ...
+
+
+class RuntimeTraceObserver(Protocol):
+    """Optional observer for projected terminal runtime traces."""
+
+    def __call__(self, outcome: RuntimeTraceOutcome) -> None: ...
+
+
+class RuntimeTraceStore(Protocol):
+    """Durable compact trace storage collaborator."""
+
+    def store_trace(
+        self,
+        trace: "TurnTrace",
+        *,
+        terminal_status: str | None = None,
+        commit_status: str | None = None,
+        diagnostics: dict[str, object] | None = None,
+    ) -> "TurnTraceRecord": ...
 
 
 class RuntimeStageNotConfiguredError(RuntimeError):
@@ -79,25 +230,14 @@ class _UnavailableRuntimeStage:
 class DefaultRuntimePolicyStage:
     """Policy stage backed by runtime hard rules and reply strategy."""
 
-    reply_decider: Any
+    reply_decider: RuntimeReplyDecider
 
     def evaluate(
         self,
         *,
         ingress_input: RuntimeIngressInput,
     ) -> RuntimePolicyOutcome:
-        request = ingress_input.request
-        identity = request.identity
-        source = RuntimeTurnSource(
-            runtime_mode=request.runtime_mode,
-            message_text=request.message_text,
-            source_message_id=request.source_message_id,
-            user_id=request.user_id,
-            direct_signal=request.is_tome,
-            is_private=identity.scene_type == "private",
-            event_dedupe_key=request.event_dedupe_key,
-            event_dedupe_claimed=request.event_dedupe_claimed,
-        )
+        source = ingress_input.turn.source
         return RuntimePolicyOutcome(
             stage="policy",
             source=source,
@@ -113,18 +253,19 @@ class DefaultRuntimePolicyStage:
         self,
         *,
         social_input: RuntimeSocialDecisionInput,
-    ) -> Any:
-        inputs = social_input.context.inputs
+    ) -> "ReplyStrategyDecision":
+        turn = social_input.turn
+        context = social_input.context.context
         return await self.reply_decider(
-            request=social_input.request,
+            turn=turn,
             wake_context=social_input.wake_context,
-            turns=inputs.turns,
-            conversation_summary=inputs.conversation_summary,
-            relationship_context=inputs.relationship_context,
-            persona=inputs.persona,
-            allowed_tools=inputs.allowed_tools,
-            initiative_bias=inputs.initiative_bias,
-            model_target=inputs.model_target,
+            turns=context.turns,
+            conversation_summary=context.conversation_summary,
+            relationship_context=context.relationship_context,
+            persona=context.persona,
+            allowed_tools=context.allowed_tools,
+            initiative_bias=context.initiative_bias,
+            model_target=context.model_target,
             current_time=social_input.current_time,
             trace_id=social_input.trace_id,
         )
@@ -134,7 +275,7 @@ class DefaultRuntimePolicyStage:
 class DefaultRuntimeObservationStage:
     """Observation side-effect stage for live writes before context reads."""
 
-    apply_observation_effects: Any | None = None
+    apply_observation_effects: RuntimeObservationEffects | None = None
 
     async def apply(
         self,
@@ -144,7 +285,7 @@ class DefaultRuntimeObservationStage:
         if self.apply_observation_effects is None:
             return
         await self.apply_observation_effects(
-            request=ingress_input.request,
+            turn=ingress_input.turn,
             current_time=ingress_input.current_time,
         )
 
@@ -153,7 +294,7 @@ class DefaultRuntimeObservationStage:
 class DefaultRuntimeContextStage:
     """Context assembly stage backed by the reply input collector."""
 
-    gather_reply_inputs: Any
+    gather_reply_inputs: RuntimeContextCollector
 
     async def assemble(
         self,
@@ -161,17 +302,17 @@ class DefaultRuntimeContextStage:
         ingress_input: RuntimeIngressInput,
     ) -> RuntimeContextBundle:
         inputs = await self.gather_reply_inputs(
-            ingress_input.request,
+            ingress_input.turn,
             ingress_input.current_time,
         )
-        return RuntimeContextBundle(stage="context", inputs=inputs)
+        return RuntimeContextBundle(stage="context", context=inputs)
 
 
 @dataclass(frozen=True, slots=True)
 class DefaultRuntimePlanningStage:
     """Plan prompt/model/tool materials for execution."""
 
-    prepare_generation: Any = plan_runtime_turn
+    prepare_generation: RuntimePlanner = plan_runtime_turn
 
     async def plan(
         self,
@@ -201,17 +342,18 @@ class DefaultRuntimeExecutionStage:
 class DefaultRuntimeCommitStage:
     """Commit post-execution side effects with structured substep status."""
 
-    reply_persistence: Any
-    reply_strategy_service: Any
-    deliver_reply: Any | None = None
-    record_context_usage: Any | None = None
+    reply_persistence: RuntimeReplyPersistence
+    reply_strategy_service: RuntimeReplyAccounting
+    deliver_reply: RuntimeDeliverySender | None = None
+    record_context_usage: RuntimeContextUsageRecorder | None = None
 
     async def commit(
         self,
         *,
         commit_input: RuntimeCommitInput,
     ) -> RuntimeCommitResult:
-        request = commit_input.request
+        turn = commit_input.turn
+        context = commit_input.context
         generation = commit_input.generation
         response = generation.response
         reply_text = response.content.strip() if response is not None else ""
@@ -219,7 +361,7 @@ class DefaultRuntimeCommitStage:
         commit_status = "committed"
 
         delivery_result = await self._commit_delivery(
-            request=request,
+            turn=turn,
             reply_text=reply_text,
             trace_id=commit_input.trace_id,
         )
@@ -233,8 +375,8 @@ class DefaultRuntimeCommitStage:
 
         generation_with_delivery = replace(generation, delivery_result=delivery_result)
         required_failed = await self._commit_required_persistence(
-            request=request,
-            inputs=commit_input.inputs,
+            turn=turn,
+            context=context,
             social_decision=commit_input.social_decision,
             plan=commit_input.plan,
             generation=generation_with_delivery,
@@ -251,13 +393,13 @@ class DefaultRuntimeCommitStage:
             )
 
         await self._commit_context_window(
-            request=request,
+            turn=turn,
             substeps=substeps,
         )
         self._commit_reply_accounting(
-            request=request,
+            turn=turn,
             response=response,
-            inputs=commit_input.inputs,
+            context=context,
             generation=generation_with_delivery,
             hard_decision=commit_input.hard_decision,
             current_time=commit_input.current_time,
@@ -277,14 +419,14 @@ class DefaultRuntimeCommitStage:
     async def _commit_delivery(
         self,
         *,
-        request: Any,
+        turn: RuntimeTurnInput,
         reply_text: str,
         trace_id: str,
-    ) -> Any | None:
+    ) -> "DeliveryOutcome | None":
         if self.deliver_reply is None:
             return None
         result = self.deliver_reply(
-            request,
+            turn,
             reply_text,
             trace_id=trace_id,
         )
@@ -295,9 +437,9 @@ class DefaultRuntimeCommitStage:
     async def _commit_required_persistence(  # noqa: PLR0913
         self,
         *,
-        request: Any,
-        inputs: Any,
-        social_decision: Any,
+        turn: RuntimeTurnInput,
+        context: RuntimeContextMaterials,
+        social_decision: "ReplyStrategyDecision",
         plan: RuntimeTurnPlan,
         generation: RuntimeExecutionOutcome,
         trace_id: str,
@@ -305,7 +447,7 @@ class DefaultRuntimeCommitStage:
     ) -> bool:
         try:
             status = await self.reply_persistence.persist_tool_observations(
-                request=request,
+                turn=turn,
                 generation=generation,
                 trace_id=trace_id,
             )
@@ -313,7 +455,7 @@ class DefaultRuntimeCommitStage:
             logger.opt(exception=exc).warning(
                 "AI trace {} failed tool-observation persistence for session {}",
                 trace_id,
-                request.identity.session_id,
+                turn.identity.session_id,
             )
             substeps["tool_observations"] = "failed"
             return True
@@ -321,8 +463,8 @@ class DefaultRuntimeCommitStage:
 
         try:
             await self.reply_persistence.persist_assistant_message(
-                request=request,
-                inputs=inputs,
+                turn=turn,
+                context=context,
                 social_decision=social_decision,
                 plan=plan,
                 generation=generation,
@@ -332,7 +474,7 @@ class DefaultRuntimeCommitStage:
             logger.opt(exception=exc).warning(
                 "AI trace {} failed assistant persistence for session {}",
                 trace_id,
-                request.identity.session_id,
+                turn.identity.session_id,
             )
             substeps["assistant_message"] = "failed"
             return True
@@ -342,17 +484,17 @@ class DefaultRuntimeCommitStage:
     async def _commit_context_window(
         self,
         *,
-        request: Any,
+        turn: RuntimeTurnInput,
         substeps: dict[str, str],
     ) -> None:
         try:
             await self.reply_persistence.rebuild_context_window(
-                identity=request.identity,
+                identity=turn.identity,
             )
         except Exception as exc:  # noqa: BLE001
             logger.opt(exception=exc).warning(
                 "AI context-window rebuild failed for session {}",
-                request.identity.session_id,
+                turn.identity.session_id,
             )
             substeps["context_window"] = "failed"
             return
@@ -361,27 +503,27 @@ class DefaultRuntimeCommitStage:
     def _commit_reply_accounting(  # noqa: PLR0913
         self,
         *,
-        request: Any,
-        response: Any | None,
-        inputs: Any,
+        turn: RuntimeTurnInput,
+        response: "AIModelGenerateResponse | None",
+        context: RuntimeContextMaterials,
         generation: RuntimeExecutionOutcome,
         hard_decision: "RuntimeHardRuleDecision",
         current_time: "datetime",
-        session_runtime: Any | None,
+        session_runtime: RuntimeAmbientReplyRecorder | None,
         substeps: dict[str, str],
     ) -> None:
         try:
             if self.record_context_usage is not None and response is not None:
                 self.record_context_usage(
-                    request.identity.session_id,
+                    turn.identity.session_id,
                     response=response,
-                    message_count=len(inputs.turns),
+                    message_count=len(context.turns),
                 )
             if (
                 generation.delivery_result is None
                 or generation.delivery_result.delivered
             ):
-                self.reply_strategy_service.notify_replied(request.identity.session_id)
+                self.reply_strategy_service.notify_replied(turn.identity.session_id)
                 if session_runtime is not None and hard_decision.reason_codes == (
                     "ambient_candidate",
                 ):
@@ -389,7 +531,7 @@ class DefaultRuntimeCommitStage:
         except Exception as exc:  # noqa: BLE001
             logger.opt(exception=exc).warning(
                 "AI trace accounting failed for session {}",
-                request.identity.session_id,
+                turn.identity.session_id,
             )
             substeps["reply_accounting"] = "failed"
             return
@@ -400,23 +542,23 @@ class DefaultRuntimeCommitStage:
 class DefaultRuntimeTraceStage:
     """Project and durably store compact terminal turn traces."""
 
-    trace_observer: Any | None = None
-    trace_store: Any | None = None
+    trace_observer: RuntimeTraceObserver | None = None
+    trace_store: RuntimeTraceStore | None = None
 
     def project(
         self,
         *,
         trace_input: RuntimeTraceInput,
     ) -> RuntimeTraceOutcome:
-        request = trace_input.request
+        turn = trace_input.turn
         outcome = RuntimeTraceOutcome(
             stage="trace",
             trace=project_turn_trace(
-                session_id=request.identity.session_id,
+                session_id=turn.identity.session_id,
                 strategy_decision=trace_input.strategy_decision,
                 turn_result=trace_input.turn_result,
                 trace_id=trace_input.trace_id,
-                runtime_mode=request.runtime_mode,
+                runtime_mode=turn.runtime_mode,
                 delivery_result=trace_input.delivery_result,
             ),
         )
@@ -453,7 +595,7 @@ class AISessionTurnEngine:
         *,
         trace_id: str,
         trace: Any,
-        request: Any,
+        turn: RuntimeTurnInput,
         wake_context: "WakeContext | None",
         current_time: "datetime",
         session_runtime: Any | None,
@@ -468,7 +610,7 @@ class AISessionTurnEngine:
                 return await self._run_reply_turn_steps(
                     trace_id=trace_id,
                     trace=trace,
-                    request=request,
+                    turn=turn,
                     wake_context=wake_context,
                     current_time=current_time,
                     session_runtime=session_runtime,
@@ -479,7 +621,7 @@ class AISessionTurnEngine:
         return await self._run_reply_turn_steps(
             trace_id=trace_id,
             trace=trace,
-            request=request,
+            turn=turn,
             wake_context=wake_context,
             current_time=current_time,
             session_runtime=session_runtime,
@@ -490,18 +632,18 @@ class AISessionTurnEngine:
         *,
         trace_id: str,
         trace: Any,
-        request: Any,
+        turn: RuntimeTurnInput,
         wake_context: "WakeContext | None",
         current_time: "datetime",
         session_runtime: Any | None,
     ) -> RuntimeCommitResult | None:
         """Run one reply turn through policy, context, planning, execution, commit."""
 
-        identity = request.identity
-        wake_context = wake_context or self._build_fallback_wake_context(request)
+        identity = turn.identity
+        wake_context = wake_context or self._build_fallback_wake_context(turn)
         ingress_input = RuntimeIngressInput(
             stage="ingress",
-            request=request,
+            turn=turn,
             wake_context=wake_context,
             current_time=current_time,
             session_runtime=session_runtime,
@@ -523,7 +665,7 @@ class AISessionTurnEngine:
                 trace_input=RuntimeTraceInput(
                     stage="trace",
                     trace_id=trace_id,
-                    request=request,
+                    turn=turn,
                     strategy_decision=hard_decision,
                     turn_result=None,
                 ),
@@ -536,19 +678,19 @@ class AISessionTurnEngine:
         context_bundle = await self.assemble_context(
             ingress_input=ingress_input,
         )
-        inputs = context_bundle.inputs
+        context = context_bundle.context
         social_decision = await self.policy_stage.decide_reply(
             social_input=RuntimeSocialDecisionInput(
                 stage="policy",
                 trace_id=trace_id,
-                request=request,
+                turn=turn,
                 wake_context=wake_context,
                 context=context_bundle,
                 current_time=current_time,
             ),
         )
         if not social_decision.should_speak:
-            runtime_decision = map_legacy_skip_to_runtime_decision(social_decision)
+            runtime_decision = social_skip_to_runtime_decision(social_decision)
             logger.debug(
                 "AI trace {} skipped reply: strategy_skipped for session {} "
                 "action={} reason_codes={}",
@@ -561,7 +703,7 @@ class AISessionTurnEngine:
                 trace_input=RuntimeTraceInput(
                     stage="trace",
                     trace_id=trace_id,
-                    request=request,
+                    turn=turn,
                     strategy_decision=runtime_decision,
                     turn_result=None,
                 ),
@@ -570,8 +712,8 @@ class AISessionTurnEngine:
 
         plan = await self.plan_turn(
             trace_id=trace_id,
-            request=request,
-            inputs=inputs,
+            turn=turn,
+            context=context,
             social_decision=social_decision,
             current_time=current_time,
         )
@@ -580,7 +722,7 @@ class AISessionTurnEngine:
                 trace_input=RuntimeTraceInput(
                     stage="trace",
                     trace_id=trace_id,
-                    request=request,
+                    turn=turn,
                     strategy_decision=hard_decision,
                     turn_result=None,
                 ),
@@ -589,11 +731,11 @@ class AISessionTurnEngine:
 
         turn_context = build_turn_context(
             trace_id=trace_id,
-            request=request,
-            inputs=inputs,
+            turn=turn,
+            context=context,
             hard_decision=hard_decision,
             social_decision=social_decision,
-            delivery_target=_delivery_target_for_request(request),
+            delivery_target=_delivery_target_for_turn(turn),
             prompt_messages=plan.prompt_messages,
             tool_exposure_plan=plan.tool_exposure_plan,
             current_time=current_time,
@@ -614,7 +756,7 @@ class AISessionTurnEngine:
                 trace_input=RuntimeTraceInput(
                     stage="trace",
                     trace_id=trace_id,
-                    request=request,
+                    turn=turn,
                     strategy_decision=hard_decision,
                     turn_result=execution.turn_result,
                     delivery_result=execution.delivery_result,
@@ -626,8 +768,8 @@ class AISessionTurnEngine:
             commit_input=RuntimeCommitInput(
                 stage="commit",
                 trace_id=trace_id,
-                request=request,
-                inputs=inputs,
+                turn=turn,
+                context=context,
                 social_decision=social_decision,
                 plan=plan,
                 generation=execution,
@@ -640,7 +782,7 @@ class AISessionTurnEngine:
             trace_input=RuntimeTraceInput(
                 stage="trace",
                 trace_id=trace_id,
-                request=request,
+                turn=turn,
                 strategy_decision=hard_decision,
                 turn_result=execution.turn_result,
                 delivery_result=commit.delivery_result,
@@ -655,11 +797,11 @@ class AISessionTurnEngine:
             "model={} memories={} tool_observations={} entry_kind={} "
             "entry_trigger={}",
             trace_id,
-            request.runtime_mode,
+            turn.runtime_mode,
             identity.session_id,
             response.source_id,
             response.model_name,
-            len(inputs.recalled_memories),
+            len(context.recalled_memories),
             len(execution.skill_runtime.turns),
             trace.kind,
             trace.trigger,
@@ -703,8 +845,8 @@ class AISessionTurnEngine:
         self,
         *,
         trace_id: str,
-        request: Any,
-        inputs: Any,
+        turn: RuntimeTurnInput,
+        context: Any,
         social_decision: Any,
         current_time: "datetime",
     ) -> RuntimeTurnPlan | None:
@@ -714,8 +856,8 @@ class AISessionTurnEngine:
             planning_input=RuntimePlanningInput(
                 stage="planning",
                 trace_id=trace_id,
-                request=request,
-                inputs=inputs,
+                turn=turn,
+                context=context,
                 social_decision=social_decision,
                 current_time=current_time,
             ),
@@ -757,23 +899,23 @@ class AISessionTurnEngine:
         )
 
     @staticmethod
-    def _build_fallback_wake_context(request: Any) -> "WakeContext":
+    def _build_fallback_wake_context(turn: RuntimeTurnInput) -> "WakeContext":
         from apeiria.app.ai.pipeline.reply_strategy_steps import (
             build_fallback_wake_context,
         )
 
-        return build_fallback_wake_context(request)
+        return build_fallback_wake_context(turn)
 
 
-def _delivery_target_for_request(request: Any) -> DeliveryTarget:
-    if request.runtime_mode == "future_task":
+def _delivery_target_for_turn(turn: RuntimeTurnInput) -> DeliveryTarget:
+    if turn.runtime_mode == "future_task":
         return DeliveryTarget(
-            session_id=request.identity.session_id,
+            session_id=turn.identity.session_id,
             delivery_channel="future_task",
         )
     return DeliveryTarget(
-        session_id=request.identity.session_id,
-        reply_to_message_id=request.source_message_id,
+        session_id=turn.identity.session_id,
+        reply_to_message_id=turn.source_message_id,
         delivery_channel="message",
     )
 

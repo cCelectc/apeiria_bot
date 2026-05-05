@@ -13,30 +13,30 @@ from apeiria.app.ai.pipeline.relationship_steps import (
 if TYPE_CHECKING:
     from datetime import datetime
 
-    from apeiria.app.ai.pipeline.service import AIRuntimeReplyRequest
+    from apeiria.app.ai.session_runtime import RuntimeTurnInput
 
 
 async def apply_reply_observation_effects(
     *,
-    request: "AIRuntimeReplyRequest",
+    turn: "RuntimeTurnInput",
     current_time: "datetime",
 ) -> None:
     """Apply live observation writes before read-oriented context assembly."""
 
     del current_time
 
-    identity = request.identity
-    if request.runtime_mode == "message" and request.sentiment is not None:
+    identity = turn.identity
+    if turn.runtime_mode == "message" and turn.sentiment is not None:
         await update_relationship_state(
-            target=build_relationship_target(identity, request.user_id),
-            sentiment=request.sentiment,
-            is_tome=request.is_tome,
+            target=build_relationship_target(identity, turn.user_id),
+            sentiment=turn.sentiment,
+            is_tome=turn.is_tome,
         )
 
     await record_live_memory_recall(
         identity=identity,
-        user_id=request.user_id,
-        query_text=request.message_text,
+        user_id=turn.user_id,
+        query_text=turn.message_text,
     )
 
 

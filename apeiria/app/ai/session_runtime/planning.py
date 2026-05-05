@@ -40,9 +40,11 @@ if TYPE_CHECKING:
     from apeiria.ai.model import AIModelMessage
     from apeiria.ai.prompting import PromptPacket
     from apeiria.app.ai.future_task.models import AIFutureTaskDefinition
-    from apeiria.app.ai.pipeline.input_steps import ReplyInputs
-    from apeiria.app.ai.pipeline.service import AIRuntimeReplyRequest
     from apeiria.app.ai.reply_strategy import ReplyStrategyDecision
+    from apeiria.app.ai.session_runtime.context import (
+        RuntimeContextMaterials,
+        RuntimeTurnInput,
+    )
 
 
 @dataclass(frozen=True)
@@ -60,26 +62,26 @@ async def plan_runtime_turn(
 ) -> RuntimeTurnPlan | None:
     """Resolve the runtime-owned model, prompt, and tool plan for one turn."""
 
-    request = planning_input.request
-    inputs = planning_input.inputs
+    turn = planning_input.turn
+    context = planning_input.context
     social_decision = planning_input.social_decision
     current_time = planning_input.current_time
     trace_id = planning_input.trace_id
 
-    identity = request.identity
+    identity = turn.identity
     tool_execution_timeout_seconds = (
         get_ai_plugin_config().tool_execution_timeout_seconds
     )
     allowed_tool_specs = (
-        () if social_decision.tool_mode == "avoid" else tuple(inputs.allowed_tools)
+        () if social_decision.tool_mode == "avoid" else tuple(context.allowed_tools)
     )
     tool_exposure_plan = ToolOrchestrator().plan_exposure(
         allowed_tools=allowed_tool_specs,
-        policy=inputs.tool_policy,
+        policy=context.tool_policy,
         ordinary_ambient_group=(
             identity.scene_type == "group"
-            and not request.is_tome
-            and request.runtime_mode != "future_task"
+            and not turn.is_tome
+            and turn.runtime_mode != "future_task"
         ),
         execution_timeout_seconds=tool_execution_timeout_seconds,
         current_time=current_time,
@@ -88,12 +90,12 @@ async def plan_runtime_turn(
     skill_runtime = await tool_gateway.prepare(
         ToolGatewayRequest(
             session_id=identity.session_id,
-            source_message_id=request.source_message_id,
+            source_message_id=turn.source_message_id,
             trace_id=trace_id,
-            message_text=request.message_text,
-            policy=inputs.tool_policy,
-            recalled_memories=tuple(inputs.recalled_memories),
-            relationship_context=inputs.relationship_context,
+            message_text=turn.message_text,
+            policy=context.tool_policy,
+            recalled_memories=tuple(context.recalled_memories),
+            relationship_context=context.relationship_context,
             current_time=current_time,
             tool_mode=social_decision.tool_mode,
             execution_timeout_seconds=tool_execution_timeout_seconds,
@@ -104,7 +106,7 @@ async def plan_runtime_turn(
     )
     selected = await select_pipeline_model(
         task_class=pre_tool_task_class,
-        target=inputs.model_target,
+        target=context.model_target,
     )
     if selected is None:
         logger.debug(
@@ -117,8 +119,8 @@ async def plan_runtime_turn(
         return None
 
     skill_selection = await ai_skill_service.select_skills(
-        message_text=request.message_text,
-        conversation_summary=inputs.conversation_summary,
+        message_text=turn.message_text,
+        conversation_summary=context.conversation_summary,
     )
     prompt_input = RuntimePromptPlanningInput(
         skill_runtime=skill_runtime,
@@ -126,8 +128,8 @@ async def plan_runtime_turn(
         has_tools=tool_exposure_plan.has_executable_tools,
     )
     prompt_packet = build_initial_runtime_reply_prompt_packet(
-        request=request,
-        inputs=inputs,
+        turn=turn,
+        context=context,
         social_decision=social_decision,
         prompt_input=prompt_input,
     )
@@ -145,8 +147,8 @@ async def plan_runtime_turn(
         prompt_diagnostics=prompt_diagnostics,
         tool_exposure_plan=tool_exposure_plan,
         reply_compose_input=_initial_reply_compose_input(
-            request=request,
-            inputs=inputs,
+            turn=turn,
+            context=context,
             social_decision=social_decision,
             prompt_input=prompt_input,
         ),
@@ -158,8 +160,8 @@ async def plan_runtime_turn(
 
 def build_initial_runtime_reply_prompt_messages(
     *,
-    request: "AIRuntimeReplyRequest",
-    inputs: "ReplyInputs",
+    turn: "RuntimeTurnInput",
+    context: "RuntimeContextMaterials",
     social_decision: "ReplyStrategyDecision",
     prompt_input: RuntimeTurnPlan | RuntimePromptPlanningInput,
 ) -> tuple["AIModelMessage", ...]:
@@ -167,8 +169,8 @@ def build_initial_runtime_reply_prompt_messages(
 
     return render_messages(
         build_initial_runtime_reply_prompt_packet(
-            request=request,
-            inputs=inputs,
+            turn=turn,
+            context=context,
             social_decision=social_decision,
             prompt_input=prompt_input,
         )
@@ -177,8 +179,8 @@ def build_initial_runtime_reply_prompt_messages(
 
 def build_initial_runtime_reply_prompt_packet(
     *,
-    request: "AIRuntimeReplyRequest",
-    inputs: "ReplyInputs",
+    turn: "RuntimeTurnInput",
+    context: "RuntimeContextMaterials",
     social_decision: "ReplyStrategyDecision",
     prompt_input: RuntimeTurnPlan | RuntimePromptPlanningInput,
 ) -> "PromptPacket":
@@ -186,8 +188,8 @@ def build_initial_runtime_reply_prompt_packet(
 
     return build_pre_tool_reply_packet(
         _initial_reply_compose_input(
-            request=request,
-            inputs=inputs,
+            turn=turn,
+            context=context,
             social_decision=social_decision,
             prompt_input=prompt_input,
         ),
@@ -197,16 +199,16 @@ def build_initial_runtime_reply_prompt_packet(
 
 def build_initial_runtime_reply_prompt_diagnostics(
     *,
-    request: "AIRuntimeReplyRequest",
-    inputs: "ReplyInputs",
+    turn: "RuntimeTurnInput",
+    context: "RuntimeContextMaterials",
     social_decision: "ReplyStrategyDecision",
     prompt_input: RuntimeTurnPlan | RuntimePromptPlanningInput,
 ) -> dict[str, object]:
     """Build bounded prompt-region diagnostics for the first reply prompt."""
 
     packet = build_initial_runtime_reply_prompt_packet(
-        request=request,
-        inputs=inputs,
+        turn=turn,
+        context=context,
         social_decision=social_decision,
         prompt_input=prompt_input,
     )
@@ -215,14 +217,14 @@ def build_initial_runtime_reply_prompt_diagnostics(
 
 def _initial_reply_compose_input(
     *,
-    request: "AIRuntimeReplyRequest",
-    inputs: "ReplyInputs",
+    turn: "RuntimeTurnInput",
+    context: "RuntimeContextMaterials",
     social_decision: "ReplyStrategyDecision",
     prompt_input: RuntimeTurnPlan | RuntimePromptPlanningInput,
 ) -> AIRuntimeComposeInput:
     return _build_compose_input(
-        request=request,
-        inputs=inputs,
+        turn=turn,
+        context=context,
         social_decision=social_decision,
         skill_runtime=prompt_input.skill_runtime,
         skill_activation=prompt_input.skill_activation,
@@ -239,25 +241,25 @@ def _initial_reply_has_tools(
 
 def _build_compose_input(
     *,
-    request: "AIRuntimeReplyRequest",
-    inputs: "ReplyInputs",
+    turn: "RuntimeTurnInput",
+    context: "RuntimeContextMaterials",
     social_decision: "ReplyStrategyDecision",
     skill_runtime: ToolGatewayResult,
     skill_activation: str | None,
 ) -> AIRuntimeComposeInput:
     return AIRuntimeComposeInput(
-        persona=inputs.persona,
-        scene_type=request.identity.scene_type,
-        person_profile=inputs.person_profile,
-        relationship=inputs.relationship_context,
+        persona=context.persona,
+        scene_type=turn.identity.scene_type,
+        person_profile=context.person_profile,
+        relationship=context.relationship_context,
         tool_policy=skill_runtime.policy_text,
         tool_results=skill_runtime.result_lines,
-        memories=inputs.recalled_memories,
-        conversation_summary=inputs.conversation_summary,
+        memories=context.recalled_memories,
+        conversation_summary=context.conversation_summary,
         social_policy_summary=summarize_reply_strategy_decision(social_decision),
-        future_task_context=_build_future_task_context(request.future_task),
+        future_task_context=_build_future_task_context(turn.future_task),
         skill_activation=skill_activation,
-        turns=inputs.turns,
+        turns=context.turns,
     )
 
 

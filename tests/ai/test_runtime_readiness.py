@@ -15,7 +15,11 @@ from apeiria.app.ai.pipeline.input_steps import ReplyInputs
 from apeiria.app.ai.pipeline.relationship_steps import build_relationship_target
 from apeiria.app.ai.pipeline.service import AIRuntimeReplyRequest
 from apeiria.app.ai.reply_strategy import ReplyStrategyDecision
-from apeiria.app.ai.session_runtime import RuntimePlanningInput
+from apeiria.app.ai.session_runtime import (
+    RuntimeContextMaterials,
+    RuntimePlanningInput,
+    RuntimeTurnInput,
+)
 from apeiria.conversation.models import ChatSessionIdentity
 
 
@@ -382,8 +386,8 @@ def test_reply_preparation_records_no_model_diagnostic(
             planning_input=RuntimePlanningInput(
                 stage="planning",
                 trace_id="trace-1",
-                request=request,
-                inputs=inputs,
+                turn=RuntimeTurnInput.from_reply_request(request),
+                context=RuntimeContextMaterials.from_reply_inputs(inputs),
                 social_decision=social_decision,
                 current_time=datetime(2026, 4, 27, tzinfo=timezone.utc),
             ),

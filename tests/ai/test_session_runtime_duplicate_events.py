@@ -21,6 +21,7 @@ from apeiria.app.ai.session_runtime import (
     DefaultRuntimePlanningStage,
     DefaultRuntimePolicyStage,
     DefaultRuntimeTraceStage,
+    RuntimeContextMaterials,
     RuntimeExecutionOutcome,
     RuntimePlanningInput,
     RuntimeTurnPlan,
@@ -118,9 +119,10 @@ def test_duplicate_platform_event_stops_before_ai_side_effects(
 
     async def gather_reply_inputs(*_args: Any, **_kwargs: Any) -> object:
         counts["inputs"] += 1
-        return SimpleNamespace(
+        return RuntimeContextMaterials(
             turns=[],
             conversation_summary=None,
+            relationship_target=object(),  # type: ignore[arg-type]
             relationship_context=None,
             persona=None,
             allowed_tools=(),
@@ -150,7 +152,7 @@ def test_duplicate_platform_event_stops_before_ai_side_effects(
         *,
         planning_input: RuntimePlanningInput,
     ) -> RuntimeTurnPlan:
-        assert planning_input.inputs is not None
+        assert planning_input.context is not None
         return RuntimeTurnPlan(
             stage="planning",
             selected=selected_model("duplicate"),

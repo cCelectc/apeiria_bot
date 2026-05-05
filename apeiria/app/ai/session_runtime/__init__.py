@@ -5,7 +5,9 @@ from __future__ import annotations
 from .context import (
     DeliveryTarget,
     MergeMetadata,
+    RuntimeContextMaterials,
     RuntimeMode,
+    RuntimeTurnInput,
     RuntimeTurnSource,
     TurnContext,
 )
@@ -22,7 +24,7 @@ from .engine import (
 )
 from .hard_rules import (
     decide_runtime_hard_rule,
-    map_legacy_skip_to_runtime_decision,
+    social_skip_to_runtime_decision,
 )
 from .planning import (
     RuntimePromptPlanningInput,
@@ -102,6 +104,7 @@ __all__ = [
     "RuntimeCommitResult",
     "RuntimeCommitStage",
     "RuntimeContextBundle",
+    "RuntimeContextMaterials",
     "RuntimeContextStage",
     "RuntimeExecutionOutcome",
     "RuntimeExecutionStage",
@@ -121,6 +124,7 @@ __all__ = [
     "RuntimeTraceInput",
     "RuntimeTraceOutcome",
     "RuntimeTraceStage",
+    "RuntimeTurnInput",
     "RuntimeTurnPlan",
     "RuntimeTurnSource",
     "SessionRuntimePolicy",
@@ -137,7 +141,7 @@ __all__ = [
     "build_turn_context",
     "compile_tool_exposure_provider_schema",
     "decide_runtime_hard_rule",
-    "map_legacy_skip_to_runtime_decision",
     "plan_runtime_turn",
     "project_turn_trace",
+    "social_skip_to_runtime_decision",
 ]

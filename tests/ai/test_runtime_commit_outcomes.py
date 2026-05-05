@@ -17,8 +17,10 @@ from apeiria.app.ai.session_runtime import (
     AISessionTurnEngine,
     DefaultRuntimeCommitStage,
     RuntimeCommitInput,
+    RuntimeContextMaterials,
     RuntimeExecutionOutcome,
     RuntimeHardRuleDecision,
+    RuntimeTurnInput,
     RuntimeTurnPlan,
     ToolExposurePlan,
 )
@@ -170,11 +172,12 @@ def _commit_input(
     *,
     request: AIRuntimeReplyRequest | None = None,
 ) -> RuntimeCommitInput:
+    reply_request = request or _request()
     return RuntimeCommitInput(
         stage="commit",
         trace_id="trace-1",
-        request=request or _request(),
-        inputs=_inputs(),
+        turn=RuntimeTurnInput.from_reply_request(reply_request),
+        context=RuntimeContextMaterials.from_reply_inputs(_inputs()),
         social_decision=_social_decision(),
         plan=_plan(),
         generation=_execution(),
@@ -207,15 +210,15 @@ class _CommitPersistenceStage:
 
 
 def test_commit_records_partial_delivery_failure() -> None:
-    deliveries: list[tuple[AIRuntimeReplyRequest, str, str]] = []
+    deliveries: list[tuple[RuntimeTurnInput, str, str]] = []
 
     async def deliver_reply(
-        request: AIRuntimeReplyRequest,
+        turn: RuntimeTurnInput,
         reply_text: str,
         *,
         trace_id: str = "",
     ) -> DeliveryOutcome:
-        deliveries.append((request, reply_text, trace_id))
+        deliveries.append((turn, reply_text, trace_id))
         return DeliveryOutcome(
             delivered=False,
             status="failed",
@@ -240,7 +243,9 @@ def test_commit_records_partial_delivery_failure() -> None:
         )
     )
 
-    assert deliveries == [(_request(), "reminder", "trace-1")]
+    assert deliveries == [
+        (RuntimeTurnInput.from_reply_request(_request()), "reminder", "trace-1")
+    ]
     assert commit.commit_status == "partial"
     assert commit.delivery_result is not None
     assert commit.delivery_result.reason == "bot_not_connected"

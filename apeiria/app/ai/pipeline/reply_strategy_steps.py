@@ -22,8 +22,8 @@ if TYPE_CHECKING:
     from apeiria.ai.prompting import ReplyPersonaPromptBundleLike
     from apeiria.ai.tools import AIToolSpec
     from apeiria.app.ai.pipeline.relationship_steps import AIRelationshipTarget
-    from apeiria.app.ai.pipeline.service import AIRuntimeReplyRequest
     from apeiria.app.ai.reply_strategy import ReplyStrategyDecision
+    from apeiria.app.ai.session_runtime import RuntimeTurnInput
     from apeiria.conversation.models import ChatContextMessageView
 
 
@@ -42,24 +42,24 @@ async def resolve_initiative_bias(
 
 
 def build_fallback_wake_context(
-    request: "AIRuntimeReplyRequest",
+    turn: "RuntimeTurnInput",
 ) -> WakeContext:
     """Synthesize a wake context for runtime paths that do not have one."""
 
-    identity = request.identity
+    identity = turn.identity
     return WakeContext(
-        bot_self_id=request.sender_id,
-        user_id=request.user_id,
-        message_text=request.message_text,
-        is_tome=request.is_tome,
+        bot_self_id=turn.sender_id,
+        user_id=turn.user_id,
+        message_text=turn.message_text,
+        is_tome=turn.is_tome,
         is_private=identity.scene_type == "private",
-        is_future_task=request.runtime_mode == "future_task",
+        is_future_task=turn.runtime_mode == "future_task",
     )
 
 
 async def decide_whether_to_speak(  # noqa: PLR0913
     *,
-    request: "AIRuntimeReplyRequest",
+    turn: "RuntimeTurnInput",
     wake_context: WakeContext | None,
     turns: list["ChatContextMessageView"],
     conversation_summary: str | None,
@@ -73,14 +73,14 @@ async def decide_whether_to_speak(  # noqa: PLR0913
 ) -> "ReplyStrategyDecision":
     """Evaluate whether the bot should reply; log suppression when skipped."""
 
-    identity = request.identity
+    identity = turn.identity
     if wake_context is None:
-        wake_context = build_fallback_wake_context(request)
+        wake_context = build_fallback_wake_context(turn)
     decision = await reply_strategy_service.evaluate(
         wake_context=wake_context,
         session_id=identity.session_id,
         scene_type=identity.scene_type,
-        message_text=request.message_text,
+        message_text=turn.message_text,
         latest_user_turn_text=latest_user_turn_text(turns),
         conversation_summary=conversation_summary,
         relationship_context=relationship_context,
@@ -90,7 +90,7 @@ async def decide_whether_to_speak(  # noqa: PLR0913
         recent_bot_turn_count=count_recent_bot_turns(turns),
         last_bot_turn_at=latest_bot_turn_at(turns),
         current_time=current_time,
-        runtime_mode=request.runtime_mode,
+        runtime_mode=turn.runtime_mode,
         initiative_bias=initiative_bias,
         target=model_target,
     )
@@ -98,7 +98,7 @@ async def decide_whether_to_speak(  # noqa: PLR0913
         logger.info(
             "AI trace {} suppressed {} reply for session {} action={} reasons={}",
             trace_id,
-            request.runtime_mode,
+            turn.runtime_mode,
             identity.session_id,
             decision.action,
             ",".join(decision.reason_codes),

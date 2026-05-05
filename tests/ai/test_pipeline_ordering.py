@@ -12,7 +12,7 @@ from apeiria.ai.model import AIModelBindingTarget
 from apeiria.ai.tools import AIToolPolicy
 from apeiria.app.ai.pipeline import input_steps
 from apeiria.app.ai.pipeline import service as service_module
-from apeiria.app.ai.pipeline.input_steps import gather_reply_inputs
+from apeiria.app.ai.pipeline.input_steps import collect_reply_inputs
 from apeiria.app.ai.pipeline.service import (
     AIRuntimeReplyRequest,
     AIRuntimeReplyResult,
@@ -234,7 +234,7 @@ def test_reply_input_gathering_is_read_oriented_except_summary(  # noqa: C901
     monkeypatch.setattr(input_steps, "resolve_initiative_bias", resolve_initiative)
 
     inputs = asyncio.run(
-        gather_reply_inputs(
+        collect_reply_inputs(
             _request(sentiment=object()),
             datetime(2026, 4, 29, 12, 0, tzinfo=timezone.utc),
         )

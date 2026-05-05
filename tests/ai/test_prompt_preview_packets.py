@@ -237,14 +237,14 @@ def test_prompt_preview_planning_matches_runtime_prompt_projection() -> None:
         raw_data=None,
         created_at=now,
     )
-    request = module._build_preview_request(
+    preview_turn = module._build_preview_turn(
         identity=identity,
         latest_user_turn=turn,
         latest_user_message="hello",
         user_id="user-1",
     )
     context_bundle = module._build_preview_context_bundle(
-        request=request,
+        turn=preview_turn,
         turns=[
             ChatContextMessageView(
                 message_id="msg-1",
@@ -266,10 +266,7 @@ def test_prompt_preview_planning_matches_runtime_prompt_projection() -> None:
         allowed_tools=(),
     )
     hard_rule_decision = module._build_preview_hard_rule_decision(
-        identity=identity,
-        latest_user_turn=turn,
-        latest_user_message="hello",
-        user_id="user-1",
+        turn=preview_turn,
         now=now,
     )
     social_decision = module._build_preview_social_decision(
@@ -287,16 +284,16 @@ def test_prompt_preview_planning_matches_runtime_prompt_projection() -> None:
     )
 
     preview_channels, preview_diagnostics, *_ = module._build_preview_prompt_outputs(
-        request=request,
-        inputs=context_bundle.inputs,
+        turn=preview_turn,
+        context=context_bundle.context,
         prompt_planning=prompt_planning,
         has_tools=False,
         hard_rule_decision=hard_rule_decision,
         social_decision=social_decision,
     )
     packet = planning.build_initial_runtime_reply_prompt_packet(
-        request=request,
-        inputs=context_bundle.inputs,
+        turn=preview_turn,
+        context=context_bundle.context,
         social_decision=social_decision,
         prompt_input=prompt_planning,
     )

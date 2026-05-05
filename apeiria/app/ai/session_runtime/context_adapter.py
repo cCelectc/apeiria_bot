@@ -4,17 +4,15 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from .context import RuntimeTurnSource, TurnContext
+from .context import TurnContext
 
 if TYPE_CHECKING:
     from datetime import datetime
 
     from apeiria.ai.model import AIModelMessage
-    from apeiria.app.ai.pipeline.input_steps import ReplyInputs
-    from apeiria.app.ai.pipeline.service import AIRuntimeReplyRequest
     from apeiria.app.ai.reply_strategy.models import ReplyStrategyDecision
 
-    from .context import DeliveryTarget
+    from .context import DeliveryTarget, RuntimeContextMaterials, RuntimeTurnInput
     from .strategy import RuntimeHardRuleDecision
     from .tools import ToolExposurePlan
 
@@ -22,8 +20,8 @@ if TYPE_CHECKING:
 def build_turn_context(  # noqa: PLR0913
     *,
     trace_id: str,
-    request: "AIRuntimeReplyRequest",
-    inputs: "ReplyInputs",
+    turn: "RuntimeTurnInput",
+    context: "RuntimeContextMaterials",
     hard_decision: "RuntimeHardRuleDecision",
     social_decision: "ReplyStrategyDecision",
     delivery_target: "DeliveryTarget",
@@ -32,26 +30,16 @@ def build_turn_context(  # noqa: PLR0913
     current_time: "datetime",
     prompt_diagnostics: dict[str, object] | None = None,
 ) -> TurnContext:
-    """Freeze one behavior-preserving runtime turn context from pipeline state."""
+    """Freeze one behavior-preserving runtime turn context."""
 
-    identity = request.identity
     return TurnContext(
         trace_id=trace_id,
-        identity=identity,
-        source=RuntimeTurnSource(
-            runtime_mode=request.runtime_mode,
-            message_text=request.message_text,
-            source_message_id=request.source_message_id,
-            user_id=request.user_id,
-            direct_signal=request.is_tome,
-            is_private=identity.scene_type == "private",
-            event_dedupe_key=request.event_dedupe_key,
-            event_dedupe_claimed=request.event_dedupe_claimed,
-        ),
+        identity=turn.identity,
+        source=turn.source,
         delivery_target=delivery_target,
         current_time=current_time,
-        model_target=inputs.model_target,
-        tool_policy=inputs.tool_policy,
+        model_target=context.model_target,
+        tool_policy=context.tool_policy,
         tool_exposure_plan=tool_exposure_plan,
         prompt_messages=tuple(prompt_messages),
         prompt_diagnostics=prompt_diagnostics or {},

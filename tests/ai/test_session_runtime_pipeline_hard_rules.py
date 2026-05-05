@@ -11,7 +11,7 @@ from apeiria.app.ai.pipeline.service import (
     AITraceContext,
 )
 from apeiria.app.ai.reply_strategy import ReplyStrategyDecision, WakeContext
-from apeiria.app.ai.session_runtime import map_legacy_skip_to_runtime_decision
+from apeiria.app.ai.session_runtime import social_skip_to_runtime_decision
 from apeiria.conversation.models import ChatSessionIdentity
 
 
@@ -202,12 +202,12 @@ def test_observe_hard_rule_skips_input_gather_and_social_judgment(
         ),
     ],
 )
-def test_legacy_no_reply_decisions_map_to_runtime_vocabulary(
+def test_social_no_reply_decisions_project_runtime_vocabulary(
     legacy: ReplyStrategyDecision,
     expected_action: str,
     expected_reason: tuple[str, ...],
 ) -> None:
-    mapped = map_legacy_skip_to_runtime_decision(legacy)
+    mapped = social_skip_to_runtime_decision(legacy)
 
     assert mapped.action == expected_action
     assert mapped.reason_codes == expected_reason

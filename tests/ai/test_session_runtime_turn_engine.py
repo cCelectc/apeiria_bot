@@ -27,10 +27,13 @@ from apeiria.app.ai.session_runtime import (
     DefaultRuntimePlanningStage,
     DefaultRuntimePolicyStage,
     DefaultRuntimeTraceStage,
+    RuntimeContextMaterials,
     RuntimeExecutionOutcome,
     RuntimeIngressInput,
     RuntimePlanningInput,
     RuntimeSocialDecisionInput,
+    RuntimeTraceOutcome,
+    RuntimeTurnInput,
     RuntimeTurnPlan,
     ToolExposurePlan,
     TurnContext,
@@ -38,6 +41,8 @@ from apeiria.app.ai.session_runtime import (
 from apeiria.app.ai.session_runtime import engine as engine_module
 from apeiria.conversation.models import ChatSessionIdentity
 from tests.ai.agent_turn_helpers import model_response, selected_model
+
+LIVE_RUNTIME_LEGACY_MAPPER_ERROR = "live runtime must not call legacy skip mapper"
 
 
 def _request() -> AIRuntimeReplyRequest:
@@ -89,6 +94,20 @@ def _inputs() -> ReplyInputs:
         allowed_tools=(),
         initiative_bias=0.0,
     )
+
+
+def _context_materials(inputs: ReplyInputs | None = None) -> RuntimeContextMaterials:
+    return RuntimeContextMaterials.from_reply_inputs(inputs or _inputs())
+
+
+def _runtime_context_collector(
+    inputs: ReplyInputs,
+) -> RuntimeContextMaterials:
+    return _context_materials(inputs)
+
+
+def _turn(request: AIRuntimeReplyRequest | None = None) -> RuntimeTurnInput:
+    return RuntimeTurnInput.from_reply_request(request or _request())
 
 
 def _social_decision() -> ReplyStrategyDecision:
@@ -213,8 +232,11 @@ def test_reply_pipeline_passes_turn_context_to_generation(
     captured: dict[str, TurnContext] = {}
     expected_plan = plan
 
-    async def gather_reply_inputs(*_args: Any, **_kwargs: Any) -> ReplyInputs:
-        return inputs
+    async def gather_reply_inputs(
+        *_args: Any,
+        **_kwargs: Any,
+    ) -> RuntimeContextMaterials:
+        return _runtime_context_collector(inputs)
 
     async def decide_whether_to_speak(
         *_args: Any,
@@ -226,8 +248,8 @@ def test_reply_pipeline_passes_turn_context_to_generation(
         *,
         planning_input: RuntimePlanningInput,
     ) -> RuntimeTurnPlan:
-        assert planning_input.request is runtime_request
-        assert planning_input.inputs is inputs
+        assert planning_input.turn == _turn(runtime_request)
+        assert planning_input.context == _context_materials(inputs)
         assert planning_input.social_decision is social_decision
         return plan
 
@@ -305,8 +327,11 @@ def test_reply_pipeline_persists_runner_turn_result(
     captured: dict[str, AgentTurnResult | None] = {}
     inputs = _inputs()
 
-    async def gather_reply_inputs(*_args: Any, **_kwargs: Any) -> ReplyInputs:
-        return inputs
+    async def gather_reply_inputs(
+        *_args: Any,
+        **_kwargs: Any,
+    ) -> RuntimeContextMaterials:
+        return _runtime_context_collector(inputs)
 
     async def decide_whether_to_speak(
         *_args: Any,
@@ -318,7 +343,7 @@ def test_reply_pipeline_persists_runner_turn_result(
         *,
         planning_input: RuntimePlanningInput,
     ) -> RuntimeTurnPlan:
-        assert planning_input.inputs is inputs
+        assert planning_input.context == _context_materials(inputs)
         return RuntimeTurnPlan(
             stage="planning",
             selected=selected,
@@ -423,9 +448,12 @@ def test_turn_engine_passes_runtime_plan_through_execution_and_commit(
     order: list[str] = []
     expected_plan = plan
 
-    async def gather_reply_inputs(*_args: Any, **_kwargs: Any) -> ReplyInputs:
+    async def gather_reply_inputs(
+        *_args: Any,
+        **_kwargs: Any,
+    ) -> RuntimeContextMaterials:
         order.append("context")
-        return inputs
+        return _runtime_context_collector(inputs)
 
     async def decide_whether_to_speak(
         *_args: Any,
@@ -439,7 +467,7 @@ def test_turn_engine_passes_runtime_plan_through_execution_and_commit(
         planning_input: RuntimePlanningInput,
     ) -> RuntimeTurnPlan:
         order.append("planning")
-        assert planning_input.inputs is inputs
+        assert planning_input.context == _context_materials(inputs)
         assert planning_input.social_decision is social_decision
         return plan
 
@@ -505,7 +533,7 @@ def test_turn_engine_passes_runtime_plan_through_execution_and_commit(
         engine.run_reply_turn(
             trace_id="trace-engine",
             trace=AITraceContext(kind="test", trigger="unit"),
-            request=_request(),
+            turn=_turn(),
             wake_context=_wake(),
             current_time=datetime(2026, 4, 28, tzinfo=timezone.utc),
             session_runtime=None,
@@ -544,9 +572,12 @@ def test_turn_engine_applies_observation_effects_before_context(
     async def apply_observation_effects(*_args: Any, **_kwargs: Any) -> None:
         order.append("observation")
 
-    async def gather_reply_inputs(*_args: Any, **_kwargs: Any) -> ReplyInputs:
+    async def gather_reply_inputs(
+        *_args: Any,
+        **_kwargs: Any,
+    ) -> RuntimeContextMaterials:
         order.append("context")
-        return inputs
+        return _runtime_context_collector(inputs)
 
     async def decide_whether_to_speak(
         *_args: Any,
@@ -560,7 +591,7 @@ def test_turn_engine_applies_observation_effects_before_context(
         planning_input: RuntimePlanningInput,
     ) -> RuntimeTurnPlan:
         order.append("planning")
-        assert planning_input.inputs is inputs
+        assert planning_input.context == _context_materials(inputs)
         assert planning_input.social_decision is social_decision
         return plan
 
@@ -614,7 +645,7 @@ def test_turn_engine_applies_observation_effects_before_context(
         engine.run_reply_turn(
             trace_id="trace-engine",
             trace=AITraceContext(kind="test", trigger="unit"),
-            request=_request(),
+            turn=_turn(),
             wake_context=_wake(),
             current_time=datetime(2026, 4, 28, tzinfo=timezone.utc),
             session_runtime=None,
@@ -683,8 +714,11 @@ def test_ingress_stages_share_structured_ingress_input(
             captured["context"] = ingress_input
             return await super().assemble(ingress_input=ingress_input)
 
-    async def gather_reply_inputs(*_args: Any, **_kwargs: Any) -> ReplyInputs:
-        return inputs
+    async def gather_reply_inputs(
+        *_args: Any,
+        **_kwargs: Any,
+    ) -> RuntimeContextMaterials:
+        return _runtime_context_collector(inputs)
 
     async def decide_whether_to_speak(
         *_args: Any,
@@ -696,7 +730,7 @@ def test_ingress_stages_share_structured_ingress_input(
         *,
         planning_input: RuntimePlanningInput,
     ) -> RuntimeTurnPlan:
-        assert planning_input.request is captured["policy"].request
+        assert planning_input.turn is captured["policy"].turn
         return plan
 
     async def execute_runtime_turn(
@@ -744,7 +778,7 @@ def test_ingress_stages_share_structured_ingress_input(
         engine.run_reply_turn(
             trace_id="trace-ingress",
             trace=AITraceContext(kind="test", trigger="unit"),
-            request=_request(),
+            turn=_turn(),
             wake_context=_wake(),
             current_time=datetime(2026, 4, 28, tzinfo=timezone.utc),
             session_runtime=None,
@@ -754,7 +788,7 @@ def test_ingress_stages_share_structured_ingress_input(
     assert commit is not None
     assert captured["policy"] is captured["observation"]
     assert captured["policy"] is captured["context"]
-    assert captured["policy"].request == _request()
+    assert captured["policy"].turn == _turn()
     assert captured["policy"].wake_context == _wake()
 
 
@@ -785,8 +819,11 @@ def test_turn_engine_passes_structured_social_policy_input(
     wake_context = _wake()
     current_time = datetime(2026, 4, 28, tzinfo=timezone.utc)
 
-    async def gather_reply_inputs(*_args: Any, **_kwargs: Any) -> ReplyInputs:
-        return inputs
+    async def gather_reply_inputs(
+        *_args: Any,
+        **_kwargs: Any,
+    ) -> RuntimeContextMaterials:
+        return _runtime_context_collector(inputs)
 
     async def decide_whether_to_speak(
         *_args: Any,
@@ -855,7 +892,7 @@ def test_turn_engine_passes_structured_social_policy_input(
         engine.run_reply_turn(
             trace_id="trace-social",
             trace=AITraceContext(kind="test", trigger="unit"),
-            request=runtime_request,
+            turn=_turn(runtime_request),
             wake_context=wake_context,
             current_time=current_time,
             session_runtime=None,
@@ -867,10 +904,74 @@ def test_turn_engine_passes_structured_social_policy_input(
     social_input = captured[0]
     assert social_input.stage == "policy"
     assert social_input.trace_id == "trace-social"
-    assert social_input.request is runtime_request
+    assert social_input.turn == _turn(runtime_request)
     assert social_input.wake_context is wake_context
-    assert social_input.context.inputs is inputs
+    assert social_input.context.context == _context_materials(inputs)
     assert social_input.current_time is current_time
+
+
+def test_turn_engine_traces_social_no_reply_without_legacy_mapper(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    inputs = _inputs()
+    social_decision = ReplyStrategyDecision(
+        action="silent",
+        should_speak=False,
+        tool_mode="avoid",
+        reason_codes=("wait_for_more_context",),
+        reason_text="wait for more context",
+        evidence={f"evidence_{index}": index for index in range(20)},
+        decision_source="llm",
+    )
+    traces: list[RuntimeTraceOutcome] = []
+
+    async def gather_reply_inputs(
+        *_args: Any,
+        **_kwargs: Any,
+    ) -> RuntimeContextMaterials:
+        return _runtime_context_collector(inputs)
+
+    async def decide_whether_to_speak(
+        *_args: Any,
+        **_kwargs: Any,
+    ) -> ReplyStrategyDecision:
+        return social_decision
+
+    def unexpected_legacy_mapper(*_args: object, **_kwargs: object) -> object:
+        raise AssertionError(LIVE_RUNTIME_LEGACY_MAPPER_ERROR)
+
+    monkeypatch.setattr(
+        engine_module,
+        "map_legacy_skip_to_runtime_decision",
+        unexpected_legacy_mapper,
+        raising=False,
+    )
+    engine = AISessionTurnEngine(
+        policy_stage=DefaultRuntimePolicyStage(decide_whether_to_speak),
+        observation_stage=DefaultRuntimeObservationStage(_noop_observation_effects),
+        context_stage=DefaultRuntimeContextStage(gather_reply_inputs),
+        trace_stage=DefaultRuntimeTraceStage(trace_observer=traces.append),
+    )
+
+    result = asyncio.run(
+        engine.run_reply_turn(
+            trace_id="trace-social-skip",
+            trace=AITraceContext(kind="test", trigger="unit"),
+            turn=_turn(),
+            wake_context=_wake(),
+            current_time=datetime(2026, 4, 28, tzinfo=timezone.utc),
+            session_runtime=None,
+        )
+    )
+
+    assert result is None
+    assert len(traces) == 1
+    trace = traces[0].trace
+    assert trace.strategy_action == "wait"
+    assert trace.strategy_reason_codes == ("ambient_merge_window",)
+    assert trace.skip_reason == "ambient_merge_window"
+    assert trace.model_attempts == ()
+    assert trace.tool_attempts == ()
 
 
 @pytest.mark.parametrize("tool_count", [0, 1])
@@ -910,7 +1011,7 @@ def test_turn_planning_is_side_effect_free_and_matches_prompt_messages(
         planning_input: RuntimePlanningInput,
     ) -> RuntimeTurnPlan:
         calls.append("planning")
-        assert planning_input.inputs is inputs
+        assert planning_input.context == _context_materials(inputs)
         assert planning_input.social_decision is social_decision
         return plan
 
@@ -923,8 +1024,8 @@ def test_turn_planning_is_side_effect_free_and_matches_prompt_messages(
     result = asyncio.run(
         engine.plan_turn(
             trace_id="trace-plan",
-            request=_request(),
-            inputs=inputs,
+            turn=_turn(),
+            context=_context_materials(inputs),
             social_decision=social_decision,
             current_time=datetime(2026, 4, 28, tzinfo=timezone.utc),
         )
@@ -973,8 +1074,8 @@ def test_default_planning_stage_receives_structured_planning_input() -> None:
     result = asyncio.run(
         engine.plan_turn(
             trace_id="trace-plan",
-            request=runtime_request,
-            inputs=inputs,
+            turn=_turn(runtime_request),
+            context=_context_materials(inputs),
             social_decision=social_decision,
             current_time=current_time,
         )
@@ -985,8 +1086,8 @@ def test_default_planning_stage_receives_structured_planning_input() -> None:
         RuntimePlanningInput(
             stage="planning",
             trace_id="trace-plan",
-            request=runtime_request,
-            inputs=inputs,
+            turn=_turn(runtime_request),
+            context=_context_materials(inputs),
             social_decision=social_decision,
             current_time=current_time,
         )

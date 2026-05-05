@@ -189,6 +189,14 @@ def map_legacy_skip_to_runtime_decision(
 ) -> RuntimeHardRuleDecision:
     """Project a legacy no-reply strategy result into runtime vocabulary."""
 
+    return social_skip_to_runtime_decision(decision)
+
+
+def social_skip_to_runtime_decision(
+    decision: ReplyStrategyDecision,
+) -> RuntimeHardRuleDecision:
+    """Project a social no-reply decision into runtime-native hard-rule terms."""
+
     reason_text = decision.reason_text or ",".join(decision.reason_codes)
     reason_blob = " ".join((*decision.reason_codes, reason_text)).lower()
     if decision.action == "drop":
@@ -213,9 +221,10 @@ def map_legacy_skip_to_runtime_decision(
         reason_codes=(reason_code,),
         reason_text=reason_text,
         evidence={
-            "legacy_action": decision.action,
-            "legacy_decision_source": decision.decision_source,
-            "legacy_reason_codes": decision.reason_codes,
+            "social_action": decision.action,
+            "social_decision_source": decision.decision_source,
+            "social_reason_codes": decision.reason_codes,
+            "social_tool_mode": decision.tool_mode,
         },
         should_observe=should_observe,
         should_reply=False,

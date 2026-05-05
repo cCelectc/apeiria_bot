@@ -5,7 +5,13 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Literal, Protocol, runtime_checkable
 
-from .context import RuntimeTurnSource, TurnContext  # noqa: TC001
+from .context import (  # noqa: TC001
+    RuntimeContextMaterials,
+    RuntimeTurnInput,
+    RuntimeTurnSource,
+    TurnContext,
+)
+from .runtime import InMemoryAISessionRuntime  # noqa: TC001
 from .strategy import RuntimeHardRuleDecision  # noqa: TC001
 from .tools import ToolExposurePlan  # noqa: TC001
 from .trace import TurnTrace  # noqa: TC001
@@ -23,10 +29,7 @@ if TYPE_CHECKING:
     from apeiria.app.ai.agent_turn import AgentTurnResult
     from apeiria.app.ai.pipeline.composer import AIRuntimeComposeInput
     from apeiria.app.ai.pipeline.delivery_steps import DeliveryOutcome
-    from apeiria.app.ai.pipeline.input_steps import ReplyInputs
-    from apeiria.app.ai.pipeline.service import AIRuntimeReplyRequest
     from apeiria.app.ai.reply_strategy.models import ReplyStrategyDecision, WakeContext
-    from apeiria.app.ai.session_runtime.runtime import InMemoryAISessionRuntime
 
 RuntimeStageName = Literal[
     "ingress",
@@ -59,8 +62,14 @@ class RuntimeContextBundle:
     """Read-oriented context materials gathered for one turn."""
 
     stage: RuntimeStageName
-    inputs: "ReplyInputs"
+    context: RuntimeContextMaterials
     diagnostics: dict[str, Any] = field(default_factory=dict)
+
+    @property
+    def inputs(self) -> RuntimeContextMaterials:
+        """Compatibility alias while callers move to runtime context materials."""
+
+        return self.context
 
 
 @dataclass(frozen=True, slots=True)
@@ -68,7 +77,7 @@ class RuntimeIngressInput:
     """Typed source input shared by pre-planning ingress stages."""
 
     stage: RuntimeStageName
-    request: "AIRuntimeReplyRequest"
+    turn: RuntimeTurnInput
     current_time: "datetime"
     wake_context: "WakeContext"
     session_runtime: "InMemoryAISessionRuntime | None" = None
@@ -80,8 +89,8 @@ class RuntimePlanningInput:
 
     stage: RuntimeStageName
     trace_id: str
-    request: "AIRuntimeReplyRequest"
-    inputs: "ReplyInputs"
+    turn: RuntimeTurnInput
+    context: RuntimeContextMaterials
     social_decision: "ReplyStrategyDecision"
     current_time: "datetime"
 
@@ -92,7 +101,7 @@ class RuntimeSocialDecisionInput:
 
     stage: RuntimeStageName
     trace_id: str
-    request: "AIRuntimeReplyRequest"
+    turn: RuntimeTurnInput
     wake_context: "WakeContext"
     context: RuntimeContextBundle
     current_time: "datetime"
@@ -142,8 +151,8 @@ class RuntimeCommitInput:
 
     stage: RuntimeStageName
     trace_id: str
-    request: "AIRuntimeReplyRequest"
-    inputs: "ReplyInputs"
+    turn: RuntimeTurnInput
+    context: RuntimeContextMaterials
     social_decision: "ReplyStrategyDecision"
     plan: RuntimeTurnPlan
     generation: RuntimeExecutionOutcome
@@ -180,7 +189,7 @@ class RuntimeTraceInput:
 
     stage: RuntimeStageName
     trace_id: str
-    request: "AIRuntimeReplyRequest"
+    turn: RuntimeTurnInput
     strategy_decision: RuntimeHardRuleDecision
     turn_result: "AgentTurnResult | None"
     delivery_result: "DeliveryOutcome | None" = None

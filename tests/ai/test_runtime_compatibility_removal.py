@@ -58,3 +58,33 @@ def test_admin_read_surfaces_use_native_trace_and_prompt_diagnostics() -> None:
     assert "prompt_region_diagnostics" in prompt_projection_source
     assert "generation_steps" not in prompt_preview_source
     assert "generation_steps" not in prompt_projection_source
+
+
+def test_prompt_preview_does_not_rebuild_legacy_pipeline_inputs() -> None:
+    prompt_preview_source = Path(
+        "apeiria/app/ai/session_read/prompt_preview.py"
+    ).read_text()
+
+    assert "AIRuntimeReplyRequest" not in prompt_preview_source
+    assert "ReplyInputs" not in prompt_preview_source
+    assert "type: ignore" not in prompt_preview_source
+
+
+def test_runtime_stage_and_preview_contracts_do_not_expose_legacy_dtos() -> None:
+    for source_path in (
+        Path("apeiria/app/ai/session_runtime/stages.py"),
+        Path("apeiria/app/ai/session_runtime/planning.py"),
+        Path("apeiria/app/ai/session_runtime/context_adapter.py"),
+        Path("apeiria/app/ai/session_runtime/engine.py"),
+        Path("apeiria/app/ai/session_read/prompt_preview.py"),
+    ):
+        source = source_path.read_text()
+
+        assert "AIRuntimeReplyRequest" not in source
+        assert "ReplyInputs" not in source
+
+
+def test_live_runtime_does_not_call_legacy_social_skip_mapping() -> None:
+    engine_source = Path("apeiria/app/ai/session_runtime/engine.py").read_text()
+
+    assert "map_legacy_skip_to_runtime_decision" not in engine_source

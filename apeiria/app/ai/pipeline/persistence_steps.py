@@ -21,10 +21,13 @@ from apeiria.conversation.service import ChatMessageCreate, chat_session_service
 
 if TYPE_CHECKING:
     from apeiria.app.ai.agent_turn import AgentTurnResult
-    from apeiria.app.ai.pipeline.input_steps import ReplyInputs
-    from apeiria.app.ai.pipeline.service import AIRuntimeReplyRequest
     from apeiria.app.ai.reply_strategy import ReplyStrategyDecision
-    from apeiria.app.ai.session_runtime import RuntimeExecutionOutcome, RuntimeTurnPlan
+    from apeiria.app.ai.session_runtime import (
+        RuntimeContextMaterials,
+        RuntimeExecutionOutcome,
+        RuntimeTurnInput,
+        RuntimeTurnPlan,
+    )
     from apeiria.conversation.models import ChatSessionIdentity
 
 
@@ -35,14 +38,14 @@ class AssistantReplyPersistenceStage:
     async def persist_tool_observations(
         self,
         *,
-        request: "AIRuntimeReplyRequest",
+        turn: "RuntimeTurnInput",
         generation: "RuntimeExecutionOutcome",
         trace_id: str,
     ) -> str:
         if not generation.skill_runtime.turns:
             return "not_required"
         await append_tool_observation_turns(
-            identity=request.identity,
+            identity=turn.identity,
             trace_id=trace_id,
             tool_turns=generation.skill_runtime.turns,
         )
@@ -51,8 +54,8 @@ class AssistantReplyPersistenceStage:
     async def persist_assistant_message(  # noqa: PLR0913
         self,
         *,
-        request: "AIRuntimeReplyRequest",
-        inputs: "ReplyInputs",
+        turn: "RuntimeTurnInput",
+        context: "RuntimeContextMaterials",
         social_decision: "ReplyStrategyDecision",
         plan: "RuntimeTurnPlan",
         generation: "RuntimeExecutionOutcome",
@@ -62,13 +65,13 @@ class AssistantReplyPersistenceStage:
         if response is None:
             return
 
-        identity = request.identity
+        identity = turn.identity
         delivery = generation.delivery_result
         await chat_session_service.append_message(
             identity,
             ChatMessageCreate(
                 author_role="assistant",
-                author_id=request.sender_id,
+                author_id=turn.sender_id,
                 text_content=response.content.strip(),
                 meta=sanitize_runtime_diagnostics(
                     {
@@ -80,7 +83,7 @@ class AssistantReplyPersistenceStage:
                             if generation.skill_runtime.turns
                             else plan.pre_tool_task_class
                         ),
-                        "recalled_memory_count": len(inputs.recalled_memories),
+                        "recalled_memory_count": len(context.recalled_memories),
                         "tool_observation_count": len(generation.skill_runtime.turns),
                         "social_action": social_decision.action,
                         "social_tool_mode": social_decision.tool_mode,
@@ -89,12 +92,12 @@ class AssistantReplyPersistenceStage:
                         "social_policy_source": social_decision.evidence.get(
                             "policy_source"
                         ),
-                        "runtime_mode": request.runtime_mode,
+                        "runtime_mode": turn.runtime_mode,
                         "future_task_id": (
-                            request.future_task.task_id if request.future_task else None
+                            turn.future_task.task_id if turn.future_task else None
                         ),
                         "future_task_status": (
-                            request.future_task.status if request.future_task else None
+                            turn.future_task.status if turn.future_task else None
                         ),
                         "delivery_channel": delivery.channel if delivery else None,
                         "delivery_delivered": delivery.delivered if delivery else None,
@@ -105,7 +108,7 @@ class AssistantReplyPersistenceStage:
                         **_turn_trace_meta(
                             trace_id=trace_id,
                             session_id=identity.session_id,
-                            runtime_mode=request.runtime_mode,
+                            runtime_mode=turn.runtime_mode,
                             social_decision=social_decision,
                             turn=generation.turn_result,
                             delivery_delivered=(
@@ -128,8 +131,8 @@ class AssistantReplyPersistenceStage:
 
 async def persist_reply(  # noqa: PLR0913
     *,
-    request: "AIRuntimeReplyRequest",
-    inputs: "ReplyInputs",
+    turn: "RuntimeTurnInput",
+    context: "RuntimeContextMaterials",
     social_decision: "ReplyStrategyDecision",
     prep: "RuntimeTurnPlan",
     gen: "RuntimeExecutionOutcome",
@@ -140,19 +143,19 @@ async def persist_reply(  # noqa: PLR0913
 
     stage = AssistantReplyPersistenceStage()
     await stage.persist_tool_observations(
-        request=request,
+        turn=turn,
         generation=gen,
         trace_id=trace_id,
     )
     await stage.persist_assistant_message(
-        request=request,
-        inputs=inputs,
+        turn=turn,
+        context=context,
         social_decision=social_decision,
         plan=prep,
         generation=gen,
         trace_id=trace_id,
     )
-    await stage.rebuild_context_window(identity=request.identity)
+    await stage.rebuild_context_window(identity=turn.identity)
 
 
 def _turn_trace_meta(  # noqa: PLR0913
