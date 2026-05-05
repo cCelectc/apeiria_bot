@@ -57,6 +57,7 @@ async def get_events(
     _: Annotated[Any, Depends(require_control_panel)],
 ) -> DashboardEventsResponse:
     """Return recent warning and error events for the dashboard."""
+    events = _require_runtime_control_plane().get_dashboard_events()
     return DashboardEventsResponse(
         items=[
             DashboardEventItem(
@@ -65,7 +66,7 @@ async def get_events(
                 source=item.source,
                 message=item.message,
             )
-            for item in system_management_service.get_recent_events()
+            for item in events
         ]
     )
 
@@ -74,7 +75,7 @@ async def get_events(
 async def get_webui_build_status(
     _: Annotated[Any, Depends(require_control_panel)],
 ) -> WebUIBuildStatusResponse:
-    status = system_management_service.get_web_ui_build_status()
+    status = _require_runtime_control_plane().get_web_ui_build_status()
     return WebUIBuildStatusResponse(
         is_built=status.is_built,
         is_stale=status.is_stale,

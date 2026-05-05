@@ -17,6 +17,7 @@ admin:
     tasks: "查看当前调度任务列表"
     task: "查看、暂停或恢复调度任务"
   owner_only: "该命令仅限主人使用"
+  runtime_control_plane_unavailable: "运行时控制面当前不可用"
   overview:
     title: "主人管理 · 总览"
     summary: "这里只保留主人最常用的应急操作"

@@ -1,5 +1,6 @@
 import asyncio
 import importlib
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -16,6 +17,7 @@ from apeiria.webui.routes import dashboard
 RUNTIME_UNAVAILABLE_STATUS = 503
 RUNTIME_UNAVAILABLE_DETAIL = "Apeiria runtime control plane is unavailable."
 EXPECTED_PLUGIN_COUNT = 2
+EXPECTED_USER_LEVEL = 3
 
 
 def _build_runtime(
@@ -74,6 +76,15 @@ def _load_plugin_catalog(monkeypatch: pytest.MonkeyPatch):
     return importlib.import_module("apeiria.webui.routes.plugin_catalog")
 
 
+def _load_access(monkeypatch: pytest.MonkeyPatch):
+    for name, value in {
+        "plugin_governance_service": object(),
+        "plugin_policy_service": object(),
+    }.items():
+        monkeypatch.setitem(plugins_module.__dict__, name, value)
+    return importlib.import_module("apeiria.webui.routes.access")
+
+
 def test_list_plugins_delegates_to_runtime_plugin_governance() -> None:
     expected_plugins = [object(), object()]
 
@@ -114,6 +125,103 @@ def test_get_dashboard_status_uses_current_dashboard_service_snapshot(
     snapshot = asyncio.run(control_plane.get_dashboard_status())
 
     assert snapshot is expected_snapshot
+
+
+def test_get_dashboard_events_uses_current_system_management_service(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from apeiria.app.system.management import system_management_service
+
+    expected_events = [object()]
+    runtime = _build_runtime()
+    control_plane = ApeiriaControlPlane(runtime)
+
+    monkeypatch.setattr(
+        system_management_service,
+        "get_recent_events",
+        lambda: expected_events,
+    )
+
+    events = control_plane.get_dashboard_events()
+
+    assert events == expected_events
+
+
+def test_get_web_ui_build_status_uses_current_system_management_service(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from apeiria.app.system.management import system_management_service
+
+    expected_status = object()
+    runtime = _build_runtime()
+    control_plane = ApeiriaControlPlane(runtime)
+
+    monkeypatch.setattr(
+        system_management_service,
+        "get_web_ui_build_status",
+        lambda: expected_status,
+    )
+
+    status = control_plane.get_web_ui_build_status()
+
+    assert status is expected_status
+
+
+def test_plugin_catalog_reads_delegate_to_plugin_management_service(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    expected_plugins = [object()]
+    runtime = _build_runtime()
+    control_plane = ApeiriaControlPlane(runtime)
+
+    async def list_plugins() -> list[object]:
+        return expected_plugins
+
+    plugin_management_service = SimpleNamespace(
+        list_plugins=list_plugins,
+        can_package_update=lambda candidate: candidate is expected_plugins[0],
+    )
+    monkeypatch.setitem(
+        sys.modules,
+        "apeiria.app.plugins.management",
+        SimpleNamespace(plugin_management_service=plugin_management_service),
+    )
+
+    plugins = asyncio.run(control_plane.list_plugin_catalog_entries())
+
+    assert plugins == expected_plugins
+    assert control_plane.can_plugin_package_update(expected_plugins[0]) is True
+
+
+def test_access_reads_delegate_to_access_management_service(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    expected_users = [("user-1", "group-1", 3)]
+    expected_rules = [object()]
+    runtime = _build_runtime()
+    control_plane = ApeiriaControlPlane(runtime)
+
+    async def list_user_levels() -> list[tuple[str, str, int]]:
+        return expected_users
+
+    async def list_access_rules() -> list[object]:
+        return expected_rules
+
+    access_management_service = SimpleNamespace(
+        list_user_levels=list_user_levels,
+        list_access_rules=list_access_rules,
+    )
+    monkeypatch.setitem(
+        sys.modules,
+        "apeiria.app.access.management",
+        SimpleNamespace(access_management_service=access_management_service),
+    )
+
+    users = asyncio.run(control_plane.list_access_user_levels())
+    rules = asyncio.run(control_plane.list_access_rules())
+
+    assert users == expected_users
+    assert rules == expected_rules
 
 
 def test_dashboard_status_snapshot_reads_governance_state_from_new_database(
@@ -202,7 +310,51 @@ def test_dashboard_status_route_reads_through_control_plane(
     assert response.adapters == snapshot.adapters
 
 
-def test_plugin_list_route_reads_through_plugin_management_service(
+def test_dashboard_events_route_reads_through_control_plane(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    event = SimpleNamespace(
+        timestamp="2026-05-05T10:00:00Z",
+        level="warning",
+        source="runtime",
+        message="event",
+    )
+
+    runtime = _build_runtime()
+    control_plane = ApeiriaControlPlane(runtime)
+    monkeypatch.setattr(control_plane, "get_dashboard_events", lambda: [event])
+    runtime.control_plane = control_plane
+    monkeypatch.setattr(dashboard, "get_current_runtime", lambda: runtime)
+
+    response = asyncio.run(dashboard.get_events(None))
+
+    assert response.items[0].message == "event"
+
+
+def test_dashboard_webui_build_status_route_reads_through_control_plane(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    status = SimpleNamespace(
+        is_built=True,
+        is_stale=False,
+        can_build=True,
+        build_tool="pnpm",
+        detail="ready",
+    )
+
+    runtime = _build_runtime()
+    control_plane = ApeiriaControlPlane(runtime)
+    monkeypatch.setattr(control_plane, "get_web_ui_build_status", lambda: status)
+    runtime.control_plane = control_plane
+    monkeypatch.setattr(dashboard, "get_current_runtime", lambda: runtime)
+
+    response = asyncio.run(dashboard.get_webui_build_status(None))
+
+    assert response.build_tool == "pnpm"
+    assert response.detail == "ready"
+
+
+def test_plugin_list_route_reads_through_control_plane(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     plugin_catalog = _load_plugin_catalog(monkeypatch)
@@ -211,19 +363,19 @@ def test_plugin_list_route_reads_through_plugin_management_service(
         package_binding=SimpleNamespace(installed_package=object()),
     )
 
-    async def list_plugins() -> list[object]:
+    async def list_plugin_catalog_entries() -> list[object]:
         return [plugin]
 
+    runtime = _build_runtime()
+    control_plane = ApeiriaControlPlane(runtime)
     monkeypatch.setattr(
-        plugin_catalog.plugin_management_service,
-        "list_plugins",
-        list_plugins,
+        control_plane,
+        "list_plugin_catalog_entries",
+        list_plugin_catalog_entries,
     )
-    monkeypatch.setattr(
-        plugin_catalog.plugin_management_service,
-        "can_package_update",
-        lambda candidate: candidate is plugin,
-    )
+    monkeypatch.setattr(control_plane, "can_plugin_package_update", lambda _: True)
+    runtime.control_plane = control_plane
+    monkeypatch.setattr(plugin_catalog, "get_current_runtime", lambda: runtime)
     monkeypatch.setattr(
         plugin_catalog,
         "to_plugin_item_response",
@@ -236,6 +388,44 @@ def test_plugin_list_route_reads_through_plugin_management_service(
     response = asyncio.run(plugin_catalog.list_plugins(None))
 
     assert response == [{"plugin": plugin, "can_package_update": True}]
+
+
+def test_access_list_routes_read_through_control_plane(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    access = _load_access(monkeypatch)
+    access_rule = SimpleNamespace(
+        subject_type="user",
+        subject_id="user-1",
+        plugin_module="plugins.alpha",
+        effect="allow",
+        note="note",
+    )
+
+    async def list_access_user_levels() -> list[tuple[str, str, int]]:
+        return [("user-1", "group-1", EXPECTED_USER_LEVEL)]
+
+    async def list_access_rules() -> list[object]:
+        return [access_rule]
+
+    runtime = _build_runtime()
+    control_plane = ApeiriaControlPlane(runtime)
+    monkeypatch.setattr(
+        control_plane,
+        "list_access_user_levels",
+        list_access_user_levels,
+    )
+    monkeypatch.setattr(control_plane, "list_access_rules", list_access_rules)
+    runtime.control_plane = control_plane
+    monkeypatch.setattr(access, "get_current_runtime", lambda: runtime)
+
+    users = asyncio.run(access.list_users(None))
+    rules = asyncio.run(access.list_access_rules(None))
+
+    assert users[0].user_id == "user-1"
+    assert users[0].group_id == "group-1"
+    assert users[0].level == EXPECTED_USER_LEVEL
+    assert rules[0].plugin_module == "plugins.alpha"
 
 
 @pytest.mark.parametrize(
@@ -251,6 +441,16 @@ def test_plugin_list_route_reads_through_plugin_management_service(
             "dashboard",
             _build_runtime(),
         ),
+        (
+            "list_plugins",
+            "plugin_catalog",
+            None,
+        ),
+        (
+            "list_users",
+            "access",
+            None,
+        ),
     ],
 )
 def test_migrated_routes_raise_controlled_http_exception_when_runtime_unavailable(
@@ -259,9 +459,12 @@ def test_migrated_routes_raise_controlled_http_exception_when_runtime_unavailabl
     module_name: str,
     runtime: ApeiriaRuntime | None,
 ) -> None:
-    module = (
-        dashboard if module_name == "dashboard" else _load_plugin_catalog(monkeypatch)
-    )
+    if module_name == "dashboard":
+        module = dashboard
+    elif module_name == "access":
+        module = _load_access(monkeypatch)
+    else:
+        module = _load_plugin_catalog(monkeypatch)
     route_func = getattr(module, route_name)
     monkeypatch.setattr(module, "get_current_runtime", lambda: runtime)
 

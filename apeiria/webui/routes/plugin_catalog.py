@@ -11,6 +11,7 @@ from fastapi.responses import FileResponse
 from apeiria.app.plugins.management import plugin_management_service
 from apeiria.exceptions import ResourceNotFoundError
 from apeiria.i18n import t
+from apeiria.runtime.context import get_current_runtime
 from apeiria.webui.auth import require_control_panel, require_owner
 from apeiria.webui.schemas.plugin_catalog import (
     OrphanPluginConfigResponse,
@@ -28,6 +29,14 @@ from apeiria.webui.schemas.plugin_config import to_plugin_workspace_settings_sum
 from apeiria.webui.schemas.plugin_management import to_plugin_toggle_preview_response
 
 router = APIRouter()
+_RUNTIME_UNAVAILABLE_DETAIL = "Apeiria runtime control plane is unavailable."
+
+
+def _require_runtime_control_plane() -> Any:
+    runtime = get_current_runtime()
+    if runtime is None or runtime.control_plane is None:
+        raise HTTPException(status_code=503, detail=_RUNTIME_UNAVAILABLE_DETAIL)
+    return runtime.control_plane
 
 
 @router.get("/{module_name}/readme", response_model=PluginReadmeResponse)
@@ -91,11 +100,12 @@ async def get_plugin_readme_asset(
 async def list_plugins(
     _: Annotated[Any, Depends(require_control_panel)],
 ) -> list[PluginItem]:
-    plugins = await plugin_management_service.list_plugins()
+    control_plane = _require_runtime_control_plane()
+    plugins = await control_plane.list_plugin_catalog_entries()
     return [
         to_plugin_item_response(
             plugin,
-            can_package_update=plugin_management_service.can_package_update(plugin),
+            can_package_update=control_plane.can_plugin_package_update(plugin),
         )
         for plugin in plugins
     ]

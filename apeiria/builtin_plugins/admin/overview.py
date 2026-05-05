@@ -6,12 +6,11 @@ from arclet.alconna import CommandMeta
 from nonebot.adapters import Event  # noqa: TC002
 from nonebot_plugin_alconna import Alconna, on_alconna
 
-from apeiria.app.system.management import system_management_service
 from apeiria.i18n import t
 from apeiria.utils.time_format import format_duration
 
 from .presenter import render_block, render_list_block
-from .utils import ensure_owner_message
+from .utils import ensure_owner_message, get_runtime_control_plane
 
 _admin = on_alconna(
     Alconna("admin", meta=CommandMeta(description=t("admin.command.admin"))),
@@ -27,7 +26,11 @@ async def handle_admin(event: Event) -> None:
     if owner_error:
         await _admin.finish(owner_error)
 
-    snapshot = await system_management_service.get_status_snapshot()
+    control_plane = get_runtime_control_plane()
+    if control_plane is None:
+        await _admin.finish(t("admin.runtime_control_plane_unavailable"))
+
+    snapshot = await control_plane.get_dashboard_status()
     adapters = (
         ", ".join(snapshot.adapters)
         if snapshot.adapters

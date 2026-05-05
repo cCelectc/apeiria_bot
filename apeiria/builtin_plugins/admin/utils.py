@@ -9,6 +9,7 @@ from nonebot.adapters import Event  # noqa: TC002
 
 from apeiria.app.plugins.management import plugin_management_service
 from apeiria.i18n import t
+from apeiria.runtime.context import get_current_runtime
 from apeiria.utils.plugin_introspection import get_plugin_name
 
 if TYPE_CHECKING:
@@ -104,6 +105,15 @@ def ensure_owner_message(event: Event) -> str | None:
     if is_owner_event(event):
         return None
     return t("admin.owner_only")
+
+
+def get_runtime_control_plane() -> Any | None:
+    """Return the current runtime control plane for read-side admin commands."""
+
+    runtime = get_current_runtime()
+    if runtime is None:
+        return None
+    return runtime.control_plane
 
 
 def _format_plugin_candidates(plugins: list[Plugin]) -> list[str]:

@@ -17,6 +17,7 @@ admin:
     tasks: "View current scheduler task list"
     task: "View, pause, or resume scheduler tasks"
   owner_only: "This command is only available to bot owners"
+  runtime_control_plane_unavailable: "Runtime control plane is unavailable"
   overview:
     title: "Owner Admin · Overview"
     summary: "Only the most common owner-side control actions are kept here."

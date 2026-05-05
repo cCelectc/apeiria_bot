@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from apeiria.app.access.management import access_management_service
 from apeiria.exceptions import ProtectedPluginError, ResourceNotFoundError
 from apeiria.i18n import t
+from apeiria.runtime.context import get_current_runtime
 from apeiria.webui.auth import require_control_panel
 from apeiria.webui.schemas.models import (
     AccessRuleCreateRequest,
@@ -20,13 +21,21 @@ from apeiria.webui.schemas.models import (
 )
 
 router = APIRouter()
+_RUNTIME_UNAVAILABLE_DETAIL = "Apeiria runtime control plane is unavailable."
+
+
+def _require_runtime_control_plane() -> Any:
+    runtime = get_current_runtime()
+    if runtime is None or runtime.control_plane is None:
+        raise HTTPException(status_code=503, detail=_RUNTIME_UNAVAILABLE_DETAIL)
+    return runtime.control_plane
 
 
 @router.get("/users", response_model=list[UserLevelItem])
 async def list_users(
     _: Annotated[Any, Depends(require_control_panel)],
 ) -> list[UserLevelItem]:
-    rows = await access_management_service.list_user_levels()
+    rows = await _require_runtime_control_plane().list_access_user_levels()
     return [
         UserLevelItem(user_id=user_id, group_id=group_id, level=level)
         for r in rows
@@ -55,7 +64,7 @@ async def update_user_level(
 async def list_access_rules(
     _: Annotated[Any, Depends(require_control_panel)],
 ) -> list[AccessRuleItem]:
-    rows = await access_management_service.list_access_rules()
+    rows = await _require_runtime_control_plane().list_access_rules()
     return [
         AccessRuleItem(
             subject_type=row.subject_type,

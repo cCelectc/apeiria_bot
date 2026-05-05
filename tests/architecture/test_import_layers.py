@@ -190,6 +190,34 @@ def test_builtin_admin_surfaces_do_not_import_displaced_management_services() ->
     )
 
 
+def test_migrated_management_read_functions_use_runtime_control_plane() -> None:
+    migrated_functions = (
+        ("apeiria.builtin_plugins.admin.overview", "handle_admin"),
+        ("apeiria.builtin_plugins.admin.status", "handle_status"),
+        ("apeiria.webui.routes.dashboard", "get_status"),
+        ("apeiria.webui.routes.dashboard", "get_events"),
+        ("apeiria.webui.routes.dashboard", "get_webui_build_status"),
+        ("apeiria.webui.routes.plugin_catalog", "list_plugins"),
+        ("apeiria.webui.routes.access", "list_users"),
+        ("apeiria.webui.routes.access", "list_access_rules"),
+    )
+
+    violations = [
+        ImportViolation(source_module=module_name, imported_module=function_name)
+        for module_name, function_name in migrated_functions
+        if not _function_calls_name(
+            module_name,
+            function_name,
+            ("_require_runtime_control_plane", "get_runtime_control_plane"),
+        )
+    ]
+
+    assert not violations, _format_violations(
+        "migrated management reads bypassing the runtime control plane",
+        violations,
+    )
+
+
 def _collect_boundary_violations(
     *,
     source_prefixes: tuple[str, ...],
@@ -211,6 +239,31 @@ def _collect_boundary_violations(
                 if _matches_any(imported_module, forbidden_prefixes)
             )
     return violations
+
+
+def _function_calls_name(
+    module_name: str,
+    function_name: str,
+    called_names: tuple[str, ...],
+) -> bool:
+    module_path = REPO_ROOT / Path(*module_name.split(".")).with_suffix(".py")
+    tree = ast.parse(module_path.read_text(), filename=str(module_path))
+    for node in tree.body:
+        if (
+            isinstance(node, ast.AsyncFunctionDef | ast.FunctionDef)
+            and node.name == function_name
+        ):
+            return any(
+                _call_uses_name(child, called_names)
+                for child in ast.walk(node)
+                if isinstance(child, ast.Call)
+            )
+    return False
+
+
+def _call_uses_name(node: ast.Call, called_names: tuple[str, ...]) -> bool:
+    func = node.func
+    return isinstance(func, ast.Name) and func.id in called_names
 
 
 def _iter_python_modules(
