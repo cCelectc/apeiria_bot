@@ -108,7 +108,7 @@ def _build_reply_packet(
         content=(
             inputs.persona.system_prompt
             if inputs.persona is not None
-            else "You are a helpful social AI in a chat."
+            else "You are a chat participant in an ongoing conversation."
         ),
     )
     _append_section(
@@ -285,8 +285,8 @@ def _append_lines(
 def _build_context_priority() -> tuple[str, ...]:
     return (
         "Trust explicit tool results over inferred assumptions.",
-        "Use conversation summary and memories as supporting context "
-        "for the active exchange.",
+        "Use conversation summary and memories only as relevant supporting "
+        "context for the active exchange.",
         "Prefer the latest conversation when it carries fresher detail.",
     )
 
@@ -294,16 +294,16 @@ def _build_context_priority() -> tuple[str, ...]:
 def _build_system_instructions(mode: ReplyPromptMode) -> tuple[str, ...]:
     if mode == "planner":
         return (
-            "You are planning the next assistant action for an ongoing chat session.",
+            "You are deciding how to handle the current turn in an ongoing chat.",
             "Keep the persona voice stable in any visible text you generate.",
             "Use tools only when they improve correctness or complete a "
             "requested action.",
         )
     return (
-        "You are writing the final assistant reply for an ongoing chat session.",
+        "You are writing the final visible reply for the current chat turn.",
         "Produce only the user-visible reply and keep the persona voice stable.",
-        "Use tool results, memory, and conversation context to produce one "
-        "coherent reply.",
+        "Use tool results, memory, and conversation context only when they are "
+        "relevant to the reply.",
     )
 
 
@@ -364,8 +364,25 @@ def _build_response_rules(
 ) -> tuple[str, ...]:
     rules = [
         "Stay in character and answer naturally.",
-        "Ground factual claims in the conversation, tool results, and recalled memory.",
-        "Use recalled memory as supporting context for the active exchange.",
+        (
+            "For ordinary chat, prefer concise, natural replies instead of "
+            "summaries, plans, or task-oriented wrap-ups."
+        ),
+        (
+            "Do not end with a follow-up question by default; ask only when a "
+            "useful answer needs missing essential information or the user "
+            "explicitly asks you to continue."
+        ),
+        (
+            "Avoid assistant-style task offers, summaries, next steps, and "
+            "wrap-up lines unless the user clearly asks for task help."
+        ),
+        (
+            "Longer answers are fine for explicit tasks such as explanations, "
+            "analysis, planning, decisions, or concrete requested actions."
+        ),
+        "Ground factual claims in relevant conversation, tool results, and memory.",
+        "Use recalled memory only when it supports the active exchange.",
         (
             "Relationship context modulates only your expression layer - "
             "warmth, distance, initiative, and phrasing style. "
@@ -384,8 +401,8 @@ def _build_response_rules(
         )
     else:
         rules.append(
-            "Write one final assistant reply that integrates the strongest "
-            "available context."
+            "Write one final reply to the current turn; a short direct reply "
+            "is valid when enough."
         )
         rules.append(
             "Keep tool usage implicit unless the user-facing result should mention it."

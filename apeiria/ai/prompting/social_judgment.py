@@ -51,7 +51,7 @@ def build_social_judgment_packet(
             name="Instruction",
             content="\n".join(
                 (
-                    "Decide the assistant's social behavior for the current turn.",
+                    "Decide your social behavior for the current turn.",
                     (
                         "Optimize for social coherence, restraint, persona "
                         "consistency, and avoiding a tool-brained feel."
@@ -75,10 +75,19 @@ def build_social_judgment_packet(
                         "direct address still has clear social value."
                     ),
                     (
-                        "Use action=wait when the assistant should hold off for "
+                        "Use action=wait when you should hold off for "
                         "now but the conversation may continue soon."
                     ),
-                    "Use action=suppress when the assistant should stay silent.",
+                    "Use action=suppress when you should stay silent.",
+                    (
+                        "Do not choose reply or interject just to keep the "
+                        "conversation going."
+                    ),
+                    (
+                        "When speaking, a complete short statement is valid; "
+                        "do not force a follow-up question, offer, or "
+                        "continuation hook."
+                    ),
                     (
                         "Use tool_mode=allow only when tools are genuinely needed; "
                         "otherwise use avoid."
@@ -118,8 +127,8 @@ def _build_engagement_policy(inputs: SocialJudgmentPromptInput) -> str:
                 "The bot was NOT directly addressed. The default and most common "
                 "action should be action=suppress (stay silent). Only use "
                 "action=interject when speaking without direct address still has "
-                "clear social value - the bot has something genuinely relevant, "
-                "funny, or helpful to add."
+                "clear social value - the bot has something genuinely relevant "
+                "or socially fitting to add."
             ),
             (
                 "Do NOT interject just because the bot 'could' answer. Real people "
