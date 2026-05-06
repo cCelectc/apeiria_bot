@@ -3,15 +3,17 @@
 from __future__ import annotations
 
 from dataclasses import replace
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, TypeAlias
 
 from apeiria.ai.model.runtime.capabilities import (
+    AI_MODEL_RESPONSE_FORMAT_OPTION,
     AIModelCallDegradation,
     AIModelCallOptions,
     AIModelCallPlan,
     AIModelCallRequirements,
     AIModelCapabilities,
     AIModelContentModality,
+    json_object_response_format,
 )
 
 if TYPE_CHECKING:
@@ -20,6 +22,12 @@ if TYPE_CHECKING:
         AIModelMessage,
         AIModelToolDefinition,
     )
+
+_ResponseFormatPlan: TypeAlias = tuple[
+    dict[str, Any] | None,
+    tuple[AIModelCallDegradation, ...],
+    tuple[str, str] | None,
+]
 
 
 def plan_model_call(  # noqa: PLR0913
@@ -42,8 +50,31 @@ def plan_model_call(  # noqa: PLR0913
     requested_required_options = set(requirements.required_options)
     if options is not None:
         requested_required_options.update(options.required)
+    response_format_required = (
+        AI_MODEL_RESPONSE_FORMAT_OPTION in requested_required_options
+    )
+    response_format = effective_options.get(AI_MODEL_RESPONSE_FORMAT_OPTION)
+    planned_response_format, response_degradations, response_rejection = (
+        _plan_response_format(
+            response_format,
+            capabilities=capabilities,
+            required=response_format_required,
+        )
+    )
+    if response_rejection is not None:
+        return _reject(
+            selected=selected,
+            messages=messages,
+            tools=tools,
+            options=effective_options,
+            capabilities=capabilities,
+            reason=response_rejection[0],
+            diagnostic=response_rejection[1],
+        )
     unsupported_required = sorted(
-        key for key in requested_required_options if key not in supported_options
+        key
+        for key in requested_required_options
+        if key != AI_MODEL_RESPONSE_FORMAT_OPTION and key not in supported_options
     )
     if unsupported_required:
         return _reject(
@@ -61,8 +92,10 @@ def plan_model_call(  # noqa: PLR0913
     filtered_options = {
         key: value
         for key, value in effective_options.items()
-        if key in supported_options
+        if key != AI_MODEL_RESPONSE_FORMAT_OPTION and key in supported_options
     }
+    if planned_response_format is not None:
+        filtered_options[AI_MODEL_RESPONSE_FORMAT_OPTION] = planned_response_format
     if (
         tools
         and requirements.tool_calling == "required"
@@ -78,7 +111,7 @@ def plan_model_call(  # noqa: PLR0913
             diagnostic="model does not support required tool calling",
         )
 
-    degradations: list[AIModelCallDegradation] = []
+    degradations: list[AIModelCallDegradation] = list(response_degradations)
     planned_tools = tools
     if (
         tools
@@ -145,6 +178,143 @@ def plan_model_call(  # noqa: PLR0913
         options=filtered_options,
         capabilities=capabilities,
         degradations=tuple(degradations),
+    )
+
+
+def _plan_response_format(
+    response_format: Any,
+    *,
+    capabilities: AIModelCapabilities,
+    required: bool,
+) -> _ResponseFormatPlan:
+    if response_format is None:
+        return None, (), None
+    if not isinstance(response_format, dict):
+        return _handle_invalid_response_format(required=required)
+
+    response_type = response_format.get("type")
+    if response_type == "json_schema":
+        return _plan_json_schema_response_format(
+            response_format,
+            capabilities=capabilities,
+            required=required,
+        )
+
+    if response_type == "json_object":
+        return _plan_json_object_response_format(
+            response_format,
+            capabilities=capabilities,
+            required=required,
+        )
+
+    return _handle_unsupported_response_format(required=required)
+
+
+def _plan_json_schema_response_format(
+    response_format: dict[str, Any],
+    *,
+    capabilities: AIModelCapabilities,
+    required: bool,
+) -> _ResponseFormatPlan:
+    if capabilities.supports_structured_output:
+        return dict(response_format), (), None
+    if capabilities.supports_json_mode:
+        return (
+            json_object_response_format(),
+            (
+                AIModelCallDegradation(
+                    kind="structured_output_degraded",
+                    reason="unsupported_structured_output",
+                    detail="JSON schema response format degraded to JSON object mode",
+                    metadata={"requested_type": "json_schema"},
+                ),
+            ),
+            None,
+        )
+    if required:
+        return (
+            None,
+            (),
+            (
+                "unsupported_structured_output",
+                "required response_format is unsupported by selected model",
+            ),
+        )
+    return (
+        None,
+        (
+            _structured_output_omitted(
+                "model supports neither JSON schema nor JSON mode"
+            ),
+        ),
+        None,
+    )
+
+
+def _plan_json_object_response_format(
+    response_format: dict[str, Any],
+    *,
+    capabilities: AIModelCapabilities,
+    required: bool,
+) -> _ResponseFormatPlan:
+    if capabilities.supports_json_mode or capabilities.supports_structured_output:
+        return dict(response_format), (), None
+    if required:
+        return (
+            None,
+            (),
+            (
+                "unsupported_structured_output",
+                "required response_format is unsupported by selected model",
+            ),
+        )
+    return (
+        None,
+        (_structured_output_omitted("model does not support JSON object mode"),),
+        None,
+    )
+
+
+def _handle_invalid_response_format(*, required: bool) -> _ResponseFormatPlan:
+    if required:
+        return (
+            None,
+            (),
+            (
+                "unsupported_structured_output",
+                "required response_format is not a valid structured option",
+            ),
+        )
+    return (
+        None,
+        (_structured_output_omitted("invalid response_format option"),),
+        None,
+    )
+
+
+def _handle_unsupported_response_format(*, required: bool) -> _ResponseFormatPlan:
+    if required:
+        return (
+            None,
+            (),
+            (
+                "unsupported_structured_output",
+                "required response_format type is unsupported",
+            ),
+        )
+    return (
+        None,
+        (_structured_output_omitted("unsupported response_format type"),),
+        None,
+    )
+
+
+def _structured_output_omitted(detail: str) -> AIModelCallDegradation:
+    return AIModelCallDegradation(
+        kind="structured_output_omitted",
+        reason="unsupported_structured_output",
+        detail=detail,
+        metadata={"option": AI_MODEL_RESPONSE_FORMAT_OPTION},
     )
 
 

@@ -7,6 +7,11 @@ from typing import TYPE_CHECKING
 from nonebot.log import logger
 
 from apeiria.ai.model import AIModelRouteQuery, model_gateway
+from apeiria.ai.model.runtime.capabilities import (
+    AI_MODEL_RESPONSE_FORMAT_OPTION,
+    AIModelCallOptions,
+    json_schema_response_format,
+)
 from apeiria.ai.prompting import (
     SocialJudgmentPromptInput,
     build_social_judgment_packet,
@@ -23,6 +28,50 @@ if TYPE_CHECKING:
     from apeiria.ai.model import AIModelBindingTarget
 
 _SOCIAL_JUDGMENT_TASK_CLASS = "planner_light"
+_SOCIAL_JUDGMENT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "action": {
+            "type": "string",
+            "enum": ["reply", "interject", "wait", "suppress"],
+        },
+        "tool_mode": {
+            "type": "string",
+            "enum": ["allow", "avoid"],
+        },
+        "reason_codes": {
+            "type": "array",
+            "items": {"type": "string", "minLength": 1, "maxLength": 64},
+            "minItems": 1,
+            "maxItems": 6,
+        },
+        "reason_text": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 240,
+        },
+        "evidence": {
+            "type": "object",
+            "additionalProperties": True,
+        },
+    },
+    "required": [
+        "action",
+        "tool_mode",
+        "reason_codes",
+        "reason_text",
+        "evidence",
+    ],
+    "additionalProperties": False,
+}
+_SOCIAL_JUDGMENT_OPTIONS = AIModelCallOptions(
+    values={
+        AI_MODEL_RESPONSE_FORMAT_OPTION: json_schema_response_format(
+            name="social_judgment",
+            schema=_SOCIAL_JUDGMENT_SCHEMA,
+        )
+    }
+)
 
 
 def build_fallback_judgment(
@@ -102,6 +151,7 @@ async def evaluate_social_judgment(
                     )
                 )
             ),
+            options=_SOCIAL_JUDGMENT_OPTIONS,
         )
     except Exception as exc:  # noqa: BLE001
         logger.opt(exception=exc).warning("AI social judgment generation failed")

@@ -1,12 +1,18 @@
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from typing import Any
 
 from apeiria.ai.memory import AIMemoryDefinition
 from apeiria.ai.model import AIModelMessage, AIModelToolCall, AISelectedModel
+from apeiria.ai.model.runtime.capabilities import (
+    AIModelCallOptions,
+    AIModelCallRequirements,
+    AIModelCapabilities,
+)
+from apeiria.ai.model.runtime.planning import plan_model_call
 from apeiria.ai.prompting import (
     ConversationSummaryPromptInput,
     MemoryExtractionPromptInput,
@@ -36,31 +42,54 @@ class _SkillEntry:
 class _ModelGateway:
     def __init__(
         self,
-        content: str,
+        content: str | BaseException,
         *,
+        selected: AISelectedModel | None = None,
         tool_calls: tuple[AIModelToolCall, ...] = (),
+        plan_options: bool = False,
     ) -> None:
-        self.selected = selected_model("aux")
+        self.selected = selected or selected_model("aux")
         self.content = content
         self.tool_calls = tool_calls
+        self.plan_options = plan_options
         self.prompts: list[str] = []
         self.message_calls: list[tuple[AIModelMessage, ...]] = []
         self.tool_def_calls: list[tuple[Any, ...]] = []
+        self.option_calls: list[AIModelCallOptions | None] = []
+        self.planned_option_calls: list[dict[str, Any]] = []
+        self.degradation_calls: list[tuple[Any, ...]] = []
 
     async def select_model(self, **_: object):
         return self.selected
 
-    async def generate_native(
+    async def generate_native(  # noqa: PLR0913
         self,
         *,
         selected: AISelectedModel,
         prompt: str = "",
         messages: tuple[AIModelMessage, ...] = (),
         tools: tuple[Any, ...] = (),
+        requirements: AIModelCallRequirements | None = None,
+        options: AIModelCallOptions | None = None,
+        call_options: dict[str, Any] | None = None,
     ):
         self.prompts.append(prompt)
         self.message_calls.append(messages)
         self.tool_def_calls.append(tools)
+        self.option_calls.append(options)
+        if self.plan_options:
+            plan = plan_model_call(
+                selected=selected,
+                messages=messages,
+                tools=tools,
+                requirements=requirements,
+                options=options,
+                call_options=call_options,
+            )
+            self.planned_option_calls.append(plan.options)
+            self.degradation_calls.append(plan.degradations)
+        if isinstance(self.content, BaseException):
+            raise self.content
         return model_response(selected, self.content, tool_calls=self.tool_calls)
 
 
@@ -216,6 +245,126 @@ def test_social_judgment_generation_uses_rendered_messages(monkeypatch: Any) -> 
     assert "[OutputContract]" in gateway.message_calls[0][-1].content
 
 
+def test_social_judgment_requests_structured_output_schema(
+    monkeypatch: Any,
+) -> None:
+    from apeiria.app.ai.reply_strategy import social_judgment
+
+    gateway = _ModelGateway(
+        '{"action":"reply","tool_mode":"avoid","reason_codes":["ok"],'
+        '"reason_text":"ok","evidence":{}}',
+        selected=_selected_model_with_capabilities(
+            AIModelCapabilities(supports_structured_output=True)
+        ),
+        plan_options=True,
+    )
+    monkeypatch.setattr(social_judgment, "model_gateway", gateway)
+
+    result = asyncio.run(
+        social_judgment.evaluate_social_judgment(
+            judgment_input=_social_judgment_input()
+        )
+    )
+
+    assert result.action == "reply"
+    requested_options = gateway.option_calls[0]
+    assert requested_options is not None
+    response_format = requested_options.values["response_format"]
+    assert response_format["type"] == "json_schema"
+    assert response_format["json_schema"]["name"] == "social_judgment"
+    assert "action" in response_format["json_schema"]["schema"]["required"]
+    assert gateway.planned_option_calls[0]["response_format"] == response_format
+    assert "[OutputContract]" in gateway.message_calls[0][-1].content
+
+
+def test_social_judgment_degrades_schema_to_json_object_when_only_json_mode(
+    monkeypatch: Any,
+) -> None:
+    from apeiria.app.ai.reply_strategy import social_judgment
+
+    gateway = _ModelGateway(
+        '{"action":"reply","tool_mode":"avoid","reason_codes":["ok"],'
+        '"reason_text":"ok","evidence":{}}',
+        selected=_selected_model_with_capabilities(
+            AIModelCapabilities(supports_json_mode=True)
+        ),
+        plan_options=True,
+    )
+    monkeypatch.setattr(social_judgment, "model_gateway", gateway)
+
+    asyncio.run(
+        social_judgment.evaluate_social_judgment(
+            judgment_input=_social_judgment_input()
+        )
+    )
+
+    assert gateway.planned_option_calls[0]["response_format"] == {"type": "json_object"}
+    assert gateway.degradation_calls[0][0].kind == "structured_output_degraded"
+
+
+def test_social_judgment_omits_native_response_format_when_unsupported(
+    monkeypatch: Any,
+) -> None:
+    from apeiria.app.ai.reply_strategy import social_judgment
+
+    gateway = _ModelGateway(
+        '{"action":"reply","tool_mode":"avoid","reason_codes":["ok"],'
+        '"reason_text":"ok","evidence":{}}',
+        selected=_selected_model_with_capabilities(AIModelCapabilities()),
+        plan_options=True,
+    )
+    monkeypatch.setattr(social_judgment, "model_gateway", gateway)
+
+    asyncio.run(
+        social_judgment.evaluate_social_judgment(
+            judgment_input=_social_judgment_input()
+        )
+    )
+
+    assert "response_format" not in gateway.planned_option_calls[0]
+    assert gateway.degradation_calls[0][0].kind == "structured_output_omitted"
+    assert "[OutputContract]" in gateway.message_calls[0][-1].content
+
+
+def test_social_judgment_invalid_or_failed_structured_output_uses_fallback(
+    monkeypatch: Any,
+) -> None:
+    from apeiria.app.ai.reply_strategy import social_judgment
+
+    selected = _selected_model_with_capabilities(
+        AIModelCapabilities(supports_structured_output=True)
+    )
+    invalid_gateway = _ModelGateway(
+        '{"action":"invalid","tool_mode":"avoid","reason_codes":["bad"],'
+        '"reason_text":"bad","evidence":{}}',
+        selected=selected,
+    )
+    monkeypatch.setattr(social_judgment, "model_gateway", invalid_gateway)
+
+    invalid = asyncio.run(
+        social_judgment.evaluate_social_judgment(
+            judgment_input=_social_judgment_input()
+        )
+    )
+
+    failing_gateway = _ModelGateway(
+        RuntimeError("provider rejected response_format"),
+        selected=selected,
+    )
+    monkeypatch.setattr(social_judgment, "model_gateway", failing_gateway)
+
+    failed = asyncio.run(
+        social_judgment.evaluate_social_judgment(
+            judgment_input=_social_judgment_input()
+        )
+    )
+
+    assert invalid.reason_codes == ("fallback_social_judgment",)
+    assert invalid.evidence["policy_source"] == "fallback"
+    assert failed.reason_codes == ("fallback_social_judgment",)
+    assert failed.evidence["policy_source"] == "fallback"
+
+
 def test_memory_extraction_uses_rendered_messages(monkeypatch: Any) -> None:
     from apeiria.app.ai.pipeline import memory_extraction_steps
 
@@ -315,3 +464,33 @@ def test_tool_intent_planning_uses_messages_and_tools(monkeypatch: Any) -> None:
     assert gateway.prompts == [""]
     assert gateway.tool_def_calls[0]
     assert "[RecalledMemories]" in gateway.message_calls[0][-1].content
+
+
+def _selected_model_with_capabilities(
+    capabilities: AIModelCapabilities,
+) -> AISelectedModel:
+    return replace(
+        selected_model("aux"),
+        resolved_capabilities=capabilities,
+    )
+
+
+def _social_judgment_input() -> SocialJudgmentInput:
+    return SocialJudgmentInput(
+        session_id="session-1",
+        scene_type="private",
+        message_text="hello",
+        latest_user_turn_text="hello",
+        conversation_summary=None,
+        relationship_context=None,
+        persona_id=None,
+        available_tool_names=(),
+        recent_turn_count=1,
+        recent_bot_turn_count=0,
+        last_bot_turn_at=None,
+        current_time=datetime.now(timezone.utc),
+        runtime_mode="message",
+        engagement_type="direct",
+        initiative_budget_score=None,
+        consecutive_silence_count=0,
+    )

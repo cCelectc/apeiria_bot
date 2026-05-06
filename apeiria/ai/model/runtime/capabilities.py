@@ -27,6 +27,8 @@ AIModelContentModality: TypeAlias = Literal[
 ]
 AIModelToolCallingRequirement: TypeAlias = Literal["required", "optional", "none"]
 AIModelCallAction: TypeAlias = Literal["invoke", "reject"]
+AIModelResponseFormatType: TypeAlias = Literal["json_object", "json_schema"]
+AI_MODEL_RESPONSE_FORMAT_OPTION = "response_format"
 
 _KNOWN_LANES = frozenset(
     {
@@ -122,6 +124,30 @@ class AIModelCapabilityPlanningError(RuntimeError):
         if plan.reason and plan.reason not in diagnostic:
             diagnostic = f"{plan.reason}: {diagnostic}"
         super().__init__(diagnostic)
+
+
+def json_object_response_format() -> dict[str, Any]:
+    """Build a provider-neutral JSON object response-format option."""
+
+    return {"type": "json_object"}
+
+
+def json_schema_response_format(
+    *,
+    name: str,
+    schema: dict[str, Any],
+    strict: bool = True,
+) -> dict[str, Any]:
+    """Build a provider-neutral JSON schema response-format option."""
+
+    return {
+        "type": "json_schema",
+        "json_schema": {
+            "name": name,
+            "schema": schema,
+            "strict": strict,
+        },
+    }
 
 
 def parse_model_capabilities(raw: Any) -> AIModelCapabilities:

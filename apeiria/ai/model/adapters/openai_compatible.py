@@ -23,6 +23,7 @@ from apeiria.ai.model.runtime.adapter import (
     AIModelTranscriptionRequest,
     AIModelTranscriptionResponse,
 )
+from apeiria.ai.model.runtime.capabilities import AI_MODEL_RESPONSE_FORMAT_OPTION
 
 
 class OpenAICompatibleProviderConfigError(RuntimeError):
@@ -99,6 +100,11 @@ class OpenAICompatibleProvider:
         max_tokens = request.max_tokens or _coerce_int(planned_options, "max_tokens")
         if max_tokens is not None:
             payload["max_tokens"] = max_tokens
+        response_format = _coerce_response_format(
+            planned_options.get(AI_MODEL_RESPONSE_FORMAT_OPTION)
+        )
+        if response_format is not None:
+            payload["response_format"] = response_format
 
         client = _build_openai_client(
             api_key=api_key,
@@ -304,6 +310,34 @@ def _coerce_float(extra: dict[str, Any] | None, key: str) -> float | None:
         except ValueError:
             return None
     return None
+
+
+def _coerce_response_format(value: Any) -> dict[str, Any] | None:
+    if not isinstance(value, dict):
+        return None
+    response_type = value.get("type")
+    if response_type == "json_object":
+        return {"type": "json_object"}
+    if response_type != "json_schema":
+        return None
+    json_schema = value.get("json_schema")
+    if not isinstance(json_schema, dict):
+        return None
+    name = json_schema.get("name")
+    schema = json_schema.get("schema")
+    if not isinstance(name, str) or not name.strip() or not isinstance(schema, dict):
+        return None
+    response_format = {
+        "type": "json_schema",
+        "json_schema": {
+            "name": name,
+            "schema": schema,
+        },
+    }
+    strict = json_schema.get("strict")
+    if isinstance(strict, bool):
+        response_format["json_schema"]["strict"] = strict
+    return response_format
 
 
 def _normalize_openai_api_base(api_base: str | None) -> str | None:

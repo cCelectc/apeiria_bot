@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import asyncio
+from types import SimpleNamespace
+from typing import Any
 
 from pytest import raises
 
+from apeiria.ai.model.adapters import openai_compatible
 from apeiria.ai.model.catalog.capability_templates import (
     ModelCapabilityTemplate,
     ModelCapabilityTemplateRegistry,
@@ -52,6 +55,8 @@ from apeiria.ai.model.sources.models import (
     resolve_adapter_kind_for_client_type,
 )
 from tests.ai.agent_turn_helpers import ModelGatewayStub, model_response
+
+_TEST_TEMPERATURE = 0.2
 
 
 def test_provider_protocol_registry_resolves_current_adapter_kinds() -> None:
@@ -466,6 +471,142 @@ def test_model_call_planning_invokes_rejects_degrades_and_filters_options() -> N
     assert required_multimodal.reason == "unsupported_modality"
 
 
+def test_model_call_planning_keeps_structured_schema_when_supported() -> None:
+    selected = _selected_with_capabilities(
+        AIModelCapabilities(
+            lanes=frozenset({"chat_completion"}),
+            supports_structured_output=True,
+            supported_options=frozenset({"temperature"}),
+        )
+    )
+    response_format = _json_schema_response_format()
+
+    plan = plan_model_call(
+        selected=selected,
+        options=AIModelCallOptions(
+            values={
+                "response_format": response_format,
+                "temperature": _TEST_TEMPERATURE,
+            }
+        ),
+    )
+
+    assert plan.action == "invoke"
+    assert plan.options["response_format"] == response_format
+    assert plan.options["temperature"] == _TEST_TEMPERATURE
+    assert plan.degradations == ()
+
+
+def test_model_call_planning_degrades_optional_schema_to_json_object() -> None:
+    selected = _selected_with_capabilities(
+        AIModelCapabilities(
+            lanes=frozenset({"chat_completion"}),
+            supports_json_mode=True,
+        )
+    )
+
+    plan = plan_model_call(
+        selected=selected,
+        options=AIModelCallOptions(
+            values={"response_format": _json_schema_response_format()}
+        ),
+    )
+
+    assert plan.action == "invoke"
+    assert plan.options["response_format"] == {"type": "json_object"}
+    assert plan.degradations[0].kind == "structured_output_degraded"
+    assert plan.degradations[0].reason == "unsupported_structured_output"
+
+
+def test_model_call_planning_omits_optional_response_format() -> None:
+    selected = _selected_with_capabilities(AIModelCapabilities())
+
+    plan = plan_model_call(
+        selected=selected,
+        options=AIModelCallOptions(
+            values={"response_format": _json_schema_response_format()}
+        ),
+    )
+
+    assert plan.action == "invoke"
+    assert "response_format" not in plan.options
+    assert plan.degradations[0].kind == "structured_output_omitted"
+    assert plan.degradations[0].reason == "unsupported_structured_output"
+
+
+def test_model_call_planning_rejects_required_response_format() -> None:
+    selected = _selected_with_capabilities(AIModelCapabilities())
+
+    plan = plan_model_call(
+        selected=selected,
+        options=AIModelCallOptions(
+            values={"response_format": _json_schema_response_format()},
+            required=frozenset({"response_format"}),
+        ),
+    )
+
+    assert plan.action == "reject"
+    assert plan.reason == "unsupported_structured_output"
+    assert "response_format" in (plan.diagnostic or "")
+
+
+def test_openai_compatible_adapter_forwards_json_object_response_format(
+    monkeypatch: Any,
+) -> None:
+    payloads: list[dict[str, Any]] = []
+    monkeypatch.setattr(
+        openai_compatible,
+        "_build_openai_client",
+        lambda **_kwargs: _OpenAIClientStub(payloads),
+    )
+    provider = openai_compatible.OpenAICompatibleProvider(
+        api_base="https://api.example.test/v1",
+        api_key="test-key",
+    )
+
+    asyncio.run(
+        provider.generate_text(
+            AIModelGenerateRequest(
+                source_id="source-1",
+                model_name="model-1",
+                messages=(AIModelMessage(role="user", content="hello"),),
+                options={"response_format": {"type": "json_object"}},
+            )
+        )
+    )
+
+    assert payloads[0]["response_format"] == {"type": "json_object"}
+
+
+def test_openai_compatible_adapter_forwards_json_schema_response_format(
+    monkeypatch: Any,
+) -> None:
+    payloads: list[dict[str, Any]] = []
+    response_format = _json_schema_response_format()
+    monkeypatch.setattr(
+        openai_compatible,
+        "_build_openai_client",
+        lambda **_kwargs: _OpenAIClientStub(payloads),
+    )
+    provider = openai_compatible.OpenAICompatibleProvider(
+        api_base="https://api.example.test/v1",
+        api_key="test-key",
+    )
+
+    asyncio.run(
+        provider.generate_text(
+            AIModelGenerateRequest(
+                source_id="source-1",
+                model_name="model-1",
+                messages=(AIModelMessage(role="user", content="hello"),),
+                options={"response_format": response_format},
+            )
+        )
+    )
+
+    assert payloads[0]["response_format"] == response_format
+
+
 def test_agent_runtime_uses_fallback_after_capability_planning_reject() -> None:
     from apeiria.app.ai.agent_turn import (
         AgentModelGenerationRequest,
@@ -711,3 +852,49 @@ def _selected_with_capabilities(
         resolved_model_name=source_model.model_identifier,
         resolved_capabilities=capabilities,
     )
+
+
+def _json_schema_response_format() -> dict[str, Any]:
+    from apeiria.ai.model.runtime import capabilities as capability_contracts
+
+    factory = getattr(capability_contracts, "json_schema_response_format", None)
+    assert factory is not None
+    return factory(
+        name="test_schema",
+        schema={
+            "type": "object",
+            "properties": {"ok": {"type": "boolean"}},
+            "required": ["ok"],
+            "additionalProperties": False,
+        },
+    )
+
+
+class _OpenAIClientStub:
+    def __init__(self, payloads: list[dict[str, Any]]) -> None:
+        self.chat = SimpleNamespace(
+            completions=SimpleNamespace(create=self._create_completion)
+        )
+        self._payloads = payloads
+
+    async def _create_completion(self, **payload: Any) -> Any:
+        self._payloads.append(payload)
+
+        def model_dump(**_kwargs: Any) -> dict[str, Any]:
+            return {
+                "id": "resp-1",
+                "usage": {"prompt_tokens": 1},
+            }
+
+        return SimpleNamespace(
+            choices=[
+                SimpleNamespace(
+                    message=SimpleNamespace(content='{"ok":true}', tool_calls=[]),
+                    finish_reason="stop",
+                )
+            ],
+            model_dump=model_dump,
+        )
+
+    async def close(self) -> None:
+        return None
