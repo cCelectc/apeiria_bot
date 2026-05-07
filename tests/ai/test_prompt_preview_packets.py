@@ -283,11 +283,15 @@ def test_prompt_preview_planning_matches_runtime_prompt_projection() -> None:
         skill_activation=None,
         has_tools=False,
     )
-
-    preview_channels, preview_diagnostics, *_ = module._build_preview_prompt_outputs(
+    context_projection = module._project_preview_context(
         turn=preview_turn,
         context=context_bundle.context,
         prompt_planning=prompt_planning,
+        social_decision=social_decision,
+    )
+
+    preview_channels, preview_diagnostics, *_ = module._build_preview_prompt_outputs(
+        context_projection=context_projection,
         has_tools=False,
         hard_rule_decision=hard_rule_decision,
         social_decision=social_decision,
@@ -307,6 +311,60 @@ def test_prompt_preview_planning_matches_runtime_prompt_projection() -> None:
 
     assert preview_channels.sections == expected_channels.sections
     assert preview_diagnostics == expected_diagnostics
+
+
+def test_prompt_preview_uses_context_projection_for_preview_fields() -> None:
+    module = importlib.import_module("apeiria.app.ai.sessions.prompt_preview")
+    identity = ChatSessionIdentity(
+        session_id="session-1",
+        platform="test",
+        bot_id="bot-1",
+        scene_type="private",
+        scene_id="user-1",
+        subject_id="user-1",
+    )
+    preview_turn = module._build_preview_turn(
+        identity=identity,
+        latest_user_turn=None,
+        latest_user_message=None,
+        user_id="user-1",
+    )
+    context_bundle = module._build_preview_context_bundle(
+        turn=preview_turn,
+        turns=[],
+        conversation_summary="Conversation summary.",
+        relationship_target=object(),
+        tool_policy=AIToolPolicy(execution_enabled=False),
+        persona=None,
+        memories=[],
+        relationship_context="Relationship context.",
+        person_profile=("Profile line.",),
+        allowed_tools=(),
+    )
+    prompt_planning = RuntimePromptPlanningInput(
+        skill_runtime=RuntimeToolLoopResult(
+            policy_text="Tool policy.",
+            result_lines=("tool result",),
+            turns=(),
+        ),
+        skill_activation=None,
+        has_tools=False,
+    )
+
+    projection = module._project_preview_context(
+        turn=preview_turn,
+        context=context_bundle.context,
+        social_decision=None,
+        prompt_planning=prompt_planning,
+    )
+
+    assert projection.prompt.capability_awareness is None
+    assert projection.preview.conversation_summary == "Conversation summary."
+    assert projection.preview.relationship_context == "Relationship context."
+    assert projection.preview.tool_policy_text == "Tool policy."
+    assert projection.preview.tool_results == ("tool result",)
+    assert projection.preview.memories == ()
+    assert projection.diagnostics.as_dict()["projection_mode"] == "preview"
 
 
 def test_scene_prompt_preview_does_not_call_models_or_execute_tools(  # noqa: C901

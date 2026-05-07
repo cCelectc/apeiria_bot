@@ -13,14 +13,15 @@ from apeiria.ai.prompting import (
     build_reply_planner_packet,
     render_messages,
 )
-from apeiria.app.ai.runtime.planning.social import summarize_social_decision
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
+
     from apeiria.ai.memory import AIMemoryDefinition
     from apeiria.ai.model import AIModelMessage
     from apeiria.ai.prompting import ReplyPersonaPromptBundleLike
-    from apeiria.app.ai.future_tasks.models import AIFutureTaskDefinition
     from apeiria.app.ai.reply_strategy import ReplyStrategyDecision
+    from apeiria.app.ai.runtime.context.projection import RuntimeContextPromptView
     from apeiria.app.ai.runtime.execution.tool_loop import RuntimeToolLoopResult
     from apeiria.app.ai.runtime.session.context import (
         RuntimeContextMaterials,
@@ -39,8 +40,8 @@ class RuntimePromptComposeInput:
     relationship: str | None
     tool_policy: str | None
     tool_results: tuple[str, ...]
-    memories: list["AIMemoryDefinition"]
-    turns: list["ChatContextMessageView"]
+    memories: "Sequence[AIMemoryDefinition]"
+    turns: "Sequence[ChatContextMessageView]"
     person_profile: tuple[str, ...]
     conversation_summary: str | None = None
     social_policy_summary: str | None = None
@@ -56,6 +57,28 @@ class RuntimePromptPlanningInput:
     skill_runtime: "RuntimeToolLoopResult"
     skill_activation: str | None
     has_tools: bool | None = None
+
+
+def compose_input_from_context_projection(
+    view: "RuntimeContextPromptView",
+) -> RuntimePromptComposeInput:
+    """Translate a context prompt view into recipe compose input."""
+
+    return RuntimePromptComposeInput(
+        persona=view.persona,
+        scene_type=view.scene_type,
+        relationship=view.relationship,
+        tool_policy=view.tool_policy,
+        tool_results=view.tool_results,
+        memories=view.memories,
+        turns=view.turns,
+        person_profile=view.person_profile,
+        conversation_summary=view.conversation_summary,
+        social_policy_summary=view.social_policy_summary,
+        capability_awareness=view.capability_awareness,
+        future_task_context=view.future_task_context,
+        skill_activation=view.skill_activation,
+    )
 
 
 def build_runtime_prompt_packet(
@@ -199,20 +222,16 @@ def build_initial_prompt_compose_input(
 ) -> RuntimePromptComposeInput:
     """Build the prompt compose input for the initial reply prompt."""
 
-    return RuntimePromptComposeInput(
-        persona=context.persona,
-        scene_type=turn.identity.scene_type,
-        person_profile=context.person_profile,
-        relationship=context.relationship_context,
-        tool_policy=prompt_input.skill_runtime.policy_text,
-        tool_results=prompt_input.skill_runtime.result_lines,
-        memories=context.recalled_memories,
-        conversation_summary=context.conversation_summary,
-        social_policy_summary=summarize_social_decision(social_decision),
-        future_task_context=_build_future_task_context(turn.future_task),
+    from apeiria.app.ai.runtime.context.projection import project_runtime_context
+
+    projection = project_runtime_context(
+        turn=turn,
+        context=context,
+        social_decision=social_decision,
+        skill_runtime=prompt_input.skill_runtime,
         skill_activation=prompt_input.skill_activation,
-        turns=context.turns,
     )
+    return compose_input_from_context_projection(projection.prompt)
 
 
 def _initial_reply_has_tools(prompt_input: object) -> bool:
@@ -221,22 +240,6 @@ def _initial_reply_has_tools(prompt_input: object) -> bool:
         return bool(has_tools)
     has_executable_tools = getattr(prompt_input, "has_executable_tools", False)
     return bool(has_executable_tools)
-
-
-def _build_future_task_context(
-    task: "AIFutureTaskDefinition | None",
-) -> str | None:
-    if task is None:
-        return None
-    return "\n".join(
-        (
-            f"task_id={task.task_id}",
-            f"title={task.title}",
-            f"description={task.description}",
-            f"trigger_at={task.trigger_at.isoformat()}",
-            f"status={task.status}",
-        )
-    )
 
 
 __all__ = [
@@ -251,4 +254,5 @@ __all__ = [
     "build_roleplay_reply_packet",
     "build_runtime_prompt_messages",
     "build_runtime_prompt_packet",
+    "compose_input_from_context_projection",
 ]

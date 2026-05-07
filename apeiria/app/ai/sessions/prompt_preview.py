@@ -27,7 +27,6 @@ from apeiria.app.ai.diagnostics.workbench import (
     to_context_turns,
 )
 from apeiria.app.ai.lifecycle import ensure_ai_runtime_support_initialized
-from apeiria.app.ai.reply_strategy import summarize_reply_strategy_decision
 from apeiria.app.ai.reply_strategy.models import ReplyStrategyDecision, WakeContext
 from apeiria.app.ai.runtime.context.memories import retrieve_memories_for_preview
 from apeiria.app.ai.runtime.context.person_profiles import (
@@ -37,6 +36,9 @@ from apeiria.app.ai.runtime.context.personas import (
     build_model_binding_target,
     build_persona_binding_target,
 )
+from apeiria.app.ai.runtime.context.projection import (
+    project_runtime_context,
+)
 from apeiria.app.ai.runtime.context.relationships import (
     build_relationship_target,
     load_relationship_context,
@@ -44,10 +46,10 @@ from apeiria.app.ai.runtime.context.relationships import (
 from apeiria.app.ai.runtime.execution.tool_loop import RuntimeToolLoopResult
 from apeiria.app.ai.runtime.planning.hard_rules import decide_runtime_hard_rule
 from apeiria.app.ai.runtime.planning.prompts import (
-    RuntimePromptComposeInput,
     RuntimePromptPlanningInput,
-    build_initial_reply_prompt_packet,
+    build_pre_tool_reply_packet,
     build_roleplay_reply_packet,
+    compose_input_from_context_projection,
 )
 from apeiria.app.ai.runtime.planning.reply_decision import (
     select_post_tool_reply_task_class,
@@ -77,6 +79,7 @@ if TYPE_CHECKING:
     from apeiria.ai.model import AISelectedModel
     from apeiria.ai.prompting import ReplyPersonaPromptBundleLike
     from apeiria.ai.tools import AIToolPolicy
+    from apeiria.app.ai.runtime.context.projection import RuntimeContextProjection
     from apeiria.app.ai.runtime.context.relationships import AIRelationshipTarget
     from apeiria.app.ai.runtime.strategy import RuntimeHardRuleDecision
     from apeiria.conversation.models import (
@@ -350,11 +353,26 @@ def _suppressed_prompt_diagnostics() -> AISessionPromptDiagnostics:
     )
 
 
-def _build_preview_prompt_outputs(  # noqa: PLR0913
+def _project_preview_context(
     *,
     turn: RuntimeTurnInput,
     context: RuntimeContextMaterials,
     prompt_planning: RuntimePromptPlanningInput,
+    social_decision: ReplyStrategyDecision | None,
+) -> "RuntimeContextProjection":
+    return project_runtime_context(
+        turn=turn,
+        context=context,
+        social_decision=social_decision,
+        skill_runtime=prompt_planning.skill_runtime,
+        skill_activation=prompt_planning.skill_activation,
+        projection_mode="preview",
+    )
+
+
+def _build_preview_prompt_outputs(
+    *,
+    context_projection: "RuntimeContextProjection",
     has_tools: bool,
     hard_rule_decision: RuntimeHardRuleDecision,
     social_decision: ReplyStrategyDecision | None,
@@ -370,13 +388,12 @@ def _build_preview_prompt_outputs(  # noqa: PLR0913
     should_show_prompt = hard_rule_decision.should_reply and (
         social_decision is not None and social_decision.should_speak
     )
+    compose_input = compose_input_from_context_projection(context_projection.prompt)
     if should_show_prompt:
         assert social_decision is not None
-        planning_packet = build_initial_reply_prompt_packet(
-            turn=turn,
-            context=context,
-            social_decision=social_decision,
-            prompt_input=prompt_planning,
+        planning_packet = build_pre_tool_reply_packet(
+            compose_input,
+            has_tools=has_tools,
         )
         planning_channels, planning_prompt_diagnostics = (
             project_prompt_packet_to_preview(planning_packet, mode=planning_mode)
@@ -395,22 +412,6 @@ def _build_preview_prompt_outputs(  # noqa: PLR0913
         planning_prompt_diagnostics = _suppressed_prompt_diagnostics()
         rendered_prompt = suppression_text
 
-    compose_input = RuntimePromptComposeInput(
-        persona=context.persona,
-        scene_type=turn.identity.scene_type,
-        person_profile=context.person_profile,
-        relationship=context.relationship_context,
-        tool_policy=prompt_planning.skill_runtime.policy_text,
-        tool_results=prompt_planning.skill_runtime.result_lines,
-        memories=context.recalled_memories,
-        conversation_summary=context.conversation_summary,
-        social_policy_summary=(
-            summarize_reply_strategy_decision(social_decision)
-            if social_decision is not None
-            else None
-        ),
-        turns=context.turns,
-    )
     roleplay_packet = build_roleplay_reply_packet(compose_input)
     if has_tools and should_show_prompt:
         roleplay_channels, roleplay_prompt_diagnostics = (
@@ -559,6 +560,12 @@ class PromptPreviewReader:
             skill_activation=None,
             has_tools=has_tools,
         )
+        projected_context = _project_preview_context(
+            turn=preview_turn,
+            context=context,
+            prompt_planning=prompt_planning,
+            social_decision=social_decision,
+        )
         (
             planning_channels,
             planning_prompt_diagnostics,
@@ -567,9 +574,7 @@ class PromptPreviewReader:
             rendered_prompt,
             rendered_roleplay_prompt,
         ) = _build_preview_prompt_outputs(
-            turn=preview_turn,
-            context=context,
-            prompt_planning=prompt_planning,
+            context_projection=projected_context,
             has_tools=has_tools,
             hard_rule_decision=hard_rule_decision,
             social_decision=social_decision,
@@ -592,12 +597,12 @@ class PromptPreviewReader:
             roleplay_selected=roleplay_selected,
             pre_tool_task_class=pre_tool_task_class,
             has_tools=has_tools,
-            persona=persona,
-            conversation_summary=conversation.summary_text,
-            relationship_context=relationship_context,
-            tool_policy_text=tool_policy_text,
-            tool_results=tool_results,
-            memories=tuple(memories),
+            persona=projected_context.preview.persona,
+            conversation_summary=projected_context.preview.conversation_summary,
+            relationship_context=projected_context.preview.relationship_context,
+            tool_policy_text=projected_context.preview.tool_policy_text,
+            tool_results=projected_context.preview.tool_results,
+            memories=projected_context.preview.memories,
         )
 
 

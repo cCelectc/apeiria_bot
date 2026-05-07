@@ -167,6 +167,7 @@ def test_runtime_prompt_planning_builds_initial_reply_packet() -> None:
         recalled_memories=[],
         conversation_summary="Conversation summary.",
         person_profile=("Profile line.",),
+        allowed_tools=(),
         turns=[
             ChatContextMessageView(
                 message_id="msg-1",
@@ -370,6 +371,19 @@ def test_runtime_planning_uses_runtime_context_materials_for_plan_parity(
     assert plan.prompt_packet is not None
     assert plan.prompt_packet.purpose == "reply_planner"
     assert plan.prompt_diagnostics["prompt_purpose"] == "reply_planner"
+    assert plan.context_projection_diagnostics == {
+        "projection_mode": "runtime",
+        "turn_count": 1,
+        "recalled_memory_count": 0,
+        "memory_layers": (),
+        "has_persona": False,
+        "has_relationship_context": True,
+        "person_profile_line_count": 1,
+        "has_conversation_summary": True,
+        "allowed_capability_count": 1,
+        "has_capability_awareness": False,
+        "has_future_task_context": False,
+    }
     assert plan.tool_exposure_plan.selected_tool_names == ("memory.query",)
 
 

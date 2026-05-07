@@ -371,6 +371,78 @@ def test_runtime_planning_has_focused_sub_boundaries() -> None:
     assert not _missing_files("apeiria/app/ai/runtime/planning", expected_modules)
 
 
+def test_runtime_context_projection_is_read_only_prompt_view_boundary() -> None:
+    path = REPO_ROOT / "apeiria/app/ai/runtime/context/projection.py"
+    source = path.read_text(encoding="utf-8")
+    imports = _imports_for_path(path)
+    forbidden_imports = (
+        "apeiria.ai.prompting.models",
+        "apeiria.ai.prompting.regions",
+        "apeiria.ai.model.routing",
+        "apeiria.ai.model.sources",
+        "apeiria.ai.tools.service",
+        "apeiria.ai.memory.service",
+        "apeiria.ai.relationships",
+        "apeiria.app.ai.runtime.commit",
+        "apeiria.app.ai.runtime.execution",
+        "apeiria.app.ai.runtime.planning.model_selection",
+        "apeiria.app.ai.runtime.planning.tool_exposure",
+        "apeiria.app.ai.sessions.prompt_projection",
+        "apeiria.webui.routes",
+    )
+    forbidden_names = (
+        "PromptSection",
+        "PromptPacket",
+        "render_messages",
+        "render_flat",
+        "select_model",
+        "generate_model_turn",
+        "runtime_tool_loop_runner",
+        "retrieve_memories",
+        "store_extracted_memories",
+        "load_relationship_context",
+        "update_relationship_state",
+        "persist_assistant_message",
+    )
+
+    assert path.is_file()
+    assert not [
+        imported
+        for imported in imports
+        if any(
+            imported == prefix or imported.startswith(prefix + ".")
+            for prefix in forbidden_imports
+        )
+    ]
+    assert not [name for name in forbidden_names if name in source]
+
+
+def test_context_projection_names_stay_runtime_scoped() -> None:
+    source = (REPO_ROOT / "apeiria/app/ai/runtime/context/projection.py").read_text(
+        encoding="utf-8"
+    )
+
+    assert "class ContextMaterial" not in source
+    assert "class ContextBudgetPlan" not in source
+    assert "RuntimeContextProjection" in source
+    assert "RuntimeContextPromptView" in source
+    assert "RuntimeContextPreviewView" in source
+
+
+def test_runtime_planning_and_preview_consume_context_projection_boundary() -> None:
+    planning_source = (REPO_ROOT / "apeiria/app/ai/runtime/planning/turn.py").read_text(
+        encoding="utf-8"
+    )
+    preview_source = (
+        REPO_ROOT / "apeiria/app/ai/sessions/prompt_preview.py"
+    ).read_text(encoding="utf-8")
+
+    assert "project_runtime_context" in planning_source
+    assert "project_runtime_context" in preview_source
+    assert "RuntimePromptComposeInput(" not in planning_source
+    assert "RuntimePromptComposeInput(" not in preview_source
+
+
 def test_ai_capability_layer_does_not_import_application_layer() -> None:
     forbidden = (
         "apeiria.app.ai",

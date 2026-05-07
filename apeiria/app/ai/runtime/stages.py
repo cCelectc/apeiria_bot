@@ -122,6 +122,7 @@ class RuntimeTurnPlan:
     tool_exposure_plan: ToolExposurePlan
     reply_compose_input: "RuntimePromptComposeInput | None" = None
     prompt_packet: "PromptPacket | None" = None
+    context_projection_diagnostics: dict[str, object] = field(default_factory=dict)
     tool_mode: str = "allow"
     tool_execution_timeout_seconds: float | None = None
     post_tool_task_class: "AIModelTaskClass | None" = None

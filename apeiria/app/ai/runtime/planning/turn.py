@@ -12,6 +12,9 @@ from apeiria.ai.tools import (
     ai_tool_service,
     summarize_tool_policy,
 )
+from apeiria.app.ai.runtime.context.projection import (
+    project_runtime_context,
+)
 from apeiria.app.ai.runtime.execution.tool_loop import RuntimeToolLoopResult
 from apeiria.app.ai.runtime.planning.diagnostics import (
     build_prompt_region_diagnostics,
@@ -22,15 +25,14 @@ from apeiria.app.ai.runtime.planning.model_selection import (
     select_model,
 )
 from apeiria.app.ai.runtime.planning.prompts import (
-    RuntimePromptComposeInput,
     RuntimePromptPlanningInput,
     build_pre_tool_reply_packet,
+    compose_input_from_context_projection,
 )
 from apeiria.app.ai.runtime.planning.reply_decision import (
     select_pre_tool_reply_task_class,
 )
 from apeiria.app.ai.runtime.planning.skills import select_runtime_skills
-from apeiria.app.ai.runtime.planning.social import summarize_social_decision
 from apeiria.app.ai.runtime.planning.tool_exposure import (
     ToolOrchestrator,
     compile_tool_exposure_provider_schema,
@@ -43,8 +45,8 @@ from apeiria.app.ai.runtime.stages import (
 if TYPE_CHECKING:
     from apeiria.ai.model import AIModelMessage
     from apeiria.ai.prompting import PromptPacket
-    from apeiria.app.ai.future_tasks.models import AIFutureTaskDefinition
     from apeiria.app.ai.reply_strategy import ReplyStrategyDecision
+    from apeiria.app.ai.runtime.planning.prompts import RuntimePromptComposeInput
     from apeiria.app.ai.runtime.session.context import (
         RuntimeContextMaterials,
         RuntimeTurnInput,
@@ -135,16 +137,20 @@ async def plan_runtime_turn(
         message_text=turn.message_text,
         conversation_summary=context.conversation_summary,
     )
-    prompt_input = RuntimePromptPlanningInput(
-        skill_runtime=skill_runtime,
-        skill_activation=skill_selection.activation_prompt,
-        has_tools=tool_exposure_plan.has_executable_tools,
-    )
-    prompt_packet = build_initial_runtime_reply_prompt_packet(
+    context_projection = project_runtime_context(
         turn=turn,
         context=context,
         social_decision=social_decision,
-        prompt_input=prompt_input,
+        skill_runtime=skill_runtime,
+        skill_activation=skill_selection.activation_prompt,
+        projection_mode="runtime",
+    )
+    reply_compose_input = compose_input_from_context_projection(
+        context_projection.prompt,
+    )
+    prompt_packet = build_pre_tool_reply_packet(
+        reply_compose_input,
+        has_tools=tool_exposure_plan.has_executable_tools,
     )
     prompt_diagnostics = build_prompt_region_diagnostics(prompt_packet)
     return RuntimeTurnPlan(
@@ -156,13 +162,9 @@ async def plan_runtime_turn(
         pre_tool_task_class=pre_tool_task_class,
         prompt_messages=render_messages(prompt_packet),
         prompt_diagnostics=prompt_diagnostics,
+        context_projection_diagnostics=context_projection.diagnostics.as_dict(),
         tool_exposure_plan=tool_exposure_plan,
-        reply_compose_input=build_initial_prompt_compose_input(
-            turn=turn,
-            context=context,
-            social_decision=social_decision,
-            prompt_input=prompt_input,
-        ),
+        reply_compose_input=reply_compose_input,
         prompt_packet=prompt_packet,
         tool_mode=social_decision.tool_mode,
         tool_execution_timeout_seconds=tool_execution_timeout_seconds,
@@ -232,14 +234,16 @@ def build_initial_prompt_compose_input(
     context: "RuntimeContextMaterials",
     social_decision: "ReplyStrategyDecision",
     prompt_input: RuntimeTurnPlan | RuntimePromptPlanningInput,
-) -> RuntimePromptComposeInput:
-    return _build_compose_input(
+) -> "RuntimePromptComposeInput":
+    context_projection = project_runtime_context(
         turn=turn,
         context=context,
         social_decision=social_decision,
         skill_runtime=prompt_input.skill_runtime,
         skill_activation=prompt_input.skill_activation,
+        projection_mode="runtime",
     )
+    return compose_input_from_context_projection(context_projection.prompt)
 
 
 def _initial_reply_has_tools(
@@ -248,46 +252,6 @@ def _initial_reply_has_tools(
     if isinstance(prompt_input, RuntimePromptPlanningInput):
         return bool(prompt_input.has_tools)
     return prompt_input.has_executable_tools
-
-
-def _build_compose_input(
-    *,
-    turn: "RuntimeTurnInput",
-    context: "RuntimeContextMaterials",
-    social_decision: "ReplyStrategyDecision",
-    skill_runtime: RuntimeToolLoopResult,
-    skill_activation: str | None,
-) -> RuntimePromptComposeInput:
-    return RuntimePromptComposeInput(
-        persona=context.persona,
-        scene_type=turn.identity.scene_type,
-        person_profile=context.person_profile,
-        relationship=context.relationship_context,
-        tool_policy=skill_runtime.policy_text,
-        tool_results=skill_runtime.result_lines,
-        memories=context.recalled_memories,
-        conversation_summary=context.conversation_summary,
-        social_policy_summary=summarize_social_decision(social_decision),
-        future_task_context=_build_future_task_context(turn.future_task),
-        skill_activation=skill_activation,
-        turns=context.turns,
-    )
-
-
-def _build_future_task_context(
-    task: "AIFutureTaskDefinition | None",
-) -> str | None:
-    if task is None:
-        return None
-    return "\n".join(
-        (
-            f"task_id={task.task_id}",
-            f"title={task.title}",
-            f"description={task.description}",
-            f"trigger_at={task.trigger_at.isoformat()}",
-            f"status={task.status}",
-        )
-    )
 
 
 __all__ = [

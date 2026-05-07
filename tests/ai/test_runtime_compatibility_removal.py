@@ -102,7 +102,8 @@ def test_admin_read_surfaces_use_native_trace_and_prompt_diagnostics() -> None:
 
     assert "runtime.trace" in trace_source
     assert "generation_steps" not in trace_source
-    assert "build_initial_reply_prompt_packet" in prompt_preview_source
+    assert "project_runtime_context" in prompt_preview_source
+    assert "build_pre_tool_reply_packet" in prompt_preview_source
     assert "project_prompt_packet_to_preview" in prompt_preview_source
     assert "prompt_region_diagnostics" in prompt_projection_source
     assert "generation_steps" not in prompt_preview_source
