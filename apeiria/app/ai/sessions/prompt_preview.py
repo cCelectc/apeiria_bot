@@ -7,7 +7,8 @@ from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
 from apeiria.access.groups import group_service
-from apeiria.ai.model import AIModelRouteQuery, ai_model_facade
+from apeiria.ai.model import AIModelRouteQuery
+from apeiria.ai.model.routing.profile import ai_model_profile_service
 from apeiria.ai.persona import (
     ai_persona_service,
     build_persona_render_context,
@@ -16,7 +17,6 @@ from apeiria.ai.prompting import render_flat
 from apeiria.ai.tools import (
     AIToolPolicyBindingTarget,
     AIToolSceneContext,
-    ToolGatewayResult,
     ai_tool_policy_binding_service,
     ai_tool_service,
     summarize_tool_policy,
@@ -41,6 +41,7 @@ from apeiria.app.ai.runtime.context.relationships import (
     build_relationship_target,
     load_relationship_context,
 )
+from apeiria.app.ai.runtime.execution.tool_loop import RuntimeToolLoopResult
 from apeiria.app.ai.runtime.planning.hard_rules import decide_runtime_hard_rule
 from apeiria.app.ai.runtime.planning.prompts import (
     RuntimePromptComposeInput,
@@ -508,12 +509,12 @@ class PromptPreviewReader:
         allowed_tools = ai_tool_service.list_allowed_tools(tool_policy)
         has_tools = bool(allowed_tools)
         pre_tool_task_class = select_pre_tool_reply_task_class(has_tools=has_tools)
-        selected = await ai_model_facade.select_model(
+        selected = await ai_model_profile_service.select_model(
             query=AIModelRouteQuery(task_class=pre_tool_task_class),
             target=build_model_binding_target(identity, resolved_user_id),
         )
         roleplay_selected = (
-            await ai_model_facade.select_model(
+            await ai_model_profile_service.select_model(
                 query=AIModelRouteQuery(task_class=select_post_tool_reply_task_class()),
                 target=build_model_binding_target(identity, resolved_user_id),
             )
@@ -549,7 +550,7 @@ class PromptPreviewReader:
         )
         context = context_bundle.context
         prompt_planning = RuntimePromptPlanningInput(
-            skill_runtime=ToolGatewayResult(
+            skill_runtime=RuntimeToolLoopResult(
                 policy_text=tool_policy_text,
                 result_lines=tool_results,
                 turns=(),

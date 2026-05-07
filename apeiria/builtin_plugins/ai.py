@@ -18,7 +18,6 @@ from nonebot.permission import SUPERUSER
 from nonebot.plugin import PluginMetadata, inherit_supported_adapters
 from nonebot.plugin.on import on_command, on_message
 
-from apeiria.ai import ai_service
 from apeiria.ai.config import AIPluginConfig
 from apeiria.app.ai import ai_application
 from apeiria.app.ai.runtime import RuntimeTraceContext
@@ -174,7 +173,7 @@ get_driver().on_startup(_run_ai_lifecycle_startup)
 @ai_status.handle()
 async def handle_ai_status() -> None:
     """Return the current bootstrap status of the AI domain."""
-    status = await ai_service.get_status()
+    status = await ai_application.diagnostics.get_runtime_status()
     await ai_status.finish(f"{status.phase}: {status.summary}")
 
 

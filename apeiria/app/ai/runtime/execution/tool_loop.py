@@ -1,4 +1,4 @@
-"""AI-internal tool gateway for reply orchestration."""
+"""Runtime-owned model/tool loop execution."""
 
 from __future__ import annotations
 
@@ -15,7 +15,6 @@ from apeiria.ai.model.runtime.capabilities import (
 from apeiria.ai.model.runtime.capability_sources import classify_capability_mismatch
 from apeiria.ai.model.runtime.failures import classify_model_failure
 from apeiria.ai.tools.function_calling import (
-    build_function_tools,
     build_intents_from_tool_calls,
     function_name_to_tool_name,
 )
@@ -34,7 +33,7 @@ from apeiria.ai.tools.loop.prompt_budget import (
 )
 from apeiria.ai.tools.loop.state import ToolLoopState
 from apeiria.ai.tools.models import (
-    AIToolObservationRequest,
+    AIToolExecutionRequest,
     AIToolObservationResult,
     AIToolPolicy,
 )
@@ -50,17 +49,13 @@ from apeiria.ai.turn_records import (
 if TYPE_CHECKING:
     from datetime import datetime
 
-    from apeiria.ai.memory.models import AIMemoryDefinition
     from apeiria.ai.model.routing.selection import AISelectedModel
     from apeiria.ai.model.runtime.adapter import (
         AIModelGenerateResponse,
-        AIModelToolCall,
         AIModelToolDefinition,
     )
-    from apeiria.ai.tools.models import (
-        AIToolIntent,
-        AIToolTurnCreateInput,
-    )
+    from apeiria.ai.tools.models import AIToolIntent, AIToolSpec, AIToolTurnCreateInput
+    from apeiria.ai.tools.service import AIToolService
     from apeiria.ai.turn_records import ToolAttemptStatus
 
 MAX_TOOL_ROUNDS = 3
@@ -75,26 +70,31 @@ MAX_ROUNDS_FINALIZATION_PROMPT = "\n".join(
 
 
 @dataclass(frozen=True)
-class ToolGatewayRequest:
-    """Inputs needed to run tools for a single reply turn."""
+class RuntimeToolLoopInput:
+    """Inputs needed to run the runtime-owned model/tool loop."""
 
+    trace_id: str | None
     session_id: str
     source_message_id: str | None
-    trace_id: str | None
+    runtime_mode: str
     message_text: str
-    policy: AIToolPolicy
-    recalled_memories: tuple["AIMemoryDefinition", ...]
-    relationship_context: str | None
     current_time: "datetime"
-    runtime_mode: str = "message"
-    tool_mode: str = "allow"
+    selected: "AISelectedModel"
+    fallback_models: tuple["AISelectedModel", ...]
+    messages: tuple[AIModelMessage, ...]
+    tools: tuple["AIModelToolDefinition", ...]
+    tool_policy: AIToolPolicy
+    executable_tool_names: frozenset[str] | None
+    recalled_memory_ids: tuple[str, ...]
+    recalled_memory_contents: tuple[str, ...]
+    relationship_context: str | None
     execution_timeout_seconds: float | None = None
-    executable_tool_names: frozenset[str] | None = None
+    tool_mode: str = "allow"
 
 
 @dataclass(frozen=True)
-class ToolGatewayResult:
-    """Aggregated tool runtime output consumed by reply orchestration."""
+class RuntimeToolLoopResult:
+    """Aggregated runtime tool-loop output consumed by execution/commit."""
 
     policy_text: str
     result_lines: tuple[str, ...]
@@ -104,88 +104,62 @@ class ToolGatewayResult:
     tool_attempts: tuple[ToolAttempt, ...] = ()
     available_tools: tuple["AIModelToolDefinition", ...] = field(default_factory=tuple)
     final_response: "AIModelGenerateResponse | None" = None
+    tool_turns: tuple["AIToolTurnCreateInput", ...] = ()
     tool_messages: tuple[AIModelMessage, ...] = ()
-    loop_finish_reason: str = "not_started"
-    metadata: dict[str, Any] = field(default_factory=dict)
+    finish_reason: str = "not_started"
+    selected: "AISelectedModel | None" = None
+    diagnostics: dict[str, Any] = field(default_factory=dict)
 
 
-class ToolGateway:
-    """AI-internal tool execution gateway."""
+class RuntimeToolLoopRunner:
+    """Run model/tool loop rounds for a planned runtime turn."""
 
     def __init__(
         self,
         *,
-        model_gateway: Any | None = None,
-        tool_service: Any | None = None,
+        model_invoker: Any | None = None,
+        tool_service: "AIToolService | None" = None,
     ) -> None:
-        if model_gateway is None:
-            from apeiria.ai.model import model_gateway as default_model_gateway
+        if model_invoker is None:
+            from apeiria.ai.model import model_invoker as default_model_invoker
 
-            model_gateway = default_model_gateway
+            model_invoker = default_model_invoker
         if tool_service is None:
             from apeiria.ai.tools.service import ai_tool_service
 
             tool_service = ai_tool_service
-        self._model_gateway = model_gateway
+        self._model_invoker = model_invoker
         self._tool_service = tool_service
 
-    async def prepare(
+    def prepare(
         self,
-        request: ToolGatewayRequest,
-    ) -> ToolGatewayResult:
-        allowed_tools = self._tool_service.list_allowed_tools(request.policy)
-        if request.tool_mode == "avoid":
-            allowed_tools = []
-        return ToolGatewayResult(
+        *,
+        policy: AIToolPolicy,
+        allowed_tools: tuple["AIToolSpec", ...],
+        available_tools: tuple["AIModelToolDefinition", ...],
+    ) -> RuntimeToolLoopResult:
+        """Build pre-loop tool policy text and provider tool schema."""
+
+        return RuntimeToolLoopResult(
             policy_text=summarize_tool_policy(
                 self._tool_service.registry.list_tools(),
-                request.policy,
+                policy,
             ),
             result_lines=(),
             turns=(),
-            available_tools=build_function_tools(
-                allowed_tools,
-                current_time=request.current_time,
-            ),
+            available_tools=available_tools,
+            diagnostics={"selected_tool_count": len(allowed_tools)},
         )
 
-    async def execute_tool_calls(
+    async def run(  # noqa: PLR0915
         self,
-        request: ToolGatewayRequest,
+        loop_input: RuntimeToolLoopInput,
         *,
-        tool_calls: tuple["AIModelToolCall", ...],
-    ) -> ToolGatewayResult:
-        intents = build_intents_from_tool_calls(tool_calls)
-        observations = await self._execute_intents_with_policy(request, intents)
-        tool_results = project_tool_results(tool_calls, observations)
-        executed_observations = completed_observations(observations)
-        return ToolGatewayResult(
-            policy_text=summarize_tool_policy(
-                self._tool_service.registry.list_tools(),
-                request.policy,
-            ),
-            result_lines=tuple(
-                obs.summary if obs is not None else "- [tool] skipped: execution limit"
-                for obs in observations
-            ),
-            turns=tuple(self._tool_service.build_tool_turns(executed_observations)),
-            tool_results=tool_results,
-            available_tools=(),
-        )
-
-    async def run_tool_loop(  # noqa: PLR0913, PLR0915
-        self,
-        request: ToolGatewayRequest,
-        *,
-        messages: list[AIModelMessage],
-        tools: tuple["AIModelToolDefinition", ...],
-        selected: "AISelectedModel",
         max_rounds: int = MAX_TOOL_ROUNDS,
         observation_char_limit: int = DEFAULT_OBSERVATION_CHAR_LIMIT,
         repeated_tool_threshold: int = DEFAULT_REPEATED_TOOL_THRESHOLD,
-        fallback_models: tuple["AISelectedModel", ...] = (),
         tool_calling_requirement: Literal["required", "optional", "none"] = "required",
-    ) -> ToolGatewayResult:
+    ) -> RuntimeToolLoopResult:
         all_result_lines: list[str] = []
         all_turns: list[AIToolTurnCreateInput] = []
         all_tool_results: list[ToolResult] = []
@@ -193,24 +167,24 @@ class ToolGateway:
         all_tool_attempts: list[ToolAttempt] = []
         tool_message_history: list[AIModelMessage] = []
         final_response: AIModelGenerateResponse | None = None
-        loop_finish_reason = "not_started"
-        current_selected = selected
+        finish_reason = "not_started"
+        current_selected = loop_input.selected
         loop_state = ToolLoopState()
 
         for _ in range(max_rounds):
             round_idx = loop_state.next_round()
             current_messages = repair_tool_message_history(
-                (*messages, *tool_message_history),
+                (*loop_input.messages, *tool_message_history),
                 loop_state=loop_state,
             )
 
             model_result = await self._generate_tool_loop_model(
                 selected=current_selected,
                 messages=current_messages,
-                tools=tools,
+                tools=loop_input.tools,
                 fallback_models=_dedupe_fallbacks(
                     current_selected,
-                    fallback_models,
+                    loop_input.fallback_models,
                 ),
                 tool_calling_requirement=tool_calling_requirement,
                 loop_state=loop_state,
@@ -220,13 +194,13 @@ class ToolGateway:
             all_model_attempts.extend(model_result.attempts)
             response = model_result.response
             if response is None:
-                loop_finish_reason = model_result.finish_reason
+                finish_reason = model_result.finish_reason
                 break
             current_selected = model_result.selected
 
             final_response = response
             if not response.tool_calls:
-                loop_finish_reason = "final_response"
+                finish_reason = "final_response"
                 break
 
             tool_message_history.append(
@@ -238,7 +212,7 @@ class ToolGateway:
             )
 
             intents = build_intents_from_tool_calls(response.tool_calls)
-            observations = await self._execute_intents_with_policy(request, intents)
+            observations = await self._execute_intents_with_policy(loop_input, intents)
             tool_results = project_tool_results(response.tool_calls, observations)
             executed_observations = completed_observations(observations)
             all_tool_results.extend(tool_results)
@@ -300,13 +274,13 @@ class ToolGateway:
             )
         else:
             if final_response is not None and final_response.tool_calls:
-                loop_finish_reason = "max_rounds_reached"
+                finish_reason = "max_rounds_reached"
                 finalization = await self._finalize_after_max_rounds(
                     selected=current_selected,
-                    messages=(*messages, *tool_message_history),
+                    messages=(*loop_input.messages, *tool_message_history),
                     fallback_models=_dedupe_fallbacks(
                         current_selected,
-                        fallback_models,
+                        loop_input.fallback_models,
                     ),
                     tool_calling_requirement="none",
                     loop_state=loop_state,
@@ -319,52 +293,54 @@ class ToolGateway:
                     final_response = finalization.response
                     current_selected = finalization.selected
 
-        return ToolGatewayResult(
+        turns = tuple(all_turns)
+        return RuntimeToolLoopResult(
             policy_text=summarize_tool_policy(
                 self._tool_service.registry.list_tools(),
-                request.policy,
+                loop_input.tool_policy,
             ),
             result_lines=tuple(all_result_lines),
-            turns=tuple(all_turns),
+            turns=turns,
             tool_results=tuple(all_tool_results),
             model_attempts=tuple(all_model_attempts),
             tool_attempts=tuple(all_tool_attempts),
             available_tools=(),
             final_response=final_response,
+            tool_turns=turns,
             tool_messages=tuple(tool_message_history),
-            loop_finish_reason=loop_finish_reason,
-            metadata=loop_state.metadata(),
+            finish_reason=finish_reason,
+            selected=current_selected,
+            diagnostics=loop_state.metadata(),
         )
 
     @staticmethod
-    def _build_observation_request(
-        request: ToolGatewayRequest,
-    ) -> AIToolObservationRequest:
-        return AIToolObservationRequest(
-            session_id=request.session_id,
-            source_message_id=request.source_message_id,
-            trace_id=request.trace_id,
-            message_text=request.message_text,
-            policy=request.policy,
-            recalled_memory_ids=tuple(m.memory_id for m in request.recalled_memories),
-            recalled_memory_contents=tuple(
-                m.content for m in request.recalled_memories
-            ),
-            relationship_context=request.relationship_context,
-            execution_timeout_seconds=request.execution_timeout_seconds,
+    def _build_execution_request(
+        loop_input: RuntimeToolLoopInput,
+    ) -> AIToolExecutionRequest:
+        return AIToolExecutionRequest(
+            session_id=loop_input.session_id,
+            source_message_id=loop_input.source_message_id,
+            trace_id=loop_input.trace_id,
+            message_text=loop_input.message_text,
+            policy=loop_input.tool_policy,
+            recalled_memory_ids=loop_input.recalled_memory_ids,
+            recalled_memory_contents=loop_input.recalled_memory_contents,
+            relationship_context=loop_input.relationship_context,
+            execution_timeout_seconds=loop_input.execution_timeout_seconds,
         )
 
     async def _execute_intents_with_policy(
         self,
-        request: ToolGatewayRequest,
+        loop_input: RuntimeToolLoopInput,
         intents: list["AIToolIntent"],
     ) -> list["AIToolObservationResult | None"]:
         allowed_names = {
-            tool.name for tool in self._tool_service.list_allowed_tools(request.policy)
+            tool.name
+            for tool in self._tool_service.list_allowed_tools(loop_input.tool_policy)
         }
-        if request.tool_mode == "avoid":
+        if loop_input.tool_mode == "avoid":
             allowed_names = set()
-        exposed_names = request.executable_tool_names
+        exposed_names = loop_input.executable_tool_names
 
         observations: list[AIToolObservationResult | None] = [None] * len(intents)
         allowed_intents: list[AIToolIntent] = []
@@ -377,7 +353,7 @@ class ToolGateway:
                     input_payload=intent.input_payload,
                     output_payload={
                         "error": "not_exposed_for_turn",
-                        "trace_id": request.trace_id,
+                        "trace_id": loop_input.trace_id,
                     },
                     status="error",
                 )
@@ -389,7 +365,7 @@ class ToolGateway:
                     input_payload=intent.input_payload,
                     output_payload={
                         "error": "denied_by_policy",
-                        "trace_id": request.trace_id,
+                        "trace_id": loop_input.trace_id,
                     },
                     status="error",
                 )
@@ -399,7 +375,7 @@ class ToolGateway:
 
         if allowed_intents:
             executed = await self._tool_service.execute_tool_intents(
-                request=self._build_observation_request(request),
+                request=self._build_execution_request(loop_input),
                 intents=allowed_intents,
             )
             for position, observation in zip(allowed_positions, executed, strict=False):
@@ -427,7 +403,7 @@ class ToolGateway:
         for candidate in (selected, *fallback_models):
             while True:
                 try:
-                    response = await self._model_gateway.generate_native(
+                    response = await self._model_invoker.generate_text(
                         selected=candidate,
                         messages=messages_for_call,
                         tools=tools,
@@ -638,4 +614,14 @@ def _planned_feature_for_tool_loop(
     return "unknown"
 
 
-tool_gateway = ToolGateway()
+runtime_tool_loop_runner = RuntimeToolLoopRunner()
+
+__all__ = [
+    "DEFAULT_OBSERVATION_CHAR_LIMIT",
+    "DEFAULT_REPEATED_TOOL_THRESHOLD",
+    "MAX_TOOL_ROUNDS",
+    "RuntimeToolLoopInput",
+    "RuntimeToolLoopResult",
+    "RuntimeToolLoopRunner",
+    "runtime_tool_loop_runner",
+]

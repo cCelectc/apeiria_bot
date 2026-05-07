@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-from types import SimpleNamespace
 from typing import TYPE_CHECKING
 
 from apeiria.db.runtime import database_runtime
@@ -12,21 +11,21 @@ if TYPE_CHECKING:
     import pytest
 
 
-def test_preview_tool_intents_delegates_to_tool_service(
+def test_preview_tool_intents_delegates_to_app_planning(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from apeiria.app.ai.operations import tools as operations_tools
 
     captured_kwargs: list[dict[str, object]] = []
 
-    async def fake_preview_tool_intents(**kwargs: object) -> list[object]:
+    async def fake_preview_runtime_tool_intents(**kwargs: object) -> list[object]:
         captured_kwargs.append(dict(kwargs))
         return []
 
     monkeypatch.setattr(
         operations_tools,
-        "ai_tool_service",
-        SimpleNamespace(preview_tool_intents=fake_preview_tool_intents),
+        "preview_runtime_tool_intents",
+        fake_preview_runtime_tool_intents,
     )
 
     class _Operations(operations_tools.ToolsAdminMixin):

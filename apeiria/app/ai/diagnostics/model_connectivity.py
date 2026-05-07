@@ -7,13 +7,13 @@ import re
 import wave
 from typing import TYPE_CHECKING, cast
 
-import apeiria.ai.model as ai_model
 from apeiria.ai.model import ai_source_service, resolve_client_type_for_preset
 from apeiria.ai.model.catalog.capability_templates import enrich_catalog_item
 from apeiria.ai.model.runtime.adapter import AIModelCatalogItem
 from apeiria.ai.model.runtime.capability_sources import (
     capability_provenance_to_metadata,
 )
+from apeiria.ai.model.runtime.service import model_invoker
 from apeiria.app.ai.operations.errors import (
     AISourceModelFetchConfigError,
     AISourceModelFetchUpstreamError,
@@ -71,7 +71,7 @@ async def fetch_source_model_catalog(  # noqa: PLR0913
     if not resolved_api_key:
         raise AISourceModelFetchConfigError
     try:
-        catalog_items = await ai_model.ai_model_facade.list_source_models(
+        catalog_items = await model_invoker.list_source_models(
             source=source,
             api_key=resolved_api_key,
         )
@@ -138,7 +138,7 @@ async def test_source_model_connectivity(  # noqa: PLR0913
         )
     try:
         if source.capability_type == "embedding":
-            embedding_response = await ai_model.ai_model_facade.embed_texts_for_source(
+            embedding_response = await model_invoker.embed_texts_for_source(
                 source=source,
                 api_key=resolved_api_key,
                 model_name=resolved_model_identifier,
@@ -160,14 +160,12 @@ async def test_source_model_connectivity(  # noqa: PLR0913
                 source.extra_config,
                 "stt_language",
             )
-            transcription_response = (
-                await ai_model.ai_model_facade.transcribe_audio_for_source(
-                    source=source,
-                    api_key=resolved_api_key,
-                    model_name=resolved_model_identifier,
-                    audio_bytes=_build_test_wav_bytes(),
-                    language=stt_language,
-                )
+            transcription_response = await model_invoker.transcribe_audio_for_source(
+                source=source,
+                api_key=resolved_api_key,
+                model_name=resolved_model_identifier,
+                audio_bytes=_build_test_wav_bytes(),
+                language=stt_language,
             )
             transcription_summary = transcription_response.text.strip()
             return (
@@ -187,15 +185,13 @@ async def test_source_model_connectivity(  # noqa: PLR0913
                 source.extra_config,
                 "tts_response_format",
             )
-            speech_response = (
-                await ai_model.ai_model_facade.synthesize_speech_for_source(
-                    source=source,
-                    api_key=resolved_api_key,
-                    model_name=resolved_model_identifier,
-                    text=TTS_TEST_TEXT,
-                    voice=tts_voice,
-                    response_format=tts_response_format,
-                )
+            speech_response = await model_invoker.synthesize_speech_for_source(
+                source=source,
+                api_key=resolved_api_key,
+                model_name=resolved_model_identifier,
+                text=TTS_TEST_TEXT,
+                voice=tts_voice,
+                response_format=tts_response_format,
             )
             return (
                 resolved_model_identifier,
@@ -206,15 +202,13 @@ async def test_source_model_connectivity(  # noqa: PLR0913
             rerank_top_n = (
                 _coerce_optional_int(source.extra_config, "rerank_top_n") or 2
             )
-            rerank_response = (
-                await ai_model.ai_model_facade.rerank_documents_for_source(
-                    source=source,
-                    api_key=resolved_api_key,
-                    model_name=resolved_model_identifier,
-                    query=RERANK_TEST_QUERY,
-                    documents=RERANK_TEST_DOCUMENTS,
-                    top_n=rerank_top_n,
-                )
+            rerank_response = await model_invoker.rerank_documents_for_source(
+                source=source,
+                api_key=resolved_api_key,
+                model_name=resolved_model_identifier,
+                query=RERANK_TEST_QUERY,
+                documents=RERANK_TEST_DOCUMENTS,
+                top_n=rerank_top_n,
             )
             top_score = (
                 rerank_response.results[0].relevance_score
@@ -229,7 +223,7 @@ async def test_source_model_connectivity(  # noqa: PLR0913
                 f"rerank ok ({rerank_summary})",
                 0,
             )
-        response = await ai_model.ai_model_facade.generate_text_for_source(
+        response = await model_invoker.generate_text_for_source(
             source=source,
             api_key=resolved_api_key,
             model_name=resolved_model_identifier,

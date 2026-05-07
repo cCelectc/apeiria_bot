@@ -364,10 +364,102 @@ def test_runtime_planning_has_focused_sub_boundaries() -> None:
         "model_selection.py",
         "prompts.py",
         "skills.py",
+        "tool_intents.py",
         "tool_exposure.py",
     )
 
     assert not _missing_files("apeiria/app/ai/runtime/planning", expected_modules)
+
+
+def test_ai_capability_layer_does_not_import_application_layer() -> None:
+    forbidden = (
+        "apeiria.app.ai",
+        "apeiria.webui.routes.ai",
+        "apeiria.builtin_plugins.ai",
+    )
+    violations: list[str] = []
+    for path in (REPO_ROOT / "apeiria/ai").rglob("*.py"):
+        violations.extend(
+            f"{path.relative_to(REPO_ROOT)} -> {imported}"
+            for imported in _imports_for_path(path)
+            if any(
+                imported == prefix or imported.startswith(prefix + ".")
+                for prefix in forbidden
+            )
+        )
+
+    assert not violations
+
+
+def test_ai_capability_public_surfaces_exclude_application_orchestration() -> None:
+    ai_module = importlib.import_module("apeiria.ai")
+    model_module = importlib.import_module("apeiria.ai.model")
+    tools_module = importlib.import_module("apeiria.ai.tools")
+
+    assert not {
+        "AIService",
+        "AIServiceStatus",
+        "ai_service",
+        "model_gateway",
+        "tool_gateway",
+    } & set(ai_module.__all__)
+    assert not {"AIModelFacade", "ai_model_facade"} & set(model_module.__all__)
+    assert "ModelInvoker" in model_module.__all__
+    assert "model_invoker" in model_module.__all__
+    assert not {
+        "ToolGateway",
+        "ToolGatewayRequest",
+        "ToolGatewayResult",
+        "tool_gateway",
+        "RuntimeToolLoopRunner",
+        "runtime_tool_loop_runner",
+    } & set(tools_module.__all__)
+
+
+def test_auxiliary_capability_modules_do_not_select_or_invoke_models() -> None:
+    forbidden_calls = ("select_model", "generate_text")
+    checked_paths = (
+        REPO_ROOT / "apeiria/ai/skills",
+        REPO_ROOT / "apeiria/ai/tools",
+        REPO_ROOT / "apeiria/ai/prompting",
+    )
+    violations: list[str] = []
+    for root in checked_paths:
+        for path in root.rglob("*.py"):
+            tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+            violations.extend(
+                f"{path.relative_to(REPO_ROOT)} calls {_call_name(node)}"
+                for node in ast.walk(tree)
+                if isinstance(node, ast.Call) and _call_name(node) in forbidden_calls
+            )
+
+    assert not violations
+
+
+def test_runtime_execution_owns_model_tool_loop_runner() -> None:
+    tools_source = (REPO_ROOT / "apeiria/ai/tools/__init__.py").read_text(
+        encoding="utf-8"
+    )
+    execution_source = (
+        REPO_ROOT / "apeiria/app/ai/runtime/execution/tool_loop.py"
+    ).read_text(encoding="utf-8")
+    runtime_imports = _imports_for_path(
+        REPO_ROOT / "apeiria/app/ai/runtime/execution/__init__.py"
+    )
+
+    assert "class RuntimeToolLoopRunner" in execution_source
+    assert "runtime_tool_loop_runner" in execution_source
+    assert "ToolGateway" not in tools_source
+    assert "apeiria.ai.tools.gateway" not in runtime_imports
+
+
+def test_builtin_ai_status_uses_application_diagnostics() -> None:
+    imports = _imports_for("apeiria/builtin_plugins/ai.py")
+    source = (REPO_ROOT / "apeiria/builtin_plugins/ai.py").read_text(encoding="utf-8")
+
+    assert "apeiria.app.ai" in imports
+    assert "from apeiria.ai import ai_service" not in source
+    assert "ai_application.diagnostics.get_runtime_status" in source
 
 
 def _missing_files(directory: str, filenames: tuple[str, ...]) -> tuple[str, ...]:

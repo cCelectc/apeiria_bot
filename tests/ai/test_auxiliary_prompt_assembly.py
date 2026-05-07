@@ -37,9 +37,20 @@ class _SkillEntry:
     skill_name: str
     description: str
     entry_mode: str = "prompt_only"
+    origin: str = "file"
 
 
-class _ModelGateway:
+class _ModelSelector:
+    def __init__(self, selected: AISelectedModel | None) -> None:
+        self.selected = selected
+        self.queries: list[Any] = []
+
+    async def select_model(self, **kwargs: object):
+        self.queries.append(dict(kwargs))
+        return self.selected
+
+
+class _ModelInvoker:
     def __init__(
         self,
         content: str | BaseException,
@@ -52,28 +63,22 @@ class _ModelGateway:
         self.content = content
         self.tool_calls = tool_calls
         self.plan_options = plan_options
-        self.prompts: list[str] = []
         self.message_calls: list[tuple[AIModelMessage, ...]] = []
         self.tool_def_calls: list[tuple[Any, ...]] = []
         self.option_calls: list[AIModelCallOptions | None] = []
         self.planned_option_calls: list[dict[str, Any]] = []
         self.degradation_calls: list[tuple[Any, ...]] = []
 
-    async def select_model(self, **_: object):
-        return self.selected
-
-    async def generate_native(  # noqa: PLR0913
+    async def generate_text(  # noqa: PLR0913
         self,
         *,
         selected: AISelectedModel,
-        prompt: str = "",
         messages: tuple[AIModelMessage, ...] = (),
         tools: tuple[Any, ...] = (),
         requirements: AIModelCallRequirements | None = None,
         options: AIModelCallOptions | None = None,
         call_options: dict[str, Any] | None = None,
     ):
-        self.prompts.append(prompt)
         self.message_calls.append(messages)
         self.tool_def_calls.append(tools)
         self.option_calls.append(options)
@@ -91,6 +96,19 @@ class _ModelGateway:
         if isinstance(self.content, BaseException):
             raise self.content
         return model_response(selected, self.content, tool_calls=self.tool_calls)
+
+
+def _patch_selector_and_invoker(
+    monkeypatch: Any,
+    module: Any,
+    invoker: _ModelInvoker,
+) -> None:
+    monkeypatch.setattr(
+        module,
+        "ai_model_profile_service",
+        _ModelSelector(invoker.selected),
+    )
+    monkeypatch.setattr(module, "model_invoker", invoker)
 
 
 def _memory(layer: str = "long_term") -> AIMemoryDefinition:
@@ -210,11 +228,11 @@ def test_auxiliary_renderer_handles_business_names_generically() -> None:
 def test_social_judgment_generation_uses_rendered_messages(monkeypatch: Any) -> None:
     from apeiria.app.ai.reply_strategy import social_judgment
 
-    gateway = _ModelGateway(
+    invoker = _ModelInvoker(
         '{"action":"reply","tool_mode":"avoid","reason_codes":["ok"],'
         '"reason_text":"ok","evidence":{}}'
     )
-    monkeypatch.setattr(social_judgment, "model_gateway", gateway)
+    _patch_selector_and_invoker(monkeypatch, social_judgment, invoker)
 
     result = asyncio.run(
         social_judgment.evaluate_social_judgment(
@@ -240,9 +258,8 @@ def test_social_judgment_generation_uses_rendered_messages(monkeypatch: Any) -> 
     )
 
     assert result.action == "reply"
-    assert gateway.prompts == [""]
-    assert gateway.message_calls[0]
-    assert "[OutputContract]" in gateway.message_calls[0][-1].content
+    assert invoker.message_calls[0]
+    assert "[OutputContract]" in invoker.message_calls[0][-1].content
 
 
 def test_social_judgment_requests_structured_output_schema(
@@ -250,7 +267,7 @@ def test_social_judgment_requests_structured_output_schema(
 ) -> None:
     from apeiria.app.ai.reply_strategy import social_judgment
 
-    gateway = _ModelGateway(
+    invoker = _ModelInvoker(
         '{"action":"reply","tool_mode":"avoid","reason_codes":["ok"],'
         '"reason_text":"ok","evidence":{}}',
         selected=_selected_model_with_capabilities(
@@ -258,7 +275,7 @@ def test_social_judgment_requests_structured_output_schema(
         ),
         plan_options=True,
     )
-    monkeypatch.setattr(social_judgment, "model_gateway", gateway)
+    _patch_selector_and_invoker(monkeypatch, social_judgment, invoker)
 
     result = asyncio.run(
         social_judgment.evaluate_social_judgment(
@@ -267,14 +284,14 @@ def test_social_judgment_requests_structured_output_schema(
     )
 
     assert result.action == "reply"
-    requested_options = gateway.option_calls[0]
+    requested_options = invoker.option_calls[0]
     assert requested_options is not None
     response_format = requested_options.values["response_format"]
     assert response_format["type"] == "json_schema"
     assert response_format["json_schema"]["name"] == "social_judgment"
     assert "action" in response_format["json_schema"]["schema"]["required"]
-    assert gateway.planned_option_calls[0]["response_format"] == response_format
-    assert "[OutputContract]" in gateway.message_calls[0][-1].content
+    assert invoker.planned_option_calls[0]["response_format"] == response_format
+    assert "[OutputContract]" in invoker.message_calls[0][-1].content
 
 
 def test_social_judgment_degrades_schema_to_json_object_when_only_json_mode(
@@ -282,7 +299,7 @@ def test_social_judgment_degrades_schema_to_json_object_when_only_json_mode(
 ) -> None:
     from apeiria.app.ai.reply_strategy import social_judgment
 
-    gateway = _ModelGateway(
+    invoker = _ModelInvoker(
         '{"action":"reply","tool_mode":"avoid","reason_codes":["ok"],'
         '"reason_text":"ok","evidence":{}}',
         selected=_selected_model_with_capabilities(
@@ -290,7 +307,7 @@ def test_social_judgment_degrades_schema_to_json_object_when_only_json_mode(
         ),
         plan_options=True,
     )
-    monkeypatch.setattr(social_judgment, "model_gateway", gateway)
+    _patch_selector_and_invoker(monkeypatch, social_judgment, invoker)
 
     asyncio.run(
         social_judgment.evaluate_social_judgment(
@@ -298,8 +315,8 @@ def test_social_judgment_degrades_schema_to_json_object_when_only_json_mode(
         )
     )
 
-    assert gateway.planned_option_calls[0]["response_format"] == {"type": "json_object"}
-    assert gateway.degradation_calls[0][0].kind == "structured_output_degraded"
+    assert invoker.planned_option_calls[0]["response_format"] == {"type": "json_object"}
+    assert invoker.degradation_calls[0][0].kind == "structured_output_degraded"
 
 
 def test_social_judgment_omits_native_response_format_when_unsupported(
@@ -307,13 +324,13 @@ def test_social_judgment_omits_native_response_format_when_unsupported(
 ) -> None:
     from apeiria.app.ai.reply_strategy import social_judgment
 
-    gateway = _ModelGateway(
+    invoker = _ModelInvoker(
         '{"action":"reply","tool_mode":"avoid","reason_codes":["ok"],'
         '"reason_text":"ok","evidence":{}}',
         selected=_selected_model_with_capabilities(AIModelCapabilities()),
         plan_options=True,
     )
-    monkeypatch.setattr(social_judgment, "model_gateway", gateway)
+    _patch_selector_and_invoker(monkeypatch, social_judgment, invoker)
 
     asyncio.run(
         social_judgment.evaluate_social_judgment(
@@ -321,9 +338,9 @@ def test_social_judgment_omits_native_response_format_when_unsupported(
         )
     )
 
-    assert "response_format" not in gateway.planned_option_calls[0]
-    assert gateway.degradation_calls[0][0].kind == "structured_output_omitted"
-    assert "[OutputContract]" in gateway.message_calls[0][-1].content
+    assert "response_format" not in invoker.planned_option_calls[0]
+    assert invoker.degradation_calls[0][0].kind == "structured_output_omitted"
+    assert "[OutputContract]" in invoker.message_calls[0][-1].content
 
 
 def test_social_judgment_invalid_or_failed_structured_output_uses_fallback(
@@ -334,12 +351,12 @@ def test_social_judgment_invalid_or_failed_structured_output_uses_fallback(
     selected = _selected_model_with_capabilities(
         AIModelCapabilities(supports_structured_output=True)
     )
-    invalid_gateway = _ModelGateway(
+    invalid_invoker = _ModelInvoker(
         '{"action":"invalid","tool_mode":"avoid","reason_codes":["bad"],'
         '"reason_text":"bad","evidence":{}}',
         selected=selected,
     )
-    monkeypatch.setattr(social_judgment, "model_gateway", invalid_gateway)
+    _patch_selector_and_invoker(monkeypatch, social_judgment, invalid_invoker)
 
     invalid = asyncio.run(
         social_judgment.evaluate_social_judgment(
@@ -347,11 +364,11 @@ def test_social_judgment_invalid_or_failed_structured_output_uses_fallback(
         )
     )
 
-    failing_gateway = _ModelGateway(
+    failing_invoker = _ModelInvoker(
         RuntimeError("provider rejected response_format"),
         selected=selected,
     )
-    monkeypatch.setattr(social_judgment, "model_gateway", failing_gateway)
+    _patch_selector_and_invoker(monkeypatch, social_judgment, failing_invoker)
 
     failed = asyncio.run(
         social_judgment.evaluate_social_judgment(
@@ -368,13 +385,13 @@ def test_social_judgment_invalid_or_failed_structured_output_uses_fallback(
 def test_memory_extraction_uses_rendered_messages(monkeypatch: Any) -> None:
     from apeiria.app.ai.runtime.context import memory_extraction
 
-    gateway = _ModelGateway(
+    invoker = _ModelInvoker(
         '{"memories":[{"memory_kind":"fact","content":"likes tea",'
         '"confidence":0.9,"salience":0.8}],'
         '"sentiment":{"polarity":"positive","intensity":0.5},'
         '"self_introduction_name":null}'
     )
-    monkeypatch.setattr(memory_extraction, "model_gateway", gateway)
+    _patch_selector_and_invoker(monkeypatch, memory_extraction, invoker)
 
     result = asyncio.run(
         memory_extraction.extract_memory_from_message(
@@ -384,20 +401,24 @@ def test_memory_extraction_uses_rendered_messages(monkeypatch: Any) -> None:
     )
 
     assert result.candidates[0].content == "likes tea"
-    assert gateway.prompts == [""]
-    assert "[ExistingMemories]" in gateway.message_calls[0][-1].content
+    assert "[ExistingMemories]" in invoker.message_calls[0][-1].content
 
 
 def test_summary_and_skill_selection_use_rendered_messages(monkeypatch: Any) -> None:
     from apeiria.ai import model as model_module
-    from apeiria.ai.model.runtime import gateway as runtime_gateway
-    from apeiria.ai.skills.selection import AISkillSelector
+    from apeiria.ai.model.routing import profile as profile_module
     from apeiria.app.ai.conversation_context.summary import (
         compress_conversation_history,
     )
+    from apeiria.app.ai.runtime.planning import skills as runtime_skills
 
-    summary_gateway = _ModelGateway("new summary")
-    monkeypatch.setattr(model_module, "model_gateway", summary_gateway)
+    summary_invoker = _ModelInvoker("new summary")
+    monkeypatch.setattr(model_module, "model_invoker", summary_invoker)
+    monkeypatch.setattr(
+        profile_module,
+        "ai_model_profile_service",
+        _ModelSelector(summary_invoker.selected),
+    )
 
     summary = asyncio.run(
         compress_conversation_history(
@@ -408,30 +429,36 @@ def test_summary_and_skill_selection_use_rendered_messages(monkeypatch: Any) -> 
     )
 
     assert summary == "new summary"
-    assert summary_gateway.prompts == [""]
-    assert "[ConversationHistory]" in summary_gateway.message_calls[0][-1].content
+    assert "[ConversationHistory]" in summary_invoker.message_calls[0][-1].content
 
-    skill_gateway = _ModelGateway('["drawing"]')
-    monkeypatch.setattr(runtime_gateway, "model_gateway", skill_gateway)
+    skill_invoker = _ModelInvoker('["drawing"]')
+    monkeypatch.setattr(
+        runtime_skills,
+        "ai_model_profile_service",
+        _ModelSelector(skill_invoker.selected),
+    )
+    monkeypatch.setattr(runtime_skills, "model_invoker", skill_invoker)
+    monkeypatch.setattr(
+        runtime_skills.ai_skill_runtime,
+        "list_catalog",
+        lambda: [_SkillEntry("drawing", "Draw things")],
+    )
 
-    selected = asyncio.run(
-        AISkillSelector().select_skill_names(
+    result = asyncio.run(
+        runtime_skills.select_runtime_skills(
             message_text="draw this",
             conversation_summary="old topic",
-            entries=[_SkillEntry("drawing", "Draw things")],
         )
     )
 
-    assert selected == ["drawing"]
-    assert skill_gateway.prompts == [""]
-    assert "[SkillCatalog]" in skill_gateway.message_calls[0][-1].content
+    assert result.selected_names == ("drawing",)
+    assert "[SkillCatalog]" in skill_invoker.message_calls[0][-1].content
 
 
 def test_tool_intent_planning_uses_messages_and_tools(monkeypatch: Any) -> None:
-    from apeiria.ai.model.runtime import gateway as runtime_gateway
-    from apeiria.ai.tools.planning import AIToolIntentPlanner
+    from apeiria.app.ai.runtime.planning import tool_intents
 
-    gateway = _ModelGateway(
+    invoker = _ModelInvoker(
         "",
         tool_calls=(
             AIModelToolCall(
@@ -441,19 +468,35 @@ def test_tool_intent_planning_uses_messages_and_tools(monkeypatch: Any) -> None:
             ),
         ),
     )
-    monkeypatch.setattr(runtime_gateway, "model_gateway", gateway)
+    monkeypatch.setattr(
+        tool_intents,
+        "ai_model_profile_service",
+        _ModelSelector(invoker.selected),
+    )
+    monkeypatch.setattr(tool_intents, "model_invoker", invoker)
+    monkeypatch.setattr(
+        tool_intents,
+        "ai_tool_service",
+        type(
+            "ToolService",
+            (),
+            {
+                "list_allowed_tools": lambda _self, _policy: [
+                    AIToolSpec(
+                        name="memory.query",
+                        description="Search memory",
+                        read_only=True,
+                        concurrency_safe=True,
+                    )
+                ]
+            },
+        )(),
+    )
 
     intents = asyncio.run(
-        AIToolIntentPlanner().plan_tool_intents(
+        tool_intents.plan_runtime_tool_intents(
             message_text="search memory",
-            allowed_tools=[
-                AIToolSpec(
-                    name="memory.query",
-                    description="Search memory",
-                    read_only=True,
-                    concurrency_safe=True,
-                )
-            ],
+            policy=object(),  # type: ignore[arg-type]
             recalled_memory_ids=("m1",),
             recalled_memory_contents=("known fact",),
             relationship_context="friendly",
@@ -461,9 +504,8 @@ def test_tool_intent_planning_uses_messages_and_tools(monkeypatch: Any) -> None:
     )
 
     assert intents[0].tool_name == "memory.query"
-    assert gateway.prompts == [""]
-    assert gateway.tool_def_calls[0]
-    assert "[RecalledMemories]" in gateway.message_calls[0][-1].content
+    assert invoker.tool_def_calls[0]
+    assert "[RecalledMemories]" in invoker.message_calls[0][-1].content
 
 
 def _selected_model_with_capabilities(

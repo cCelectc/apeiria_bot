@@ -15,25 +15,26 @@ from apeiria.ai.model.runtime.capabilities import (
     AIModelCapabilityPlanningError,
 )
 from apeiria.ai.model.runtime.planning import plan_model_call
-from apeiria.ai.tools import AIToolObservationResult, ToolGateway
+from apeiria.ai.tools import AIToolObservationResult
 from apeiria.ai.tools.loop.prompt_budget import recover_prompt_budget_messages
+from apeiria.app.ai.runtime.execution.tool_loop import RuntimeToolLoopRunner
 from tests.ai.agent_turn_helpers import (
-    ModelGatewayStub,
+    ModelInvokerStub,
     ToolServiceStub,
     model_response,
     selected_model,
     tool_call,
-    tool_request,
+    tool_loop_input,
 )
 
 
-class PlanningGatewayStub:
+class PlanningInvokerStub:
     def __init__(self, content: str = "done") -> None:
         self.content = content
         self.calls: list[Any] = []
         self.tool_calls: list[tuple[Any, ...]] = []
 
-    async def generate_native(
+    async def generate_text(
         self,
         *,
         selected: Any,
@@ -78,9 +79,19 @@ class UpstreamError(RuntimeError):
         self.status_code = status_code
 
 
+def _tool_definition() -> Any:
+    from apeiria.ai.model import AIModelToolDefinition
+
+    return AIModelToolDefinition(
+        name="memory_query",
+        description="Query memory",
+        parameters={"type": "object"},
+    )
+
+
 def test_tool_loop_records_final_response_finish_reason() -> None:
     selected = selected_model("main")
-    gateway = ModelGatewayStub(
+    invoker = ModelInvokerStub(
         [
             model_response(selected, "", tool_calls=(tool_call("call-1"),)),
             model_response(selected, "done"),
@@ -98,18 +109,11 @@ def test_tool_loop_records_final_response_finish_reason() -> None:
             ]
         ]
     )
-    tool_gateway = ToolGateway(model_gateway=gateway, tool_service=service)
+    runner = RuntimeToolLoopRunner(model_invoker=invoker, tool_service=service)
 
-    result = asyncio.run(
-        tool_gateway.run_tool_loop(
-            tool_request(),
-            messages=[],
-            tools=(),
-            selected=selected,
-        )
-    )
+    result = asyncio.run(runner.run(tool_loop_input(selected)))
 
-    assert result.loop_finish_reason == "final_response"
+    assert result.finish_reason == "final_response"
     assert result.final_response is not None
     assert result.final_response.content == "done"
     assert [attempt.response_source for attempt in result.model_attempts] == [
@@ -122,20 +126,16 @@ def test_tool_loop_records_final_response_finish_reason() -> None:
 
 def test_tool_loop_model_failure_uses_shared_taxonomy() -> None:
     selected = selected_model("main")
-    gateway = ModelGatewayStub([UpstreamError("upstream overloaded", status_code=503)])
-    tool_gateway = ToolGateway(model_gateway=gateway, tool_service=ToolServiceStub([]))
-
-    result = asyncio.run(
-        tool_gateway.run_tool_loop(
-            tool_request(),
-            messages=[],
-            tools=(),
-            selected=selected,
-        )
+    invoker = ModelInvokerStub([UpstreamError("upstream overloaded", status_code=503)])
+    runner = RuntimeToolLoopRunner(
+        model_invoker=invoker,
+        tool_service=ToolServiceStub([]),
     )
 
+    result = asyncio.run(runner.run(tool_loop_input(selected)))
+
     assert result.final_response is None
-    assert result.loop_finish_reason == "upstream_temporary_error"
+    assert result.finish_reason == "upstream_temporary_error"
     assert result.model_attempts[0].reason == "upstream_temporary_error"
 
 
@@ -158,17 +158,20 @@ def test_tool_loop_uses_capable_fallback_for_required_tools() -> None:
             supports_tool_calling=True,
         ),
     )
-    gateway = PlanningGatewayStub()
-    service = ToolServiceStub(observations=[])
-    tool_gateway = ToolGateway(model_gateway=gateway, tool_service=service)
+    invoker = PlanningInvokerStub()
+    runner = RuntimeToolLoopRunner(
+        model_invoker=invoker,
+        tool_service=ToolServiceStub(observations=[]),
+    )
 
     result = asyncio.run(
-        tool_gateway.run_tool_loop(
-            tool_request(),
-            messages=[AIModelMessage(role="user", content="use tools")],
-            tools=(_tool_definition(),),
-            selected=primary,
-            fallback_models=(fallback,),
+        runner.run(
+            tool_loop_input(
+                primary,
+                messages=(AIModelMessage(role="user", content="use tools"),),
+                tools=(_tool_definition(),),
+                fallback_models=(fallback,),
+            )
         )
     )
 
@@ -176,7 +179,7 @@ def test_tool_loop_uses_capable_fallback_for_required_tools() -> None:
         "capability_unavailable",
         None,
     ]
-    assert [item.source.source_id for item in gateway.calls] == [
+    assert [item.source.source_id for item in invoker.calls] == [
         "source-primary",
         "source-fallback",
     ]
@@ -194,23 +197,26 @@ def test_tool_loop_records_optional_tool_degradation() -> None:
             supports_tool_calling=False,
         ),
     )
-    gateway = PlanningGatewayStub()
-    service = ToolServiceStub(observations=[])
-    tool_gateway = ToolGateway(model_gateway=gateway, tool_service=service)
+    invoker = PlanningInvokerStub()
+    runner = RuntimeToolLoopRunner(
+        model_invoker=invoker,
+        tool_service=ToolServiceStub(observations=[]),
+    )
 
     result = asyncio.run(
-        tool_gateway.run_tool_loop(
-            tool_request(),
-            messages=[AIModelMessage(role="user", content="answer without tools")],
-            tools=(_tool_definition(),),
-            selected=selected,
+        runner.run(
+            tool_loop_input(
+                selected,
+                messages=(AIModelMessage(role="user", content="answer without tools"),),
+                tools=(_tool_definition(),),
+            ),
             tool_calling_requirement="optional",
         )
     )
 
-    assert gateway.tool_calls == [()]
+    assert invoker.tool_calls == [()]
     assert result.final_response is not None
-    assert result.metadata["tool_loop_capability_degradations"][0]["kind"] == (
+    assert result.diagnostics["tool_loop_capability_degradations"][0]["kind"] == (
         "tools_omitted"
     )
 
@@ -232,7 +238,7 @@ def test_prompt_budget_recovery_preserves_content_parts() -> None:
 
 def test_tool_loop_records_failed_tool_observation() -> None:
     selected = selected_model("main")
-    gateway = ModelGatewayStub(
+    invoker = ModelInvokerStub(
         [
             model_response(selected, "", tool_calls=(tool_call("call-1"),)),
             model_response(selected, "done"),
@@ -251,16 +257,9 @@ def test_tool_loop_records_failed_tool_observation() -> None:
             ]
         ]
     )
-    tool_gateway = ToolGateway(model_gateway=gateway, tool_service=service)
+    runner = RuntimeToolLoopRunner(model_invoker=invoker, tool_service=service)
 
-    result = asyncio.run(
-        tool_gateway.run_tool_loop(
-            tool_request(),
-            messages=[],
-            tools=(),
-            selected=selected,
-        )
-    )
+    result = asyncio.run(runner.run(tool_loop_input(selected)))
 
     assert result.tool_attempts[0].status == "error"
     assert result.tool_attempts[0].observation.content.startswith(
@@ -270,7 +269,7 @@ def test_tool_loop_records_failed_tool_observation() -> None:
 
 def test_tool_loop_records_timeout_tool_observation() -> None:
     selected = selected_model("main")
-    gateway = ModelGatewayStub(
+    invoker = ModelInvokerStub(
         [
             model_response(selected, "", tool_calls=(tool_call("call-1"),)),
             model_response(selected, "done"),
@@ -289,15 +288,10 @@ def test_tool_loop_records_timeout_tool_observation() -> None:
             ]
         ]
     )
-    tool_gateway = ToolGateway(model_gateway=gateway, tool_service=service)
+    runner = RuntimeToolLoopRunner(model_invoker=invoker, tool_service=service)
 
     result = asyncio.run(
-        tool_gateway.run_tool_loop(
-            replace(tool_request(), execution_timeout_seconds=0.1),
-            messages=[],
-            tools=(),
-            selected=selected,
-        )
+        runner.run(tool_loop_input(selected, execution_timeout_seconds=0.1))
     )
 
     assert result.tool_attempts[0].status == "timeout"
@@ -310,23 +304,16 @@ def test_tool_loop_records_timeout_tool_observation() -> None:
 
 def test_tool_loop_records_denied_tool_observation() -> None:
     selected = selected_model("main")
-    gateway = ModelGatewayStub(
+    invoker = ModelInvokerStub(
         [
             model_response(selected, "", tool_calls=(tool_call("call-1"),)),
             model_response(selected, "done"),
         ]
     )
     service = ToolServiceStub(observations=[], allowed_tool_names=())
-    tool_gateway = ToolGateway(model_gateway=gateway, tool_service=service)
+    runner = RuntimeToolLoopRunner(model_invoker=invoker, tool_service=service)
 
-    result = asyncio.run(
-        tool_gateway.run_tool_loop(
-            tool_request(),
-            messages=[],
-            tools=(),
-            selected=selected,
-        )
-    )
+    result = asyncio.run(runner.run(tool_loop_input(selected)))
 
     assert service.calls == []
     assert result.tool_attempts[0].status == "error"
@@ -335,21 +322,22 @@ def test_tool_loop_records_denied_tool_observation() -> None:
 
 def test_tool_loop_denies_tool_not_exposed_for_current_turn() -> None:
     selected = selected_model("main")
-    gateway = ModelGatewayStub(
+    invoker = ModelInvokerStub(
         [
             model_response(selected, "", tool_calls=(tool_call("call-1"),)),
             model_response(selected, "done"),
         ]
     )
     service = ToolServiceStub(observations=[], allowed_tool_names=("memory.query",))
-    tool_gateway = ToolGateway(model_gateway=gateway, tool_service=service)
+    runner = RuntimeToolLoopRunner(model_invoker=invoker, tool_service=service)
 
     result = asyncio.run(
-        tool_gateway.run_tool_loop(
-            replace(tool_request(), executable_tool_names=frozenset()),
-            messages=[],
-            tools=(_tool_definition(),),
-            selected=selected,
+        runner.run(
+            tool_loop_input(
+                selected,
+                tools=(_tool_definition(),),
+                executable_tool_names=frozenset(),
+            )
         )
     )
 
@@ -365,32 +353,34 @@ def test_tool_loop_denies_tool_not_exposed_for_current_turn() -> None:
 def test_tool_loop_recovers_once_from_context_pressure() -> None:
     selected = selected_model("main")
     long_observation = "- [memory.query] " + ("x" * 1200)
-    gateway = ModelGatewayStub(
+    invoker = ModelInvokerStub(
         [
             RuntimeError("context_length_exceeded api_key=secret-token"),
             model_response(selected, "done"),
         ]
     )
-    service = ToolServiceStub(observations=[])
-    tool_gateway = ToolGateway(model_gateway=gateway, tool_service=service)
+    runner = RuntimeToolLoopRunner(
+        model_invoker=invoker,
+        tool_service=ToolServiceStub(observations=[]),
+    )
 
     result = asyncio.run(
-        tool_gateway.run_tool_loop(
-            tool_request(),
-            messages=[
-                AIModelMessage(
-                    role="assistant",
-                    content="",
-                    tool_calls=(tool_call("call-1"),),
+        runner.run(
+            tool_loop_input(
+                selected,
+                messages=(
+                    AIModelMessage(
+                        role="assistant",
+                        content="",
+                        tool_calls=(tool_call("call-1"),),
+                    ),
+                    AIModelMessage(
+                        role="tool",
+                        content=long_observation,
+                        tool_call_id="call-1",
+                    ),
                 ),
-                AIModelMessage(
-                    role="tool",
-                    content=long_observation,
-                    tool_call_id="call-1",
-                ),
-            ],
-            tools=(),
-            selected=selected,
+            )
         )
     )
 
@@ -404,17 +394,17 @@ def test_tool_loop_recovers_once_from_context_pressure() -> None:
     diagnostic = result.model_attempts[0].diagnostic or ""
     assert "secret-token" not in diagnostic
     assert "api_key=<redacted>" in diagnostic
-    assert result.metadata["tool_loop_context_recovery_attempted"] is True
-    assert result.metadata["tool_loop_context_recovery_succeeded"] is True
-    assert result.metadata["tool_loop_context_recovery_failed"] is False
-    assert result.metadata["tool_loop_context_recovery_compacted_messages"] == 1
-    assert result.metadata["tool_loop_model_retry_count"] == 1
-    assert result.metadata["tool_loop_model_attempt_count"] == len(gateway.calls)
+    assert result.diagnostics["tool_loop_context_recovery_attempted"] is True
+    assert result.diagnostics["tool_loop_context_recovery_succeeded"] is True
+    assert result.diagnostics["tool_loop_context_recovery_failed"] is False
+    assert result.diagnostics["tool_loop_context_recovery_compacted_messages"] == 1
+    assert result.diagnostics["tool_loop_model_retry_count"] == 1
+    assert result.diagnostics["tool_loop_model_attempt_count"] == len(invoker.calls)
     first_tool_message = next(
-        message for message in gateway.message_calls[0] if message.role == "tool"
+        message for message in invoker.message_calls[0] if message.role == "tool"
     )
     retry_tool_message = next(
-        message for message in gateway.message_calls[1] if message.role == "tool"
+        message for message in invoker.message_calls[1] if message.role == "tool"
     )
     assert first_tool_message.content == long_observation
     assert len(retry_tool_message.content) < len(long_observation)
@@ -424,118 +414,114 @@ def test_tool_loop_recovers_once_from_context_pressure() -> None:
 def test_tool_loop_records_failed_context_pressure_recovery() -> None:
     selected = selected_model("main")
     long_observation = "- [memory.query] " + ("x" * 1200)
-    gateway = ModelGatewayStub(
+    invoker = ModelInvokerStub(
         [
             RuntimeError("context_length_exceeded token=secret-token"),
             RuntimeError("context_length_exceeded token=secret-token"),
         ]
     )
-    service = ToolServiceStub(observations=[])
-    tool_gateway = ToolGateway(model_gateway=gateway, tool_service=service)
+    runner = RuntimeToolLoopRunner(
+        model_invoker=invoker,
+        tool_service=ToolServiceStub(observations=[]),
+    )
 
     result = asyncio.run(
-        tool_gateway.run_tool_loop(
-            tool_request(),
-            messages=[
-                AIModelMessage(
-                    role="assistant",
-                    content="",
-                    tool_calls=(tool_call("call-1"),),
+        runner.run(
+            tool_loop_input(
+                selected,
+                messages=(
+                    AIModelMessage(
+                        role="assistant",
+                        content="",
+                        tool_calls=(tool_call("call-1"),),
+                    ),
+                    AIModelMessage(
+                        role="tool",
+                        content=long_observation,
+                        tool_call_id="call-1",
+                    ),
                 ),
-                AIModelMessage(
-                    role="tool",
-                    content=long_observation,
-                    tool_call_id="call-1",
-                ),
-            ],
-            tools=(),
-            selected=selected,
+            )
         )
     )
 
     assert result.final_response is None
-    assert result.loop_finish_reason == "context_pressure"
+    assert result.finish_reason == "context_pressure"
     assert [attempt.reason for attempt in result.model_attempts] == [
         "context_pressure",
         "context_pressure",
     ]
-    assert result.metadata["tool_loop_context_recovery_attempted"] is True
-    assert result.metadata["tool_loop_context_recovery_succeeded"] is False
-    assert result.metadata["tool_loop_context_recovery_failed"] is True
-    assert result.metadata["tool_loop_model_retry_count"] == 1
+    assert result.diagnostics["tool_loop_context_recovery_attempted"] is True
+    assert result.diagnostics["tool_loop_context_recovery_succeeded"] is False
+    assert result.diagnostics["tool_loop_context_recovery_failed"] is True
+    assert result.diagnostics["tool_loop_model_retry_count"] == 1
     assert all(
         "secret-token" not in (attempt.diagnostic or "")
         for attempt in result.model_attempts
     )
 
 
-def _tool_definition() -> Any:
-    from apeiria.ai.model import AIModelToolDefinition
-
-    return AIModelToolDefinition(
-        name="memory_query",
-        description="Query memory",
-        parameters={"type": "object"},
-    )
-
-
 def test_tool_loop_repairs_missing_tool_result_before_model_call() -> None:
     selected = selected_model("main")
-    gateway = ModelGatewayStub([model_response(selected, "done")])
-    service = ToolServiceStub(observations=[])
-    tool_gateway = ToolGateway(model_gateway=gateway, tool_service=service)
+    invoker = ModelInvokerStub([model_response(selected, "done")])
+    runner = RuntimeToolLoopRunner(
+        model_invoker=invoker,
+        tool_service=ToolServiceStub(observations=[]),
+    )
 
     result = asyncio.run(
-        tool_gateway.run_tool_loop(
-            tool_request(),
-            messages=[
-                AIModelMessage(
-                    role="assistant",
-                    content="",
-                    tool_calls=(tool_call("call-1"),),
-                )
-            ],
-            tools=(),
-            selected=selected,
+        runner.run(
+            tool_loop_input(
+                selected,
+                messages=(
+                    AIModelMessage(
+                        role="assistant",
+                        content="",
+                        tool_calls=(tool_call("call-1"),),
+                    ),
+                ),
+            )
         )
     )
 
     placeholder = next(
-        message for message in gateway.message_calls[0] if message.role == "tool"
+        message for message in invoker.message_calls[0] if message.role == "tool"
     )
     assert placeholder.tool_call_id == "call-1"
     assert "missing tool observation" in placeholder.content
-    assert result.metadata["tool_loop_chain_repair_placeholders"] == 1
+    assert result.diagnostics["tool_loop_chain_repair_placeholders"] == 1
 
 
 def test_tool_loop_omits_orphan_tool_result_before_model_call() -> None:
     selected = selected_model("main")
-    gateway = ModelGatewayStub([model_response(selected, "done")])
-    service = ToolServiceStub(observations=[])
-    tool_gateway = ToolGateway(model_gateway=gateway, tool_service=service)
+    invoker = ModelInvokerStub([model_response(selected, "done")])
+    runner = RuntimeToolLoopRunner(
+        model_invoker=invoker,
+        tool_service=ToolServiceStub(observations=[]),
+    )
 
     result = asyncio.run(
-        tool_gateway.run_tool_loop(
-            tool_request(),
-            messages=[
-                AIModelMessage(
-                    role="tool",
-                    content="- [memory.query] orphan",
-                    tool_call_id="call-1",
-                )
-            ],
-            tools=(),
-            selected=selected,
+        runner.run(
+            tool_loop_input(
+                selected,
+                messages=(
+                    AIModelMessage(
+                        role="tool",
+                        content="- [memory.query] orphan",
+                        tool_call_id="call-1",
+                    ),
+                ),
+            )
         )
     )
 
-    assert all(message.role != "tool" for message in gateway.message_calls[0])
-    assert result.metadata["tool_loop_chain_repair_orphans"] == 1
+    assert all(message.role != "tool" for message in invoker.message_calls[0])
+    assert result.diagnostics["tool_loop_chain_repair_orphans"] == 1
 
 
 def test_tool_loop_records_max_rounds_and_repeated_tool_calls() -> None:
     selected = selected_model("main")
-    gateway = ModelGatewayStub(
+    invoker = ModelInvokerStub(
         [
             model_response(selected, "", tool_calls=(tool_call("call-1"),)),
             model_response(selected, "", tool_calls=(tool_call("call-2"),)),
@@ -562,20 +548,17 @@ def test_tool_loop_records_max_rounds_and_repeated_tool_calls() -> None:
             ],
         ]
     )
-    tool_gateway = ToolGateway(model_gateway=gateway, tool_service=service)
+    runner = RuntimeToolLoopRunner(model_invoker=invoker, tool_service=service)
 
     result = asyncio.run(
-        tool_gateway.run_tool_loop(
-            tool_request(),
-            messages=[],
-            tools=(),
-            selected=selected,
+        runner.run(
+            tool_loop_input(selected),
             max_rounds=2,
             repeated_tool_threshold=2,
         )
     )
 
-    assert result.loop_finish_reason == "max_rounds_reached"
+    assert result.finish_reason == "max_rounds_reached"
     assert result.final_response is not None
     assert result.final_response.content == "final after max rounds"
     assert [attempt.repetition_count for attempt in result.tool_attempts] == [1, 2]
@@ -583,15 +566,15 @@ def test_tool_loop_records_max_rounds_and_repeated_tool_calls() -> None:
     assert "repeated tool call" in (result.tool_attempts[1].diagnostic or "")
     expected_tool_rounds = 2
     assert len(service.calls) == expected_tool_rounds
-    assert len(gateway.calls) == expected_tool_rounds + 1
-    assert gateway.tool_calls[-1] == ()
-    assert result.metadata["tool_loop_finalization_attempted"] is True
-    assert result.metadata["tool_loop_finalization_succeeded"] is True
+    assert len(invoker.calls) == expected_tool_rounds + 1
+    assert invoker.tool_calls[-1] == ()
+    assert result.diagnostics["tool_loop_finalization_attempted"] is True
+    assert result.diagnostics["tool_loop_finalization_succeeded"] is True
 
 
 def test_tool_loop_keeps_max_rounds_result_when_finalization_is_empty() -> None:
     selected = selected_model("main")
-    gateway = ModelGatewayStub(
+    invoker = ModelInvokerStub(
         [
             model_response(selected, "", tool_calls=(tool_call("call-1"),)),
             model_response(selected, ""),
@@ -609,32 +592,24 @@ def test_tool_loop_keeps_max_rounds_result_when_finalization_is_empty() -> None:
             ]
         ]
     )
-    tool_gateway = ToolGateway(model_gateway=gateway, tool_service=service)
+    runner = RuntimeToolLoopRunner(model_invoker=invoker, tool_service=service)
 
-    result = asyncio.run(
-        tool_gateway.run_tool_loop(
-            tool_request(),
-            messages=[],
-            tools=(),
-            selected=selected,
-            max_rounds=1,
-        )
-    )
+    result = asyncio.run(runner.run(tool_loop_input(selected), max_rounds=1))
 
-    assert result.loop_finish_reason == "max_rounds_reached"
+    assert result.finish_reason == "max_rounds_reached"
     assert result.final_response is not None
     assert result.final_response.tool_calls == (tool_call("call-1"),)
     assert len(service.calls) == 1
-    assert gateway.tool_calls[-1] == ()
-    assert result.metadata["tool_loop_finalization_attempted"] is True
-    assert result.metadata["tool_loop_finalization_succeeded"] is False
-    assert result.metadata["tool_loop_finalization_error"] == "empty_response"
+    assert invoker.tool_calls[-1] == ()
+    assert result.diagnostics["tool_loop_finalization_attempted"] is True
+    assert result.diagnostics["tool_loop_finalization_succeeded"] is False
+    assert result.diagnostics["tool_loop_finalization_error"] == "empty_response"
 
 
 def test_tool_loop_truncates_prompt_visible_observation() -> None:
     selected = selected_model("main")
     long_summary = "- [memory.query] " + ("x" * 200)
-    gateway = ModelGatewayStub(
+    invoker = ModelInvokerStub(
         [
             model_response(selected, "", tool_calls=(tool_call("call-1"),)),
             model_response(selected, "done"),
@@ -652,16 +627,10 @@ def test_tool_loop_truncates_prompt_visible_observation() -> None:
             ]
         ]
     )
-    tool_gateway = ToolGateway(model_gateway=gateway, tool_service=service)
+    runner = RuntimeToolLoopRunner(model_invoker=invoker, tool_service=service)
 
     result = asyncio.run(
-        tool_gateway.run_tool_loop(
-            tool_request(),
-            messages=[],
-            tools=(),
-            selected=selected,
-            observation_char_limit=48,
-        )
+        runner.run(tool_loop_input(selected), observation_char_limit=48)
     )
 
     assert result.tool_attempts[0].observation.truncated is True

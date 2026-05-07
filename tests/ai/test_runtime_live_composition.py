@@ -153,11 +153,6 @@ def _patch_live_common(
         "ensure_ai_runtime_support_initialized",
         lambda **_kwargs: None,
     )
-    monkeypatch.setattr(
-        live_module,
-        "ai_skill_service",
-        SimpleNamespace(ensure_initialized=lambda: None),
-    )
     monkeypatch.setattr(live_module, "get_ai_plugin_config", AIPluginConfig)
     monkeypatch.setattr(
         live_module,

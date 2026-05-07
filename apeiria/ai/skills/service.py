@@ -24,7 +24,6 @@ if TYPE_CHECKING:
     from apeiria.ai.skills.runtime import (
         AISkillActivation,
         AISkillCatalogEntry,
-        AISkillSelectionResult,
     )
     from apeiria.ai.tools.models import AIToolPolicy, AIToolSpec
     from apeiria.ai.tools.service import AIToolService
@@ -131,20 +130,6 @@ class AISkillService:
 
         self.ensure_initialized()
         return ai_skill_runtime.list_file_skills()
-
-    async def select_skills(
-        self,
-        *,
-        message_text: str,
-        conversation_summary: str | None,
-    ) -> "AISkillSelectionResult":
-        """LLM-based skill selection for a message."""
-
-        self.ensure_initialized()
-        return await ai_skill_runtime.select_skills_for_message(
-            message_text=message_text,
-            conversation_summary=conversation_summary,
-        )
 
     def activate_skill_explicit(
         self,

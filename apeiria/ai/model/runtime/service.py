@@ -1,14 +1,10 @@
-"""Model facade over source, profile, and adapter services."""
+"""Narrow provider invocation boundary for AI models."""
 
 from __future__ import annotations
 
 from dataclasses import replace
 from typing import TYPE_CHECKING, Literal
 
-from apeiria.ai.model.routing.capability_selection import (
-    ai_model_capability_selection_service,
-)
-from apeiria.ai.model.routing.profile import ai_model_profile_service
 from apeiria.ai.model.runtime.adapter import (
     AIModelEmbeddingRequest,
     AIModelGenerateRequest,
@@ -27,18 +23,7 @@ from apeiria.ai.model.runtime.planning import plan_model_call
 from apeiria.ai.model.sources.service import ai_source_service
 
 if TYPE_CHECKING:
-    from apeiria.ai.model.routing.bindings import (
-        AIModelBindingSpec,
-        AIModelBindingTarget,
-    )
-    from apeiria.ai.model.routing.models import (
-        AIModelProfileDefinition,
-        AIModelRouteQuery,
-    )
-    from apeiria.ai.model.routing.selection import (
-        AISelectedCapabilityModel,
-        AISelectedModel,
-    )
+    from apeiria.ai.model.routing.selection import AISelectedModel
     from apeiria.ai.model.runtime.adapter import (
         AIModelCatalogItem,
         AIModelEmbeddingResponse,
@@ -49,24 +34,11 @@ if TYPE_CHECKING:
         AIModelToolDefinition,
         AIModelTranscriptionResponse,
     )
-    from apeiria.ai.model.sources.models import (
-        AISourceCapabilityType,
-        AISourceDefinition,
-    )
+    from apeiria.ai.model.sources.models import AISourceDefinition
 
 
-class AIModelFacade:
-    """Unified model boundary used by runtime and admin surfaces."""
-
-    async def list_profiles(
-        self,
-    ) -> list["AIModelProfileDefinition"]:
-        return await ai_model_profile_service.list_profiles()
-
-    async def list_bindings(
-        self,
-    ) -> list["AIModelBindingSpec"]:
-        return await ai_model_profile_service.list_bindings()
+class ModelInvoker:
+    """Provider invocation boundary for selected or explicit model calls."""
 
     async def list_source_models(
         self,
@@ -78,28 +50,6 @@ class AIModelFacade:
         return await ai_model_client.list_models(
             source_id=source.source_id,
             api_key=api_key,
-        )
-
-    async def select_model(
-        self,
-        query: "AIModelRouteQuery | None" = None,
-        *,
-        target: "AIModelBindingTarget | None" = None,
-    ) -> "AISelectedModel | None":
-        return await ai_model_profile_service.select_model(
-            query=query,
-            target=target,
-        )
-
-    async def select_capability_model(
-        self,
-        *,
-        capability_type: "AISourceCapabilityType",
-        preferred_source_id: str | None = None,
-    ) -> "AISelectedCapabilityModel | None":
-        return await ai_model_capability_selection_service.select_default_model(
-            capability_type=capability_type,
-            preferred_source_id=preferred_source_id,
         )
 
     async def generate_text(  # noqa: PLR0913
@@ -278,4 +228,4 @@ class AIModelFacade:
         )
 
 
-ai_model_facade = AIModelFacade()
+model_invoker = ModelInvoker()

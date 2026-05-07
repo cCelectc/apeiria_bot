@@ -117,8 +117,8 @@ class AIToolIntent:
 
 
 @dataclass(frozen=True)
-class AIToolObservationRequest:
-    """Inputs for low-risk read-only tool observations."""
+class AIToolExecutionRequest:
+    """Inputs for executing tool intents within one runtime turn."""
 
     session_id: str
     source_message_id: str | None

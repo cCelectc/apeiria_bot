@@ -4,10 +4,26 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from apeiria.ai.skills.service import ai_skill_service
+from nonebot.log import logger
+
+from apeiria.ai.model import AIModelRouteQuery, model_invoker
+from apeiria.ai.model.routing.profile import ai_model_profile_service
+from apeiria.ai.prompting import (
+    SkillSelectionPromptInput,
+    build_skill_selection_packet,
+    render_messages,
+)
+from apeiria.ai.skills.runtime import AISkillSelectionResult, ai_skill_runtime
+from apeiria.ai.skills.selection import parse_skill_selection_response
 
 if TYPE_CHECKING:
-    from apeiria.ai.skills.runtime import AISkillSelectionResult
+    from apeiria.ai.skills.runtime import AISkillCatalogEntry
+
+_EMPTY_SELECTION = AISkillSelectionResult(
+    selected_names=(),
+    activations=(),
+    activation_prompt=None,
+)
 
 
 async def select_runtime_skills(
@@ -15,11 +31,49 @@ async def select_runtime_skills(
     message_text: str,
     conversation_summary: str | None,
 ) -> "AISkillSelectionResult":
-    """Select skills for a runtime turn."""
+    """Select skills for a runtime turn through app-owned model orchestration."""
 
-    return await ai_skill_service.select_skills(
-        message_text=message_text,
-        conversation_summary=conversation_summary,
+    entries = _file_catalog_entries()
+    if not entries:
+        return _EMPTY_SELECTION
+
+    selected = await ai_model_profile_service.select_model(
+        query=AIModelRouteQuery(task_class="planner_light"),
+    )
+    if selected is None:
+        return _EMPTY_SELECTION
+
+    known_names = {entry.skill_name for entry in entries}
+    try:
+        response = await model_invoker.generate_text(
+            selected=selected,
+            messages=render_messages(
+                build_skill_selection_packet(
+                    SkillSelectionPromptInput(
+                        message_text=message_text,
+                        conversation_summary=conversation_summary,
+                        entries=entries,
+                    )
+                )
+            ),
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.opt(exception=exc).debug("Skill selection model call failed")
+        return _EMPTY_SELECTION
+    if response is None:
+        return _EMPTY_SELECTION
+
+    selected_names = parse_skill_selection_response(
+        response.content,
+        known_names=known_names,
+    )
+    return ai_skill_runtime.build_selection_result(selected_names=selected_names)
+
+
+def _file_catalog_entries() -> list["AISkillCatalogEntry"]:
+    return sorted(
+        [entry for entry in ai_skill_runtime.list_catalog() if entry.origin == "file"],
+        key=lambda entry: entry.skill_name,
     )
 
 

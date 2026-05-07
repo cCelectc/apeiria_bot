@@ -19,9 +19,9 @@ if TYPE_CHECKING:
     from apeiria.ai.memory import AIMemoryDefinition
     from apeiria.ai.model import AIModelMessage
     from apeiria.ai.prompting import ReplyPersonaPromptBundleLike
-    from apeiria.ai.tools import ToolGatewayResult
     from apeiria.app.ai.future_tasks.models import AIFutureTaskDefinition
     from apeiria.app.ai.reply_strategy import ReplyStrategyDecision
+    from apeiria.app.ai.runtime.execution.tool_loop import RuntimeToolLoopResult
     from apeiria.app.ai.runtime.session.context import (
         RuntimeContextMaterials,
         RuntimeTurnInput,
@@ -53,7 +53,7 @@ class RuntimePromptComposeInput:
 class RuntimePromptPlanningInput:
     """Prompt-facing runtime planning materials for reply prompt projection."""
 
-    skill_runtime: "ToolGatewayResult"
+    skill_runtime: "RuntimeToolLoopResult"
     skill_activation: str | None
     has_tools: bool | None = None
 

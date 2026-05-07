@@ -9,10 +9,10 @@ from nonebot.log import logger
 from apeiria.ai.config import get_ai_plugin_config
 from apeiria.ai.prompting import render_messages
 from apeiria.ai.tools import (
-    ToolGatewayRequest,
-    ToolGatewayResult,
-    tool_gateway,
+    ai_tool_service,
+    summarize_tool_policy,
 )
+from apeiria.app.ai.runtime.execution.tool_loop import RuntimeToolLoopResult
 from apeiria.app.ai.runtime.planning.diagnostics import (
     build_prompt_region_diagnostics,
 )
@@ -31,7 +31,10 @@ from apeiria.app.ai.runtime.planning.reply_decision import (
 )
 from apeiria.app.ai.runtime.planning.skills import select_runtime_skills
 from apeiria.app.ai.runtime.planning.social import summarize_social_decision
-from apeiria.app.ai.runtime.planning.tool_exposure import ToolOrchestrator
+from apeiria.app.ai.runtime.planning.tool_exposure import (
+    ToolOrchestrator,
+    compile_tool_exposure_provider_schema,
+)
 from apeiria.app.ai.runtime.stages import (
     RuntimePlanningInput,
     RuntimeTurnPlan,
@@ -79,19 +82,18 @@ async def plan_runtime_turn(
         current_time=current_time,
     )
 
-    skill_runtime = await tool_gateway.prepare(
-        ToolGatewayRequest(
-            session_id=identity.session_id,
-            source_message_id=turn.source_message_id,
-            trace_id=trace_id,
-            message_text=turn.message_text,
-            policy=context.tool_policy,
-            recalled_memories=tuple(context.recalled_memories),
-            relationship_context=context.relationship_context,
-            current_time=current_time,
-            tool_mode=social_decision.tool_mode,
-            execution_timeout_seconds=tool_execution_timeout_seconds,
+    skill_runtime = RuntimeToolLoopResult(
+        policy_text=summarize_tool_policy(
+            ai_tool_service.registry.list_tools(),
+            context.tool_policy,
         ),
+        result_lines=(),
+        turns=(),
+        available_tools=compile_tool_exposure_provider_schema(
+            tool_exposure_plan,
+            current_time=current_time,
+        ),
+        diagnostics=dict(tool_exposure_plan.diagnostics),
     )
     pre_tool_task_class = select_pre_tool_reply_task_class(
         has_tools=tool_exposure_plan.has_executable_tools,
@@ -234,7 +236,7 @@ def _build_compose_input(
     turn: "RuntimeTurnInput",
     context: "RuntimeContextMaterials",
     social_decision: "ReplyStrategyDecision",
-    skill_runtime: ToolGatewayResult,
+    skill_runtime: RuntimeToolLoopResult,
     skill_activation: str | None,
 ) -> RuntimePromptComposeInput:
     return RuntimePromptComposeInput(

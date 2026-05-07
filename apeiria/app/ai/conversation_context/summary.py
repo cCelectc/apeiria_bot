@@ -34,7 +34,8 @@ async def compress_conversation_history(
     if not overflow_messages:
         return existing_summary
 
-    from apeiria.ai.model import AIModelRouteQuery, model_gateway
+    from apeiria.ai.model import AIModelRouteQuery, model_invoker
+    from apeiria.ai.model.routing.profile import ai_model_profile_service
 
     messages = render_messages(
         build_conversation_summary_packet(
@@ -46,7 +47,7 @@ async def compress_conversation_history(
         )
     )
 
-    selected = await model_gateway.select_model(
+    selected = await ai_model_profile_service.select_model(
         query=AIModelRouteQuery(task_class="planner_light"),
     )
 
@@ -55,7 +56,7 @@ async def compress_conversation_history(
         return _fallback_summary(overflow_messages, existing_summary)
 
     try:
-        response = await model_gateway.generate_native(
+        response = await model_invoker.generate_text(
             selected=selected,
             messages=messages,
         )

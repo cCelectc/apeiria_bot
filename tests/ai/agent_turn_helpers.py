@@ -13,11 +13,12 @@ from apeiria.ai.model import (
     AISelectedModel,
     AISourceDefinition,
 )
-from apeiria.ai.tools import AIToolObservationResult, ToolGatewayRequest
 from apeiria.ai.tools.models import AIToolPolicy
+from apeiria.app.ai.runtime.execution.tool_loop import RuntimeToolLoopInput
 
 if TYPE_CHECKING:
     from apeiria.ai.model.runtime.adapter import AIModelToolDefinition
+    from apeiria.ai.tools import AIToolObservationResult
 
 
 def selected_model(
@@ -61,14 +62,14 @@ def model_response(
     )
 
 
-class ModelGatewayStub:
+class ModelInvokerStub:
     def __init__(self, outcomes: list[Any]) -> None:
         self.outcomes = list(outcomes)
         self.calls: list[AISelectedModel] = []
         self.message_calls: list[tuple[AIModelMessage, ...]] = []
         self.tool_calls: list[tuple[AIModelToolDefinition, ...]] = []
 
-    async def generate_native(
+    async def generate_text(
         self,
         *,
         selected: AISelectedModel,
@@ -125,16 +126,32 @@ class ToolRegistryStub:
         return []
 
 
-def tool_request() -> ToolGatewayRequest:
-    return ToolGatewayRequest(
+def tool_loop_input(  # noqa: PLR0913
+    selected: AISelectedModel,
+    *,
+    messages: tuple[AIModelMessage, ...] = (),
+    tools: tuple[AIModelToolDefinition, ...] = (),
+    fallback_models: tuple[AISelectedModel, ...] = (),
+    executable_tool_names: frozenset[str] | None = None,
+    execution_timeout_seconds: float | None = None,
+) -> RuntimeToolLoopInput:
+    return RuntimeToolLoopInput(
         session_id="session-1",
         source_message_id="message-1",
         trace_id="trace-tools",
+        runtime_mode="message",
         message_text="use tools",
-        policy=AIToolPolicy(execution_enabled=True),
-        recalled_memories=(),
-        relationship_context=None,
         current_time=datetime.now(timezone.utc),
+        selected=selected,
+        fallback_models=fallback_models,
+        messages=messages,
+        tools=tools,
+        tool_policy=AIToolPolicy(execution_enabled=True),
+        executable_tool_names=executable_tool_names,
+        recalled_memory_ids=(),
+        recalled_memory_contents=(),
+        relationship_context=None,
+        execution_timeout_seconds=execution_timeout_seconds,
     )
 
 

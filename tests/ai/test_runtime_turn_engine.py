@@ -10,7 +10,6 @@ import pytest
 import apeiria.app.ai.runtime.execution.stage as execution_stage_module
 from apeiria.ai.model import AIModelBindingTarget, AIModelMessage
 from apeiria.ai.tools import AIToolPolicy
-from apeiria.ai.tools.gateway import ToolGatewayResult
 from apeiria.app.ai.agent_turn import AgentTurnResult
 from apeiria.app.ai.reply_strategy import ReplyStrategyDecision, WakeContext
 from apeiria.app.ai.runtime.commit import RuntimeCommitEffectsStage
@@ -18,6 +17,7 @@ from apeiria.app.ai.runtime.context.materials import RuntimeContextInputBundle
 from apeiria.app.ai.runtime.context.stage import RuntimeContextAssemblyStage
 from apeiria.app.ai.runtime.entry import RuntimeTraceContext
 from apeiria.app.ai.runtime.execution.stage import RuntimeTurnExecutionStage
+from apeiria.app.ai.runtime.execution.tool_loop import RuntimeToolLoopResult
 from apeiria.app.ai.runtime.live import AIRuntimeTurnRequest
 from apeiria.app.ai.runtime.observation import RuntimeObservationEffectsStage
 from apeiria.app.ai.runtime.orchestrator import AISessionTurnEngine
@@ -215,7 +215,7 @@ def test_reply_pipeline_passes_turn_context_to_generation(
         stage="planning",
         selected=selected,
         fallback_models=(),
-        skill_runtime=ToolGatewayResult(
+        skill_runtime=RuntimeToolLoopResult(
             policy_text="No tools.",
             result_lines=(),
             turns=(),
@@ -262,7 +262,7 @@ def test_reply_pipeline_passes_turn_context_to_generation(
         return RuntimeExecutionOutcome(
             stage="execution",
             response=model_response(selected, "reply"),
-            skill_runtime=ToolGatewayResult(
+            skill_runtime=RuntimeToolLoopResult(
                 policy_text="No tools.",
                 result_lines=(),
                 turns=(),
@@ -349,7 +349,7 @@ def test_reply_pipeline_persists_runner_turn_result(
             stage="planning",
             selected=selected,
             fallback_models=(),
-            skill_runtime=ToolGatewayResult(
+            skill_runtime=RuntimeToolLoopResult(
                 policy_text="No tools.",
                 result_lines=(),
                 turns=(),
@@ -370,7 +370,7 @@ def test_reply_pipeline_persists_runner_turn_result(
         return RuntimeExecutionOutcome(
             stage="execution",
             response=model_response(selected, "runner reply"),
-            skill_runtime=ToolGatewayResult(
+            skill_runtime=RuntimeToolLoopResult(
                 policy_text="No tools.",
                 result_lines=(),
                 turns=(),
@@ -432,7 +432,7 @@ def test_turn_engine_passes_runtime_plan_through_execution_and_commit(
     selected = selected_model("engine")
     inputs = _inputs()
     social_decision = _social_decision()
-    skill_runtime = ToolGatewayResult(
+    skill_runtime = RuntimeToolLoopResult(
         policy_text="No tools.",
         result_lines=(),
         turns=(),
@@ -554,7 +554,7 @@ def test_turn_engine_applies_observation_effects_before_context(
     selected = selected_model("engine")
     inputs = _inputs()
     social_decision = _social_decision()
-    skill_runtime = ToolGatewayResult(
+    skill_runtime = RuntimeToolLoopResult(
         policy_text="No tools.",
         result_lines=(),
         turns=(),
@@ -672,7 +672,7 @@ def test_ingress_stages_share_structured_ingress_input(
     selected = selected_model("ingress")
     inputs = _inputs()
     social_decision = _social_decision()
-    skill_runtime = ToolGatewayResult(
+    skill_runtime = RuntimeToolLoopResult(
         policy_text="No tools.",
         result_lines=(),
         turns=(),
@@ -805,7 +805,7 @@ def test_turn_engine_passes_structured_social_policy_input(
     selected = selected_model("social")
     inputs = _inputs()
     social_decision = _social_decision()
-    skill_runtime = ToolGatewayResult(
+    skill_runtime = RuntimeToolLoopResult(
         policy_text="No tools.",
         result_lines=(),
         turns=(),
@@ -996,7 +996,7 @@ def test_turn_planning_is_side_effect_free_and_matches_prompt_messages(
         description="Recall memory",
         parameters={"type": "object", "properties": {}},
     )
-    skill_runtime = ToolGatewayResult(
+    skill_runtime = RuntimeToolLoopResult(
         policy_text="Tool policy.",
         result_lines=(),
         turns=(),
@@ -1058,7 +1058,7 @@ def test_default_planning_stage_receives_structured_planning_input() -> None:
         stage="planning",
         selected=selected,
         fallback_models=(),
-        skill_runtime=ToolGatewayResult(
+        skill_runtime=RuntimeToolLoopResult(
             policy_text="No tools.",
             result_lines=(),
             turns=(),

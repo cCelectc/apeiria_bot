@@ -8,7 +8,8 @@ from typing import TYPE_CHECKING
 
 from apeiria.ai.persona.service import AIPersonaPromptBundle
 from apeiria.ai.prompting import PromptPacket, PromptSection, render_flat
-from apeiria.ai.tools import AIToolPolicy, ToolGatewayResult
+from apeiria.ai.tools import AIToolPolicy
+from apeiria.app.ai.runtime.execution.tool_loop import RuntimeToolLoopResult
 from apeiria.app.ai.runtime.planning.prompts import RuntimePromptPlanningInput
 from apeiria.conversation.models import (
     ChatContextMessageView,
@@ -22,8 +23,6 @@ if TYPE_CHECKING:
 
 DEFAULT_PROMPT_PREVIEW_LIMIT = 50
 APPEND_MESSAGE_ERROR = "prompt preview must not append messages"
-TOOL_EXECUTION_ERROR = "prompt preview must not execute tools"
-MODEL_CALL_ERROR = "prompt preview must not call provider models"
 SOCIAL_JUDGMENT_ERROR = "prompt preview must not call social judgment model"
 PROMPT_PREVIEW_MEMORY_WRITE_ERROR = "prompt preview must not write memories"
 PROMPT_PREVIEW_RELATIONSHIP_WRITE_ERROR = (
@@ -276,7 +275,7 @@ def test_prompt_preview_planning_matches_runtime_prompt_projection() -> None:
         has_latest_user_message=True,
     )
     prompt_planning = RuntimePromptPlanningInput(
-        skill_runtime=ToolGatewayResult(
+        skill_runtime=RuntimeToolLoopResult(
             policy_text="Tool policy.",
             result_lines=(),
             turns=(),
@@ -398,19 +397,13 @@ def test_scene_prompt_preview_does_not_call_models_or_execute_tools(  # noqa: C9
         def list_allowed_tools(self, _policy: AIToolPolicy):
             return []
 
-        async def observe_read_only_tools(self, *_args: object, **_kwargs: object):
-            raise AssertionError(TOOL_EXECUTION_ERROR)
-
-    class _ModelFacade:
+    class _ModelSelector:
         async def select_model(self, **_kwargs: object):
             return SimpleNamespace(
                 source=SimpleNamespace(source_id="source-1"),
                 profile=SimpleNamespace(profile_id="profile-1"),
                 resolved_model_name="model-1",
             )
-
-        async def generate(self, *_args: object, **_kwargs: object):
-            raise AssertionError(MODEL_CALL_ERROR)
 
     async def _unexpected_social_judgment(**_kwargs: object):
         raise AssertionError(SOCIAL_JUDGMENT_ERROR)
@@ -437,7 +430,7 @@ def test_scene_prompt_preview_does_not_call_models_or_execute_tools(  # noqa: C9
         _ToolPolicyBindingService(),
     )
     monkeypatch.setattr(module, "ai_tool_service", _ToolService())
-    monkeypatch.setattr(module, "ai_model_facade", _ModelFacade())
+    monkeypatch.setattr(module, "ai_model_profile_service", _ModelSelector())
     monkeypatch.setattr(module, "load_relationship_context", _return_relationship)
     monkeypatch.setattr(module, "load_person_profile_for_prompt", _return_profile)
     monkeypatch.setattr(

@@ -15,8 +15,9 @@ from apeiria.ai.model import (
 )
 from apeiria.ai.persona.service import AIPersonaPromptBundle
 from apeiria.ai.skills.runtime import AISkillSelectionResult
-from apeiria.ai.tools import AIToolPolicy, AIToolSpec, ToolGatewayResult
+from apeiria.ai.tools import AIToolPolicy, AIToolSpec
 from apeiria.app.ai.reply_strategy.models import ReplyStrategyDecision
+from apeiria.app.ai.runtime.execution.tool_loop import RuntimeToolLoopResult
 from apeiria.app.ai.runtime.planning import turn as planning_module
 from apeiria.app.ai.runtime.planning.diagnostics import (
     build_prompt_region_diagnostics,
@@ -167,7 +168,7 @@ def test_runtime_prompt_planning_builds_initial_reply_packet() -> None:
         decision_source="fallback",
     )
     prompt_input = RuntimePromptPlanningInput(
-        skill_runtime=ToolGatewayResult(
+        skill_runtime=RuntimeToolLoopResult(
             policy_text="Tool policy.",
             result_lines=(),
             turns=(),
@@ -230,7 +231,6 @@ def test_runtime_planning_uses_runtime_context_materials_for_plan_parity(
     selected = selected_model("runtime-plan")
     fallback = selected_model("runtime-fallback")
     captured_selection: list[tuple[str, AIModelBindingTarget]] = []
-    captured_tool_prepare: list[object] = []
     captured_skill_selection: list[tuple[str, str | None]] = []
     now = datetime(2026, 5, 6, tzinfo=timezone.utc)
     identity = ChatSessionIdentity(
@@ -300,14 +300,6 @@ def test_runtime_planning_uses_runtime_context_materials_for_plan_parity(
         decision_source="llm",
     )
 
-    async def prepare_tools(request: object) -> ToolGatewayResult:
-        captured_tool_prepare.append(request)
-        return ToolGatewayResult(
-            policy_text="Tool policy.",
-            result_lines=("- memory ready",),
-            turns=(),
-        )
-
     async def select_runtime_model(
         *,
         task_class: str,
@@ -331,7 +323,6 @@ def test_runtime_planning_uses_runtime_context_materials_for_plan_parity(
             activation_prompt="Skill active.",
         )
 
-    monkeypatch.setattr(planning_module.tool_gateway, "prepare", prepare_tools)
     monkeypatch.setattr(planning_module, "select_model", select_runtime_model)
     monkeypatch.setattr(planning_module, "select_fallback_models", select_fallbacks)
     monkeypatch.setattr(planning_module, "select_runtime_skills", select_skills)
@@ -352,9 +343,11 @@ def test_runtime_planning_uses_runtime_context_materials_for_plan_parity(
     assert plan is not None
     assert captured_selection == [("tool_orchestration", context.model_target)]
     assert captured_skill_selection == [("hello", "Conversation summary.")]
-    assert len(captured_tool_prepare) == 1
     assert plan.selected is selected
     assert plan.fallback_models == (fallback,)
+    assert plan.skill_runtime.policy_text
+    assert plan.skill_runtime.available_tools
+    assert plan.skill_runtime.diagnostics["selected_tool_count"] == 1
     assert plan.skill_activation == "Skill active."
     assert plan.prompt_packet is not None
     assert plan.prompt_packet.purpose == "reply_planner"

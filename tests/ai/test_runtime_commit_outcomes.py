@@ -7,13 +7,14 @@ from typing import TYPE_CHECKING, Any
 
 import apeiria.app.ai.runtime.commit.delivery as delivery_steps
 from apeiria.ai.model import AIModelBindingTarget, AIModelMessage
-from apeiria.ai.tools import AIToolPolicy, ToolGatewayResult
+from apeiria.ai.tools import AIToolPolicy
 from apeiria.app.ai.agent_turn import AgentTurnResult
 from apeiria.app.ai.future_tasks.models import AIFutureTaskDefinition
 from apeiria.app.ai.reply_strategy import ReplyStrategyDecision
 from apeiria.app.ai.runtime.commit import RuntimeCommitEffectsStage
 from apeiria.app.ai.runtime.commit.delivery import DeliveryOutcome
 from apeiria.app.ai.runtime.context.materials import RuntimeContextInputBundle
+from apeiria.app.ai.runtime.execution.tool_loop import RuntimeToolLoopResult
 from apeiria.app.ai.runtime.live import AIRuntimeTurnRequest
 from apeiria.app.ai.runtime.orchestrator import AISessionTurnEngine
 from apeiria.app.ai.runtime.planning.tool_exposure import ToolExposurePlan
@@ -90,7 +91,7 @@ def _plan() -> RuntimeTurnPlan:
         stage="planning",
         selected=object(),  # type: ignore[arg-type]
         fallback_models=(),
-        skill_runtime=ToolGatewayResult(
+        skill_runtime=RuntimeToolLoopResult(
             policy_text="No tools.",
             result_lines=(),
             turns=(),
@@ -111,7 +112,7 @@ def _execution() -> RuntimeExecutionOutcome:
             source_id="source-1",
             model_name="model-1",
         ),
-        skill_runtime=ToolGatewayResult(
+        skill_runtime=RuntimeToolLoopResult(
             policy_text="No tools.",
             result_lines=(),
             turns=(),

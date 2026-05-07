@@ -7,8 +7,6 @@ from typing import TYPE_CHECKING, Literal
 
 from nonebot.log import logger
 
-from apeiria.ai.skills.selection import AISkillSelector
-
 if TYPE_CHECKING:
     from apeiria.ai.skills.parser import AISkillFileDefinition
 
@@ -74,20 +72,15 @@ class AISkillRuntime:
        tool-based skills.
     2. **Progressive disclosure**: Only expose name + description to the
        model.  Load full body on demand.
-    3. **LLM-based selection**: Use a lightweight model call to decide
-       which skills are relevant to a given message.
+    3. **Selection projection**: Activate selected catalog names supplied by
+       application planning.
     4. **Prompt injection**: Build skill-specific prompt sections for
        activated skills.
     """
 
-    def __init__(
-        self,
-        *,
-        selector: AISkillSelector | None = None,
-    ) -> None:
+    def __init__(self) -> None:
         self._file_skills: dict[str, AISkillFileDefinition] = {}
         self._catalog: dict[str, AISkillCatalogEntry] = {}
-        self._selector = selector or AISkillSelector()
 
     # ------------------------------------------------------------------
     # Registration
@@ -156,38 +149,15 @@ class AISkillRuntime:
         return bool(self._file_skills)
 
     # ------------------------------------------------------------------
-    # LLM-based skill selection
+    # Selection projection
     # ------------------------------------------------------------------
 
-    async def select_skills_for_message(
+    def build_selection_result(
         self,
         *,
-        message_text: str,
-        conversation_summary: str | None,
+        selected_names: list[str] | tuple[str, ...],
     ) -> AISkillSelectionResult:
-        """Use a lightweight LLM call to pick relevant file-based skills.
-
-        Tool-based skills are always available via function calling and do
-        not need explicit activation.  Only file-based skills (prompt_only,
-        tool_backed with markdown body, workflow) require selection because
-        their full body is injected into the prompt.
-
-        Returns :data:`_EMPTY_SELECTION` when no file-based skills exist
-        or the model cannot be reached.
-        """
-
-        file_entries = sorted(
-            (entry for entry in self._catalog.values() if entry.origin == "file"),
-            key=lambda entry: entry.skill_name,
-        )
-        if not file_entries:
-            return _EMPTY_SELECTION
-
-        selected_names = await self._selector.select_skill_names(
-            message_text=message_text,
-            conversation_summary=conversation_summary,
-            entries=file_entries,
-        )
+        """Activate already selected skill names without model calls."""
 
         activations: list[AISkillActivation] = []
         for name in selected_names:

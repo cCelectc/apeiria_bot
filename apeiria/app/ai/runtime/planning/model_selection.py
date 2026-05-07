@@ -7,7 +7,8 @@ from typing import TYPE_CHECKING
 
 from nonebot.log import logger
 
-from apeiria.ai.model import AIModelRouteQuery, model_gateway
+from apeiria.ai.model import AIModelRouteQuery
+from apeiria.ai.model.routing.profile import ai_model_profile_service
 from apeiria.app.ai.agent_turn import (
     AgentModelGenerationRequest,
     AgentModelGenerationResult,
@@ -48,7 +49,7 @@ async def select_model(
 ) -> "AISelectedModel | None":
     """Select the primary model for a runtime planning task class."""
 
-    return await model_gateway.select_model(
+    return await ai_model_profile_service.select_model(
         query=AIModelRouteQuery(task_class=task_class),
         target=target,
     )
@@ -91,7 +92,7 @@ async def generate_model_turn(
 ) -> AgentModelGenerationResult:
     """Generate a model response and keep the turn attempt record."""
 
-    runtime = AgentTurnModelRuntime(model_gateway=model_gateway)
+    runtime = AgentTurnModelRuntime()
     return await runtime.generate(
         AgentModelGenerationRequest(
             trace_id=request.trace_id,

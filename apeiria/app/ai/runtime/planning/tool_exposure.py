@@ -14,11 +14,8 @@ from apeiria.ai.turn_records import PromptSafeObservation
 
 if TYPE_CHECKING:
     from apeiria.ai.model import AIModelToolDefinition
-    from apeiria.ai.tools import (
-        AIToolPolicy,
-        AIToolSpec,
-        ToolGatewayRequest,
-    )
+    from apeiria.ai.tools import AIToolPolicy, AIToolSpec
+    from apeiria.app.ai.runtime.execution.tool_loop import RuntimeToolLoopInput
 
 
 DEFAULT_TOOL_AWARENESS_CATEGORIES = (
@@ -48,7 +45,9 @@ class ToolExposurePlan:
 
         if self.selected_tool_specs:
             return tuple(tool.name for tool in self.selected_tool_specs)
-        return tuple(tool.name for tool in self.selected_tools)
+        return tuple(
+            function_name_to_tool_name(tool.name) for tool in self.selected_tools
+        )
 
     @property
     def has_executable_tools(self) -> bool:
@@ -212,9 +211,9 @@ def _policy_denial_reason(
 
 
 def apply_tool_exposure_allowlist(
-    request: "ToolGatewayRequest",
+    request: "RuntimeToolLoopInput",
     plan: ToolExposurePlan,
-) -> "ToolGatewayRequest":
+) -> "RuntimeToolLoopInput":
     """Return a gateway request constrained by the runtime exposure plan."""
 
     if not hasattr(request, "executable_tool_names"):

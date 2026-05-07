@@ -100,8 +100,7 @@ if TYPE_CHECKING:
         UnsupportedAISourceClientTypeError,
         build_source_adapter,
     )
-    from .runtime.gateway import ModelGateway, model_gateway
-    from .runtime.service import AIModelFacade, ai_model_facade
+    from .runtime.service import ModelInvoker, model_invoker
     from .sources.service import (
         AISourceCreateInput,
         AISourceService,
@@ -125,7 +124,6 @@ __all__ = [
     "AIModelContentPart",
     "AIModelEmbeddingRequest",
     "AIModelEmbeddingResponse",
-    "AIModelFacade",
     "AIModelGenerateRequest",
     "AIModelGenerateResponse",
     "AIModelMessage",
@@ -162,7 +160,7 @@ __all__ = [
     "AITTSModelCreateInput",
     "AITTSModelService",
     "AITextToSpeechModelDefinition",
-    "ModelGateway",
+    "ModelInvoker",
     "UnknownAISourceError",
     "UnsupportedAISourceClientTypeError",
     "UnsupportedAISourcePresetError",
@@ -170,14 +168,13 @@ __all__ = [
     "ai_embedding_model_service",
     "ai_model_capability_selection_service",
     "ai_model_client",
-    "ai_model_facade",
     "ai_model_profile_service",
     "ai_rerank_model_service",
     "ai_source_service",
     "ai_stt_model_service",
     "ai_tts_model_service",
     "build_source_adapter",
-    "model_gateway",
+    "model_invoker",
     "resolve_adapter_kind_for_client_type",
     "resolve_adapter_kind_for_preset",
     "resolve_capability_type_for_preset",
@@ -191,7 +188,6 @@ _LAZY_EXPORTS = {
     "AIModelClient": ".runtime.client",
     "AIModelClientRegistry": ".runtime.client",
     "AIModelCapabilitySelectionService": ".routing.capability_selection",
-    "AIModelFacade": ".runtime.service",
     "AIRerankModelCreateInput": ".catalog.rerank",
     "AIRerankModelService": ".catalog.rerank",
     "AIEmbeddingModelCreateInput": ".catalog.embedding",
@@ -215,7 +211,7 @@ _LAZY_EXPORTS = {
     "AIModelToolDefinition": ".runtime.adapter",
     "AIModelAdapter": ".runtime.adapter",
     "AIModelCatalogItem": ".runtime.adapter",
-    "ModelGateway": ".runtime.gateway",
+    "ModelInvoker": ".runtime.service",
     "AITTSModelCreateInput": ".catalog.tts",
     "AITTSModelService": ".catalog.tts",
     "AISTTModelCreateInput": ".catalog.stt",
@@ -228,14 +224,13 @@ _LAZY_EXPORTS = {
     "ai_embedding_model_service": ".catalog.embedding",
     "ai_model_capability_selection_service": ".routing.capability_selection",
     "ai_model_client": ".runtime.client",
-    "ai_model_facade": ".runtime.service",
     "ai_model_profile_service": ".routing.profile",
     "ai_rerank_model_service": ".catalog.rerank",
     "ai_source_service": ".sources.service",
     "ai_stt_model_service": ".catalog.stt",
     "ai_tts_model_service": ".catalog.tts",
     "build_source_adapter": ".runtime.factory",
-    "model_gateway": ".runtime.gateway",
+    "model_invoker": ".runtime.service",
 }
 
 

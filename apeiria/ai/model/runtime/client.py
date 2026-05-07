@@ -1,4 +1,4 @@
-"""Source adapter registry and dispatch facade."""
+"""Source adapter registry and dispatcher."""
 
 from __future__ import annotations
 
@@ -43,7 +43,7 @@ class AIModelClientRegistry:
 
 
 class AIModelClient:
-    """Thin dispatch facade over registered source adapters."""
+    """Thin dispatcher over registered source adapters."""
 
     def __init__(self, registry: AIModelClientRegistry | None = None) -> None:
         self.registry = registry or AIModelClientRegistry(adapters={})

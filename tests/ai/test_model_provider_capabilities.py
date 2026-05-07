@@ -54,7 +54,7 @@ from apeiria.ai.model.sources.models import (
     AISourceDefinition,
     resolve_adapter_kind_for_client_type,
 )
-from tests.ai.agent_turn_helpers import ModelGatewayStub, model_response
+from tests.ai.agent_turn_helpers import ModelInvokerStub, model_response
 
 _TEST_TEMPERATURE = 0.2
 
@@ -632,7 +632,7 @@ def test_agent_runtime_uses_fallback_after_capability_planning_reject() -> None:
         ),
         suffix="fallback",
     )
-    gateway = ModelGatewayStub(
+    invoker = ModelInvokerStub(
         [
             AIModelCapabilityPlanningError(
                 plan_model_call(
@@ -650,7 +650,7 @@ def test_agent_runtime_uses_fallback_after_capability_planning_reject() -> None:
             model_response(fallback, "fallback answer"),
         ]
     )
-    runtime = AgentTurnModelRuntime(model_gateway=gateway)
+    runtime = AgentTurnModelRuntime(model_invoker=invoker)
 
     result = asyncio.run(
         runtime.generate(
@@ -706,7 +706,7 @@ def test_runtime_records_capability_mismatch_observation_with_fallback() -> None
         ),
         suffix="fallback",
     )
-    gateway = ModelGatewayStub(
+    invoker = ModelInvokerStub(
         [
             RuntimeError(
                 "tool calls are not supported for this model api_key=secret-token"
@@ -714,7 +714,7 @@ def test_runtime_records_capability_mismatch_observation_with_fallback() -> None
             model_response(fallback, "fallback answer"),
         ]
     )
-    runtime = AgentTurnModelRuntime(model_gateway=gateway)
+    runtime = AgentTurnModelRuntime(model_invoker=invoker)
 
     result = asyncio.run(
         runtime.generate(
@@ -744,7 +744,7 @@ def test_runtime_records_capability_mismatch_observation_with_fallback() -> None
     assert observation.model_ref == "source-primary:model-primary"
     assert "secret-token" not in observation.diagnostic
     assert result.turn.model_attempts[1].status == "success"
-    assert gateway.calls == [primary, fallback]
+    assert invoker.calls == [primary, fallback]
 
 
 def test_capability_mismatch_classifier_recognizes_bounded_errors() -> None:

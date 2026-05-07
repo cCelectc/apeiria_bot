@@ -18,11 +18,11 @@ from .models import (
     AIRelationshipInspectObservationOutput,
     AIToolCapabilityMode,
     AIToolExecutionContext,
+    AIToolExecutionRequest,
     AIToolExecutionStatus,
     AIToolExecutionView,
     AIToolIntent,
     AIToolIntentKind,
-    AIToolObservationRequest,
     AIToolObservationResult,
     AIToolOrigin,
     AIToolPolicy,
@@ -35,13 +35,7 @@ from .models import (
 
 if TYPE_CHECKING:
     from .contracts import AIToolExecutionCreateInput
-    from .gateway import (
-        ToolGateway,
-        ToolGatewayRequest,
-        ToolGatewayResult,
-        ToolResult,
-        tool_gateway,
-    )
+    from .loop.projection import ToolResult
     from .policy import (
         AIToolPolicyBindingCreateInput,
         AIToolPolicyBindingService,
@@ -73,12 +67,12 @@ __all__ = [
     "AIToolCapabilityMode",
     "AIToolExecutionContext",
     "AIToolExecutionCreateInput",
+    "AIToolExecutionRequest",
     "AIToolExecutionStatus",
     "AIToolExecutionView",
     "AIToolIntent",
     "AIToolIntentKind",
     "AIToolIntentPreview",
-    "AIToolObservationRequest",
     "AIToolObservationResult",
     "AIToolOrigin",
     "AIToolPolicy",
@@ -94,9 +88,6 @@ __all__ = [
     "AIToolService",
     "AIToolSpec",
     "AIToolTurnCreateInput",
-    "ToolGateway",
-    "ToolGatewayRequest",
-    "ToolGatewayResult",
     "ToolResult",
     "ai_tool_policy_binding_service",
     "ai_tool_service",
@@ -104,7 +95,6 @@ __all__ = [
     "resolve_default_tool_policy",
     "resolve_tool_policy_binding",
     "summarize_tool_policy",
-    "tool_gateway",
     "tool_policy_binding_to_profile",
 ]
 
@@ -117,17 +107,13 @@ _LAZY_EXPORTS = {
     "AIToolSceneContext": ".policy",
     "AIToolScenePolicyProfile": ".policy",
     "AIToolService": ".service",
-    "ToolGateway": ".gateway",
-    "ToolGatewayRequest": ".gateway",
-    "ToolGatewayResult": ".gateway",
-    "ToolResult": ".gateway",
+    "ToolResult": ".loop.projection",
     "ai_tool_policy_binding_service": ".policy",
     "ai_tool_service": ".service",
     "evaluate_tool_policy": ".policy",
     "resolve_default_tool_policy": ".policy",
     "resolve_tool_policy_binding": ".policy",
     "summarize_tool_policy": ".policy",
-    "tool_gateway": ".gateway",
     "tool_policy_binding_to_profile": ".policy",
 }
 

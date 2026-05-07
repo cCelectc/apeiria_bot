@@ -11,7 +11,6 @@ from nonebot.log import logger
 
 from apeiria.ai.config import get_ai_plugin_config
 from apeiria.ai.retention import ai_retention_service
-from apeiria.ai.skills import ai_skill_service
 from apeiria.app.ai.lifecycle import ensure_ai_runtime_support_initialized
 from apeiria.app.ai.reply_strategy import build_wake_context
 from apeiria.app.ai.reply_strategy.wake_gate import evaluate_wake
@@ -99,7 +98,6 @@ class DefaultAILiveRuntimeEntry:
         """Handle one runtime message and optionally return a reply."""
 
         ensure_ai_runtime_support_initialized(source="runtime_fallback")
-        ai_skill_service.ensure_initialized()
         config = get_ai_plugin_config()
         wake_context = build_wake_context(
             bot,

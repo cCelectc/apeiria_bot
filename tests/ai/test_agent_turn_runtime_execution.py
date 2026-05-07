@@ -5,9 +5,10 @@ from datetime import datetime, timezone
 from typing import Any
 
 from apeiria.ai.model import AIModelBindingTarget, AIModelMessage, AIModelToolDefinition
-from apeiria.ai.tools import AIToolPolicy, AIToolTurnCreateInput, ToolGatewayResult
+from apeiria.ai.tools import AIToolPolicy, AIToolTurnCreateInput
 from apeiria.app.ai.agent_turn import AgentModelGenerationResult, AgentTurnResult
 from apeiria.app.ai.runtime import execution as execution_module
+from apeiria.app.ai.runtime.execution.tool_loop import RuntimeToolLoopResult
 from apeiria.app.ai.runtime.planning.prompts import RuntimePromptComposeInput
 from apeiria.app.ai.runtime.planning.tool_exposure import ToolExposurePlan
 from apeiria.app.ai.runtime.session.context import (
@@ -93,7 +94,7 @@ def _plan(
         stage="planning",
         selected=selected_model("main"),
         fallback_models=(),
-        skill_runtime=ToolGatewayResult(policy_text="", result_lines=(), turns=()),
+        skill_runtime=RuntimeToolLoopResult(policy_text="", result_lines=(), turns=()),
         skill_activation=None,
         pre_tool_task_class="reply_default",
         prompt_messages=prompt_messages
@@ -212,18 +213,10 @@ def test_tool_execution_uses_runtime_exposure_and_refinement_messages(
     )
     exposure_plan = ToolExposurePlan(selected_tools=(tool_definition,))
 
-    async def run_tool_loop(
-        request: Any,
-        *,
-        messages: list[Any],
-        tools: tuple[Any, ...],
-        selected: Any,
-        fallback_models: tuple[Any, ...],
-    ) -> ToolGatewayResult:
-        del tools, fallback_models
-        tool_loop_requests.append(request)
-        tool_loop_messages.append(tuple(messages))
-        return ToolGatewayResult(
+    async def run_tool_loop(loop_input: Any) -> RuntimeToolLoopResult:
+        tool_loop_requests.append(loop_input)
+        tool_loop_messages.append(tuple(loop_input.messages))
+        return RuntimeToolLoopResult(
             policy_text="allowed: memory.query",
             result_lines=("- [memory.query] result",),
             turns=(
@@ -233,8 +226,8 @@ def test_tool_execution_uses_runtime_exposure_and_refinement_messages(
                     meta={"tool_name": "memory.query"},
                 ),
             ),
-            final_response=model_response(selected, "draft after tool"),
-            loop_finish_reason="completed",
+            final_response=model_response(loop_input.selected, "draft after tool"),
+            finish_reason="completed",
         )
 
     async def generate_model_turn(request: Any) -> Any:
@@ -260,7 +253,7 @@ def test_tool_execution_uses_runtime_exposure_and_refinement_messages(
         del task_class, target
         return selected
 
-    monkeypatch.setattr(execution_module.tool_gateway, "run_tool_loop", run_tool_loop)
+    monkeypatch.setattr(execution_module.runtime_tool_loop_runner, "run", run_tool_loop)
     monkeypatch.setattr(
         execution_module,
         "generate_model_turn",
@@ -317,26 +310,18 @@ def test_tool_execution_uses_provider_schema_from_same_exposure_plan(
     gateway_tools: list[tuple[AIModelToolDefinition, ...]] = []
     gateway_allowlists: list[frozenset[str] | None] = []
 
-    async def run_tool_loop(
-        request: Any,
-        *,
-        messages: list[Any],
-        tools: tuple[AIModelToolDefinition, ...],
-        selected: Any,
-        fallback_models: tuple[Any, ...],
-    ) -> ToolGatewayResult:
-        del messages, fallback_models
-        gateway_allowlists.append(request.executable_tool_names)
-        gateway_tools.append(tools)
-        return ToolGatewayResult(
+    async def run_tool_loop(loop_input: Any) -> RuntimeToolLoopResult:
+        gateway_allowlists.append(loop_input.executable_tool_names)
+        gateway_tools.append(loop_input.tools)
+        return RuntimeToolLoopResult(
             policy_text="allowed: memory.query",
             result_lines=(),
             turns=(),
-            final_response=model_response(selected, "tool answer"),
-            loop_finish_reason="final_response",
+            final_response=model_response(loop_input.selected, "tool answer"),
+            finish_reason="final_response",
         )
 
-    monkeypatch.setattr(execution_module.tool_gateway, "run_tool_loop", run_tool_loop)
+    monkeypatch.setattr(execution_module.runtime_tool_loop_runner, "run", run_tool_loop)
     context = _context(exposure_plan=exposure_plan)
     plan = _plan(
         exposure_plan=exposure_plan,

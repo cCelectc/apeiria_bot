@@ -29,7 +29,6 @@ def test_import_apeiria_ai_does_not_eagerly_import_runtime_services() -> None:
         "apeiria.ai.relationship.service",
         "apeiria.app.ai.reply_strategy.service",
         "apeiria.ai.retention",
-        "apeiria.ai.service",
         "apeiria.ai.skills.service",
         "apeiria.ai.tools.gateway",
         "apeiria.ai.tools.service",
@@ -40,18 +39,13 @@ def test_import_apeiria_ai_does_not_eagerly_import_runtime_services() -> None:
 
     assert module.__name__ == "apeiria.ai"
     assert module.__all__ == [
-        "AIService",
-        "AIServiceStatus",
         "ai_memory_service",
         "ai_person_profile_service",
         "ai_persona_service",
         "ai_relationship_service",
         "ai_retention_service",
-        "ai_service",
         "ai_skill_service",
         "ai_tool_service",
-        "model_gateway",
-        "tool_gateway",
     ]
 
     for module_name in (
@@ -63,16 +57,15 @@ def test_import_apeiria_ai_does_not_eagerly_import_runtime_services() -> None:
         "apeiria.ai.relationship.service",
         "apeiria.app.ai.reply_strategy.service",
         "apeiria.ai.retention",
-        "apeiria.ai.service",
         "apeiria.ai.skills.service",
         "apeiria.ai.tools.gateway",
         "apeiria.ai.tools.service",
     ):
         assert module_name not in sys.modules
 
-    ai_service = module.ai_service
-
-    assert ai_service is sys.modules["apeiria.ai.service"].ai_service
+    assert not hasattr(module, "ai_service")
+    assert not hasattr(module, "AIService")
+    assert not hasattr(module, "AIServiceStatus")
 
 
 def test_apeiria_ai_no_longer_re_exports_conversation_core() -> None:
@@ -83,7 +76,7 @@ def test_apeiria_ai_no_longer_re_exports_conversation_core() -> None:
     assert not hasattr(module, "reply_strategy_service")
 
 
-class _ModelGatewayStub:
+class _ModelSelectorStub:
     async def select_model(self, *, query: object, target: object | None) -> Any:
         del query, target
         return SimpleNamespace(
@@ -127,14 +120,15 @@ class _RuntimeReadinessProbeStub:
         )
 
 
-def test_ai_service_status_reports_model_readiness() -> None:
-    module = importlib.import_module("apeiria.ai.service")
-    service = module.AIService(
-        model_gateway=_ModelGatewayStub(),
+def test_ai_diagnostics_status_reports_model_readiness() -> None:
+    module = importlib.import_module("apeiria.app.ai.diagnostics.readiness")
+    diagnostics_module = importlib.import_module("apeiria.app.ai.diagnostics")
+    diagnostics = diagnostics_module.AIDiagnosticsEntry(
+        model_selector=_ModelSelectorStub(),
         runtime_readiness_probe=_RuntimeReadinessProbeStub(module),
     )
 
-    status = asyncio.run(service.get_status())
+    status = asyncio.run(diagnostics.get_runtime_status())
 
     assert status.phase == "runtime_ready"
     assert status.ready is True
@@ -355,9 +349,9 @@ def test_stable_ai_root_service_exports_stay_live(
     module = importlib.import_module("apeiria.ai.model")
     service_module = importlib.import_module("apeiria.ai.model.runtime.service")
 
-    assert module.ai_model_facade is service_module.ai_model_facade
+    assert module.model_invoker is service_module.model_invoker
 
     live_replacement = object()
-    monkeypatch.setattr(service_module, "ai_model_facade", live_replacement)
+    monkeypatch.setattr(service_module, "model_invoker", live_replacement)
 
-    assert module.ai_model_facade is live_replacement
+    assert module.model_invoker is live_replacement

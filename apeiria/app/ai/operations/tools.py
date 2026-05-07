@@ -16,6 +16,7 @@ from apeiria.ai.tools import (
 )
 from apeiria.app.ai.diagnostics.audit import record_ai_admin_audit
 from apeiria.app.ai.lifecycle import ensure_ai_runtime_support_initialized
+from apeiria.app.ai.runtime.planning.tool_intents import preview_runtime_tool_intents
 
 if TYPE_CHECKING:
     from apeiria.ai.skills import AISkillDefinition
@@ -66,7 +67,7 @@ class ToolsAdminMixin:
             allow_read_only_tools=allow_read_only_tools,
             capability_mode=capability_mode,
         )
-        return await ai_tool_service.preview_tool_intents(
+        return await preview_runtime_tool_intents(
             message_text=message_text,
             policy=policy,
         )

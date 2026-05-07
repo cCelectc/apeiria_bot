@@ -14,7 +14,7 @@ from apeiria.app.ai.agent_turn import (
     AgentTurnResult,
 )
 from tests.ai.agent_turn_helpers import (
-    ModelGatewayStub,
+    ModelInvokerStub,
     model_response,
     selected_model,
 )
@@ -46,8 +46,8 @@ def test_agent_turn_result_can_record_strategy_skip() -> None:
 
 def test_model_runtime_records_direct_success() -> None:
     selected = selected_model("main")
-    gateway = ModelGatewayStub([model_response(selected, "hello")])
-    runtime = AgentTurnModelRuntime(model_gateway=gateway)
+    invoker = ModelInvokerStub([model_response(selected, "hello")])
+    runtime = AgentTurnModelRuntime(model_invoker=invoker)
 
     result = asyncio.run(
         runtime.generate(
@@ -75,8 +75,8 @@ def test_model_runtime_records_direct_success() -> None:
 
 def test_model_runtime_records_empty_response_without_raising() -> None:
     selected = selected_model("main")
-    gateway = ModelGatewayStub([model_response(selected, "")])
-    runtime = AgentTurnModelRuntime(model_gateway=gateway)
+    invoker = ModelInvokerStub([model_response(selected, "")])
+    runtime = AgentTurnModelRuntime(model_invoker=invoker)
 
     result = asyncio.run(
         runtime.generate(
@@ -99,8 +99,8 @@ def test_model_runtime_records_empty_response_without_raising() -> None:
 
 def test_model_runtime_sanitizes_provider_exception() -> None:
     selected = selected_model("main")
-    gateway = ModelGatewayStub([RuntimeError("bad api_key=secret-token failed")])
-    runtime = AgentTurnModelRuntime(model_gateway=gateway)
+    invoker = ModelInvokerStub([RuntimeError("bad api_key=secret-token failed")])
+    runtime = AgentTurnModelRuntime(model_invoker=invoker)
 
     result = asyncio.run(
         runtime.generate(
@@ -124,8 +124,8 @@ def test_model_runtime_sanitizes_provider_exception() -> None:
 
 def test_model_runtime_classifies_configuration_error() -> None:
     selected = selected_model("main")
-    gateway = ModelGatewayStub([ProviderConfigError("missing api_key=secret-token")])
-    runtime = AgentTurnModelRuntime(model_gateway=gateway)
+    invoker = ModelInvokerStub([ProviderConfigError("missing api_key=secret-token")])
+    runtime = AgentTurnModelRuntime(model_invoker=invoker)
 
     result = asyncio.run(
         runtime.generate(
@@ -147,8 +147,8 @@ def test_model_runtime_classifies_configuration_error() -> None:
 
 def test_model_runtime_classifies_timeout() -> None:
     selected = selected_model("main")
-    gateway = ModelGatewayStub([TimeoutError("request timed out")])
-    runtime = AgentTurnModelRuntime(model_gateway=gateway)
+    invoker = ModelInvokerStub([TimeoutError("request timed out")])
+    runtime = AgentTurnModelRuntime(model_invoker=invoker)
 
     result = asyncio.run(
         runtime.generate(
@@ -169,8 +169,8 @@ def test_model_runtime_classifies_timeout() -> None:
 
 def test_model_runtime_classifies_temporary_upstream_error() -> None:
     selected = selected_model("main")
-    gateway = ModelGatewayStub([UpstreamError("upstream unavailable", status_code=503)])
-    runtime = AgentTurnModelRuntime(model_gateway=gateway)
+    invoker = ModelInvokerStub([UpstreamError("upstream unavailable", status_code=503)])
+    runtime = AgentTurnModelRuntime(model_invoker=invoker)
 
     result = asyncio.run(
         runtime.generate(
@@ -191,8 +191,8 @@ def test_model_runtime_classifies_temporary_upstream_error() -> None:
 
 def test_model_runtime_classifies_permanent_upstream_error() -> None:
     selected = selected_model("main")
-    gateway = ModelGatewayStub([UpstreamError("unauthorized", status_code=401)])
-    runtime = AgentTurnModelRuntime(model_gateway=gateway)
+    invoker = ModelInvokerStub([UpstreamError("unauthorized", status_code=401)])
+    runtime = AgentTurnModelRuntime(model_invoker=invoker)
 
     result = asyncio.run(
         runtime.generate(
@@ -213,8 +213,8 @@ def test_model_runtime_classifies_permanent_upstream_error() -> None:
 
 def test_model_runtime_unknown_provider_error_uses_generic_reason() -> None:
     selected = selected_model("main")
-    gateway = ModelGatewayStub([RuntimeError("provider exploded")])
-    runtime = AgentTurnModelRuntime(model_gateway=gateway)
+    invoker = ModelInvokerStub([RuntimeError("provider exploded")])
+    runtime = AgentTurnModelRuntime(model_invoker=invoker)
 
     result = asyncio.run(
         runtime.generate(
@@ -236,13 +236,13 @@ def test_model_runtime_unknown_provider_error_uses_generic_reason() -> None:
 def test_model_runtime_uses_configured_fallback_candidate() -> None:
     primary = selected_model("primary", fallback_profile_id="profile-fallback")
     fallback = selected_model("fallback")
-    gateway = ModelGatewayStub(
+    invoker = ModelInvokerStub(
         [
             RuntimeError("primary failed"),
             model_response(fallback, "fallback answer"),
         ]
     )
-    runtime = AgentTurnModelRuntime(model_gateway=gateway)
+    runtime = AgentTurnModelRuntime(model_invoker=invoker)
 
     result = asyncio.run(
         runtime.generate(
@@ -275,13 +275,13 @@ def test_model_runtime_uses_configured_fallback_candidate() -> None:
 def test_model_runtime_preserves_fallback_after_temporary_error() -> None:
     primary = selected_model("primary", fallback_profile_id="profile-fallback")
     fallback = selected_model("fallback")
-    gateway = ModelGatewayStub(
+    invoker = ModelInvokerStub(
         [
             UpstreamError("try again later", status_code=503),
             model_response(fallback, "fallback answer"),
         ]
     )
-    runtime = AgentTurnModelRuntime(model_gateway=gateway)
+    runtime = AgentTurnModelRuntime(model_invoker=invoker)
 
     result = asyncio.run(
         runtime.generate(
@@ -320,8 +320,8 @@ def test_model_runtime_exposes_direct_capability_degradations() -> None:
             ]
         },
     )
-    gateway = ModelGatewayStub([response])
-    runtime = AgentTurnModelRuntime(model_gateway=gateway)
+    invoker = ModelInvokerStub([response])
+    runtime = AgentTurnModelRuntime(model_invoker=invoker)
 
     result = asyncio.run(
         runtime.generate(

@@ -10,11 +10,12 @@ import apeiria.app.ai.runtime.execution.stage as execution_stage_module
 import apeiria.app.ai.runtime.live as service_module
 from apeiria.ai.config import AIPluginConfig
 from apeiria.ai.model import AIModelMessage
-from apeiria.ai.tools import AIToolPolicy, ToolGatewayResult
+from apeiria.ai.tools import AIToolPolicy
 from apeiria.app.ai.reply_strategy import ReplyStrategyDecision, WakeContext
 from apeiria.app.ai.runtime.commit import RuntimeCommitEffectsStage
 from apeiria.app.ai.runtime.context.stage import RuntimeContextAssemblyStage
 from apeiria.app.ai.runtime.execution.stage import RuntimeTurnExecutionStage
+from apeiria.app.ai.runtime.execution.tool_loop import RuntimeToolLoopResult
 from apeiria.app.ai.runtime.live import DefaultAILiveRuntimeEntry
 from apeiria.app.ai.runtime.observation import RuntimeObservationEffectsStage
 from apeiria.app.ai.runtime.orchestrator import AISessionTurnEngine
@@ -56,8 +57,8 @@ async def _noop_observation_effects(*_args: Any, **_kwargs: Any) -> None:
     return None
 
 
-def _empty_tool_result() -> ToolGatewayResult:
-    return ToolGatewayResult(policy_text="", result_lines=(), turns=())
+def _empty_tool_result() -> RuntimeToolLoopResult:
+    return RuntimeToolLoopResult(policy_text="", result_lines=(), turns=())
 
 
 def test_duplicate_platform_event_stops_before_ai_side_effects(
@@ -76,11 +77,6 @@ def test_duplicate_platform_event_stops_before_ai_side_effects(
         service_module,
         "ensure_ai_runtime_support_initialized",
         lambda **_kwargs: None,
-    )
-    monkeypatch.setattr(
-        service_module,
-        "ai_skill_service",
-        SimpleNamespace(ensure_initialized=lambda: None),
     )
     monkeypatch.setattr(service_module, "get_ai_plugin_config", AIPluginConfig)
     monkeypatch.setattr(

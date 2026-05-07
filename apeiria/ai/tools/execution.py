@@ -11,8 +11,8 @@ from apeiria.ai.tools.models import (
     AICapabilityInvokeObservationOutput,
     AINoneBotCapabilityRequest,
     AIToolExecutionContext,
+    AIToolExecutionRequest,
     AIToolIntent,
-    AIToolObservationRequest,
     AIToolObservationResult,
 )
 
@@ -29,7 +29,7 @@ class AIToolIntentExecutor:
         self,
         *,
         registry: AIToolRegistry,
-        request: AIToolObservationRequest,
+        request: AIToolExecutionRequest,
         intents: list[AIToolIntent],
     ) -> list[AIToolObservationResult]:
         """Execute tool intents with consecutive failure detection."""
@@ -65,7 +65,7 @@ class AIToolIntentExecutor:
         self,
         *,
         registry: AIToolRegistry,
-        request: AIToolObservationRequest,
+        request: AIToolExecutionRequest,
         intent: AIToolIntent,
     ) -> AIToolObservationResult:
         spec = registry.get(intent.tool_name)

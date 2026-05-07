@@ -23,12 +23,12 @@ from apeiria.app.ai.agent_turn.models import (
 class AgentTurnModelRuntime:
     """Run model attempts for one agent turn and record their outcomes."""
 
-    def __init__(self, *, model_gateway: Any | None = None) -> None:
-        if model_gateway is None:
-            from apeiria.ai.model import model_gateway as default_model_gateway
+    def __init__(self, *, model_invoker: Any | None = None) -> None:
+        if model_invoker is None:
+            from apeiria.ai.model import model_invoker as default_model_invoker
 
-            model_gateway = default_model_gateway
-        self._model_gateway = model_gateway
+            model_invoker = default_model_invoker
+        self._model_invoker = model_invoker
 
     async def generate(
         self,
@@ -43,7 +43,7 @@ class AgentTurnModelRuntime:
 
         for index, selected in enumerate(candidates, start=1):
             try:
-                response = await self._model_gateway.generate_native(
+                response = await self._model_invoker.generate_text(
                     selected=selected,
                     prompt=request.prompt,
                     messages=request.messages,

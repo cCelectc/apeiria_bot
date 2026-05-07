@@ -6,8 +6,12 @@ from dataclasses import replace
 from typing import TYPE_CHECKING
 
 from apeiria.ai.config import get_ai_plugin_config
-from apeiria.ai.tools import ToolGatewayRequest, ToolGatewayResult, tool_gateway
 from apeiria.app.ai.agent_turn import AgentTurnResult
+from apeiria.app.ai.runtime.execution.tool_loop import (
+    RuntimeToolLoopInput,
+    RuntimeToolLoopResult,
+    runtime_tool_loop_runner,
+)
 from apeiria.app.ai.runtime.planning.model_selection import (
     GenerationRequest,
     generate_model_turn,
@@ -19,7 +23,6 @@ from apeiria.app.ai.runtime.planning.reply_decision import (
     select_post_tool_reply_task_class,
 )
 from apeiria.app.ai.runtime.planning.tool_exposure import (
-    apply_tool_exposure_allowlist,
     compile_tool_exposure_provider_schema,
 )
 
@@ -136,35 +139,41 @@ async def _run_tool_loop(
     *,
     turn_context: "TurnContext",
     plan: "RuntimeTurnPlan",
-) -> ToolGatewayResult:
-    tool_request = ToolGatewayRequest(
-        session_id=turn_context.session_id,
-        source_message_id=turn_context.source.source_message_id,
-        trace_id=turn_context.trace_id,
-        message_text=turn_context.source.message_text,
-        policy=turn_context.tool_policy,
-        recalled_memories=tuple(
-            plan.reply_compose_input.memories if plan.reply_compose_input else ()
-        ),
-        relationship_context=(
-            plan.reply_compose_input.relationship if plan.reply_compose_input else None
-        ),
-        current_time=turn_context.current_time,
-        runtime_mode=turn_context.runtime_mode,
-        tool_mode=plan.tool_mode,
-        execution_timeout_seconds=plan.tool_execution_timeout_seconds
-        or get_ai_plugin_config().tool_execution_timeout_seconds,
+) -> RuntimeToolLoopResult:
+    recalled_memories = tuple(
+        plan.reply_compose_input.memories if plan.reply_compose_input else ()
     )
     exposure_plan = plan.tool_exposure_plan
-    return await tool_gateway.run_tool_loop(
-        apply_tool_exposure_allowlist(tool_request, exposure_plan),
-        messages=list(turn_context.prompt_messages),
-        tools=compile_tool_exposure_provider_schema(
-            exposure_plan,
+    return await runtime_tool_loop_runner.run(
+        RuntimeToolLoopInput(
+            session_id=turn_context.session_id,
+            source_message_id=turn_context.source.source_message_id,
+            trace_id=turn_context.trace_id,
+            message_text=turn_context.source.message_text,
+            tool_policy=turn_context.tool_policy,
+            recalled_memory_ids=tuple(memory.memory_id for memory in recalled_memories),
+            recalled_memory_contents=tuple(
+                memory.content for memory in recalled_memories
+            ),
+            relationship_context=(
+                plan.reply_compose_input.relationship
+                if plan.reply_compose_input
+                else None
+            ),
             current_time=turn_context.current_time,
-        ),
-        selected=plan.selected,
-        fallback_models=plan.fallback_models,
+            runtime_mode=turn_context.runtime_mode,
+            tool_mode=plan.tool_mode,
+            execution_timeout_seconds=plan.tool_execution_timeout_seconds
+            or get_ai_plugin_config().tool_execution_timeout_seconds,
+            executable_tool_names=frozenset(exposure_plan.selected_tool_names),
+            messages=turn_context.prompt_messages,
+            tools=compile_tool_exposure_provider_schema(
+                exposure_plan,
+                current_time=turn_context.current_time,
+            ),
+            selected=plan.selected,
+            fallback_models=plan.fallback_models,
+        )
     )
 
 
@@ -172,7 +181,7 @@ async def _maybe_refine_tool_response(
     *,
     turn_context: "TurnContext",
     plan: "RuntimeTurnPlan",
-    skill_runtime: ToolGatewayResult,
+    skill_runtime: RuntimeToolLoopResult,
     base: AgentTurnResult,
     post_tool_task_class: "AIModelTaskClass",
 ) -> tuple["AIModelGenerateResponse | None", AgentTurnResult]:
@@ -234,7 +243,7 @@ def _build_tool_loop_turn_result(
     *,
     trace_id: str,
     runtime_mode: str,
-    skill_runtime: ToolGatewayResult,
+    skill_runtime: RuntimeToolLoopResult,
 ) -> AgentTurnResult:
     response = skill_runtime.final_response
     has_reply = response is not None and bool((response.content or "").strip())
@@ -242,7 +251,7 @@ def _build_tool_loop_turn_result(
         trace_id=trace_id,
         runtime_mode=runtime_mode,
         status="completed" if has_reply else "failed",
-        finish_reason=skill_runtime.loop_finish_reason,
+        finish_reason=skill_runtime.finish_reason,
         model_attempts=skill_runtime.model_attempts,
         tool_attempts=skill_runtime.tool_attempts,
         response=response,
@@ -250,7 +259,7 @@ def _build_tool_loop_turn_result(
         metadata={
             "tool_observation_count": len(skill_runtime.turns),
             "tool_message_count": len(skill_runtime.tool_messages),
-            **skill_runtime.metadata,
+            **skill_runtime.diagnostics,
         },
     )
 

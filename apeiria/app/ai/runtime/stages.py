@@ -26,9 +26,9 @@ if TYPE_CHECKING:
         AISelectedModel,
     )
     from apeiria.ai.prompting import PromptPacket
-    from apeiria.ai.tools import ToolGatewayResult
     from apeiria.app.ai.agent_turn import AgentTurnResult
     from apeiria.app.ai.reply_strategy.models import ReplyStrategyDecision, WakeContext
+    from apeiria.app.ai.runtime.execution.tool_loop import RuntimeToolLoopResult
     from apeiria.app.ai.runtime.planning.prompts import RuntimePromptComposeInput
 
 RuntimeStageName = Literal[
@@ -114,7 +114,7 @@ class RuntimeTurnPlan:
     stage: RuntimeStageName
     selected: "AISelectedModel"
     fallback_models: tuple["AISelectedModel", ...]
-    skill_runtime: "ToolGatewayResult"
+    skill_runtime: "RuntimeToolLoopResult"
     skill_activation: str | None
     pre_tool_task_class: "AIModelTaskClass"
     prompt_messages: tuple["AIModelMessage", ...]
@@ -139,7 +139,7 @@ class RuntimeExecutionOutcome:
 
     stage: RuntimeStageName
     response: Any | None
-    skill_runtime: "ToolGatewayResult"
+    skill_runtime: "RuntimeToolLoopResult"
     post_tool_task_class: "AIModelTaskClass | None"
     delivery_result: "RuntimeDeliveryOutcome | None"
     turn_result: "AgentTurnResult | None" = None

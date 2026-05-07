@@ -6,7 +6,8 @@ from typing import TYPE_CHECKING
 
 from nonebot.log import logger
 
-from apeiria.ai.model import AIModelRouteQuery, model_gateway
+from apeiria.ai.model import AIModelRouteQuery, model_invoker
+from apeiria.ai.model.routing.profile import ai_model_profile_service
 from apeiria.ai.model.runtime.capabilities import (
     AI_MODEL_RESPONSE_FORMAT_OPTION,
     AIModelCallOptions,
@@ -117,7 +118,7 @@ async def evaluate_social_judgment(
 
     fallback = build_fallback_judgment(judgment_input)
 
-    selected = await model_gateway.select_model(
+    selected = await ai_model_profile_service.select_model(
         query=AIModelRouteQuery(task_class=_SOCIAL_JUDGMENT_TASK_CLASS),
         target=target,
     )
@@ -125,7 +126,7 @@ async def evaluate_social_judgment(
         return fallback
 
     try:
-        response = await model_gateway.generate_native(
+        response = await model_invoker.generate_text(
             selected=selected,
             messages=render_messages(
                 build_social_judgment_packet(

@@ -13,20 +13,18 @@ from apeiria.ai.tools.contracts import AIToolExecutionCreateInput
 from apeiria.ai.tools.debug import (
     AICapabilityDefinition,
     AICapabilityPreview,
-    AIToolIntentPreview,
 )
 from apeiria.ai.tools.execution import AIToolIntentExecutor
 from apeiria.ai.tools.execution_repository import AIToolExecutionRepository
 from apeiria.ai.tools.models import (
+    AIToolExecutionRequest,
     AIToolExecutionView,
     AIToolIntent,
-    AIToolObservationRequest,
     AIToolObservationResult,
     AIToolPolicy,
     AIToolSpec,
     AIToolTurnCreateInput,
 )
-from apeiria.ai.tools.planning import AIToolIntentPlanner
 from apeiria.ai.tools.policy import evaluate_tool_policy
 from apeiria.ai.tools.registry import AIToolRegistry
 
@@ -44,13 +42,11 @@ class AIToolService:
         *,
         execution_repository: AIToolExecutionRepository | None = None,
         intent_executor: AIToolIntentExecutor | None = None,
-        intent_planner: AIToolIntentPlanner | None = None,
     ) -> None:
         self.registry = AIToolRegistry()
         self.capability_bridge = AINoneBotCapabilityBridge()
         self._execution_repository = execution_repository or AIToolExecutionRepository()
         self._intent_executor = intent_executor or AIToolIntentExecutor()
-        self._intent_planner = intent_planner or AIToolIntentPlanner()
         register_builtin_capabilities(self.capability_bridge)
         self._load_declarative_tools()
 
@@ -85,77 +81,13 @@ class AIToolService:
         ]
 
     # ------------------------------------------------------------------
-    # Model-driven tool planning
-    # ------------------------------------------------------------------
-
-    async def observe_read_only_tools(
-        self,
-        request: AIToolObservationRequest,
-    ) -> list[AIToolObservationResult]:
-        intents = await self._plan_tool_intents_with_model(
-            message_text=request.message_text,
-            policy=request.policy,
-            recalled_memory_ids=request.recalled_memory_ids,
-            recalled_memory_contents=request.recalled_memory_contents,
-            relationship_context=request.relationship_context,
-        )
-        return await self.execute_tool_intents(
-            request=request,
-            intents=intents,
-        )
-
-    async def preview_tool_intents(
-        self,
-        *,
-        message_text: str,
-        policy: AIToolPolicy,
-        recalled_memory_ids: tuple[str, ...] = (),
-        recalled_memory_contents: tuple[str, ...] = (),
-        relationship_context: str | None = None,
-    ) -> list[AIToolIntentPreview]:
-        intents = await self._plan_tool_intents_with_model(
-            message_text=message_text,
-            policy=policy,
-            recalled_memory_ids=recalled_memory_ids,
-            recalled_memory_contents=recalled_memory_contents,
-            relationship_context=relationship_context,
-        )
-        return [
-            AIToolIntentPreview(
-                tool_name=intent.tool_name,
-                kind=intent.kind,
-                reason=intent.reason,
-                input_payload=_to_jsonable_payload(intent.input_payload),
-            )
-            for intent in intents
-        ]
-
-    async def _plan_tool_intents_with_model(
-        self,
-        *,
-        message_text: str,
-        policy: AIToolPolicy,
-        recalled_memory_ids: tuple[str, ...],
-        recalled_memory_contents: tuple[str, ...],
-        relationship_context: str | None,
-    ) -> list[AIToolIntent]:
-        allowed_tools = self.list_allowed_tools(policy)
-        return await self._intent_planner.plan_tool_intents(
-            message_text=message_text,
-            allowed_tools=allowed_tools,
-            recalled_memory_ids=recalled_memory_ids,
-            recalled_memory_contents=recalled_memory_contents,
-            relationship_context=relationship_context,
-        )
-
-    # ------------------------------------------------------------------
     # Unified tool execution with death-spiral detection
     # ------------------------------------------------------------------
 
     async def execute_tool_intents(
         self,
         *,
-        request: AIToolObservationRequest,
+        request: AIToolExecutionRequest,
         intents: list[AIToolIntent],
     ) -> list[AIToolObservationResult]:
         observations = await self._intent_executor.execute_tool_intents(

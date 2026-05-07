@@ -92,7 +92,7 @@ def test_source_model_admin_methods_use_new_database(
     asyncio.run(run())
 
 
-def test_fetch_and_test_source_model_uses_model_facade(
+def test_fetch_and_test_source_model_uses_model_invoker(
     tmp_path: Path,
     monkeypatch: MonkeyPatch,
 ) -> None:
@@ -119,7 +119,9 @@ def test_fetch_and_test_source_model_uses_model_facade(
 
     source_id = asyncio.run(seed_source())
 
-    model_service = importlib.import_module("apeiria.ai.model.runtime.service")
+    connectivity_module = importlib.import_module(
+        "apeiria.app.ai.diagnostics.model_connectivity"
+    )
     from apeiria.app.ai.operations.models import ModelsAdminMixin
 
     admin = ModelsAdminMixin()
@@ -137,8 +139,8 @@ def test_fetch_and_test_source_model_uses_model_facade(
         return SimpleNamespace(content="OK", tool_calls=())
 
     monkeypatch.setattr(
-        model_service,
-        "ai_model_facade",
+        connectivity_module,
+        "model_invoker",
         SimpleNamespace(
             list_source_models=fake_list_source_models,
             generate_text_for_source=fake_generate_text_for_source,

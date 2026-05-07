@@ -10,7 +10,10 @@ from apeiria.ai.memory.embeddings import (
     cosine_similarity,
     embed_text,
 )
-from apeiria.ai.model.runtime.service import ai_model_facade
+from apeiria.ai.model.routing.capability_selection import (
+    ai_model_capability_selection_service,
+)
+from apeiria.ai.model.runtime.service import model_invoker
 from apeiria.ai.model.sources.service import ai_source_service
 
 if TYPE_CHECKING:
@@ -126,7 +129,7 @@ class KnowledgeMemoryCoordinator:
         *,
         content: str,
     ) -> tuple[str, list[float]]:
-        selected = await ai_model_facade.select_capability_model(
+        selected = await ai_model_capability_selection_service.select_default_model(
             capability_type="embedding",
         )
         if selected is None:
@@ -136,7 +139,7 @@ class KnowledgeMemoryCoordinator:
             api_key = ai_source_service.get_source_api_key(selected.source)
             if not api_key:
                 return EMBEDDING_MODEL_NAME, embed_text(content)
-            response = await ai_model_facade.embed_texts_for_source(
+            response = await model_invoker.embed_texts_for_source(
                 source=selected.source,
                 api_key=api_key,
                 model_name=selected.model.model_identifier,
@@ -160,7 +163,7 @@ class KnowledgeMemoryCoordinator:
         if limit <= 0 or not memories:
             return []
 
-        selected = await ai_model_facade.select_capability_model(
+        selected = await ai_model_capability_selection_service.select_default_model(
             capability_type="rerank",
         )
         if selected is None:
@@ -179,7 +182,7 @@ class KnowledgeMemoryCoordinator:
         )
         candidates = memories[:candidate_limit]
         try:
-            response = await ai_model_facade.rerank_documents_for_source(
+            response = await model_invoker.rerank_documents_for_source(
                 source=selected.source,
                 api_key=api_key,
                 model_name=selected.model.model_identifier,

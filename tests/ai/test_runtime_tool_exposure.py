@@ -5,7 +5,8 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 from apeiria.ai.model import AIModelToolDefinition
-from apeiria.ai.tools import AIToolPolicy, AIToolSpec, ToolGatewayRequest
+from apeiria.ai.tools import AIToolPolicy, AIToolSpec
+from apeiria.app.ai.runtime.execution.tool_loop import RuntimeToolLoopInput
 from apeiria.app.ai.runtime.planning.tool_exposure import (
     ToolExposurePlan,
     ToolOrchestrator,
@@ -13,6 +14,7 @@ from apeiria.app.ai.runtime.planning.tool_exposure import (
     build_default_tool_exposure_plan,
     compile_tool_exposure_provider_schema,
 )
+from tests.ai.agent_turn_helpers import selected_model
 
 
 def _tool(
@@ -180,15 +182,22 @@ def test_tool_exposure_allowlist_uses_selected_tools_only() -> None:
         description="Reload project",
         parameters={"type": "object", "properties": {}},
     )
-    request = ToolGatewayRequest(
+    request = RuntimeToolLoopInput(
         session_id="session-1",
         source_message_id="msg-1",
         trace_id="trace-1",
+        runtime_mode="message",
         message_text="hello",
-        policy=AIToolPolicy(execution_enabled=True),
-        recalled_memories=(),
-        relationship_context=None,
         current_time=datetime(2026, 4, 29, tzinfo=timezone.utc),
+        selected=selected_model("tool-exposure"),
+        fallback_models=(),
+        messages=(),
+        tools=(selected_tool, hidden_tool),
+        tool_policy=AIToolPolicy(execution_enabled=True),
+        executable_tool_names=None,
+        recalled_memory_ids=(),
+        recalled_memory_contents=(),
+        relationship_context=None,
     )
     plan = ToolExposurePlan(
         selected_tools=(selected_tool,),

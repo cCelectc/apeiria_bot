@@ -9,8 +9,9 @@ import pytest
 
 from apeiria.ai.config import AIPluginConfig
 from apeiria.ai.model import AIModelBindingTarget, AIModelRouteQuery
-from apeiria.ai.service import AIRuntimeDependencyStatus, AIService
-from apeiria.ai.tools import AIToolPolicy, ToolGatewayResult
+from apeiria.ai.tools import AIToolPolicy
+from apeiria.app.ai.diagnostics import AIDiagnosticsEntry
+from apeiria.app.ai.diagnostics.readiness import AIRuntimeDependencyStatus
 from apeiria.app.ai.reply_strategy import ReplyStrategyDecision
 from apeiria.app.ai.runtime.session.context import (
     RuntimeContextMaterials,
@@ -112,14 +113,14 @@ def _selected_model() -> SimpleNamespace:
     )
 
 
-def test_ai_service_status_reports_ready_reply_runtime() -> None:
+def test_ai_diagnostics_status_reports_ready_reply_runtime() -> None:
     probe = _RuntimeReadinessProbeStub(_ready_components())
-    service = AIService(
-        model_gateway=_ModelGatewayStub(_selected_model()),
+    diagnostics = AIDiagnosticsEntry(
+        model_selector=_ModelGatewayStub(_selected_model()),
         runtime_readiness_probe=probe,
     )
 
-    status = asyncio.run(service.get_status())
+    status = asyncio.run(diagnostics.get_runtime_status())
 
     assert status.phase == "runtime_ready"
     assert status.ready is True
@@ -136,14 +137,14 @@ def test_ai_service_status_reports_ready_reply_runtime() -> None:
     assert probe.calls == 1
 
 
-def test_ai_service_status_reports_degraded_without_reply_model() -> None:
+def test_ai_diagnostics_status_reports_degraded_without_reply_model() -> None:
     gateway = _ModelGatewayStub(None)
-    service = AIService(
-        model_gateway=gateway,
+    diagnostics = AIDiagnosticsEntry(
+        model_selector=gateway,
         runtime_readiness_probe=_RuntimeReadinessProbeStub(_ready_components()),
     )
 
-    status = asyncio.run(service.get_status())
+    status = asyncio.run(diagnostics.get_runtime_status())
 
     assert status.phase == "runtime_degraded"
     assert status.ready is False
@@ -228,16 +229,16 @@ def test_ai_service_status_reports_degraded_without_reply_model() -> None:
         ),
     ],
 )
-def test_ai_service_status_reports_degraded_runtime_dependency(
+def test_ai_diagnostics_status_reports_degraded_runtime_dependency(
     degraded: AIRuntimeDependencyStatus,
     expected_summary: str,
 ) -> None:
-    service = AIService(
-        model_gateway=_ModelGatewayStub(_selected_model()),
+    diagnostics = AIDiagnosticsEntry(
+        model_selector=_ModelGatewayStub(_selected_model()),
         runtime_readiness_probe=_RuntimeReadinessProbeStub(_components_with(degraded)),
     )
 
-    status = asyncio.run(service.get_status())
+    status = asyncio.run(diagnostics.get_runtime_status())
 
     assert status.phase == "runtime_degraded"
     assert status.ready is False
@@ -245,16 +246,18 @@ def test_ai_service_status_reports_degraded_runtime_dependency(
     assert status.next_step == degraded.next_step
 
 
-def test_ai_service_status_does_not_initialize_missing_runtime_storage(
+def test_ai_diagnostics_status_does_not_initialize_missing_runtime_storage(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Any,
 ) -> None:
     from apeiria.db.runtime import database_runtime
 
     monkeypatch.setattr(database_runtime, "_project_root", tmp_path)
-    service = AIService(model_gateway=_ModelGatewayStub(_selected_model()))
+    diagnostics = AIDiagnosticsEntry(
+        model_selector=_ModelGatewayStub(_selected_model())
+    )
 
-    status = asyncio.run(service.get_status())
+    status = asyncio.run(diagnostics.get_runtime_status())
 
     assert status.phase == "runtime_degraded"
     assert "future-task storage unavailable" in status.summary
@@ -368,9 +371,6 @@ def test_reply_preparation_records_no_model_diagnostic(
     )
     diagnostics: list[str] = []
 
-    async def prepare_tools(_request: object) -> ToolGatewayResult:
-        return ToolGatewayResult(policy_text="", result_lines=(), turns=())
-
     async def select_model(*, task_class: str, target: object) -> None:
         del task_class, target
 
@@ -378,7 +378,6 @@ def test_reply_preparation_records_no_model_diagnostic(
         diagnostics.append(message.format(*args) if args else message)
 
     monkeypatch.setattr(planning_module, "get_ai_plugin_config", AIPluginConfig)
-    monkeypatch.setattr(planning_module.tool_gateway, "prepare", prepare_tools)
     monkeypatch.setattr(planning_module, "select_model", select_model)
     monkeypatch.setattr(planning_module.logger, "debug", record_debug)
 
