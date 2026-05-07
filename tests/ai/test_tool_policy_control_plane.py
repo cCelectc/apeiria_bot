@@ -15,7 +15,7 @@ if TYPE_CHECKING:
 def test_preview_tool_intents_delegates_to_tool_service(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from apeiria.app.ai.admin import tools as admin_tools
+    from apeiria.app.ai.operations import tools as operations_tools
 
     captured_kwargs: list[dict[str, object]] = []
 
@@ -24,16 +24,16 @@ def test_preview_tool_intents_delegates_to_tool_service(
         return []
 
     monkeypatch.setattr(
-        admin_tools,
+        operations_tools,
         "ai_tool_service",
         SimpleNamespace(preview_tool_intents=fake_preview_tool_intents),
     )
 
-    class _Admin(admin_tools.ToolsAdminMixin):
+    class _Operations(operations_tools.ToolsAdminMixin):
         pass
 
     result = asyncio.run(
-        _Admin().preview_tool_intents(
+        _Operations().preview_tool_intents(
             message_text="hello",
             scope_type="private",
             is_tome=False,
@@ -56,38 +56,38 @@ def test_tool_policy_bindings_use_control_plane_sqlite(
         AIToolSceneContext,
         ai_tool_policy_binding_service,
     )
-    from apeiria.app.ai.admin import tools as admin_tools
+    from apeiria.app.ai.operations import tools as operations_tools
 
     audit_events: list[tuple[str, str | None, str | None]] = []
     monkeypatch.setattr(
-        admin_tools,
+        operations_tools,
         "record_ai_admin_audit",
         lambda event_type, *, actor_username=None, detail=None: audit_events.append(
             (event_type, actor_username, detail)
         ),
     )
 
-    class _Admin(admin_tools.ToolsAdminMixin):
+    class _Operations(operations_tools.ToolsAdminMixin):
         pass
 
-    admin = _Admin()
+    operations = _Operations()
 
     async def scenario() -> None:
-        global_binding = await admin.create_tool_policy_binding(
+        global_binding = await operations.create_tool_policy_binding(
             scope_type="global",
             scope_id="__global__",
             allow_read_only_tools=True,
             capability_mode="off",
             actor_username="alice",
         )
-        group_binding = await admin.create_tool_policy_binding(
+        group_binding = await operations.create_tool_policy_binding(
             scope_type="group",
             scope_id="group-1",
             allow_read_only_tools=False,
             capability_mode="off",
             actor_username="alice",
         )
-        user_binding = await admin.create_tool_policy_binding(
+        user_binding = await operations.create_tool_policy_binding(
             scope_type="user",
             scope_id="user-1",
             allow_read_only_tools=False,
@@ -95,7 +95,7 @@ def test_tool_policy_bindings_use_control_plane_sqlite(
             actor_username="alice",
         )
 
-        listed = await admin.list_tool_policy_bindings()
+        listed = await operations.list_tool_policy_bindings()
 
         assert [item.binding_id for item in listed] == [
             global_binding.binding_id,
@@ -103,7 +103,7 @@ def test_tool_policy_bindings_use_control_plane_sqlite(
             user_binding.binding_id,
         ]
 
-        updated_global = await admin.update_tool_policy_binding(
+        updated_global = await operations.update_tool_policy_binding(
             binding_id=global_binding.binding_id,
             allow_read_only_tools=True,
             capability_mode="direct_only",
@@ -126,7 +126,7 @@ def test_tool_policy_bindings_use_control_plane_sqlite(
         assert user_policy.allowed_tool_names == {"plugin.capability"}
         assert user_policy.allow_capability_bridge is True
 
-        deleted = await admin.delete_tool_policy_binding(
+        deleted = await operations.delete_tool_policy_binding(
             binding_id=user_binding.binding_id,
             actor_username="alice",
         )
@@ -144,7 +144,9 @@ def test_tool_policy_bindings_use_control_plane_sqlite(
 
         assert group_policy.execution_enabled is False
         assert group_policy.allowed_tool_names is None
-        assert await admin.delete_tool_policy_binding(binding_id="missing") is False
+        assert (
+            await operations.delete_tool_policy_binding(binding_id="missing") is False
+        )
 
     asyncio.run(scenario())
 

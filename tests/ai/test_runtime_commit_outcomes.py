@@ -5,25 +5,28 @@ from datetime import datetime, timezone
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any
 
+import apeiria.app.ai.runtime.commit.delivery as delivery_steps
 from apeiria.ai.model import AIModelBindingTarget, AIModelMessage
 from apeiria.ai.tools import AIToolPolicy, ToolGatewayResult
 from apeiria.app.ai.agent_turn import AgentTurnResult
-from apeiria.app.ai.future_task.models import AIFutureTaskDefinition
-from apeiria.app.ai.pipeline.delivery_steps import DeliveryOutcome
-from apeiria.app.ai.pipeline.input_steps import ReplyInputs
-from apeiria.app.ai.pipeline.service import AIRuntimeReplyRequest
+from apeiria.app.ai.future_tasks.models import AIFutureTaskDefinition
 from apeiria.app.ai.reply_strategy import ReplyStrategyDecision
-from apeiria.app.ai.session_runtime import (
-    AISessionTurnEngine,
-    DefaultRuntimeCommitStage,
-    RuntimeCommitInput,
+from apeiria.app.ai.runtime.commit import RuntimeCommitEffectsStage
+from apeiria.app.ai.runtime.commit.delivery import DeliveryOutcome
+from apeiria.app.ai.runtime.context.materials import RuntimeContextInputBundle
+from apeiria.app.ai.runtime.live import AIRuntimeTurnRequest
+from apeiria.app.ai.runtime.orchestrator import AISessionTurnEngine
+from apeiria.app.ai.runtime.planning.tool_exposure import ToolExposurePlan
+from apeiria.app.ai.runtime.session.context import (
     RuntimeContextMaterials,
-    RuntimeExecutionOutcome,
-    RuntimeHardRuleDecision,
     RuntimeTurnInput,
-    RuntimeTurnPlan,
-    ToolExposurePlan,
 )
+from apeiria.app.ai.runtime.stages import (
+    RuntimeCommitInput,
+    RuntimeExecutionOutcome,
+    RuntimeTurnPlan,
+)
+from apeiria.app.ai.runtime.strategy import RuntimeHardRuleDecision
 from apeiria.conversation.models import ChatSessionIdentity
 
 if TYPE_CHECKING:
@@ -42,8 +45,8 @@ def _request(
     *,
     runtime_mode: str = "future_task",
     future_task: AIFutureTaskDefinition | None = None,
-) -> AIRuntimeReplyRequest:
-    return AIRuntimeReplyRequest(
+) -> AIRuntimeTurnRequest:
+    return AIRuntimeTurnRequest(
         identity=ChatSessionIdentity(
             session_id="session-1",
             platform="onebot",
@@ -125,8 +128,8 @@ def _execution() -> RuntimeExecutionOutcome:
     )
 
 
-def _inputs() -> ReplyInputs:
-    return ReplyInputs(
+def _inputs() -> RuntimeContextInputBundle:
+    return RuntimeContextInputBundle(
         turns=[],
         conversation_summary=None,
         relationship_target=object(),  # type: ignore[arg-type]
@@ -170,14 +173,14 @@ def _hard_decision() -> RuntimeHardRuleDecision:
 
 def _commit_input(
     *,
-    request: AIRuntimeReplyRequest | None = None,
+    request: AIRuntimeTurnRequest | None = None,
 ) -> RuntimeCommitInput:
     reply_request = request or _request()
     return RuntimeCommitInput(
         stage="commit",
         trace_id="trace-1",
-        turn=RuntimeTurnInput.from_reply_request(reply_request),
-        context=RuntimeContextMaterials.from_reply_inputs(_inputs()),
+        turn=RuntimeTurnInput.from_turn_request(reply_request),
+        context=RuntimeContextMaterials.from_context_input_bundle(_inputs()),
         social_decision=_social_decision(),
         plan=_plan(),
         generation=_execution(),
@@ -227,7 +230,7 @@ def test_commit_records_partial_delivery_failure() -> None:
         )
 
     engine = AISessionTurnEngine(
-        commit_stage=DefaultRuntimeCommitStage(
+        commit_stage=RuntimeCommitEffectsStage(
             reply_persistence=_CommitPersistenceStage(),
             reply_strategy_service=SimpleNamespace(
                 notify_replied=lambda _session_id: None
@@ -244,7 +247,7 @@ def test_commit_records_partial_delivery_failure() -> None:
     )
 
     assert deliveries == [
-        (RuntimeTurnInput.from_reply_request(_request()), "reminder", "trace-1")
+        (RuntimeTurnInput.from_turn_request(_request()), "reminder", "trace-1")
     ]
     assert commit.commit_status == "partial"
     assert commit.delivery_result is not None
@@ -256,7 +259,7 @@ def test_commit_records_partial_delivery_failure() -> None:
 
 def test_commit_failure_does_not_rewrite_execution_attempts() -> None:
     engine = AISessionTurnEngine(
-        commit_stage=DefaultRuntimeCommitStage(
+        commit_stage=RuntimeCommitEffectsStage(
             reply_persistence=_CommitPersistenceStage(fail_assistant_message=True),
             reply_strategy_service=SimpleNamespace(
                 notify_replied=lambda _session_id: None
@@ -283,10 +286,9 @@ def test_delivered_attempt_survives_later_commit_failure(
     monkeypatch: Any,
     tmp_path: Path,
 ) -> None:
-    from apeiria.app.ai.future_task.delivery_attempts import (
+    from apeiria.app.ai.future_tasks.delivery_attempts import (
         delivery_attempt_repository,
     )
-    from apeiria.app.ai.pipeline import delivery_steps
     from apeiria.db.runtime import database_runtime
 
     monkeypatch.setattr(database_runtime, "_project_root", tmp_path)
@@ -305,7 +307,7 @@ def test_delivered_attempt_survives_later_commit_failure(
 
     monkeypatch.setattr(delivery_steps, "delivery_gateway", FakeGateway())
     engine = AISessionTurnEngine(
-        commit_stage=DefaultRuntimeCommitStage(
+        commit_stage=RuntimeCommitEffectsStage(
             reply_persistence=_CommitPersistenceStage(fail_assistant_message=True),
             reply_strategy_service=SimpleNamespace(
                 notify_replied=lambda _session_id: None

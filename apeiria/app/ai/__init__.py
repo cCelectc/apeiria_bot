@@ -1,3 +1,5 @@
 """AI application flows and workbench orchestration."""
 
-__all__: list[str] = []
+from .application import AIApplication, ai_application
+
+__all__ = ["AIApplication", "ai_application"]

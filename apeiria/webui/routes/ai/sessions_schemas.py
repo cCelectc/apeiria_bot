@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 from .memories_schemas import AIMemoryItem, to_ai_memory_item
 
 if TYPE_CHECKING:
-    from apeiria.app.ai.session_read.models import (
+    from apeiria.app.ai.sessions.models import (
         AIRecentTarget,
         AISessionPromptChannels,
         AISessionPromptDiagnostics,

@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 from apeiria.ai.persona.service import AIPersonaPromptBundle
 from apeiria.ai.prompting import PromptPacket, PromptSection, render_flat
 from apeiria.ai.tools import AIToolPolicy, ToolGatewayResult
-from apeiria.app.ai.session_runtime import RuntimePromptPlanningInput
+from apeiria.app.ai.runtime.planning.prompts import RuntimePromptPlanningInput
 from apeiria.conversation.models import (
     ChatContextMessageView,
     ChatMessageDetailView,
@@ -25,10 +25,14 @@ APPEND_MESSAGE_ERROR = "prompt preview must not append messages"
 TOOL_EXECUTION_ERROR = "prompt preview must not execute tools"
 MODEL_CALL_ERROR = "prompt preview must not call provider models"
 SOCIAL_JUDGMENT_ERROR = "prompt preview must not call social judgment model"
+PROMPT_PREVIEW_MEMORY_WRITE_ERROR = "prompt preview must not write memories"
+PROMPT_PREVIEW_RELATIONSHIP_WRITE_ERROR = (
+    "prompt preview must not update relationship state"
+)
 
 
 def test_prompt_preview_exposes_packet_sections_and_rendered_output() -> None:
-    module = importlib.import_module("apeiria.app.ai.session_read.prompt_projection")
+    module = importlib.import_module("apeiria.app.ai.sessions.prompt_projection")
     project_prompt_packet_to_channels = module.project_prompt_packet_to_channels
 
     packet = PromptPacket(
@@ -61,8 +65,8 @@ def test_prompt_preview_exposes_packet_sections_and_rendered_output() -> None:
 
 
 def test_prompt_preview_reports_region_diagnostics_and_maps_api_schema() -> None:
-    module = importlib.import_module("apeiria.app.ai.session_read.prompt_projection")
-    models = importlib.import_module("apeiria.app.ai.session_read.models")
+    module = importlib.import_module("apeiria.app.ai.sessions.prompt_projection")
+    models = importlib.import_module("apeiria.app.ai.sessions.models")
     schemas = importlib.import_module("apeiria.webui.routes.ai.sessions_schemas")
 
     packet = PromptPacket(
@@ -156,15 +160,15 @@ def test_prompt_preview_diagnostics_match_runtime_reply_region_projection() -> N
         project_reply_prompt_regions,
         prompt_region_diagnostics,
     )
-    from apeiria.app.ai.pipeline.composer import (
-        AIRuntimeComposeInput,
+    from apeiria.app.ai.runtime.planning.prompts import (
+        RuntimePromptComposeInput,
         build_pre_tool_reply_packet,
     )
 
-    module = importlib.import_module("apeiria.app.ai.session_read.prompt_projection")
+    module = importlib.import_module("apeiria.app.ai.sessions.prompt_projection")
     now = datetime(2026, 4, 29, 12, 0, tzinfo=timezone.utc)
     packet = build_pre_tool_reply_packet(
-        AIRuntimeComposeInput(
+        RuntimePromptComposeInput(
             persona=None,
             scene_type="private",
             relationship="Relationship context.",
@@ -204,11 +208,9 @@ def test_prompt_preview_diagnostics_match_runtime_reply_region_projection() -> N
 
 
 def test_prompt_preview_planning_matches_runtime_prompt_projection() -> None:
-    module = importlib.import_module("apeiria.app.ai.session_read.prompt_preview")
-    projection = importlib.import_module(
-        "apeiria.app.ai.session_read.prompt_projection"
-    )
-    planning = importlib.import_module("apeiria.app.ai.session_runtime.planning")
+    module = importlib.import_module("apeiria.app.ai.sessions.prompt_preview")
+    projection = importlib.import_module("apeiria.app.ai.sessions.prompt_projection")
+    prompts = importlib.import_module("apeiria.app.ai.runtime.planning.prompts")
     now = datetime(2026, 4, 29, 12, 0, tzinfo=timezone.utc)
     identity = ChatSessionIdentity(
         session_id="session-1",
@@ -291,7 +293,7 @@ def test_prompt_preview_planning_matches_runtime_prompt_projection() -> None:
         hard_rule_decision=hard_rule_decision,
         social_decision=social_decision,
     )
-    packet = planning.build_initial_runtime_reply_prompt_packet(
+    packet = prompts.build_initial_reply_prompt_packet(
         turn=preview_turn,
         context=context_bundle.context,
         social_decision=social_decision,
@@ -311,7 +313,7 @@ def test_prompt_preview_planning_matches_runtime_prompt_projection() -> None:
 def test_scene_prompt_preview_does_not_call_models_or_execute_tools(  # noqa: C901
     monkeypatch: "pytest.MonkeyPatch",
 ) -> None:
-    module = importlib.import_module("apeiria.app.ai.session_read.prompt_preview")
+    module = importlib.import_module("apeiria.app.ai.sessions.prompt_preview")
     now = datetime(2026, 4, 29, 12, 0, tzinfo=timezone.utc)
     identity = ChatSessionIdentity(
         session_id="session-1",
@@ -416,6 +418,12 @@ def test_scene_prompt_preview_does_not_call_models_or_execute_tools(  # noqa: C9
     async def _retrieve_memories_for_preview(**_kwargs: object):
         return []
 
+    async def _unexpected_memory_write(**_kwargs: object):
+        raise AssertionError(PROMPT_PREVIEW_MEMORY_WRITE_ERROR)
+
+    async def _unexpected_relationship_write(**_kwargs: object):
+        raise AssertionError(PROMPT_PREVIEW_RELATIONSHIP_WRITE_ERROR)
+
     monkeypatch.setattr(
         module,
         "ensure_ai_runtime_support_initialized",
@@ -436,6 +444,18 @@ def test_scene_prompt_preview_does_not_call_models_or_execute_tools(  # noqa: C9
         module,
         "retrieve_memories_for_preview",
         _retrieve_memories_for_preview,
+    )
+    monkeypatch.setattr(
+        module,
+        "store_extracted_memories",
+        _unexpected_memory_write,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        module,
+        "update_relationship_state",
+        _unexpected_relationship_write,
+        raising=False,
     )
     monkeypatch.setattr(
         module,

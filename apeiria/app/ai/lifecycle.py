@@ -18,7 +18,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from apeiria.ai.tools import AIToolSpec
-    from apeiria.app.ai.future_task.service import AIFutureTaskRecoveryResult
+    from apeiria.app.ai.future_tasks.service import AIFutureTaskRecoveryResult
 
     AICapabilityHandler = Callable[[dict[str, Any]], Any | Awaitable[Any]]
 
@@ -202,7 +202,7 @@ class AIPluginLifecycleCoordinator:
 
     def _get_future_task_service(self) -> _FutureTaskService:
         if self._future_task_service is None:
-            from apeiria.app.ai.future_task import ai_future_task_service
+            from apeiria.app.ai.future_tasks import ai_future_task_service
 
             return ai_future_task_service
         return self._future_task_service

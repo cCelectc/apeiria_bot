@@ -12,7 +12,7 @@ if TYPE_CHECKING:
     from pytest import MonkeyPatch
 
 
-def test_personas_admin_and_service_use_new_database(
+def test_personas_operations_and_service_use_new_database(
     tmp_path: Path,
     monkeypatch: MonkeyPatch,
 ) -> None:
@@ -21,25 +21,25 @@ def test_personas_admin_and_service_use_new_database(
         AIPersonaRenderContext,
         ai_persona_service,
     )
-    from apeiria.app.ai.admin.personas import PersonasAdminMixin
+    from apeiria.app.ai.operations.personas import PersonasAdminMixin
 
     monkeypatch.setattr(database_runtime, "_project_root", tmp_path)
     database_runtime.ensure_ready()
-    admin = PersonasAdminMixin()
+    operations = PersonasAdminMixin()
 
     async def run() -> None:
-        created = await admin.create_persona(
+        created = await operations.create_persona(
             name="Guide",
             description="Helpful",
             system_prompt="Hello {user_name}",
             style_prompt="Tone {scene_label}",
             enabled=True,
         )
-        personas = await admin.list_personas()
+        personas = await operations.list_personas()
         assert len(personas) == 1
         assert personas[0].persona_id == created.persona_id
 
-        updated = await admin.update_persona(
+        updated = await operations.update_persona(
             persona_id=created.persona_id,
             name="Guide Updated",
             description="More Helpful",
@@ -50,7 +50,7 @@ def test_personas_admin_and_service_use_new_database(
         assert updated is not None
         assert updated.name == "Guide Updated"
         assert updated.enabled is True
-        assert await admin.list_persona_bindings() == []
+        assert await operations.list_persona_bindings() == []
 
         with database_runtime.connect_sync() as connection:
             connection.execute(

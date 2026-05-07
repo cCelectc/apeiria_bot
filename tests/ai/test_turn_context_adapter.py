@@ -4,17 +4,17 @@ from datetime import datetime, timezone
 
 from apeiria.ai.model import AIModelBindingTarget, AIModelMessage, AIModelToolDefinition
 from apeiria.ai.tools import AIToolPolicy
-from apeiria.app.ai import session_runtime as runtime_module
-from apeiria.app.ai.pipeline.input_steps import ReplyInputs
-from apeiria.app.ai.pipeline.service import AIRuntimeReplyRequest
 from apeiria.app.ai.reply_strategy import ReplyStrategyDecision
-from apeiria.app.ai.session_runtime import (
+from apeiria.app.ai.runtime.context.adapter import build_turn_context
+from apeiria.app.ai.runtime.context.materials import RuntimeContextInputBundle
+from apeiria.app.ai.runtime.live import AIRuntimeTurnRequest
+from apeiria.app.ai.runtime.planning.tool_exposure import ToolExposurePlan
+from apeiria.app.ai.runtime.session.context import (
     DeliveryTarget,
     RuntimeContextMaterials,
-    RuntimeHardRuleDecision,
     RuntimeTurnInput,
-    ToolExposurePlan,
 )
+from apeiria.app.ai.runtime.strategy import RuntimeHardRuleDecision
 from apeiria.conversation.models import ChatSessionIdentity
 
 
@@ -29,8 +29,8 @@ def _identity(scene_type: str = "group") -> ChatSessionIdentity:
     )
 
 
-def _inputs() -> ReplyInputs:
-    return ReplyInputs(
+def _inputs() -> RuntimeContextInputBundle:
+    return RuntimeContextInputBundle(
         turns=[],
         conversation_summary="summary",
         relationship_target=object(),  # type: ignore[arg-type]
@@ -73,7 +73,7 @@ def _social_decision() -> ReplyStrategyDecision:
 
 
 def test_build_turn_context_freezes_message_turn_runtime_inputs() -> None:
-    request = AIRuntimeReplyRequest(
+    request = AIRuntimeTurnRequest(
         identity=_identity(),
         message_text="hello",
         source_message_id="msg-1",
@@ -105,10 +105,10 @@ def test_build_turn_context_freezes_message_turn_runtime_inputs() -> None:
     )
     current_time = datetime(2026, 4, 29, 12, 0, tzinfo=timezone.utc)
 
-    context = runtime_module.build_turn_context(
+    context = build_turn_context(
         trace_id="trace-1",
-        turn=RuntimeTurnInput.from_reply_request(request),
-        context=RuntimeContextMaterials.from_reply_inputs(_inputs()),
+        turn=RuntimeTurnInput.from_turn_request(request),
+        context=RuntimeContextMaterials.from_context_input_bundle(_inputs()),
         hard_decision=_hard_decision(),
         social_decision=_social_decision(),
         delivery_target=delivery,
@@ -136,7 +136,7 @@ def test_build_turn_context_freezes_message_turn_runtime_inputs() -> None:
 
 
 def test_build_turn_context_records_future_task_delivery_target() -> None:
-    request = AIRuntimeReplyRequest(
+    request = AIRuntimeTurnRequest(
         identity=_identity(scene_type="private"),
         message_text="scheduled",
         source_message_id="future-source-1",
@@ -150,10 +150,10 @@ def test_build_turn_context_records_future_task_delivery_target() -> None:
         delivery_channel="future_task",
     )
 
-    context = runtime_module.build_turn_context(
+    context = build_turn_context(
         trace_id="trace-future",
-        turn=RuntimeTurnInput.from_reply_request(request),
-        context=RuntimeContextMaterials.from_reply_inputs(_inputs()),
+        turn=RuntimeTurnInput.from_turn_request(request),
+        context=RuntimeContextMaterials.from_context_input_bundle(_inputs()),
         hard_decision=_hard_decision(),
         social_decision=_social_decision(),
         delivery_target=delivery,

@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Annotated, Any
 
 from fastapi import APIRouter, Depends, Query
 
-from apeiria.app.ai.admin.runtime_service import ai_runtime_admin_service
+from apeiria.app.ai import ai_application
 from apeiria.webui.auth import require_control_panel
 
 from .relationships_schemas import (
@@ -34,7 +34,7 @@ async def list_ai_relationships(
     _: Annotated[Any, Depends(require_control_panel)],
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
 ) -> list[AIRelationshipStateItem]:
-    states = await ai_runtime_admin_service.list_relationships(limit=limit)
+    states = await ai_application.operations.list_relationships(limit=limit)
     return [to_ai_relationship_state_item(state) for state in states]
 
 
@@ -45,7 +45,7 @@ async def get_ai_relationship_state(
     user_id: Annotated[str, Query(min_length=1)],
     group_id: Annotated[str | None, Query()] = None,
 ) -> AIRelationshipStateItem:
-    state = await ai_runtime_admin_service.get_relationship_state(
+    state = await ai_application.operations.get_relationship_state(
         platform=platform,
         group_id=group_id,
         user_id=user_id,
@@ -61,7 +61,7 @@ async def list_ai_relationship_events(
     group_id: Annotated[str | None, Query()] = None,
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
 ) -> list[AIRelationshipEventItem]:
-    events = await ai_runtime_admin_service.list_relationship_events(
+    events = await ai_application.operations.list_relationship_events(
         platform=platform,
         group_id=group_id,
         user_id=user_id,
@@ -75,7 +75,7 @@ async def update_ai_relationship_score(
     payload: AIRelationshipScoreUpdateRequest,
     session: Annotated["AuthSession", Depends(require_control_panel)],
 ) -> AIRelationshipStateItem:
-    state = await ai_runtime_admin_service.set_relationship_score(
+    state = await ai_application.operations.set_relationship_score(
         platform=payload.platform,
         group_id=payload.group_id,
         user_id=payload.user_id,

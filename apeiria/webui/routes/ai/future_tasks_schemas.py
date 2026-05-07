@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 from pydantic import BaseModel
 
 if TYPE_CHECKING:
-    from apeiria.app.ai.future_task.models import AIFutureTaskDefinition
+    from apeiria.app.ai.future_tasks.models import AIFutureTaskDefinition
 
 
 class AIFutureTaskItem(BaseModel):

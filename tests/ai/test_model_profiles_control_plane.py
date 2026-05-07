@@ -101,7 +101,7 @@ def test_model_profile_service_uses_new_database(
     asyncio.run(run())
 
 
-def test_models_admin_profile_and_binding_methods_use_new_database(
+def test_models_operations_profile_and_binding_methods_use_new_database(
     tmp_path: Path,
     monkeypatch: MonkeyPatch,
 ) -> None:
@@ -111,7 +111,7 @@ def test_models_admin_profile_and_binding_methods_use_new_database(
         AIModelProfileCreateInput,
         ai_model_profile_service,
     )
-    from apeiria.app.ai.admin.models import ModelsAdminMixin
+    from apeiria.app.ai.operations.models import ModelsAdminMixin
 
     class TestAdmin(ModelsAdminMixin):
         pass
@@ -148,9 +148,9 @@ def test_models_admin_profile_and_binding_methods_use_new_database(
     )
 
     async def run() -> None:
-        admin = TestAdmin()
+        operations = TestAdmin()
 
-        created = await admin.create_model_profile(
+        created = await operations.create_model_profile(
             name="Reply Default",
             model_id="model_chat_primary",
             task_class="reply_default",
@@ -160,10 +160,10 @@ def test_models_admin_profile_and_binding_methods_use_new_database(
         )
         assert created.name == "Reply Default"
 
-        listed_profiles = await admin.list_model_profiles()
+        listed_profiles = await operations.list_model_profiles()
         assert listed_profiles[0].profile_id == created.profile_id
 
-        updated = await admin.update_model_profile(
+        updated = await operations.update_model_profile(
             profile_id=created.profile_id,
             name="Reply Primary",
             model_id="model_chat_primary",
@@ -197,7 +197,7 @@ def test_models_admin_profile_and_binding_methods_use_new_database(
                 ),
             )
 
-        bindings = await admin.list_model_bindings()
+        bindings = await operations.list_model_bindings()
         assert len(bindings) == 1
         assert bindings[0].binding_id == "binding-1"
 

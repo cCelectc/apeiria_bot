@@ -11,15 +11,13 @@ from apeiria.ai.config import AIPluginConfig
 from apeiria.ai.model import AIModelBindingTarget, AIModelRouteQuery
 from apeiria.ai.service import AIRuntimeDependencyStatus, AIService
 from apeiria.ai.tools import AIToolPolicy, ToolGatewayResult
-from apeiria.app.ai.pipeline.input_steps import ReplyInputs
-from apeiria.app.ai.pipeline.relationship_steps import build_relationship_target
-from apeiria.app.ai.pipeline.service import AIRuntimeReplyRequest
 from apeiria.app.ai.reply_strategy import ReplyStrategyDecision
-from apeiria.app.ai.session_runtime import (
+from apeiria.app.ai.runtime.session.context import (
     RuntimeContextMaterials,
-    RuntimePlanningInput,
     RuntimeTurnInput,
+    RuntimeTurnSource,
 )
+from apeiria.app.ai.runtime.stages import RuntimePlanningInput
 from apeiria.conversation.models import ChatSessionIdentity
 
 
@@ -267,7 +265,7 @@ def test_runtime_readiness_inspects_failure_operation_storage(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Any,
 ) -> None:
-    from apeiria.ai.service import AIRuntimeReadinessProbe
+    from apeiria.app.ai.diagnostics.readiness import AIRuntimeReadinessProbe
     from apeiria.db.runtime import database_runtime
 
     monkeypatch.setattr(database_runtime, "_project_root", tmp_path)
@@ -285,7 +283,7 @@ def test_runtime_readiness_reports_degraded_delivery_attempt_storage(
 ) -> None:
     import sqlite3
 
-    from apeiria.ai.service import AIRuntimeReadinessProbe
+    from apeiria.app.ai.diagnostics.readiness import AIRuntimeReadinessProbe
     from apeiria.db.runtime import database_runtime
 
     monkeypatch.setattr(database_runtime, "_project_root", tmp_path)
@@ -321,7 +319,7 @@ def test_runtime_readiness_reports_degraded_delivery_attempt_storage(
 def test_reply_preparation_records_no_model_diagnostic(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from apeiria.app.ai.session_runtime import planning as planning_module
+    from apeiria.app.ai.runtime.planning import turn as planning_module
 
     identity = ChatSessionIdentity(
         session_id="scene-1",
@@ -331,18 +329,21 @@ def test_reply_preparation_records_no_model_diagnostic(
         scene_id="user-1",
         subject_id=None,
     )
-    request = AIRuntimeReplyRequest(
+    turn = RuntimeTurnInput(
         identity=identity,
-        message_text="hello",
-        source_message_id="message-1",
-        user_id="user-1",
         sender_id="user-1",
-        runtime_mode="message",
+        source=RuntimeTurnSource(
+            runtime_mode="message",
+            message_text="hello",
+            source_message_id="message-1",
+            user_id="user-1",
+            is_private=True,
+        ),
     )
-    inputs = ReplyInputs(
+    context = RuntimeContextMaterials(
         turns=[],
         conversation_summary=None,
-        relationship_target=build_relationship_target(identity, "user-1"),
+        relationship_target=object(),  # type: ignore[arg-type]
         model_target=AIModelBindingTarget(
             conversation_id="scene-1",
             group_id=None,
@@ -378,7 +379,7 @@ def test_reply_preparation_records_no_model_diagnostic(
 
     monkeypatch.setattr(planning_module, "get_ai_plugin_config", AIPluginConfig)
     monkeypatch.setattr(planning_module.tool_gateway, "prepare", prepare_tools)
-    monkeypatch.setattr(planning_module, "select_pipeline_model", select_model)
+    monkeypatch.setattr(planning_module, "select_model", select_model)
     monkeypatch.setattr(planning_module.logger, "debug", record_debug)
 
     result = asyncio.run(
@@ -386,8 +387,8 @@ def test_reply_preparation_records_no_model_diagnostic(
             planning_input=RuntimePlanningInput(
                 stage="planning",
                 trace_id="trace-1",
-                turn=RuntimeTurnInput.from_reply_request(request),
-                context=RuntimeContextMaterials.from_reply_inputs(inputs),
+                turn=turn,
+                context=context,
                 social_decision=social_decision,
                 current_time=datetime(2026, 4, 27, tzinfo=timezone.utc),
             ),

@@ -6,13 +6,13 @@ from typing import TYPE_CHECKING, Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
-from apeiria.app.ai.admin.control_service import (
+from apeiria.app.ai import ai_application
+from apeiria.app.ai.operations import (
     AISourceModelDeleteBlockedError,
     AISourceModelFetchConfigError,
     AISourceModelFetchUpstreamError,
     AISourceModelTestConfigError,
     AISourceModelTestUpstreamError,
-    ai_control_admin_service,
 )
 from apeiria.webui.auth import require_control_panel
 
@@ -49,7 +49,7 @@ async def list_ai_source_models(
     _: Annotated[Any, Depends(require_control_panel)],
     source_id: Annotated[str, Query(min_length=1)],
 ) -> list[AISourceModelItem]:
-    items = await ai_control_admin_service.list_source_models(source_id=source_id)
+    items = await ai_application.operations.list_source_models(source_id=source_id)
     return [to_ai_source_model_item(item) for item in items]
 
 
@@ -59,7 +59,7 @@ async def fetch_ai_source_models(
     _: Annotated[Any, Depends(require_control_panel)],
 ) -> list[AIModelCatalogItem]:
     try:
-        items = await ai_control_admin_service.fetch_source_models(
+        items = await ai_application.operations.fetch_source_models(
             source_id=payload.source_id,
             preset_type=payload.preset_type,
             api_base=payload.api_base,
@@ -90,7 +90,7 @@ async def test_ai_source_model(
             model_identifier,
             content,
             tool_call_count,
-        ) = await ai_control_admin_service.test_source_model(
+        ) = await ai_application.operations.test_source_model(
             source_id=payload.source_id,
             preset_type=payload.preset_type,
             api_base=payload.api_base,
@@ -121,7 +121,7 @@ async def create_ai_source_model(
     payload: AISourceModelUpsertRequest,
     session: Annotated["AuthSession", Depends(require_control_panel)],
 ) -> AISourceModelItem:
-    item = await ai_control_admin_service.create_source_model(
+    item = await ai_application.operations.create_source_model(
         source_id=payload.source_id,
         model_identifier=payload.model_identifier,
         display_name=payload.display_name,
@@ -143,7 +143,7 @@ async def update_ai_source_model(
 ) -> AISourceModelItem | None:
     if not payload.model_id:
         return None
-    item = await ai_control_admin_service.update_source_model(
+    item = await ai_application.operations.update_source_model(
         model_id=payload.model_id,
         source_id=payload.source_id,
         model_identifier=payload.model_identifier,
@@ -166,7 +166,7 @@ async def delete_ai_source_model(
     source_id: Annotated[str | None, Query(max_length=64)] = None,
 ) -> bool:
     try:
-        return await ai_control_admin_service.delete_source_model(
+        return await ai_application.operations.delete_source_model(
             model_id=model_id,
             source_id=source_id,
             actor_username=_actor_username_from_claims(session),
@@ -182,7 +182,7 @@ async def delete_ai_source_model(
 async def list_ai_model_profiles(
     _: Annotated[Any, Depends(require_control_panel)],
 ) -> list[AIModelProfileItem]:
-    profiles = await ai_control_admin_service.list_model_profiles()
+    profiles = await ai_application.operations.list_model_profiles()
     return [to_ai_model_profile_item(item) for item in profiles]
 
 
@@ -192,7 +192,7 @@ async def upsert_ai_model_profile(
     session: Annotated["AuthSession", Depends(require_control_panel)],
 ) -> AIModelProfileItem | None:
     item = (
-        await ai_control_admin_service.update_model_profile(
+        await ai_application.operations.update_model_profile(
             profile_id=payload.profile_id,
             name=payload.name,
             model_id=payload.model_id,
@@ -203,7 +203,7 @@ async def upsert_ai_model_profile(
             actor_username=_actor_username_from_claims(session),
         )
         if payload.profile_id
-        else await ai_control_admin_service.create_model_profile(
+        else await ai_application.operations.create_model_profile(
             name=payload.name,
             model_id=payload.model_id,
             task_class=payload.task_class,
@@ -220,7 +220,7 @@ async def upsert_ai_model_profile(
 async def list_ai_model_bindings(
     _: Annotated[Any, Depends(require_control_panel)],
 ) -> list[AIModelBindingItem]:
-    bindings = await ai_control_admin_service.list_model_bindings()
+    bindings = await ai_application.operations.list_model_bindings()
     return [to_ai_model_binding_item(item) for item in bindings]
 
 

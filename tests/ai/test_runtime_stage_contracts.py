@@ -6,21 +6,26 @@ from datetime import datetime
 from typing import Any, get_args, get_type_hints
 
 from apeiria.app.ai.agent_turn import AgentTurnResult
-from apeiria.app.ai.pipeline.delivery_steps import DeliveryOutcome
-from apeiria.app.ai.pipeline.service import AIRuntimeService
 from apeiria.app.ai.reply_strategy.models import ReplyStrategyDecision, WakeContext
-from apeiria.app.ai.session_runtime import (
-    DefaultRuntimeCommitStage,
-    DefaultRuntimeContextStage,
-    DefaultRuntimeExecutionStage,
-    DefaultRuntimeObservationStage,
-    DefaultRuntimePlanningStage,
-    DefaultRuntimePolicyStage,
-    DefaultRuntimeTraceStage,
+from apeiria.app.ai.runtime.commit import RuntimeCommitEffectsStage
+from apeiria.app.ai.runtime.commit.delivery import DeliveryOutcome
+from apeiria.app.ai.runtime.context.stage import RuntimeContextAssemblyStage
+from apeiria.app.ai.runtime.execution.stage import RuntimeTurnExecutionStage
+from apeiria.app.ai.runtime.live import DefaultAILiveRuntimeEntry
+from apeiria.app.ai.runtime.observation import RuntimeObservationEffectsStage
+from apeiria.app.ai.runtime.orchestrator import AISessionTurnEngine
+from apeiria.app.ai.runtime.planning.stage import RuntimeTurnPlanningStage
+from apeiria.app.ai.runtime.policy import RuntimePolicyDecisionStage
+from apeiria.app.ai.runtime.session.context import (
+    RuntimeContextMaterials,
+    RuntimeTurnInput,
+    TurnContext,
+)
+from apeiria.app.ai.runtime.stages import (
     RuntimeCommitInput,
     RuntimeCommitStage,
-    RuntimeContextMaterials,
     RuntimeContextStage,
+    RuntimeExecutionOutcome,
     RuntimeExecutionStage,
     RuntimeIngressInput,
     RuntimeObservationStage,
@@ -30,16 +35,18 @@ from apeiria.app.ai.session_runtime import (
     RuntimeSocialDecisionInput,
     RuntimeTraceInput,
     RuntimeTraceStage,
-    RuntimeTurnInput,
-    TurnContext,
+    RuntimeTurnPlan,
 )
-from apeiria.app.ai.session_runtime.engine import AISessionTurnEngine
+from apeiria.app.ai.runtime.trace import RuntimeTraceProjectionStage
 
 _STAGE_TYPE_GLOBALS = {
     "AgentTurnResult": AgentTurnResult,
     "datetime": datetime,
     "DeliveryOutcome": DeliveryOutcome,
     "ReplyStrategyDecision": ReplyStrategyDecision,
+    "RuntimeTurnPlan": RuntimeTurnPlan,
+    "RuntimeExecutionOutcome": RuntimeExecutionOutcome,
+    "TurnContext": TurnContext,
     "WakeContext": WakeContext,
 }
 
@@ -77,7 +84,7 @@ def test_turn_engine_declares_explicit_stage_contract_fields() -> None:
 
 
 def test_production_turn_engine_uses_native_stage_objects() -> None:
-    engine = AIRuntimeService()._resolve_turn_engine()
+    engine = DefaultAILiveRuntimeEntry()._resolve_turn_engine()
 
     assert isinstance(engine.policy_stage, RuntimePolicyStage)
     assert isinstance(engine.observation_stage, RuntimeObservationStage)
@@ -99,7 +106,7 @@ def test_planning_stage_accepts_one_runtime_planning_input() -> None:
 
 
 def test_runtime_planning_input_is_owned_by_stage_contracts() -> None:
-    assert RuntimePlanningInput.__module__ == "apeiria.app.ai.session_runtime.stages"
+    assert RuntimePlanningInput.__module__ == "apeiria.app.ai.runtime.stages"
 
 
 def test_runtime_stage_inputs_use_runtime_owned_records() -> None:
@@ -140,7 +147,7 @@ def test_ingress_stages_accept_one_runtime_ingress_input() -> None:
 
 
 def test_runtime_ingress_input_is_owned_by_stage_contracts() -> None:
-    assert RuntimeIngressInput.__module__ == "apeiria.app.ai.session_runtime.stages"
+    assert RuntimeIngressInput.__module__ == "apeiria.app.ai.runtime.stages"
 
 
 def test_social_policy_stage_accepts_one_runtime_social_input() -> None:
@@ -152,15 +159,13 @@ def test_social_policy_stage_accepts_one_runtime_social_input() -> None:
 
 
 def test_runtime_social_decision_input_is_owned_by_stage_contracts() -> None:
-    assert (
-        RuntimeSocialDecisionInput.__module__ == "apeiria.app.ai.session_runtime.stages"
-    )
+    assert RuntimeSocialDecisionInput.__module__ == "apeiria.app.ai.runtime.stages"
 
 
 def test_execution_helpers_accept_frozen_turn_context() -> None:
     for target in (
         RuntimeExecutionStage.execute,
-        DefaultRuntimeExecutionStage.execute,
+        RuntimeTurnExecutionStage.execute,
         AISessionTurnEngine.execute_turn,
     ):
         signature = inspect.signature(target)
@@ -183,18 +188,18 @@ def test_commit_and_trace_stages_accept_one_runtime_input() -> None:
 
 
 def test_runtime_commit_and_trace_inputs_are_owned_by_stage_contracts() -> None:
-    assert RuntimeCommitInput.__module__ == "apeiria.app.ai.session_runtime.stages"
-    assert RuntimeTraceInput.__module__ == "apeiria.app.ai.session_runtime.stages"
+    assert RuntimeCommitInput.__module__ == "apeiria.app.ai.runtime.stages"
+    assert RuntimeTraceInput.__module__ == "apeiria.app.ai.runtime.stages"
 
 
 def test_default_stage_dependencies_are_named_contracts() -> None:
     for stage_cls in (
-        DefaultRuntimePolicyStage,
-        DefaultRuntimeObservationStage,
-        DefaultRuntimeContextStage,
-        DefaultRuntimePlanningStage,
-        DefaultRuntimeCommitStage,
-        DefaultRuntimeTraceStage,
+        RuntimePolicyDecisionStage,
+        RuntimeObservationEffectsStage,
+        RuntimeContextAssemblyStage,
+        RuntimeTurnPlanningStage,
+        RuntimeCommitEffectsStage,
+        RuntimeTraceProjectionStage,
     ):
         annotations = _runtime_stage_type_hints(stage_cls)
         for name, annotation in annotations.items():

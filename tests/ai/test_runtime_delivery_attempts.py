@@ -159,7 +159,7 @@ def test_delivery_attempt_repository_records_failed_retryable_attempt(
 
 def _delivery_attempt_repository() -> Any:
     try:
-        from apeiria.app.ai.future_task import delivery_attempts
+        from apeiria.app.ai.future_tasks import delivery_attempts
     except ModuleNotFoundError as exc:
         pytest.fail(f"missing delivery attempt repository module: {exc}")
     return delivery_attempts

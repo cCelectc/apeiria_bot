@@ -366,7 +366,7 @@ def test_social_judgment_invalid_or_failed_structured_output_uses_fallback(
 
 
 def test_memory_extraction_uses_rendered_messages(monkeypatch: Any) -> None:
-    from apeiria.app.ai.pipeline import memory_extraction_steps
+    from apeiria.app.ai.runtime.context import memory_extraction
 
     gateway = _ModelGateway(
         '{"memories":[{"memory_kind":"fact","content":"likes tea",'
@@ -374,10 +374,10 @@ def test_memory_extraction_uses_rendered_messages(monkeypatch: Any) -> None:
         '"sentiment":{"polarity":"positive","intensity":0.5},'
         '"self_introduction_name":null}'
     )
-    monkeypatch.setattr(memory_extraction_steps, "model_gateway", gateway)
+    monkeypatch.setattr(memory_extraction, "model_gateway", gateway)
 
     result = asyncio.run(
-        memory_extraction_steps.extract_memory_from_message(
+        memory_extraction.extract_memory_from_message(
             message_text="I like tea",
             existing_memories=(_memory(),),
         )

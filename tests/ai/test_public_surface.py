@@ -13,6 +13,9 @@ RECENT_TARGET_LIMIT = 7
 RECENT_SESSION_LIMIT = 5
 SCENE_TURN_LIMIT = 6
 PROMPT_PREVIEW_TURN_LIMIT = 9
+OLD_APP_PACKAGE_REMAINS_IMPORTABLE_ERROR = (
+    "old AI application package remains importable"
+)
 
 
 def test_import_apeiria_ai_does_not_eagerly_import_runtime_services() -> None:
@@ -138,32 +141,85 @@ def test_ai_service_status_reports_model_readiness() -> None:
     assert "source-public-surface:gpt-public-surface" in status.summary
 
 
-def test_import_app_ai_pipeline_exposes_public_surface() -> None:
+def test_import_app_ai_runtime_exposes_public_surface() -> None:
     for module_name in (
+        "apeiria.app.ai.runtime",
         "apeiria.app.ai.pipeline",
-        "apeiria.app.ai.pipeline.service",
     ):
         sys.modules.pop(module_name, None)
 
-    module = importlib.import_module("apeiria.app.ai.pipeline")
+    module = importlib.import_module("apeiria.app.ai.runtime")
 
-    assert module.__name__ == "apeiria.app.ai.pipeline"
-    assert module.__all__ == [
-        "AIRuntimeComposeInput",
-        "AIRuntimeService",
-        "AITraceContext",
-        "ai_runtime_service",
-        "build_relationship_target",
-        "load_relationship_context",
-        "recall_memories",
-        "store_extracted_memories",
-        "update_relationship_state",
+    expected_exports = [
+        "AIRuntimeEntry",
+        "AcceptedTurn",
+        "CommitResult",
+        "LazyAIRuntimeEntry",
+        "RuntimeInput",
+        "RuntimeTraceContext",
+        "RuntimeTraceRecordInput",
+        "TurnContextMaterials",
+        "TurnExecutionResult",
+        "TurnPlan",
+        "TurnTrace",
+        "create_default_ai_runtime_entry",
     ]
-    assert "apeiria.app.ai.pipeline.service" not in sys.modules
-    assert (
-        module.ai_runtime_service
-        is sys.modules["apeiria.app.ai.pipeline.service"].ai_runtime_service
+
+    assert module.__name__ == "apeiria.app.ai.runtime"
+    assert module.__all__ == expected_exports
+    for name in expected_exports:
+        assert hasattr(module, name)
+    assert "AISessionTurnEngine" not in module.__all__
+    assert "RuntimeTurnInput" not in module.__all__
+    assert "RuntimeContextInputBundle" not in module.__all__
+    assert "apeiria.app.ai.pipeline" not in sys.modules
+
+
+def test_app_ai_runtime_root_keeps_compatibility_names_absent() -> None:
+    module = importlib.import_module("apeiria.app.ai.runtime")
+    retired_names = (
+        "AIRuntimeService",
+        "ai_runtime_service",
+        "AIRuntimeReplyRequest",
+        "ReplyInputs",
+        "DefaultRuntimePolicyStage",
+        "DefaultRuntimeObservationStage",
+        "DefaultRuntimeContextStage",
+        "DefaultRuntimePlanningStage",
+        "DefaultRuntimeExecutionStage",
+        "DefaultRuntimeCommitStage",
+        "DefaultRuntimeTraceStage",
+        "select_pipeline_model",
+        "select_pipeline_fallback_models",
     )
+
+    for name in retired_names:
+        assert name not in module.__all__
+        assert not hasattr(module, name)
+
+
+def test_old_ai_application_packages_are_not_public_surfaces() -> None:
+    for module_name in (
+        "apeiria.app.ai.pipeline",
+        "apeiria.app.ai.session_read",
+        "apeiria.app.ai.session_runtime",
+        "apeiria.app.ai.future_task",
+        "apeiria.app.ai.admin",
+    ):
+        sys.modules.pop(module_name, None)
+
+    for module_name in (
+        "apeiria.app.ai.pipeline",
+        "apeiria.app.ai.session_read",
+        "apeiria.app.ai.session_runtime",
+        "apeiria.app.ai.future_task",
+        "apeiria.app.ai.admin",
+    ):
+        try:
+            importlib.import_module(module_name)
+        except ModuleNotFoundError:
+            continue
+        raise AssertionError(OLD_APP_PACKAGE_REMAINS_IMPORTABLE_ERROR)
 
 
 def test_import_app_ai_reply_strategy_exposes_public_surface() -> None:
@@ -184,23 +240,20 @@ def test_import_app_ai_reply_strategy_exposes_public_surface() -> None:
     )
 
 
-def test_import_apeiria_ai_session_read_exposes_public_surface() -> None:
+def test_import_apeiria_ai_sessions_exposes_public_surface() -> None:
     for module_name in (
+        "apeiria.app.ai.sessions",
         "apeiria.app.ai.session_read",
-        "apeiria.app.ai.session_read.facade",
     ):
         sys.modules.pop(module_name, None)
 
-    module = importlib.import_module("apeiria.app.ai.session_read")
+    module = importlib.import_module("apeiria.app.ai.sessions")
 
-    assert module.__name__ == "apeiria.app.ai.session_read"
+    assert module.__name__ == "apeiria.app.ai.sessions"
     assert module.__all__ == [
-        "AIRecentTarget",
-        "AISessionPromptChannels",
-        "AISessionPromptPreview",
-        "AISessionPromptSection",
-        "AISessionReadService",
-        "ai_session_read_service",
+        "AISessionsEntry",
+        "AISessionsService",
+        "ai_sessions_service",
     ]
 
 
@@ -217,7 +270,7 @@ def test_import_webui_ai_routes_package_exposes_router() -> None:
     assert module.__all__ == ["router"]
 
 
-def test_session_routes_delegate_to_ai_session_read_service(
+def test_session_routes_delegate_to_ai_application_sessions(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     routes = importlib.import_module("apeiria.webui.routes.ai.sessions")
@@ -246,7 +299,11 @@ def test_session_routes_delegate_to_ai_session_read_service(
             assert turn_limit == PROMPT_PREVIEW_TURN_LIMIT
             return expected_preview
 
-    monkeypatch.setattr(routes, "ai_session_read_service", _Service())
+    monkeypatch.setattr(
+        routes,
+        "ai_application",
+        SimpleNamespace(sessions=_Service()),
+    )
     monkeypatch.setattr(
         routes,
         "to_ai_recent_target_item",

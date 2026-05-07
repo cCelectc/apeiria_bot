@@ -17,7 +17,7 @@ def test_source_model_admin_methods_use_new_database(
     tmp_path: Path,
     monkeypatch: MonkeyPatch,
 ) -> None:
-    from apeiria.app.ai.admin.sources import SourcesAdminMixin
+    from apeiria.app.ai.operations.sources import SourcesAdminMixin
 
     monkeypatch.setattr(database_runtime, "_project_root", tmp_path)
     database_runtime.ensure_ready()
@@ -40,7 +40,7 @@ def test_source_model_admin_methods_use_new_database(
 
     source_id = asyncio.run(seed_source())
 
-    from apeiria.app.ai.admin.models import ModelsAdminMixin
+    from apeiria.app.ai.operations.models import ModelsAdminMixin
 
     class TestAdmin(ModelsAdminMixin):
         pass
@@ -96,7 +96,7 @@ def test_fetch_and_test_source_model_uses_model_facade(
     tmp_path: Path,
     monkeypatch: MonkeyPatch,
 ) -> None:
-    from apeiria.app.ai.admin.sources import SourcesAdminMixin
+    from apeiria.app.ai.operations.sources import SourcesAdminMixin
 
     monkeypatch.setattr(database_runtime, "_project_root", tmp_path)
     database_runtime.ensure_ready()
@@ -120,7 +120,7 @@ def test_fetch_and_test_source_model_uses_model_facade(
     source_id = asyncio.run(seed_source())
 
     model_service = importlib.import_module("apeiria.ai.model.runtime.service")
-    from apeiria.app.ai.admin.models import ModelsAdminMixin
+    from apeiria.app.ai.operations.models import ModelsAdminMixin
 
     admin = ModelsAdminMixin()
 
@@ -171,8 +171,8 @@ def test_manual_unknown_source_model_uses_conservative_enrichment(
     tmp_path: Path,
     monkeypatch: MonkeyPatch,
 ) -> None:
-    from apeiria.app.ai.admin.models import ModelsAdminMixin
-    from apeiria.app.ai.admin.sources import SourcesAdminMixin
+    from apeiria.app.ai.operations.models import ModelsAdminMixin
+    from apeiria.app.ai.operations.sources import SourcesAdminMixin
 
     monkeypatch.setattr(database_runtime, "_project_root", tmp_path)
     database_runtime.ensure_ready()

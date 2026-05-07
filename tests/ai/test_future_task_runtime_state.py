@@ -12,23 +12,35 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 _MAX_DIAGNOSTIC_LENGTH = 200
+_ROUTE_LIMIT = 7
+_TOOL_LIST_LIMIT = 3
 
 
-def test_import_app_ai_future_task_exposes_public_surface() -> None:
+def test_singular_future_task_package_is_retired() -> None:
     for module_name in (
         "apeiria.app.ai.future_task",
-        "apeiria.app.ai.future_task.service",
+        "apeiria.app.ai.future_tasks.service",
     ):
         sys.modules.pop(module_name, None)
 
-    module = importlib.import_module("apeiria.app.ai.future_task")
+    with pytest.raises(ModuleNotFoundError):
+        importlib.import_module("apeiria.app.ai.future_task")
+    assert "apeiria.app.ai.future_tasks.service" not in sys.modules
 
-    assert module.__name__ == "apeiria.app.ai.future_task"
-    assert "ai_future_task_service" in module.__all__
-    assert "apeiria.app.ai.future_task.service" not in sys.modules
-    assert (
-        module.ai_future_task_service
-        is sys.modules["apeiria.app.ai.future_task.service"].ai_future_task_service
+
+def test_import_app_ai_future_tasks_owns_public_surface() -> None:
+    module = importlib.import_module("apeiria.app.ai.future_tasks")
+
+    assert module.__name__ == "apeiria.app.ai.future_tasks"
+    assert module.AIFutureTaskDefinition.__module__ == (
+        "apeiria.app.ai.future_tasks.models"
+    )
+    assert module.AIFutureTaskService.__module__ == (
+        "apeiria.app.ai.future_tasks.service"
+    )
+    assert module.ai_future_task_service.__class__ is module.AIFutureTaskService
+    assert module.execute_future_task.__module__ == (
+        "apeiria.app.ai.future_tasks.execution"
     )
 
 
@@ -36,8 +48,8 @@ def test_future_tasks_are_runtime_scheduling_state(
     monkeypatch: Any,
     tmp_path: Path,
 ) -> None:
-    import apeiria.app.ai.future_task.service as future_task_module
-    from apeiria.app.ai.future_task.models import AIFutureTaskCreateInput
+    import apeiria.app.ai.future_tasks.service as future_task_module
+    from apeiria.app.ai.future_tasks.models import AIFutureTaskCreateInput
     from apeiria.db.runtime import database_runtime
 
     monkeypatch.setattr(database_runtime, "_project_root", tmp_path)
@@ -112,8 +124,8 @@ def test_future_tasks_survive_service_reinstantiation(
     monkeypatch: Any,
     tmp_path: Path,
 ) -> None:
-    import apeiria.app.ai.future_task.service as future_task_module
-    from apeiria.app.ai.future_task.models import AIFutureTaskCreateInput
+    import apeiria.app.ai.future_tasks.service as future_task_module
+    from apeiria.app.ai.future_tasks.models import AIFutureTaskCreateInput
     from apeiria.db.runtime import database_runtime
 
     monkeypatch.setattr(database_runtime, "_project_root", tmp_path)
@@ -171,8 +183,8 @@ def test_future_task_failure_error_is_sanitized(
     monkeypatch: Any,
     tmp_path: Path,
 ) -> None:
-    import apeiria.app.ai.future_task.service as future_task_module
-    from apeiria.app.ai.future_task.models import AIFutureTaskCreateInput
+    import apeiria.app.ai.future_tasks.service as future_task_module
+    from apeiria.app.ai.future_tasks.models import AIFutureTaskCreateInput
     from apeiria.db.runtime import database_runtime
 
     monkeypatch.setattr(database_runtime, "_project_root", tmp_path)
@@ -221,8 +233,8 @@ def test_future_task_claim_is_idempotent(
     monkeypatch: Any,
     tmp_path: Path,
 ) -> None:
-    import apeiria.app.ai.future_task.service as future_task_module
-    from apeiria.app.ai.future_task.models import AIFutureTaskCreateInput
+    import apeiria.app.ai.future_tasks.service as future_task_module
+    from apeiria.app.ai.future_tasks.models import AIFutureTaskCreateInput
     from apeiria.db.runtime import database_runtime
 
     monkeypatch.setattr(database_runtime, "_project_root", tmp_path)
@@ -270,8 +282,8 @@ def test_future_task_recovery_reschedules_pending_tasks(
     monkeypatch: Any,
     tmp_path: Path,
 ) -> None:
-    import apeiria.app.ai.future_task.service as future_task_module
-    from apeiria.app.ai.future_task.models import AIFutureTaskCreateInput
+    import apeiria.app.ai.future_tasks.service as future_task_module
+    from apeiria.app.ai.future_tasks.models import AIFutureTaskCreateInput
     from apeiria.db.runtime import database_runtime
 
     monkeypatch.setattr(database_runtime, "_project_root", tmp_path)
@@ -353,8 +365,8 @@ def test_future_task_recovery_marks_stale_running_failed(
     monkeypatch: Any,
     tmp_path: Path,
 ) -> None:
-    import apeiria.app.ai.future_task.service as future_task_module
-    from apeiria.app.ai.future_task.models import AIFutureTaskCreateInput
+    import apeiria.app.ai.future_tasks.service as future_task_module
+    from apeiria.app.ai.future_tasks.models import AIFutureTaskCreateInput
     from apeiria.db.runtime import database_runtime
 
     monkeypatch.setattr(database_runtime, "_project_root", tmp_path)
@@ -416,12 +428,11 @@ def test_future_task_execution_maps_runtime_delivery_to_durable_completion(
     expected_status: str,
     expected_error: str | None,
 ) -> None:
-    import apeiria.app.ai.future_task.service as future_task_module
-    import apeiria.app.ai.pipeline.service as runtime_service_module
-    from apeiria.app.ai.future_task.execution import execute_future_task
-    from apeiria.app.ai.future_task.models import AIFutureTaskCreateInput
-    from apeiria.app.ai.pipeline.delivery_steps import DeliveryOutcome
-    from apeiria.app.ai.pipeline.service import AIRuntimeReplyResult
+    import apeiria.app.ai.future_tasks.execution as execution_module
+    import apeiria.app.ai.future_tasks.service as future_task_module
+    from apeiria.app.ai.future_tasks.execution import execute_future_task
+    from apeiria.app.ai.future_tasks.models import AIFutureTaskCreateInput
+    from apeiria.app.ai.runtime.entry import CommitResult, RuntimeTraceContext
     from apeiria.db.runtime import database_runtime
 
     monkeypatch.setattr(database_runtime, "_project_root", tmp_path)
@@ -439,17 +450,22 @@ def test_future_task_execution_maps_runtime_delivery_to_durable_completion(
             self,
             task_id: str,
             *,
-            trace: object | None = None,
-        ) -> AIRuntimeReplyResult:
-            del trace
+            trace: RuntimeTraceContext | None = None,
+        ) -> CommitResult:
+            assert trace == RuntimeTraceContext(
+                kind="conversation",
+                trigger="ai_future_task",
+            )
             self.calls.append(task_id)
-            delivered = delivery_status == "delivered"
-            return AIRuntimeReplyResult(
+            return CommitResult(
                 reply_text="reminder",
-                delivery_result=DeliveryOutcome(
-                    delivered=delivered,
-                    reason=None if delivered else "bot_not_connected",
-                ),
+                delivery_status=delivery_status,
+                commit_status="committed"
+                if delivery_status == "delivered"
+                else "partial",
+                diagnostics={"delivery_reason": expected_error}
+                if expected_error
+                else {},
             )
 
     runtime = FakeRuntimeService()
@@ -458,7 +474,7 @@ def test_future_task_execution_maps_runtime_delivery_to_durable_completion(
         "_get_scheduler_service",
         FakeSchedulerService,
     )
-    monkeypatch.setattr(runtime_service_module, "ai_runtime_service", runtime)
+    monkeypatch.setattr(execution_module, "_resolve_ai_runtime", lambda: runtime)
 
     async def scenario() -> None:
         trigger_at = datetime(2026, 5, 1, 8, 30, tzinfo=timezone.utc)
@@ -487,3 +503,149 @@ def test_future_task_execution_maps_runtime_delivery_to_durable_completion(
         assert final_task.last_error == expected_error
 
     asyncio.run(scenario())
+
+
+def test_future_task_route_uses_application_future_tasks_entry(
+    monkeypatch: Any,
+) -> None:
+    import apeiria.webui.routes.ai.future_tasks as route_module
+    from apeiria.access.principal import AuthSession, Principal, PrincipalRole
+
+    task = _future_task_definition(task_id="task-1")
+
+    class FakeFutureTasksEntry:
+        def __init__(self) -> None:
+            self.cancel_actor: str | None = None
+
+        async def list_tasks(self, *, limit: int, session_id: str | None = None):
+            assert limit == _ROUTE_LIMIT
+            assert session_id is None
+            return [task]
+
+        async def cancel_task(
+            self,
+            *,
+            task_id: str,
+            actor_username: str | None = None,
+        ):
+            self.cancel_actor = actor_username
+            assert task_id == "task-1"
+            return task
+
+    entry = FakeFutureTasksEntry()
+    monkeypatch.setattr(
+        route_module, "ai_application", type("App", (), {"future_tasks": entry})()
+    )
+
+    async def scenario() -> None:
+        listed = await route_module.list_ai_future_tasks(object(), limit=_ROUTE_LIMIT)
+        cancelled = await route_module.cancel_ai_future_task(
+            AuthSession(
+                principal=Principal(
+                    principal_kind="webui_account",
+                    principal_id="operator-1",
+                    display_name="operator",
+                    role=PrincipalRole(role_id="admin"),
+                ),
+                auth_method="bearer_token",
+                session_version=1,
+                token_subject="operator-1",
+            ),
+            task_id="task-1",
+        )
+
+        assert [item.task_id for item in listed] == ["task-1"]
+        assert cancelled is not None
+        assert cancelled.task_id == "task-1"
+        assert entry.cancel_actor == "operator"
+
+    asyncio.run(scenario())
+
+
+def test_future_task_tool_handler_uses_application_future_tasks_entry(
+    monkeypatch: Any,
+) -> None:
+    import apeiria.conversation.service as conversation_service_module
+    from apeiria.ai.tools.models import AIToolExecutionContext, AIToolPolicy
+    from apeiria.app.ai.future_tasks import tool_handler
+    from apeiria.conversation.models import ChatSessionIdentity
+
+    task = _future_task_definition(task_id="task-1")
+
+    class FakeFutureTasksEntry:
+        async def list_tasks(self, *, limit: int, session_id: str | None = None):
+            assert limit == _TOOL_LIST_LIMIT
+            assert session_id == "session-1"
+            return [task]
+
+    monkeypatch.setattr(
+        tool_handler,
+        "_resolve_future_tasks_entry",
+        FakeFutureTasksEntry,
+    )
+
+    class FakeChatSessionService:
+        async def get_session_identity(self, *, session_id: str):
+            assert session_id == "session-1"
+            return ChatSessionIdentity(
+                session_id="session-1",
+                platform="test",
+                bot_id="bot-1",
+                scene_type="private",
+                scene_id="scene-1",
+                subject_id="user-1",
+            )
+
+    monkeypatch.setattr(
+        conversation_service_module,
+        "chat_session_service",
+        FakeChatSessionService(),
+    )
+
+    result = asyncio.run(
+        tool_handler.handle_future_task(
+            "list",
+            limit=_TOOL_LIST_LIMIT,
+            context=AIToolExecutionContext(
+                session_id="session-1",
+                source_message_id="message-1",
+                trace_id="trace-1",
+                message_text="list reminders",
+                policy=AIToolPolicy(execution_enabled=True),
+                recalled_memory_ids=(),
+                recalled_memory_contents=(),
+                relationship_context=None,
+                execution_timeout_seconds=None,
+            ),
+        )
+    )
+
+    assert result.status == "success"
+    assert result.output_payload is not None
+    assert result.output_payload.tasks[0].task_id == "task-1"
+
+
+def _future_task_definition(
+    *,
+    task_id: str,
+) -> object:
+    from apeiria.app.ai.future_tasks.models import AIFutureTaskDefinition
+
+    now = datetime(2026, 5, 1, 8, 30, tzinfo=timezone.utc)
+    return AIFutureTaskDefinition(
+        task_id=task_id,
+        session_id="session-1",
+        platform="test",
+        scene_type="private",
+        scene_id="scene-1",
+        user_id="user-1",
+        title="Wake",
+        description="send a reminder",
+        trigger_at=now,
+        status="pending",
+        source_message_id="message-1",
+        scheduler_job_id="job-1",
+        last_error=None,
+        created_at=now,
+        updated_at=now,
+    )

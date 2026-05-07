@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Any
 from pydantic import BaseModel
 
 if TYPE_CHECKING:
-    from apeiria.app.ai.session_runtime.trace_store import TurnTraceRecord
+    from apeiria.app.ai.runtime.trace import TurnTraceRecord
 
 
 class AITurnTraceItem(BaseModel):

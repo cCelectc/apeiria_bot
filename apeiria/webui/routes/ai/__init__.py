@@ -10,7 +10,7 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends
 
-from apeiria.app.ai.admin.control_service import ai_control_admin_service
+from apeiria.app.ai import ai_application
 from apeiria.webui.auth import require_control_panel
 
 from .future_tasks import router as _future_tasks_router
@@ -35,7 +35,7 @@ async def get_ai_bootstrap(
     return AIBootstrapResponse(
         source_presets=[
             to_ai_source_preset_item(item)
-            for item in ai_control_admin_service.list_source_presets()
+            for item in ai_application.operations.list_source_presets()
         ],
         scope_types=["conversation", "user", "group", "global"],
         capability_modes=["off", "private_only", "direct_only"],

@@ -6,7 +6,7 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from apeiria.app.ai.admin.runtime_service import ai_runtime_admin_service
+from apeiria.app.ai import ai_application
 from apeiria.webui.auth import require_control_panel
 
 from .traces_schemas import AITurnTraceItem, to_ai_turn_trace_item
@@ -24,7 +24,7 @@ async def list_ai_turn_traces(  # noqa: PLR0913
     terminal_status: Annotated[str | None, Query(min_length=1)] = None,
     commit_status: Annotated[str | None, Query(min_length=1)] = None,
 ) -> list[AITurnTraceItem]:
-    records = await ai_runtime_admin_service.list_turn_traces(
+    records = await ai_application.diagnostics.list_turn_traces(
         limit=limit,
         trace_id=trace_id,
         session_id=session_id,
@@ -40,7 +40,7 @@ async def get_ai_turn_trace(
     trace_id: str,
     _: Annotated[Any, Depends(require_control_panel)],
 ) -> AITurnTraceItem:
-    record = await ai_runtime_admin_service.get_turn_trace(trace_id=trace_id)
+    record = await ai_application.diagnostics.get_turn_trace(trace_id=trace_id)
     if record is None:
         raise HTTPException(status_code=404, detail="trace_not_found")
     return to_ai_turn_trace_item(record)

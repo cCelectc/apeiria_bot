@@ -7,7 +7,7 @@ from typing import Any
 import pytest
 
 from apeiria.ai.turn_records import ModelAttempt, PromptSafeObservation, ToolAttempt
-from apeiria.app.ai.session_runtime import TurnTrace
+from apeiria.app.ai.runtime.trace import TurnTrace
 from apeiria.db.runtime import database_runtime
 
 _DEFAULT_TRACE_LIMIT = 20
@@ -18,8 +18,8 @@ def test_runtime_admin_service_lists_and_gets_turn_traces(
     monkeypatch: Any,
     tmp_path: Any,
 ) -> None:
-    from apeiria.app.ai.admin.runtime_service import AIRuntimeAdminService
-    from apeiria.app.ai.session_runtime.trace_store import TurnTraceRepository
+    from apeiria.app.ai.diagnostics import AIDiagnosticsEntry
+    from apeiria.app.ai.runtime.trace import TurnTraceRepository
 
     monkeypatch.setattr(database_runtime, "_project_root", tmp_path)
     database_runtime.ensure_ready()
@@ -34,7 +34,7 @@ def test_runtime_admin_service_lists_and_gets_turn_traces(
         terminal_status="delivery_failed",
         commit_status="partial",
     )
-    service = AIRuntimeAdminService(trace_repository=repository)
+    service = AIDiagnosticsEntry(trace_repository=repository)
 
     async def scenario() -> None:
         assert await service.list_turn_traces(limit=10) == [second, first]
@@ -50,7 +50,7 @@ def test_runtime_admin_service_lists_and_gets_turn_traces(
 
 def test_ai_trace_routes_return_sanitized_compact_records(monkeypatch: Any) -> None:
     import apeiria.webui.routes.ai.traces as route_module
-    from apeiria.app.ai.session_runtime.trace_store import TurnTraceRecord
+    from apeiria.app.ai.runtime.trace import TurnTraceRecord
 
     record = TurnTraceRecord(
         trace_id="trace-1",
@@ -79,7 +79,11 @@ def test_ai_trace_routes_return_sanitized_compact_records(monkeypatch: Any) -> N
             assert trace_id == "trace-1"
             return record
 
-    monkeypatch.setattr(route_module, "ai_runtime_admin_service", FakeService())
+    monkeypatch.setattr(
+        route_module,
+        "ai_application",
+        type("FakeApplication", (), {"diagnostics": FakeService()})(),
+    )
 
     async def scenario() -> None:
         listed = await route_module.list_ai_turn_traces(
@@ -104,7 +108,11 @@ def test_ai_trace_route_returns_not_found(monkeypatch: Any) -> None:
         async def get_turn_trace(self, *, trace_id: str) -> None:
             assert trace_id == "missing"
 
-    monkeypatch.setattr(route_module, "ai_runtime_admin_service", FakeService())
+    monkeypatch.setattr(
+        route_module,
+        "ai_application",
+        type("FakeApplication", (), {"diagnostics": FakeService()})(),
+    )
 
     async def scenario() -> None:
         with pytest.raises(route_module.HTTPException) as exc_info:

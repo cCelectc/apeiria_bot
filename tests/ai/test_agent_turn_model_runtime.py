@@ -346,11 +346,13 @@ def test_model_runtime_exposes_direct_capability_degradations() -> None:
     ]
 
 
-def test_pipeline_resolves_profile_fallback_candidates(monkeypatch: Any) -> None:
+def test_runtime_planning_resolves_profile_fallback_candidates(
+    monkeypatch: Any,
+) -> None:
     from apeiria.ai.model.catalog import chat as chat_module
     from apeiria.ai.model.routing import profile as profile_module
     from apeiria.ai.model.sources import service as source_module
-    from apeiria.app.ai.pipeline import model_steps
+    from apeiria.app.ai.runtime.planning import model_selection as model_steps
 
     primary = selected_model("primary", fallback_profile_id="profile-fallback")
     fallback = selected_model("fallback")
@@ -391,9 +393,7 @@ def test_pipeline_resolves_profile_fallback_candidates(monkeypatch: Any) -> None
         list_models,
     )
 
-    candidates = asyncio.run(
-        model_steps.select_pipeline_fallback_models(primary, limit=1)
-    )
+    candidates = asyncio.run(model_steps.select_fallback_models(primary, limit=1))
 
     assert [candidate.profile.profile_id for candidate in candidates] == [
         "profile-fallback"

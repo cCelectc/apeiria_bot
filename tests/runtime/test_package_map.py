@@ -17,7 +17,7 @@ from apeiria.runtime.package_map import (
 
 def test_runtime_package_map_classifies_current_ownership_bands() -> None:
     conversation_rule = classify_package("apeiria.conversation.service")
-    app_rule = classify_package("apeiria.app.ai.pipeline")
+    app_rule = classify_package("apeiria.app.ai.runtime")
     surface_rule = classify_package("apeiria.webui.routes.chat")
     runtime_rule = classify_package("apeiria.runtime.context")
 

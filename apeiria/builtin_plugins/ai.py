@@ -20,8 +20,8 @@ from nonebot.plugin.on import on_command, on_message
 
 from apeiria.ai import ai_service
 from apeiria.ai.config import AIPluginConfig
-from apeiria.app.ai.lifecycle import ai_lifecycle_coordinator
-from apeiria.app.ai.pipeline import AITraceContext, ai_runtime_service
+from apeiria.app.ai import ai_application
+from apeiria.app.ai.runtime import RuntimeTraceContext
 from apeiria.plugins.metadata.api import (
     ConfigExtra,
     PluginExtraData,
@@ -165,7 +165,7 @@ register_plugin_router("/ai", ai_webui_router, tags=("ai",))
 async def _run_ai_lifecycle_startup() -> None:
     """Prepare AI startup support after configured user plugins are loaded."""
 
-    await ai_lifecycle_coordinator.startup()
+    await ai_application.lifecycle.startup()
 
 
 get_driver().on_startup(_run_ai_lifecycle_startup)
@@ -182,10 +182,10 @@ async def handle_ai_status() -> None:
 async def handle_ai_message(bot: Bot, event: Event) -> None:
     """Run the AI reply loop for one incoming event."""
     entry = build_ai_trace_entry("message", event=event)
-    reply = await ai_runtime_service.handle_message(
+    reply = await ai_application.runtime.handle_message(
         bot,
         event,
-        trace=AITraceContext(
+        trace=RuntimeTraceContext(
             kind=entry.kind.value,
             trigger=entry.trigger.value,
         ),

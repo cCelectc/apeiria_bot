@@ -217,7 +217,7 @@ def test_runtime_readiness_reports_lifecycle_dependencies_without_initializing(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     import apeiria.app.ai.lifecycle as lifecycle_module
-    from apeiria.ai.service import AIRuntimeReadinessProbe
+    from apeiria.app.ai.diagnostics.readiness import AIRuntimeReadinessProbe
     from apeiria.app.ai.lifecycle import (
         AILifecycleComponentStatus,
         AILifecycleSnapshot,

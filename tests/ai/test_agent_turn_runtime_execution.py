@@ -7,15 +7,15 @@ from typing import Any
 from apeiria.ai.model import AIModelBindingTarget, AIModelMessage, AIModelToolDefinition
 from apeiria.ai.tools import AIToolPolicy, AIToolTurnCreateInput, ToolGatewayResult
 from apeiria.app.ai.agent_turn import AgentModelGenerationResult, AgentTurnResult
-from apeiria.app.ai.pipeline.composer import AIRuntimeComposeInput
-from apeiria.app.ai.session_runtime import (
+from apeiria.app.ai.runtime import execution as execution_module
+from apeiria.app.ai.runtime.planning.prompts import RuntimePromptComposeInput
+from apeiria.app.ai.runtime.planning.tool_exposure import ToolExposurePlan
+from apeiria.app.ai.runtime.session.context import (
     DeliveryTarget,
-    RuntimeTurnPlan,
     RuntimeTurnSource,
-    ToolExposurePlan,
     TurnContext,
 )
-from apeiria.app.ai.session_runtime import execution as execution_module
+from apeiria.app.ai.runtime.stages import RuntimeTurnPlan
 from apeiria.conversation.models import ChatSessionIdentity
 from tests.ai.agent_turn_helpers import model_response, selected_model
 
@@ -67,8 +67,8 @@ def _context(
     )
 
 
-def _compose_input() -> AIRuntimeComposeInput:
-    return AIRuntimeComposeInput(
+def _compose_input() -> RuntimePromptComposeInput:
+    return RuntimePromptComposeInput(
         persona=None,
         scene_type="private",
         person_profile=(),
@@ -87,7 +87,7 @@ def _plan(
     *,
     exposure_plan: ToolExposurePlan | None = None,
     prompt_messages: tuple[AIModelMessage, ...] | None = None,
-    reply_compose_input: AIRuntimeComposeInput | None = None,
+    reply_compose_input: RuntimePromptComposeInput | None = None,
 ) -> RuntimeTurnPlan:
     return RuntimeTurnPlan(
         stage="planning",
@@ -268,10 +268,10 @@ def test_tool_execution_uses_runtime_exposure_and_refinement_messages(
     )
     monkeypatch.setattr(
         execution_module,
-        "select_pipeline_fallback_models",
+        "select_fallback_models",
         select_fallbacks,
     )
-    monkeypatch.setattr(execution_module, "select_pipeline_model", select_model)
+    monkeypatch.setattr(execution_module, "select_model", select_model)
 
     context = _context(
         runtime_mode="future_task",

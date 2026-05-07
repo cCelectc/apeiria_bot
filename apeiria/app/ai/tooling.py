@@ -12,7 +12,7 @@ def load_app_ai_tool_modules() -> None:
     if _APP_AI_TOOL_MODULES_LOADED:
         return
 
-    from apeiria.app.ai.future_task import tool_handler  # noqa: F401
+    from apeiria.app.ai.future_tasks import tool_handler  # noqa: F401
 
     _APP_AI_TOOL_MODULES_LOADED = True
 

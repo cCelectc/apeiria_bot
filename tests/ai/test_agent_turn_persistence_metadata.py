@@ -14,7 +14,7 @@ _MAX_DIAGNOSTIC_LENGTH = 200
 
 
 def test_tool_loop_metadata_is_available_to_persistence() -> None:
-    from apeiria.app.ai.pipeline.persistence_steps import _agent_turn_meta
+    from apeiria.app.ai.runtime.commit.persistence import _agent_turn_meta
 
     selected = selected_model("main")
     raw_payload = "raw-large-tool-output"
@@ -71,7 +71,7 @@ def test_tool_loop_metadata_is_available_to_persistence() -> None:
 
 
 def test_compact_turn_trace_metadata_is_available_to_persistence() -> None:
-    from apeiria.app.ai.pipeline.persistence_steps import _turn_trace_meta
+    from apeiria.app.ai.runtime.commit.persistence import _turn_trace_meta
 
     decision = ReplyStrategyDecision(
         action="reply",
@@ -117,7 +117,7 @@ def test_compact_turn_trace_metadata_is_available_to_persistence() -> None:
 
 
 def test_agent_turn_metadata_is_sanitized_for_assistant_persistence() -> None:
-    from apeiria.app.ai.pipeline.persistence_steps import _agent_turn_meta
+    from apeiria.app.ai.runtime.commit.persistence import _agent_turn_meta
 
     turn = AgentTurnResult(
         trace_id="trace-secret",

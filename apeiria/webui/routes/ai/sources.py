@@ -6,9 +6,9 @@ from typing import TYPE_CHECKING, Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
-from apeiria.app.ai.admin.control_service import (
+from apeiria.app.ai import ai_application
+from apeiria.app.ai.operations import (
     AISourceDeleteBlockedError,
-    ai_control_admin_service,
 )
 from apeiria.webui.auth import require_control_panel
 
@@ -38,7 +38,7 @@ async def list_ai_source_presets(
 ) -> list[AISourcePresetItem]:
     return [
         to_ai_source_preset_item(item)
-        for item in ai_control_admin_service.list_source_presets()
+        for item in ai_application.operations.list_source_presets()
     ]
 
 
@@ -46,7 +46,7 @@ async def list_ai_source_presets(
 async def list_ai_sources(
     _: Annotated[Any, Depends(require_control_panel)],
 ) -> list[AISourceItem]:
-    items = await ai_control_admin_service.list_sources()
+    items = await ai_application.operations.list_sources()
     return [to_ai_source_item(item) for item in items]
 
 
@@ -55,7 +55,7 @@ async def create_ai_source(
     payload: AISourceUpsertRequest,
     session: Annotated["AuthSession", Depends(require_control_panel)],
 ) -> AISourceItem:
-    item = await ai_control_admin_service.create_source(
+    item = await ai_application.operations.create_source(
         name=payload.name,
         capability_type=payload.capability_type,
         preset_type=payload.preset_type,
@@ -81,7 +81,7 @@ async def update_ai_source(
 ) -> AISourceItem | None:
     if not payload.source_id:
         return None
-    item = await ai_control_admin_service.update_source(
+    item = await ai_application.operations.update_source(
         source_id=payload.source_id,
         name=payload.name,
         capability_type=payload.capability_type,
@@ -107,7 +107,7 @@ async def delete_ai_source(
     source_id: Annotated[str, Query(min_length=1)],
 ) -> bool:
     try:
-        return await ai_control_admin_service.delete_source(
+        return await ai_application.operations.delete_source(
             source_id=source_id,
             actor_username=_actor_username_from_claims(session),
         )

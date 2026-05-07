@@ -16,18 +16,18 @@ if TYPE_CHECKING:
 UPDATED_TIMEOUT_SECONDS = 45
 
 
-def test_sources_admin_crud_uses_new_database(
+def test_sources_operations_crud_uses_new_database(
     tmp_path: Path,
     monkeypatch: MonkeyPatch,
 ) -> None:
-    from apeiria.app.ai.admin.sources import SourcesAdminMixin
+    from apeiria.app.ai.operations.sources import SourcesAdminMixin
 
     monkeypatch.setattr(database_runtime, "_project_root", tmp_path)
     database_runtime.ensure_ready()
-    admin = SourcesAdminMixin()
+    operations = SourcesAdminMixin()
 
     async def run() -> None:
-        created = await admin.create_source(
+        created = await operations.create_source(
             name="Primary",
             capability_type="chat_completion",
             preset_type="openai_compatible",
@@ -38,12 +38,12 @@ def test_sources_admin_crud_uses_new_database(
             custom_headers={"X-Test": "1"},
             extra_config={"temperature": 0.2},
         )
-        sources = await admin.list_sources()
+        sources = await operations.list_sources()
         assert len(sources) == 1
         assert sources[0].source_id == created.source_id
         assert sources[0].custom_headers == {"X-Test": "1"}
 
-        updated = await admin.update_source(
+        updated = await operations.update_source(
             source_id=created.source_id,
             name="Primary Updated",
             capability_type="chat_completion",
@@ -62,9 +62,9 @@ def test_sources_admin_crud_uses_new_database(
         assert updated.custom_headers == {"X-Test": "2"}
         assert updated.extra_config == {"temperature": 0.3}
 
-        deleted = await admin.delete_source(source_id=created.source_id)
+        deleted = await operations.delete_source(source_id=created.source_id)
         assert deleted is True
-        assert await admin.list_sources() == []
+        assert await operations.list_sources() == []
 
     asyncio.run(run())
 
@@ -73,9 +73,9 @@ def test_source_delete_is_blocked_when_source_models_exist(
     tmp_path: Path,
     monkeypatch: MonkeyPatch,
 ) -> None:
-    from apeiria.app.ai.admin.errors import AISourceDeleteBlockedError
-    from apeiria.app.ai.admin.models import ModelsAdminMixin
-    from apeiria.app.ai.admin.sources import SourcesAdminMixin
+    from apeiria.app.ai.operations.errors import AISourceDeleteBlockedError
+    from apeiria.app.ai.operations.models import ModelsAdminMixin
+    from apeiria.app.ai.operations.sources import SourcesAdminMixin
 
     monkeypatch.setattr(database_runtime, "_project_root", tmp_path)
     database_runtime.ensure_ready()
@@ -113,18 +113,18 @@ def test_source_delete_is_blocked_when_source_models_exist(
     asyncio.run(run())
 
 
-def test_source_admin_normalizes_capability_type_from_preset(
+def test_source_operations_normalizes_capability_type_from_preset(
     tmp_path: Path,
     monkeypatch: MonkeyPatch,
 ) -> None:
-    from apeiria.app.ai.admin.sources import SourcesAdminMixin
+    from apeiria.app.ai.operations.sources import SourcesAdminMixin
 
     monkeypatch.setattr(database_runtime, "_project_root", tmp_path)
     database_runtime.ensure_ready()
-    admin = SourcesAdminMixin()
+    operations = SourcesAdminMixin()
 
     async def run() -> None:
-        created = await admin.create_source(
+        created = await operations.create_source(
             name="Embedding Source",
             capability_type="chat_completion",
             preset_type="openai_compatible_embedding",
@@ -138,7 +138,7 @@ def test_source_admin_normalizes_capability_type_from_preset(
         assert created.capability_type == "embedding"
         assert created.client_type == "openai"
 
-        updated = await admin.update_source(
+        updated = await operations.update_source(
             source_id=created.source_id,
             name="Rerank Source",
             capability_type="text_to_speech",

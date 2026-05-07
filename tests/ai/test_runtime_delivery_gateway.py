@@ -4,19 +4,20 @@ import asyncio
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 
-from apeiria.app.ai.pipeline.service import AIRuntimeReplyRequest
+import apeiria.app.ai.runtime.commit.delivery as delivery_steps
+from apeiria.app.ai.runtime.live import AIRuntimeTurnRequest
 from apeiria.conversation.models import ChatSessionIdentity
 
 if TYPE_CHECKING:
     from pathlib import Path
 
 
-def _future_task_request() -> AIRuntimeReplyRequest:
+def _future_task_request() -> AIRuntimeTurnRequest:
     return _runtime_request()
 
 
-def _future_task_delivery_request() -> AIRuntimeReplyRequest:
-    from apeiria.app.ai.future_task.models import AIFutureTaskDefinition
+def _future_task_delivery_request() -> AIRuntimeTurnRequest:
+    from apeiria.app.ai.future_tasks.models import AIFutureTaskDefinition
 
     now = datetime(2026, 5, 1, 8, 30, tzinfo=timezone.utc)
     return _runtime_request(
@@ -44,8 +45,8 @@ def _runtime_request(
     *,
     future_task: object | None = None,
     runtime_mode: str = "future_task",
-) -> AIRuntimeReplyRequest:
-    return AIRuntimeReplyRequest(
+) -> AIRuntimeTurnRequest:
+    return AIRuntimeTurnRequest(
         identity=ChatSessionIdentity(
             session_id="session-1",
             platform="onebot",
@@ -64,7 +65,6 @@ def _runtime_request(
 
 
 def test_deliver_generated_reply_uses_delivery_gateway(monkeypatch: Any) -> None:
-    from apeiria.app.ai.pipeline import delivery_steps
 
     captured: list[delivery_steps.DeliveryRequest] = []
 
@@ -109,7 +109,6 @@ def test_deliver_generated_reply_uses_delivery_gateway(monkeypatch: Any) -> None
 def test_message_turn_does_not_invoke_proactive_delivery_gateway(
     monkeypatch: Any,
 ) -> None:
-    from apeiria.app.ai.pipeline import delivery_steps
 
     class FakeGateway:
         async def deliver(self, request: object) -> None:
@@ -133,10 +132,9 @@ def test_future_task_delivery_records_delivered_attempt(
     monkeypatch: Any,
     tmp_path: Path,
 ) -> None:
-    from apeiria.app.ai.future_task.delivery_attempts import (
+    from apeiria.app.ai.future_tasks.delivery_attempts import (
         delivery_attempt_repository,
     )
-    from apeiria.app.ai.pipeline import delivery_steps
     from apeiria.db.runtime import database_runtime
 
     monkeypatch.setattr(database_runtime, "_project_root", tmp_path)
@@ -183,11 +181,10 @@ def test_future_task_delivery_reuses_delivered_attempt_without_gateway(
     monkeypatch: Any,
     tmp_path: Path,
 ) -> None:
-    from apeiria.app.ai.future_task.delivery_attempts import (
+    from apeiria.app.ai.future_tasks.delivery_attempts import (
         AIDeliveryAttemptCreateInput,
         delivery_attempt_repository,
     )
-    from apeiria.app.ai.pipeline import delivery_steps
     from apeiria.db.runtime import database_runtime
 
     monkeypatch.setattr(database_runtime, "_project_root", tmp_path)
@@ -239,7 +236,6 @@ def test_future_task_delivery_failure_is_retryable(
     monkeypatch: Any,
     tmp_path: Path,
 ) -> None:
-    from apeiria.app.ai.pipeline import delivery_steps
     from apeiria.db.runtime import database_runtime
 
     monkeypatch.setattr(database_runtime, "_project_root", tmp_path)
@@ -304,8 +300,8 @@ def test_future_task_delivery_failure_is_retryable(
 def test_onebot_delivery_adapter_owns_platform_api_conversion(
     monkeypatch: Any,
 ) -> None:
-    import apeiria.app.ai.pipeline.delivery_steps as delivery_module
-    from apeiria.app.ai.pipeline.delivery_steps import (
+    import apeiria.app.ai.runtime.commit.delivery as delivery_module
+    from apeiria.app.ai.runtime.commit.delivery import (
         DeliveryRequest,
         OneBotDeliveryAdapter,
     )
@@ -343,8 +339,8 @@ def test_onebot_delivery_adapter_owns_platform_api_conversion(
 
 
 def test_onebot_delivery_adapter_returns_bounded_failures(monkeypatch: Any) -> None:
-    import apeiria.app.ai.pipeline.delivery_steps as delivery_module
-    from apeiria.app.ai.pipeline.delivery_steps import (
+    import apeiria.app.ai.runtime.commit.delivery as delivery_module
+    from apeiria.app.ai.runtime.commit.delivery import (
         DeliveryRequest,
         OneBotDeliveryAdapter,
     )
