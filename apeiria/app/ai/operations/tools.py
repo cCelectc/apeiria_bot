@@ -19,15 +19,15 @@ from apeiria.app.ai.lifecycle import ensure_ai_runtime_support_initialized
 from apeiria.app.ai.runtime.planning.tool_intents import preview_runtime_tool_intents
 
 if TYPE_CHECKING:
-    from apeiria.ai.skills import AISkillDefinition
+    from apeiria.ai.capabilities import AICapabilityContract
+    from apeiria.ai.skills import AISkillMetadata
     from apeiria.ai.tools import (
-        AICapabilityDefinition,
         AICapabilityPreview,
         AIToolExecutionView,
         AIToolIntentPreview,
         AIToolPolicy,
-        AIToolSpec,
     )
+    from apeiria.app.ai.lifecycle import AICapabilityInventoryRecord
 
 
 class ToolsAdminMixin:
@@ -37,17 +37,21 @@ class ToolsAdminMixin:
     def _ensure_ai_support_ready() -> None:
         ensure_ai_runtime_support_initialized(source="admin_fallback")
 
-    def list_tools(self, policy: "AIToolPolicy | None" = None) -> list["AIToolSpec"]:
+    def list_tools(
+        self,
+        policy: "AIToolPolicy | None" = None,
+    ) -> list["AICapabilityContract"]:
         self._ensure_ai_support_ready()
         return ai_tool_service.list_tool_specs(policy)
 
-    def list_capabilities(self) -> list["AICapabilityDefinition"]:
-        return ai_tool_service.list_capabilities()
+    def list_capabilities(self) -> list["AICapabilityInventoryRecord"]:
+        snapshot = ensure_ai_runtime_support_initialized(source="admin_fallback")
+        return list(snapshot.capabilities)
 
     def list_skills(
         self,
         policy: "AIToolPolicy | None" = None,
-    ) -> list["AISkillDefinition"]:
+    ) -> list["AISkillMetadata"]:
         self._ensure_ai_support_ready()
         return ai_skill_service.list_skills(policy)
 

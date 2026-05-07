@@ -7,6 +7,13 @@ from typing import TYPE_CHECKING, Any, Literal, Protocol
 
 from nonebot.log import logger
 
+from apeiria.ai.capabilities import (
+    AICapabilityBindingSnapshot,
+    AICapabilityBindingType,
+    AICapabilityContract,
+    AICapabilityContractSnapshot,
+    capability_contract_from_skill_definition,
+)
 from apeiria.ai.contributions import (
     AIPluginContributionRegistry,
     ai_plugin_contributions,
@@ -17,10 +24,15 @@ if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
     from pathlib import Path
 
-    from apeiria.ai.tools import AIToolSpec
+    from apeiria.ai.capabilities import AICapabilityBinding
+    from apeiria.ai.skills import AISkillMetadata
+    from apeiria.ai.tools.host_actions import (
+        AIHostActionRecord,
+        AIHostActionSnapshot,
+    )
     from apeiria.app.ai.future_tasks.service import AIFutureTaskRecoveryResult
 
-    AICapabilityHandler = Callable[[dict[str, Any]], Any | Awaitable[Any]]
+    AIHostActionHandler = Callable[[dict[str, Any]], Any | Awaitable[Any]]
 
 AILifecycleSource = Literal[
     "startup",
@@ -44,6 +56,38 @@ class AILifecycleComponentStatus:
 
 
 @dataclass(frozen=True)
+class AICapabilityInventoryRecord:
+    """Unified admin read model for one AI capability contract."""
+
+    name: str
+    kind: str
+    origin: str
+    description: str
+    input_schema: dict[str, Any]
+    read_only: bool
+    concurrency_safe: bool
+    risk_level: str
+    tags: tuple[str, ...]
+    version: int
+    display_name: str | None = None
+    binding_key: str | None = None
+    binding_type: str | None = None
+    availability: Literal["ready", "incomplete", "disabled"] = "incomplete"
+    policy_status: str = "not_evaluated"
+    diagnostics: tuple[str, ...] = ()
+    required_capabilities: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class _InventoryBindingFacts:
+    binding_key: str | None
+    binding_type: str | None
+    availability: Literal["ready", "incomplete", "disabled"]
+    diagnostics: tuple[str, ...] = ()
+    required_capabilities: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
 class AIFutureTaskRecoveryDiagnostics:
     """Bounded diagnostics for future-task startup recovery."""
 
@@ -61,25 +105,49 @@ class AILifecycleSnapshot:
     initialization_source: AILifecycleSource
     components: tuple[AILifecycleComponentStatus, ...]
     recovery: AIFutureTaskRecoveryDiagnostics | None = None
+    capabilities: tuple[AICapabilityInventoryRecord, ...] = ()
     diagnostics: tuple[str, ...] = ()
 
 
 class _ToolRegistry(Protocol):
-    def register(self, tool: "AIToolSpec") -> None: ...
+    def register_contract_and_binding(
+        self,
+        *,
+        contract: AICapabilityContract,
+        binding: "AICapabilityBinding",
+    ) -> None: ...
 
-    def list_tools(self) -> list["AIToolSpec"]: ...
+    def list_tools(self) -> list[AICapabilityContract]: ...
 
     def register_pending_tools(self) -> int: ...
 
+    def contract_snapshot(self) -> AICapabilityContractSnapshot: ...
 
-class _CapabilityBridge(Protocol):
-    def register(
+    def binding_snapshot(self) -> AICapabilityBindingSnapshot: ...
+
+
+class _HostActionRegistry(Protocol):
+    def register_contract(
         self,
-        capability_name: str,
-        handler: "AICapabilityHandler",
-    ) -> None: ...
+        contract: AICapabilityContract,
+    ) -> "AIHostActionRecord": ...
 
-    def list_capabilities(self) -> list[str]: ...
+    def register_action(
+        self,
+        *,
+        contract: AICapabilityContract,
+        handler: "AIHostActionHandler",
+    ) -> "AIHostActionRecord": ...
+
+    def register_handler(
+        self,
+        action_name: str,
+        handler: "AIHostActionHandler",
+    ) -> "AIHostActionRecord": ...
+
+    def list_actions(self) -> list[str]: ...
+
+    def snapshot(self) -> "AIHostActionSnapshot": ...
 
 
 class _ToolService(Protocol):
@@ -87,7 +155,7 @@ class _ToolService(Protocol):
     def registry(self) -> _ToolRegistry: ...
 
     @property
-    def capability_bridge(self) -> _CapabilityBridge: ...
+    def host_action_registry(self) -> _HostActionRegistry: ...
 
 
 class _SkillService(Protocol):
@@ -96,6 +164,8 @@ class _SkillService(Protocol):
         *,
         skill_sources: tuple["Path", ...] = (),
     ) -> None: ...
+
+    def list_skills(self) -> list["AISkillMetadata"]: ...
 
 
 class _FutureTaskService(Protocol):
@@ -145,11 +215,27 @@ class AIPluginLifecycleCoordinator:
             pending_tool_count = tool_service.registry.register_pending_tools()
             contributions = self._contribution_registry.snapshot()
             for tool in contributions.tools:
-                tool_service.registry.register(tool)
-            for contribution in contributions.capability_handlers:
-                tool_service.capability_bridge.register(
-                    contribution.capability_name,
+                tool_service.registry.register_contract_and_binding(
+                    contract=tool.contract,
+                    binding=tool.binding,
+                )
+            for contribution in contributions.host_actions:
+                tool_service.host_action_registry.register_action(
+                    contract=contribution.contract,
+                    handler=contribution.handler,
+                )
+            for contribution in contributions.host_action_handlers:
+                tool_service.host_action_registry.register_handler(
+                    contribution.action_name,
                     contribution.handler,
+                )
+            for contribution in contributions.capability_contracts:
+                if contribution.contract.name in {
+                    item.contract.name for item in contributions.host_actions
+                }:
+                    continue
+                tool_service.host_action_registry.register_contract(
+                    contribution.contract
                 )
             skill_sources = tuple(source.path for source in contributions.skill_sources)
             skill_service.ensure_initialized(skill_sources=skill_sources)
@@ -161,6 +247,7 @@ class AIPluginLifecycleCoordinator:
                 initialization_source="failed",
                 components=_failed_components(detail),
                 recovery=self._recovery,
+                capabilities=(),
                 diagnostics=(detail,),
             )
             return self._snapshot
@@ -178,6 +265,10 @@ class AIPluginLifecycleCoordinator:
                 pending_tool_count=pending_tool_count,
             ),
             recovery=self._recovery,
+            capabilities=_build_capability_inventory(
+                tool_service=tool_service,
+                skill_service=skill_service,
+            ),
         )
         return self._snapshot
 
@@ -257,7 +348,7 @@ def _not_initialized_snapshot() -> AILifecycleSnapshot:
         components=(
             _not_initialized_component("tool_registry"),
             _not_initialized_component("skill_catalog"),
-            _not_initialized_component("capability_bridge"),
+            _not_initialized_component("host_action_registry"),
         ),
     )
 
@@ -275,7 +366,7 @@ def _failed_components(detail: str) -> tuple[AILifecycleComponentStatus, ...]:
     return (
         _failed_component("tool_registry", detail),
         _failed_component("skill_catalog", detail),
-        _failed_component("capability_bridge", detail),
+        _failed_component("host_action_registry", detail),
     )
 
 
@@ -295,7 +386,7 @@ def _ready_components(
     pending_tool_count: int,
 ) -> tuple[AILifecycleComponentStatus, ...]:
     tool_count = len(tool_service.registry.list_tools())
-    capability_count = len(tool_service.capability_bridge.list_capabilities())
+    host_action_count = len(tool_service.host_action_registry.list_actions())
     return (
         AILifecycleComponentStatus(
             key="tool_registry",
@@ -311,10 +402,120 @@ def _ready_components(
             ),
         ),
         AILifecycleComponentStatus(
-            key="capability_bridge",
+            key="host_action_registry",
             available=True,
-            detail=f"{capability_count}_capabilities",
+            detail=f"{host_action_count}_host_actions",
         ),
+    )
+
+
+def _build_capability_inventory(
+    *,
+    tool_service: _ToolService,
+    skill_service: _SkillService,
+) -> tuple[AICapabilityInventoryRecord, ...]:
+    records: dict[str, AICapabilityInventoryRecord] = {}
+
+    contract_snapshot = tool_service.registry.contract_snapshot()
+    binding_snapshot = tool_service.registry.binding_snapshot()
+    for contract in contract_snapshot.contracts:
+        binding = binding_snapshot.by_contract.get(contract.name)
+        records[contract.name] = _inventory_record(
+            contract=contract,
+            binding=_InventoryBindingFacts(
+                binding_key=binding.binding_key if binding is not None else None,
+                binding_type=(
+                    binding.binding_type.value if binding is not None else None
+                ),
+                availability="ready" if binding is not None else "incomplete",
+                diagnostics=() if binding is not None else ("missing binding",),
+            ),
+        )
+
+    host_snapshot = tool_service.host_action_registry.snapshot()
+    for host_action in host_snapshot.records:  # type: ignore[attr-defined]
+        contract = host_action.contract
+        if contract is None:
+            records[host_action.action_name] = AICapabilityInventoryRecord(
+                name=host_action.action_name,
+                kind="executable",
+                origin="plugin",
+                description="Host action handler without a capability contract.",
+                input_schema={
+                    "type": "object",
+                    "properties": {},
+                    "additionalProperties": False,
+                },
+                read_only=False,
+                concurrency_safe=False,
+                risk_level="high",
+                tags=(),
+                version=1,
+                availability="incomplete",
+                diagnostics=(host_action.reason or "missing capability contract",),
+            )
+            continue
+        binding = host_action.binding
+        records[contract.name] = _inventory_record(
+            contract=contract,
+            binding=_InventoryBindingFacts(
+                binding_key=binding.binding_key if binding is not None else None,
+                binding_type=(
+                    binding.binding_type.value if binding is not None else None
+                ),
+                availability="ready" if binding is not None else "incomplete",
+                diagnostics=(
+                    ()
+                    if binding is not None
+                    else (host_action.reason or "missing binding",)
+                ),
+            ),
+        )
+
+    for skill in skill_service.list_skills():
+        if skill.origin != "file":  # type: ignore[attr-defined]
+            continue
+        contract, binding = capability_contract_from_skill_definition(
+            skill,  # type: ignore[arg-type]
+            load_prompt=lambda: "",
+        )
+        records[contract.name] = _inventory_record(
+            contract=contract,
+            binding=_InventoryBindingFacts(
+                binding_key=binding.binding_key,
+                binding_type=AICapabilityBindingType.PROMPT_SKILL.value,
+                availability="ready",
+                required_capabilities=binding.required_capabilities,
+            ),
+        )
+
+    return tuple(records[name] for name in sorted(records))
+
+
+def _inventory_record(
+    *,
+    contract: object,
+    binding: _InventoryBindingFacts,
+) -> AICapabilityInventoryRecord:
+    safety = contract.safety  # type: ignore[attr-defined]
+    return AICapabilityInventoryRecord(
+        name=contract.name,  # type: ignore[attr-defined]
+        kind=contract.kind.value,  # type: ignore[attr-defined]
+        origin=contract.origin.value,  # type: ignore[attr-defined]
+        description=contract.description,  # type: ignore[attr-defined]
+        input_schema=dict(contract.input_schema),  # type: ignore[attr-defined]
+        read_only=safety.read_only,
+        concurrency_safe=safety.concurrency_safe,
+        risk_level=safety.risk_level,
+        tags=contract.tags,  # type: ignore[attr-defined]
+        version=contract.version,  # type: ignore[attr-defined]
+        display_name=contract.display_name,  # type: ignore[attr-defined]
+        binding_key=binding.binding_key,
+        binding_type=binding.binding_type,
+        availability=binding.availability,
+        policy_status="not_evaluated",
+        diagnostics=binding.diagnostics,
+        required_capabilities=binding.required_capabilities,
     )
 
 
@@ -339,6 +540,7 @@ def _with_recovery(
         initialization_source=snapshot.initialization_source,
         components=snapshot.components,
         recovery=recovery,
+        capabilities=snapshot.capabilities,
         diagnostics=snapshot.diagnostics,
     )
 
@@ -351,6 +553,7 @@ ai_lifecycle_coordinator = AIPluginLifecycleCoordinator()
 
 
 __all__ = [
+    "AICapabilityInventoryRecord",
     "AIFutureTaskRecoveryDiagnostics",
     "AILifecycleComponentStatus",
     "AILifecycleSnapshot",

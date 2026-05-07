@@ -6,7 +6,6 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Literal
 
 if TYPE_CHECKING:
-    from collections.abc import Awaitable, Callable
     from datetime import datetime
 
 AIToolRiskLevel = Literal["low", "medium", "high"]
@@ -19,27 +18,6 @@ AIToolIntentKind = Literal[
 ]
 AIToolCapabilityMode = Literal["off", "private_only", "direct_only"]
 AIToolExecutionStatus = Literal["success", "error", "timeout"]
-
-
-@dataclass(frozen=True)
-class AIToolSpec:
-    """Declarative tool definition visible to the AI runtime layer.
-
-    When ``entrypoint`` is provided, the tool can be executed generically
-    without per-tool dispatch logic.  The ``parameters`` tuple describes
-    the function signature for JSON Schema generation.
-    """
-
-    name: str
-    description: str
-    read_only: bool
-    concurrency_safe: bool
-    risk_level: AIToolRiskLevel = "low"
-    is_capability_bridge: bool = False
-    parameters: tuple[tuple[str, str, str, bool, tuple[str, ...] | None, Any], ...] = ()
-    entrypoint: Callable[..., Awaitable[AIToolResult]] | None = None
-    origin: AIToolOrigin = "builtin"
-    tags: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -74,7 +52,7 @@ class AIToolPolicy:
     allowed_tool_names: set[str] | None = None
     denied_tool_names: set[str] = field(default_factory=set)
     allow_high_risk_tools: bool = False
-    allow_capability_bridge: bool = False
+    allow_host_actions: bool = False
 
 
 @dataclass(frozen=True)
@@ -83,14 +61,6 @@ class AIToolPolicyDecision:
 
     allowed: bool
     reason: str
-
-
-@dataclass(frozen=True)
-class AINoneBotCapabilityRequest:
-    """Structured request for a whitelist-based NoneBot capability bridge."""
-
-    capability_name: str
-    arguments: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -170,14 +140,6 @@ class AIRelationshipInspectObservationOutput:
     """Structured output payload for relationship.inspect observations."""
 
     relationship_context: str
-
-
-@dataclass(frozen=True)
-class AICapabilityInvokeObservationOutput:
-    """Structured output payload for plugin.capability observations."""
-
-    capability_name: str
-    result: Any
 
 
 @dataclass(frozen=True)

@@ -3,9 +3,10 @@
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
+from apeiria.ai.capabilities import AICapabilityContract
+from apeiria.ai.capabilities.projections import project_executable_contract
 from apeiria.ai.model.runtime.adapter import AIModelToolCall, AIModelToolDefinition
-from apeiria.ai.tools.models import AIToolIntent, AIToolIntentKind, AIToolSpec
-from apeiria.ai.tools.schema import build_json_schema
+from apeiria.ai.tools.models import AIToolIntent, AIToolIntentKind
 
 _DISPLAY_TIMEZONE = ZoneInfo("Asia/Shanghai")
 
@@ -38,37 +39,21 @@ def function_name_to_tool_name(function_name: str) -> str:
 
 
 def build_function_tools(
-    tools: list[AIToolSpec],
+    tools: list[AICapabilityContract],
     *,
     current_time: datetime | None = None,
 ) -> tuple[AIModelToolDefinition, ...]:
-    """Convert tool specs into function-calling definitions.
-
-    Parameters are read from ``AIToolSpec.parameters`` and converted to
-    JSON Schema via :func:`build_json_schema`.
-    """
+    """Convert executable capability contracts into function-call definitions."""
 
     definitions: list[AIModelToolDefinition] = []
-    for tool in tools:
-        function_name = tool_name_to_function_name(tool.name)
-        parameters = (
-            build_json_schema(tool.parameters)
-            if tool.parameters
-            else {
-                "type": "object",
-                "properties": {},
-                "additionalProperties": False,
-            }
-        )
+    for contract in tools:
+        definition = project_executable_contract(contract)
         definitions.append(
-            AIModelToolDefinition(
-                name=function_name,
-                description=_build_tool_description(
-                    tool_name=tool.name,
-                    description=tool.description,
-                    current_time=current_time,
-                ),
-                parameters=parameters,
+            _build_tool_definition_with_description(
+                definition,
+                tool_name=contract.name,
+                description=contract.description,
+                current_time=current_time,
             )
         )
     return tuple(definitions)
@@ -97,7 +82,7 @@ _TOOL_KIND_MAP: dict[str, AIToolIntentKind] = {
     "memory.query": "observe_read_only",
     "memory.update": "update_memory",
     "relationship.inspect": "observe_read_only",
-    "plugin.capability": "invoke_capability",
+    "plugin.inspect": "invoke_capability",
     "future_task.manage": "manage_future_task",
 }
 _DEFAULT_KIND: AIToolIntentKind = "observe_read_only"
@@ -109,6 +94,24 @@ def _infer_intent_kind(
     """Infer the intent kind from the tool name."""
 
     return _TOOL_KIND_MAP.get(tool_name, _DEFAULT_KIND)
+
+
+def _build_tool_definition_with_description(
+    definition: AIModelToolDefinition,
+    *,
+    tool_name: str,
+    description: str,
+    current_time: datetime | None,
+) -> AIModelToolDefinition:
+    return AIModelToolDefinition(
+        name=definition.name,
+        description=_build_tool_description(
+            tool_name=tool_name,
+            description=description,
+            current_time=current_time,
+        ),
+        parameters=definition.parameters,
+    )
 
 
 def _build_tool_description(

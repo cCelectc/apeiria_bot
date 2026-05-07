@@ -1,48 +1,44 @@
-"""Helpers for deriving structured skill contracts."""
+"""Helpers for deriving prompt-skill metadata."""
 
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Literal
 
-from apeiria.ai.skills.catalog import AISkillContract, AISkillDefinition
+from apeiria.ai.skills.catalog import AISkillMetadata
 
 if TYPE_CHECKING:
+    from apeiria.ai.capabilities import AICapabilityContract
     from apeiria.ai.skills.parser import AISkillFileDefinition
-    from apeiria.ai.tools.models import AIToolSpec
 
 
-def build_skill_definition(tool: "AIToolSpec") -> AISkillDefinition:
-    """Map one tool spec into the product-facing contract shape."""
+def build_skill_metadata(contract: AICapabilityContract) -> AISkillMetadata:
+    """Map one executable capability contract into skill catalog metadata."""
 
-    return AISkillDefinition(
-        skill_name=tool.name,
-        description=tool.description,
-        contract=AISkillContract(
-            visibility=True,
-            side_effect_level=_map_side_effect_level(tool),
-            permission_source="global",
-            idempotency="idempotent" if tool.concurrency_safe else "non_idempotent",
-            fallback_behavior="degrade_to_text_reply",
-        ),
+    return AISkillMetadata(
+        name=contract.name,
+        description=contract.description,
+        side_effect_level=_map_side_effect_level(contract),
+        permission_source="global",
+        idempotent=contract.safety.concurrency_safe,
+        fallback_behavior="degrade_to_text_reply",
         origin="tool",
         entry_mode="tool_backed",
-        tags=tool.tags,
+        tags=contract.tags,
     )
 
 
-def build_file_skill_definition(file_def: "AISkillFileDefinition") -> AISkillDefinition:
-    """Map a file-based skill into the product-facing contract shape."""
+def build_file_skill_metadata(
+    file_def: "AISkillFileDefinition",
+) -> AISkillMetadata:
+    """Map a file-based skill into prompt-skill catalog metadata."""
 
-    return AISkillDefinition(
-        skill_name=file_def.skill_name,
+    return AISkillMetadata(
+        name=file_def.skill_name,
         description=file_def.description,
-        contract=AISkillContract(
-            visibility=True,
-            side_effect_level=_infer_file_skill_side_effect(file_def),
-            permission_source="global",
-            idempotency="idempotent",
-            fallback_behavior="degrade_to_text_reply",
-        ),
+        side_effect_level=_infer_file_skill_side_effect(file_def),
+        permission_source="global",
+        idempotent=True,
+        fallback_behavior="degrade_to_text_reply",
         origin="file",
         entry_mode=file_def.entry_mode,
         tags=file_def.tags,
@@ -50,11 +46,11 @@ def build_file_skill_definition(file_def: "AISkillFileDefinition") -> AISkillDef
 
 
 def _map_side_effect_level(
-    tool: "AIToolSpec",
+    contract: "AICapabilityContract",
 ) -> Literal["read_only", "low_risk", "high_risk"]:
-    if tool.read_only:
+    if contract.safety.read_only:
         return "read_only"
-    if tool.risk_level == "high":
+    if contract.safety.risk_level == "high":
         return "high_risk"
     return "low_risk"
 

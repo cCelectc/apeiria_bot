@@ -55,7 +55,7 @@ async def list_ai_tools(
     policy = (
         AIToolPolicy(
             allow_high_risk_tools=False,
-            allow_capability_bridge=False,
+            allow_host_actions=False,
         )
         if allowed_only
         else None
@@ -75,7 +75,7 @@ async def list_ai_skills(
     policy = (
         AIToolPolicy(
             allow_high_risk_tools=False,
-            allow_capability_bridge=False,
+            allow_host_actions=False,
         )
         if allowed_only
         else None

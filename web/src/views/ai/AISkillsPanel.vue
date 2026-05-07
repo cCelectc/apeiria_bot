@@ -37,9 +37,6 @@
           <v-chip :color="item.concurrency_safe ? 'success' : 'default'" size="small" variant="tonal">
             {{ t('ai.skillConcurrencySafe') }}: {{ item.concurrency_safe ? t('ai.enabled') : t('ai.disabled') }}
           </v-chip>
-          <v-chip :color="item.is_capability_bridge ? 'success' : 'default'" size="small" variant="tonal">
-            {{ t('ai.skillCapabilityBridge') }}: {{ item.is_capability_bridge ? t('ai.enabled') : t('ai.disabled') }}
-          </v-chip>
         </div>
 
         <div class="mt-4">
@@ -52,7 +49,7 @@
               size="small"
               variant="tonal"
             >
-              {{ capability }}
+              {{ capability.capability_name }}
             </v-chip>
           </div>
           <div v-else class="empty-state-text">
@@ -83,16 +80,16 @@
   const readonlySkillCount = computed(() => props.skills.filter(item => item.read_only).length)
 
   const skillCapabilitiesByTool = computed(() => {
-    const map = new Map<string, string[]>()
+    const map = new Map<string, AICapabilityItem[]>()
     for (const item of props.capabilities) {
-      const list = map.get(item.bound_tool_name) ?? []
-      list.push(item.capability_name)
-      map.set(item.bound_tool_name, list)
+      const list = map.get(item.capability_name) ?? []
+      list.push(item)
+      map.set(item.capability_name, list)
     }
     return map
   })
 
-  function skillCapabilitiesFor (toolName: string) {
+  function skillCapabilitiesFor (toolName: string): AICapabilityItem[] {
     return skillCapabilitiesByTool.value.get(toolName) ?? []
   }
 </script>

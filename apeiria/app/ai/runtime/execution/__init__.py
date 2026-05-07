@@ -166,6 +166,17 @@ async def _run_tool_loop(
             execution_timeout_seconds=plan.tool_execution_timeout_seconds
             or get_ai_plugin_config().tool_execution_timeout_seconds,
             executable_tool_names=frozenset(exposure_plan.selected_tool_names),
+            capability_binding_map=exposure_plan.capability_plan.binding_map,
+            capability_contracts=(
+                exposure_plan.capability_contracts.by_name
+                if exposure_plan.capability_contracts is not None
+                else None
+            ),
+            capability_bindings=(
+                exposure_plan.capability_bindings.by_key
+                if exposure_plan.capability_bindings is not None
+                else None
+            ),
             messages=turn_context.prompt_messages,
             tools=compile_tool_exposure_provider_schema(
                 exposure_plan,

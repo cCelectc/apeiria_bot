@@ -5,7 +5,7 @@ from __future__ import annotations
 from importlib import import_module
 from typing import TYPE_CHECKING, Any
 
-from .catalog import AISkillContract, AISkillDefinition
+from .catalog import AISkillMetadata
 from .parser import AISkillFileDefinition
 
 if TYPE_CHECKING:
@@ -21,9 +21,8 @@ if TYPE_CHECKING:
 __all__ = [
     "AISkillActivation",
     "AISkillCatalogEntry",
-    "AISkillContract",
-    "AISkillDefinition",
     "AISkillFileDefinition",
+    "AISkillMetadata",
     "AISkillRuntime",
     "AISkillSelectionResult",
     "AISkillService",

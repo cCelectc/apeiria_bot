@@ -570,7 +570,7 @@
           <v-sheet class="surface-gradient-card pa-4">
             <div v-if="policyPreview" class="d-flex flex-column ga-2 text-body-2">
               <div>{{ t('ai.executionEnabled') }}: {{ policyPreview.execution_enabled ? t('ai.enabled') : t('ai.disabled') }}</div>
-              <div>{{ t('ai.allowCapabilityBridge') }}: {{ policyPreview.allow_capability_bridge ? t('ai.enabled') : t('ai.disabled') }}</div>
+              <div>{{ t('ai.allowHostActions') }}: {{ policyPreview.allow_host_actions ? t('ai.enabled') : t('ai.disabled') }}</div>
               <div>{{ t('ai.allowedTools') }}: {{ policyPreview.allowed_tool_names?.join(', ') || t('common.none') }}</div>
             </div>
             <div v-else class="empty-state-text">

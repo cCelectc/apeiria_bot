@@ -1,4 +1,4 @@
-"""Tool execution recording and capability bridge service."""
+"""Tool execution recording and host-action service."""
 
 from __future__ import annotations
 
@@ -7,22 +7,26 @@ from typing import Any
 
 from nonebot.log import logger
 
-from apeiria.ai.tools.bridge import AINoneBotCapabilityBridge
+from apeiria.ai.capabilities import (
+    AICapabilityBindingRegistry,
+    AICapabilityBindingSnapshot,
+    AICapabilityBindingType,
+    AICapabilityContract,
+    AICapabilityContractRegistry,
+    AICapabilityContractSnapshot,
+)
 from apeiria.ai.tools.capabilities import register_builtin_capabilities
 from apeiria.ai.tools.contracts import AIToolExecutionCreateInput
-from apeiria.ai.tools.debug import (
-    AICapabilityDefinition,
-    AICapabilityPreview,
-)
+from apeiria.ai.tools.debug import AICapabilityPreview
 from apeiria.ai.tools.execution import AIToolIntentExecutor
 from apeiria.ai.tools.execution_repository import AIToolExecutionRepository
+from apeiria.ai.tools.host_actions import AIHostActionRegistry
 from apeiria.ai.tools.models import (
     AIToolExecutionRequest,
     AIToolExecutionView,
     AIToolIntent,
     AIToolObservationResult,
     AIToolPolicy,
-    AIToolSpec,
     AIToolTurnCreateInput,
 )
 from apeiria.ai.tools.policy import evaluate_tool_policy
@@ -44,10 +48,10 @@ class AIToolService:
         intent_executor: AIToolIntentExecutor | None = None,
     ) -> None:
         self.registry = AIToolRegistry()
-        self.capability_bridge = AINoneBotCapabilityBridge()
+        self.host_action_registry = AIHostActionRegistry()
         self._execution_repository = execution_repository or AIToolExecutionRepository()
         self._intent_executor = intent_executor or AIToolIntentExecutor()
-        register_builtin_capabilities(self.capability_bridge)
+        register_builtin_capabilities(self.host_action_registry)
         self._load_declarative_tools()
 
     def _load_declarative_tools(self) -> None:
@@ -59,26 +63,52 @@ class AIToolService:
     def list_tool_specs(
         self,
         policy: AIToolPolicy | None = None,
-    ) -> list[AIToolSpec]:
+    ) -> list[AICapabilityContract]:
         if policy is None:
-            return self.registry.list_tools()
+            return list(self.contract_snapshot().contracts)
         return self.list_allowed_tools(policy)
 
-    def list_allowed_tools(self, policy: AIToolPolicy) -> list[AIToolSpec]:
+    def list_allowed_tools(self, policy: AIToolPolicy) -> list[AICapabilityContract]:
         return [
             tool
-            for tool in self.registry.list_tools()
-            if evaluate_tool_policy(tool, policy).allowed
+            for tool in self.contract_snapshot().contracts
+            if evaluate_tool_policy(
+                tool,
+                policy,
+                binding_type=self._binding_type_for_contract(tool.name),
+            ).allowed
         ]
 
-    def list_capabilities(self) -> list[AICapabilityDefinition]:
-        return [
-            AICapabilityDefinition(
-                capability_name=name,
-                bound_tool_name="plugin.capability",
-            )
-            for name in self.capability_bridge.list_capabilities()
-        ]
+    def contract_snapshot(self) -> AICapabilityContractSnapshot:
+        contracts = AICapabilityContractRegistry(
+            tuple(self.registry.contract_snapshot().contracts)
+        )
+        for record in self.host_action_registry.snapshot().ready_actions:
+            if (
+                record.contract is not None
+                and contracts.get(record.contract.name) is None
+            ):
+                contracts.register(record.contract)
+        return contracts.snapshot()
+
+    def binding_snapshot(self) -> AICapabilityBindingSnapshot:
+        bindings = AICapabilityBindingRegistry(
+            tuple(self.registry.binding_snapshot().bindings)
+        )
+        for record in self.host_action_registry.snapshot().ready_actions:
+            if (
+                record.binding is not None
+                and bindings.get(record.binding.binding_key) is None
+            ):
+                bindings.register(record.binding)
+        return bindings.snapshot()
+
+    def _binding_type_for_contract(
+        self,
+        contract_name: str,
+    ) -> AICapabilityBindingType | None:
+        binding = self.binding_snapshot().by_contract.get(contract_name)
+        return binding.binding_type if binding is not None else None
 
     # ------------------------------------------------------------------
     # Unified tool execution with death-spiral detection
@@ -92,6 +122,7 @@ class AIToolService:
     ) -> list[AIToolObservationResult]:
         observations = await self._intent_executor.execute_tool_intents(
             registry=self.registry,
+            bindings=dict(self.binding_snapshot().by_contract),
             request=request,
             intents=intents,
         )
@@ -165,17 +196,15 @@ class AIToolService:
         capability_name: str,
         policy: AIToolPolicy,
     ) -> AICapabilityPreview:
-        registered = self.capability_bridge.can_handle(capability_name)
-        tool = self.registry.get(capability_name) or self.registry.get(
-            "plugin.capability"
-        )
+        registered = self.host_action_registry.can_handle(capability_name)
+        tool = self.contract_snapshot().by_name.get(capability_name)
         if not registered:
             return AICapabilityPreview(
                 capability_name=capability_name,
                 registered=False,
                 allowed=False,
                 reason="capability is not registered",
-                allow_capability_bridge=policy.allow_capability_bridge,
+                allow_host_actions=policy.allow_host_actions,
                 execution_enabled=policy.execution_enabled,
             )
         if tool is None:
@@ -184,7 +213,7 @@ class AIToolService:
                 registered=True,
                 allowed=False,
                 reason="capability tool binding is missing",
-                allow_capability_bridge=policy.allow_capability_bridge,
+                allow_host_actions=policy.allow_host_actions,
                 execution_enabled=policy.execution_enabled,
             )
 
@@ -201,7 +230,7 @@ class AIToolService:
             registered=True,
             allowed=allowed,
             reason=reason,
-            allow_capability_bridge=policy.allow_capability_bridge,
+            allow_host_actions=policy.allow_host_actions,
             execution_enabled=policy.execution_enabled,
         )
 

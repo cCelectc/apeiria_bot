@@ -13,16 +13,8 @@ class AICapabilityPreview:
     registered: bool
     allowed: bool
     reason: str
-    allow_capability_bridge: bool
+    allow_host_actions: bool
     execution_enabled: bool
-
-
-@dataclass(frozen=True)
-class AICapabilityDefinition:
-    """One registered capability entry visible to admin surfaces."""
-
-    capability_name: str
-    bound_tool_name: str
 
 
 @dataclass(frozen=True)
@@ -36,7 +28,6 @@ class AIToolIntentPreview:
 
 
 __all__ = [
-    "AICapabilityDefinition",
     "AICapabilityPreview",
     "AIToolIntentPreview",
 ]

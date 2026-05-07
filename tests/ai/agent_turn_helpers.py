@@ -17,6 +17,9 @@ from apeiria.ai.tools.models import AIToolPolicy
 from apeiria.app.ai.runtime.execution.tool_loop import RuntimeToolLoopInput
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
+
+    from apeiria.ai.capabilities import AICapabilityBinding, AICapabilityContract
     from apeiria.ai.model.runtime.adapter import AIModelToolDefinition
     from apeiria.ai.tools import AIToolObservationResult
 
@@ -133,6 +136,9 @@ def tool_loop_input(  # noqa: PLR0913
     tools: tuple[AIModelToolDefinition, ...] = (),
     fallback_models: tuple[AISelectedModel, ...] = (),
     executable_tool_names: frozenset[str] | None = None,
+    capability_binding_map: dict[str, str] | None = None,
+    capability_contracts: Mapping[str, AICapabilityContract] | None = None,
+    capability_bindings: Mapping[str, AICapabilityBinding] | None = None,
     execution_timeout_seconds: float | None = None,
 ) -> RuntimeToolLoopInput:
     return RuntimeToolLoopInput(
@@ -148,6 +154,9 @@ def tool_loop_input(  # noqa: PLR0913
         tools=tools,
         tool_policy=AIToolPolicy(execution_enabled=True),
         executable_tool_names=executable_tool_names,
+        capability_binding_map=capability_binding_map,
+        capability_contracts=capability_contracts,
+        capability_bindings=capability_bindings,
         recalled_memory_ids=(),
         recalled_memory_contents=(),
         relationship_context=None,

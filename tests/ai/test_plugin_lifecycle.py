@@ -3,9 +3,21 @@ from __future__ import annotations
 import asyncio
 import importlib.util
 from pathlib import Path
+from types import MappingProxyType, SimpleNamespace
 from typing import TYPE_CHECKING, Any
 
-from apeiria.ai.tools import AIToolResult, AIToolSpec
+from apeiria.ai.capabilities import (
+    AICapabilityBinding,
+    AICapabilityBindingSnapshot,
+    AICapabilityBindingType,
+    AICapabilityContract,
+    AICapabilityContractSnapshot,
+    AICapabilityKind,
+    AICapabilityOrigin,
+    AICapabilitySafety,
+    create_local_tool_binding,
+)
+from apeiria.ai.tools import AIToolResult
 
 if TYPE_CHECKING:
     import pytest
@@ -13,31 +25,49 @@ if TYPE_CHECKING:
 EXPECTED_REGISTERED_TOOL_COUNT = 2
 
 
-def _tool(name: str) -> AIToolSpec:
+def _contract(name: str) -> AICapabilityContract:
+    return AICapabilityContract(
+        name=name,
+        kind=AICapabilityKind.EXECUTABLE,
+        origin=AICapabilityOrigin.PLUGIN,
+        description=f"{name} description",
+        safety=AICapabilitySafety(
+            read_only=True,
+            risk_level="low",
+            concurrency_safe=True,
+        ),
+    )
+
+
+def _tool_binding(contract: AICapabilityContract) -> AICapabilityBinding:
     async def handler(**_: Any) -> AIToolResult:
         return AIToolResult(summary="ok")
 
-    return AIToolSpec(
-        name=name,
-        description=f"{name} description",
-        read_only=True,
-        concurrency_safe=True,
-        entrypoint=handler,
-        origin="plugin",
+    return create_local_tool_binding(
+        contract_name=contract.name,
+        binding_key=f"plugin:{contract.name}",
+        handler=handler,
     )
 
 
 class _FakeToolRegistry:
     def __init__(self, order: list[str]) -> None:
         self._order = order
-        self.tools: dict[str, AIToolSpec] = {}
-        self.pending_tools = [_tool("app.future")]
+        self.tools: dict[str, AICapabilityContract] = {}
+        self.bindings: dict[str, AICapabilityBinding] = {}
+        self.pending_tools = [_contract("app.future")]
 
-    def register(self, tool: AIToolSpec) -> None:
-        self._order.append(f"tool:{tool.name}")
-        self.tools[tool.name] = tool
+    def register_contract_and_binding(
+        self,
+        *,
+        contract: AICapabilityContract,
+        binding: AICapabilityBinding,
+    ) -> None:
+        self._order.append(f"tool:{contract.name}")
+        self.tools[contract.name] = contract
+        self.bindings[binding.binding_key] = binding
 
-    def list_tools(self) -> list[AIToolSpec]:
+    def list_tools(self) -> list[AICapabilityContract]:
         return [self.tools[name] for name in sorted(self.tools)]
 
     def register_pending_tools(self) -> int:
@@ -46,28 +76,101 @@ class _FakeToolRegistry:
         for tool in self.pending_tools:
             if tool.name not in self.tools:
                 self.tools[tool.name] = tool
+                binding = _tool_binding(tool)
+                self.bindings[binding.binding_key] = binding
                 count += 1
         self.pending_tools = []
         return count
 
+    def contract_snapshot(self) -> AICapabilityContractSnapshot:
+        contracts = tuple(self.list_tools())
+        return AICapabilityContractSnapshot(
+            contracts=contracts,
+            by_name=MappingProxyType(
+                {contract.name: contract for contract in contracts}
+            ),
+        )
 
-class _FakeCapabilityBridge:
+    def binding_snapshot(self) -> AICapabilityBindingSnapshot:
+        bindings = tuple(self.bindings[key] for key in sorted(self.bindings))
+        return AICapabilityBindingSnapshot(
+            bindings=bindings,
+            by_key=MappingProxyType(
+                {binding.binding_key: binding for binding in bindings}
+            ),
+            by_contract=MappingProxyType(
+                {binding.contract_name: binding for binding in bindings}
+            ),
+        )
+
+
+class _FakeHostActionRegistry:
     def __init__(self, order: list[str]) -> None:
         self._order = order
         self.handlers: dict[str, object] = {}
+        self.contracts: dict[str, object] = {}
 
-    def register(self, capability_name: str, handler: object) -> None:
-        self._order.append(f"capability:{capability_name}")
-        self.handlers[capability_name] = handler
+    def register_handler(self, action_name: str, handler: object) -> None:
+        self._order.append(f"host_action:{action_name}")
+        self.handlers[action_name] = handler
 
-    def list_capabilities(self) -> list[str]:
-        return sorted(self.handlers)
+    def register_contract(self, contract: object) -> None:
+        action_name = contract.name  # type: ignore[attr-defined]
+        self._order.append(f"host_action_contract:{action_name}")
+        self.contracts[action_name] = contract
+
+    def register_action(self, *, contract: object, handler: object) -> None:
+        action_name = contract.name  # type: ignore[attr-defined]
+        self._order.append(f"host_action_ready:{action_name}")
+        self.contracts[action_name] = contract
+        self.handlers[action_name] = handler
+
+    def list_actions(self) -> list[str]:
+        return sorted({*self.handlers, *self.contracts})
+
+    def snapshot(self) -> object:
+        return SimpleNamespace(
+            records=tuple(self._snapshot_record(name) for name in self.list_actions())
+        )
+
+    def _snapshot_record(self, action_name: str) -> SimpleNamespace:
+        ready = action_name in self.handlers and action_name in self.contracts
+        return SimpleNamespace(
+            action_name=action_name,
+            status="ready" if ready else "incomplete",
+            contract=self.contracts.get(action_name),
+            binding=(
+                SimpleNamespace(
+                    contract_name=action_name,
+                    binding_key=f"host:{action_name}",
+                    binding_type=AICapabilityBindingType.HOST_ACTION,
+                )
+                if ready
+                else None
+            ),
+            reason=_incomplete_host_action_reason(
+                action_name=action_name,
+                has_handler=action_name in self.handlers,
+            ),
+        )
 
 
 class _FakeToolService:
     def __init__(self, order: list[str]) -> None:
         self.registry = _FakeToolRegistry(order)
-        self.capability_bridge = _FakeCapabilityBridge(order)
+        self.host_action_registry = _FakeHostActionRegistry(order)
+
+
+def _incomplete_host_action_reason(
+    *,
+    action_name: str,
+    has_handler: bool,
+) -> str | None:
+    if action_name and not has_handler:
+        return "missing host-action handler"
+    if has_handler:
+        return "missing capability contract"
+    return None
 
 
 class _FakeSkillService:
@@ -76,6 +179,7 @@ class _FakeSkillService:
         self._tool_service = tool_service
         self.calls: list[tuple[Path, ...]] = []
         self.visible_tool_names: list[tuple[str, ...]] = []
+        self.skill_sources: tuple[Path, ...] = ()
 
     def ensure_initialized(
         self,
@@ -84,9 +188,28 @@ class _FakeSkillService:
     ) -> None:
         self._order.append("skills")
         self.calls.append(skill_sources)
+        self.skill_sources = skill_sources
         self.visible_tool_names.append(
             tuple(tool.name for tool in self._tool_service.registry.list_tools())
         )
+
+    def list_skills(self) -> list[object]:
+        from apeiria.ai.skills.contracts import build_file_skill_metadata
+        from apeiria.ai.skills.loader import load_skills_from_sources
+
+        tool_skills = [
+            SimpleNamespace(
+                name=tool.name,
+                description=tool.description,
+                origin="tool",
+            )
+            for tool in self._tool_service.registry.list_tools()
+        ]
+        file_skills = [
+            build_file_skill_metadata(skill)
+            for skill in load_skills_from_sources(self.skill_sources)
+        ]
+        return [*tool_skills, *file_skills]
 
 
 class _FakeFutureTaskService:
@@ -116,8 +239,43 @@ def test_lifecycle_applies_plugin_contributions_before_skill_sync(
     future_service = _FakeFutureTaskService(order)
     contributions = AIPluginContributionRegistry()
     skill_dir = tmp_path / "plugin" / "skills"
-    contributions.register_tool(_tool("plugin.echo"))
-    contributions.register_capability_handler("plugin.echo", lambda _: {"ok": True})
+
+    tool_contract = _contract("plugin.echo")
+    contributions.register_tool(
+        contract=tool_contract,
+        binding=_tool_binding(tool_contract),
+    )
+    contributions.register_host_action(
+        contract=AICapabilityContract(
+            name="plugin.echo",
+            kind=AICapabilityKind.EXECUTABLE,
+            origin=AICapabilityOrigin.PLUGIN,
+            description="Echo plugin action.",
+            safety=AICapabilitySafety(
+                read_only=True,
+                risk_level="low",
+                concurrency_safe=True,
+            ),
+        ),
+        handler=lambda _: {"ok": True},
+    )
+    contributions.register_host_action_handler(
+        "plugin.partial",
+        lambda _: {"ok": True},
+    )
+    contributions.register_capability_contract(
+        AICapabilityContract(
+            name="plugin.contract_only",
+            kind=AICapabilityKind.EXECUTABLE,
+            origin=AICapabilityOrigin.PLUGIN,
+            description="Contract only plugin action.",
+            safety=AICapabilitySafety(
+                read_only=True,
+                risk_level="low",
+                concurrency_safe=True,
+            ),
+        )
+    )
     contributions.register_skill_source(skill_dir)
 
     coordinator = AIPluginLifecycleCoordinator(
@@ -135,16 +293,111 @@ def test_lifecycle_applies_plugin_contributions_before_skill_sync(
         "app_loader",
         "pending_tools",
         "tool:plugin.echo",
-        "capability:plugin.echo",
-        "skills",
+        "host_action_ready:plugin.echo",
+        "host_action:plugin.partial",
     ]
     assert "plugin.echo" in tool_service.registry.tools
-    assert tool_service.registry.tools["plugin.echo"].origin == "plugin"
-    assert tool_service.capability_bridge.list_capabilities() == ["plugin.echo"]
+    assert (
+        tool_service.registry.tools["plugin.echo"].origin is AICapabilityOrigin.PLUGIN
+    )
+    assert tool_service.host_action_registry.list_actions() == [
+        "plugin.contract_only",
+        "plugin.echo",
+        "plugin.partial",
+    ]
     assert skill_service.calls[0] == (skill_dir.resolve(),)
     assert "plugin.echo" in skill_service.visible_tool_names[0]
     assert future_service.calls == 1
     assert len(tool_service.registry.tools) == EXPECTED_REGISTERED_TOOL_COUNT
+
+
+def test_lifecycle_builds_unified_capability_inventory(
+    tmp_path: Path,
+) -> None:
+    from apeiria.ai.contributions import AIPluginContributionRegistry
+    from apeiria.app.ai.lifecycle import AIPluginLifecycleCoordinator
+
+    order: list[str] = []
+    tool_service = _FakeToolService(order)
+    skill_service = _FakeSkillService(order, tool_service)
+    contributions = AIPluginContributionRegistry()
+    skill_dir = tmp_path / "plugin" / "skills"
+    skill_dir.mkdir(parents=True)
+    (skill_dir / "SKILL.md").write_text(
+        """---
+name: plugin.prompt
+description: Prompt skill.
+entry_mode: prompt_only
+---
+
+Use prompt skill.
+""",
+        encoding="utf-8",
+    )
+
+    tool_contract = _contract("plugin.echo")
+    contributions.register_tool(
+        contract=tool_contract,
+        binding=_tool_binding(tool_contract),
+    )
+    contributions.register_host_action(
+        contract=AICapabilityContract(
+            name="plugin.host",
+            kind=AICapabilityKind.EXECUTABLE,
+            origin=AICapabilityOrigin.PLUGIN,
+            description="Host action.",
+            safety=AICapabilitySafety(
+                read_only=True,
+                risk_level="low",
+                concurrency_safe=True,
+            ),
+        ),
+        handler=lambda _: {"ok": True},
+    )
+    contributions.register_host_action_handler(
+        "plugin.partial",
+        lambda _: {"ok": True},
+    )
+    contributions.register_capability_contract(
+        AICapabilityContract(
+            name="plugin.contract_only",
+            kind=AICapabilityKind.EXECUTABLE,
+            origin=AICapabilityOrigin.PLUGIN,
+            description="Contract only.",
+            safety=AICapabilitySafety(
+                read_only=True,
+                risk_level="low",
+                concurrency_safe=True,
+            ),
+        )
+    )
+    contributions.register_skill_source(skill_dir)
+
+    coordinator = AIPluginLifecycleCoordinator(
+        contribution_registry=contributions,
+        tool_service=tool_service,
+        skill_service=skill_service,
+        future_task_service=_FakeFutureTaskService(order),
+        app_tool_loader=lambda: None,
+    )
+
+    snapshot = asyncio.run(coordinator.startup())
+    records = {record.name: record for record in snapshot.capabilities}
+
+    assert records["plugin.echo"].kind == "executable"
+    assert records["plugin.echo"].binding_type == "local_tool"
+    assert records["plugin.echo"].availability == "ready"
+    assert records["plugin.host"].binding_type == "host_action"
+    assert records["plugin.host"].availability == "ready"
+    assert records["plugin.contract_only"].availability == "incomplete"
+    assert records["plugin.contract_only"].diagnostics == (
+        "missing host-action handler",
+    )
+    assert records["plugin.partial"].availability == "incomplete"
+    assert records["plugin.partial"].diagnostics == ("missing capability contract",)
+    assert records["plugin.prompt"].kind == "prompt_skill"
+    assert records["plugin.prompt"].binding_type == "prompt_skill"
+    assert records["plugin.prompt"].required_capabilities == ()
 
 
 def test_public_plugin_contribution_helpers_register_without_singleton_mutation(
@@ -153,8 +406,11 @@ def test_public_plugin_contribution_helpers_register_without_singleton_mutation(
 ) -> None:
     import apeiria.ai.contributions as contribution_module
     from apeiria.ai.contributions import (
+        AIPluginCapabilityContractInput,
         AIPluginContributionRegistry,
-        register_ai_capability_handler,
+        register_ai_capability_contract,
+        register_ai_host_action,
+        register_ai_host_action_handler,
         register_ai_skill_source,
         register_ai_tool,
     )
@@ -177,13 +433,28 @@ def test_public_plugin_contribution_helpers_register_without_singleton_mutation(
 
     plugin_dir = tmp_path / "plugin"
     skill_source = register_ai_skill_source("skills", base_path=plugin_dir)
-    register_ai_capability_handler("plugin.echo", capability_handler)
+    contract = register_ai_capability_contract(
+        AIPluginCapabilityContractInput(
+            name="plugin.echo",
+            description="echo from a plugin",
+            read_only=True,
+            concurrency_safe=True,
+        )
+    )
+    register_ai_host_action(
+        contract=contract,
+        handler=capability_handler,
+    )
+    register_ai_host_action_handler("plugin.partial", capability_handler)
     snapshot = registry.snapshot()
 
-    assert echo_tool.__ai_tool_spec__.origin == "plugin"  # type: ignore[attr-defined]
-    assert [tool.name for tool in snapshot.tools] == ["plugin.echo"]
-    assert snapshot.tools[0].origin == "plugin"
-    assert snapshot.capability_handlers[0].capability_name == "plugin.echo"
+    assert echo_tool.__ai_tool_contract__.origin is AICapabilityOrigin.PLUGIN
+    assert [tool.contract.name for tool in snapshot.tools] == ["plugin.echo"]
+    assert snapshot.tools[0].contract.origin is AICapabilityOrigin.PLUGIN
+    assert snapshot.tools[0].binding.contract_name == "plugin.echo"
+    assert snapshot.capability_contracts[0].contract.name == "plugin.echo"
+    assert snapshot.host_actions[0].contract.name == "plugin.echo"
+    assert snapshot.host_action_handlers[0].action_name == "plugin.partial"
     assert snapshot.skill_sources[0].path == skill_source
     assert skill_source == (plugin_dir / "skills").resolve()
 
@@ -247,7 +518,7 @@ def test_runtime_readiness_reports_lifecycle_dependencies_without_initializing(
                         next_step="Load the AI plugin startup lifecycle hook.",
                     ),
                     AILifecycleComponentStatus(
-                        key="capability_bridge",
+                        key="host_action_registry",
                         available=False,
                         detail="not_initialized",
                         next_step="Load the AI plugin startup lifecycle hook.",
@@ -269,7 +540,7 @@ def test_runtime_readiness_reports_lifecycle_dependencies_without_initializing(
 
     assert statuses["tool_registry"].available is False
     assert statuses["skill_catalog"].available is False
-    assert statuses["capability_bridge"].available is False
+    assert statuses["host_action_registry"].available is False
     assert statuses["tool_registry"].detail == "not_initialized"
     assert fake.inspect_calls == 1
     assert fake.startup_calls == 0

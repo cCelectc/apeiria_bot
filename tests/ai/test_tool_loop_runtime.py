@@ -4,6 +4,15 @@ import asyncio
 from dataclasses import replace
 from typing import Any
 
+from apeiria.ai.capabilities import (
+    AICapabilityBindingRegistry,
+    AICapabilityContract,
+    AICapabilityContractRegistry,
+    AICapabilityKind,
+    AICapabilityOrigin,
+    AICapabilitySafety,
+    create_local_tool_binding,
+)
 from apeiria.ai.model import (
     AIModelContentPart,
     AIModelGenerateResponse,
@@ -87,6 +96,39 @@ def _tool_definition() -> Any:
         description="Query memory",
         parameters={"type": "object"},
     )
+
+
+def _capability_registries(
+    *,
+    name: str = "memory.query",
+    risk_level: str = "low",
+) -> tuple[AICapabilityContractRegistry, AICapabilityBindingRegistry]:
+    async def _handler(**_: Any) -> Any:
+        return {}
+
+    contracts = AICapabilityContractRegistry()
+    contracts.register(
+        AICapabilityContract(
+            name=name,
+            kind=AICapabilityKind.EXECUTABLE,
+            origin=AICapabilityOrigin.BUILTIN,
+            description="Capability contract",
+            safety=AICapabilitySafety(
+                read_only=True,
+                risk_level=risk_level,  # type: ignore[arg-type]
+                concurrency_safe=True,
+            ),
+        )
+    )
+    bindings = AICapabilityBindingRegistry()
+    bindings.register(
+        create_local_tool_binding(
+            contract_name=name,
+            binding_key=f"local:{name}",
+            handler=_handler,
+        )
+    )
+    return contracts, bindings
 
 
 def test_tool_loop_records_final_response_finish_reason() -> None:
@@ -348,6 +390,113 @@ def test_tool_loop_denies_tool_not_exposed_for_current_turn() -> None:
     assert result.tool_attempts[0].native_observation.output_payload["error"] == (
         "not_exposed_for_turn"
     )
+
+
+def test_tool_loop_denies_stale_call_missing_from_capability_binding_map() -> None:
+    selected = selected_model("main")
+    invoker = ModelInvokerStub(
+        [
+            model_response(selected, "", tool_calls=(tool_call("call-1"),)),
+            model_response(selected, "done"),
+        ]
+    )
+    service = ToolServiceStub(observations=[], allowed_tool_names=("memory.query",))
+    contracts, bindings = _capability_registries()
+    runner = RuntimeToolLoopRunner(model_invoker=invoker, tool_service=service)
+
+    result = asyncio.run(
+        runner.run(
+            tool_loop_input(
+                selected,
+                tools=(_tool_definition(),),
+                capability_binding_map={},
+                capability_contracts=contracts.snapshot().by_name,
+                capability_bindings=bindings.snapshot().by_key,
+            )
+        )
+    )
+
+    assert service.calls == []
+    assert result.tool_attempts[0].status == "error"
+    assert "not exposed for this turn" in result.tool_attempts[0].observation.content
+    assert result.tool_attempts[0].native_observation is not None
+    assert result.tool_attempts[0].native_observation.output_payload["error"] == (
+        "not_exposed_for_turn"
+    )
+
+
+def test_tool_loop_denies_selected_capability_before_side_effecting_execution() -> None:
+    selected = selected_model("main")
+    invoker = ModelInvokerStub(
+        [
+            model_response(selected, "", tool_calls=(tool_call("call-1"),)),
+            model_response(selected, "done"),
+        ]
+    )
+    service = ToolServiceStub(observations=[], allowed_tool_names=("memory.query",))
+    contracts, bindings = _capability_registries(risk_level="high")
+    runner = RuntimeToolLoopRunner(model_invoker=invoker, tool_service=service)
+
+    result = asyncio.run(
+        runner.run(
+            tool_loop_input(
+                selected,
+                tools=(_tool_definition(),),
+                capability_binding_map={"memory.query": "local:memory.query"},
+                capability_contracts=contracts.snapshot().by_name,
+                capability_bindings=bindings.snapshot().by_key,
+            )
+        )
+    )
+
+    assert service.calls == []
+    assert result.tool_attempts[0].status == "error"
+    assert "was not executed" in result.tool_attempts[0].observation.content
+    assert result.tool_attempts[0].native_observation is not None
+    assert result.tool_attempts[0].native_observation.output_payload["error"] == (
+        "capability_execution_denied"
+    )
+
+
+def test_tool_loop_executes_selected_capability_from_binding_map() -> None:
+    selected = selected_model("main")
+    invoker = ModelInvokerStub(
+        [
+            model_response(selected, "", tool_calls=(tool_call("call-1"),)),
+            model_response(selected, "done"),
+        ]
+    )
+    service = ToolServiceStub(
+        [
+            [
+                AIToolObservationResult(
+                    tool_name="memory.query",
+                    summary="- [memory.query] result",
+                    input_payload={"query_text": "hello"},
+                    output_payload={"memory_ids": ["m1"]},
+                )
+            ]
+        ],
+        allowed_tool_names=("memory.query", "memory.update"),
+    )
+    contracts, bindings = _capability_registries()
+    runner = RuntimeToolLoopRunner(model_invoker=invoker, tool_service=service)
+
+    result = asyncio.run(
+        runner.run(
+            tool_loop_input(
+                selected,
+                tools=(_tool_definition(),),
+                capability_binding_map={"memory.query": "local:memory.query"},
+                capability_contracts=contracts.snapshot().by_name,
+                capability_bindings=bindings.snapshot().by_key,
+            )
+        )
+    )
+
+    assert len(service.calls) == 1
+    assert result.tool_attempts[0].status == "success"
+    assert result.tool_attempts[0].tool_name == "memory.query"
 
 
 def test_tool_loop_recovers_once_from_context_pressure() -> None:

@@ -25,10 +25,11 @@ from apeiria.app.ai.runtime.planning.wake import resolve_initiative_bias
 if TYPE_CHECKING:
     from datetime import datetime
 
+    from apeiria.ai.capabilities import AICapabilityContract
     from apeiria.ai.memory import AIMemoryDefinition
     from apeiria.ai.model import AIModelBindingTarget
     from apeiria.ai.prompting import ReplyPersonaPromptBundleLike
-    from apeiria.ai.tools import AIToolPolicy, AIToolSpec
+    from apeiria.ai.tools import AIToolPolicy
     from apeiria.app.ai.runtime.context.relationships import AIRelationshipTarget
     from apeiria.app.ai.runtime.live import AIRuntimeTurnRequest
     from apeiria.app.ai.runtime.session.context import (
@@ -51,7 +52,7 @@ class RuntimeContextInputBundle:
     recalled_memories: list["AIMemoryDefinition"]
     relationship_context: str | None
     person_profile: tuple[str, ...]
-    allowed_tools: tuple["AIToolSpec", ...]
+    allowed_tools: tuple["AICapabilityContract", ...]
     initiative_bias: float
 
 

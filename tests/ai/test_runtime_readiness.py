@@ -79,9 +79,9 @@ def _ready_components() -> tuple[AIRuntimeDependencyStatus, ...]:
             detail="initialized",
         ),
         AIRuntimeDependencyStatus(
-            key="capability_bridge",
+            key="host_action_registry",
             available=True,
-            detail="2_capabilities",
+            detail="2_host_actions",
         ),
         AIRuntimeDependencyStatus(
             key="delivery_gateway",
@@ -131,7 +131,7 @@ def test_ai_diagnostics_status_reports_ready_reply_runtime() -> None:
     assert "scheduler recovery registered" in status.summary
     assert "tool registry available" in status.summary
     assert "skill catalog available" in status.summary
-    assert "capability bridge available" in status.summary
+    assert "host action registry available" in status.summary
     assert "delivery gateway available" in status.summary
     assert "trace storage available" in status.summary
     assert probe.calls == 1
@@ -220,12 +220,12 @@ def test_ai_diagnostics_status_reports_degraded_without_reply_model() -> None:
         ),
         (
             AIRuntimeDependencyStatus(
-                key="capability_bridge",
+                key="host_action_registry",
                 available=False,
                 detail="not_initialized",
                 next_step="Load the AI plugin startup lifecycle hook.",
             ),
-            "capability bridge not_initialized",
+            "host action registry not_initialized",
         ),
     ],
 )

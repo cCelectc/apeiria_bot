@@ -7,6 +7,13 @@ from typing import TYPE_CHECKING, Any, Literal
 
 from nonebot.log import logger
 
+from apeiria.ai.capabilities import (
+    AICapabilityBinding,
+    AICapabilityContract,
+    AICapabilityExecutionContext,
+    AICapabilityExposureProfile,
+    evaluate_capability_execution,
+)
 from apeiria.ai.model.runtime.adapter import AIModelMessage
 from apeiria.ai.model.runtime.capabilities import (
     AIModelCallRequirements,
@@ -47,14 +54,16 @@ from apeiria.ai.turn_records import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
     from datetime import datetime
 
+    from apeiria.ai.capabilities import AICapabilityContract
     from apeiria.ai.model.routing.selection import AISelectedModel
     from apeiria.ai.model.runtime.adapter import (
         AIModelGenerateResponse,
         AIModelToolDefinition,
     )
-    from apeiria.ai.tools.models import AIToolIntent, AIToolSpec, AIToolTurnCreateInput
+    from apeiria.ai.tools.models import AIToolIntent, AIToolTurnCreateInput
     from apeiria.ai.tools.service import AIToolService
     from apeiria.ai.turn_records import ToolAttemptStatus
 
@@ -88,6 +97,9 @@ class RuntimeToolLoopInput:
     recalled_memory_ids: tuple[str, ...]
     recalled_memory_contents: tuple[str, ...]
     relationship_context: str | None
+    capability_binding_map: Mapping[str, str] | None = None
+    capability_contracts: Mapping[str, AICapabilityContract] | None = None
+    capability_bindings: Mapping[str, AICapabilityBinding] | None = None
     execution_timeout_seconds: float | None = None
     tool_mode: str = "allow"
 
@@ -135,7 +147,7 @@ class RuntimeToolLoopRunner:
         self,
         *,
         policy: AIToolPolicy,
-        allowed_tools: tuple["AIToolSpec", ...],
+        allowed_tools: tuple["AICapabilityContract", ...],
         available_tools: tuple["AIModelToolDefinition", ...],
     ) -> RuntimeToolLoopResult:
         """Build pre-loop tool policy text and provider tool schema."""
@@ -340,23 +352,14 @@ class RuntimeToolLoopRunner:
         }
         if loop_input.tool_mode == "avoid":
             allowed_names = set()
-        exposed_names = loop_input.executable_tool_names
 
         observations: list[AIToolObservationResult | None] = [None] * len(intents)
         allowed_intents: list[AIToolIntent] = []
         allowed_positions: list[int] = []
         for index, intent in enumerate(intents):
-            if exposed_names is not None and intent.tool_name not in exposed_names:
-                observations[index] = AIToolObservationResult(
-                    tool_name=intent.tool_name,
-                    summary=f"- [{intent.tool_name}] not exposed for this turn",
-                    input_payload=intent.input_payload,
-                    output_payload={
-                        "error": "not_exposed_for_turn",
-                        "trace_id": loop_input.trace_id,
-                    },
-                    status="error",
-                )
+            exposure_decision = self._evaluate_execution_exposure(loop_input, intent)
+            if exposure_decision is not None:
+                observations[index] = exposure_decision
                 continue
             if intent.tool_name not in allowed_names:
                 observations[index] = AIToolObservationResult(
@@ -382,6 +385,89 @@ class RuntimeToolLoopRunner:
                 observations[position] = observation
 
         return observations
+
+    def _evaluate_execution_exposure(
+        self,
+        loop_input: RuntimeToolLoopInput,
+        intent: "AIToolIntent",
+    ) -> "AIToolObservationResult | None":
+        if loop_input.capability_binding_map is None:
+            if (
+                loop_input.executable_tool_names is not None
+                and intent.tool_name not in loop_input.executable_tool_names
+            ):
+                return self._build_not_exposed_observation(loop_input, intent)
+            return None
+
+        binding_key = loop_input.capability_binding_map.get(intent.tool_name)
+        if binding_key is None:
+            return self._build_not_exposed_observation(loop_input, intent)
+
+        contract = (
+            loop_input.capability_contracts.get(intent.tool_name)
+            if loop_input.capability_contracts is not None
+            else None
+        )
+        binding = (
+            loop_input.capability_bindings.get(binding_key)
+            if loop_input.capability_bindings is not None
+            else None
+        )
+        if contract is None or binding is None:
+            return self._build_not_exposed_observation(loop_input, intent)
+
+        decision = evaluate_capability_execution(
+            contract=contract,
+            binding=binding,
+            context=AICapabilityExecutionContext(
+                profile=AICapabilityExposureProfile(
+                    execution_enabled=bool(loop_input.tool_policy.execution_enabled),
+                    allowed_names=(
+                        frozenset(loop_input.tool_policy.allowed_tool_names)
+                        if loop_input.tool_policy.allowed_tool_names is not None
+                        else None
+                    ),
+                    denied_names=frozenset(loop_input.tool_policy.denied_tool_names),
+                    allow_high_risk=loop_input.tool_policy.allow_high_risk_tools,
+                    allow_host_actions=loop_input.tool_policy.allow_host_actions,
+                    max_risk_level=(
+                        "high"
+                        if loop_input.tool_policy.allow_high_risk_tools
+                        else "medium"
+                    ),
+                )
+            ),
+        )
+        if decision.allowed:
+            return None
+        return AIToolObservationResult(
+            tool_name=intent.tool_name,
+            summary=decision.prompt_safe_observation
+            or f"- [{intent.tool_name}] denied by capability policy",
+            input_payload=intent.input_payload,
+            output_payload={
+                "error": "capability_execution_denied",
+                "reason": decision.reason,
+                "trace_id": loop_input.trace_id,
+            },
+            status="error",
+        )
+
+    @staticmethod
+    def _build_not_exposed_observation(
+        loop_input: RuntimeToolLoopInput,
+        intent: "AIToolIntent",
+    ) -> AIToolObservationResult:
+        return AIToolObservationResult(
+            tool_name=intent.tool_name,
+            summary=f"- [{intent.tool_name}] not exposed for this turn",
+            input_payload=intent.input_payload,
+            output_payload={
+                "error": "not_exposed_for_turn",
+                "trace_id": loop_input.trace_id,
+            },
+            status="error",
+        )
 
     async def _generate_tool_loop_model(  # noqa: C901, PLR0913
         self,

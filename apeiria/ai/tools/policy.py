@@ -6,11 +6,11 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from uuid import uuid4
 
+from apeiria.ai.capabilities import AICapabilityBindingType, AICapabilityContract
 from apeiria.ai.tools.models import (
     AIToolCapabilityMode,
     AIToolPolicy,
     AIToolPolicyDecision,
-    AIToolSpec,
     AIToolTurnCreateInput,
 )
 from apeiria.db.runtime import database_runtime
@@ -66,15 +66,17 @@ _MAX_SUMMARY_TOOLS = 5
 
 
 def evaluate_tool_policy(
-    tool: AIToolSpec,
+    tool: AICapabilityContract,
     policy: AIToolPolicy,
+    *,
+    binding_type: AICapabilityBindingType | None = None,
 ) -> AIToolPolicyDecision:
-    """Return whether one skill is allowed under the given scene policy."""
+    """Return whether one executable capability is allowed by scene policy."""
 
     if not policy.execution_enabled:
         return AIToolPolicyDecision(
             allowed=False,
-            reason="tool execution is disabled for this scene",
+            reason="capability execution is disabled for this scene",
         )
 
     if tool.name in policy.denied_tool_names:
@@ -92,16 +94,19 @@ def evaluate_tool_policy(
             reason=f"tool '{tool.name}' is not in the allowlist",
         )
 
-    if tool.risk_level == "high" and not policy.allow_high_risk_tools:
+    if tool.safety.risk_level == "high" and not policy.allow_high_risk_tools:
         return AIToolPolicyDecision(
             allowed=False,
-            reason=f"tool '{tool.name}' is high risk and not enabled",
+            reason=f"capability '{tool.name}' is high risk and not enabled",
         )
 
-    if tool.is_capability_bridge and not policy.allow_capability_bridge:
+    if (
+        binding_type is AICapabilityBindingType.HOST_ACTION
+        and not policy.allow_host_actions
+    ):
         return AIToolPolicyDecision(
             allowed=False,
-            reason="NoneBot capability bridge is not enabled",
+            reason="host actions are not enabled",
         )
 
     return AIToolPolicyDecision(
@@ -111,10 +116,10 @@ def evaluate_tool_policy(
 
 
 def summarize_tool_policy(
-    tools: list[AIToolSpec],
+    tools: list[AICapabilityContract],
     policy: AIToolPolicy,
 ) -> str:
-    """Build a compact textual summary of tool availability for prompts."""
+    """Build a compact textual summary of capability availability."""
 
     preauthorized_tools = [
         tool
@@ -124,7 +129,7 @@ def summarize_tool_policy(
     if not policy.execution_enabled:
         if not preauthorized_tools:
             return (
-                "No tools are active for this turn. "
+                "No executable capabilities are active for this turn. "
                 "Reply using only the visible conversation and recalled context."
             )
 
@@ -134,8 +139,8 @@ def summarize_tool_policy(
         if len(preauthorized_tools) > _MAX_SUMMARY_TOOLS:
             tool_list += ", ..."
         return (
-            "Tools are unavailable for this turn. "
-            f"Pre-authorized tools for other turns: {tool_list}. "
+            "Executable capabilities are unavailable for this turn. "
+            f"Pre-authorized capabilities for other turns: {tool_list}. "
             "Reply without claiming any external actions."
         )
 
@@ -143,15 +148,15 @@ def summarize_tool_policy(
         tool for tool in tools if evaluate_tool_policy(tool, policy).allowed
     ]
     if not allowed_tools:
-        return "No tools are currently allowed for this scene."
+        return "No executable capabilities are currently allowed for this scene."
 
     tool_list = ", ".join(tool.name for tool in allowed_tools[:_MAX_SUMMARY_TOOLS])
     if len(allowed_tools) > _MAX_SUMMARY_TOOLS:
         tool_list += ", ..."
     return (
-        "Tools are available only when they add clear value. "
-        f"Allowed tools for this scene: {tool_list}. "
-        "Keep direct reply as the default path when tools are unnecessary."
+        "Executable capabilities are available only when they add clear value. "
+        f"Allowed capabilities for this scene: {tool_list}. "
+        "Keep direct reply as the default path when external actions are unnecessary."
     )
 
 
@@ -175,19 +180,19 @@ def resolve_default_tool_policy(
             }
         )
 
-    allow_capability_bridge = _allow_capability_bridge(context, profile)
-    if allow_capability_bridge:
-        allowed_tool_names.add("plugin.capability")
+    allow_host_actions = _allow_host_actions(context, profile)
+    if allow_host_actions:
+        allowed_tool_names.update({"help.show", "plugin.inspect"})
 
     return AIToolPolicy(
         execution_enabled=bool(allowed_tool_names),
         allowed_tool_names=allowed_tool_names or None,
-        allow_high_risk_tools=allow_capability_bridge,
-        allow_capability_bridge=allow_capability_bridge,
+        allow_high_risk_tools=allow_host_actions,
+        allow_host_actions=allow_host_actions,
     )
 
 
-def _allow_capability_bridge(
+def _allow_host_actions(
     context: AIToolSceneContext,
     profile: AIToolScenePolicyProfile,
 ) -> bool:
@@ -382,7 +387,6 @@ __all__ = [
     "AIToolPolicyBindingTarget",
     "AIToolSceneContext",
     "AIToolScenePolicyProfile",
-    "AIToolSpec",
     "AIToolTurnCreateInput",
     "ai_tool_policy_binding_service",
     "evaluate_tool_policy",

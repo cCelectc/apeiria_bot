@@ -7,16 +7,16 @@ from typing import TYPE_CHECKING
 from pydantic import BaseModel, Field
 
 if TYPE_CHECKING:
-    from apeiria.ai.skills import AISkillDefinition
+    from apeiria.ai.capabilities import AICapabilityContract
+    from apeiria.ai.skills import AISkillMetadata
     from apeiria.ai.tools import (
-        AICapabilityDefinition,
         AICapabilityPreview,
         AIToolExecutionView,
         AIToolIntentPreview,
         AIToolPolicy,
         AIToolPolicyBindingSpec,
-        AIToolSpec,
     )
+    from apeiria.app.ai.lifecycle import AICapabilityInventoryRecord
 
 
 class AIToolItem(BaseModel):
@@ -25,7 +25,6 @@ class AIToolItem(BaseModel):
     read_only: bool
     concurrency_safe: bool
     risk_level: str
-    is_capability_bridge: bool = False
 
 
 class AISkillItem(BaseModel):
@@ -37,7 +36,6 @@ class AISkillItem(BaseModel):
     concurrency_safe: bool
     risk_level: str
     risk_label: str
-    is_capability_bridge: bool = False
 
 
 class AIToolExecutionItem(BaseModel):
@@ -77,7 +75,7 @@ class AIToolPolicyPreviewItem(BaseModel):
     allowed_tool_names: list[str] | None = None
     denied_tool_names: list[str] = []
     allow_high_risk_tools: bool
-    allow_capability_bridge: bool
+    allow_host_actions: bool
 
 
 class AIToolPolicyBindingItem(BaseModel):
@@ -114,13 +112,27 @@ class AICapabilityPreviewItem(BaseModel):
     registered: bool
     allowed: bool
     reason: str
-    allow_capability_bridge: bool
+    allow_host_actions: bool
     execution_enabled: bool
 
 
 class AICapabilityItem(BaseModel):
     capability_name: str
-    bound_tool_name: str
+    kind: str
+    origin: str
+    description: str
+    read_only: bool
+    concurrency_safe: bool
+    risk_level: str
+    risk_label: str
+    availability: str
+    binding_key: str | None = None
+    binding_type: str | None = None
+    policy_status: str
+    diagnostics: list[str] = []
+    required_capabilities: list[str] = []
+    tags: list[str] = []
+    version: int
 
 
 def _skill_display_name(skill_name: str) -> str:
@@ -128,7 +140,7 @@ def _skill_display_name(skill_name: str) -> str:
         "future_task.manage": "提醒与任务",
         "memory.query": "查询记忆",
         "memory.update": "修正记忆",
-        "plugin.capability": "调用插件能力",
+        "plugin.inspect": "插件检查",
         "relationship.inspect": "查看关系状态",
     }.get(skill_name, skill_name)
 
@@ -138,7 +150,7 @@ def _skill_display_description(skill_name: str, fallback: str) -> str:
         "future_task.manage": "创建、取消或查看机器人已安排的提醒任务。",
         "memory.query": "查看机器人为当前用户或会话召回的长期记忆内容。",
         "memory.update": "修正当前会话中已召回的长期记忆内容。",
-        "plugin.capability": "在允许范围内调用 NoneBot 插件能力。",
+        "plugin.inspect": "查看当前宿主插件加载状态。",
         "relationship.inspect": "查看机器人对当前用户关系状态与情绪倾向的理解。",
     }.get(skill_name, fallback)
 
@@ -151,38 +163,36 @@ def _skill_risk_label(risk_level: str) -> str:
     }.get(risk_level, risk_level)
 
 
-def to_ai_tool_item(item: "AIToolSpec") -> AIToolItem:
+def to_ai_tool_item(item: "AICapabilityContract") -> AIToolItem:
     return AIToolItem(
         name=item.name,
         description=item.description,
-        read_only=item.read_only,
-        concurrency_safe=item.concurrency_safe,
-        risk_level=item.risk_level,
-        is_capability_bridge=item.is_capability_bridge,
+        read_only=item.safety.read_only,
+        concurrency_safe=item.safety.concurrency_safe,
+        risk_level=item.safety.risk_level,
     )
 
 
-def to_ai_skill_item(item: "AISkillDefinition") -> AISkillItem:
+def to_ai_skill_item(item: "AISkillMetadata") -> AISkillItem:
     risk_level = (
         "high"
-        if item.contract.side_effect_level == "high_risk"
+        if item.side_effect_level == "high_risk"
         else "low"
-        if item.contract.side_effect_level == "read_only"
+        if item.side_effect_level == "read_only"
         else "medium"
     )
     return AISkillItem(
-        name=item.skill_name,
+        name=item.name,
         description=item.description,
-        display_name=_skill_display_name(item.skill_name),
+        display_name=_skill_display_name(item.name),
         display_description=_skill_display_description(
-            item.skill_name,
+            item.name,
             item.description,
         ),
-        read_only=item.contract.side_effect_level == "read_only",
-        concurrency_safe=item.contract.idempotency == "idempotent",
+        read_only=item.side_effect_level == "read_only",
+        concurrency_safe=item.idempotent,
         risk_level=risk_level,
         risk_label=_skill_risk_label(risk_level),
-        is_capability_bridge=item.skill_name == "plugin.capability",
     )
 
 
@@ -219,7 +229,7 @@ def to_ai_tool_policy_preview_item(item: "AIToolPolicy") -> AIToolPolicyPreviewI
         ),
         denied_tool_names=sorted(item.denied_tool_names),
         allow_high_risk_tools=item.allow_high_risk_tools,
-        allow_capability_bridge=item.allow_capability_bridge,
+        allow_host_actions=item.allow_host_actions,
     )
 
 
@@ -243,13 +253,29 @@ def to_ai_capability_preview_item(
         registered=item.registered,
         allowed=item.allowed,
         reason=item.reason,
-        allow_capability_bridge=item.allow_capability_bridge,
+        allow_host_actions=item.allow_host_actions,
         execution_enabled=item.execution_enabled,
     )
 
 
-def to_ai_capability_item(item: "AICapabilityDefinition") -> AICapabilityItem:
+def to_ai_capability_item(
+    item: "AICapabilityInventoryRecord",
+) -> AICapabilityItem:
     return AICapabilityItem(
-        capability_name=item.capability_name,
-        bound_tool_name=item.bound_tool_name,
+        capability_name=item.name,
+        kind=item.kind,
+        origin=item.origin,
+        description=item.description,
+        read_only=item.read_only,
+        concurrency_safe=item.concurrency_safe,
+        risk_level=item.risk_level,
+        risk_label=_skill_risk_label(item.risk_level),
+        availability=item.availability,
+        binding_key=item.binding_key,
+        binding_type=item.binding_type,
+        policy_status=item.policy_status,
+        diagnostics=list(item.diagnostics),
+        required_capabilities=list(item.required_capabilities),
+        tags=list(item.tags),
+        version=item.version,
     )

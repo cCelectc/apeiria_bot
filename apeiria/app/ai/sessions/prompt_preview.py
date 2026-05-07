@@ -72,10 +72,11 @@ from .prompt_projection import project_prompt_packet_to_preview
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
+    from apeiria.ai.capabilities import AICapabilityContract
     from apeiria.ai.memory import AIMemoryDefinition
     from apeiria.ai.model import AISelectedModel
     from apeiria.ai.prompting import ReplyPersonaPromptBundleLike
-    from apeiria.ai.tools import AIToolPolicy, AIToolSpec
+    from apeiria.ai.tools import AIToolPolicy
     from apeiria.app.ai.runtime.context.relationships import AIRelationshipTarget
     from apeiria.app.ai.runtime.strategy import RuntimeHardRuleDecision
     from apeiria.conversation.models import (
@@ -196,7 +197,7 @@ def _build_preview_context_bundle(  # noqa: PLR0913
     memories: "Sequence[AIMemoryDefinition]",
     relationship_context: str | None,
     person_profile: tuple[str, ...],
-    allowed_tools: "Sequence[AIToolSpec]",
+    allowed_tools: "Sequence[AICapabilityContract]",
 ) -> RuntimeContextBundle:
     """Build preview-safe context without mutating runtime state."""
 

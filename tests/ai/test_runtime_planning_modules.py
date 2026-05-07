@@ -1,11 +1,18 @@
 from __future__ import annotations
 
 import asyncio
+from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
+from apeiria.ai.capabilities import (
+    AICapabilityContract,
+    AICapabilityKind,
+    AICapabilityOrigin,
+    AICapabilitySafety,
+)
 from apeiria.ai.model import (
     AIChatModelDefinition,
     AIModelBindingTarget,
@@ -13,9 +20,10 @@ from apeiria.ai.model import (
     AIModelToolDefinition,
     AISourceDefinition,
 )
+from apeiria.ai.model.runtime.capabilities import AIModelCapabilities
 from apeiria.ai.persona.service import AIPersonaPromptBundle
 from apeiria.ai.skills.runtime import AISkillSelectionResult
-from apeiria.ai.tools import AIToolPolicy, AIToolSpec
+from apeiria.ai.tools import AIToolPolicy
 from apeiria.app.ai.reply_strategy.models import ReplyStrategyDecision
 from apeiria.app.ai.runtime.execution.tool_loop import RuntimeToolLoopResult
 from apeiria.app.ai.runtime.planning import turn as planning_module
@@ -47,6 +55,21 @@ from apeiria.app.ai.runtime.session.context import (
 from apeiria.app.ai.runtime.stages import RuntimePlanningInput
 from apeiria.conversation.models import ChatContextMessageView, ChatSessionIdentity
 from tests.ai.agent_turn_helpers import selected_model
+
+
+def _tool_contract(name: str) -> AICapabilityContract:
+    return AICapabilityContract(
+        name=name,
+        kind=AICapabilityKind.EXECUTABLE,
+        origin=AICapabilityOrigin.BUILTIN,
+        description="Recall memory",
+        safety=AICapabilitySafety(
+            read_only=True,
+            risk_level="low",
+            concurrency_safe=True,
+        ),
+        tags=("memory",),
+    )
 
 
 def test_runtime_planning_resolves_profile_fallback_candidates(
@@ -228,7 +251,10 @@ def test_runtime_tool_exposure_planning_exports_provider_schema() -> None:
 def test_runtime_planning_uses_runtime_context_materials_for_plan_parity(
     monkeypatch: Any,
 ) -> None:
-    selected = selected_model("runtime-plan")
+    selected = replace(
+        selected_model("runtime-plan"),
+        resolved_capabilities=AIModelCapabilities(supports_tool_calling=True),
+    )
     fallback = selected_model("runtime-fallback")
     captured_selection: list[tuple[str, AIModelBindingTarget]] = []
     captured_skill_selection: list[tuple[str, str | None]] = []
@@ -268,15 +294,7 @@ def test_runtime_planning_uses_runtime_context_materials_for_plan_parity(
         recalled_memories=[],
         relationship_context="Relationship context.",
         person_profile=("Profile line.",),
-        allowed_tools=(
-            AIToolSpec(
-                name="memory.query",
-                description="Recall memory",
-                read_only=True,
-                concurrency_safe=True,
-                tags=("memory",),
-            ),
-        ),
+        allowed_tools=(_tool_contract("memory.query"),),
         initiative_bias=0.0,
     )
     turn = RuntimeTurnInput(
@@ -353,6 +371,112 @@ def test_runtime_planning_uses_runtime_context_materials_for_plan_parity(
     assert plan.prompt_packet.purpose == "reply_planner"
     assert plan.prompt_diagnostics["prompt_purpose"] == "reply_planner"
     assert plan.tool_exposure_plan.selected_tool_names == ("memory.query",)
+
+
+def test_runtime_planning_replans_exposure_after_model_selection(
+    monkeypatch: Any,
+) -> None:
+    selected = replace(
+        selected_model("runtime-plan"),
+        resolved_capabilities=AIModelCapabilities(supports_tool_calling=False),
+    )
+    now = datetime(2026, 5, 6, tzinfo=timezone.utc)
+    identity = ChatSessionIdentity(
+        session_id="session-plan",
+        platform="test",
+        bot_id="bot-1",
+        scene_type="private",
+        scene_id="user-1",
+        subject_id="user-1",
+    )
+    context = RuntimeContextMaterials(
+        turns=[],
+        conversation_summary=None,
+        relationship_target=object(),  # type: ignore[arg-type]
+        model_target=AIModelBindingTarget(
+            conversation_id="session-plan",
+            group_id=None,
+            user_id="user-1",
+        ),
+        tool_policy=AIToolPolicy(
+            execution_enabled=True,
+            allowed_tool_names={"memory.query"},
+        ),
+        persona=None,
+        recalled_memories=[],
+        relationship_context=None,
+        person_profile=(),
+        allowed_tools=(_tool_contract("memory.query"),),
+        initiative_bias=0.0,
+    )
+    turn = RuntimeTurnInput(
+        identity=identity,
+        sender_id="user-1",
+        source=RuntimeTurnSource(
+            runtime_mode="message",
+            message_text="hello",
+            source_message_id="msg-1",
+            user_id="user-1",
+            is_private=True,
+        ),
+    )
+    social_decision = ReplyStrategyDecision(
+        action="reply",
+        should_speak=True,
+        tool_mode="allow",
+        reason_codes=("direct_message",),
+        reason_text="Direct message.",
+        evidence={},
+        decision_source="llm",
+    )
+
+    async def select_runtime_model(
+        *,
+        task_class: str,
+        target: AIModelBindingTarget,
+    ):
+        del task_class, target
+        return selected
+
+    async def select_fallbacks(_selected: object):
+        return ()
+
+    async def select_skills(
+        *,
+        message_text: str,
+        conversation_summary: str | None,
+    ) -> AISkillSelectionResult:
+        del message_text, conversation_summary
+        return AISkillSelectionResult(
+            selected_names=(),
+            activations=(),
+            activation_prompt=None,
+        )
+
+    monkeypatch.setattr(planning_module, "select_model", select_runtime_model)
+    monkeypatch.setattr(planning_module, "select_fallback_models", select_fallbacks)
+    monkeypatch.setattr(planning_module, "select_runtime_skills", select_skills)
+
+    plan = asyncio.run(
+        planning_module.plan_runtime_turn(
+            planning_input=RuntimePlanningInput(
+                stage="planning",
+                trace_id="trace-plan",
+                turn=turn,
+                context=context,
+                social_decision=social_decision,
+                current_time=now,
+            ),
+        )
+    )
+
+    assert plan is not None
+    assert plan.pre_tool_task_class == "tool_orchestration"
+    assert plan.has_executable_tools is False
+    assert plan.skill_runtime.available_tools == ()
+    assert plan.tool_exposure_plan.unavailable_reasons == {
+        "memory.query": "selected model does not support tools"
+    }
 
 
 def test_runtime_planning_no_longer_imports_old_pipeline_helpers() -> None:

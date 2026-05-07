@@ -5,6 +5,12 @@ from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from typing import Any
 
+from apeiria.ai.capabilities import (
+    AICapabilityContract,
+    AICapabilityKind,
+    AICapabilityOrigin,
+    AICapabilitySafety,
+)
 from apeiria.ai.memory import AIMemoryDefinition
 from apeiria.ai.model import AIModelMessage, AIModelToolCall, AISelectedModel
 from apeiria.ai.model.runtime.capabilities import (
@@ -26,7 +32,6 @@ from apeiria.ai.prompting import (
     build_tool_intent_planning_packet,
     render_messages,
 )
-from apeiria.ai.tools.models import AIToolSpec
 from apeiria.app.ai.reply_strategy.models import SocialJudgmentInput
 from apeiria.conversation.models import ChatContextMessageView
 from tests.ai.agent_turn_helpers import model_response, selected_model
@@ -319,6 +324,40 @@ def test_social_judgment_degrades_schema_to_json_object_when_only_json_mode(
     assert invoker.degradation_calls[0][0].kind == "structured_output_degraded"
 
 
+def test_skill_runtime_selection_projects_prompt_skill_capabilities() -> None:
+    from apeiria.ai.skills.parser import AISkillFileDefinition
+    from apeiria.ai.skills.runtime import AISkillRuntime
+
+    runtime = AISkillRuntime()
+    runtime.register_file_skills(
+        [
+            AISkillFileDefinition(
+                skill_name="drawing",
+                description="Draw things",
+                version=1,
+                triggers=(),
+                permissions=(),
+                entry_mode="prompt_only",
+                body_markdown="Use simple drawing instructions.",
+                file_path="<test>",
+                tools=("memory.query",),
+                tags=("creative",),
+            )
+        ]
+    )
+
+    result = runtime.build_selection_result(selected_names=("drawing",))
+
+    assert result.activation_prompt is not None
+    assert tuple(activation.name for activation in result.prompt_activations) == (
+        "drawing",
+    )
+    assert result.prompt_activations[0].required_capabilities == ("memory.query",)
+    assert result.prompt_activations[0].body_markdown == (
+        "Use simple drawing instructions."
+    )
+
+
 def test_social_judgment_omits_native_response_format_when_unsupported(
     monkeypatch: Any,
 ) -> None:
@@ -482,11 +521,16 @@ def test_tool_intent_planning_uses_messages_and_tools(monkeypatch: Any) -> None:
             (),
             {
                 "list_allowed_tools": lambda _self, _policy: [
-                    AIToolSpec(
+                    AICapabilityContract(
                         name="memory.query",
+                        kind=AICapabilityKind.EXECUTABLE,
+                        origin=AICapabilityOrigin.BUILTIN,
                         description="Search memory",
-                        read_only=True,
-                        concurrency_safe=True,
+                        safety=AICapabilitySafety(
+                            read_only=True,
+                            risk_level="low",
+                            concurrency_safe=True,
+                        ),
                     )
                 ]
             },

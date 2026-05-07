@@ -7,9 +7,8 @@ from typing import TYPE_CHECKING, Any
 
 from nonebot.log import logger
 
+from apeiria.ai.capabilities import AICapabilityBindingType
 from apeiria.ai.tools.models import (
-    AICapabilityInvokeObservationOutput,
-    AINoneBotCapabilityRequest,
     AIToolExecutionContext,
     AIToolExecutionRequest,
     AIToolIntent,
@@ -17,6 +16,8 @@ from apeiria.ai.tools.models import (
 )
 
 if TYPE_CHECKING:
+    from apeiria.ai.capabilities import AICapabilityBinding
+    from apeiria.ai.tools.models import AIToolResult
     from apeiria.ai.tools.registry import AIToolRegistry
 
 MAX_CONSECUTIVE_FAILURES = 3
@@ -29,6 +30,7 @@ class AIToolIntentExecutor:
         self,
         *,
         registry: AIToolRegistry,
+        bindings: "dict[str, AICapabilityBinding] | None" = None,
         request: AIToolExecutionRequest,
         intents: list[AIToolIntent],
     ) -> list[AIToolObservationResult]:
@@ -49,6 +51,7 @@ class AIToolIntentExecutor:
 
             observation = await self._execute_single_intent(
                 registry=registry,
+                bindings=bindings,
                 request=request,
                 intent=intent,
             )
@@ -65,19 +68,24 @@ class AIToolIntentExecutor:
         self,
         *,
         registry: AIToolRegistry,
+        bindings: "dict[str, AICapabilityBinding] | None",
         request: AIToolExecutionRequest,
         intent: AIToolIntent,
     ) -> AIToolObservationResult:
-        spec = registry.get(intent.tool_name)
-        if spec is None or spec.entrypoint is None:
+        binding = (
+            bindings.get(intent.tool_name)
+            if bindings is not None
+            else registry.get_binding_for_contract(intent.tool_name)
+        )
+        if binding is None or binding.handler is None:
             return AIToolObservationResult(
                 tool_name=intent.tool_name,
                 summary=(
-                    f"- [{intent.tool_name}] failed: tool not found or "
-                    "has no entrypoint"
+                    f"- [{intent.tool_name}] failed: capability not found or "
+                    "has no binding"
                 ),
                 input_payload=intent.input_payload,
-                output_payload={"error": "tool not found"},
+                output_payload={"error": "capability not found"},
                 status="error",
             )
 
@@ -97,14 +105,25 @@ class AIToolIntentExecutor:
         )
 
         try:
-            execution = spec.entrypoint(**arguments, context=context)
-            if request.execution_timeout_seconds is not None:
-                result = await asyncio.wait_for(
-                    execution,
-                    timeout=request.execution_timeout_seconds,
-                )
+            if binding.binding_type is AICapabilityBindingType.HOST_ACTION:
+                execution = binding.handler(arguments)
+                if request.execution_timeout_seconds is not None:
+                    result = await asyncio.wait_for(
+                        _await_if_needed(execution),
+                        timeout=request.execution_timeout_seconds,
+                    )
+                else:
+                    result = await _await_if_needed(execution)
+                result = _host_action_result(intent.tool_name, result)
             else:
-                result = await execution
+                execution = binding.handler(**arguments, context=context)
+                if request.execution_timeout_seconds is not None:
+                    result = await asyncio.wait_for(
+                        execution,
+                        timeout=request.execution_timeout_seconds,
+                    )
+                else:
+                    result = await execution
             return AIToolObservationResult(
                 tool_name=intent.tool_name,
                 summary=result.summary,
@@ -169,81 +188,31 @@ class AIToolIntentExecutor:
             )
 
 
-def build_capability_success_result(
-    request: AINoneBotCapabilityRequest,
+def _host_action_result(
+    action_name: str,
     result: Any,
-) -> AIToolObservationResult:
-    return AIToolObservationResult(
-        tool_name="plugin.capability",
-        summary=_format_capability_observation(request.capability_name, result),
-        input_payload=request,
-        output_payload=AICapabilityInvokeObservationOutput(
-            capability_name=request.capability_name,
-            result=result,
-        ),
+) -> "AIToolResult":
+    from apeiria.ai.tools.models import AIToolResult
+
+    if isinstance(result, AIToolResult):
+        return result
+    return AIToolResult(
+        summary=_format_host_action_observation(action_name, result),
+        output_payload=result,
     )
 
 
-def build_capability_error_result(
-    request: AINoneBotCapabilityRequest,
-    error_message: str,
-) -> AIToolObservationResult:
-    return AIToolObservationResult(
-        tool_name="plugin.capability",
-        summary=_format_capability_error(request.capability_name, error_message),
-        input_payload=request,
-        output_payload=AICapabilityInvokeObservationOutput(
-            capability_name=request.capability_name,
-            result={"error": error_message},
-        ),
-        status="error",
-    )
-
-
-def build_capability_timeout_result(
-    request: AINoneBotCapabilityRequest,
-    timeout_seconds: float,
-) -> AIToolObservationResult:
-    return AIToolObservationResult(
-        tool_name="plugin.capability",
-        summary=_format_capability_timeout(
-            request.capability_name,
-            timeout_seconds,
-        ),
-        input_payload=request,
-        output_payload=AICapabilityInvokeObservationOutput(
-            capability_name=request.capability_name,
-            result={
-                "error": "timeout",
-                "timeout_seconds": timeout_seconds,
-            },
-        ),
-        status="timeout",
-    )
-
-
-def _format_capability_observation(
-    capability_name: str,
+def _format_host_action_observation(
+    action_name: str,
     result: Any,
 ) -> str:
     if isinstance(result, dict):
         summary = ", ".join(f"{key}={value}" for key, value in sorted(result.items()))
-        return f"- [plugin.capability] {capability_name}: {summary}"
-    return f"- [plugin.capability] {capability_name}: {result}"
+        return f"- [{action_name}] {summary}"
+    return f"- [{action_name}] {result}"
 
 
-def _format_capability_error(
-    capability_name: str,
-    error_message: str,
-) -> str:
-    return f"- [plugin.capability] {capability_name} failed: {error_message}"
-
-
-def _format_capability_timeout(
-    capability_name: str,
-    timeout_seconds: float,
-) -> str:
-    return (
-        f"- [plugin.capability] {capability_name} timed out after "
-        f"{timeout_seconds:.1f}s"
-    )
+async def _await_if_needed(value: Any) -> Any:
+    if asyncio.iscoroutine(value):
+        return await value
+    return value

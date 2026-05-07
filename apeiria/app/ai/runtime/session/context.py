@@ -8,10 +8,11 @@ from typing import TYPE_CHECKING, Literal
 if TYPE_CHECKING:
     from datetime import datetime
 
+    from apeiria.ai.capabilities import AICapabilityContract
     from apeiria.ai.memory import AIMemoryDefinition, AIMessageSentiment
     from apeiria.ai.model import AIModelBindingTarget, AIModelMessage
     from apeiria.ai.prompting import ReplyPersonaPromptBundleLike
-    from apeiria.ai.tools import AIToolPolicy, AIToolSpec
+    from apeiria.ai.tools import AIToolPolicy
     from apeiria.app.ai.future_tasks.models import AIFutureTaskDefinition
     from apeiria.app.ai.reply_strategy.models import ReplyStrategyDecision
     from apeiria.app.ai.runtime.context.materials import RuntimeContextInputBundle
@@ -168,7 +169,7 @@ class RuntimeContextMaterials:
     recalled_memories: list["AIMemoryDefinition"]
     relationship_context: str | None
     person_profile: tuple[str, ...]
-    allowed_tools: tuple["AIToolSpec", ...]
+    allowed_tools: tuple["AICapabilityContract", ...]
     initiative_bias: float
 
     @classmethod

@@ -4,6 +4,16 @@ import asyncio
 from datetime import datetime, timezone
 from typing import Any
 
+from apeiria.ai.capabilities import (
+    AICapabilityBindingRegistry,
+    AICapabilityContract,
+    AICapabilityContractRegistry,
+    AICapabilityExposurePlan,
+    AICapabilityKind,
+    AICapabilityOrigin,
+    AICapabilitySafety,
+    create_local_tool_binding,
+)
 from apeiria.ai.model import AIModelBindingTarget, AIModelMessage, AIModelToolDefinition
 from apeiria.ai.tools import AIToolPolicy, AIToolTurnCreateInput
 from apeiria.app.ai.agent_turn import AgentModelGenerationResult, AgentTurnResult
@@ -104,6 +114,48 @@ def _plan(
         reply_compose_input=reply_compose_input,
         tool_mode="allow",
         tool_execution_timeout_seconds=3.0,
+    )
+
+
+async def _handler(**_: object) -> object:
+    return {}
+
+
+def _capability_exposure_plan() -> ToolExposurePlan:
+    contract = AICapabilityContract(
+        name="memory.query",
+        kind=AICapabilityKind.EXECUTABLE,
+        origin=AICapabilityOrigin.BUILTIN,
+        description="Recall memory",
+        safety=AICapabilitySafety(
+            read_only=True,
+            risk_level="low",
+            concurrency_safe=True,
+        ),
+    )
+    contracts = AICapabilityContractRegistry(contracts=(contract,))
+    bindings = AICapabilityBindingRegistry(
+        bindings=(
+            create_local_tool_binding(
+                contract_name=contract.name,
+                binding_key="local:memory.query",
+                handler=_handler,
+            ),
+        )
+    )
+    return ToolExposurePlan(
+        capability_contracts=contracts.snapshot(),
+        capability_bindings=bindings.snapshot(),
+        capability_plan=AICapabilityExposurePlan(
+            model_visible_tools=(
+                AIModelToolDefinition(
+                    name="memory_query",
+                    description="Recall memory",
+                    parameters={"type": "object", "properties": {}},
+                ),
+            ),
+            binding_map={"memory.query": "local:memory.query"},
+        ),
     )
 
 
@@ -342,3 +394,43 @@ def test_tool_execution_uses_provider_schema_from_same_exposure_plan(
     assert result.response.content == "tool answer"
     assert result.turn_result is not None
     assert result.turn_result.response_source == "tool_loop"
+
+
+def test_tool_execution_passes_capability_plan_to_tool_loop(
+    monkeypatch: Any,
+) -> None:
+    exposure_plan = _capability_exposure_plan()
+    loop_inputs: list[Any] = []
+
+    async def run_tool_loop(loop_input: Any) -> RuntimeToolLoopResult:
+        loop_inputs.append(loop_input)
+        return RuntimeToolLoopResult(
+            policy_text="allowed: memory.query",
+            result_lines=(),
+            turns=(),
+            final_response=model_response(loop_input.selected, "tool answer"),
+            finish_reason="final_response",
+        )
+
+    monkeypatch.setattr(execution_module.runtime_tool_loop_runner, "run", run_tool_loop)
+    context = _context(exposure_plan=exposure_plan)
+    plan = _plan(
+        exposure_plan=exposure_plan,
+        prompt_messages=context.prompt_messages,
+        reply_compose_input=_compose_input(),
+    )
+
+    asyncio.run(
+        execution_module.execute_tool_capable_runtime_turn(
+            turn_context=context,
+            plan=plan,
+        )
+    )
+
+    assert loop_inputs[0].tools[0].name == "memory_query"
+    assert loop_inputs[0].executable_tool_names == frozenset({"memory.query"})
+    assert loop_inputs[0].capability_binding_map == {
+        "memory.query": "local:memory.query"
+    }
+    assert "memory.query" in loop_inputs[0].capability_contracts
+    assert "local:memory.query" in loop_inputs[0].capability_bindings

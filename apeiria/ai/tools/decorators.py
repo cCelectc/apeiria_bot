@@ -4,7 +4,14 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from apeiria.ai.tools.schema import build_parameters_from_signature
+from apeiria.ai.capabilities import (
+    AICapabilityContract,
+    AICapabilityKind,
+    AICapabilityOrigin,
+    AICapabilitySafety,
+)
+from apeiria.ai.tools.registry import local_tool_declaration
+from apeiria.ai.tools.schema import build_json_schema, build_parameters_from_signature
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -21,7 +28,6 @@ def ai_tool(  # noqa: PLR0913
     read_only: bool,
     concurrency_safe: bool,
     risk_level: AIToolRiskLevel = "low",
-    is_capability_bridge: bool = False,
     tags: tuple[str, ...] = (),
 ) -> Callable[..., Any]:
     """Decorator that registers an async function as an AI tool.
@@ -48,23 +54,24 @@ def ai_tool(  # noqa: PLR0913
     """
 
     def decorator(func: Any) -> Any:
-        from apeiria.ai.tools.models import AIToolSpec
-
         parameters = build_parameters_from_signature(func)
-        spec = AIToolSpec(
+        contract = AICapabilityContract(
             name=name,
+            kind=AICapabilityKind.EXECUTABLE,
+            origin=AICapabilityOrigin.BUILTIN,
             description=description,
-            read_only=read_only,
-            concurrency_safe=concurrency_safe,
-            risk_level=risk_level,
-            is_capability_bridge=is_capability_bridge,
-            parameters=parameters,
-            entrypoint=func,
-            origin="builtin",
+            input_schema=build_json_schema(parameters) if parameters else {},
+            safety=AICapabilitySafety(
+                read_only=read_only,
+                risk_level=risk_level,
+                concurrency_safe=concurrency_safe,
+            ),
             tags=tags,
         )
-        _PENDING_TOOLS.append(spec)
-        func.__ai_tool_spec__ = spec
+        declaration = local_tool_declaration(contract=contract, handler=func)
+        _PENDING_TOOLS.append(declaration)
+        func.__ai_tool_contract__ = contract
+        func.__ai_tool_binding__ = declaration.binding
         return func
 
     return decorator

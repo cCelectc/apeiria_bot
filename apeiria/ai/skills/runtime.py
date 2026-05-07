@@ -7,6 +7,9 @@ from typing import TYPE_CHECKING, Literal
 
 from nonebot.log import logger
 
+from apeiria.ai.capabilities import AIPromptSkillActivation
+from apeiria.ai.capabilities.adapters import capability_contract_from_skill_file
+
 if TYPE_CHECKING:
     from apeiria.ai.skills.parser import AISkillFileDefinition
 
@@ -54,6 +57,7 @@ class AISkillSelectionResult:
     selected_names: tuple[str, ...]
     activations: tuple[AISkillActivation, ...]
     activation_prompt: str | None
+    prompt_activations: tuple[AIPromptSkillActivation, ...] = ()
 
 
 _EMPTY_SELECTION = AISkillSelectionResult(
@@ -170,6 +174,7 @@ class AISkillRuntime:
             selected_names=tuple(selected_names),
             activations=tuple(activations),
             activation_prompt=activation_prompt,
+            prompt_activations=self._project_prompt_activations(activations),
         )
 
     # ------------------------------------------------------------------
@@ -213,6 +218,27 @@ class AISkillRuntime:
         """Public entry for admin/test explicit activation."""
 
         return self._activate_skill(skill_name, reason="explicit")
+
+    def _project_prompt_activations(
+        self,
+        activations: list[AISkillActivation],
+    ) -> tuple[AIPromptSkillActivation, ...]:
+        projected: list[AIPromptSkillActivation] = []
+        for activation in activations:
+            file_def = self._file_skills.get(activation.skill_name)
+            if file_def is None:
+                continue
+            _contract, binding = capability_contract_from_skill_file(file_def)
+            if binding.load_prompt is None:
+                continue
+            projected.append(
+                AIPromptSkillActivation(
+                    name=activation.skill_name,
+                    body_markdown=binding.load_prompt(),
+                    required_capabilities=binding.required_capabilities,
+                )
+            )
+        return tuple(projected)
 
     # ------------------------------------------------------------------
     # Prompt building

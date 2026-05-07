@@ -1,4 +1,4 @@
-"""Built-in capability registration for the AI capability bridge."""
+"""Built-in host-action registration for AI tools."""
 
 from __future__ import annotations
 
@@ -7,14 +7,41 @@ from typing import TYPE_CHECKING
 from nonebot import get_loaded_plugins
 
 if TYPE_CHECKING:
-    from apeiria.ai.tools.bridge import AINoneBotCapabilityBridge
+    from apeiria.ai.tools.host_actions import AIHostActionRegistry
 
 
-def register_builtin_capabilities(bridge: "AINoneBotCapabilityBridge") -> None:
-    """Register built-in capability handlers for the current process."""
+def register_builtin_capabilities(registry: "AIHostActionRegistry") -> None:
+    """Register built-in host-action handlers for the current process."""
 
-    bridge.register("help.show", capability_help_show)
-    bridge.register("plugin.inspect", capability_plugin_inspect)
+    from apeiria.ai.tools.host_actions import (
+        AIHostActionContractInput,
+        host_action_contract,
+    )
+
+    registry.register_action(
+        contract=host_action_contract(
+            AIHostActionContractInput(
+                name="help.show",
+                description="Show available built-in AI host actions.",
+            )
+        ),
+        handler=capability_help_show,
+    )
+    registry.register_action(
+        contract=host_action_contract(
+            AIHostActionContractInput(
+                name="plugin.inspect",
+                description="Inspect loaded host plugins.",
+                input_schema={
+                    "type": "object",
+                    "properties": {"plugin_query": {"type": "string"}},
+                    "required": ["plugin_query"],
+                    "additionalProperties": False,
+                },
+            )
+        ),
+        handler=capability_plugin_inspect,
+    )
 
 
 def capability_help_show(_: dict[str, object]) -> dict[str, object]:

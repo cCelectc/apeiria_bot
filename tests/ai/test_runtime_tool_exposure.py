@@ -3,9 +3,19 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from types import MappingProxyType
 
+from apeiria.ai.capabilities import (
+    AICapabilityBindingSnapshot,
+    AICapabilityContract,
+    AICapabilityContractSnapshot,
+    AICapabilityKind,
+    AICapabilityOrigin,
+    AICapabilitySafety,
+    create_local_tool_binding,
+)
 from apeiria.ai.model import AIModelToolDefinition
-from apeiria.ai.tools import AIToolPolicy, AIToolSpec
+from apeiria.ai.tools import AIToolPolicy
 from apeiria.app.ai.runtime.execution.tool_loop import RuntimeToolLoopInput
 from apeiria.app.ai.runtime.planning.tool_exposure import (
     ToolExposurePlan,
@@ -21,16 +31,54 @@ def _tool(
     name: str,
     *,
     tags: tuple[str, ...] = (),
-    is_capability_bridge: bool = False,
-    concurrency_safe: bool = True,
-) -> AIToolSpec:
-    return AIToolSpec(
+    safe: bool = True,
+    risk_level: str = "low",
+    input_schema: dict[str, object] | None = None,
+) -> AICapabilityContract:
+    return AICapabilityContract(
         name=name,
+        kind=AICapabilityKind.EXECUTABLE,
+        origin=AICapabilityOrigin.BUILTIN,
         description=f"{name} description",
-        read_only=True,
-        concurrency_safe=concurrency_safe,
+        input_schema=input_schema or {},
+        safety=AICapabilitySafety(
+            read_only=risk_level == "low",
+            risk_level=risk_level,  # type: ignore[arg-type]
+            concurrency_safe=safe,
+        ),
         tags=tags,
-        is_capability_bridge=is_capability_bridge,
+    )
+
+
+async def _handler(**_: object) -> object:
+    return {}
+
+
+def _snapshots(
+    tools: tuple[AICapabilityContract, ...],
+) -> tuple[AICapabilityContractSnapshot, AICapabilityBindingSnapshot]:
+    bindings = tuple(
+        create_local_tool_binding(
+            contract_name=tool.name,
+            binding_key=f"local:{tool.name}",
+            handler=_handler,
+        )
+        for tool in tools
+    )
+    return (
+        AICapabilityContractSnapshot(
+            contracts=tools,
+            by_name=MappingProxyType({tool.name: tool for tool in tools}),
+        ),
+        AICapabilityBindingSnapshot(
+            bindings=bindings,
+            by_key=MappingProxyType(
+                {binding.binding_key: binding for binding in bindings}
+            ),
+            by_contract=MappingProxyType(
+                {binding.contract_name: binding for binding in bindings}
+            ),
+        ),
     )
 
 
@@ -40,11 +88,7 @@ def test_default_tool_exposure_categories_are_stable_and_schema_free() -> None:
             _tool("memory.query", tags=("memory",)),
             _tool("future_task.create", tags=("future_task",)),
             _tool("relationship.inspect", tags=("relationship",)),
-            _tool(
-                "plugin.capability.invoke",
-                tags=("plugin_capability",),
-                is_capability_bridge=True,
-            ),
+            _tool("plugin.inspect", tags=("plugin_capability",)),
         ),
         ordinary_ambient_group=True,
     )
@@ -97,11 +141,15 @@ def test_non_ambient_context_keeps_admin_diagnostics_visible() -> None:
 def test_tool_orchestrator_selects_policy_allowed_executable_tools() -> None:
     orchestrator = ToolOrchestrator()
 
+    tools = (
+        _tool("memory.query", tags=("memory",)),
+        _tool("memory.update", tags=("memory",)),
+    )
+    contracts, bindings = _snapshots(tools)
     plan = orchestrator.plan_exposure(
-        allowed_tools=(
-            _tool("memory.query", tags=("memory",)),
-            _tool("memory.update", tags=("memory",)),
-        ),
+        allowed_tools=tools,
+        contracts=contracts,
+        bindings=bindings,
         policy=AIToolPolicy(
             execution_enabled=True,
             allowed_tool_names={"memory.query", "memory.update"},
@@ -112,14 +160,57 @@ def test_tool_orchestrator_selects_policy_allowed_executable_tools() -> None:
         execution_timeout_seconds=7.5,
     )
 
-    assert tuple(tool.name for tool in plan.selected_tool_specs) == ("memory.query",)
+    assert tuple(tool.name for tool in plan.selected_tool_contracts) == (
+        "memory.query",
+    )
     assert plan.selected_tools == ()
     provider_tools = compile_tool_exposure_provider_schema(plan)
     assert tuple(tool.name for tool in provider_tools) == ("memory_query",)
-    assert plan.denied_reasons == {"memory.update": "policy_denied"}
+    assert plan.denied_reasons == {"memory.update": "explicitly denied"}
     assert plan.unavailable_reasons == {}
     assert plan.diagnostics["execution_timeout_seconds"] == 7.5
     assert plan.diagnostics["parallel_safe_tool_names"] == ("memory.query",)
+
+
+def test_tool_exposure_plan_carries_capability_contract_projection() -> None:
+    tool = _tool(
+        "future_task.manage",
+        risk_level="medium",
+        safe=False,
+        input_schema={
+            "type": "object",
+            "properties": {"title": {"type": "string", "description": "Task title"}},
+            "required": ["title"],
+            "additionalProperties": False,
+        },
+    )
+    contracts, bindings = _snapshots((tool,))
+    plan = ToolOrchestrator().plan_exposure(
+        allowed_tools=(tool,),
+        contracts=contracts,
+        bindings=bindings,
+        policy=AIToolPolicy(
+            execution_enabled=True,
+            allowed_tool_names={"future_task.manage"},
+        ),
+        requested_tool_names=("future_task.manage",),
+        ordinary_ambient_group=False,
+        execution_timeout_seconds=7.5,
+        current_time=datetime(2026, 5, 7, tzinfo=timezone.utc),
+    )
+
+    assert tuple(plan.capability_plan.binding_map) == ("future_task.manage",)
+    provider_tool = compile_tool_exposure_provider_schema(
+        plan,
+        current_time=datetime(2026, 5, 7, tzinfo=timezone.utc),
+    )[0]
+    assert provider_tool.name == "future_task_manage"
+    assert provider_tool.parameters["required"] == ["title"]
+    assert "Current reference time" in provider_tool.description
+    assert plan.capability_contracts is not None
+    assert plan.capability_bindings is not None
+    assert "future_task.manage" in plan.capability_contracts.by_name
+    assert "local:future_task.manage" in plan.capability_bindings.by_key
 
 
 def test_tool_orchestrator_denial_observation_is_bounded() -> None:
@@ -134,10 +225,12 @@ def test_tool_orchestrator_denial_observation_is_bounded() -> None:
 
 
 def test_tool_orchestrator_does_not_assume_parallel_safety() -> None:
+    tools = (_tool("memory.query", tags=("memory",), safe=False),)
+    contracts, bindings = _snapshots(tools)
     plan = ToolOrchestrator().plan_exposure(
-        allowed_tools=(
-            _tool("memory.query", tags=("memory",), concurrency_safe=False),
-        ),
+        allowed_tools=tools,
+        contracts=contracts,
+        bindings=bindings,
         policy=AIToolPolicy(
             execution_enabled=True,
             allowed_tool_names={"memory.query"},
@@ -147,14 +240,20 @@ def test_tool_orchestrator_does_not_assume_parallel_safety() -> None:
         execution_timeout_seconds=7.5,
     )
 
-    assert tuple(tool.name for tool in plan.selected_tool_specs) == ("memory.query",)
+    assert tuple(tool.name for tool in plan.selected_tool_contracts) == (
+        "memory.query",
+    )
     assert compile_tool_exposure_provider_schema(plan)[0].name == "memory_query"
     assert plan.diagnostics["parallel_safe_tool_names"] == ()
 
 
 def test_tool_orchestrator_records_unavailable_tools_before_schema_compile() -> None:
+    tools = (_tool("memory.query", tags=("memory",)),)
+    contracts, bindings = _snapshots(tools)
     plan = ToolOrchestrator().plan_exposure(
-        allowed_tools=(_tool("memory.query", tags=("memory",)),),
+        allowed_tools=tools,
+        contracts=contracts,
+        bindings=bindings,
         policy=AIToolPolicy(
             execution_enabled=False,
             allowed_tool_names={"memory.query"},
@@ -164,11 +263,37 @@ def test_tool_orchestrator_records_unavailable_tools_before_schema_compile() -> 
         execution_timeout_seconds=3.0,
     )
 
-    assert plan.selected_tool_specs == ()
+    assert plan.selected_tool_contracts == ()
     assert compile_tool_exposure_provider_schema(plan) == ()
-    assert plan.unavailable_reasons == {"memory.query": "execution_disabled"}
+    assert plan.unavailable_reasons == {"memory.query": "execution is disabled"}
     assert plan.diagnostics["selected_tool_count"] == 0
     assert plan.diagnostics["execution_timeout_seconds"] == 3.0
+
+
+def test_tool_orchestrator_filters_contracts_by_selected_model_capability() -> None:
+    tools = (_tool("memory.query", tags=("memory",)),)
+    contracts, bindings = _snapshots(tools)
+    plan = ToolOrchestrator().plan_exposure(
+        allowed_tools=tools,
+        contracts=contracts,
+        bindings=bindings,
+        policy=AIToolPolicy(
+            execution_enabled=True,
+            allowed_tool_names={"memory.query"},
+        ),
+        requested_tool_names=("memory.query",),
+        ordinary_ambient_group=False,
+        execution_timeout_seconds=3.0,
+        model_supports_tools=False,
+    )
+
+    assert plan.selected_tool_contracts == tools
+    assert compile_tool_exposure_provider_schema(plan) == ()
+    assert plan.capability_plan.binding_map == {}
+    assert plan.unavailable_reasons == {
+        "memory.query": "selected model does not support tools"
+    }
+    assert plan.diagnostics["model_supports_tools"] is False
 
 
 def test_tool_exposure_allowlist_uses_selected_tools_only() -> None:

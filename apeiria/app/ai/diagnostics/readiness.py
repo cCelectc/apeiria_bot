@@ -323,7 +323,7 @@ def _format_dependency_summary(
         "scheduler_recovery": "scheduler recovery",
         "tool_registry": "tool registry",
         "skill_catalog": "skill catalog",
-        "capability_bridge": "capability bridge",
+        "host_action_registry": "host action registry",
         "delivery_gateway": "delivery gateway",
         "trace_storage": "trace storage",
     }

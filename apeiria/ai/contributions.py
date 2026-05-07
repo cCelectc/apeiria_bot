@@ -1,36 +1,69 @@
 """Plugin-facing AI contribution declarations.
 
 Plugins that depend on ``apeiria.builtin_plugins.ai`` can import this module at
-plugin import time to declare AI tools, file-based skill sources, and
-capability bridge handlers. The declarations are stored in a narrow registry;
-the AI plugin lifecycle applies them during startup.
+plugin import time to declare AI tools, file-based skill sources, and host-action
+handlers. The declarations are stored in a narrow registry; the AI plugin
+lifecycle applies them during startup.
 """
 
 from __future__ import annotations
 
 import inspect
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
-from apeiria.ai.tools.models import AIToolSpec
-from apeiria.ai.tools.schema import build_parameters_from_signature
+from apeiria.ai.capabilities import (
+    AICapabilityBinding,
+    AICapabilityContract,
+    AICapabilityKind,
+    AICapabilityOrigin,
+    AICapabilitySafety,
+    create_local_tool_binding,
+)
+from apeiria.ai.tools.schema import (
+    build_json_schema,
+    build_parameters_from_signature,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
 
     from apeiria.ai.tools.models import AIToolResult, AIToolRiskLevel
 
-    AICapabilityHandler = Callable[[dict[str, Any]], Any | Awaitable[Any]]
+    AIHostActionHandler = Callable[[dict[str, Any]], Any | Awaitable[Any]]
     AIToolHandler = Callable[..., Awaitable[AIToolResult]]
 
 
 @dataclass(frozen=True)
-class AIPluginCapabilityContribution:
-    """One plugin-contributed capability bridge handler."""
+class AIPluginHostActionHandlerContribution:
+    """One plugin-contributed handler without a complete contract."""
 
-    capability_name: str
-    handler: "AICapabilityHandler"
+    action_name: str
+    handler: "AIHostActionHandler"
+
+
+@dataclass(frozen=True)
+class AIPluginCapabilityContractContribution:
+    """One plugin-contributed capability contract declaration."""
+
+    contract: AICapabilityContract
+
+
+@dataclass(frozen=True)
+class AIPluginHostActionContribution:
+    """One complete plugin-contributed host action."""
+
+    contract: AICapabilityContract
+    handler: "AIHostActionHandler"
+
+
+@dataclass(frozen=True)
+class AIPluginToolContribution:
+    """One plugin-declared local executable capability."""
+
+    contract: AICapabilityContract
+    binding: AICapabilityBinding
 
 
 @dataclass(frozen=True)
@@ -44,37 +77,96 @@ class AIPluginSkillSource:
 class AIPluginContributionSnapshot:
     """Immutable snapshot consumed by the AI lifecycle coordinator."""
 
-    tools: tuple[AIToolSpec, ...] = ()
-    capability_handlers: tuple[AIPluginCapabilityContribution, ...] = ()
+    tools: tuple[AIPluginToolContribution, ...] = ()
+    capability_contracts: tuple[AIPluginCapabilityContractContribution, ...] = ()
+    host_actions: tuple[AIPluginHostActionContribution, ...] = ()
+    host_action_handlers: tuple[AIPluginHostActionHandlerContribution, ...] = ()
     skill_sources: tuple[AIPluginSkillSource, ...] = ()
+
+
+@dataclass(frozen=True)
+class AIPluginCapabilityContractInput:
+    """Create payload for one plugin capability contract declaration."""
+
+    name: str
+    description: str
+    input_schema: dict[str, Any] | None = None
+    read_only: bool = True
+    concurrency_safe: bool = True
+    risk_level: AIToolRiskLevel = "low"
+    tags: tuple[str, ...] = ()
 
 
 class AIPluginContributionRegistry:
     """In-memory registry for plugin-declared AI startup contributions."""
 
     def __init__(self) -> None:
-        self._tools: dict[str, AIToolSpec] = {}
-        self._capability_handlers: dict[str, AIPluginCapabilityContribution] = {}
+        self._tools: dict[str, AIPluginToolContribution] = {}
+        self._capability_contracts: dict[
+            str, AIPluginCapabilityContractContribution
+        ] = {}
+        self._host_actions: dict[str, AIPluginHostActionContribution] = {}
+        self._host_action_handlers: dict[
+            str, AIPluginHostActionHandlerContribution
+        ] = {}
         self._skill_sources: dict[Path, AIPluginSkillSource] = {}
 
-    def register_tool(self, tool: AIToolSpec) -> AIToolSpec:
-        """Declare one AI tool for lifecycle-time registration."""
-
-        self._tools[tool.name] = tool
-        return tool
-
-    def register_capability_handler(
+    def register_tool(
         self,
-        capability_name: str,
-        handler: "AICapabilityHandler",
-    ) -> AIPluginCapabilityContribution:
-        """Declare one capability bridge handler."""
+        *,
+        contract: AICapabilityContract,
+        binding: AICapabilityBinding,
+    ) -> AIPluginToolContribution:
+        """Declare one local executable capability for lifecycle registration."""
 
-        contribution = AIPluginCapabilityContribution(
-            capability_name=capability_name,
+        contract = _as_plugin_contract(contract)
+        binding = replace(binding, contract_name=contract.name)
+        contribution = AIPluginToolContribution(
+            contract=contract,
+            binding=binding,
+        )
+        self._tools[contract.name] = contribution
+        return contribution
+
+    def register_capability_contract(
+        self,
+        contract: AICapabilityContract,
+    ) -> AIPluginCapabilityContractContribution:
+        """Declare a capability contract without binding it to a handler."""
+
+        contribution = AIPluginCapabilityContractContribution(contract=contract)
+        self._capability_contracts[contract.name] = contribution
+        return contribution
+
+    def register_host_action(
+        self,
+        *,
+        contract: AICapabilityContract,
+        handler: "AIHostActionHandler",
+    ) -> AIPluginHostActionContribution:
+        """Declare a complete host action with contract and handler."""
+
+        contract = _as_plugin_contract(contract)
+        contribution = AIPluginHostActionContribution(
+            contract=contract,
             handler=handler,
         )
-        self._capability_handlers[capability_name] = contribution
+        self._host_actions[contract.name] = contribution
+        self.register_capability_contract(contract)
+        return contribution
+
+    def register_host_action_handler(
+        self,
+        action_name: str,
+        handler: "AIHostActionHandler",
+    ) -> AIPluginHostActionHandlerContribution:
+        """Declare one handler-only host action."""
+
+        contribution = AIPluginHostActionHandlerContribution(
+            action_name=action_name,
+            handler=handler,
+        )
+        self._host_action_handlers[action_name] = contribution
         return contribution
 
     def register_skill_source(
@@ -101,9 +193,16 @@ class AIPluginContributionRegistry:
 
         return AIPluginContributionSnapshot(
             tools=tuple(self._tools[name] for name in sorted(self._tools)),
-            capability_handlers=tuple(
-                self._capability_handlers[name]
-                for name in sorted(self._capability_handlers)
+            capability_contracts=tuple(
+                self._capability_contracts[name]
+                for name in sorted(self._capability_contracts)
+            ),
+            host_actions=tuple(
+                self._host_actions[name] for name in sorted(self._host_actions)
+            ),
+            host_action_handlers=tuple(
+                self._host_action_handlers[name]
+                for name in sorted(self._host_action_handlers)
             ),
             skill_sources=tuple(
                 self._skill_sources[path] for path in sorted(self._skill_sources)
@@ -121,55 +220,88 @@ def register_ai_tool(  # noqa: PLR0913
     read_only: bool,
     concurrency_safe: bool,
     risk_level: "AIToolRiskLevel" = "low",
-    is_capability_bridge: bool = False,
     tags: tuple[str, ...] = (),
 ) -> "Callable[[AIToolHandler], AIToolHandler]":
-    """Decorator for plugin-declared AI tools.
+    """Decorator for plugin-declared local executable capabilities.
 
-    The tool spec is collected for the lifecycle coordinator rather than being
-    inserted directly into the runtime singleton.
+    The capability contract and binding are collected for the lifecycle
+    coordinator rather than being inserted directly into the runtime singleton.
     """
 
     def decorator(func: "AIToolHandler") -> "AIToolHandler":
-        spec = AIToolSpec(
+        parameters = build_parameters_from_signature(func)
+        contract = AICapabilityContract(
             name=name,
+            kind=AICapabilityKind.EXECUTABLE,
+            origin=AICapabilityOrigin.PLUGIN,
             description=description,
-            read_only=read_only,
-            concurrency_safe=concurrency_safe,
-            risk_level=risk_level,
-            is_capability_bridge=is_capability_bridge,
-            parameters=build_parameters_from_signature(func),
-            entrypoint=func,
-            origin="plugin",
+            input_schema=build_json_schema(parameters) if parameters else {},
+            safety=AICapabilitySafety(
+                read_only=read_only,
+                risk_level=risk_level,
+                concurrency_safe=concurrency_safe,
+            ),
             tags=tags,
         )
-        ai_plugin_contributions.register_tool(spec)
-        func.__ai_tool_spec__ = spec  # type: ignore[attr-defined]
+        binding = create_local_tool_binding(
+            contract_name=contract.name,
+            binding_key=f"plugin:{contract.name}",
+            handler=func,
+        )
+        ai_plugin_contributions.register_tool(
+            contract=contract,
+            binding=binding,
+        )
+        func_with_metadata = cast("Any", func)
+        func_with_metadata.__ai_tool_contract__ = contract
+        func_with_metadata.__ai_tool_binding__ = binding
         return func
 
     return decorator
 
 
-def register_ai_tool_spec(tool: AIToolSpec) -> AIToolSpec:
-    """Register an already-built plugin tool spec."""
+def register_ai_capability_contract(
+    create_input: AIPluginCapabilityContractInput,
+) -> AICapabilityContract:
+    """Register a plugin-declared executable capability contract."""
 
-    if tool.origin != "plugin":
-        from dataclasses import replace
-
-        tool = replace(tool, origin="plugin")
-    return ai_plugin_contributions.register_tool(tool)
-
-
-def register_ai_capability_handler(
-    capability_name: str,
-    handler: "AICapabilityHandler",
-) -> AIPluginCapabilityContribution:
-    """Register a plugin capability handler for startup application."""
-
-    return ai_plugin_contributions.register_capability_handler(
-        capability_name,
-        handler,
+    contract = AICapabilityContract(
+        name=create_input.name,
+        kind=AICapabilityKind.EXECUTABLE,
+        origin=AICapabilityOrigin.PLUGIN,
+        description=create_input.description,
+        input_schema=create_input.input_schema or {},
+        safety=AICapabilitySafety(
+            read_only=create_input.read_only,
+            risk_level=create_input.risk_level,
+            concurrency_safe=create_input.concurrency_safe,
+        ),
+        tags=create_input.tags,
     )
+    ai_plugin_contributions.register_capability_contract(contract)
+    return contract
+
+
+def register_ai_host_action(
+    *,
+    contract: AICapabilityContract,
+    handler: "AIHostActionHandler",
+) -> AIPluginHostActionContribution:
+    """Register a complete plugin host action."""
+
+    return ai_plugin_contributions.register_host_action(
+        contract=contract,
+        handler=handler,
+    )
+
+
+def register_ai_host_action_handler(
+    action_name: str,
+    handler: "AIHostActionHandler",
+) -> AIPluginHostActionHandlerContribution:
+    """Register a handler-only plugin host action for diagnostics."""
+
+    return ai_plugin_contributions.register_host_action_handler(action_name, handler)
 
 
 def register_ai_skill_source(
@@ -213,14 +345,25 @@ def _caller_directory() -> Path:
     return Path(str(caller_file)).resolve(strict=False).parent
 
 
+def _as_plugin_contract(contract: AICapabilityContract) -> AICapabilityContract:
+    if contract.origin is AICapabilityOrigin.PLUGIN:
+        return contract
+    return replace(contract, origin=AICapabilityOrigin.PLUGIN)
+
+
 __all__ = [
-    "AIPluginCapabilityContribution",
+    "AIPluginCapabilityContractContribution",
+    "AIPluginCapabilityContractInput",
     "AIPluginContributionRegistry",
     "AIPluginContributionSnapshot",
+    "AIPluginHostActionContribution",
+    "AIPluginHostActionHandlerContribution",
     "AIPluginSkillSource",
+    "AIPluginToolContribution",
     "ai_plugin_contributions",
-    "register_ai_capability_handler",
+    "register_ai_capability_contract",
+    "register_ai_host_action",
+    "register_ai_host_action_handler",
     "register_ai_skill_source",
     "register_ai_tool",
-    "register_ai_tool_spec",
 ]

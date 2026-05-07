@@ -7,7 +7,6 @@ export interface AIToolItem {
   concurrency_safe: boolean
   risk_level: string
   risk_label?: string
-  is_capability_bridge: boolean
 }
 
 export type AISkillItem = AIToolItem
@@ -42,12 +41,26 @@ export interface AIToolPolicyPreviewItem {
   allowed_tool_names: string[] | null
   denied_tool_names: string[]
   allow_high_risk_tools: boolean
-  allow_capability_bridge: boolean
+  allow_host_actions: boolean
 }
 
 export interface AICapabilityItem {
   capability_name: string
-  bound_tool_name: string
+  kind: string
+  origin: string
+  description: string
+  read_only: boolean
+  concurrency_safe: boolean
+  risk_level: string
+  risk_label: string
+  availability: string
+  binding_key: string | null
+  binding_type: string | null
+  policy_status: string
+  diagnostics: string[]
+  required_capabilities: string[]
+  tags: string[]
+  version: number
 }
 
 export interface AICapabilityPreviewItem {
@@ -55,7 +68,7 @@ export interface AICapabilityPreviewItem {
   registered: boolean
   allowed: boolean
   reason: string
-  allow_capability_bridge: boolean
+  allow_host_actions: boolean
   execution_enabled: boolean
 }
 

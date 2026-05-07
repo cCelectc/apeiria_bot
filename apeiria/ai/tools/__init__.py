@@ -5,14 +5,12 @@ from __future__ import annotations
 from importlib import import_module
 from typing import TYPE_CHECKING, Any
 
-from .debug import AICapabilityDefinition, AICapabilityPreview, AIToolIntentPreview
+from .debug import AICapabilityPreview, AIToolIntentPreview
 from .models import (
-    AICapabilityInvokeObservationOutput,
     AIMemoryQueryObservationInput,
     AIMemoryQueryObservationOutput,
     AIMemoryUpdateInput,
     AIMemoryUpdateObservationOutput,
-    AINoneBotCapabilityRequest,
     AIPluginInspectCapabilityInput,
     AIPluginInspectCapabilityOutput,
     AIRelationshipInspectObservationOutput,
@@ -29,7 +27,6 @@ from .models import (
     AIToolPolicyDecision,
     AIToolResult,
     AIToolRiskLevel,
-    AIToolSpec,
     AIToolTurnCreateInput,
 )
 
@@ -53,14 +50,11 @@ if TYPE_CHECKING:
     from .service import AIToolService, ai_tool_service
 
 __all__ = [
-    "AICapabilityDefinition",
-    "AICapabilityInvokeObservationOutput",
     "AICapabilityPreview",
     "AIMemoryQueryObservationInput",
     "AIMemoryQueryObservationOutput",
     "AIMemoryUpdateInput",
     "AIMemoryUpdateObservationOutput",
-    "AINoneBotCapabilityRequest",
     "AIPluginInspectCapabilityInput",
     "AIPluginInspectCapabilityOutput",
     "AIRelationshipInspectObservationOutput",
@@ -86,7 +80,6 @@ __all__ = [
     "AIToolSceneContext",
     "AIToolScenePolicyProfile",
     "AIToolService",
-    "AIToolSpec",
     "AIToolTurnCreateInput",
     "ToolResult",
     "ai_tool_policy_binding_service",

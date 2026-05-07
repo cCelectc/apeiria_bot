@@ -391,6 +391,28 @@ def test_ai_capability_layer_does_not_import_application_layer() -> None:
     assert not violations
 
 
+def test_ai_capability_contract_package_is_foundation_only() -> None:
+    forbidden = (
+        "apeiria.app.ai",
+        "apeiria.webui",
+        "apeiria.builtin_plugins",
+        "apeiria.ai.model.adapters",
+        "nonebot",
+    )
+    violations: list[str] = []
+    for path in (REPO_ROOT / "apeiria/ai/capabilities").rglob("*.py"):
+        violations.extend(
+            f"{path.relative_to(REPO_ROOT)} -> {imported}"
+            for imported in _imports_for_path(path)
+            if any(
+                imported == prefix or imported.startswith(prefix + ".")
+                for prefix in forbidden
+            )
+        )
+
+    assert not violations
+
+
 def test_ai_capability_public_surfaces_exclude_application_orchestration() -> None:
     ai_module = importlib.import_module("apeiria.ai")
     model_module = importlib.import_module("apeiria.ai.model")

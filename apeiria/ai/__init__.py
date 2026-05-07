@@ -1,8 +1,9 @@
-"""AI capability primitives for plugins and the Apeiria host.
+"""AI foundation primitives for plugins and the Apeiria host.
 
 Import stable paths from here; the :mod:`apeiria.builtin_plugins.ai` plugin
 owns the NoneBot-facing lifecycle (message handler, Web UI route
-registration), but the underlying capability is exposed as a regular library.
+registration), while provider-neutral capability contracts live in
+:mod:`apeiria.ai.capabilities`.
 
 Application orchestration and readiness live under :mod:`apeiria.app.ai`.
 """

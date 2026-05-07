@@ -70,8 +70,13 @@ async def plan_runtime_turn(
     allowed_tool_specs = (
         () if social_decision.tool_mode == "avoid" else tuple(context.allowed_tools)
     )
-    tool_exposure_plan = ToolOrchestrator().plan_exposure(
+    tool_contracts = ai_tool_service.contract_snapshot()
+    tool_bindings = ai_tool_service.binding_snapshot()
+    tool_orchestrator = ToolOrchestrator()
+    initial_tool_exposure_plan = tool_orchestrator.plan_exposure(
         allowed_tools=allowed_tool_specs,
+        contracts=tool_contracts,
+        bindings=tool_bindings,
         policy=context.tool_policy,
         ordinary_ambient_group=(
             identity.scene_type == "group"
@@ -81,22 +86,8 @@ async def plan_runtime_turn(
         execution_timeout_seconds=tool_execution_timeout_seconds,
         current_time=current_time,
     )
-
-    skill_runtime = RuntimeToolLoopResult(
-        policy_text=summarize_tool_policy(
-            ai_tool_service.registry.list_tools(),
-            context.tool_policy,
-        ),
-        result_lines=(),
-        turns=(),
-        available_tools=compile_tool_exposure_provider_schema(
-            tool_exposure_plan,
-            current_time=current_time,
-        ),
-        diagnostics=dict(tool_exposure_plan.diagnostics),
-    )
     pre_tool_task_class = select_pre_tool_reply_task_class(
-        has_tools=tool_exposure_plan.has_executable_tools,
+        has_tools=initial_tool_exposure_plan.has_executable_tools,
     )
     selected = await select_model(
         task_class=pre_tool_task_class,
@@ -112,6 +103,34 @@ async def plan_runtime_turn(
         )
         return None
 
+    tool_exposure_plan = tool_orchestrator.plan_exposure(
+        allowed_tools=allowed_tool_specs,
+        contracts=tool_contracts,
+        bindings=tool_bindings,
+        policy=context.tool_policy,
+        ordinary_ambient_group=(
+            identity.scene_type == "group"
+            and not turn.is_tome
+            and turn.runtime_mode != "future_task"
+        ),
+        execution_timeout_seconds=tool_execution_timeout_seconds,
+        current_time=current_time,
+        model_supports_tools=selected.resolved_capabilities.supports_tool_calling,
+    )
+
+    skill_runtime = RuntimeToolLoopResult(
+        policy_text=summarize_tool_policy(
+            ai_tool_service.registry.list_tools(),
+            context.tool_policy,
+        ),
+        result_lines=(),
+        turns=(),
+        available_tools=compile_tool_exposure_provider_schema(
+            tool_exposure_plan,
+            current_time=current_time,
+        ),
+        diagnostics=dict(tool_exposure_plan.diagnostics),
+    )
     skill_selection = await select_runtime_skills(
         message_text=turn.message_text,
         conversation_summary=context.conversation_summary,

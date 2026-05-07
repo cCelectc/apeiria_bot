@@ -9,10 +9,9 @@ if TYPE_CHECKING:
 
 
 def build_capability_intents(message_text: str) -> list["AIToolIntent"]:
-    """Build capability intents for the current message."""
+    """Build concrete host-action intents for the current message."""
 
     from apeiria.ai.tools.models import (
-        AINoneBotCapabilityRequest,
         AIPluginInspectCapabilityInput,
         AIToolIntent,
     )
@@ -23,12 +22,9 @@ def build_capability_intents(message_text: str) -> list["AIToolIntent"]:
     if any(token in lowered for token in ("help", "帮助")):
         intents.append(
             AIToolIntent(
-                tool_name="plugin.capability",
+                tool_name="help.show",
                 kind="invoke_capability",
-                input_payload=AINoneBotCapabilityRequest(
-                    capability_name="help.show",
-                    arguments={},
-                ),
+                input_payload={},
                 reason="help-related keyword detected",
             )
         )
@@ -36,14 +32,11 @@ def build_capability_intents(message_text: str) -> list["AIToolIntent"]:
     if any(token in lowered for token in ("plugin", "插件", "inspect")):
         intents.append(
             AIToolIntent(
-                tool_name="plugin.capability",
+                tool_name="plugin.inspect",
                 kind="invoke_capability",
-                input_payload=AINoneBotCapabilityRequest(
-                    capability_name="plugin.inspect",
-                    arguments=AIPluginInspectCapabilityInput(
-                        plugin_query=message_text,
-                    ).__dict__,
-                ),
+                input_payload=AIPluginInspectCapabilityInput(
+                    plugin_query=message_text,
+                ).__dict__,
                 reason="plugin inspection keyword detected",
             )
         )

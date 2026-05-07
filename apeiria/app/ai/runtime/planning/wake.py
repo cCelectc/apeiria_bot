@@ -18,9 +18,9 @@ from apeiria.app.ai.reply_strategy.models import WakeContext
 if TYPE_CHECKING:
     from datetime import datetime
 
+    from apeiria.ai.capabilities import AICapabilityContract
     from apeiria.ai.model import AIModelBindingTarget
     from apeiria.ai.prompting import ReplyPersonaPromptBundleLike
-    from apeiria.ai.tools import AIToolSpec
     from apeiria.app.ai.reply_strategy import ReplyStrategyDecision
     from apeiria.app.ai.runtime.context.relationships import AIRelationshipTarget
     from apeiria.app.ai.runtime.session.context import RuntimeTurnInput
@@ -65,7 +65,7 @@ async def decide_whether_to_speak(  # noqa: PLR0913
     conversation_summary: str | None,
     relationship_context: str | None,
     persona: "ReplyPersonaPromptBundleLike | None",
-    allowed_tools: tuple["AIToolSpec", ...],
+    allowed_tools: tuple["AICapabilityContract", ...],
     initiative_bias: float,
     model_target: "AIModelBindingTarget",
     current_time: "datetime",
