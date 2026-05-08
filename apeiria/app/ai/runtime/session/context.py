@@ -118,6 +118,7 @@ class RuntimeTurnInput:
     sender_id: str
     future_task: "AIFutureTaskDefinition | None" = None
     sentiment: "AIMessageSentiment | None" = None
+    stream_sink: Any | None = field(default=None, compare=False, repr=False)
 
     @classmethod
     def from_turn_request(
@@ -283,6 +284,7 @@ class TurnContext:
     merge: MergeMetadata = MergeMetadata()
     hard_rule_decision: "RuntimeHardRuleDecision | None" = None
     social_decision: "ReplyStrategyDecision | None" = None
+    stream_sink: Any | None = field(default=None, compare=False, repr=False)
 
     @property
     def session_id(self) -> str:

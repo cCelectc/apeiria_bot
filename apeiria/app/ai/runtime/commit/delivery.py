@@ -32,6 +32,17 @@ class DeliveryRequest:
 
 
 @dataclass(frozen=True)
+class PartialReplyDeliveryRequest:
+    """Provider-neutral partial reply delivery request."""
+
+    base: DeliveryRequest
+    stream_id: str
+    event_kind: str
+    content_delta: str = ""
+    diagnostic: str | None = None
+
+
+@dataclass(frozen=True)
 class DeliveryOutcome:
     """Outcome of a proactive message delivery."""
 
@@ -54,9 +65,16 @@ class DeliveryOutcome:
 class DeliveryAdapter(Protocol):
     """Adapter boundary for proactive platform delivery."""
 
+    supports_partial_replies: bool
+
     def can_deliver(self, request: DeliveryRequest) -> bool: ...
 
     async def deliver(self, request: DeliveryRequest) -> DeliveryOutcome: ...
+
+    async def deliver_partial_reply(
+        self,
+        request: PartialReplyDeliveryRequest,
+    ) -> DeliveryOutcome: ...
 
 
 class DeliveryGateway:
@@ -93,12 +111,43 @@ class DeliveryGateway:
         )
         return any(adapter.can_deliver(request) for adapter in self._adapters)
 
+    def can_deliver_partial_replies(self, platform: str) -> bool:
+        """Return whether an adapter claims partial-reply delivery support."""
+
+        request = DeliveryRequest(
+            trace_id="readiness",
+            session_id="readiness",
+            runtime_mode="message",
+            bot_id="readiness",
+            platform=platform,
+            scene_type="private",
+            scene_id="0",
+            message_text="readiness",
+        )
+        return any(
+            adapter.can_deliver(request) and adapter.supports_partial_replies
+            for adapter in self._adapters
+        )
+
 
 class OneBotDeliveryAdapter:
     """Deliver proactive replies through the NoneBot OneBot API."""
 
+    supports_partial_replies = False
+
     def can_deliver(self, request: DeliveryRequest) -> bool:
         return request.platform == "onebot"
+
+    async def deliver_partial_reply(
+        self,
+        request: PartialReplyDeliveryRequest,
+    ) -> DeliveryOutcome:
+        _ = request
+        return DeliveryOutcome(
+            delivered=False,
+            reason="partial_replies_unsupported",
+            channel="onebot",
+        )
 
     async def deliver(self, request: DeliveryRequest) -> DeliveryOutcome:
         bot = _get_nonebot_bots().get(request.bot_id)
@@ -282,6 +331,7 @@ __all__ = [
     "DeliveryOutcome",
     "DeliveryRequest",
     "OneBotDeliveryAdapter",
+    "PartialReplyDeliveryRequest",
     "deliver_generated_reply",
     "delivery_gateway",
 ]

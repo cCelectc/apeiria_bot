@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from http import HTTPStatus
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import httpx
 from nonebot.log import logger
@@ -20,9 +20,15 @@ from apeiria.ai.model.runtime.adapter import (
     AIModelRerankResultItem,
     AIModelSpeechRequest,
     AIModelSpeechResponse,
+    AIModelStreamRequest,
     AIModelTranscriptionRequest,
     AIModelTranscriptionResponse,
 )
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncIterator
+
+    from apeiria.ai.model.runtime.adapter import AIModelStreamEvent
 
 
 class GenericRerankProviderConfigError(RuntimeError):
@@ -96,6 +102,13 @@ class GenericRerankProvider:
     ) -> AIModelGenerateResponse:
         _ = request
         raise GenericRerankProviderCapabilityError("chat_completion")
+
+    def stream_text(
+        self,
+        request: AIModelStreamRequest,
+    ) -> "AsyncIterator[AIModelStreamEvent]":
+        _ = request
+        raise GenericRerankProviderCapabilityError("streaming")
 
     async def embed_texts(
         self,

@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import json
-from typing import Any
+from typing import TYPE_CHECKING, Any
+from uuid import uuid4
 
 import httpx
 from openai import AsyncOpenAI
@@ -19,11 +20,16 @@ from apeiria.ai.model.runtime.adapter import (
     AIModelRerankResponse,
     AIModelSpeechRequest,
     AIModelSpeechResponse,
+    AIModelStreamEvent,
+    AIModelStreamRequest,
     AIModelToolCall,
     AIModelTranscriptionRequest,
     AIModelTranscriptionResponse,
 )
 from apeiria.ai.model.runtime.capabilities import AI_MODEL_RESPONSE_FORMAT_OPTION
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncIterator
 
 
 class OpenAICompatibleProviderConfigError(RuntimeError):
@@ -71,41 +77,15 @@ class OpenAICompatibleProvider:
         if not api_key:
             raise OpenAICompatibleProviderConfigError("api_key")
 
-        payload: dict[str, Any] = {
-            "model": request.model_name,
-            "messages": (
-                _build_openai_messages(request.messages)
-                if request.messages
-                else [{"role": "user", "content": request.prompt}]
-            ),
-        }
-        planned_options = request.options or request.extra or {}
-        if request.tools:
-            payload["tools"] = [
-                {
-                    "type": "function",
-                    "function": {
-                        "name": tool.name,
-                        "description": tool.description,
-                        "parameters": tool.parameters,
-                    },
-                }
-                for tool in request.tools
-            ]
-        temperature = request.temperature
-        if temperature is None:
-            temperature = _coerce_float(planned_options, "temperature")
-        if temperature is not None:
-            payload["temperature"] = temperature
-        max_tokens = request.max_tokens or _coerce_int(planned_options, "max_tokens")
-        if max_tokens is not None:
-            payload["max_tokens"] = max_tokens
-        response_format = _coerce_response_format(
-            planned_options.get(AI_MODEL_RESPONSE_FORMAT_OPTION)
+        payload = _build_openai_chat_payload(
+            model_name=request.model_name,
+            prompt=request.prompt,
+            messages=request.messages,
+            tools=request.tools,
+            temperature=request.temperature,
+            max_tokens=request.max_tokens,
+            options=request.options or request.extra or {},
         )
-        if response_format is not None:
-            payload["response_format"] = response_format
-
         client = _build_openai_client(
             api_key=api_key,
             api_base=api_base,
@@ -129,6 +109,91 @@ class OpenAICompatibleProvider:
             reasoning_content=_extract_openai_reasoning_content(response),
             provider_data=_extract_openai_provider_data(raw),
         )
+
+    def stream_text(
+        self,
+        request: AIModelStreamRequest,
+    ) -> "AsyncIterator[AIModelStreamEvent]":
+        api_base = _coerce_str(request.extra, "api_base") or self.api_base
+        api_key = _coerce_str(request.extra, "api_key") or self.api_key
+        if not api_base:
+            raise OpenAICompatibleProviderConfigError("api_base")
+        if not api_key:
+            raise OpenAICompatibleProviderConfigError("api_key")
+
+        payload = _build_openai_chat_payload(
+            model_name=request.model_name,
+            prompt=request.prompt,
+            messages=request.messages,
+            tools=request.tools,
+            temperature=request.temperature,
+            max_tokens=request.max_tokens,
+            options=request.options or request.extra or {},
+        )
+        payload["stream"] = True
+        client = _build_openai_client(
+            api_key=api_key,
+            api_base=api_base,
+            timeout_seconds=self.timeout_seconds,
+            extra_config=self.extra_config,
+        )
+        stream_id = f"stream_{uuid4().hex}"
+        content_parts: list[str] = []
+        finish_reason: str | None = None
+        response_id: str | None = None
+
+        async def _stream() -> "AsyncIterator[AIModelStreamEvent]":
+            nonlocal finish_reason, response_id
+            try:
+                stream = await client.chat.completions.create(**payload)
+                yield AIModelStreamEvent.start(
+                    source_id=request.source_id,
+                    model_name=request.model_name,
+                    stream_id=stream_id,
+                )
+                async for chunk in stream:
+                    response_id = (
+                        _extract_openai_stream_response_id(chunk) or response_id
+                    )
+                    delta = _extract_openai_stream_delta(chunk)
+                    if delta:
+                        content_parts.append(delta)
+                        yield AIModelStreamEvent.text_delta(
+                            source_id=request.source_id,
+                            model_name=request.model_name,
+                            stream_id=stream_id,
+                            content_delta=delta,
+                        )
+                    finish_reason = (
+                        _extract_openai_stream_finish_reason(chunk) or finish_reason
+                    )
+            except Exception as exc:  # noqa: BLE001
+                yield AIModelStreamEvent.failure(
+                    source_id=request.source_id,
+                    model_name=request.model_name,
+                    stream_id=stream_id,
+                    reason="provider_stream_error",
+                    diagnostic=str(exc)[:200],
+                )
+                return
+            finally:
+                await client.close()
+
+            content = "".join(content_parts)
+            yield AIModelStreamEvent.final(
+                source_id=request.source_id,
+                model_name=request.model_name,
+                stream_id=stream_id,
+                response=AIModelGenerateResponse(
+                    source_id=request.source_id,
+                    model_name=request.model_name,
+                    content=content,
+                    finish_reason=finish_reason,
+                    response_id=response_id,
+                ),
+            )
+
+        return _stream()
 
     async def list_models(
         self,
@@ -340,6 +405,52 @@ def _coerce_response_format(value: Any) -> dict[str, Any] | None:
     return response_format
 
 
+def _build_openai_chat_payload(  # noqa: PLR0913
+    *,
+    model_name: str,
+    prompt: str,
+    messages: tuple[AIModelMessage, ...],
+    tools: tuple[Any, ...],
+    temperature: float | None,
+    max_tokens: int | None,
+    options: dict[str, Any],
+) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "model": model_name,
+        "messages": (
+            _build_openai_messages(messages)
+            if messages
+            else [{"role": "user", "content": prompt}]
+        ),
+    }
+    if tools:
+        payload["tools"] = [
+            {
+                "type": "function",
+                "function": {
+                    "name": tool.name,
+                    "description": tool.description,
+                    "parameters": tool.parameters,
+                },
+            }
+            for tool in tools
+        ]
+    resolved_temperature = temperature
+    if resolved_temperature is None:
+        resolved_temperature = _coerce_float(options, "temperature")
+    if resolved_temperature is not None:
+        payload["temperature"] = resolved_temperature
+    resolved_max_tokens = max_tokens or _coerce_int(options, "max_tokens")
+    if resolved_max_tokens is not None:
+        payload["max_tokens"] = resolved_max_tokens
+    response_format = _coerce_response_format(
+        options.get(AI_MODEL_RESPONSE_FORMAT_OPTION)
+    )
+    if response_format is not None:
+        payload["response_format"] = response_format
+    return payload
+
+
 def _normalize_openai_api_base(api_base: str | None) -> str | None:
     if not isinstance(api_base, str) or not api_base.strip():
         return None
@@ -492,6 +603,28 @@ def _extract_openai_provider_data(raw: dict[str, Any]) -> dict[str, Any] | None:
         if key in raw and raw[key] is not None
     }
     return data or None
+
+
+def _extract_openai_stream_response_id(chunk: Any) -> str | None:
+    value = getattr(chunk, "id", None)
+    return str(value) if value is not None else None
+
+
+def _extract_openai_stream_delta(chunk: Any) -> str:
+    choices = getattr(chunk, "choices", None)
+    if not isinstance(choices, list) or not choices:
+        return ""
+    delta = getattr(choices[0], "delta", None)
+    content = getattr(delta, "content", None)
+    return content if isinstance(content, str) else ""
+
+
+def _extract_openai_stream_finish_reason(chunk: Any) -> str | None:
+    choices = getattr(chunk, "choices", None)
+    if not isinstance(choices, list) or not choices:
+        return None
+    reason = getattr(choices[0], "finish_reason", None)
+    return reason if isinstance(reason, str) else None
 
 
 def _parse_tool_arguments(arguments: Any) -> dict[str, Any]:

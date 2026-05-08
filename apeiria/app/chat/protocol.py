@@ -26,6 +26,10 @@ FRAME_MESSAGE_SEND: Final = "message.send"
 FRAME_MESSAGE_ACK: Final = "message.ack"
 FRAME_MESSAGE_RECEIVE: Final = "message.receive"
 FRAME_MESSAGE_ERROR: Final = "message.error"
+FRAME_REPLY_PARTIAL_START: Final = "reply.partial.start"
+FRAME_REPLY_PARTIAL_DELTA: Final = "reply.partial.delta"
+FRAME_REPLY_PARTIAL_COMPLETE: Final = "reply.partial.complete"
+FRAME_REPLY_PARTIAL_FAILED: Final = "reply.partial.failed"
 FRAME_SYSTEM_INFO: Final = "system.info"
 FRAME_SYSTEM_WARNING: Final = "system.warning"
 FRAME_SYSTEM_ERROR: Final = "system.error"
@@ -50,6 +54,10 @@ SERVER_FRAME_TYPES: Final[tuple[str, ...]] = (
     FRAME_MESSAGE_ACK,
     FRAME_MESSAGE_RECEIVE,
     FRAME_MESSAGE_ERROR,
+    FRAME_REPLY_PARTIAL_START,
+    FRAME_REPLY_PARTIAL_DELTA,
+    FRAME_REPLY_PARTIAL_COMPLETE,
+    FRAME_REPLY_PARTIAL_FAILED,
     FRAME_SYSTEM_INFO,
     FRAME_SYSTEM_WARNING,
     FRAME_SYSTEM_ERROR,
@@ -201,6 +209,34 @@ class MessageReceivePayload(BaseModel):
     segments: list[ChatSegment]
     timestamp: datetime
     trace_id: str | None = None
+
+
+class PartialReplyStartPayload(BaseModel):
+    session_id: str
+    trace_id: str
+    stream_id: str
+
+
+class PartialReplyDeltaPayload(BaseModel):
+    session_id: str
+    trace_id: str
+    stream_id: str
+    content_delta: str
+
+
+class PartialReplyCompletePayload(BaseModel):
+    session_id: str
+    trace_id: str
+    stream_id: str
+    message_id: str | None = None
+
+
+class PartialReplyFailedPayload(BaseModel):
+    session_id: str
+    trace_id: str
+    stream_id: str
+    code: str
+    message: str | None = None
 
 
 class SystemMessagePayload(BaseModel):

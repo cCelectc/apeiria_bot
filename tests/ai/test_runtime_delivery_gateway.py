@@ -338,6 +338,70 @@ def test_onebot_delivery_adapter_owns_platform_api_conversion(
     assert calls == [("send_group_msg", {"group_id": 10001, "message": "hello"})]
 
 
+def test_delivery_gateway_reports_partial_reply_support_by_platform() -> None:
+    from apeiria.app.ai.runtime.commit.delivery import (
+        DeliveryGateway,
+        OneBotDeliveryAdapter,
+    )
+
+    gateway = DeliveryGateway(adapters=(OneBotDeliveryAdapter(),))
+
+    assert gateway.can_deliver_partial_replies("onebot") is False
+    assert OneBotDeliveryAdapter().supports_partial_replies is False
+
+
+def test_onebot_delivery_adapter_does_not_send_partial_reply_chunks(
+    monkeypatch: Any,
+) -> None:
+    import apeiria.app.ai.runtime.commit.delivery as delivery_module
+    from apeiria.app.ai.runtime.commit.delivery import (
+        DeliveryRequest,
+        OneBotDeliveryAdapter,
+        PartialReplyDeliveryRequest,
+    )
+
+    calls: list[tuple[str, dict[str, object]]] = []
+
+    class FakeBot:
+        async def call_api(self, api_name: str, **kwargs: object) -> dict[str, int]:
+            calls.append((api_name, kwargs))
+            return {"message_id": 123}
+
+    monkeypatch.setattr(
+        delivery_module,
+        "_get_nonebot_bots",
+        lambda: {"bot-1": FakeBot()},
+    )
+    adapter = OneBotDeliveryAdapter()
+    base = DeliveryRequest(
+        trace_id="trace-1",
+        session_id="session-1",
+        runtime_mode="message",
+        bot_id="bot-1",
+        platform="onebot",
+        scene_type="group",
+        scene_id="10001",
+        message_text="hello world",
+    )
+
+    partial = asyncio.run(
+        adapter.deliver_partial_reply(
+            PartialReplyDeliveryRequest(
+                base=base,
+                stream_id="stream-1",
+                event_kind="text_delta",
+                content_delta="hello",
+            )
+        )
+    )
+    final = asyncio.run(adapter.deliver(base))
+
+    assert partial.delivered is False
+    assert partial.reason == "partial_replies_unsupported"
+    assert final.delivered is True
+    assert calls == [("send_group_msg", {"group_id": 10001, "message": "hello world"})]
+
+
 def test_onebot_delivery_adapter_returns_bounded_failures(monkeypatch: Any) -> None:
     import apeiria.app.ai.runtime.commit.delivery as delivery_module
     from apeiria.app.ai.runtime.commit.delivery import (

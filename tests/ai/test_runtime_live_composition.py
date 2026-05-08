@@ -143,6 +143,86 @@ def test_default_live_message_entry_preserves_ingested_image_media(
     assert "secret" not in str(turn.source.media_parts)  # type: ignore[attr-defined]
 
 
+def test_default_live_message_entry_attaches_webchat_stream_sink(
+    monkeypatch: Any,
+) -> None:
+    resolver = _Resolver()
+    engine = _Engine(reply_text="streaming reply")
+    identity = _identity(scene_type="private")
+    sent_frames: list[tuple[str, object]] = []
+
+    class WebChatBotStub:
+        self_id = "webui_session-1"
+
+        def __init__(self) -> None:
+            self._connection = object()
+            self._emitter = SimpleNamespace(
+                emit_partial_reply_start=self._emit("reply.partial.start"),
+                emit_partial_reply_delta=self._emit("reply.partial.delta"),
+                emit_partial_reply_complete=self._emit("reply.partial.complete"),
+                emit_partial_reply_failed=self._emit("reply.partial.failed"),
+            )
+
+        def _emit(self, type_: str) -> Any:
+            async def emit(_connection: object, payload: object) -> None:
+                sent_frames.append((type_, payload))
+
+            return emit
+
+    _patch_live_common(
+        monkeypatch,
+        resolver=resolver,
+        engine=engine,
+        identity=identity,
+    )
+    monkeypatch.setattr(
+        live_module,
+        "build_wake_context",
+        lambda *_args, **_kwargs: WakeContext(
+            bot_self_id="webui_session-1",
+            user_id="user-1",
+            message_text="hello",
+            is_tome=True,
+            is_private=True,
+            is_future_task=False,
+            allow_group_initiative=True,
+        ),
+    )
+
+    asyncio.run(
+        DefaultAILiveRuntimeEntry().handle_message(
+            WebChatBotStub(),
+            SimpleNamespace(get_user_id=lambda: "user-1", is_tome=lambda: True),
+        )
+    )
+    sink = engine.turns[0].stream_sink  # type: ignore[attr-defined]
+    asyncio.run(
+        _publish_stream_events(
+            sink,
+            (
+                SimpleNamespace(kind="start", stream_id="stream-1"),
+                SimpleNamespace(
+                    kind="text_delta",
+                    stream_id="stream-1",
+                    content_delta="hello",
+                ),
+            ),
+        )
+    )
+
+    assert [frame[0] for frame in sent_frames] == [
+        "reply.partial.start",
+        "reply.partial.delta",
+    ]
+    assert sent_frames[1][1].content_delta == "hello"
+
+
+async def _publish_stream_events(sink: Any, events: tuple[object, ...]) -> None:
+    for event in events:
+        sink(event)
+    await asyncio.sleep(0)
+
+
 def test_default_live_future_task_entry_maps_composed_commit_result(
     monkeypatch: Any,
 ) -> None:

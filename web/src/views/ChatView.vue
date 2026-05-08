@@ -249,6 +249,10 @@
     CapabilitiesResponsePayload,
     ChatEnvelope,
     MessageReceivePayload,
+    PartialReplyCompletePayload,
+    PartialReplyDeltaPayload,
+    PartialReplyFailedPayload,
+    PartialReplyStartPayload,
     SessionSnapshotPayload,
   } from '@/types/chat'
   import { nextTick, onMounted, onUnmounted, ref } from 'vue'
@@ -367,6 +371,10 @@
     activeSessionInfo,
     applyAuthOk,
     applyCapabilities,
+    applyPartialReplyComplete,
+    applyPartialReplyDelta,
+    applyPartialReplyFailed,
+    applyPartialReplyStart,
     applySessionSnapshot,
     appendMessage,
     appendSimpleMessage,
@@ -413,6 +421,22 @@
       }
       case 'message.receive': {
         appendMessage(event.payload as MessageReceivePayload)
+        break
+      }
+      case 'reply.partial.start': {
+        applyPartialReplyStart(event.payload as PartialReplyStartPayload)
+        break
+      }
+      case 'reply.partial.delta': {
+        applyPartialReplyDelta(event.payload as PartialReplyDeltaPayload)
+        break
+      }
+      case 'reply.partial.complete': {
+        applyPartialReplyComplete(event.payload as PartialReplyCompletePayload)
+        break
+      }
+      case 'reply.partial.failed': {
+        applyPartialReplyFailed(event.payload as PartialReplyFailedPayload)
         break
       }
       case 'message.ack': {

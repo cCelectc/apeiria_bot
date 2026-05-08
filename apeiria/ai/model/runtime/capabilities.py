@@ -26,6 +26,7 @@ AIModelContentModality: TypeAlias = Literal[
     "provider_data",
 ]
 AIModelToolCallingRequirement: TypeAlias = Literal["required", "optional", "none"]
+AIModelStreamingRequirement: TypeAlias = Literal["required", "optional", "none"]
 AIModelCallAction: TypeAlias = Literal["invoke", "reject"]
 AIModelResponseFormatType: TypeAlias = Literal["json_object", "json_schema"]
 AI_MODEL_RESPONSE_FORMAT_OPTION = "response_format"
@@ -85,6 +86,7 @@ class AIModelCallRequirements:
     """Runtime requirements for one model call."""
 
     tool_calling: AIModelToolCallingRequirement = "none"
+    streaming: AIModelStreamingRequirement = "none"
     required_modalities: frozenset[AIModelContentModality] = frozenset()
     optional_modalities: frozenset[AIModelContentModality] = frozenset()
     required_options: frozenset[str] = frozenset()
@@ -111,6 +113,7 @@ class AIModelCallPlan:
     options: dict[str, Any] = field(default_factory=dict)
     capabilities: AIModelCapabilities = field(default_factory=AIModelCapabilities)
     degradations: tuple[AIModelCallDegradation, ...] = ()
+    streaming: bool = False
     reason: str | None = None
     diagnostic: str | None = None
 

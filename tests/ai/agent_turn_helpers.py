@@ -6,13 +6,16 @@ from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any
 
 from apeiria.ai.model import (
+    AIChatModelDefinition,
     AIModelGenerateResponse,
     AIModelMessage,
     AIModelProfileDefinition,
+    AIModelStreamEvent,
     AIModelToolCall,
     AISelectedModel,
     AISourceDefinition,
 )
+from apeiria.ai.model.runtime.capabilities import parse_model_capabilities
 from apeiria.ai.tools.models import AIToolPolicy
 from apeiria.app.ai.runtime.execution.tool_loop import RuntimeToolLoopInput
 
@@ -28,7 +31,18 @@ def selected_model(
     suffix: str,
     *,
     fallback_profile_id: str | None = None,
+    supports_streaming: bool = False,
 ) -> AISelectedModel:
+    capability_metadata: dict[str, object] = {}
+    if supports_streaming:
+        capability_metadata["streaming"] = True
+    source_model = AIChatModelDefinition(
+        model_id=f"model-{suffix}",
+        source_id=f"source-{suffix}",
+        model_identifier=f"model-{suffix}",
+        display_name=f"Model {suffix}",
+        capability_metadata=capability_metadata,
+    )
     return AISelectedModel(
         source=AISourceDefinition(
             source_id=f"source-{suffix}",
@@ -47,6 +61,8 @@ def selected_model(
             fallback_profile_id=fallback_profile_id,
         ),
         resolved_model_name=f"model-{suffix}",
+        source_model=source_model,
+        resolved_capabilities=parse_model_capabilities(capability_metadata),
     )
 
 
@@ -69,6 +85,7 @@ class ModelInvokerStub:
     def __init__(self, outcomes: list[Any]) -> None:
         self.outcomes = list(outcomes)
         self.calls: list[AISelectedModel] = []
+        self.stream_calls: list[AISelectedModel] = []
         self.message_calls: list[tuple[AIModelMessage, ...]] = []
         self.tool_calls: list[tuple[AIModelToolDefinition, ...]] = []
 
@@ -89,6 +106,63 @@ class ModelInvokerStub:
         if isinstance(outcome, BaseException):
             raise outcome
         return outcome
+
+    async def stream_text(
+        self,
+        *,
+        selected: AISelectedModel,
+        prompt: str = "",
+        messages: tuple[AIModelMessage, ...] = (),
+        tools: tuple[AIModelToolDefinition, ...] = (),
+        **_: Any,
+    ) -> Any:
+        del prompt, messages, tools
+        self.stream_calls.append(selected)
+        outcome = self.outcomes.pop(0)
+        if isinstance(outcome, BaseException):
+            raise outcome
+        for event in outcome:
+            yield event
+
+
+def stream_start(
+    selected: AISelectedModel,
+    *,
+    stream_id: str = "stream-1",
+) -> AIModelStreamEvent:
+    return AIModelStreamEvent.start(
+        source_id=selected.source.source_id,
+        model_name=selected.resolved_model_name or "",
+        stream_id=stream_id,
+    )
+
+
+def stream_delta(
+    selected: AISelectedModel,
+    content_delta: str,
+    *,
+    stream_id: str = "stream-1",
+) -> AIModelStreamEvent:
+    return AIModelStreamEvent.text_delta(
+        source_id=selected.source.source_id,
+        model_name=selected.resolved_model_name or "",
+        stream_id=stream_id,
+        content_delta=content_delta,
+    )
+
+
+def stream_final(
+    selected: AISelectedModel,
+    response: AIModelGenerateResponse,
+    *,
+    stream_id: str = "stream-1",
+) -> AIModelStreamEvent:
+    return AIModelStreamEvent.final(
+        source_id=selected.source.source_id,
+        model_name=selected.resolved_model_name or "",
+        stream_id=stream_id,
+        response=response,
+    )
 
 
 @dataclass

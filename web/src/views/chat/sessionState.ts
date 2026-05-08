@@ -5,6 +5,10 @@ import type {
   ChatSegment,
   ChatSessionState,
   MessageReceivePayload,
+  PartialReplyCompletePayload,
+  PartialReplyDeltaPayload,
+  PartialReplyFailedPayload,
+  PartialReplyStartPayload,
   SessionCreatePayload,
   SessionListItem,
   SessionSnapshotPayload,
@@ -34,6 +38,7 @@ export function useChatSessionState (
   const session = ref<ChatSessionState | null>(null)
   const recentSessions = ref<SessionListItem[]>([])
   const messages = ref<MessageReceivePayload[]>([])
+  const partialReplies = new Map<string, MessageReceivePayload>()
   const pendingReply = ref<MessageReceivePayload | null>(null)
   const autoCreatingSession = ref(false)
   const draftSession = ref(false)
@@ -48,6 +53,15 @@ export function useChatSessionState (
   const activeSessionId = computed(() => activeSessionInfo.value?.session_id || '')
 
   function appendMessage (message: MessageReceivePayload) {
+    if (message.trace_id) {
+      for (const [streamId, pending] of partialReplies) {
+        if (pending.trace_id === message.trace_id) {
+          partialReplies.delete(streamId)
+          messages.value = messages.value.filter(item => item.message_id !== pending.message_id)
+          break
+        }
+      }
+    }
     messages.value.push(message)
     options.scrollToBottom()
   }
@@ -60,6 +74,59 @@ export function useChatSessionState (
       segments: [{ type: 'text', text }],
       timestamp: new Date().toISOString(),
     })
+  }
+
+  function applyPartialReplyStart (payload: PartialReplyStartPayload) {
+    if (payload.session_id !== activeSessionId.value) {
+      return
+    }
+    const pending: MessageReceivePayload = {
+      session_id: payload.session_id,
+      message_id: `partial_${payload.stream_id}`,
+      role: 'bot',
+      segments: [{ type: 'text', text: '' }],
+      timestamp: new Date().toISOString(),
+      trace_id: payload.trace_id,
+    }
+    partialReplies.set(payload.stream_id, pending)
+    messages.value.push(pending)
+    options.scrollToBottom()
+  }
+
+  function applyPartialReplyDelta (payload: PartialReplyDeltaPayload) {
+    const pending = partialReplies.get(payload.stream_id)
+    if (!pending || pending.session_id !== payload.session_id) {
+      return
+    }
+    const first = pending.segments[0]
+    if (first?.type === 'text') {
+      first.text += payload.content_delta
+    }
+    messages.value = [...messages.value]
+    options.scrollToBottom()
+  }
+
+  function applyPartialReplyComplete (payload: PartialReplyCompletePayload) {
+    const pending = partialReplies.get(payload.stream_id)
+    if (!pending) {
+      return
+    }
+    partialReplies.delete(payload.stream_id)
+    if (payload.message_id) {
+      messages.value = messages.value.filter(item => item.message_id !== pending.message_id)
+    }
+  }
+
+  function applyPartialReplyFailed (payload: PartialReplyFailedPayload) {
+    const pending = partialReplies.get(payload.stream_id)
+    if (!pending) {
+      return
+    }
+    partialReplies.delete(payload.stream_id)
+    messages.value = messages.value.filter(item => item.message_id !== pending.message_id)
+    if (payload.message) {
+      appendSimpleMessage('error', payload.message)
+    }
   }
 
   function handleSendResult (result: ChatSendResult) {
@@ -83,6 +150,7 @@ export function useChatSessionState (
     session.value = null
     draftSession.value = false
     messages.value = []
+    partialReplies.clear()
     clearPendingReply()
     options.closeImagePreview()
     options.revokeProtectedAssetUrls()
@@ -139,6 +207,7 @@ export function useChatSessionState (
     recentSessions.value = payload.sessions
     session.value = payload.active_session ?? null
     messages.value = payload.history
+    partialReplies.clear()
     const repliedMessageStillVisible = pendingReply.value
       ? payload.history.some(
           message => message.message_id === pendingReply.value?.message_id,
@@ -194,6 +263,10 @@ export function useChatSessionState (
     activeSessionInfo,
     applyAuthOk,
     applyCapabilities,
+    applyPartialReplyComplete,
+    applyPartialReplyDelta,
+    applyPartialReplyFailed,
+    applyPartialReplyStart,
     applySessionSnapshot,
     appendMessage,
     appendSimpleMessage,

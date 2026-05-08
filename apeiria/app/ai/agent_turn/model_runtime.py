@@ -43,6 +43,46 @@ class AgentTurnModelRuntime:
 
         for index, selected in enumerate(candidates, start=1):
             try:
+                if request.stream_policy != "none" or request.stream_sink is not None:
+                    response, stream_metadata = await self._generate_streamed_response(
+                        request=request,
+                        selected=selected,
+                    )
+                    if response is None:
+                        _raise_empty_stream_response()
+                    attempts.append(
+                        ModelAttempt(
+                            attempt_index=index,
+                            model_ref=model_ref(selected),
+                            status="success",
+                            response_source=request.response_source,
+                        )
+                    )
+                    metadata = _turn_metadata_from_response(response)
+                    if stream_metadata:
+                        metadata = {
+                            **metadata,
+                            "streaming": stream_metadata,
+                        }
+                    return AgentModelGenerationResult(
+                        response=response,
+                        selected=selected,
+                        turn=AgentTurnResult(
+                            trace_id=request.trace_id,
+                            runtime_mode=request.runtime_mode,
+                            status="completed",
+                            finish_reason=(
+                                "direct_model_stream_completed"
+                                if request.response_source == "direct"
+                                else f"{request.response_source}_model_stream_completed"
+                            ),
+                            model_attempts=tuple(attempts),
+                            response=response,
+                            response_source=request.response_source,
+                            metadata=metadata,
+                        ),
+                    )
+
                 response = await self._model_invoker.generate_text(
                     selected=selected,
                     prompt=request.prompt,
@@ -143,11 +183,38 @@ class AgentTurnModelRuntime:
             ),
         )
 
+    async def _generate_streamed_response(
+        self,
+        *,
+        request: AgentModelGenerationRequest,
+        selected: Any,
+    ) -> tuple[Any | None, dict[str, object]]:
+        stream_events: list[Any] = []
+        stream_sink = request.stream_sink
+        stream_iter = self._model_invoker.stream_text(
+            selected=selected,
+            prompt=request.prompt,
+            messages=request.messages,
+            tools=request.tools,
+        )
+        async for event in stream_iter:
+            stream_events.append(event)
+            if stream_sink is not None:
+                stream_sink(event)
+            if getattr(event, "kind", None) == "final":
+                response = getattr(event, "response", None)
+                return response, _stream_metadata(stream_events, event)
+        return None, _stream_metadata(stream_events, None)
+
 
 def _completed_finish_reason(response_source: str) -> str:
     if response_source == "direct":
         return "direct_model_completed"
     return f"{response_source}_model_completed"
+
+
+def _raise_empty_stream_response() -> None:
+    raise RuntimeError("empty_stream_response")
 
 
 def _planned_feature_for_request(request: AgentModelGenerationRequest) -> str:
@@ -177,3 +244,19 @@ def _turn_metadata_from_response(response: Any) -> dict[str, object]:
     if not degradations:
         return {}
     return {"capability_degradations": degradations}
+
+
+def _stream_metadata(
+    stream_events: list[Any],
+    final_event: Any | None,
+) -> dict[str, object]:
+    if final_event is None:
+        return {
+            "status": "failed",
+            "event_count": len(stream_events),
+        }
+    return {
+        "status": "completed",
+        "stream_id": getattr(final_event, "stream_id", None),
+        "event_count": len(stream_events),
+    }

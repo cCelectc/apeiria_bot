@@ -24,6 +24,8 @@ from apeiria.ai.model.runtime.adapter import (
     AIModelGenerateRequest,
     AIModelGenerateResponse,
     AIModelMessage,
+    AIModelStreamEvent,
+    AIModelStreamRequest,
     AIModelToolDefinition,
 )
 from apeiria.ai.model.runtime.capabilities import (
@@ -471,6 +473,126 @@ def test_model_call_planning_invokes_rejects_degrades_and_filters_options() -> N
     assert required_multimodal.reason == "unsupported_modality"
 
 
+def test_streaming_generation_events_are_provider_neutral_contracts() -> None:
+    selected = _selected_with_capabilities(
+        AIModelCapabilities(
+            lanes=frozenset({"chat_completion"}),
+            supports_streaming=True,
+        )
+    )
+    request = AIModelStreamRequest(
+        source_id=selected.source.source_id,
+        model_name=selected.resolved_model_name or "",
+        messages=(AIModelMessage(role="user", content="hello"),),
+    )
+    final_response = AIModelGenerateResponse(
+        source_id=request.source_id,
+        model_name=request.model_name,
+        content="hello there",
+        usage={"completion_tokens": 2},
+        finish_reason="stop",
+        response_id="resp-1",
+    )
+
+    events = (
+        AIModelStreamEvent.start(
+            source_id=request.source_id,
+            model_name=request.model_name,
+            stream_id="stream-1",
+        ),
+        AIModelStreamEvent.text_delta(
+            source_id=request.source_id,
+            model_name=request.model_name,
+            stream_id="stream-1",
+            content_delta="hello",
+        ),
+        AIModelStreamEvent.final(
+            source_id=request.source_id,
+            model_name=request.model_name,
+            stream_id="stream-1",
+            response=final_response,
+        ),
+        AIModelStreamEvent.failure(
+            source_id=request.source_id,
+            model_name=request.model_name,
+            stream_id="stream-2",
+            reason="upstream_error",
+            diagnostic="provider stream failed",
+        ),
+    )
+
+    assert [event.kind for event in events] == [
+        "start",
+        "text_delta",
+        "final",
+        "failure",
+    ]
+    assert events[1].content_delta == "hello"
+    assert events[2].response == final_response
+    assert events[3].reason == "upstream_error"
+    assert events[3].diagnostic == "provider stream failed"
+    assert not any(hasattr(event, "raw") for event in events)
+
+
+def test_model_call_planning_handles_required_and_optional_streaming() -> None:
+    unsupported = _selected_with_capabilities(
+        AIModelCapabilities(lanes=frozenset({"chat_completion"})),
+        suffix="no-stream",
+    )
+    supported = _selected_with_capabilities(
+        AIModelCapabilities(
+            lanes=frozenset({"chat_completion"}),
+            supports_streaming=True,
+        ),
+        suffix="stream",
+    )
+
+    rejected = plan_model_call(
+        selected=unsupported,
+        requirements=AIModelCallRequirements(streaming="required"),
+    )
+    degraded = plan_model_call(
+        selected=unsupported,
+        requirements=AIModelCallRequirements(streaming="optional"),
+    )
+    planned = plan_model_call(
+        selected=supported,
+        requirements=AIModelCallRequirements(streaming="optional"),
+    )
+
+    assert rejected.action == "reject"
+    assert rejected.reason == "unsupported_streaming"
+    assert degraded.action == "invoke"
+    assert degraded.streaming is False
+    assert degraded.degradations[0].kind == "streaming_omitted"
+    assert planned.action == "invoke"
+    assert planned.streaming is True
+    assert planned.degradations == ()
+
+
+def test_streaming_planning_does_not_bypass_required_options() -> None:
+    selected = _selected_with_capabilities(
+        AIModelCapabilities(
+            lanes=frozenset({"chat_completion"}),
+            supports_streaming=True,
+            supported_options=frozenset({"temperature"}),
+        )
+    )
+
+    plan = plan_model_call(
+        selected=selected,
+        requirements=AIModelCallRequirements(
+            streaming="required",
+            required_options=frozenset({"seed"}),
+        ),
+        options=AIModelCallOptions(values={"temperature": 0.2, "seed": 1}),
+    )
+
+    assert plan.action == "reject"
+    assert plan.reason == "unsupported_required_option"
+    assert "seed" in (plan.diagnostic or "")
+
+
 def test_model_call_planning_keeps_structured_schema_when_supported() -> None:
     selected = _selected_with_capabilities(
         AIModelCapabilities(
@@ -658,6 +780,49 @@ def test_openai_compatible_adapter_forwards_image_url_content_part(
             ],
         }
     ]
+
+
+def test_openai_compatible_adapter_normalizes_streaming_text_events(
+    monkeypatch: Any,
+) -> None:
+    payloads: list[dict[str, Any]] = []
+    monkeypatch.setattr(
+        openai_compatible,
+        "_build_openai_client",
+        lambda **_kwargs: _OpenAIStreamClientStub(payloads),
+    )
+    provider = openai_compatible.OpenAICompatibleProvider(
+        api_base="https://api.example.test/v1",
+        api_key="test-key",
+    )
+
+    async def collect_events() -> list[AIModelStreamEvent]:
+        return [
+            event
+            async for event in provider.stream_text(
+                AIModelStreamRequest(
+                    source_id="source-1",
+                    model_name="model-1",
+                    messages=(AIModelMessage(role="user", content="hello"),),
+                )
+            )
+        ]
+
+    events = asyncio.run(collect_events())
+
+    assert payloads[0]["stream"] is True
+    assert [event.kind for event in events] == [
+        "start",
+        "text_delta",
+        "text_delta",
+        "final",
+    ]
+    assert events[1].content_delta == "hel"
+    assert events[2].content_delta == "lo"
+    assert events[3].response is not None
+    assert events[3].response.content == "hello"
+    assert events[3].response.finish_reason == "stop"
+    assert events[3].response.response_id == "chatcmpl-stream-1"
 
 
 def test_agent_runtime_uses_fallback_after_capability_planning_reject() -> None:
@@ -951,3 +1116,53 @@ class _OpenAIClientStub:
 
     async def close(self) -> None:
         return None
+
+
+class _OpenAIStreamClientStub:
+    def __init__(self, payloads: list[dict[str, Any]]) -> None:
+        self.chat = SimpleNamespace(
+            completions=SimpleNamespace(create=self._create_completion)
+        )
+        self._payloads = payloads
+
+    async def _create_completion(self, **payload: Any) -> Any:
+        self._payloads.append(payload)
+        return _OpenAIStreamStub()
+
+    async def close(self) -> None:
+        return None
+
+
+class _OpenAIStreamStub:
+    def __aiter__(self) -> Any:
+        return self._events()
+
+    async def _events(self) -> Any:
+        chunks = [
+            _openai_stream_chunk("chatcmpl-stream-1", content_delta="hel"),
+            _openai_stream_chunk("chatcmpl-stream-1", content_delta="lo"),
+            _openai_stream_chunk("chatcmpl-stream-1", finish_reason="stop"),
+        ]
+        for chunk in chunks:
+            yield chunk
+
+
+def _openai_stream_chunk(
+    response_id: str,
+    *,
+    content_delta: str | None = None,
+    finish_reason: str | None = None,
+) -> Any:
+    def model_dump(**_kwargs: Any) -> dict[str, Any]:
+        return {"id": response_id}
+
+    return SimpleNamespace(
+        id=response_id,
+        choices=[
+            SimpleNamespace(
+                delta=SimpleNamespace(content=content_delta),
+                finish_reason=finish_reason,
+            )
+        ],
+        model_dump=model_dump,
+    )

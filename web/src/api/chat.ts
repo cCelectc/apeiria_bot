@@ -7,6 +7,35 @@ import type {
   SessionSelectPayload,
 } from '@/types/chat'
 
+export const CLIENT_FRAME_TYPES = [
+  'auth.hello',
+  'capabilities.request',
+  'session.create',
+  'session.select',
+  'session.delete',
+  'session.close',
+  'session.clear_history',
+  'session.list',
+  'message.send',
+] as const
+
+export const SERVER_FRAME_TYPES = [
+  'auth.ok',
+  'auth.error',
+  'capabilities.response',
+  'session.snapshot',
+  'message.ack',
+  'message.receive',
+  'message.error',
+  'reply.partial.start',
+  'reply.partial.delta',
+  'reply.partial.complete',
+  'reply.partial.failed',
+  'system.info',
+  'system.warning',
+  'system.error',
+] as const
+
 type EnvelopeHandler = (event: ChatEnvelope) => void
 type VoidHandler = () => void
 

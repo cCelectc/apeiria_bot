@@ -48,4 +48,5 @@ def build_turn_context(  # noqa: PLR0913
         prompt_diagnostics=prompt_diagnostics or {},
         hard_rule_decision=hard_decision,
         social_decision=social_decision,
+        stream_sink=turn.stream_sink,
     )

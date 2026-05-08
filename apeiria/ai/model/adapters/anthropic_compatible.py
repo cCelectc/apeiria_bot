@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from anthropic import AsyncAnthropic
 
@@ -17,10 +17,16 @@ from apeiria.ai.model.runtime.adapter import (
     AIModelRerankResponse,
     AIModelSpeechRequest,
     AIModelSpeechResponse,
+    AIModelStreamRequest,
     AIModelToolCall,
     AIModelTranscriptionRequest,
     AIModelTranscriptionResponse,
 )
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncIterator
+
+    from apeiria.ai.model.runtime.adapter import AIModelStreamEvent
 
 
 class AnthropicCompatibleProviderConfigError(RuntimeError):
@@ -130,6 +136,13 @@ class AnthropicCompatibleProvider:
             reasoning_content=_extract_anthropic_reasoning_content(response),
             provider_data=_extract_anthropic_provider_data(raw),
         )
+
+    def stream_text(
+        self,
+        request: AIModelStreamRequest,
+    ) -> "AsyncIterator[AIModelStreamEvent]":
+        _ = request
+        raise AnthropicCompatibleProviderCapabilityActionError("streaming")
 
     async def list_models(
         self,

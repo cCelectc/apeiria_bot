@@ -30,7 +30,7 @@ _ResponseFormatPlan: TypeAlias = tuple[
 ]
 
 
-def plan_model_call(  # noqa: PLR0913
+def plan_model_call(  # noqa: C901, PLR0913
     *,
     selected: "AISelectedModel",
     messages: tuple["AIModelMessage", ...] = (),
@@ -89,6 +89,21 @@ def plan_model_call(  # noqa: PLR0913
             ),
         )
 
+    streaming_rejection = _plan_streaming_rejection(
+        requirements,
+        capabilities=capabilities,
+    )
+    if streaming_rejection is not None:
+        return _reject(
+            selected=selected,
+            messages=messages,
+            tools=tools,
+            options=effective_options,
+            capabilities=capabilities,
+            reason=streaming_rejection[0],
+            diagnostic=streaming_rejection[1],
+        )
+
     filtered_options = {
         key: value
         for key, value in effective_options.items()
@@ -112,6 +127,11 @@ def plan_model_call(  # noqa: PLR0913
         )
 
     degradations: list[AIModelCallDegradation] = list(response_degradations)
+    streaming, streaming_degradations = _plan_streaming(
+        requirements,
+        capabilities=capabilities,
+    )
+    degradations.extend(streaming_degradations)
     planned_tools = tools
     if (
         tools
@@ -178,6 +198,7 @@ def plan_model_call(  # noqa: PLR0913
         options=filtered_options,
         capabilities=capabilities,
         degradations=tuple(degradations),
+        streaming=streaming,
     )
 
 
@@ -316,6 +337,42 @@ def _structured_output_omitted(detail: str) -> AIModelCallDegradation:
         detail=detail,
         metadata={"option": AI_MODEL_RESPONSE_FORMAT_OPTION},
     )
+
+
+def _plan_streaming_rejection(
+    requirements: AIModelCallRequirements,
+    *,
+    capabilities: AIModelCapabilities,
+) -> tuple[str, str] | None:
+    if requirements.streaming == "required" and not capabilities.supports_streaming:
+        return (
+            "unsupported_streaming",
+            "model does not support required streaming",
+        )
+    return None
+
+
+def _plan_streaming(
+    requirements: AIModelCallRequirements,
+    *,
+    capabilities: AIModelCapabilities,
+) -> tuple[bool, tuple[AIModelCallDegradation, ...]]:
+    if requirements.streaming == "none":
+        return False, ()
+    if capabilities.supports_streaming:
+        return True, ()
+    if requirements.streaming == "optional":
+        return (
+            False,
+            (
+                AIModelCallDegradation(
+                    kind="streaming_omitted",
+                    reason="unsupported_streaming",
+                    detail="model does not support optional streaming",
+                ),
+            ),
+        )
+    return False, ()
 
 
 def _infer_requirements(

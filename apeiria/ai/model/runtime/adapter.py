@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Literal, Protocol
+from typing import TYPE_CHECKING, Any, Literal, Protocol
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncIterator
 
 
 @dataclass(frozen=True)
@@ -150,6 +153,116 @@ class AIModelGenerateResponse:
 
 
 @dataclass(frozen=True)
+class AIModelStreamRequest:
+    """Unified text streaming generation request for model adapters."""
+
+    source_id: str
+    model_name: str
+    prompt: str = ""
+    messages: tuple[AIModelMessage, ...] = ()
+    temperature: float | None = None
+    max_tokens: int | None = None
+    tools: tuple[AIModelToolDefinition, ...] = ()
+    extra: dict[str, Any] | None = None
+    options: dict[str, Any] | None = None
+    degradations: tuple[Any, ...] = ()
+
+
+AIModelStreamEventKind = Literal["start", "text_delta", "final", "failure"]
+
+
+@dataclass(frozen=True)
+class AIModelStreamEvent:
+    """Provider-neutral lifecycle event for a text generation stream."""
+
+    kind: AIModelStreamEventKind
+    source_id: str
+    model_name: str
+    stream_id: str
+    content_delta: str = ""
+    response: AIModelGenerateResponse | None = None
+    reason: str | None = None
+    diagnostic: str | None = None
+    metadata: dict[str, Any] | None = None
+
+    @classmethod
+    def start(
+        cls,
+        *,
+        source_id: str,
+        model_name: str,
+        stream_id: str,
+        metadata: dict[str, Any] | None = None,
+    ) -> "AIModelStreamEvent":
+        return cls(
+            kind="start",
+            source_id=source_id,
+            model_name=model_name,
+            stream_id=stream_id,
+            metadata=metadata,
+        )
+
+    @classmethod
+    def text_delta(
+        cls,
+        *,
+        source_id: str,
+        model_name: str,
+        stream_id: str,
+        content_delta: str,
+        metadata: dict[str, Any] | None = None,
+    ) -> "AIModelStreamEvent":
+        return cls(
+            kind="text_delta",
+            source_id=source_id,
+            model_name=model_name,
+            stream_id=stream_id,
+            content_delta=content_delta,
+            metadata=metadata,
+        )
+
+    @classmethod
+    def final(
+        cls,
+        *,
+        source_id: str,
+        model_name: str,
+        stream_id: str,
+        response: AIModelGenerateResponse,
+        metadata: dict[str, Any] | None = None,
+    ) -> "AIModelStreamEvent":
+        return cls(
+            kind="final",
+            source_id=source_id,
+            model_name=model_name,
+            stream_id=stream_id,
+            response=response,
+            metadata=metadata,
+        )
+
+    @classmethod
+    def failure(  # noqa: PLR0913
+        cls,
+        *,
+        source_id: str,
+        model_name: str,
+        stream_id: str,
+        reason: str,
+        diagnostic: str,
+        metadata: dict[str, Any] | None = None,
+    ) -> "AIModelStreamEvent":
+        return cls(
+            kind="failure",
+            source_id=source_id,
+            model_name=model_name,
+            stream_id=stream_id,
+            reason=reason,
+            diagnostic=diagnostic,
+            metadata=metadata,
+        )
+
+
+@dataclass(frozen=True)
 class AIModelEmbeddingRequest:
     """Unified embedding request for Apeiria AI services."""
 
@@ -259,6 +372,11 @@ class AIModelAdapter(Protocol):
         self,
         request: AIModelGenerateRequest,
     ) -> AIModelGenerateResponse: ...
+
+    def stream_text(
+        self,
+        request: AIModelStreamRequest,
+    ) -> AsyncIterator[AIModelStreamEvent]: ...
 
     async def embed_texts(
         self,

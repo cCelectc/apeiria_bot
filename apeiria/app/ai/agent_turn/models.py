@@ -19,6 +19,9 @@ if TYPE_CHECKING:
     )
 
 
+AIModelStreamSink = Any
+
+
 AgentTurnStatus = Literal["completed", "skipped", "failed", "interrupted"]
 
 
@@ -72,6 +75,8 @@ class AgentModelGenerationRequest:
     tools: tuple["AIModelToolDefinition", ...] = ()
     response_source: str = "direct"
     fallback_models: tuple["AISelectedModel", ...] = ()
+    stream_policy: Literal["none", "optional", "required"] = "none"
+    stream_sink: AIModelStreamSink | None = None
 
 
 @dataclass(frozen=True)

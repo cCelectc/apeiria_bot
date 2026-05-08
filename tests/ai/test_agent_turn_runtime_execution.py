@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from dataclasses import replace
 from datetime import datetime, timezone
 from typing import Any
 
@@ -99,10 +100,11 @@ def _plan(
     exposure_plan: ToolExposurePlan | None = None,
     prompt_messages: tuple[AIModelMessage, ...] | None = None,
     reply_compose_input: RuntimePromptComposeInput | None = None,
+    selected: Any | None = None,
 ) -> RuntimeTurnPlan:
     return RuntimeTurnPlan(
         stage="planning",
-        selected=selected_model("main"),
+        selected=selected or selected_model("main"),
         fallback_models=(),
         skill_runtime=RuntimeToolLoopResult(policy_text="", result_lines=(), turns=()),
         skill_activation=None,
@@ -249,6 +251,110 @@ def test_direct_execution_uses_turn_context_messages(monkeypatch: Any) -> None:
     assert result.turn_result.metadata["prompt_diagnostics"] == {
         "prompt_purpose": "reply_final"
     }
+
+
+def test_direct_execution_streams_only_for_supported_webchat_channel(
+    monkeypatch: Any,
+) -> None:
+    selected = selected_model("main", supports_streaming=True)
+    captured_requests: list[Any] = []
+    captured_stream_events: list[object] = []
+
+    async def generate_model_turn(request: Any) -> AgentModelGenerationResult:
+        captured_requests.append(request)
+        assert request.stream_sink is not None
+        request.stream_sink("partial-event")
+        response = model_response(selected, "streamed answer")
+        return AgentModelGenerationResult(
+            response=response,
+            selected=selected,
+            turn=AgentTurnResult(
+                trace_id=request.trace_id,
+                runtime_mode=request.runtime_mode,
+                status="completed",
+                finish_reason="direct_model_stream_completed",
+                response=response,
+                response_source=request.response_source,
+                metadata={"streaming": {"status": "completed"}},
+            ),
+        )
+
+    monkeypatch.setattr(
+        execution_module,
+        "generate_model_turn",
+        generate_model_turn,
+    )
+    context = _context(prompt_messages=(AIModelMessage(role="user", content="hello"),))
+    context = replace(
+        context,
+        delivery_target=DeliveryTarget(
+            session_id="session-1",
+            reply_to_message_id="msg-1",
+            delivery_channel="webchat",
+        ),
+    )
+    plan = _plan(prompt_messages=context.prompt_messages, selected=selected)
+
+    result = asyncio.run(
+        execution_module.execute_direct_runtime_turn(
+            turn_context=context,
+            plan=plan,
+            stream_sink=captured_stream_events.append,
+        )
+    )
+
+    assert captured_requests[0].stream_policy == "optional"
+    assert captured_stream_events == ["partial-event"]
+    assert result.response is not None
+    assert result.response.content == "streamed answer"
+    assert result.turn_result is not None
+    assert result.turn_result.metadata["streaming"]["status"] == "completed"
+
+
+def test_direct_execution_keeps_final_path_for_final_only_channel(
+    monkeypatch: Any,
+) -> None:
+    selected = selected_model("main", supports_streaming=True)
+    captured_requests: list[Any] = []
+    captured_stream_events: list[object] = []
+
+    async def generate_model_turn(request: Any) -> AgentModelGenerationResult:
+        captured_requests.append(request)
+        response = model_response(selected, "final answer")
+        return AgentModelGenerationResult(
+            response=response,
+            selected=selected,
+            turn=AgentTurnResult(
+                trace_id=request.trace_id,
+                runtime_mode=request.runtime_mode,
+                status="completed",
+                finish_reason="direct_model_completed",
+                response=response,
+                response_source=request.response_source,
+            ),
+        )
+
+    monkeypatch.setattr(
+        execution_module,
+        "generate_model_turn",
+        generate_model_turn,
+    )
+    context = _context(prompt_messages=(AIModelMessage(role="user", content="hello"),))
+    plan = _plan(prompt_messages=context.prompt_messages, selected=selected)
+
+    result = asyncio.run(
+        execution_module.execute_direct_runtime_turn(
+            turn_context=context,
+            plan=plan,
+            stream_sink=captured_stream_events.append,
+        )
+    )
+
+    assert captured_requests[0].stream_sink is None
+    assert captured_requests[0].stream_policy == "none"
+    assert captured_stream_events == []
+    assert result.response is not None
+    assert result.response.content == "final answer"
 
 
 def test_tool_execution_uses_runtime_exposure_and_refinement_messages(

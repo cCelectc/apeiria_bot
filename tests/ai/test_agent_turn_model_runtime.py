@@ -17,6 +17,9 @@ from tests.ai.agent_turn_helpers import (
     ModelInvokerStub,
     model_response,
     selected_model,
+    stream_delta,
+    stream_final,
+    stream_start,
 )
 
 
@@ -344,6 +347,73 @@ def test_model_runtime_exposes_direct_capability_degradations() -> None:
             "metadata": {"tool_count": 1},
         }
     ]
+
+
+def test_model_runtime_streams_direct_reply_and_records_final_response() -> None:
+    selected = selected_model("main", supports_streaming=True)
+    response = model_response(selected, "hello world")
+    stream_events = [
+        stream_start(selected, stream_id="stream-1"),
+        stream_delta(selected, "hello ", stream_id="stream-1"),
+        stream_delta(selected, "world", stream_id="stream-1"),
+        stream_final(selected, response, stream_id="stream-1"),
+    ]
+    invoker = ModelInvokerStub([stream_events])
+    runtime = AgentTurnModelRuntime(model_invoker=invoker)
+    captured_events: list[object] = []
+
+    result = asyncio.run(
+        runtime.generate(
+            AgentModelGenerationRequest(
+                trace_id="trace-stream",
+                session_id="session-1",
+                runtime_mode="message",
+                selected=selected,
+                prompt="Say hello",
+                response_source="direct",
+                stream_sink=captured_events.append,
+            )
+        )
+    )
+
+    assert result.response is response
+    assert result.turn.status == "completed"
+    assert result.turn.finish_reason == "direct_model_stream_completed"
+    assert invoker.stream_calls == [selected]
+    assert invoker.calls == []
+    assert captured_events == stream_events
+    assert result.turn.metadata["streaming"] == {
+        "status": "completed",
+        "stream_id": "stream-1",
+        "event_count": 4,
+    }
+
+
+def test_model_runtime_does_not_commit_partial_text_after_stream_failure() -> None:
+    selected = selected_model("main", supports_streaming=True)
+    invoker = ModelInvokerStub([RuntimeError("stream failed after partial text")])
+    runtime = AgentTurnModelRuntime(model_invoker=invoker)
+    captured_events: list[object] = []
+
+    result = asyncio.run(
+        runtime.generate(
+            AgentModelGenerationRequest(
+                trace_id="trace-stream-fail",
+                session_id="session-1",
+                runtime_mode="message",
+                selected=selected,
+                prompt="Say hello",
+                response_source="direct",
+                stream_sink=captured_events.append,
+            )
+        )
+    )
+
+    assert result.response is None
+    assert result.turn.status == "failed"
+    assert result.turn.finish_reason == "model_error"
+    assert result.turn.model_attempts[0].status == "failed"
+    assert result.turn.model_attempts[0].reason == "model_error"
 
 
 def test_runtime_planning_resolves_profile_fallback_candidates(

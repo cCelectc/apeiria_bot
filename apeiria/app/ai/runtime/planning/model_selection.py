@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Literal
 
 from nonebot.log import logger
 
@@ -40,6 +40,8 @@ class GenerationRequest:
     messages: tuple["AIModelMessage", ...] = ()
     fallback_models: tuple["AISelectedModel", ...] = ()
     prompt: str = ""
+    stream_policy: Literal["none", "optional", "required"] = "none"
+    stream_sink: Any | None = None
 
 
 async def select_model(
@@ -104,6 +106,8 @@ async def generate_model_turn(
             tools=request.tools,
             response_source=request.response_source,
             fallback_models=request.fallback_models,
+            stream_policy=request.stream_policy,
+            stream_sink=request.stream_sink,
         )
     )
 

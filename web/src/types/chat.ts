@@ -118,6 +118,34 @@ export interface MessageReceivePayload {
   trace_id?: string | null
 }
 
+export interface PartialReplyStartPayload {
+  session_id: string
+  trace_id: string
+  stream_id: string
+}
+
+export interface PartialReplyDeltaPayload {
+  session_id: string
+  trace_id: string
+  stream_id: string
+  content_delta: string
+}
+
+export interface PartialReplyCompletePayload {
+  session_id: string
+  trace_id: string
+  stream_id: string
+  message_id?: string | null
+}
+
+export interface PartialReplyFailedPayload {
+  session_id: string
+  trace_id: string
+  stream_id: string
+  code: string
+  message?: string | null
+}
+
 export interface SystemMessagePayload {
   message: string
 }

@@ -13,6 +13,10 @@ from .protocol import (
     ImageSegment,
     MentionSegment,
     MessageReceivePayload,
+    PartialReplyCompletePayload,
+    PartialReplyDeltaPayload,
+    PartialReplyFailedPayload,
+    PartialReplyStartPayload,
     ReplySegment,
     SessionListItem,
     SessionSnapshotPayload,
@@ -145,6 +149,34 @@ class WebChatEmitter:
         self.prune_assets()
         await connection.send_envelope("message.receive", payload)
         await self.emit_session_snapshot(connection)
+
+    async def emit_partial_reply_start(
+        self,
+        connection: "WebChatConnection",
+        payload: PartialReplyStartPayload,
+    ) -> None:
+        await connection.send_envelope("reply.partial.start", payload)
+
+    async def emit_partial_reply_delta(
+        self,
+        connection: "WebChatConnection",
+        payload: PartialReplyDeltaPayload,
+    ) -> None:
+        await connection.send_envelope("reply.partial.delta", payload)
+
+    async def emit_partial_reply_complete(
+        self,
+        connection: "WebChatConnection",
+        payload: PartialReplyCompletePayload,
+    ) -> None:
+        await connection.send_envelope("reply.partial.complete", payload)
+
+    async def emit_partial_reply_failed(
+        self,
+        connection: "WebChatConnection",
+        payload: PartialReplyFailedPayload,
+    ) -> None:
+        await connection.send_envelope("reply.partial.failed", payload)
 
     async def emit_error(
         self,

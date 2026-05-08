@@ -13,6 +13,8 @@ from apeiria.app.chat.protocol import (
     ChatEnvelope,
     ChatSessionState,
     MessageReceivePayload,
+    PartialReplyDeltaPayload,
+    PartialReplyStartPayload,
     SessionCreatePayload,
     SessionSelectPayload,
     SessionSnapshotPayload,
@@ -159,6 +161,52 @@ def test_append_history_trims_to_latest_100_messages() -> None:
     assert len(history) == HISTORY_LIMIT
     assert history[0].message_id == "msg-5"
     assert history[-1].message_id == "msg-104"
+
+
+def test_partial_reply_frames_do_not_append_session_history() -> None:
+    from apeiria.app.chat.assets import AssetManager
+    from apeiria.app.chat.emitter import WebChatEmitter
+
+    store = _StoreStub()
+    state = WebChatStateManager(store=store)
+    principal = _principal()
+    session = state.create_session(
+        principal,
+        SessionCreatePayload(target_user_id="10001"),
+    )
+    connection = _ConnectionStub(
+        principal=principal,
+        active_session_id=session.session_id,
+    )
+    emitter = WebChatEmitter(state, AssetManager())
+
+    asyncio.run(
+        emitter.emit_partial_reply_start(
+            connection,
+            PartialReplyStartPayload(
+                session_id=session.session_id,
+                trace_id="trace-1",
+                stream_id="stream-1",
+            ),
+        )
+    )
+    asyncio.run(
+        emitter.emit_partial_reply_delta(
+            connection,
+            PartialReplyDeltaPayload(
+                session_id=session.session_id,
+                trace_id="trace-1",
+                stream_id="stream-1",
+                content_delta="hello",
+            ),
+        )
+    )
+
+    assert state.get_history(session.session_id) == []
+    assert [frame[0] for frame in connection.sent_envelopes] == [
+        "reply.partial.start",
+        "reply.partial.delta",
+    ]
 
 
 def test_select_session_returns_exact_requested_session_when_targets_duplicate() -> (

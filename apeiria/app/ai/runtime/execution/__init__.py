@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Literal
 
 from apeiria.ai.config import get_ai_plugin_config
 from apeiria.app.ai.agent_turn import AgentTurnResult
@@ -50,6 +50,7 @@ async def execute_runtime_turn(
     return await execute_direct_runtime_turn(
         turn_context=turn_context,
         plan=plan,
+        stream_sink=turn_context.stream_sink,
     )
 
 
@@ -57,12 +58,14 @@ async def execute_direct_runtime_turn(
     *,
     turn_context: "TurnContext",
     plan: "RuntimeTurnPlan",
+    stream_sink: Any | None = None,
 ) -> "RuntimeExecutionOutcome":
     from apeiria.app.ai.runtime.stages import RuntimeExecutionOutcome
 
     turn_result = await _run_direct_model_turn(
         turn_context=turn_context,
         plan=plan,
+        stream_sink=stream_sink,
     )
     return RuntimeExecutionOutcome(
         stage="execution",
@@ -78,7 +81,13 @@ async def _run_direct_model_turn(
     *,
     turn_context: "TurnContext",
     plan: "RuntimeTurnPlan",
+    stream_sink: Any | None = None,
 ) -> AgentTurnResult:
+    stream_policy = _direct_reply_stream_policy(
+        turn_context=turn_context,
+        plan=plan,
+        stream_sink=stream_sink,
+    )
     result = await generate_model_turn(
         GenerationRequest(
             selected=plan.selected,
@@ -90,9 +99,27 @@ async def _run_direct_model_turn(
             runtime_mode=turn_context.runtime_mode,
             response_source="direct",
             fallback_models=plan.fallback_models,
+            stream_policy=stream_policy,
+            stream_sink=stream_sink if stream_policy != "none" else None,
         )
     )
     return _with_prompt_diagnostics(result.turn, turn_context)
+
+
+def _direct_reply_stream_policy(
+    *,
+    turn_context: "TurnContext",
+    plan: "RuntimeTurnPlan",
+    stream_sink: Any | None,
+) -> Literal["none", "optional"]:
+    if stream_sink is None:
+        return "none"
+    if turn_context.delivery_target.delivery_channel != "webchat":
+        return "none"
+    capabilities = getattr(plan.selected, "resolved_capabilities", None)
+    if not bool(getattr(capabilities, "supports_streaming", False)):
+        return "none"
+    return "optional"
 
 
 async def execute_tool_capable_runtime_turn(

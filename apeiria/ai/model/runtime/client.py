@@ -6,6 +6,8 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from collections.abc import AsyncIterator
+
     from apeiria.ai.model.runtime.adapter import (
         AIModelAdapter,
         AIModelCatalogItem,
@@ -17,6 +19,8 @@ if TYPE_CHECKING:
         AIModelRerankResponse,
         AIModelSpeechRequest,
         AIModelSpeechResponse,
+        AIModelStreamEvent,
+        AIModelStreamRequest,
         AIModelTranscriptionRequest,
         AIModelTranscriptionResponse,
     )
@@ -56,6 +60,15 @@ class AIModelClient:
         if adapter is None:
             raise UnknownAISourceError(request.source_id)
         return await adapter.generate_text(request)
+
+    def stream_text(
+        self,
+        request: "AIModelStreamRequest",
+    ) -> "AsyncIterator[AIModelStreamEvent]":
+        adapter = self.registry.get(request.source_id)
+        if adapter is None:
+            raise UnknownAISourceError(request.source_id)
+        return adapter.stream_text(request)
 
     async def list_models(
         self,

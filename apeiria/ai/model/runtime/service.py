@@ -10,6 +10,7 @@ from apeiria.ai.model.runtime.adapter import (
     AIModelGenerateRequest,
     AIModelRerankRequest,
     AIModelSpeechRequest,
+    AIModelStreamRequest,
     AIModelTranscriptionRequest,
 )
 from apeiria.ai.model.runtime.capabilities import (
@@ -23,6 +24,8 @@ from apeiria.ai.model.runtime.planning import plan_model_call
 from apeiria.ai.model.sources.service import ai_source_service
 
 if TYPE_CHECKING:
+    from collections.abc import AsyncIterator
+
     from apeiria.ai.model.routing.selection import AISelectedModel
     from apeiria.ai.model.runtime.adapter import (
         AIModelCatalogItem,
@@ -31,6 +34,7 @@ if TYPE_CHECKING:
         AIModelMessage,
         AIModelRerankResponse,
         AIModelSpeechResponse,
+        AIModelStreamEvent,
         AIModelToolDefinition,
         AIModelTranscriptionResponse,
     )
@@ -105,6 +109,60 @@ class ModelInvoker:
             for degradation in plan.degradations
         ]
         return replace(response, provider_data=provider_data)
+
+    async def stream_text(  # noqa: PLR0913
+        self,
+        selected: "AISelectedModel",
+        *,
+        prompt: str = "",
+        messages: tuple["AIModelMessage", ...] = (),
+        tools: tuple["AIModelToolDefinition", ...] = (),
+        requirements: AIModelCallRequirements | None = None,
+        options: AIModelCallOptions | None = None,
+        call_options: dict[str, object] | None = None,
+    ) -> "AsyncIterator[AIModelStreamEvent]":
+        api_key = ai_source_service.get_source_api_key(selected.source)
+        model_name = self.resolve_model_name(selected)
+        if not api_key or not model_name:
+            return
+
+        requested = requirements or AIModelCallRequirements(streaming="required")
+        plan = plan_model_call(
+            selected=selected,
+            messages=messages,
+            tools=tools,
+            requirements=requested,
+            options=options,
+            call_options=call_options,
+        )
+        if plan.action == "reject":
+            raise AIModelCapabilityPlanningError(plan)
+        if not plan.streaming:
+            raise AIModelCapabilityPlanningError(
+                plan_model_call(
+                    selected=selected,
+                    messages=messages,
+                    tools=tools,
+                    requirements=AIModelCallRequirements(streaming="required"),
+                    options=options,
+                    call_options=call_options,
+                )
+            )
+
+        self._register_source(selected.source, api_key=api_key)
+        async for event in ai_model_client.stream_text(
+            AIModelStreamRequest(
+                source_id=selected.source.source_id,
+                model_name=model_name,
+                prompt=prompt,
+                messages=plan.messages,
+                tools=plan.tools,
+                extra=plan.options,
+                options=plan.options,
+                degradations=plan.degradations,
+            )
+        ):
+            yield event
 
     async def generate_text_for_source(
         self,

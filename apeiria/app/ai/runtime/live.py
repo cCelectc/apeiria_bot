@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+import inspect
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any, Literal
 from uuid import uuid4
@@ -30,6 +31,12 @@ from apeiria.app.ai.runtime.session.context import (
     RuntimeSourceMediaPart,
     RuntimeTurnInput,
     RuntimeTurnSource,
+)
+from apeiria.app.chat.protocol import (
+    PartialReplyCompletePayload,
+    PartialReplyDeltaPayload,
+    PartialReplyFailedPayload,
+    PartialReplyStartPayload,
 )
 from apeiria.conversation.service import chat_session_service
 
@@ -65,6 +72,7 @@ class AIRuntimeTurnRequest:
     event_dedupe_claimed: bool = False
     media_parts: tuple[RuntimeSourceMediaPart, ...] = ()
     media_diagnostics: tuple[RuntimeMediaDiagnostic, ...] = ()
+    stream_sink: Any | None = None
 
     def to_runtime_turn_input(self) -> RuntimeTurnInput:
         """Translate ingress request data into runtime-owned turn input."""
@@ -86,6 +94,7 @@ class AIRuntimeTurnRequest:
             sender_id=self.sender_id,
             future_task=self.future_task,
             sentiment=self.sentiment,
+            stream_sink=self.stream_sink,
         )
 
 
@@ -172,6 +181,10 @@ class DefaultAILiveRuntimeEntry:
                 event_dedupe_claimed=event_dedupe_claimed,
                 media_parts=media.parts,
                 media_diagnostics=media.diagnostics,
+                stream_sink=_webchat_stream_sink(
+                    bot=bot,
+                    session_id=identity.session_id,
+                ),
             ),
             wake_context=wake_context,
             current_time=current_time,
@@ -242,8 +255,17 @@ class DefaultAILiveRuntimeEntry:
                 request.identity.session_id,
                 now=current_time,
             )
+        trace_id = f"ai_trace_{uuid4().hex}"
+        if request.stream_sink is not None:
+            request = replace(
+                request,
+                stream_sink=_stream_sink_with_trace_id(
+                    request.stream_sink,
+                    trace_id=trace_id,
+                ),
+            )
         return await self._resolve_turn_engine().run_reply_turn(
-            trace_id=f"ai_trace_{uuid4().hex}",
+            trace_id=trace_id,
             trace=trace,
             turn=request.to_runtime_turn_input(),
             session_runtime=session_runtime,
@@ -305,6 +327,119 @@ def _delivery_diagnostics(delivery_result: object | None) -> dict[str, object]:
     if "delivery_reason" not in diagnostics and "delivery_error" in diagnostics:
         diagnostics["delivery_reason"] = diagnostics["delivery_error"]
     return diagnostics
+
+
+def _webchat_stream_sink(
+    *,
+    bot: object,
+    session_id: str,
+) -> object | None:
+    connection = getattr(bot, "_connection", None)
+    emitter = getattr(bot, "_emitter", None)
+    if connection is None or emitter is None:
+        return None
+
+    def publish(event: object, *, trace_id: str | None = None) -> None:
+        import asyncio
+
+        frame = _partial_reply_payload_from_stream_event(
+            event,
+            session_id=session_id,
+            trace_id=trace_id,
+        )
+        if frame is None:
+            return
+        method_name, payload = frame
+        method = getattr(emitter, method_name, None)
+        if method is None:
+            return
+        task = asyncio.create_task(method(connection, payload))
+        task.add_done_callback(_discard_completed_partial_reply_task)
+
+    return publish
+
+
+def _discard_completed_partial_reply_task(task: object) -> None:
+    _ = task
+
+
+def _stream_sink_with_trace_id(
+    sink: object,
+    *,
+    trace_id: str,
+) -> object:
+    if not callable(sink):
+        return sink
+    try:
+        signature = inspect.signature(sink)
+    except (TypeError, ValueError):
+        return sink
+    supports_trace_id = "trace_id" in signature.parameters or any(
+        parameter.kind is inspect.Parameter.VAR_KEYWORD
+        for parameter in signature.parameters.values()
+    )
+    if not supports_trace_id:
+        return sink
+
+    def publish(event: object) -> None:
+        sink(event, trace_id=trace_id)
+
+    return publish
+
+
+def _partial_reply_payload_from_stream_event(
+    event: object,
+    *,
+    session_id: str,
+    trace_id: str | None = None,
+) -> tuple[str, object] | None:
+    kind = getattr(event, "kind", None)
+    trace_id = str(trace_id or getattr(event, "trace_id", "") or "")
+    stream_id = str(getattr(event, "stream_id", "") or "")
+    if not stream_id:
+        return None
+    if not trace_id:
+        trace_id = stream_id
+    if kind == "start":
+        return (
+            "emit_partial_reply_start",
+            PartialReplyStartPayload(
+                session_id=session_id,
+                trace_id=trace_id,
+                stream_id=stream_id,
+            ),
+        )
+    if kind == "text_delta":
+        return (
+            "emit_partial_reply_delta",
+            PartialReplyDeltaPayload(
+                session_id=session_id,
+                trace_id=trace_id,
+                stream_id=stream_id,
+                content_delta=str(getattr(event, "content_delta", "") or ""),
+            ),
+        )
+    if kind == "final":
+        return (
+            "emit_partial_reply_complete",
+            PartialReplyCompletePayload(
+                session_id=session_id,
+                trace_id=trace_id,
+                stream_id=stream_id,
+            ),
+        )
+    if kind == "failure":
+        return (
+            "emit_partial_reply_failed",
+            PartialReplyFailedPayload(
+                session_id=session_id,
+                trace_id=trace_id,
+                stream_id=stream_id,
+                code=str(getattr(event, "reason", "") or "stream_failed"),
+                message=getattr(event, "diagnostic", None),
+            ),
+        )
+    return None
 
 
 @dataclass(frozen=True, slots=True)
