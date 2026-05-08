@@ -79,6 +79,110 @@ def test_conversation_service_uses_sqlite(
     asyncio.run(scenario())
 
 
+def test_conversation_disposition_defaults_and_observed_reads(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setattr(database_runtime, "_project_root", tmp_path)
+    database_runtime.ensure_ready()
+
+    from apeiria.conversation.models import ChatSessionIdentity
+    from apeiria.conversation.service import (
+        ChatMessageCreate,
+        chat_session_service,
+    )
+
+    identity = ChatSessionIdentity(
+        session_id="onebot:bot-1:group:group-1",
+        platform="onebot",
+        bot_id="bot-1",
+        scene_type="group",
+        scene_id="group-1",
+        subject_id=None,
+    )
+
+    async def scenario() -> None:
+        active = await chat_session_service.append_message(
+            identity,
+            ChatMessageCreate(
+                author_role="user",
+                author_id="user-1",
+                text_content="direct hello",
+                raw_data={"message_id": 1},
+            ),
+        )
+        observed = await chat_session_service.append_observed_turn(
+            identity,
+            author_id="user-2",
+            text_content="ambient context",
+            platform_message_id="platform-observed",
+            content={
+                "segments": [
+                    {"type": "text", "text": "ambient context"},
+                    {
+                        "type": "image",
+                        "url": "https://cdn.example.test/img.png",
+                        "file": "img.png",
+                    },
+                ],
+                "plain_text": "ambient context",
+            },
+            meta={"policy_reason": "ambient"},
+            raw_data={"secret": "not persisted by default"},
+        )
+        tool = await chat_session_service.append_message(
+            identity,
+            ChatMessageCreate(
+                author_role="tool",
+                author_id="memory.query",
+                message_kind="tool",
+                text_content="tool result",
+                turn_disposition="tool",
+            ),
+        )
+
+        assert active.turn_disposition == "active"
+        assert observed.turn_disposition == "observed"
+        assert observed.raw_data_json is None
+        assert tool.turn_disposition == "tool"
+
+        turns = await chat_session_service.list_recent_messages(
+            identity,
+            max_messages=10,
+        )
+        assert [turn.turn_disposition for turn in turns] == [
+            "active",
+            "observed",
+            "tool",
+        ]
+        assert turns[1].is_observed_context is True
+        assert turns[1].content == {
+            "segments": [
+                {"type": "text", "text": "ambient context"},
+                {
+                    "type": "image",
+                    "url": "https://cdn.example.test/img.png",
+                    "file": "img.png",
+                },
+            ],
+            "plain_text": "ambient context",
+        }
+
+        detail = await chat_session_service.list_messages_for_session(
+            session_id=identity.session_id,
+            limit=10,
+        )
+        assert [message.turn_disposition for message in detail] == [
+            "active",
+            "observed",
+            "tool",
+        ]
+        assert detail[1].is_observed_context is True
+        assert detail[1].raw_data is None
+
+    asyncio.run(scenario())
+
+
 def test_session_upsert_uses_scene_identity_and_cascades_session_id_updates(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

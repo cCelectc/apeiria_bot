@@ -14,6 +14,8 @@ def select_latest_user_turn(
     """Return the latest non-empty user turn in the conversation."""
 
     for turn in reversed(turns):
+        if turn.turn_disposition == "observed":
+            continue
         if turn.author_role == "user" and turn.text_content.strip():
             return turn
     return None
@@ -57,6 +59,8 @@ def to_context_turns(
             text_content=turn.text_content,
             content=turn.content,
             created_at=turn.created_at,
+            reply_to_message_id=turn.reply_to_message_id,
+            turn_disposition=turn.turn_disposition,
         )
         for turn in turns
     ]

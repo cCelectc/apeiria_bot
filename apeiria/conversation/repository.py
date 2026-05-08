@@ -46,6 +46,7 @@ class ChatMessageRow:
     author_id: str
     author_name: str | None
     message_kind: str
+    turn_disposition: str
     directed_to_bot: bool
     mentions_bot: bool
     has_media: bool
@@ -110,6 +111,7 @@ class ChatSessionRepository:
                     author_id,
                     author_name,
                     message_kind,
+                    turn_disposition,
                     directed_to_bot,
                     mentions_bot,
                     has_media,
@@ -118,7 +120,7 @@ class ChatSessionRepository:
                     meta_json,
                     raw_data_json,
                     created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     message_id,
@@ -130,6 +132,7 @@ class ChatSessionRepository:
                     message_data.author_id,
                     message_data.author_name,
                     message_data.message_kind,
+                    message_data.turn_disposition,
                     1 if message_data.directed_to_bot else 0,
                     1 if message_data.mentions_bot else 0,
                     1 if message_data.has_media else 0,
@@ -214,6 +217,38 @@ class ChatSessionRepository:
                 (session_id, limit),
             ).fetchall()
         return [row_to_chat_message(row) for row in rows]
+
+    async def update_message_disposition(
+        self,
+        *,
+        message_id: str,
+        turn_disposition: str,
+        clear_raw_data: bool = False,
+    ) -> ChatMessageRow | None:
+        with database_runtime.transaction_sync() as connection:
+            if clear_raw_data:
+                connection.execute(
+                    """
+                    UPDATE chat_message
+                    SET turn_disposition = ?, raw_data_json = NULL
+                    WHERE message_id = ?
+                    """,
+                    (turn_disposition, message_id),
+                )
+            else:
+                connection.execute(
+                    """
+                    UPDATE chat_message
+                    SET turn_disposition = ?
+                    WHERE message_id = ?
+                    """,
+                    (turn_disposition, message_id),
+                )
+            row = connection.execute(
+                _SELECT_CHAT_MESSAGE_FIELDS + " WHERE chat_message.message_id = ?",
+                (message_id,),
+            ).fetchone()
+        return None if row is None else row_to_chat_message(row)
 
     def list_recent_user_ids_for_session(
         self,
@@ -335,6 +370,7 @@ _CHAT_MESSAGE_FIELDS = """
     chat_message.author_id,
     chat_message.author_name,
     chat_message.message_kind,
+    chat_message.turn_disposition,
     chat_message.directed_to_bot,
     chat_message.mentions_bot,
     chat_message.has_media,
@@ -382,14 +418,15 @@ def row_to_chat_message(row: tuple[object, ...]) -> ChatMessageRow:
         author_id=str(row[7]),
         author_name=str(row[8]) if row[8] is not None else None,
         message_kind=str(row[9]),
-        directed_to_bot=bool(row[10]),
-        mentions_bot=bool(row[11]),
-        has_media=bool(row[12]),
-        text_content=str(row[13]),
-        content_json=str(row[14]) if row[14] is not None else None,
-        meta_json=str(row[15]) if row[15] is not None else None,
-        raw_data_json=str(row[16]) if row[16] is not None else None,
-        created_at=datetime_from_text(row[17]),
+        turn_disposition=str(row[10]),
+        directed_to_bot=bool(row[11]),
+        mentions_bot=bool(row[12]),
+        has_media=bool(row[13]),
+        text_content=str(row[14]),
+        content_json=str(row[15]) if row[15] is not None else None,
+        meta_json=str(row[16]) if row[16] is not None else None,
+        raw_data_json=str(row[17]) if row[17] is not None else None,
+        created_at=datetime_from_text(row[18]),
     )
 
 

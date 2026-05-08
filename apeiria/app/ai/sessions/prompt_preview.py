@@ -129,6 +129,8 @@ def _find_recent_user_name(
     user_id: str,
 ) -> str | None:
     for turn in reversed(turns):
+        if getattr(turn, "turn_disposition", None) == "observed":
+            continue
         if turn.author_role != "user" or turn.author_id != user_id:
             continue
         author_name = (turn.author_name or "").strip()
@@ -149,6 +151,8 @@ def _preview_direct_signal(
     identity: "ChatSessionIdentity",
     latest_user_turn: "ChatMessageDetailView | None",
 ) -> bool:
+    if latest_user_turn is not None and latest_user_turn.turn_disposition == "observed":
+        return False
     return identity.scene_type == "private" or bool(
         latest_user_turn is not None
         and (latest_user_turn.directed_to_bot or latest_user_turn.mentions_bot)

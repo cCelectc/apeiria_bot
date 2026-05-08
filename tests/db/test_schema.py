@@ -217,6 +217,14 @@ def test_database_schema_declares_value_checks(tmp_path: Path) -> None:
             connection,
             "chat_message",
         )
+        assert "turn_disposition TEXT NOT NULL DEFAULT 'active'" in _table_sql(
+            connection,
+            "chat_message",
+        )
+        assert (
+            "turn_disposition IN ('active', 'observed', 'generated', 'tool', 'system')"
+            in _table_sql(connection, "chat_message")
+        )
 
 
 def test_database_ensure_ready_adds_provider_metadata_columns_to_v1_shape(
@@ -249,6 +257,27 @@ def test_database_ensure_ready_adds_provider_metadata_columns_to_v1_shape(
 
     assert source_row == ("anthropic_compatible", "{}", "{}", "{}")
     assert model_row == ("{}", "{}", "{}")
+
+
+def test_database_ensure_ready_adds_turn_disposition_to_v1_chat_message(
+    tmp_path: Path,
+) -> None:
+    database = ApeiriaDatabase(project_root=tmp_path)
+    _create_minimal_legacy_conversation_tables(database)
+
+    database.ensure_ready()
+
+    with database.connect_sync() as connection:
+        row = connection.execute(
+            """
+            SELECT message_id, turn_disposition
+            FROM chat_message
+            WHERE message_id = ?
+            """,
+            ("msg-legacy",),
+        ).fetchone()
+
+    assert row == ("msg-legacy", "active")
 
 
 def _create_schema_meta(
@@ -352,6 +381,109 @@ def _create_minimal_legacy_ai_model_tables(database: ApeiriaDatabase) -> None:
                 1,
                 1,
                 "{}",
+                "2026-04-25T00:00:00",
+            ),
+        )
+
+
+def _create_minimal_legacy_conversation_tables(database: ApeiriaDatabase) -> None:
+    with database.connect_sync() as connection:
+        _create_schema_meta_in_connection(
+            connection,
+            schema_line=CURRENT_SCHEMA_LINE,
+            schema_version=CURRENT_SCHEMA_VERSION,
+        )
+        connection.execute(
+            """
+            CREATE TABLE chat_session (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_id TEXT NOT NULL UNIQUE,
+                platform TEXT NOT NULL,
+                bot_id TEXT NOT NULL,
+                scene_type TEXT NOT NULL,
+                scene_id TEXT NOT NULL,
+                subject_id TEXT,
+                title TEXT,
+                summary_text TEXT,
+                extra_json TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                last_message_at TEXT NOT NULL,
+                UNIQUE(platform, bot_id, scene_type, scene_id)
+            )
+            """
+        )
+        connection.execute(
+            """
+            CREATE TABLE chat_message (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                message_id TEXT NOT NULL UNIQUE,
+                session_pk INTEGER NOT NULL,
+                author_role TEXT NOT NULL,
+                author_id TEXT NOT NULL,
+                author_name TEXT,
+                message_kind TEXT NOT NULL,
+                directed_to_bot INTEGER NOT NULL DEFAULT 0,
+                mentions_bot INTEGER NOT NULL DEFAULT 0,
+                has_media INTEGER NOT NULL DEFAULT 0,
+                text_content TEXT NOT NULL,
+                content_json TEXT,
+                meta_json TEXT,
+                raw_data_json TEXT,
+                created_at TEXT NOT NULL,
+                FOREIGN KEY(session_pk)
+                    REFERENCES chat_session(id)
+                    ON DELETE CASCADE
+            )
+            """
+        )
+        connection.execute(
+            """
+            INSERT INTO chat_session (
+                session_id,
+                platform,
+                bot_id,
+                scene_type,
+                scene_id,
+                created_at,
+                updated_at,
+                last_message_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "session-legacy",
+                "onebot",
+                "bot-1",
+                "group",
+                "group-1",
+                "2026-04-25T00:00:00",
+                "2026-04-25T00:00:00",
+                "2026-04-25T00:00:00",
+            ),
+        )
+        session_pk = connection.execute(
+            "SELECT id FROM chat_session WHERE session_id = ?",
+            ("session-legacy",),
+        ).fetchone()[0]
+        connection.execute(
+            """
+            INSERT INTO chat_message (
+                message_id,
+                session_pk,
+                author_role,
+                author_id,
+                message_kind,
+                text_content,
+                created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "msg-legacy",
+                session_pk,
+                "user",
+                "user-1",
+                "text",
+                "hello",
                 "2026-04-25T00:00:00",
             ),
         )

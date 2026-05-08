@@ -9,11 +9,13 @@ from apeiria.app.ai.runtime.context.relationships import (
     build_relationship_target,
     update_relationship_state,
 )
+from apeiria.conversation.service import chat_session_service
 
 if TYPE_CHECKING:
     from datetime import datetime
 
     from apeiria.app.ai.runtime.session.context import RuntimeTurnInput
+    from apeiria.conversation.models import ChatSessionIdentity
 
 
 async def apply_reply_observation_effects(
@@ -40,4 +42,27 @@ async def apply_reply_observation_effects(
     )
 
 
-__all__ = ["apply_reply_observation_effects"]
+async def persist_observed_conversation_turn(
+    *,
+    identity: "ChatSessionIdentity",
+    source_message_id: str | None,
+    author_id: str,
+    text_content: str,
+) -> None:
+    """Persist observed ambient input as thin conversation context."""
+
+    if source_message_id is not None:
+        existing = await chat_session_service.mark_message_observed(
+            message_id=source_message_id,
+        )
+        if existing is not None:
+            return
+    await chat_session_service.append_observed_turn(
+        identity,
+        author_id=author_id,
+        text_content=text_content,
+        platform_message_id=source_message_id,
+    )
+
+
+__all__ = ["apply_reply_observation_effects", "persist_observed_conversation_turn"]

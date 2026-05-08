@@ -197,3 +197,68 @@ def test_build_normalized_content_preserves_safe_media_references() -> None:
             "mime": "audio/ogg",
         },
     ]
+
+
+def test_adapter_specific_segments_are_preserved_as_safe_content() -> None:
+    from apeiria.conversation.ingest import build_ingested_chat_event
+
+    class _Bot:
+        type = "onebot"
+        self_id = "bot-1"
+
+    class _Event:
+        group_id = "group-1"
+
+        def get_user_id(self) -> str:
+            return "user-1"
+
+        def get_session_id(self) -> str:
+            return "group_1_user-1"
+
+        def get_plaintext(self) -> str:
+            return ""
+
+        def is_tome(self) -> bool:
+            return False
+
+        def model_dump(self, *, mode: str = "json") -> dict[str, object]:
+            assert mode == "json"
+            return {
+                "message_id": "msg-1",
+                "user_id": "user-1",
+                "group_id": "group-1",
+                "message": [
+                    {
+                        "type": "poke",
+                        "data": {
+                            "user_id": "user-2",
+                            "target_id": "user-1",
+                            "token": "secret",
+                            "raw": {"nested": "not persisted"},
+                        },
+                    }
+                ],
+            }
+
+    ingested = build_ingested_chat_event(
+        cast("Any", _Bot()),
+        cast("Any", _Event()),
+    )
+
+    assert ingested is not None
+    assert ingested.message_kind == "text"
+    assert ingested.content == {
+        "segments": [
+            {
+                "type": "adapter",
+                "adapter": "onebot",
+                "segment_type": "poke",
+                "data": {
+                    "user_id": "user-2",
+                    "target_id": "user-1",
+                },
+            }
+        ],
+        "plain_text": "",
+        "mentioned_user_ids": [],
+    }

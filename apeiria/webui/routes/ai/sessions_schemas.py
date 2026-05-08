@@ -52,6 +52,7 @@ class AIChatMessageItem(BaseModel):
     author_role: str
     author_id: str
     author_name: str | None = None
+    turn_disposition: str = "active"
     text_content: str
     content: dict[str, object] | None = None
     meta: dict[str, object] | None = None
@@ -181,6 +182,7 @@ def to_ai_chat_message_item(item: "ChatMessageDetailView") -> AIChatMessageItem:
         author_role=item.author_role,
         author_id=item.author_id,
         author_name=item.author_name,
+        turn_disposition=item.turn_disposition,
         text_content=item.text_content,
         content=item.content,
         meta=item.meta,

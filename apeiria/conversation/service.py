@@ -23,7 +23,12 @@ from apeiria.conversation.repository import (
 if TYPE_CHECKING:
     from nonebot.adapters import Bot, Event
 
-    from apeiria.conversation.models import AuthorRole, MessageKind, SceneType
+    from apeiria.conversation.models import (
+        AuthorRole,
+        MessageKind,
+        SceneType,
+        TurnDisposition,
+    )
 
 
 class ChatSessionService:
@@ -83,6 +88,61 @@ class ChatSessionService:
         """Append one normalized message to the chat session history."""
 
         return await self._repository.append_message(identity, message_data)
+
+    async def append_observed_turn(  # noqa: PLR0913
+        self,
+        identity: ChatSessionIdentity,
+        *,
+        author_id: str,
+        text_content: str,
+        author_name: str | None = None,
+        platform_message_id: str | None = None,
+        reply_to_message_id: str | None = None,
+        platform_reply_id: str | None = None,
+        content: dict[str, Any] | None = None,
+        meta: dict[str, Any] | None = None,
+        raw_data: dict[str, Any] | None = None,
+        message_kind: "MessageKind" = "text",
+        directed_to_bot: bool = False,
+        mentions_bot: bool = False,
+        has_media: bool = False,
+    ) -> ChatMessageRow:
+        """Append one ambient observed turn as a thin conversation fact."""
+
+        del raw_data
+        return await self._repository.append_message(
+            identity,
+            ChatMessageCreate(
+                author_role="user",
+                author_id=author_id,
+                author_name=author_name,
+                text_content=text_content,
+                message_kind=message_kind,
+                turn_disposition="observed",
+                directed_to_bot=directed_to_bot,
+                mentions_bot=mentions_bot,
+                has_media=has_media,
+                platform_message_id=platform_message_id,
+                reply_to_message_id=reply_to_message_id,
+                platform_reply_id=platform_reply_id,
+                content=content,
+                meta=meta,
+                raw_data=None,
+            ),
+        )
+
+    async def mark_message_observed(
+        self,
+        *,
+        message_id: str,
+    ) -> ChatMessageRow | None:
+        """Mark an existing persisted message as observed context."""
+
+        return await self._repository.update_message_disposition(
+            message_id=message_id,
+            turn_disposition="observed",
+            clear_raw_data=True,
+        )
 
     async def ingest_event(
         self,
@@ -220,6 +280,7 @@ class ChatSessionService:
             content=content,
             created_at=row.created_at,
             reply_to_message_id=row.reply_to_message_id,
+            turn_disposition=cast("TurnDisposition", row.turn_disposition),
         )
 
     def _to_session_admin_view(self, row: ChatSessionRow) -> ChatSessionAdminView:
@@ -264,6 +325,7 @@ class ChatSessionService:
             meta=meta,
             raw_data=raw_data,
             created_at=message.created_at,
+            turn_disposition=cast("TurnDisposition", message.turn_disposition),
         )
 
 

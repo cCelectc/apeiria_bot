@@ -42,6 +42,10 @@ from apeiria.conversation.models import ChatSessionIdentity
 from tests.ai.agent_turn_helpers import model_response, selected_model
 
 LIVE_RUNTIME_LEGACY_MAPPER_ERROR = "live runtime must not call legacy skip mapper"
+OBSERVE_SOCIAL_POLICY_ERROR = "observe must not reach social policy"
+OBSERVE_REPLY_EFFECTS_ERROR = "observe must not run reply observation effects"
+OBSERVE_CONTEXT_ERROR = "observe must not assemble reply context"
+DROP_SOCIAL_POLICY_ERROR = "drop must not reach social policy"
 
 
 def _request() -> AIRuntimeTurnRequest:
@@ -664,6 +668,142 @@ def test_turn_engine_applies_observation_effects_before_context(
         "commit",
     ]
     assert commit is not None
+
+
+def test_turn_engine_persists_observed_policy_decision_without_context() -> None:
+    observed: list[RuntimeIngressInput] = []
+    traces: list[RuntimeTraceOutcome] = []
+
+    class PolicyStage:
+        def evaluate(
+            self,
+            *,
+            ingress_input: RuntimeIngressInput,
+        ):
+            from apeiria.app.ai.runtime.stages import RuntimePolicyOutcome
+            from apeiria.app.ai.runtime.strategy import RuntimeHardRuleDecision
+
+            return RuntimePolicyOutcome(
+                stage="policy",
+                source=ingress_input.turn.source,
+                decision=RuntimeHardRuleDecision(
+                    action="observe",
+                    reason_codes=("initiative_disabled",),
+                    reason_text="Ambient group initiative is disabled.",
+                    evidence={"policy_source": "unit"},
+                    should_observe=True,
+                    should_reply=False,
+                ),
+            )
+
+        async def decide_reply(self, **_kwargs: Any) -> ReplyStrategyDecision:
+            raise AssertionError(OBSERVE_SOCIAL_POLICY_ERROR)
+
+    class ObservationStage(RuntimeObservationEffectsStage):
+        async def apply_observed_turn(
+            self,
+            *,
+            ingress_input: RuntimeIngressInput,
+        ) -> None:
+            observed.append(ingress_input)
+
+        async def apply(
+            self,
+            *,
+            ingress_input: RuntimeIngressInput,
+        ) -> None:
+            del ingress_input
+            raise AssertionError(OBSERVE_REPLY_EFFECTS_ERROR)
+
+    class ContextStage(RuntimeContextAssemblyStage):
+        async def assemble(
+            self,
+            *,
+            ingress_input: RuntimeIngressInput,
+        ):
+            del ingress_input
+            raise AssertionError(OBSERVE_CONTEXT_ERROR)
+
+    engine = AISessionTurnEngine(
+        policy_stage=PolicyStage(),
+        observation_stage=ObservationStage(_noop_observation_effects),
+        context_stage=ContextStage(lambda *_args, **_kwargs: None),
+        trace_stage=RuntimeTraceProjectionStage(trace_observer=traces.append),
+    )
+
+    result = asyncio.run(
+        engine.run_reply_turn(
+            trace_id="trace-observe",
+            trace=RuntimeTraceContext(kind="test", trigger="unit"),
+            turn=_turn(),
+            wake_context=_wake(),
+            current_time=datetime(2026, 4, 28, tzinfo=timezone.utc),
+            session_runtime=None,
+        )
+    )
+
+    assert result is None
+    assert len(observed) == 1
+    assert observed[0].turn == _turn()
+    assert len(traces) == 1
+    assert traces[0].trace.strategy_action == "observe"
+
+
+def test_turn_engine_does_not_persist_dropped_policy_decision() -> None:
+    observed: list[RuntimeIngressInput] = []
+
+    class PolicyStage:
+        def evaluate(
+            self,
+            *,
+            ingress_input: RuntimeIngressInput,
+        ):
+            from apeiria.app.ai.runtime.stages import RuntimePolicyOutcome
+            from apeiria.app.ai.runtime.strategy import RuntimeHardRuleDecision
+
+            return RuntimePolicyOutcome(
+                stage="policy",
+                source=ingress_input.turn.source,
+                decision=RuntimeHardRuleDecision(
+                    action="drop",
+                    reason_codes=("duplicate_event",),
+                    reason_text="Duplicate event was ignored.",
+                    evidence={"policy_source": "unit"},
+                    should_observe=False,
+                    should_reply=False,
+                ),
+            )
+
+        async def decide_reply(self, **_kwargs: Any) -> ReplyStrategyDecision:
+            raise AssertionError(DROP_SOCIAL_POLICY_ERROR)
+
+    class ObservationStage(RuntimeObservationEffectsStage):
+        async def apply_observed_turn(
+            self,
+            *,
+            ingress_input: RuntimeIngressInput,
+        ) -> None:
+            observed.append(ingress_input)
+
+    engine = AISessionTurnEngine(
+        policy_stage=PolicyStage(),
+        observation_stage=ObservationStage(_noop_observation_effects),
+        trace_stage=RuntimeTraceProjectionStage(),
+    )
+
+    result = asyncio.run(
+        engine.run_reply_turn(
+            trace_id="trace-drop",
+            trace=RuntimeTraceContext(kind="test", trigger="unit"),
+            turn=_turn(),
+            wake_context=_wake(),
+            current_time=datetime(2026, 4, 28, tzinfo=timezone.utc),
+            session_runtime=None,
+        )
+    )
+
+    assert result is None
+    assert observed == []
 
 
 def test_ingress_stages_share_structured_ingress_input(

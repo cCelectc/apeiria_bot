@@ -11,6 +11,7 @@ from apeiria.app.ai.runtime.context.context_window import record_context_usage
 from apeiria.app.ai.runtime.context.materials import gather_reply_inputs
 from apeiria.app.ai.runtime.context.observations import (
     apply_reply_observation_effects,
+    persist_observed_conversation_turn,
 )
 from apeiria.app.ai.runtime.context.stage import RuntimeContextAssemblyStage
 from apeiria.app.ai.runtime.execution.stage import RuntimeTurnExecutionStage
@@ -46,6 +47,7 @@ def create_session_turn_engine() -> AISessionTurnEngine:
         ),
         observation_stage=RuntimeObservationEffectsStage(
             apply_observation_effects=apply_reply_observation_effects,
+            persist_observed_turn=persist_observed_conversation_turn,
         ),
         context_stage=RuntimeContextAssemblyStage(
             gather_reply_inputs=gather_reply_inputs,

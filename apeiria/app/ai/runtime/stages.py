@@ -224,6 +224,12 @@ class RuntimeObservationStage(Protocol):
         ingress_input: RuntimeIngressInput,
     ) -> None: ...
 
+    async def apply_observed_turn(
+        self,
+        *,
+        ingress_input: RuntimeIngressInput,
+    ) -> None: ...
+
 
 @runtime_checkable
 class RuntimeContextStage(Protocol):

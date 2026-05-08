@@ -367,6 +367,84 @@ def test_prompt_preview_uses_context_projection_for_preview_fields() -> None:
     assert projection.diagnostics.as_dict()["projection_mode"] == "preview"
 
 
+def test_prompt_preview_ignores_observed_turn_as_active_request() -> None:
+    module = importlib.import_module("apeiria.app.ai.sessions.prompt_preview")
+    now = datetime(2026, 4, 29, 12, 0, tzinfo=timezone.utc)
+    identity = ChatSessionIdentity(
+        session_id="session-1",
+        platform="test",
+        bot_id="bot-1",
+        scene_type="group",
+        scene_id="group-1",
+        subject_id=None,
+    )
+    turns = [
+        ChatMessageDetailView(
+            message_id="msg-active",
+            session_id="session-1",
+            platform_message_id="platform-active",
+            reply_to_message_id=None,
+            platform_reply_id=None,
+            author_role="user",
+            author_id="user-1",
+            author_name="User",
+            message_kind="text",
+            directed_to_bot=True,
+            mentions_bot=True,
+            has_media=False,
+            text_content="please answer this",
+            content=None,
+            meta=None,
+            raw_data={"message_id": 1},
+            created_at=now,
+        ),
+        ChatMessageDetailView(
+            message_id="msg-observed",
+            session_id="session-1",
+            platform_message_id="platform-observed",
+            reply_to_message_id=None,
+            platform_reply_id=None,
+            author_role="user",
+            author_id="user-2",
+            author_name="Observer",
+            message_kind="text",
+            directed_to_bot=False,
+            mentions_bot=False,
+            has_media=False,
+            text_content="side chatter only",
+            content=None,
+            meta=None,
+            raw_data=None,
+            created_at=now,
+            turn_disposition="observed",
+        ),
+    ]
+
+    latest_user_turn = module.select_latest_user_turn(turns)
+    preview_turn = module._build_preview_turn(
+        identity=identity,
+        latest_user_turn=latest_user_turn,
+        latest_user_message=(
+            latest_user_turn.text_content.strip()
+            if latest_user_turn is not None
+            else None
+        ),
+        user_id=(
+            latest_user_turn.author_id if latest_user_turn is not None else "user-1"
+        ),
+    )
+    context_turns = module.to_context_turns(turns)
+
+    assert latest_user_turn is not None
+    assert latest_user_turn.message_id == "msg-active"
+    assert preview_turn.message_text == "please answer this"
+    assert preview_turn.source_message_id == "msg-active"
+    assert [turn.turn_disposition for turn in context_turns] == [
+        "active",
+        "observed",
+    ]
+
+
 def test_scene_prompt_preview_does_not_call_models_or_execute_tools(  # noqa: C901
     monkeypatch: "pytest.MonkeyPatch",
 ) -> None:

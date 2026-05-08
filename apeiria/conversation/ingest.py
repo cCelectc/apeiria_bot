@@ -60,7 +60,11 @@ def build_ingested_chat_event(
     platform_message_id = extract_platform_message_id(event, raw_data)
     platform_reply_id = extract_platform_reply_id(raw_data)
     has_media = detect_has_media(raw_data)
-    content = build_normalized_content(raw_data=raw_data, text_content=text_content)
+    content = build_normalized_content(
+        raw_data=raw_data,
+        text_content=text_content,
+        adapter=str(getattr(bot, "type", "")) or None,
+    )
     message_kind = resolve_message_kind(
         text_content=text_content,
         has_media=has_media,

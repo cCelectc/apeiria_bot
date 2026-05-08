@@ -58,6 +58,9 @@ class _UnavailableRuntimeStage:
     async def apply(self, **_: Any) -> None:
         self._raise()
 
+    async def apply_observed_turn(self, **_: Any) -> None:
+        self._raise()
+
     async def assemble(self, **_: Any) -> RuntimeContextBundle:
         self._raise()
 
@@ -155,6 +158,10 @@ class AISessionTurnEngine:
         )
         hard_decision = policy.decision
         if not policy.should_continue:
+            if hard_decision.action == "observe" and hard_decision.should_observe:
+                await self.apply_observed_turn(
+                    ingress_input=ingress_input,
+                )
             logger.debug(
                 "AI trace {} skipped reply: hard_rule for session {} action={} "
                 "reason_codes={}",
@@ -329,6 +336,17 @@ class AISessionTurnEngine:
         """Apply live observation writes outside read-oriented context assembly."""
 
         await self.observation_stage.apply(
+            ingress_input=ingress_input,
+        )
+
+    async def apply_observed_turn(
+        self,
+        *,
+        ingress_input: RuntimeIngressInput,
+    ) -> None:
+        """Persist non-reply observed turns through the observation boundary."""
+
+        await self.observation_stage.apply_observed_turn(
             ingress_input=ingress_input,
         )
 

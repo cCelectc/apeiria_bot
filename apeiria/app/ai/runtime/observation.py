@@ -10,6 +10,7 @@ if TYPE_CHECKING:
 
     from apeiria.app.ai.runtime.session.context import RuntimeTurnInput
     from apeiria.app.ai.runtime.stages import RuntimeIngressInput
+    from apeiria.conversation.models import ChatSessionIdentity
 
 
 class RuntimeObservationEffects(Protocol):
@@ -23,11 +24,25 @@ class RuntimeObservationEffects(Protocol):
     ) -> None: ...
 
 
+class RuntimeObservedTurnPersistence(Protocol):
+    """Persistence collaborator for observed non-reply turns."""
+
+    async def __call__(
+        self,
+        *,
+        identity: "ChatSessionIdentity",
+        source_message_id: str | None,
+        author_id: str,
+        text_content: str,
+    ) -> None: ...
+
+
 @dataclass(frozen=True, slots=True)
 class RuntimeObservationEffectsStage:
     """Observation side-effect stage for live writes before context reads."""
 
     apply_observation_effects: RuntimeObservationEffects | None = None
+    persist_observed_turn: RuntimeObservedTurnPersistence | None = None
 
     async def apply(
         self,
@@ -41,5 +56,24 @@ class RuntimeObservationEffectsStage:
             current_time=ingress_input.current_time,
         )
 
+    async def apply_observed_turn(
+        self,
+        *,
+        ingress_input: "RuntimeIngressInput",
+    ) -> None:
+        if self.persist_observed_turn is None:
+            return
+        turn = ingress_input.turn
+        await self.persist_observed_turn(
+            identity=turn.identity,
+            source_message_id=turn.source_message_id,
+            author_id=turn.user_id,
+            text_content=turn.message_text,
+        )
 
-__all__ = ["RuntimeObservationEffects", "RuntimeObservationEffectsStage"]
+
+__all__ = [
+    "RuntimeObservationEffects",
+    "RuntimeObservationEffectsStage",
+    "RuntimeObservedTurnPersistence",
+]

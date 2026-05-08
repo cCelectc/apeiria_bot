@@ -25,6 +25,21 @@ _SAFE_MEDIA_KEYS = (
     "file_name",
     "name",
 )
+_SAFE_ADAPTER_SEGMENT_KEYS = (
+    "id",
+    "message_id",
+    "user_id",
+    "target_id",
+    "group_id",
+    "channel_id",
+    "guild_id",
+    "role_id",
+    "name",
+    "title",
+    "value",
+    "text",
+    "alt",
+)
 
 
 def extract_platform_message_id(
@@ -102,6 +117,7 @@ def build_normalized_content(  # noqa: C901, PLR0912
     *,
     raw_data: dict[str, Any] | None,
     text_content: str,
+    adapter: str | None = None,
 ) -> dict[str, Any]:
     segments: list[dict[str, Any]] = []
     if text_content.strip():
@@ -132,6 +148,14 @@ def build_normalized_content(  # noqa: C901, PLR0912
                         mentioned_user_ids.append(str(qq))
                 elif seg_type in _MEDIA_TYPES:
                     segments.append(_build_media_segment(seg_type, data))
+                else:
+                    adapter_segment = _build_adapter_segment(
+                        adapter=adapter,
+                        segment_type=seg_type,
+                        data=data,
+                    )
+                    if adapter_segment is not None:
+                        segments.append(adapter_segment)
 
     payload: dict[str, Any] = {
         "segments": segments,
@@ -223,6 +247,28 @@ def _build_media_segment(seg_type: str, data: object) -> dict[str, Any]:
         value = data.get(key)
         if isinstance(value, (str, int, float, bool)) and str(value).strip():
             segment[key] = value
+    return segment
+
+
+def _build_adapter_segment(
+    *,
+    adapter: str | None,
+    segment_type: str,
+    data: object,
+) -> dict[str, Any] | None:
+    if not segment_type.strip():
+        return None
+
+    segment: dict[str, Any] = {
+        "type": "adapter",
+        "segment_type": segment_type,
+    }
+    if adapter:
+        segment["adapter"] = adapter
+
+    safe_data = build_mapping_summary(data, allowed_keys=_SAFE_ADAPTER_SEGMENT_KEYS)
+    if safe_data:
+        segment["data"] = safe_data
     return segment
 
 

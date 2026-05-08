@@ -21,6 +21,17 @@ SOURCE_MODEL_TABLE_NAMES: tuple[str, ...] = (
     "ai_rerank_model",
 )
 
+TURN_DISPOSITION_VALUES: tuple[str, ...] = (
+    "active",
+    "observed",
+    "generated",
+    "tool",
+    "system",
+)
+TURN_DISPOSITION_CHECK = (
+    "turn_disposition IN ('active', 'observed', 'generated', 'tool', 'system')"
+)
+
 
 class DatabaseSchemaError(RuntimeError):
     """Base error for Apeiria SQLite schema handling."""
@@ -134,7 +145,9 @@ def _column_names(connection: sqlite3.Connection, table_name: str) -> set[str]:
     }
 
 
-def _ensure_current_schema_shape(connection: sqlite3.Connection) -> None:  # noqa: C901
+def _ensure_current_schema_shape(  # noqa: C901, PLR0912
+    connection: sqlite3.Connection,
+) -> None:
     """Apply additive JSON metadata columns for in-development v1 databases."""
 
     existing_tables = _table_names(connection)
@@ -145,53 +158,56 @@ def _ensure_current_schema_shape(connection: sqlite3.Connection) -> None:  # noq
     if "ai_turn_trace" not in existing_tables:
         _create_turn_trace_tables(connection)
 
-    source_columns = _column_names(connection, "ai_source")
-    if "adapter_kind" not in source_columns:
-        connection.execute(
-            """
-            ALTER TABLE ai_source
-            ADD COLUMN adapter_kind TEXT NOT NULL DEFAULT 'openai_compatible'
-            """
-        )
-    if "capability_metadata_json" not in source_columns:
-        connection.execute(
-            """
-            ALTER TABLE ai_source
-            ADD COLUMN capability_metadata_json TEXT NOT NULL DEFAULT '{}'
-            """
-        )
-    if "default_options_json" not in source_columns:
-        connection.execute(
-            """
-            ALTER TABLE ai_source
-            ADD COLUMN default_options_json TEXT NOT NULL DEFAULT '{}'
-            """
-        )
-    if "capability_provenance_json" not in source_columns:
-        connection.execute(
-            """
-            ALTER TABLE ai_source
-            ADD COLUMN capability_provenance_json TEXT NOT NULL DEFAULT '{}'
-            """
-        )
-    connection.execute(
-        """
-        UPDATE ai_source
-        SET adapter_kind = CASE client_type
-            WHEN 'anthropic' THEN 'anthropic_compatible'
-            WHEN 'generic_rerank' THEN 'generic_rerank'
-            ELSE 'openai_compatible'
-        END
-        WHERE adapter_kind IS NULL
-            OR adapter_kind = ''
-            OR (
-                adapter_kind = 'openai_compatible'
-                AND client_type IN ('anthropic', 'generic_rerank')
+    if "ai_source" in existing_tables:
+        source_columns = _column_names(connection, "ai_source")
+        if "adapter_kind" not in source_columns:
+            connection.execute(
+                """
+                ALTER TABLE ai_source
+                ADD COLUMN adapter_kind TEXT NOT NULL DEFAULT 'openai_compatible'
+                """
             )
-        """
-    )
+        if "capability_metadata_json" not in source_columns:
+            connection.execute(
+                """
+                ALTER TABLE ai_source
+                ADD COLUMN capability_metadata_json TEXT NOT NULL DEFAULT '{}'
+                """
+            )
+        if "default_options_json" not in source_columns:
+            connection.execute(
+                """
+                ALTER TABLE ai_source
+                ADD COLUMN default_options_json TEXT NOT NULL DEFAULT '{}'
+                """
+            )
+        if "capability_provenance_json" not in source_columns:
+            connection.execute(
+                """
+                ALTER TABLE ai_source
+                ADD COLUMN capability_provenance_json TEXT NOT NULL DEFAULT '{}'
+                """
+            )
+        connection.execute(
+            """
+            UPDATE ai_source
+            SET adapter_kind = CASE client_type
+                WHEN 'anthropic' THEN 'anthropic_compatible'
+                WHEN 'generic_rerank' THEN 'generic_rerank'
+                ELSE 'openai_compatible'
+            END
+            WHERE adapter_kind IS NULL
+                OR adapter_kind = ''
+                OR (
+                    adapter_kind = 'openai_compatible'
+                    AND client_type IN ('anthropic', 'generic_rerank')
+                )
+            """
+        )
 
     for table_name in SOURCE_MODEL_TABLE_NAMES:
+        if table_name not in existing_tables:
+            continue
         columns = _column_names(connection, table_name)
         if "capability_metadata_json" not in columns:
             connection.execute(
@@ -212,6 +228,23 @@ def _ensure_current_schema_shape(connection: sqlite3.Connection) -> None:  # noq
                 f"""
                 ALTER TABLE {table_name}
                 ADD COLUMN capability_provenance_json TEXT NOT NULL DEFAULT '{{}}'
+                """
+            )
+
+    if "chat_message" in existing_tables:
+        chat_message_columns = _column_names(connection, "chat_message")
+        if "turn_disposition" not in chat_message_columns:
+            connection.execute(
+                """
+                ALTER TABLE chat_message
+                ADD COLUMN turn_disposition TEXT NOT NULL DEFAULT 'active'
+                    CHECK(turn_disposition IN (
+                        'active',
+                        'observed',
+                        'generated',
+                        'tool',
+                        'system'
+                    ))
                 """
             )
 
@@ -625,6 +658,8 @@ def _create_conversation_tables(connection: sqlite3.Connection) -> None:
             message_kind TEXT NOT NULL CHECK(
                 message_kind IN ('text', 'mixed', 'media', 'system', 'tool')
             ),
+            turn_disposition TEXT NOT NULL DEFAULT 'active'
+                CHECK({TURN_DISPOSITION_CHECK}),
             directed_to_bot INTEGER NOT NULL DEFAULT 0
                 CHECK(directed_to_bot IN (0, 1)),
             mentions_bot INTEGER NOT NULL DEFAULT 0 CHECK(mentions_bot IN (0, 1)),

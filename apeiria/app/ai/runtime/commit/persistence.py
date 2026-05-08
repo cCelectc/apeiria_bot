@@ -79,6 +79,7 @@ class AssistantReplyPersistenceStage:
                 author_role="assistant",
                 author_id=turn.sender_id,
                 text_content=response.content.strip(),
+                turn_disposition="generated",
                 meta=sanitize_runtime_diagnostics(
                     {
                         "trace_id": trace_id,

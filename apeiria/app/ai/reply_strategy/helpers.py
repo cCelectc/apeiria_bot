@@ -41,6 +41,8 @@ def latest_user_turn_text(turns: "Iterable[object]") -> str | None:
 
     latest: str | None = None
     for turn in turns:
+        if getattr(turn, "turn_disposition", None) == "observed":
+            continue
         if (
             getattr(turn, "author_role", None) != "user"
             and getattr(turn, "sender_type", None) != "user"

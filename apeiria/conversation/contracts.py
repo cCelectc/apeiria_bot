@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from apeiria.conversation.models import AuthorRole, MessageKind
+    from apeiria.conversation.models import AuthorRole, MessageKind, TurnDisposition
 
 
 @dataclass(frozen=True)
@@ -18,6 +18,7 @@ class ChatMessageCreate:
     text_content: str
     author_name: str | None = None
     message_kind: "MessageKind" = "text"
+    turn_disposition: "TurnDisposition" = "active"
     directed_to_bot: bool = False
     mentions_bot: bool = False
     has_media: bool = False

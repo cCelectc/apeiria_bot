@@ -11,6 +11,7 @@ if TYPE_CHECKING:
 SceneType = Literal["group", "private"]
 AuthorRole = Literal["user", "assistant", "system", "tool"]
 MessageKind = Literal["text", "mixed", "media", "system", "tool"]
+TurnDisposition = Literal["active", "observed", "generated", "tool", "system"]
 
 
 @dataclass(frozen=True)
@@ -37,6 +38,7 @@ class ChatContextMessageView:
     content: dict[str, Any] | None
     created_at: datetime
     reply_to_message_id: str | None = None
+    turn_disposition: TurnDisposition = "active"
 
     @property
     def sender_type(self) -> str:
@@ -49,6 +51,10 @@ class ChatContextMessageView:
     @property
     def content_text(self) -> str:
         return self.text_content
+
+    @property
+    def is_observed_context(self) -> bool:
+        return self.turn_disposition == "observed"
 
 
 @dataclass(frozen=True)
@@ -89,6 +95,7 @@ class ChatMessageDetailView:
     meta: dict[str, Any] | None
     raw_data: dict[str, Any] | None
     created_at: datetime
+    turn_disposition: TurnDisposition = "active"
 
     @property
     def sender_type(self) -> str:
@@ -101,6 +108,10 @@ class ChatMessageDetailView:
     @property
     def content_text(self) -> str:
         return self.text_content
+
+    @property
+    def is_observed_context(self) -> bool:
+        return self.turn_disposition == "observed"
 
     @property
     def raw_payload(self) -> dict[str, Any] | None:

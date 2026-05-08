@@ -52,6 +52,7 @@ async def append_tool_observation_turns(
                 author_id=turn.author_id,
                 text_content=turn.text_content,
                 message_kind="tool",
+                turn_disposition="tool",
                 meta={
                     "trace_id": trace_id,
                     "index": index,
