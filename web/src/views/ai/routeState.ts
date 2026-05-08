@@ -2,6 +2,7 @@ export type AIManagementPage
   = | 'overview'
     | 'models'
     | 'personas'
+    | 'knowledge'
     | 'memories'
     | 'relationships'
     | 'profiles'
@@ -12,6 +13,7 @@ export type AIManagementRouteName
   = | 'ai-overview'
     | 'ai-models'
     | 'ai-personas'
+    | 'ai-knowledge'
     | 'ai-memories'
     | 'ai-relationships'
     | 'ai-profiles'
@@ -80,6 +82,7 @@ export const aiManagementPages: AIManagementPage[] = [
   'overview',
   'models',
   'personas',
+  'knowledge',
   'memories',
   'relationships',
   'profiles',
@@ -89,6 +92,7 @@ export const aiManagementPages: AIManagementPage[] = [
 
 export const aiPageRouteNames: Record<AIManagementPage, AIManagementRouteName> = {
   debug: 'ai-debug',
+  knowledge: 'ai-knowledge',
   memories: 'ai-memories',
   models: 'ai-models',
   overview: 'ai-overview',
@@ -100,6 +104,7 @@ export const aiPageRouteNames: Record<AIManagementPage, AIManagementRouteName> =
 
 export const aiRouteNamePages: Record<AIManagementRouteName, AIManagementPage> = {
   'ai-debug': 'debug',
+  'ai-knowledge': 'knowledge',
   'ai-memories': 'memories',
   'ai-models': 'models',
   'ai-overview': 'overview',
@@ -130,6 +135,13 @@ export const aiManagementPageDescriptors: AIManagementPageDescriptor[] = [
     path: '/ai/personas',
     routeName: 'ai-personas',
     titleKey: 'ai.personasTab',
+  },
+  {
+    icon: 'mdi-book-search-outline',
+    page: 'knowledge',
+    path: '/ai/knowledge',
+    routeName: 'ai-knowledge',
+    titleKey: 'ai.knowledgeTab',
   },
   {
     icon: 'mdi-brain',

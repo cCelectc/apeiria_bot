@@ -182,6 +182,8 @@ def test_runtime_prompt_planning_builds_initial_reply_packet() -> None:
                 ),
             )
         ],
+        rag_chunks=(),
+        rag_diagnostics=None,
     )
     social_decision = ReplyStrategyDecision(
         action="reply",
@@ -474,6 +476,10 @@ def test_runtime_planning_uses_runtime_context_materials_for_plan_parity(
         "allowed_capability_count": 1,
         "has_capability_awareness": False,
         "has_future_task_context": False,
+        "rag_enabled": False,
+        "rag_selected_count": 0,
+        "rag_candidate_count": 0,
+        "rag_degradation_reason": None,
     }
     assert plan.tool_exposure_plan.selected_tool_names == ("memory.query",)
 

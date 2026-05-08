@@ -28,6 +28,7 @@ const routes = [
       { path: 'ai/overview', name: 'ai-overview', component: () => import('@/views/ai/AIOverviewPage.vue'), meta: { titleKey: 'ai.overviewTitle' } },
       { path: 'ai/models', name: 'ai-models', component: () => import('@/views/ai/AIModelsPage.vue'), meta: { titleKey: 'ai.modelsTitle' } },
       { path: 'ai/personas', name: 'ai-personas', component: () => import('@/views/ai/AIPersonasPage.vue'), meta: { titleKey: 'ai.personasTab' } },
+      { path: 'ai/knowledge', name: 'ai-knowledge', component: () => import('@/views/ai/AIKnowledgePage.vue'), meta: { titleKey: 'ai.knowledgeTab' } },
       { path: 'ai/memories', name: 'ai-memories', component: () => import('@/views/ai/AIMemoriesPage.vue'), meta: { titleKey: 'ai.memoryTab' } },
       { path: 'ai/relationships', name: 'ai-relationships', component: () => import('@/views/ai/AIRelationshipsPage.vue'), meta: { titleKey: 'ai.relationshipTab' } },
       { path: 'ai/profiles', name: 'ai-profiles', component: () => import('@/views/ai/AIPersonProfilesPage.vue'), meta: { titleKey: 'ai.personProfileTab' } },

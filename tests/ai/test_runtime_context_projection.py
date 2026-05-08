@@ -252,4 +252,8 @@ def test_runtime_context_projection_emits_bounded_shape_diagnostics() -> None:
         "allowed_capability_count": 1,
         "has_capability_awareness": False,
         "has_future_task_context": False,
+        "rag_enabled": False,
+        "rag_selected_count": 0,
+        "rag_candidate_count": 0,
+        "rag_degradation_reason": None,
     }

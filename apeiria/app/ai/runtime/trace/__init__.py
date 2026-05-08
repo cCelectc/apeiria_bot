@@ -71,7 +71,9 @@ class TurnTrace:
             "delivery_status": self.delivery_status,
         }
         if self.prompt_diagnostics:
-            metadata["prompt_diagnostics"] = self.prompt_diagnostics
+            metadata["prompt_diagnostics"] = _safe_prompt_diagnostics(
+                self.prompt_diagnostics
+            )
         if self.multimodal:
             metadata["multimodal"] = self.multimodal
         if self.capability_degradations:
@@ -159,7 +161,89 @@ def _extract_prompt_diagnostics(
         diagnostics["speech"] = list(speech)
     elif "speech" in diagnostics:
         diagnostics.pop("speech")
+    return _safe_prompt_diagnostics(diagnostics)
+
+
+def _safe_prompt_diagnostics(raw: dict[str, object]) -> dict[str, object]:
+    diagnostics = dict(raw)
+    rag = _safe_rag_metadata(diagnostics.get("rag"))
+    if rag:
+        diagnostics["rag"] = rag
+    elif "rag" in diagnostics:
+        diagnostics.pop("rag")
     return diagnostics
+
+
+def _safe_rag_metadata(value: object) -> dict[str, object] | None:
+    if not isinstance(value, dict):
+        return None
+    metadata: dict[str, object] = {}
+    _copy_bool_fields(value, metadata, fields=("enabled",))
+    _copy_int_fields(value, metadata, fields=("selected_count", "candidate_count"))
+    _copy_str_fields(value, metadata, fields=("rerank_status", "degradation_reason"))
+    chunks = _safe_rag_chunks(value.get("chunks"))
+    if chunks:
+        metadata["chunks"] = chunks
+    return metadata or None
+
+
+def _copy_bool_fields(
+    source: dict[object, object],
+    target: dict[str, object],
+    *,
+    fields: tuple[str, ...],
+) -> None:
+    for key in fields:
+        field = source.get(key)
+        if isinstance(field, bool):
+            target[key] = field
+
+
+def _copy_int_fields(
+    source: dict[object, object],
+    target: dict[str, object],
+    *,
+    fields: tuple[str, ...],
+) -> None:
+    for key in fields:
+        field = source.get(key)
+        if isinstance(field, int):
+            target[key] = field
+
+
+def _copy_str_fields(
+    source: dict[object, object],
+    target: dict[str, object],
+    *,
+    fields: tuple[str, ...],
+) -> None:
+    for key in fields:
+        field = source.get(key)
+        if isinstance(field, str):
+            target[key] = field
+
+
+def _safe_rag_chunks(value: object) -> list[dict[str, object]]:
+    if not isinstance(value, list | tuple):
+        return []
+    chunks: list[dict[str, object]] = []
+    for item in list(value)[:5]:
+        chunk = _safe_rag_chunk(item)
+        if chunk:
+            chunks.append(chunk)
+    return chunks
+
+
+def _safe_rag_chunk(value: object) -> dict[str, object]:
+    if not isinstance(value, dict):
+        return {}
+    chunk: dict[str, object] = {}
+    _copy_str_fields(value, chunk, fields=("label", "document_id", "chunk_id"))
+    _copy_int_fields(value, chunk, fields=("rank",))
+    score = value.get("score")
+    if isinstance(score, int | float):
+        chunk["score"] = float(score)
+    return chunk
 
 
 def _extract_multimodal_metadata(

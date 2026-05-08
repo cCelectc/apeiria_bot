@@ -9,6 +9,10 @@ if TYPE_CHECKING:
     from datetime import datetime
 
     from apeiria.ai.capabilities import AICapabilityContract
+    from apeiria.ai.knowledge.models import (
+        KnowledgeRetrievalDiagnostics,
+        KnowledgeRetrievalItem,
+    )
     from apeiria.ai.memory import AIMemoryDefinition, AIMessageSentiment
     from apeiria.ai.model import (
         AIModelBindingTarget,
@@ -247,6 +251,8 @@ class RuntimeContextMaterials:
     person_profile: tuple[str, ...]
     allowed_tools: tuple["AICapabilityContract", ...]
     initiative_bias: float
+    rag_chunks: tuple["KnowledgeRetrievalItem", ...] = ()
+    rag_diagnostics: "KnowledgeRetrievalDiagnostics | None" = None
 
     @classmethod
     def from_context_input_bundle(
@@ -267,6 +273,8 @@ class RuntimeContextMaterials:
             person_profile=inputs.person_profile,
             allowed_tools=inputs.allowed_tools,
             initiative_bias=inputs.initiative_bias,
+            rag_chunks=inputs.rag_chunks,
+            rag_diagnostics=inputs.rag_diagnostics,
         )
 
 

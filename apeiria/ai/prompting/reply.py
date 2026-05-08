@@ -11,6 +11,7 @@ from .regions import PromptRegionProjection, project_prompt_regions
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
+    from apeiria.ai.knowledge.models import KnowledgeRetrievalItem
     from apeiria.ai.memory import AIMemoryDefinition
     from apeiria.conversation.models import ChatContextMessageView
 
@@ -29,6 +30,7 @@ REPLY_SECTION_OPERATOR_MEMORIES = "OperatorMemories"
 REPLY_SECTION_SUMMARY_MEMORIES = "SummaryMemories"
 REPLY_SECTION_LONG_TERM_MEMORIES = "LongTermMemories"
 REPLY_SECTION_KNOWLEDGE_MEMORIES = "KnowledgeMemories"
+REPLY_SECTION_RAG_KNOWLEDGE = "RAGKnowledge"
 REPLY_SECTION_CONVERSATION_SUMMARY = "ConversationSummary"
 REPLY_SECTION_FUTURE_TASK = "FutureTask"
 REPLY_SECTION_ACTIVE_SKILLS = "ActiveSkills"
@@ -70,6 +72,7 @@ class ReplyPromptInput:
     memories: "Sequence[AIMemoryDefinition]"
     turns: "Sequence[ChatContextMessageView]"
     person_profile: tuple[str, ...]
+    rag_chunks: "Sequence[KnowledgeRetrievalItem]" = ()
     conversation_summary: str | None = None
     social_policy_summary: str | None = None
     capability_awareness: str | None = None
@@ -165,6 +168,7 @@ def _build_reply_packet(
         lines=inputs.tool_results,
     )
     _append_memory_sections(sections, inputs.memories)
+    _append_rag_section(sections, inputs.rag_chunks)
     _append_section(
         sections,
         role="system",
@@ -231,6 +235,18 @@ def _append_memory_sections(
                 if memory.memory_layer == layer
             ),
         )
+
+
+def _append_rag_section(
+    sections: list[PromptSection],
+    rag_chunks: "Sequence[KnowledgeRetrievalItem]",
+) -> None:
+    _append_lines(
+        sections,
+        role="system",
+        name=REPLY_SECTION_RAG_KNOWLEDGE,
+        lines=tuple(_format_rag_chunk(chunk) for chunk in rag_chunks),
+    )
 
 
 def _append_conversation_sections(
@@ -355,6 +371,13 @@ def _format_memory(memory: "AIMemoryDefinition") -> str:
     return (
         f"- [{memory.memory_layer}/{memory.memory_kind}] {memory.content} "
         f"(salience={memory.salience:.2f}, confidence={memory.confidence:.2f})"
+    )
+
+
+def _format_rag_chunk(chunk: "KnowledgeRetrievalItem") -> str:
+    return (
+        f"- [{chunk.label}] {chunk.title} ({chunk.source_file_name}) "
+        f"rank={chunk.rank} score={chunk.score:.3f}: {chunk.excerpt}"
     )
 
 

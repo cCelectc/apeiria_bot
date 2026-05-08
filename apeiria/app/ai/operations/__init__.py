@@ -14,6 +14,7 @@ from .errors import (
     AISourceModelTestUpstreamError,
 )
 from .future_tasks import FutureTasksAdminMixin
+from .knowledge import KnowledgeAdminMixin
 from .memories import MemoriesAdminMixin
 from .models import ModelsAdminMixin
 from .person_profiles import PersonProfilesAdminMixin
@@ -29,6 +30,7 @@ class AIOperationsEntry(
     SourcesAdminMixin,
     PersonasAdminMixin,
     ToolsAdminMixin,
+    KnowledgeAdminMixin,
     MemoriesAdminMixin,
     RelationshipsAdminMixin,
     PersonProfilesAdminMixin,

@@ -17,6 +17,7 @@ from apeiria.ai.prompting import (
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
+    from apeiria.ai.knowledge.models import KnowledgeRetrievalItem
     from apeiria.ai.memory import AIMemoryDefinition
     from apeiria.ai.model import AIModelMessage
     from apeiria.ai.prompting import ReplyPersonaPromptBundleLike
@@ -48,6 +49,7 @@ class RuntimePromptComposeInput:
     capability_awareness: str | None = None
     future_task_context: str | None = None
     skill_activation: str | None = None
+    rag_chunks: "Sequence[KnowledgeRetrievalItem]" = ()
 
 
 @dataclass(frozen=True)
@@ -78,6 +80,7 @@ def compose_input_from_context_projection(
         capability_awareness=view.capability_awareness,
         future_task_context=view.future_task_context,
         skill_activation=view.skill_activation,
+        rag_chunks=view.rag_chunks,
     )
 
 
@@ -102,6 +105,7 @@ def build_runtime_prompt_packet(
         capability_awareness=inputs.capability_awareness,
         future_task_context=inputs.future_task_context,
         skill_activation=inputs.skill_activation,
+        rag_chunks=inputs.rag_chunks,
         turns=inputs.turns,
     )
     if mode == "planner":

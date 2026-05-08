@@ -101,6 +101,53 @@ def test_turn_trace_repository_sanitizes_diagnostics(
     assert stored.diagnostics["safe"] == "x" * 500
 
 
+def test_turn_trace_records_bounded_rag_metadata() -> None:
+    trace = TurnTrace(
+        trace_id="trace-rag",
+        session_id="session-1",
+        runtime_mode="message",
+        strategy_action="continue",
+        strategy_reason_codes=("direct_signal",),
+        prompt_diagnostics={
+            "rag": {
+                "enabled": True,
+                "selected_count": 1,
+                "candidate_count": 3,
+                "chunks": [
+                    {
+                        "label": "K1",
+                        "document_id": "kdoc_1",
+                        "chunk_id": "kchunk_1",
+                        "rank": 1,
+                        "score": 0.87,
+                        "full_text": "this must not leak",
+                    }
+                ],
+            }
+        },
+    )
+
+    metadata = trace.to_metadata()
+
+    assert metadata["prompt_diagnostics"] == {
+        "rag": {
+            "enabled": True,
+            "selected_count": 1,
+            "candidate_count": 3,
+            "chunks": [
+                {
+                    "label": "K1",
+                    "document_id": "kdoc_1",
+                    "chunk_id": "kchunk_1",
+                    "rank": 1,
+                    "score": 0.87,
+                }
+            ],
+        }
+    }
+    assert "full_text" not in str(metadata)
+
+
 def test_turn_trace_repository_lists_and_filters_compact_traces(
     monkeypatch: Any,
     tmp_path: Path,

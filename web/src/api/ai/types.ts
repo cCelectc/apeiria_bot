@@ -128,6 +128,76 @@ export interface AIMemoryCreateRequest {
   confidence?: number
 }
 
+export interface AIKnowledgeStateItem {
+  rag_enabled: boolean
+  document_count: number
+  chunk_count: number
+}
+
+export interface AIKnowledgeDocumentItem {
+  document_id: string
+  title: string
+  source_file_name: string
+  content_hash: string
+  status: string
+  chunk_count: number
+  last_error: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface AIKnowledgeChunkItem {
+  chunk_id: string
+  document_id: string
+  ordinal: number
+  chunk_hash: string
+  text: string
+  char_count: number
+  embedding_model: string | null
+  embedding_status: string
+  created_at: string
+  updated_at: string
+}
+
+export interface AIKnowledgeRebuildDiagnosticsItem {
+  processed_count: number
+  skipped_count: number
+  failed_count: number
+  stale_cleanup_count: number
+}
+
+export interface AIKnowledgeUploadResultItem {
+  document: AIKnowledgeDocumentItem
+  chunks: AIKnowledgeChunkItem[]
+  diagnostics: AIKnowledgeRebuildDiagnosticsItem
+}
+
+export interface AIKnowledgeRetrievalItem {
+  label: string
+  document_id: string
+  chunk_id: string
+  title: string
+  source_file_name: string
+  rank: number
+  score: number
+  rerank_score: number | null
+  excerpt: string
+}
+
+export interface AIKnowledgeRetrievalDiagnosticsItem {
+  candidate_count: number
+  selected_count: number
+  missing_embedding_count: number
+  stale_embedding_count: number
+  rerank_status: string
+  degradation_reason: string | null
+}
+
+export interface AIKnowledgeRetrievalResultItem {
+  items: AIKnowledgeRetrievalItem[]
+  diagnostics: AIKnowledgeRetrievalDiagnosticsItem
+}
+
 export interface AISourcePresetItem {
   preset_type: string
   display_name: string

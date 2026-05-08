@@ -8,6 +8,10 @@ from typing import TYPE_CHECKING, Literal, Protocol
 from apeiria.app.ai.runtime.planning.social import summarize_social_decision
 
 if TYPE_CHECKING:
+    from apeiria.ai.knowledge.models import (
+        KnowledgeRetrievalDiagnostics,
+        KnowledgeRetrievalItem,
+    )
     from apeiria.ai.memory import AIMemoryDefinition
     from apeiria.ai.prompting import ReplyPersonaPromptBundleLike
     from apeiria.app.ai.future_tasks.models import AIFutureTaskDefinition
@@ -48,6 +52,7 @@ class RuntimeContextPromptView:
     capability_awareness: str | None = None
     future_task_context: str | None = None
     skill_activation: str | None = None
+    rag_chunks: tuple["KnowledgeRetrievalItem", ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -63,6 +68,8 @@ class RuntimeContextPreviewView:
     turns: tuple["ChatContextMessageView", ...]
     person_profile: tuple[str, ...]
     capability_awareness: str | None = None
+    rag_chunks: tuple["KnowledgeRetrievalItem", ...] = ()
+    rag_diagnostics: "KnowledgeRetrievalDiagnostics | None" = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -80,6 +87,10 @@ class RuntimeContextDiagnostics:
     allowed_capability_count: int
     has_capability_awareness: bool
     has_future_task_context: bool
+    rag_enabled: bool
+    rag_selected_count: int
+    rag_candidate_count: int
+    rag_degradation_reason: str | None = None
 
     def as_dict(self) -> dict[str, object]:
         """Return the diagnostics as a compact serializable mapping."""
@@ -96,6 +107,10 @@ class RuntimeContextDiagnostics:
             "allowed_capability_count": self.allowed_capability_count,
             "has_capability_awareness": self.has_capability_awareness,
             "has_future_task_context": self.has_future_task_context,
+            "rag_enabled": self.rag_enabled,
+            "rag_selected_count": self.rag_selected_count,
+            "rag_candidate_count": self.rag_candidate_count,
+            "rag_degradation_reason": self.rag_degradation_reason,
         }
 
 
@@ -139,6 +154,7 @@ def project_runtime_context(  # noqa: PLR0913
         capability_awareness=capability_awareness,
         future_task_context=future_task_context,
         skill_activation=skill_activation,
+        rag_chunks=getattr(context, "rag_chunks", ()),
     )
     preview = RuntimeContextPreviewView(
         persona=context.persona,
@@ -150,6 +166,8 @@ def project_runtime_context(  # noqa: PLR0913
         turns=tuple(context.turns),
         person_profile=context.person_profile,
         capability_awareness=capability_awareness,
+        rag_chunks=getattr(context, "rag_chunks", ()),
+        rag_diagnostics=getattr(context, "rag_diagnostics", None),
     )
     return RuntimeContextProjection(
         prompt=prompt,
@@ -166,12 +184,40 @@ def project_runtime_context(  # noqa: PLR0913
             allowed_capability_count=len(context.allowed_tools),
             has_capability_awareness=capability_awareness is not None,
             has_future_task_context=future_task_context is not None,
+            rag_enabled=_rag_enabled(getattr(context, "rag_diagnostics", None)),
+            rag_selected_count=len(getattr(context, "rag_chunks", ())),
+            rag_candidate_count=_rag_candidate_count(
+                getattr(context, "rag_diagnostics", None)
+            ),
+            rag_degradation_reason=_rag_degradation_reason(
+                getattr(context, "rag_diagnostics", None)
+            ),
         ),
     )
 
 
 def _memory_layers(memories: list["AIMemoryDefinition"]) -> tuple[str, ...]:
     return tuple(dict.fromkeys(memory.memory_layer for memory in memories))
+
+
+def _rag_enabled(
+    diagnostics: "KnowledgeRetrievalDiagnostics | None",
+) -> bool:
+    if diagnostics is None:
+        return False
+    return diagnostics.degradation_reason != "disabled"
+
+
+def _rag_candidate_count(
+    diagnostics: "KnowledgeRetrievalDiagnostics | None",
+) -> int:
+    return diagnostics.candidate_count if diagnostics is not None else 0
+
+
+def _rag_degradation_reason(
+    diagnostics: "KnowledgeRetrievalDiagnostics | None",
+) -> str | None:
+    return diagnostics.degradation_reason if diagnostics is not None else None
 
 
 def _build_future_task_context(

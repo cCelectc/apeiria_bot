@@ -14,6 +14,7 @@ from apeiria.app.ai import ai_application
 from apeiria.webui.auth import require_control_panel
 
 from .future_tasks import router as _future_tasks_router
+from .knowledge import router as _knowledge_router
 from .memories import router as _memories_router
 from .models import router as _models_router
 from .person_profiles import router as _person_profiles_router
@@ -51,6 +52,7 @@ async def get_ai_bootstrap(
 
 
 router.include_router(_future_tasks_router)
+router.include_router(_knowledge_router)
 router.include_router(_memories_router)
 router.include_router(_models_router)
 router.include_router(_person_profiles_router)

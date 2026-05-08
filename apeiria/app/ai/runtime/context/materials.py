@@ -5,6 +5,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from apeiria.ai.knowledge.models import (
+    KnowledgeRetrievalDiagnostics,
+    KnowledgeRetrievalItem,
+    KnowledgeRetrievalResult,
+)
+from apeiria.ai.knowledge.service import knowledge_retrieval_service
+from apeiria.ai.knowledge.settings import knowledge_settings_store
 from apeiria.ai.tools import ai_tool_service
 from apeiria.app.ai.runtime.context.context_window import build_and_store_context_window
 from apeiria.app.ai.runtime.context.memories import retrieve_memories_for_context
@@ -54,6 +61,8 @@ class RuntimeContextInputBundle:
     person_profile: tuple[str, ...]
     allowed_tools: tuple["AICapabilityContract", ...]
     initiative_bias: float
+    rag_chunks: tuple[KnowledgeRetrievalItem, ...] = ()
+    rag_diagnostics: KnowledgeRetrievalDiagnostics | None = None
 
 
 async def collect_reply_inputs(
@@ -95,6 +104,10 @@ async def collect_reply_inputs(
     initiative_bias = await resolve_initiative_bias(
         relationship_target=relationship_target,
     )
+    rag_result = await retrieve_rag_for_context(
+        query_text=turn.message_text,
+        limit=3,
+    )
     return RuntimeContextInputBundle(
         turns=turns,
         conversation_summary=conversation_summary,
@@ -107,6 +120,8 @@ async def collect_reply_inputs(
         person_profile=person_profile,
         allowed_tools=allowed_tools,
         initiative_bias=initiative_bias,
+        rag_chunks=rag_result.items,
+        rag_diagnostics=rag_result.diagnostics,
     )
 
 
@@ -120,4 +135,23 @@ async def gather_reply_inputs(
 
     return RuntimeContextMaterials.from_context_input_bundle(
         await collect_reply_inputs(turn.to_turn_request(), current_time)
+    )
+
+
+async def retrieve_rag_for_context(
+    *,
+    query_text: str,
+    limit: int,
+) -> KnowledgeRetrievalResult:
+    """Retrieve runtime RAG context only when explicitly enabled."""
+
+    if not knowledge_settings_store.get().rag_enabled:
+        return KnowledgeRetrievalResult(
+            items=(),
+            diagnostics=KnowledgeRetrievalDiagnostics(degradation_reason="disabled"),
+        )
+    return await knowledge_retrieval_service.retrieve(
+        query_text=query_text,
+        limit=limit,
+        mutate_embeddings=False,
     )

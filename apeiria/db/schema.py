@@ -157,6 +157,8 @@ def _ensure_current_schema_shape(  # noqa: C901, PLR0912
         _create_delivery_attempt_tables(connection)
     if "ai_turn_trace" not in existing_tables:
         _create_turn_trace_tables(connection)
+    if "ai_knowledge_document" not in existing_tables:
+        _create_knowledge_tables(connection)
 
     if "ai_source" in existing_tables:
         source_columns = _column_names(connection, "ai_source")
@@ -303,6 +305,7 @@ def _create_current_schema(connection: sqlite3.Connection) -> None:
     _create_tool_execution_tables(connection)
     _create_relationship_person_tables(connection)
     _create_memory_item_tables(connection)
+    _create_knowledge_tables(connection)
     _create_future_task_tables(connection)
     _create_delivery_attempt_tables(connection)
     _create_turn_trace_tables(connection)
@@ -874,6 +877,69 @@ def _create_memory_item_tables(connection: sqlite3.Connection) -> None:
         """
         CREATE INDEX idx_ai_memory_item_created_at
         ON ai_memory_item(created_at)
+        """
+    )
+
+
+def _create_knowledge_tables(connection: sqlite3.Connection) -> None:
+    connection.execute(
+        """
+        CREATE TABLE ai_knowledge_document (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            document_id TEXT NOT NULL UNIQUE,
+            title TEXT NOT NULL,
+            source_file_name TEXT NOT NULL,
+            content_hash TEXT NOT NULL,
+            content_text TEXT NOT NULL,
+            status TEXT NOT NULL CHECK(
+                status IN ('pending', 'embedded', 'degraded', 'failed')
+            ),
+            chunk_count INTEGER NOT NULL DEFAULT 0 CHECK(chunk_count >= 0),
+            last_error TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+        """
+    )
+    connection.execute(
+        """
+        CREATE INDEX idx_ai_knowledge_document_updated_at
+        ON ai_knowledge_document(updated_at)
+        """
+    )
+    connection.execute(
+        """
+        CREATE TABLE ai_knowledge_chunk (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            chunk_id TEXT NOT NULL UNIQUE,
+            document_id TEXT NOT NULL,
+            ordinal INTEGER NOT NULL CHECK(ordinal >= 0),
+            chunk_hash TEXT NOT NULL,
+            text TEXT NOT NULL,
+            char_count INTEGER NOT NULL CHECK(char_count >= 0),
+            embedding_model TEXT,
+            embedding_status TEXT NOT NULL DEFAULT 'missing' CHECK(
+                embedding_status IN ('missing', 'embedded', 'stale', 'failed')
+            ),
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            UNIQUE(document_id, ordinal),
+            FOREIGN KEY(document_id)
+                REFERENCES ai_knowledge_document(document_id)
+                ON DELETE CASCADE
+        )
+        """
+    )
+    connection.execute(
+        """
+        CREATE INDEX idx_ai_knowledge_chunk_document
+        ON ai_knowledge_chunk(document_id, ordinal)
+        """
+    )
+    connection.execute(
+        """
+        CREATE INDEX idx_ai_knowledge_chunk_embedding_status
+        ON ai_knowledge_chunk(embedding_status)
         """
     )
 
