@@ -16,7 +16,7 @@
     "@fontsource/noto-sans-sc": "^5.2.9",
     "@mdi/font": "7.4.47",
     "@pinia/colada": "^1.1.0",
-    "axios": "^1.14.0",
+    "axios": "^1.15.2",
     "dompurify": "^3.3.3",
     "markdown-it": "^14.1.1",
     "markdown-it-task-lists": "^2.1.1",
