@@ -24,9 +24,11 @@ from apeiria.ai.model.runtime.adapter import (
     AIModelGenerateRequest,
     AIModelGenerateResponse,
     AIModelMessage,
+    AIModelSpeechResponse,
     AIModelStreamEvent,
     AIModelStreamRequest,
     AIModelToolDefinition,
+    AIModelTranscriptionResponse,
 )
 from apeiria.ai.model.runtime.capabilities import (
     AIModelCallOptions,
@@ -473,6 +475,157 @@ def test_model_call_planning_invokes_rejects_degrades_and_filters_options() -> N
     assert required_multimodal.reason == "unsupported_modality"
 
 
+def test_speech_model_call_planning_validates_lanes_inputs_and_options() -> None:
+    stt = _selected_with_capabilities(
+        AIModelCapabilities(
+            lanes=frozenset({"speech_to_text"}),
+            input_modalities=frozenset({"audio"}),
+            output_modalities=frozenset({"text"}),
+            supported_options=frozenset({"language"}),
+        ),
+        suffix="stt",
+    )
+    tts = _selected_with_capabilities(
+        AIModelCapabilities(
+            lanes=frozenset({"text_to_speech"}),
+            input_modalities=frozenset({"text"}),
+            output_modalities=frozenset({"audio"}),
+            supported_options=frozenset({"voice", "response_format"}),
+        ),
+        suffix="tts",
+    )
+    chat = _selected_with_capabilities(
+        AIModelCapabilities(lanes=frozenset({"chat_completion"})),
+        suffix="chat",
+    )
+
+    stt_plan = plan_model_call(
+        selected=stt,
+        requirements=AIModelCallRequirements(
+            required_lanes=frozenset({"speech_to_text"}),
+            required_modalities=frozenset({"audio"}),
+            required_output_modalities=frozenset({"text"}),
+        ),
+        options=AIModelCallOptions(values={"language": "en", "voice": "alloy"}),
+    )
+    tts_plan = plan_model_call(
+        selected=tts,
+        requirements=AIModelCallRequirements(
+            required_lanes=frozenset({"text_to_speech"}),
+            required_modalities=frozenset({"text"}),
+            required_output_modalities=frozenset({"audio"}),
+            required_options=frozenset({"voice"}),
+        ),
+        options=AIModelCallOptions(
+            values={"voice": "verse", "response_format": "mp3", "seed": 1}
+        ),
+    )
+    rejected = plan_model_call(
+        selected=chat,
+        requirements=AIModelCallRequirements(
+            required_lanes=frozenset({"speech_to_text"}),
+            required_modalities=frozenset({"audio"}),
+            required_output_modalities=frozenset({"text"}),
+        ),
+    )
+
+    assert stt_plan.action == "invoke"
+    assert stt_plan.options == {"language": "en"}
+    assert tts_plan.action == "invoke"
+    assert tts_plan.options == {"voice": "verse", "response_format": "mp3"}
+    assert rejected.action == "reject"
+    assert rejected.reason == "unsupported_capability_lane"
+
+
+def test_model_invoker_plans_stt_and_tts_before_provider_invocation(
+    monkeypatch: Any,
+) -> None:
+    from apeiria.ai.model.runtime import service as service_module
+
+    stt_model = _selected_with_capabilities(
+        AIModelCapabilities(
+            lanes=frozenset({"speech_to_text"}),
+            input_modalities=frozenset({"audio"}),
+            output_modalities=frozenset({"text"}),
+            supported_options=frozenset({"language"}),
+        ),
+        suffix="stt",
+    )
+    tts_model = _selected_with_capabilities(
+        AIModelCapabilities(
+            lanes=frozenset({"text_to_speech"}),
+            input_modalities=frozenset({"text"}),
+            output_modalities=frozenset({"audio"}),
+            supported_options=frozenset({"voice", "response_format"}),
+        ),
+        suffix="tts",
+    )
+    unsupported = _selected_with_capabilities(
+        AIModelCapabilities(lanes=frozenset({"chat_completion"})),
+        suffix="unsupported",
+    )
+    client = _SpeechClientStub()
+    monkeypatch.setattr(
+        service_module.ai_source_service,
+        "get_source_api_key",
+        lambda _source: "test-key",
+    )
+    monkeypatch.setattr(service_module, "ai_model_client", client)
+    monkeypatch.setattr(
+        service_module.ModelInvoker,
+        "_register_source",
+        staticmethod(lambda *_args, **_kwargs: None),
+    )
+    invoker = service_module.ModelInvoker()
+
+    transcription = asyncio.run(
+        invoker.transcribe_audio(
+            stt_model,
+            audio_bytes=b"audio",
+            file_name="voice.ogg",
+            mime_type="audio/ogg",
+            language="en",
+        )
+    )
+    speech = asyncio.run(
+        invoker.synthesize_speech(
+            tts_model,
+            text="hello",
+            voice="verse",
+            response_format="mp3",
+        )
+    )
+    with raises(AIModelCapabilityPlanningError):
+        asyncio.run(invoker.transcribe_audio(unsupported, audio_bytes=b"audio"))
+    with raises(AIModelCapabilityPlanningError):
+        asyncio.run(
+            invoker.synthesize_speech(
+                _selected_with_capabilities(
+                    AIModelCapabilities(
+                        lanes=frozenset({"text_to_speech"}),
+                        input_modalities=frozenset({"text"}),
+                        output_modalities=frozenset({"audio"}),
+                    ),
+                    suffix="no-voice",
+                ),
+                text="hello",
+                voice="verse",
+            )
+        )
+
+    assert transcription.text == "transcribed"
+    assert speech.response_format == "mp3"
+    assert client.transcription_requests[0].source_id == stt_model.source.source_id
+    assert client.transcription_requests[0].model_name == "model-stt"
+    assert client.transcription_requests[0].language == "en"
+    assert client.speech_requests[0].source_id == tts_model.source.source_id
+    assert client.speech_requests[0].model_name == "model-tts"
+    assert client.speech_requests[0].voice == "verse"
+    assert client.speech_requests[0].response_format == "mp3"
+    assert client.transcription_requests[1:] == []
+    assert client.speech_requests[1:] == []
+
+
 def test_streaming_generation_events_are_provider_neutral_contracts() -> None:
     selected = _selected_with_capabilities(
         AIModelCapabilities(
@@ -782,6 +935,54 @@ def test_openai_compatible_adapter_forwards_image_url_content_part(
     ]
 
 
+def test_openai_compatible_adapter_normalizes_speech_responses(
+    monkeypatch: Any,
+) -> None:
+    monkeypatch.setattr(
+        openai_compatible,
+        "_build_openai_client",
+        lambda **_kwargs: _OpenAISpeechClientStub(),
+    )
+    provider = openai_compatible.OpenAICompatibleProvider(
+        api_base="https://api.example.test/v1",
+        api_key="test-key",
+    )
+
+    transcription = asyncio.run(
+        provider.transcribe_audio(
+            __import__(
+                "apeiria.ai.model.runtime.adapter",
+                fromlist=["AIModelTranscriptionRequest"],
+            ).AIModelTranscriptionRequest(
+                source_id="source-1",
+                model_name="whisper-1",
+                audio_bytes=b"audio",
+                file_name="voice.ogg",
+                mime_type="audio/ogg",
+            )
+        )
+    )
+    speech = asyncio.run(
+        provider.synthesize_speech(
+            __import__(
+                "apeiria.ai.model.runtime.adapter",
+                fromlist=["AIModelSpeechRequest"],
+            ).AIModelSpeechRequest(
+                source_id="source-1",
+                model_name="tts-1",
+                text="hello",
+                voice="verse",
+                response_format="mp3",
+            )
+        )
+    )
+
+    assert transcription.text == "hello transcript"
+    assert transcription.raw == {"text": "hello transcript"}
+    assert speech.audio_bytes == b"mp3-bytes"
+    assert speech.response_format == "mp3"
+
+
 def test_openai_compatible_adapter_normalizes_streaming_text_events(
     monkeypatch: Any,
 ) -> None:
@@ -1088,6 +1289,29 @@ def _json_schema_response_format() -> dict[str, Any]:
     )
 
 
+class _SpeechClientStub:
+    def __init__(self) -> None:
+        self.transcription_requests: list[Any] = []
+        self.speech_requests: list[Any] = []
+
+    async def transcribe_audio(self, request: Any) -> AIModelTranscriptionResponse:
+        self.transcription_requests.append(request)
+        return AIModelTranscriptionResponse(
+            source_id=request.source_id,
+            model_name=request.model_name,
+            text="transcribed",
+        )
+
+    async def synthesize_speech(self, request: Any) -> AIModelSpeechResponse:
+        self.speech_requests.append(request)
+        return AIModelSpeechResponse(
+            source_id=request.source_id,
+            model_name=request.model_name,
+            audio_bytes=b"speech",
+            response_format=request.response_format,
+        )
+
+
 class _OpenAIClientStub:
     def __init__(self, payloads: list[dict[str, Any]]) -> None:
         self.chat = SimpleNamespace(
@@ -1113,6 +1337,26 @@ class _OpenAIClientStub:
             ],
             model_dump=model_dump,
         )
+
+    async def close(self) -> None:
+        return None
+
+
+class _OpenAISpeechClientStub:
+    def __init__(self) -> None:
+        self.audio = SimpleNamespace(
+            transcriptions=SimpleNamespace(create=self._create_transcription),
+            speech=SimpleNamespace(create=self._create_speech),
+        )
+
+    async def _create_transcription(self, **_payload: Any) -> Any:
+        return SimpleNamespace(
+            text="hello transcript",
+            model_dump=lambda **_kwargs: {"text": "hello transcript"},
+        )
+
+    async def _create_speech(self, **_payload: Any) -> Any:
+        return SimpleNamespace(content=b"mp3-bytes")
 
     async def close(self) -> None:
         return None

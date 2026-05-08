@@ -87,7 +87,9 @@ class AIModelCallRequirements:
 
     tool_calling: AIModelToolCallingRequirement = "none"
     streaming: AIModelStreamingRequirement = "none"
+    required_lanes: frozenset[AIModelCapabilityLane] = frozenset()
     required_modalities: frozenset[AIModelContentModality] = frozenset()
+    required_output_modalities: frozenset[AIModelContentModality] = frozenset()
     optional_modalities: frozenset[AIModelContentModality] = frozenset()
     required_options: frozenset[str] = frozenset()
 

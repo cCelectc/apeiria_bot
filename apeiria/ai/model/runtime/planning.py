@@ -30,7 +30,7 @@ _ResponseFormatPlan: TypeAlias = tuple[
 ]
 
 
-def plan_model_call(  # noqa: C901, PLR0913
+def plan_model_call(  # noqa: C901, PLR0911, PLR0913
     *,
     selected: "AISelectedModel",
     messages: tuple["AIModelMessage", ...] = (),
@@ -54,12 +54,22 @@ def plan_model_call(  # noqa: C901, PLR0913
         AI_MODEL_RESPONSE_FORMAT_OPTION in requested_required_options
     )
     response_format = effective_options.get(AI_MODEL_RESPONSE_FORMAT_OPTION)
+    response_format_is_structured = isinstance(
+        response_format,
+        dict,
+    ) or (
+        response_format is not None
+        and response_format_required
+        and AI_MODEL_RESPONSE_FORMAT_OPTION not in supported_options
+    )
     planned_response_format, response_degradations, response_rejection = (
         _plan_response_format(
             response_format,
             capabilities=capabilities,
             required=response_format_required,
         )
+        if response_format_is_structured
+        else (response_format, (), None)
     )
     if response_rejection is not None:
         return _reject(
@@ -86,6 +96,23 @@ def plan_model_call(  # noqa: C901, PLR0913
             reason="unsupported_required_option",
             diagnostic=(
                 "unsupported required options: " + ", ".join(unsupported_required)
+            ),
+        )
+
+    unsupported_required_lanes = sorted(
+        requirements.required_lanes - capabilities.lanes
+    )
+    if unsupported_required_lanes:
+        return _reject(
+            selected=selected,
+            messages=messages,
+            tools=tools,
+            options=effective_options,
+            capabilities=capabilities,
+            reason="unsupported_capability_lane",
+            diagnostic=(
+                "model does not support required capability lanes: "
+                + ", ".join(unsupported_required_lanes)
             ),
         )
 
@@ -165,6 +192,22 @@ def plan_model_call(  # noqa: C901, PLR0913
             diagnostic=(
                 "model does not support required modalities: "
                 + ", ".join(unsupported_required_modalities)
+            ),
+        )
+    unsupported_required_output_modalities = sorted(
+        requirements.required_output_modalities - capabilities.output_modalities
+    )
+    if unsupported_required_output_modalities:
+        return _reject(
+            selected=selected,
+            messages=messages,
+            tools=planned_tools,
+            options=filtered_options,
+            capabilities=capabilities,
+            reason="unsupported_output_modality",
+            diagnostic=(
+                "model does not support required output modalities: "
+                + ", ".join(unsupported_required_output_modalities)
             ),
         )
 
@@ -437,8 +480,10 @@ def _reject(  # noqa: PLR0913
 def _message_modalities(
     messages: tuple["AIModelMessage", ...],
 ) -> frozenset[AIModelContentModality]:
-    modalities: set[AIModelContentModality] = {"text"}
+    modalities: set[AIModelContentModality] = set()
     for message in messages:
+        if getattr(message, "content", ""):
+            modalities.add("text")
         parts = getattr(message, "parts", ())
         for part in parts:
             modality = getattr(part, "kind", None)

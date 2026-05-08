@@ -48,6 +48,7 @@ class TurnTrace:
     prompt_diagnostics: dict[str, object] | None = None
     multimodal: dict[str, object] | None = None
     capability_degradations: tuple[dict[str, object], ...] = ()
+    speech: tuple[dict[str, object], ...] = ()
 
     def to_metadata(self) -> dict[str, object]:
         """Project the trace to compact metadata for diagnostics surfaces."""
@@ -75,6 +76,8 @@ class TurnTrace:
             metadata["multimodal"] = self.multimodal
         if self.capability_degradations:
             metadata["capability_degradations"] = list(self.capability_degradations)
+        if self.speech:
+            metadata["speech"] = list(self.speech)
         return metadata
 
 
@@ -133,6 +136,7 @@ def project_turn_trace(  # noqa: PLR0913
         prompt_diagnostics=_extract_prompt_diagnostics(turn_result),
         multimodal=_extract_multimodal_metadata(turn_result),
         capability_degradations=_extract_capability_degradations(turn_result),
+        speech=_extract_speech_metadata(turn_result),
     )
 
 
@@ -150,6 +154,11 @@ def _extract_prompt_diagnostics(
         diagnostics["multimodal"] = multimodal
     elif "multimodal" in diagnostics:
         diagnostics.pop("multimodal")
+    speech = _safe_speech_metadata(raw.get("speech"))
+    if speech:
+        diagnostics["speech"] = list(speech)
+    elif "speech" in diagnostics:
+        diagnostics.pop("speech")
     return diagnostics
 
 
@@ -162,6 +171,46 @@ def _extract_multimodal_metadata(
     if not isinstance(prompt_diagnostics, dict):
         return None
     return _safe_multimodal_metadata(prompt_diagnostics.get("multimodal"))
+
+
+def _extract_speech_metadata(
+    turn_result: "AgentTurnResult | None",
+) -> tuple[dict[str, object], ...]:
+    if turn_result is None:
+        return ()
+    prompt_diagnostics = turn_result.metadata.get("prompt_diagnostics")
+    if not isinstance(prompt_diagnostics, dict):
+        return ()
+    return _safe_speech_metadata(prompt_diagnostics.get("speech"))
+
+
+def _safe_speech_metadata(value: object) -> tuple[dict[str, object], ...]:
+    if not isinstance(value, list | tuple):
+        return ()
+
+    allowed_keys = {
+        "status",
+        "reason",
+        "audio_kind",
+        "source_kind",
+        "selected_model",
+        "transcript_length",
+        "audio_count",
+    }
+    records: list[dict[str, object]] = []
+    for item in list(value)[:5]:
+        if not isinstance(item, dict):
+            continue
+        status = item.get("status")
+        if not isinstance(status, str):
+            continue
+        record: dict[str, object] = {"status": status}
+        for key in allowed_keys - {"status"}:
+            field = item.get(key)
+            if isinstance(field, str | int | bool):
+                record[key] = field
+        records.append(record)
+    return tuple(records)
 
 
 def _safe_multimodal_metadata(value: object) -> dict[str, object] | None:

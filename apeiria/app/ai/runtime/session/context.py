@@ -107,6 +107,7 @@ class RuntimeTurnSource:
     event_dedupe_claimed: bool = False
     media_parts: tuple[RuntimeSourceMediaPart, ...] = ()
     media_diagnostics: tuple[RuntimeMediaDiagnostic, ...] = ()
+    speech_diagnostics: tuple[dict[str, Any], ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -141,6 +142,7 @@ class RuntimeTurnInput:
                 event_dedupe_claimed=request.event_dedupe_claimed,
                 media_parts=request.media_parts,
                 media_diagnostics=request.media_diagnostics,
+                speech_diagnostics=request.speech_diagnostics,
             ),
             sender_id=request.sender_id,
             future_task=request.future_task,
@@ -166,6 +168,7 @@ class RuntimeTurnInput:
             event_dedupe_claimed=self.event_dedupe_claimed,
             media_parts=self.source.media_parts,
             media_diagnostics=self.source.media_diagnostics,
+            speech_diagnostics=self.source.speech_diagnostics,
         )
 
     @property

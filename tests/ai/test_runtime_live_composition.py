@@ -143,6 +143,106 @@ def test_default_live_message_entry_preserves_ingested_image_media(
     assert "secret" not in str(turn.source.media_parts)  # type: ignore[attr-defined]
 
 
+def test_default_live_message_entry_skips_speech_when_disabled(
+    monkeypatch: Any,
+) -> None:
+    resolver = _Resolver()
+    engine = _Engine(reply_text="text reply")
+    identity = _identity(scene_type="private")
+    transcriber = _SpeechPreparerStub(transcript="ignored")
+
+    _patch_live_common(
+        monkeypatch,
+        resolver=resolver,
+        engine=engine,
+        identity=identity,
+        content_json=(
+            '{"segments":[{"type":"record","asset_id":"asset-voice",'
+            '"mime":"audio/ogg"}]}'
+        ),
+    )
+    monkeypatch.setattr(
+        live_module,
+        "get_ai_plugin_config",
+        lambda: AIPluginConfig(stt_input_enabled=False),
+    )
+    monkeypatch.setattr(live_module, "speech_input_preparer", transcriber)
+    monkeypatch.setattr(
+        live_module,
+        "build_wake_context",
+        lambda *_args, **_kwargs: WakeContext(
+            bot_self_id="bot-1",
+            user_id="user-1",
+            message_text="[voice]",
+            is_tome=True,
+            is_private=True,
+            is_future_task=False,
+            allow_group_initiative=True,
+        ),
+    )
+
+    reply = asyncio.run(
+        DefaultAILiveRuntimeEntry().handle_message(
+            SimpleNamespace(self_id="bot-1"),
+            SimpleNamespace(get_user_id=lambda: "user-1", is_tome=lambda: True),
+        )
+    )
+
+    assert reply == "text reply"
+    assert transcriber.calls == 0
+    assert engine.turns[0].source.message_text == "[voice]"  # type: ignore[attr-defined]
+
+
+def test_default_live_message_entry_threads_enabled_speech_transcript(
+    monkeypatch: Any,
+) -> None:
+    resolver = _Resolver()
+    engine = _Engine(reply_text="speech reply")
+    identity = _identity(scene_type="private")
+    transcriber = _SpeechPreparerStub(transcript="voice transcript")
+
+    _patch_live_common(
+        monkeypatch,
+        resolver=resolver,
+        engine=engine,
+        identity=identity,
+        content_json=(
+            '{"segments":[{"type":"record","asset_id":"asset-voice",'
+            '"mime":"audio/ogg"}]}'
+        ),
+    )
+    monkeypatch.setattr(
+        live_module,
+        "get_ai_plugin_config",
+        lambda: AIPluginConfig(stt_input_enabled=True),
+    )
+    monkeypatch.setattr(live_module, "speech_input_preparer", transcriber)
+    monkeypatch.setattr(
+        live_module,
+        "build_wake_context",
+        lambda *_args, **_kwargs: WakeContext(
+            bot_self_id="bot-1",
+            user_id="user-1",
+            message_text="[voice]",
+            is_tome=True,
+            is_private=True,
+            is_future_task=False,
+            allow_group_initiative=True,
+        ),
+    )
+
+    reply = asyncio.run(
+        DefaultAILiveRuntimeEntry().handle_message(
+            SimpleNamespace(self_id="bot-1"),
+            SimpleNamespace(get_user_id=lambda: "user-1", is_tome=lambda: True),
+        )
+    )
+
+    assert reply == "speech reply"
+    assert transcriber.calls == 1
+    assert engine.turns[0].source.message_text == "voice transcript"  # type: ignore[attr-defined]
+
+
 def test_default_live_message_entry_attaches_webchat_stream_sink(
     monkeypatch: Any,
 ) -> None:
@@ -340,3 +440,33 @@ def _identity(*, scene_type: str) -> ChatSessionIdentity:
         scene_id="scene-1",
         subject_id="user-1",
     )
+
+
+class _SpeechPreparerStub:
+    def __init__(self, *, transcript: str) -> None:
+        self.transcript = transcript
+        self.calls = 0
+
+    async def prepare(self, turn: object, *, config: object) -> object:
+        from dataclasses import replace
+
+        assert config.stt_input_enabled is True
+        self.calls += 1
+        return SimpleNamespace(
+            turn=replace(
+                turn,
+                source=replace(
+                    turn.source,
+                    message_text=self.transcript,
+                ),
+            ),
+            diagnostics=(
+                {
+                    "status": "transcribed",
+                    "audio_kind": "audio",
+                    "source_kind": "asset",
+                    "selected_model": "source-stt:whisper-1",
+                    "transcript_length": len(self.transcript),
+                },
+            ),
+        )

@@ -199,6 +199,54 @@ def test_build_normalized_content_preserves_safe_media_references() -> None:
     ]
 
 
+def test_build_normalized_content_preserves_onebot_voice_audio_metadata() -> None:
+    from apeiria.conversation.normalization import build_normalized_content
+
+    content = build_normalized_content(
+        raw_data={
+            "message": [
+                {
+                    "type": "record",
+                    "data": {
+                        "file": "voice-1.silk",
+                        "url": "https://cdn.example.test/voice-1.silk",
+                        "mime": "audio/silk",
+                        "duration": 3,
+                        "size": 2048,
+                        "token": "secret",
+                        "raw": {"unsafe": True},
+                    },
+                },
+                {
+                    "type": "record",
+                    "data": {"token": "secret"},
+                },
+            ]
+        },
+        text_content="",
+        adapter="onebot",
+    )
+
+    assert content["segments"] == [
+        {
+            "type": "record",
+            "url": "https://cdn.example.test/voice-1.silk",
+            "file": "voice-1.silk",
+            "mime": "audio/silk",
+            "size": 2048,
+            "duration": 3,
+            "adapter": "onebot",
+        },
+        {
+            "type": "record",
+            "adapter": "onebot",
+            "unsupported_reason": "missing_safe_reference",
+        },
+    ]
+    assert "secret" not in str(content)
+    assert "unsafe" not in str(content)
+
+
 def test_adapter_specific_segments_are_preserved_as_safe_content() -> None:
     from apeiria.conversation.ingest import build_ingested_chat_event
 

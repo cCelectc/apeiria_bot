@@ -22,6 +22,7 @@ _SAFE_MEDIA_KEYS = (
     "width",
     "height",
     "size",
+    "duration",
     "file_name",
     "name",
 )
@@ -147,7 +148,13 @@ def build_normalized_content(  # noqa: C901, PLR0912
                     if qq is not None:
                         mentioned_user_ids.append(str(qq))
                 elif seg_type in _MEDIA_TYPES:
-                    segments.append(_build_media_segment(seg_type, data))
+                    segments.append(
+                        _build_media_segment(
+                            seg_type,
+                            data,
+                            adapter=adapter,
+                        )
+                    )
                 else:
                     adapter_segment = _build_adapter_segment(
                         adapter=adapter,
@@ -238,16 +245,35 @@ def build_mapping_summary(
     return summary or None
 
 
-def _build_media_segment(seg_type: str, data: object) -> dict[str, Any]:
+def _build_media_segment(
+    seg_type: str,
+    data: object,
+    *,
+    adapter: str | None,
+) -> dict[str, Any]:
     segment: dict[str, Any] = {"type": seg_type}
     if not isinstance(data, Mapping):
+        if adapter and seg_type in {"audio", "record"}:
+            segment["adapter"] = adapter
+            segment["unsupported_reason"] = "missing_safe_reference"
         return segment
 
     for key in _SAFE_MEDIA_KEYS:
         value = data.get(key)
         if isinstance(value, (str, int, float, bool)) and str(value).strip():
             segment[key] = value
+    if adapter and seg_type in {"audio", "record"}:
+        segment["adapter"] = adapter
+        if not _has_safe_media_reference(segment):
+            segment["unsupported_reason"] = "missing_safe_reference"
     return segment
+
+
+def _has_safe_media_reference(segment: Mapping[str, Any]) -> bool:
+    return any(
+        isinstance(segment.get(key), str) and str(segment.get(key)).strip()
+        for key in ("url", "asset_id", "file", "path")
+    )
 
 
 def _build_adapter_segment(

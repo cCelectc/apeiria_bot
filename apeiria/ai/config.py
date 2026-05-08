@@ -15,6 +15,7 @@ class AIPluginConfig(BaseModel):
     """Runtime configuration for the AI plugin."""
 
     allow_group_initiative: bool = False
+    stt_input_enabled: bool = False
     persist_raw_event_payloads: bool = False
     ambient_merge_window_ms: int = 1500
     max_pending_messages: int = 12

@@ -93,6 +93,11 @@ def _ready_components() -> tuple[AIRuntimeDependencyStatus, ...]:
             available=True,
             detail="available",
         ),
+        AIRuntimeDependencyStatus(
+            key="speech_conversation",
+            available=True,
+            detail="stt_disabled",
+        ),
     )
 
 
@@ -134,7 +139,29 @@ def test_ai_diagnostics_status_reports_ready_reply_runtime() -> None:
     assert "host action registry available" in status.summary
     assert "delivery gateway available" in status.summary
     assert "trace storage available" in status.summary
+    assert "speech conversation stt_disabled" in status.summary
     assert probe.calls == 1
+
+
+def test_runtime_readiness_probe_reports_disabled_speech_conversation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from apeiria.app.ai.diagnostics import readiness as readiness_module
+
+    monkeypatch.setattr(
+        readiness_module,
+        "get_ai_plugin_config",
+        lambda: AIPluginConfig(stt_input_enabled=False),
+    )
+    probe = readiness_module.AIRuntimeReadinessProbe()
+
+    components = probe.inspect()
+
+    assert components[-1] == AIRuntimeDependencyStatus(
+        key="speech_conversation",
+        available=True,
+        detail="stt_disabled",
+    )
 
 
 def test_ai_diagnostics_status_reports_degraded_without_reply_model() -> None:

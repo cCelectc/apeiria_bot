@@ -11,7 +11,6 @@ from apeiria.ai.model.runtime.capabilities import (
     merge_model_capabilities,
     parse_model_capabilities,
 )
-from apeiria.ai.model.runtime.registry import provider_adapter_registry
 from apeiria.ai.model.sources.models import resolve_adapter_kind_for_client_type
 
 if TYPE_CHECKING:
@@ -240,9 +239,7 @@ def _resolve_capabilities(
     adapter_kind = source.adapter_kind or resolve_adapter_kind_for_client_type(
         source.client_type
     )
-    adapter_capabilities = provider_adapter_registry.get(
-        adapter_kind
-    ).default_capabilities
+    adapter_capabilities = _default_capabilities_for_adapter(adapter_kind)
     source_capabilities = merge_model_capabilities(
         adapter_capabilities,
         parse_model_capabilities(source.capability_metadata),
@@ -251,3 +248,9 @@ def _resolve_capabilities(
         source_capabilities,
         parse_model_capabilities(model.capability_metadata),
     )
+
+
+def _default_capabilities_for_adapter(adapter_kind: str | None) -> AIModelCapabilities:
+    from apeiria.ai.model.runtime.registry import provider_adapter_registry
+
+    return provider_adapter_registry.get(adapter_kind).default_capabilities

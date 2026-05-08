@@ -160,6 +160,11 @@ async def plan_runtime_turn(
     prompt_diagnostics = build_prompt_region_diagnostics(prompt_packet)
     if media_diagnostics:
         prompt_diagnostics = {**prompt_diagnostics, **media_diagnostics}
+    if turn.source.speech_diagnostics:
+        prompt_diagnostics = {
+            **prompt_diagnostics,
+            "speech": list(turn.source.speech_diagnostics),
+        }
     return RuntimeTurnPlan(
         stage="planning",
         selected=selected,

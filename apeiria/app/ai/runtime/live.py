@@ -32,6 +32,7 @@ from apeiria.app.ai.runtime.session.context import (
     RuntimeTurnInput,
     RuntimeTurnSource,
 )
+from apeiria.app.ai.runtime.speech import speech_input_preparer
 from apeiria.app.chat.protocol import (
     PartialReplyCompletePayload,
     PartialReplyDeltaPayload,
@@ -72,6 +73,7 @@ class AIRuntimeTurnRequest:
     event_dedupe_claimed: bool = False
     media_parts: tuple[RuntimeSourceMediaPart, ...] = ()
     media_diagnostics: tuple[RuntimeMediaDiagnostic, ...] = ()
+    speech_diagnostics: tuple[dict[str, object], ...] = ()
     stream_sink: Any | None = None
 
     def to_runtime_turn_input(self) -> RuntimeTurnInput:
@@ -90,6 +92,7 @@ class AIRuntimeTurnRequest:
                 event_dedupe_claimed=self.event_dedupe_claimed,
                 media_parts=self.media_parts,
                 media_diagnostics=self.media_diagnostics,
+                speech_diagnostics=self.speech_diagnostics,
             ),
             sender_id=self.sender_id,
             future_task=self.future_task,
@@ -264,10 +267,15 @@ class DefaultAILiveRuntimeEntry:
                     trace_id=trace_id,
                 ),
             )
+        turn = request.to_runtime_turn_input()
+        config = get_ai_plugin_config()
+        if config.stt_input_enabled:
+            speech = await speech_input_preparer.prepare(turn, config=config)
+            turn = speech.turn
         return await self._resolve_turn_engine().run_reply_turn(
             trace_id=trace_id,
             trace=trace,
-            turn=request.to_runtime_turn_input(),
+            turn=turn,
             session_runtime=session_runtime,
             wake_context=wake_context,
             current_time=current_time,

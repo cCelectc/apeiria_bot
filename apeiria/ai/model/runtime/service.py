@@ -223,6 +223,48 @@ class ModelInvoker:
             )
         )
 
+    async def transcribe_audio(
+        self,
+        selected: "AISelectedModel",
+        *,
+        audio_bytes: bytes,
+        file_name: str = "sample.wav",
+        mime_type: str = "audio/wav",
+        language: str | None = None,
+    ) -> "AIModelTranscriptionResponse | None":
+        api_key = ai_source_service.get_source_api_key(selected.source)
+        model_name = self.resolve_model_name(selected)
+        if not api_key or not model_name:
+            return None
+
+        call_options: dict[str, object] = {}
+        if language:
+            call_options["language"] = language
+        plan = plan_model_call(
+            selected=selected,
+            requirements=AIModelCallRequirements(
+                required_lanes=frozenset({"speech_to_text"}),
+                required_modalities=frozenset({"audio"}),
+                required_output_modalities=frozenset({"text"}),
+            ),
+            call_options=call_options,
+        )
+        if plan.action == "reject":
+            raise AIModelCapabilityPlanningError(plan)
+
+        self._register_source(selected.source, api_key=api_key)
+        return await ai_model_client.transcribe_audio(
+            AIModelTranscriptionRequest(
+                source_id=selected.source.source_id,
+                model_name=model_name,
+                audio_bytes=audio_bytes,
+                file_name=file_name,
+                mime_type=mime_type,
+                language=language if "language" in plan.options else None,
+                extra=plan.options,
+            )
+        )
+
     async def synthesize_speech_for_source(  # noqa: PLR0913
         self,
         *,
@@ -241,6 +283,49 @@ class ModelInvoker:
                 text=text,
                 voice=voice,
                 response_format=response_format,
+            )
+        )
+
+    async def synthesize_speech(
+        self,
+        selected: "AISelectedModel",
+        *,
+        text: str,
+        voice: str = "alloy",
+        response_format: Literal["mp3", "opus", "aac", "flac", "wav", "pcm"] = "wav",
+    ) -> "AIModelSpeechResponse | None":
+        api_key = ai_source_service.get_source_api_key(selected.source)
+        model_name = self.resolve_model_name(selected)
+        if not api_key or not model_name:
+            return None
+
+        plan = plan_model_call(
+            selected=selected,
+            requirements=AIModelCallRequirements(
+                required_lanes=frozenset({"text_to_speech"}),
+                required_modalities=frozenset({"text"}),
+                required_output_modalities=frozenset({"audio"}),
+                required_options=frozenset({"voice"}),
+            ),
+            call_options={
+                "voice": voice,
+                "response_format": response_format,
+            },
+        )
+        if plan.action == "reject":
+            raise AIModelCapabilityPlanningError(plan)
+
+        self._register_source(selected.source, api_key=api_key)
+        planned_voice = str(plan.options.get("voice") or voice)
+        planned_format = plan.options.get("response_format") or response_format
+        return await ai_model_client.synthesize_speech(
+            AIModelSpeechRequest(
+                source_id=selected.source.source_id,
+                model_name=model_name,
+                text=text,
+                voice=planned_voice,
+                response_format=planned_format,  # type: ignore[arg-type]
+                extra=plan.options,
             )
         )
 

@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol
 
+from apeiria.ai.config import get_ai_plugin_config
 from apeiria.ai.model.routing.models import AIModelRouteQuery
 from apeiria.db.inspection import inspect_database
 from apeiria.db.runtime import database_runtime
@@ -134,6 +135,7 @@ class AIRuntimeReadinessProbe:
             *self._plugin_lifecycle_statuses(),
             self._delivery_gateway_status(),
             self._trace_storage_status(),
+            self._speech_conversation_status(),
         )
 
     def _future_task_storage_status(self) -> AIRuntimeDependencyStatus:
@@ -224,6 +226,20 @@ class AIRuntimeReadinessProbe:
             available=False,
             detail="adapter_unavailable",
             next_step="Enable a proactive delivery adapter.",
+        )
+
+    def _speech_conversation_status(self) -> AIRuntimeDependencyStatus:
+        config = get_ai_plugin_config()
+        if not config.stt_input_enabled:
+            return AIRuntimeDependencyStatus(
+                key="speech_conversation",
+                available=True,
+                detail="stt_disabled",
+            )
+        return AIRuntimeDependencyStatus(
+            key="speech_conversation",
+            available=True,
+            detail="stt_enabled",
         )
 
     def _plugin_lifecycle_statuses(self) -> tuple[AIRuntimeDependencyStatus, ...]:
@@ -326,12 +342,15 @@ def _format_dependency_summary(
         "host_action_registry": "host action registry",
         "delivery_gateway": "delivery gateway",
         "trace_storage": "trace storage",
+        "speech_conversation": "speech conversation",
     }
     parts = []
     for dependency in dependencies:
         label = labels.get(dependency.key, dependency.key.replace("_", " "))
         if dependency.available and dependency.key == "scheduler_recovery":
             detail = "registered"
+        elif dependency.available and dependency.key == "speech_conversation":
+            detail = dependency.detail
         elif dependency.available:
             detail = "available"
         elif dependency.key in {
