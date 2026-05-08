@@ -15,6 +15,10 @@ from apeiria.ai.prompting import (
     build_memory_extraction_packet,
     render_messages,
 )
+from apeiria.app.ai.auxiliary_structured_output import (
+    MEMORY_EXTRACTION_SCHEMA,
+    auxiliary_json_schema_options,
+)
 
 if TYPE_CHECKING:
     from apeiria.ai.memory import AIMemoryDefinition
@@ -24,6 +28,10 @@ _DEFAULT_EXTRACTION_RESULT = AIMemoryExtractionResult(
     candidates=[],
     sentiment=AIMessageSentiment(polarity="neutral", intensity=0.0),
     self_introduction_name=None,
+)
+_MEMORY_EXTRACTION_OPTIONS = auxiliary_json_schema_options(
+    name="memory_extraction",
+    schema=MEMORY_EXTRACTION_SCHEMA,
 )
 
 
@@ -49,6 +57,7 @@ async def extract_memory_from_message(
                     )
                 )
             ),
+            options=_MEMORY_EXTRACTION_OPTIONS,
         )
     except Exception as exc:  # noqa: BLE001
         logger.opt(exception=exc).warning("AI memory extraction failed")

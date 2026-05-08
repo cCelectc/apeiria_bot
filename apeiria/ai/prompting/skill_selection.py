@@ -76,12 +76,16 @@ def build_skill_selection_packet(
                     (
                         "Rules:",
                         "- Only select skills that are clearly relevant.",
-                        "- Most messages need zero skills - return [] when unsure.",
                         (
-                            "- Return a JSON array of skill names, e.g. "
-                            '["social-observer"] or [].'
+                            "- Most messages need zero skills - return an empty "
+                            "selected_names list when unsure."
                         ),
-                        "- Return ONLY the JSON array, nothing else.",
+                        (
+                            "- Return a JSON object with selected_names, e.g. "
+                            '{"selected_names":["social-observer"]} or '
+                            '{"selected_names":[]}.'
+                        ),
+                        "- Return ONLY the JSON object, nothing else.",
                     )
                 ),
             ),

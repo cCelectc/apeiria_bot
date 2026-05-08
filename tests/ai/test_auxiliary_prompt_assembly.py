@@ -299,6 +299,201 @@ def test_social_judgment_requests_structured_output_schema(
     assert "[OutputContract]" in invoker.message_calls[0][-1].content
 
 
+def test_memory_extraction_requests_structured_output_schema(
+    monkeypatch: Any,
+) -> None:
+    from apeiria.app.ai.runtime.context import memory_extraction
+
+    invoker = _ModelInvoker(
+        '{"memories":[{"memory_kind":"fact","content":"likes tea",'
+        '"confidence":0.9,"salience":0.8}],'
+        '"sentiment":{"polarity":"positive","intensity":0.5},'
+        '"self_introduction_name":null}',
+        selected=_selected_model_with_capabilities(
+            AIModelCapabilities(supports_structured_output=True)
+        ),
+        plan_options=True,
+    )
+    _patch_selector_and_invoker(monkeypatch, memory_extraction, invoker)
+
+    result = asyncio.run(
+        memory_extraction.extract_memory_from_message(
+            message_text="I like tea",
+            existing_memories=(_memory(),),
+        )
+    )
+
+    assert result.candidates[0].content == "likes tea"
+    requested_options = invoker.option_calls[0]
+    assert requested_options is not None
+    response_format = requested_options.values["response_format"]
+    assert response_format["type"] == "json_schema"
+    assert response_format["json_schema"]["name"] == "memory_extraction"
+    assert response_format["json_schema"]["schema"]["required"] == [
+        "memories",
+        "sentiment",
+        "self_introduction_name",
+    ]
+    assert invoker.planned_option_calls[0]["response_format"] == response_format
+
+
+def test_memory_extraction_invalid_or_failed_structured_output_uses_empty_result(
+    monkeypatch: Any,
+) -> None:
+    from apeiria.app.ai.runtime.context import memory_extraction
+
+    selected = _selected_model_with_capabilities(
+        AIModelCapabilities(supports_structured_output=True)
+    )
+    invalid_invoker = _ModelInvoker("not-json", selected=selected)
+    _patch_selector_and_invoker(monkeypatch, memory_extraction, invalid_invoker)
+
+    invalid = asyncio.run(
+        memory_extraction.extract_memory_from_message(
+            message_text="I like tea",
+            existing_memories=(_memory(),),
+        )
+    )
+
+    failing_invoker = _ModelInvoker(
+        RuntimeError("provider rejected response_format"),
+        selected=selected,
+    )
+    _patch_selector_and_invoker(monkeypatch, memory_extraction, failing_invoker)
+
+    failed = asyncio.run(
+        memory_extraction.extract_memory_from_message(
+            message_text="I like tea",
+            existing_memories=(_memory(),),
+        )
+    )
+
+    assert invalid.candidates == []
+    assert invalid.sentiment.polarity == "neutral"
+    assert invalid.self_introduction_name is None
+    assert failed.candidates == []
+    assert failed.sentiment.polarity == "neutral"
+    assert failed.self_introduction_name is None
+
+
+def test_skill_selection_requests_object_structured_output_schema(
+    monkeypatch: Any,
+) -> None:
+    from apeiria.app.ai.runtime.planning import skills as runtime_skills
+
+    invoker = _ModelInvoker(
+        '{"selected_names":["drawing","unknown","drawing"]}',
+        selected=_selected_model_with_capabilities(
+            AIModelCapabilities(supports_structured_output=True)
+        ),
+        plan_options=True,
+    )
+    monkeypatch.setattr(
+        runtime_skills,
+        "ai_model_profile_service",
+        _ModelSelector(invoker.selected),
+    )
+    monkeypatch.setattr(runtime_skills, "model_invoker", invoker)
+    monkeypatch.setattr(
+        runtime_skills.ai_skill_runtime,
+        "list_catalog",
+        lambda: [_SkillEntry("drawing", "Draw things")],
+    )
+
+    result = asyncio.run(
+        runtime_skills.select_runtime_skills(
+            message_text="draw this",
+            conversation_summary="old topic",
+        )
+    )
+
+    assert result.selected_names == ("drawing",)
+    requested_options = invoker.option_calls[0]
+    assert requested_options is not None
+    response_format = requested_options.values["response_format"]
+    assert response_format["type"] == "json_schema"
+    assert response_format["json_schema"]["name"] == "skill_selection"
+    assert response_format["json_schema"]["schema"]["required"] == [
+        "selected_names",
+    ]
+    assert invoker.planned_option_calls[0]["response_format"] == response_format
+
+
+def test_skill_selection_invalid_structured_output_uses_empty_result(
+    monkeypatch: Any,
+) -> None:
+    from apeiria.app.ai.runtime.planning import skills as runtime_skills
+
+    invoker = _ModelInvoker(
+        '{"selected_names":"drawing"}',
+        selected=_selected_model_with_capabilities(
+            AIModelCapabilities(supports_structured_output=True)
+        ),
+    )
+    monkeypatch.setattr(
+        runtime_skills,
+        "ai_model_profile_service",
+        _ModelSelector(invoker.selected),
+    )
+    monkeypatch.setattr(runtime_skills, "model_invoker", invoker)
+    monkeypatch.setattr(
+        runtime_skills.ai_skill_runtime,
+        "list_catalog",
+        lambda: [_SkillEntry("drawing", "Draw things")],
+    )
+
+    result = asyncio.run(
+        runtime_skills.select_runtime_skills(
+            message_text="draw this",
+            conversation_summary=None,
+        )
+    )
+
+    assert result.selected_names == ()
+
+
+def test_auxiliary_prompt_output_contracts_match_structured_shapes() -> None:
+    social_packet = build_social_judgment_packet(
+        SocialJudgmentPromptInput(
+            scene_type="group",
+            runtime_mode="message",
+            engagement_type="direct",
+            message_text="hello",
+            latest_user_turn_text="hello",
+            conversation_summary=None,
+            relationship_context=None,
+            persona_id=None,
+            available_tool_names=(),
+            recent_turn_count=1,
+            recent_bot_turn_count=0,
+            consecutive_silence_count=0,
+            current_time=datetime.now(timezone.utc),
+        )
+    )
+    memory_packet = build_memory_extraction_packet(
+        MemoryExtractionPromptInput(message_text="call me Alice")
+    )
+    skill_packet = build_skill_selection_packet(
+        SkillSelectionPromptInput(
+            message_text="please draw",
+            conversation_summary=None,
+            entries=(_SkillEntry("drawing", "Draw things"),),
+        )
+    )
+
+    social_contract = _section_content(social_packet, "OutputContract")
+    memory_contract = _section_content(memory_packet, "OutputContract")
+    skill_contract = _section_content(skill_packet, "OutputContract")
+
+    assert '"action"' in social_contract
+    assert '"tool_mode"' in social_contract
+    assert '"memories"' in memory_contract
+    assert '"sentiment"' in memory_contract
+    assert '"self_introduction_name"' in memory_contract
+    assert '"selected_names"' in skill_contract
+    assert "JSON array" not in skill_contract
+
+
 def test_social_judgment_degrades_schema_to_json_object_when_only_json_mode(
     monkeypatch: Any,
 ) -> None:
@@ -470,7 +665,7 @@ def test_summary_and_skill_selection_use_rendered_messages(monkeypatch: Any) -> 
     assert summary == "new summary"
     assert "[ConversationHistory]" in summary_invoker.message_calls[0][-1].content
 
-    skill_invoker = _ModelInvoker('["drawing"]')
+    skill_invoker = _ModelInvoker('{"selected_names":["drawing"]}')
     monkeypatch.setattr(
         runtime_skills,
         "ai_model_profile_service",
@@ -580,3 +775,11 @@ def _social_judgment_input() -> SocialJudgmentInput:
         initiative_budget_score=None,
         consecutive_silence_count=0,
     )
+
+
+def _section_content(packet: Any, name: str) -> str:
+    for section in packet.sections:
+        if section.name == name:
+            return str(section.content)
+    msg = f"missing section {name}"
+    raise AssertionError(msg)

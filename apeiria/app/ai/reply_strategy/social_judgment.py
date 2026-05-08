@@ -8,15 +8,14 @@ from nonebot.log import logger
 
 from apeiria.ai.model import AIModelRouteQuery, model_invoker
 from apeiria.ai.model.routing.profile import ai_model_profile_service
-from apeiria.ai.model.runtime.capabilities import (
-    AI_MODEL_RESPONSE_FORMAT_OPTION,
-    AIModelCallOptions,
-    json_schema_response_format,
-)
 from apeiria.ai.prompting import (
     SocialJudgmentPromptInput,
     build_social_judgment_packet,
     render_messages,
+)
+from apeiria.app.ai.auxiliary_structured_output import (
+    SOCIAL_JUDGMENT_SCHEMA,
+    auxiliary_json_schema_options,
 )
 
 from .models import (
@@ -29,49 +28,9 @@ if TYPE_CHECKING:
     from apeiria.ai.model import AIModelBindingTarget
 
 _SOCIAL_JUDGMENT_TASK_CLASS = "planner_light"
-_SOCIAL_JUDGMENT_SCHEMA = {
-    "type": "object",
-    "properties": {
-        "action": {
-            "type": "string",
-            "enum": ["reply", "interject", "wait", "suppress"],
-        },
-        "tool_mode": {
-            "type": "string",
-            "enum": ["allow", "avoid"],
-        },
-        "reason_codes": {
-            "type": "array",
-            "items": {"type": "string", "minLength": 1, "maxLength": 64},
-            "minItems": 1,
-            "maxItems": 6,
-        },
-        "reason_text": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 240,
-        },
-        "evidence": {
-            "type": "object",
-            "additionalProperties": True,
-        },
-    },
-    "required": [
-        "action",
-        "tool_mode",
-        "reason_codes",
-        "reason_text",
-        "evidence",
-    ],
-    "additionalProperties": False,
-}
-_SOCIAL_JUDGMENT_OPTIONS = AIModelCallOptions(
-    values={
-        AI_MODEL_RESPONSE_FORMAT_OPTION: json_schema_response_format(
-            name="social_judgment",
-            schema=_SOCIAL_JUDGMENT_SCHEMA,
-        )
-    }
+_SOCIAL_JUDGMENT_OPTIONS = auxiliary_json_schema_options(
+    name="social_judgment",
+    schema=SOCIAL_JUDGMENT_SCHEMA,
 )
 
 

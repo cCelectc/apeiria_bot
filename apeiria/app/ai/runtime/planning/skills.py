@@ -15,6 +15,10 @@ from apeiria.ai.prompting import (
 )
 from apeiria.ai.skills.runtime import AISkillSelectionResult, ai_skill_runtime
 from apeiria.ai.skills.selection import parse_skill_selection_response
+from apeiria.app.ai.auxiliary_structured_output import (
+    SKILL_SELECTION_SCHEMA,
+    auxiliary_json_schema_options,
+)
 
 if TYPE_CHECKING:
     from apeiria.ai.skills.runtime import AISkillCatalogEntry
@@ -23,6 +27,10 @@ _EMPTY_SELECTION = AISkillSelectionResult(
     selected_names=(),
     activations=(),
     activation_prompt=None,
+)
+_SKILL_SELECTION_OPTIONS = auxiliary_json_schema_options(
+    name="skill_selection",
+    schema=SKILL_SELECTION_SCHEMA,
 )
 
 
@@ -56,6 +64,7 @@ async def select_runtime_skills(
                     )
                 )
             ),
+            options=_SKILL_SELECTION_OPTIONS,
         )
     except Exception as exc:  # noqa: BLE001
         logger.opt(exception=exc).debug("Skill selection model call failed")
