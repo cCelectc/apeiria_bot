@@ -137,7 +137,7 @@ def test_build_ingested_chat_event_preserves_existing_message_mapping() -> None:
     assert ingested.content == {
         "segments": [
             {"type": "text", "text": "hello"},
-            {"type": "image"},
+            {"type": "image", "file": "img.png"},
         ],
         "plain_text": "hello",
         "mentioned_user_ids": ["bot-1"],
@@ -151,3 +151,49 @@ def test_build_ingested_chat_event_preserves_existing_message_mapping() -> None:
         "reply": {"message_id": 7, "text": "earlier"},
         "message_segment_types": ["at", "image"],
     }
+
+
+def test_build_normalized_content_preserves_safe_media_references() -> None:
+    from apeiria.conversation.normalization import build_normalized_content
+
+    content = build_normalized_content(
+        raw_data={
+            "message": [
+                {
+                    "type": "image",
+                    "data": {
+                        "url": "https://cdn.example.test/cat.png",
+                        "file": "cat.png",
+                        "mime": "image/png",
+                        "alt": "a cat",
+                        "raw": b"not-json-safe",
+                        "token": "secret",
+                    },
+                },
+                {
+                    "type": "record",
+                    "data": {
+                        "url": "https://cdn.example.test/voice.ogg",
+                        "mime": "audio/ogg",
+                    },
+                },
+            ]
+        },
+        text_content="look at this",
+    )
+
+    assert content["segments"] == [
+        {"type": "text", "text": "look at this"},
+        {
+            "type": "image",
+            "url": "https://cdn.example.test/cat.png",
+            "file": "cat.png",
+            "mime": "image/png",
+            "alt": "a cat",
+        },
+        {
+            "type": "record",
+            "url": "https://cdn.example.test/voice.ogg",
+            "mime": "audio/ogg",
+        },
+    ]

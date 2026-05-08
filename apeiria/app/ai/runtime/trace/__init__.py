@@ -46,6 +46,8 @@ class TurnTrace:
     skip_reason: str | None = None
     delivery_status: str | None = None
     prompt_diagnostics: dict[str, object] | None = None
+    multimodal: dict[str, object] | None = None
+    capability_degradations: tuple[dict[str, object], ...] = ()
 
     def to_metadata(self) -> dict[str, object]:
         """Project the trace to compact metadata for diagnostics surfaces."""
@@ -69,6 +71,10 @@ class TurnTrace:
         }
         if self.prompt_diagnostics:
             metadata["prompt_diagnostics"] = self.prompt_diagnostics
+        if self.multimodal:
+            metadata["multimodal"] = self.multimodal
+        if self.capability_degradations:
+            metadata["capability_degradations"] = list(self.capability_degradations)
         return metadata
 
 
@@ -124,13 +130,106 @@ def project_turn_trace(  # noqa: PLR0913
         final_response_source=turn_result.response_source if turn_result else None,
         skip_reason=skip_reason,
         delivery_status=_delivery_status(delivery_result),
-        prompt_diagnostics=(
-            turn_result.metadata.get("prompt_diagnostics")
-            if turn_result is not None
-            and isinstance(turn_result.metadata.get("prompt_diagnostics"), dict)
-            else None
-        ),
+        prompt_diagnostics=_extract_prompt_diagnostics(turn_result),
+        multimodal=_extract_multimodal_metadata(turn_result),
+        capability_degradations=_extract_capability_degradations(turn_result),
     )
+
+
+def _extract_prompt_diagnostics(
+    turn_result: "AgentTurnResult | None",
+) -> dict[str, object] | None:
+    if turn_result is None:
+        return None
+    raw = turn_result.metadata.get("prompt_diagnostics")
+    if not isinstance(raw, dict):
+        return None
+    diagnostics = dict(raw)
+    multimodal = _safe_multimodal_metadata(raw.get("multimodal"))
+    if multimodal:
+        diagnostics["multimodal"] = multimodal
+    elif "multimodal" in diagnostics:
+        diagnostics.pop("multimodal")
+    return diagnostics
+
+
+def _extract_multimodal_metadata(
+    turn_result: "AgentTurnResult | None",
+) -> dict[str, object] | None:
+    if turn_result is None:
+        return None
+    prompt_diagnostics = turn_result.metadata.get("prompt_diagnostics")
+    if not isinstance(prompt_diagnostics, dict):
+        return None
+    return _safe_multimodal_metadata(prompt_diagnostics.get("multimodal"))
+
+
+def _safe_multimodal_metadata(value: object) -> dict[str, object] | None:
+    multimodal = value
+    if not isinstance(multimodal, dict):
+        return None
+
+    metadata: dict[str, object] = {}
+    projected = multimodal.get("projected")
+    if isinstance(projected, bool):
+        metadata["projected"] = projected
+    counts = _safe_count_mapping(multimodal.get("media_counts"))
+    if counts:
+        metadata["media_counts"] = counts
+    for key in ("required_media_count", "optional_media_count"):
+        value = multimodal.get(key)
+        if isinstance(value, int):
+            metadata[key] = value
+    return metadata or None
+
+
+def _extract_capability_degradations(
+    turn_result: "AgentTurnResult | None",
+) -> tuple[dict[str, object], ...]:
+    if turn_result is None:
+        return ()
+    raw = turn_result.metadata.get("capability_degradations")
+    if not isinstance(raw, list):
+        return ()
+
+    degradations: list[dict[str, object]] = []
+    for item in raw[:5]:
+        if not isinstance(item, dict):
+            continue
+        kind = item.get("kind")
+        reason = item.get("reason")
+        if not isinstance(kind, str) or not isinstance(reason, str):
+            continue
+        degradation: dict[str, object] = {"kind": kind, "reason": reason}
+        metadata = _safe_degradation_metadata(item.get("metadata"))
+        if metadata:
+            degradation["metadata"] = metadata
+        degradations.append(degradation)
+    return tuple(degradations)
+
+
+def _safe_count_mapping(value: object) -> dict[str, int]:
+    if not isinstance(value, dict):
+        return {}
+    return {
+        key: count
+        for key, count in value.items()
+        if isinstance(key, str) and isinstance(count, int)
+    }
+
+
+def _safe_degradation_metadata(value: object) -> dict[str, object]:
+    if not isinstance(value, dict):
+        return {}
+    safe: dict[str, object] = {}
+    modalities = value.get("modalities")
+    if isinstance(modalities, list):
+        safe["modalities"] = [item for item in modalities if isinstance(item, str)][:10]
+    elif isinstance(modalities, tuple):
+        safe["modalities"] = tuple(
+            item for item in modalities if isinstance(item, str)
+        )[:10]
+    return safe
 
 
 def _int_evidence(

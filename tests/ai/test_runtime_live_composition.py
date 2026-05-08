@@ -42,10 +42,12 @@ class _Engine:
         self.reply_text = reply_text
         self.delivery_result = delivery_result
         self.turn_modes: list[str] = []
+        self.turns: list[object] = []
 
     async def run_reply_turn(self, **kwargs: object) -> RuntimeCommitResult:
         turn = kwargs["turn"]
         self.turn_modes.append(turn.runtime_mode)  # type: ignore[attr-defined]
+        self.turns.append(turn)
         return RuntimeCommitResult(
             stage="commit",
             reply_text=self.reply_text,
@@ -93,6 +95,52 @@ def test_default_live_message_entry_uses_composed_defaults(
     assert resolver.resolved_sessions == ["session-1"]
     assert resolver.runtime.recorded_keys == ["source_message:message-1"]
     assert engine.turn_modes == ["message"]
+
+
+def test_default_live_message_entry_preserves_ingested_image_media(
+    monkeypatch: Any,
+) -> None:
+    resolver = _Resolver()
+    engine = _Engine(reply_text="image reply")
+    identity = _identity(scene_type="private")
+
+    _patch_live_common(
+        monkeypatch,
+        resolver=resolver,
+        engine=engine,
+        identity=identity,
+        content_json=(
+            '{"segments":[{"type":"text","text":"look"},'
+            '{"type":"image","url":"https://cdn.example.test/cat.png",'
+            '"mime":"image/png","alt":"a cat","token":"secret"}]}'
+        ),
+    )
+    monkeypatch.setattr(
+        live_module,
+        "build_wake_context",
+        lambda *_args, **_kwargs: WakeContext(
+            bot_self_id="bot-1",
+            user_id="user-1",
+            message_text="look",
+            is_tome=True,
+            is_private=True,
+            is_future_task=False,
+            allow_group_initiative=True,
+        ),
+    )
+
+    reply = asyncio.run(
+        DefaultAILiveRuntimeEntry().handle_message(
+            SimpleNamespace(self_id="bot-1"),
+            SimpleNamespace(get_user_id=lambda: "user-1", is_tome=lambda: True),
+        )
+    )
+
+    assert reply == "image reply"
+    turn = engine.turns[0]
+    assert turn.source.media_parts[0].kind == "image"  # type: ignore[attr-defined]
+    assert turn.source.media_parts[0].url == "https://cdn.example.test/cat.png"  # type: ignore[attr-defined]
+    assert "secret" not in str(turn.source.media_parts)  # type: ignore[attr-defined]
 
 
 def test_default_live_future_task_entry_maps_composed_commit_result(
@@ -147,6 +195,7 @@ def _patch_live_common(
     resolver: _Resolver,
     engine: _Engine,
     identity: ChatSessionIdentity,
+    content_json: str | None = None,
 ) -> None:
     monkeypatch.setattr(
         live_module,
@@ -189,6 +238,7 @@ def _patch_live_common(
                     SimpleNamespace(
                         message_id="message-1",
                         platform_message_id=None,
+                        content_json=content_json,
                     ),
                 )
             ),

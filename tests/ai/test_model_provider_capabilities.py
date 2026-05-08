@@ -607,6 +607,59 @@ def test_openai_compatible_adapter_forwards_json_schema_response_format(
     assert payloads[0]["response_format"] == response_format
 
 
+def test_openai_compatible_adapter_forwards_image_url_content_part(
+    monkeypatch: Any,
+) -> None:
+    payloads: list[dict[str, Any]] = []
+    monkeypatch.setattr(
+        openai_compatible,
+        "_build_openai_client",
+        lambda **_kwargs: _OpenAIClientStub(payloads),
+    )
+    provider = openai_compatible.OpenAICompatibleProvider(
+        api_base="https://api.example.test/v1",
+        api_key="test-key",
+    )
+
+    asyncio.run(
+        provider.generate_text(
+            AIModelGenerateRequest(
+                source_id="source-1",
+                model_name="model-1",
+                messages=(
+                    AIModelMessage(
+                        role="user",
+                        content="look\n[image: a cat]",
+                        parts=(
+                            AIModelContentPart(
+                                kind="text",
+                                text="look\n[image: a cat]",
+                            ),
+                            AIModelContentPart.image(
+                                url="https://cdn.example.test/cat.png",
+                                mime_type="image/png",
+                            ),
+                        ),
+                    ),
+                ),
+            )
+        )
+    )
+
+    assert payloads[0]["messages"] == [
+        {
+            "role": "user",
+            "content": [
+                {"type": "text", "text": "look\n[image: a cat]"},
+                {
+                    "type": "image_url",
+                    "image_url": {"url": "https://cdn.example.test/cat.png"},
+                },
+            ],
+        }
+    ]
+
+
 def test_agent_runtime_uses_fallback_after_capability_planning_reject() -> None:
     from apeiria.app.ai.agent_turn import (
         AgentModelGenerationRequest,

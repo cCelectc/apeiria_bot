@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any, Literal
@@ -24,6 +25,9 @@ from apeiria.app.ai.runtime.entry import (
     RuntimeTraceContext,
 )
 from apeiria.app.ai.runtime.session.context import (
+    RuntimeMediaDiagnostic,
+    RuntimeSourceMediaKind,
+    RuntimeSourceMediaPart,
     RuntimeTurnInput,
     RuntimeTurnSource,
 )
@@ -59,6 +63,8 @@ class AIRuntimeTurnRequest:
     sentiment: "AIMessageSentiment | None" = None
     event_dedupe_key: str | None = None
     event_dedupe_claimed: bool = False
+    media_parts: tuple[RuntimeSourceMediaPart, ...] = ()
+    media_diagnostics: tuple[RuntimeMediaDiagnostic, ...] = ()
 
     def to_runtime_turn_input(self) -> RuntimeTurnInput:
         """Translate ingress request data into runtime-owned turn input."""
@@ -74,6 +80,8 @@ class AIRuntimeTurnRequest:
                 is_private=self.identity.scene_type == "private",
                 event_dedupe_key=self.event_dedupe_key,
                 event_dedupe_claimed=self.event_dedupe_claimed,
+                media_parts=self.media_parts,
+                media_diagnostics=self.media_diagnostics,
             ),
             sender_id=self.sender_id,
             future_task=self.future_task,
@@ -147,6 +155,7 @@ class DefaultAILiveRuntimeEntry:
             message_text=message_text,
             source_message_id=turn.message_id,
         )
+        media = extract_runtime_media(getattr(turn, "content_json", None))
         result = await self._run_turn(
             trace=trace
             or RuntimeTraceContext(kind="conversation", trigger="nonebot_message"),
@@ -161,6 +170,8 @@ class DefaultAILiveRuntimeEntry:
                 sentiment=extraction_result.sentiment,
                 event_dedupe_key=event_dedupe_key,
                 event_dedupe_claimed=event_dedupe_claimed,
+                media_parts=media.parts,
+                media_diagnostics=media.diagnostics,
             ),
             wake_context=wake_context,
             current_time=current_time,
@@ -296,4 +307,141 @@ def _delivery_diagnostics(delivery_result: object | None) -> dict[str, object]:
     return diagnostics
 
 
-__all__ = ["AIRuntimeTurnRequest", "DefaultAILiveRuntimeEntry"]
+@dataclass(frozen=True, slots=True)
+class RuntimeMediaExtractionResult:
+    """Runtime media references extracted from persisted message content."""
+
+    parts: tuple[RuntimeSourceMediaPart, ...] = ()
+    diagnostics: tuple[RuntimeMediaDiagnostic, ...] = ()
+
+
+def extract_runtime_media(
+    content_json: str | None,
+) -> RuntimeMediaExtractionResult:
+    """Extract provider-neutral media references from stored message content."""
+
+    if not content_json:
+        return RuntimeMediaExtractionResult()
+    try:
+        content = json.loads(content_json)
+    except json.JSONDecodeError:
+        return RuntimeMediaExtractionResult()
+    if not isinstance(content, dict):
+        return RuntimeMediaExtractionResult()
+
+    parts: list[RuntimeSourceMediaPart] = []
+    diagnostics: list[RuntimeMediaDiagnostic] = []
+    for segment in content.get("segments", ()):
+        part = _runtime_media_part_from_segment(segment)
+        if part is not None:
+            parts.append(part)
+            continue
+        diagnostic = _runtime_media_diagnostic_from_segment(segment)
+        if diagnostic is not None:
+            diagnostics.append(diagnostic)
+    return RuntimeMediaExtractionResult(
+        parts=tuple(parts),
+        diagnostics=tuple(diagnostics),
+    )
+
+
+def extract_runtime_media_parts(
+    content_json: str | None,
+) -> tuple[RuntimeSourceMediaPart, ...]:
+    """Compatibility helper returning only extracted runtime media parts."""
+
+    return extract_runtime_media(content_json).parts
+
+
+def _runtime_media_part_from_segment(
+    segment: object,
+) -> RuntimeSourceMediaPart | None:
+    if not isinstance(segment, dict):
+        return None
+    seg_type = segment.get("type")
+    if not isinstance(seg_type, str):
+        return None
+    kind = _runtime_media_kind(seg_type)
+    if kind is None:
+        return None
+
+    url = _string_value(segment.get("url"))
+    asset_id = _string_value(segment.get("asset_id"))
+    if not url and not asset_id:
+        return None
+
+    return RuntimeSourceMediaPart(
+        kind=kind,
+        fallback_text=_media_fallback_text(kind=kind, segment=segment),
+        url=url,
+        asset_id=asset_id,
+        file_name=_string_value(
+            segment.get("file_name") or segment.get("name") or segment.get("file")
+        ),
+        mime_type=_string_value(segment.get("mime_type") or segment.get("mime")),
+        size_bytes=_int_value(segment.get("size")),
+        required=True,
+        metadata={
+            key: value
+            for key in ("alt", "width", "height")
+            if isinstance((value := segment.get(key)), (str, int, float, bool))
+        },
+    )
+
+
+def _runtime_media_diagnostic_from_segment(
+    segment: object,
+) -> RuntimeMediaDiagnostic | None:
+    if not isinstance(segment, dict):
+        return None
+    seg_type = segment.get("type")
+    if not isinstance(seg_type, str):
+        return None
+    kind = _runtime_media_kind(seg_type)
+    if kind is None:
+        return None
+    return RuntimeMediaDiagnostic(
+        kind=kind,
+        reason="missing_safe_reference",
+        segment_type=seg_type,
+    )
+
+
+def _runtime_media_kind(seg_type: str) -> RuntimeSourceMediaKind | None:
+    if seg_type in {"image", "img"}:
+        return "image"
+    if seg_type in {"audio", "record"}:
+        return "audio"
+    if seg_type in {"file", "video"}:
+        return "file"
+    return None
+
+
+def _media_fallback_text(*, kind: str, segment: dict[str, object]) -> str:
+    alt = _string_value(segment.get("alt"))
+    if alt:
+        return f"[{kind}: {alt}]"
+    return f"[{kind}]"
+
+
+def _string_value(value: object) -> str | None:
+    if isinstance(value, str) and value.strip():
+        return value.strip()
+    return None
+
+
+def _int_value(value: object) -> int | None:
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str) and value.isdigit():
+        return int(value)
+    return None
+
+
+__all__ = [
+    "AIRuntimeTurnRequest",
+    "DefaultAILiveRuntimeEntry",
+    "RuntimeMediaExtractionResult",
+    "extract_runtime_media",
+    "extract_runtime_media_parts",
+]

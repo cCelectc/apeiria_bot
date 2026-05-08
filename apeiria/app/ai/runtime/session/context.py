@@ -3,14 +3,18 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 if TYPE_CHECKING:
     from datetime import datetime
 
     from apeiria.ai.capabilities import AICapabilityContract
     from apeiria.ai.memory import AIMemoryDefinition, AIMessageSentiment
-    from apeiria.ai.model import AIModelBindingTarget, AIModelMessage
+    from apeiria.ai.model import (
+        AIModelBindingTarget,
+        AIModelContentPart,
+        AIModelMessage,
+    )
     from apeiria.ai.prompting import ReplyPersonaPromptBundleLike
     from apeiria.ai.tools import AIToolPolicy
     from apeiria.app.ai.future_tasks.models import AIFutureTaskDefinition
@@ -25,6 +29,68 @@ if TYPE_CHECKING:
 from apeiria.app.ai.runtime.planning.tool_exposure import ToolExposurePlan
 
 RuntimeMode = Literal["message", "future_task"]
+RuntimeSourceMediaKind = Literal["image", "audio", "file"]
+
+
+@dataclass(frozen=True, slots=True)
+class RuntimeSourceMediaPart:
+    """Provider-neutral media reference captured from one source message."""
+
+    kind: RuntimeSourceMediaKind
+    fallback_text: str | None = None
+    url: str | None = None
+    asset_id: str | None = None
+    file_name: str | None = None
+    mime_type: str | None = None
+    size_bytes: int | None = None
+    required: bool = True
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+    def to_model_content_part(self) -> "AIModelContentPart | None":
+        """Convert this runtime media part to model-visible content."""
+
+        from apeiria.ai.model import AIModelContentPart
+
+        if self.kind == "image" and self.url:
+            return AIModelContentPart.image(
+                url=self.url,
+                mime_type=self.mime_type,
+                required=self.required,
+            )
+        if self.kind in {"audio", "file"} and (self.url or self.asset_id):
+            return AIModelContentPart(
+                kind=self.kind,
+                url=self.url,
+                mime_type=self.mime_type,
+                metadata=self.safe_metadata(),
+                required=self.required,
+            )
+        return None
+
+    def safe_metadata(self) -> dict[str, object]:
+        """Return bounded metadata safe for diagnostics and adapter edges."""
+
+        metadata: dict[str, object] = {}
+        for key in ("alt", "width", "height"):
+            value = self.metadata.get(key)
+            if isinstance(value, (str, int, float, bool)):
+                metadata[key] = value
+        if self.asset_id:
+            metadata["asset_id"] = self.asset_id
+        if self.file_name:
+            metadata["file_name"] = self.file_name
+        if self.size_bytes is not None:
+            metadata["size_bytes"] = self.size_bytes
+        return metadata
+
+
+@dataclass(frozen=True, slots=True)
+class RuntimeMediaDiagnostic:
+    """Bounded diagnostic for source media that could not be projected."""
+
+    kind: str
+    reason: str
+    segment_type: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -39,6 +105,8 @@ class RuntimeTurnSource:
     is_private: bool = False
     event_dedupe_key: str | None = None
     event_dedupe_claimed: bool = False
+    media_parts: tuple[RuntimeSourceMediaPart, ...] = ()
+    media_diagnostics: tuple[RuntimeMediaDiagnostic, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -70,6 +138,8 @@ class RuntimeTurnInput:
                 is_private=identity.scene_type == "private",
                 event_dedupe_key=request.event_dedupe_key,
                 event_dedupe_claimed=request.event_dedupe_claimed,
+                media_parts=request.media_parts,
+                media_diagnostics=request.media_diagnostics,
             ),
             sender_id=request.sender_id,
             future_task=request.future_task,
@@ -93,6 +163,8 @@ class RuntimeTurnInput:
             sentiment=self.sentiment,
             event_dedupe_key=self.event_dedupe_key,
             event_dedupe_claimed=self.event_dedupe_claimed,
+            media_parts=self.source.media_parts,
+            media_diagnostics=self.source.media_diagnostics,
         )
 
     @property

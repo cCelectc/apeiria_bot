@@ -49,6 +49,7 @@ from apeiria.app.ai.runtime.planning.tool_exposure import (
 )
 from apeiria.app.ai.runtime.session.context import (
     RuntimeContextMaterials,
+    RuntimeSourceMediaPart,
     RuntimeTurnInput,
     RuntimeTurnSource,
 )
@@ -216,6 +217,96 @@ def test_runtime_prompt_planning_builds_initial_reply_packet() -> None:
     ]
     diagnostics = build_prompt_region_diagnostics(packet)
     assert diagnostics["prompt_purpose"] == "reply_planner"
+
+
+def test_runtime_initial_reply_messages_project_current_turn_media() -> None:
+    from apeiria.app.ai.runtime.planning.turn import (
+        build_initial_runtime_reply_prompt_messages,
+    )
+
+    identity = ChatSessionIdentity(
+        session_id="session-1",
+        platform="test",
+        bot_id="bot-1",
+        scene_type="private",
+        scene_id="user-1",
+        subject_id="user-1",
+    )
+    turn = RuntimeTurnInput(
+        identity=identity,
+        sender_id="bot-1",
+        source=RuntimeTurnSource(
+            runtime_mode="message",
+            message_text="look",
+            source_message_id="msg-1",
+            user_id="user-1",
+            is_private=True,
+            media_parts=(
+                RuntimeSourceMediaPart(
+                    kind="image",
+                    url="https://cdn.example.test/cat.png",
+                    mime_type="image/png",
+                    fallback_text="[image: a cat]",
+                ),
+            ),
+        ),
+    )
+    context = RuntimeContextMaterials(
+        turns=[
+            ChatContextMessageView(
+                message_id="msg-1",
+                author_role="user",
+                author_id="user-1",
+                author_name="User",
+                text_content="look",
+                content=None,
+                created_at=datetime.now(timezone.utc),
+            )
+        ],
+        conversation_summary=None,
+        relationship_target=object(),  # type: ignore[arg-type]
+        model_target=AIModelBindingTarget(
+            conversation_id="session-1",
+            group_id=None,
+            user_id="user-1",
+        ),
+        tool_policy=AIToolPolicy(execution_enabled=False),
+        persona=None,
+        recalled_memories=[],
+        relationship_context=None,
+        person_profile=(),
+        allowed_tools=(),
+        initiative_bias=0.0,
+    )
+    social_decision = ReplyStrategyDecision(
+        action="reply",
+        should_speak=True,
+        tool_mode="avoid",
+        reason_codes=("direct_message",),
+        reason_text="Reply in direct messages.",
+        evidence={},
+        decision_source="fallback",
+    )
+    prompt_input = RuntimePromptPlanningInput(
+        skill_runtime=RuntimeToolLoopResult(
+            policy_text="Tool policy.",
+            result_lines=(),
+            turns=(),
+        ),
+        skill_activation=None,
+        has_tools=False,
+    )
+
+    messages = build_initial_runtime_reply_prompt_messages(
+        turn=turn,
+        context=context,
+        social_decision=social_decision,
+        prompt_input=prompt_input,
+    )
+
+    user_messages = [message for message in messages if message.role == "user"]
+    assert user_messages[-1].content.endswith("[image: a cat]")
+    assert user_messages[-1].parts[-1].kind == "image"
 
 
 def test_runtime_planning_projects_social_skip_without_old_runtime_types() -> None:

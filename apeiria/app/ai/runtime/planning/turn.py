@@ -16,6 +16,7 @@ from apeiria.app.ai.runtime.context.projection import (
     project_runtime_context,
 )
 from apeiria.app.ai.runtime.execution.tool_loop import RuntimeToolLoopResult
+from apeiria.app.ai.runtime.multimodal import project_media_into_messages
 from apeiria.app.ai.runtime.planning.diagnostics import (
     build_prompt_region_diagnostics,
 )
@@ -152,7 +153,13 @@ async def plan_runtime_turn(
         reply_compose_input,
         has_tools=tool_exposure_plan.has_executable_tools,
     )
+    prompt_messages, media_diagnostics = project_media_into_messages(
+        render_messages(prompt_packet),
+        source=turn.source,
+    )
     prompt_diagnostics = build_prompt_region_diagnostics(prompt_packet)
+    if media_diagnostics:
+        prompt_diagnostics = {**prompt_diagnostics, **media_diagnostics}
     return RuntimeTurnPlan(
         stage="planning",
         selected=selected,
@@ -160,7 +167,7 @@ async def plan_runtime_turn(
         skill_runtime=skill_runtime,
         skill_activation=skill_selection.activation_prompt,
         pre_tool_task_class=pre_tool_task_class,
-        prompt_messages=render_messages(prompt_packet),
+        prompt_messages=prompt_messages,
         prompt_diagnostics=prompt_diagnostics,
         context_projection_diagnostics=context_projection.diagnostics.as_dict(),
         tool_exposure_plan=tool_exposure_plan,
@@ -180,7 +187,7 @@ def build_initial_runtime_reply_prompt_messages(
 ) -> tuple["AIModelMessage", ...]:
     """Build the first model prompt messages used by direct/tool planning."""
 
-    return render_messages(
+    messages = render_messages(
         build_initial_runtime_reply_prompt_packet(
             turn=turn,
             context=context,
@@ -188,6 +195,8 @@ def build_initial_runtime_reply_prompt_messages(
             prompt_input=prompt_input,
         )
     )
+    projected, _diagnostics = project_media_into_messages(messages, source=turn.source)
+    return projected
 
 
 def build_initial_runtime_reply_prompt_packet(

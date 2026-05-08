@@ -11,6 +11,20 @@ if TYPE_CHECKING:
     from apeiria.conversation.models import MessageKind
 
 _MEDIA_TYPES = {"image", "img", "audio", "record", "video", "file"}
+_SAFE_MEDIA_KEYS = (
+    "url",
+    "asset_id",
+    "file",
+    "path",
+    "mime",
+    "mime_type",
+    "alt",
+    "width",
+    "height",
+    "size",
+    "file_name",
+    "name",
+)
 
 
 def extract_platform_message_id(
@@ -117,7 +131,7 @@ def build_normalized_content(  # noqa: C901, PLR0912
                     if qq is not None:
                         mentioned_user_ids.append(str(qq))
                 elif seg_type in _MEDIA_TYPES:
-                    segments.append({"type": seg_type})
+                    segments.append(_build_media_segment(seg_type, data))
 
     payload: dict[str, Any] = {
         "segments": segments,
@@ -198,6 +212,18 @@ def build_mapping_summary(
         if isinstance((item := value.get(key)), (str, int, float, bool))
     }
     return summary or None
+
+
+def _build_media_segment(seg_type: str, data: object) -> dict[str, Any]:
+    segment: dict[str, Any] = {"type": seg_type}
+    if not isinstance(data, Mapping):
+        return segment
+
+    for key in _SAFE_MEDIA_KEYS:
+        value = data.get(key)
+        if isinstance(value, (str, int, float, bool)) and str(value).strip():
+            segment[key] = value
+    return segment
 
 
 __all__ = [
