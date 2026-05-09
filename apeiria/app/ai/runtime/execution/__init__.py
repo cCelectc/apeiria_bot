@@ -19,6 +19,7 @@ from apeiria.app.ai.runtime.planning.model_selection import (
     select_model,
 )
 from apeiria.app.ai.runtime.planning.prompts import build_roleplay_reply_messages
+from apeiria.app.ai.runtime.planning.reasoning import reasoning_options_for_task_class
 from apeiria.app.ai.runtime.planning.reply_decision import (
     select_post_tool_reply_task_class,
 )
@@ -101,6 +102,9 @@ async def _run_direct_model_turn(
             fallback_models=plan.fallback_models,
             stream_policy=stream_policy,
             stream_sink=stream_sink if stream_policy != "none" else None,
+            reasoning_options=reasoning_options_for_task_class(
+                plan.pre_tool_task_class
+            ),
         )
     )
     return _with_prompt_diagnostics(result.turn, turn_context)
@@ -211,6 +215,9 @@ async def _run_tool_loop(
             ),
             selected=plan.selected,
             fallback_models=plan.fallback_models,
+            reasoning_options=reasoning_options_for_task_class(
+                plan.pre_tool_task_class
+            ),
         )
     )
 
@@ -251,6 +258,7 @@ async def _maybe_refine_tool_response(
             runtime_mode=turn_context.runtime_mode,
             response_source="refinement",
             fallback_models=await select_fallback_models(selected),
+            reasoning_options=reasoning_options_for_task_class(post_tool_task_class),
         )
     )
     return (

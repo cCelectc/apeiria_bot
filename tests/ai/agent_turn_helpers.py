@@ -15,7 +15,10 @@ from apeiria.ai.model import (
     AISelectedModel,
     AISourceDefinition,
 )
-from apeiria.ai.model.runtime.capabilities import parse_model_capabilities
+from apeiria.ai.model.runtime.capabilities import (
+    AIModelCallOptions,
+    parse_model_capabilities,
+)
 from apeiria.ai.tools.models import AIToolPolicy
 from apeiria.app.ai.runtime.execution.tool_loop import RuntimeToolLoopInput
 
@@ -88,6 +91,7 @@ class ModelInvokerStub:
         self.stream_calls: list[AISelectedModel] = []
         self.message_calls: list[tuple[AIModelMessage, ...]] = []
         self.tool_calls: list[tuple[AIModelToolDefinition, ...]] = []
+        self.option_calls: list[AIModelCallOptions | None] = []
 
     async def generate_text(
         self,
@@ -96,12 +100,14 @@ class ModelInvokerStub:
         prompt: str = "",
         messages: tuple[AIModelMessage, ...] = (),
         tools: tuple[AIModelToolDefinition, ...] = (),
+        options: AIModelCallOptions | None = None,
         **_: Any,
     ) -> AIModelGenerateResponse | None:
         del prompt
         self.calls.append(selected)
         self.message_calls.append(messages)
         self.tool_calls.append(tools)
+        self.option_calls.append(options)
         outcome = self.outcomes.pop(0)
         if isinstance(outcome, BaseException):
             raise outcome

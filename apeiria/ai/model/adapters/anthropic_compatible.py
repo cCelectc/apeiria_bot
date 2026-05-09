@@ -22,6 +22,11 @@ from apeiria.ai.model.runtime.adapter import (
     AIModelTranscriptionRequest,
     AIModelTranscriptionResponse,
 )
+from apeiria.ai.model.runtime.capabilities import (
+    AI_MODEL_REASONING_EFFORT_OPTION,
+    AI_MODEL_REASONING_EFFORTS,
+    normalize_reasoning_effort,
+)
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
@@ -109,6 +114,12 @@ class AnthropicCompatibleProvider:
                 }
                 for tool in request.tools
             ]
+        reasoning_effort = normalize_reasoning_effort(
+            planned_options.get(AI_MODEL_REASONING_EFFORT_OPTION)
+        )
+        if reasoning_effort is not None:
+            payload["thinking"] = {"type": "adaptive"}
+            payload["output_config"] = {"effort": reasoning_effort}
 
         client = AsyncAnthropic(
             api_key=api_key,
@@ -135,7 +146,7 @@ class AnthropicCompatibleProvider:
             response_id=str(raw.get("id")) if raw.get("id") is not None else None,
             reasoning_content=_extract_anthropic_reasoning_content(response),
             provider_data=_extract_anthropic_provider_data(raw),
-        )
+        ).with_sanitized_visible_text()
 
     def stream_text(
         self,
@@ -284,9 +295,41 @@ def _extract_anthropic_models(page: Any) -> list[AIModelCatalogItem]:
             AIModelCatalogItem(
                 id=model_id,
                 name=display_name if isinstance(display_name, str) else model_id,
+                capability_metadata=_extract_anthropic_model_capabilities(row),
             )
         )
     return models
+
+
+def _extract_anthropic_model_capabilities(row: Any) -> dict[str, Any] | None:
+    capabilities = getattr(row, "capabilities", None)
+    if not isinstance(capabilities, dict):
+        return None
+    thinking = capabilities.get("thinking")
+    effort = capabilities.get("effort")
+    supports_thinking = isinstance(thinking, dict) and thinking.get("supported") is True
+    efforts = _extract_supported_anthropic_efforts(effort)
+    if not supports_thinking and not efforts:
+        return None
+    return {
+        "reasoning": {
+            "supported": supports_thinking or bool(efforts),
+            "efforts": efforts,
+        },
+        "supported_options": [AI_MODEL_REASONING_EFFORT_OPTION],
+    }
+
+
+def _extract_supported_anthropic_efforts(raw: Any) -> list[str]:
+    if not isinstance(raw, dict):
+        return []
+    return [
+        effort
+        for effort in ("low", "medium", "high")
+        if effort in AI_MODEL_REASONING_EFFORTS
+        and isinstance(raw.get(effort), dict)
+        and raw[effort].get("supported") is True
+    ]
 
 
 def _extract_anthropic_tool_calls(response: Any) -> list[AIModelToolCall]:

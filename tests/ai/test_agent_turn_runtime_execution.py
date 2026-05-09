@@ -16,6 +16,10 @@ from apeiria.ai.capabilities import (
     create_local_tool_binding,
 )
 from apeiria.ai.model import AIModelBindingTarget, AIModelMessage, AIModelToolDefinition
+from apeiria.ai.model.runtime.capabilities import (
+    AI_MODEL_REASONING_EFFORT_OPTION,
+    AIModelCallOptions,
+)
 from apeiria.ai.tools import AIToolPolicy, AIToolTurnCreateInput
 from apeiria.app.ai.agent_turn import AgentModelGenerationResult, AgentTurnResult
 from apeiria.app.ai.runtime import execution as execution_module
@@ -203,6 +207,53 @@ def test_direct_execution_records_future_task_runtime_mode(monkeypatch: Any) -> 
     assert result.turn_result.runtime_mode == "future_task"
     assert result.response is not None
     assert result.response.content == "future answer"
+
+
+def test_direct_execution_uses_reasoning_policy_only_for_heavy_task(
+    monkeypatch: Any,
+) -> None:
+    selected = selected_model("main")
+    captured_requests: list[Any] = []
+
+    async def generate_model_turn(request: Any) -> AgentModelGenerationResult:
+        captured_requests.append(request)
+        response = model_response(selected, "answer")
+        return AgentModelGenerationResult(
+            response=response,
+            selected=selected,
+            turn=AgentTurnResult(
+                trace_id=request.trace_id,
+                runtime_mode=request.runtime_mode,
+                status="completed",
+                finish_reason="direct_model_completed",
+                response=response,
+                response_source=request.response_source,
+            ),
+        )
+
+    monkeypatch.setattr(execution_module, "generate_model_turn", generate_model_turn)
+    context = _context()
+    ordinary = _plan(prompt_messages=context.prompt_messages)
+    heavy = _plan(prompt_messages=context.prompt_messages)
+    heavy = replace(heavy, pre_tool_task_class="reasoning_heavy")
+
+    asyncio.run(
+        execution_module.execute_direct_runtime_turn(
+            turn_context=context,
+            plan=ordinary,
+        )
+    )
+    asyncio.run(
+        execution_module.execute_direct_runtime_turn(
+            turn_context=context,
+            plan=heavy,
+        )
+    )
+
+    assert captured_requests[0].reasoning_options is None
+    assert captured_requests[1].reasoning_options == AIModelCallOptions(
+        values={AI_MODEL_REASONING_EFFORT_OPTION: "medium"}
+    )
 
 
 def test_direct_execution_uses_turn_context_messages(monkeypatch: Any) -> None:

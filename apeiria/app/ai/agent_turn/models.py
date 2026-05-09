@@ -17,6 +17,7 @@ if TYPE_CHECKING:
         AIModelToolDefinition,
         AISelectedModel,
     )
+    from apeiria.ai.model.runtime.capabilities import AIModelCallOptions
 
 
 AIModelStreamSink = Any
@@ -77,6 +78,7 @@ class AgentModelGenerationRequest:
     fallback_models: tuple["AISelectedModel", ...] = ()
     stream_policy: Literal["none", "optional", "required"] = "none"
     stream_sink: AIModelStreamSink | None = None
+    reasoning_options: "AIModelCallOptions | None" = None
 
 
 @dataclass(frozen=True)

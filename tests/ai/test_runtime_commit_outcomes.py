@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any
 
 import apeiria.app.ai.runtime.commit.delivery as delivery_steps
 from apeiria.ai.model import AIModelBindingTarget, AIModelMessage
+from apeiria.ai.model.runtime.adapter import AIModelGenerateResponse
 from apeiria.ai.tools import AIToolPolicy
 from apeiria.app.ai.agent_turn import AgentTurnResult
 from apeiria.app.ai.future_tasks.models import AIFutureTaskDefinition
@@ -129,6 +130,33 @@ def _execution() -> RuntimeExecutionOutcome:
     )
 
 
+def _think_execution() -> RuntimeExecutionOutcome:
+    response = AIModelGenerateResponse(
+        source_id="source-1",
+        model_name="model-1",
+        content="visible <think>hidden reasoning</think> reply",
+    )
+    return RuntimeExecutionOutcome(
+        stage="execution",
+        response=response,
+        skill_runtime=RuntimeToolLoopResult(
+            policy_text="No tools.",
+            result_lines=(),
+            turns=(),
+        ),
+        post_tool_task_class=None,
+        delivery_result=None,
+        turn_result=AgentTurnResult(
+            trace_id="trace-1",
+            runtime_mode="future_task",
+            status="completed",
+            finish_reason="direct_model_completed",
+            response=response,
+            response_source="direct",
+        ),
+    )
+
+
 def _inputs() -> RuntimeContextInputBundle:
     return RuntimeContextInputBundle(
         turns=[],
@@ -175,6 +203,7 @@ def _hard_decision() -> RuntimeHardRuleDecision:
 def _commit_input(
     *,
     request: AIRuntimeTurnRequest | None = None,
+    generation: RuntimeExecutionOutcome | None = None,
 ) -> RuntimeCommitInput:
     reply_request = request or _request()
     return RuntimeCommitInput(
@@ -184,7 +213,7 @@ def _commit_input(
         context=RuntimeContextMaterials.from_context_input_bundle(_inputs()),
         social_decision=_social_decision(),
         plan=_plan(),
-        generation=_execution(),
+        generation=generation or _execution(),
         hard_decision=_hard_decision(),
         current_time=datetime(2026, 5, 1, 8, 30, tzinfo=timezone.utc),
         session_runtime=None,
@@ -200,11 +229,17 @@ class _CommitPersistenceStage:
     ) -> None:
         self.fail_assistant_message = fail_assistant_message
         self.fail_context_window = fail_context_window
+        self.assistant_texts: list[str] = []
 
     async def persist_tool_observations(self, **_: object) -> str:
         return "not_required"
 
-    async def persist_assistant_message(self, **_: object) -> None:
+    async def persist_assistant_message(self, **kwargs: object) -> None:
+        response = kwargs.get("generation")
+        if response is not None:
+            message_response = getattr(response, "response", None)
+            if message_response is not None:
+                self.assistant_texts.append(getattr(message_response, "content", ""))
         if self.fail_assistant_message:
             raise DatabaseWriteFailedError
 
@@ -256,6 +291,42 @@ def test_commit_records_partial_delivery_failure() -> None:
     assert commit.substeps["delivery"] == "failed"
     assert commit.substeps["assistant_message"] == "committed"
     assert commit.substeps["context_window"] == "committed"
+
+
+def test_commit_strips_think_tags_before_delivery_and_persistence() -> None:
+    deliveries: list[str] = []
+    persistence = _CommitPersistenceStage()
+
+    async def deliver_reply(
+        _turn: RuntimeTurnInput,
+        reply_text: str,
+        *,
+        trace_id: str = "",
+    ) -> DeliveryOutcome:
+        del trace_id
+        deliveries.append(reply_text)
+        return DeliveryOutcome(delivered=True)
+
+    engine = AISessionTurnEngine(
+        commit_stage=RuntimeCommitEffectsStage(
+            reply_persistence=persistence,
+            reply_strategy_service=SimpleNamespace(
+                notify_replied=lambda _session_id: None
+            ),
+            deliver_reply=deliver_reply,
+            record_context_usage=lambda *_args, **_kwargs: None,
+        )
+    )
+
+    commit = asyncio.run(
+        engine.commit_turn(
+            commit_input=_commit_input(generation=_think_execution()),
+        )
+    )
+
+    assert deliveries == ["visible  reply"]
+    assert persistence.assistant_texts == ["visible  reply"]
+    assert "hidden reasoning" not in str(commit)
 
 
 def test_commit_failure_does_not_rewrite_execution_attempts() -> None:

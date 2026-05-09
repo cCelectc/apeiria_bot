@@ -8,6 +8,10 @@ from apeiria.ai.model import (
     AIModelProfileDefinition,
     AISourceDefinition,
 )
+from apeiria.ai.model.runtime.capabilities import (
+    AI_MODEL_REASONING_EFFORT_OPTION,
+    AIModelCallOptions,
+)
 from apeiria.app.ai.agent_turn import (
     AgentModelGenerationRequest,
     AgentTurnModelRuntime,
@@ -74,6 +78,31 @@ def test_model_runtime_records_direct_success() -> None:
     ]
     assert result.turn.model_attempts[0].status == "success"
     assert result.turn.model_attempts[0].response_source == "direct"
+
+
+def test_model_runtime_passes_reasoning_options_to_invoker() -> None:
+    selected = selected_model("main")
+    invoker = ModelInvokerStub([model_response(selected, "hello")])
+    runtime = AgentTurnModelRuntime(model_invoker=invoker)
+
+    asyncio.run(
+        runtime.generate(
+            AgentModelGenerationRequest(
+                trace_id="trace-reasoning",
+                session_id="session-1",
+                runtime_mode="message",
+                selected=selected,
+                prompt="Say hello",
+                reasoning_options=AIModelCallOptions(
+                    values={AI_MODEL_REASONING_EFFORT_OPTION: "medium"}
+                ),
+            )
+        )
+    )
+
+    assert invoker.option_calls == [
+        AIModelCallOptions(values={AI_MODEL_REASONING_EFFORT_OPTION: "medium"})
+    ]
 
 
 def test_model_runtime_records_empty_response_without_raising() -> None:

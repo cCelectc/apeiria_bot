@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
@@ -26,7 +27,11 @@ from apeiria.ai.model.runtime.adapter import (
     AIModelTranscriptionRequest,
     AIModelTranscriptionResponse,
 )
-from apeiria.ai.model.runtime.capabilities import AI_MODEL_RESPONSE_FORMAT_OPTION
+from apeiria.ai.model.runtime.capabilities import (
+    AI_MODEL_REASONING_EFFORT_OPTION,
+    AI_MODEL_RESPONSE_FORMAT_OPTION,
+    normalize_reasoning_effort,
+)
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
@@ -108,7 +113,7 @@ class OpenAICompatibleProvider:
             response_id=str(raw.get("id")) if raw.get("id") is not None else None,
             reasoning_content=_extract_openai_reasoning_content(response),
             provider_data=_extract_openai_provider_data(raw),
-        )
+        ).with_sanitized_visible_text()
 
     def stream_text(
         self,
@@ -138,9 +143,11 @@ class OpenAICompatibleProvider:
             extra_config=self.extra_config,
         )
         stream_id = f"stream_{uuid4().hex}"
-        content_parts: list[str] = []
+        raw_content_parts: list[str] = []
+        visible_content_parts: list[str] = []
         finish_reason: str | None = None
         response_id: str | None = None
+        think_filter = _ThinkTagStreamFilter()
 
         async def _stream() -> "AsyncIterator[AIModelStreamEvent]":
             nonlocal finish_reason, response_id
@@ -157,13 +164,16 @@ class OpenAICompatibleProvider:
                     )
                     delta = _extract_openai_stream_delta(chunk)
                     if delta:
-                        content_parts.append(delta)
-                        yield AIModelStreamEvent.text_delta(
-                            source_id=request.source_id,
-                            model_name=request.model_name,
-                            stream_id=stream_id,
-                            content_delta=delta,
-                        )
+                        raw_content_parts.append(delta)
+                        visible_delta = think_filter.feed(delta)
+                        if visible_delta:
+                            visible_content_parts.append(visible_delta)
+                            yield AIModelStreamEvent.text_delta(
+                                source_id=request.source_id,
+                                model_name=request.model_name,
+                                stream_id=stream_id,
+                                content_delta=visible_delta,
+                            )
                     finish_reason = (
                         _extract_openai_stream_finish_reason(chunk) or finish_reason
                     )
@@ -179,18 +189,19 @@ class OpenAICompatibleProvider:
             finally:
                 await client.close()
 
-            content = "".join(content_parts)
+            content = "".join(raw_content_parts)
+            final_response = AIModelGenerateResponse(
+                source_id=request.source_id,
+                model_name=request.model_name,
+                content=content,
+                finish_reason=finish_reason,
+                response_id=response_id,
+            ).with_sanitized_visible_text()
             yield AIModelStreamEvent.final(
                 source_id=request.source_id,
                 model_name=request.model_name,
                 stream_id=stream_id,
-                response=AIModelGenerateResponse(
-                    source_id=request.source_id,
-                    model_name=request.model_name,
-                    content=content,
-                    finish_reason=finish_reason,
-                    response_id=response_id,
-                ),
+                response=final_response,
             )
 
         return _stream()
@@ -448,6 +459,11 @@ def _build_openai_chat_payload(  # noqa: PLR0913
     )
     if response_format is not None:
         payload["response_format"] = response_format
+    reasoning_effort = normalize_reasoning_effort(
+        options.get(AI_MODEL_REASONING_EFFORT_OPTION)
+    )
+    if reasoning_effort is not None:
+        payload["reasoning_effort"] = reasoning_effort
     return payload
 
 
@@ -696,3 +712,51 @@ def _build_openai_content_parts(msg: AIModelMessage) -> list[dict[str, Any]] | s
         elif part.kind == "image" and part.url:
             parts.append({"type": "image_url", "image_url": {"url": part.url}})
     return parts or msg.text_content
+
+
+class _ThinkTagStreamFilter:
+    """Incrementally suppress complete think-tag spans from visible deltas."""
+
+    def __init__(self) -> None:
+        self._buffer = ""
+        self._inside_think = False
+
+    def feed(self, delta: str) -> str:
+        self._buffer += delta
+        visible: list[str] = []
+        while self._buffer:
+            if self._inside_think:
+                close_match = re.search(r"</think>", self._buffer, re.IGNORECASE)
+                if close_match is None:
+                    keep = min(len(self._buffer), len("</think>") - 1)
+                    self._buffer = self._buffer[-keep:] if keep else ""
+                    return "".join(visible)
+                self._buffer = self._buffer[close_match.end() :]
+                self._inside_think = False
+                continue
+
+            open_match = re.search(r"<think\b[^>]*>", self._buffer, re.IGNORECASE)
+            if open_match is None:
+                keep = _partial_tag_prefix_length(self._buffer, "<think")
+                if keep:
+                    visible.append(self._buffer[:-keep])
+                    self._buffer = self._buffer[-keep:]
+                else:
+                    visible.append(self._buffer)
+                    self._buffer = ""
+                return "".join(visible)
+
+            visible.append(self._buffer[: open_match.start()])
+            self._buffer = self._buffer[open_match.end() :]
+            self._inside_think = True
+        return "".join(visible)
+
+
+def _partial_tag_prefix_length(buffer: str, tag_prefix: str) -> int:
+    lowered = buffer.lower()
+    prefix = tag_prefix.lower()
+    max_length = min(len(lowered), len(prefix) - 1)
+    for length in range(max_length, 0, -1):
+        if prefix.startswith(lowered[-length:]):
+            return length
+    return 0

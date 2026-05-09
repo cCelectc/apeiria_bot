@@ -136,6 +136,12 @@ class RuntimeCommitEffectsStage:
         context = commit_input.context
         generation = commit_input.generation
         response = generation.response
+        if response is not None and hasattr(response, "with_sanitized_visible_text"):
+            response = response.with_sanitized_visible_text()
+            generation = cast(
+                "RuntimeExecutionOutcome",
+                replace(generation, response=response),
+            )
         reply_text = response.content.strip() if response is not None else ""
         substeps: dict[str, str] = {}
         commit_status = "committed"

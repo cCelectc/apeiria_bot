@@ -49,6 +49,7 @@ class TurnTrace:
     multimodal: dict[str, object] | None = None
     capability_degradations: tuple[dict[str, object], ...] = ()
     speech: tuple[dict[str, object], ...] = ()
+    reasoning: tuple[dict[str, object], ...] = ()
 
     def to_metadata(self) -> dict[str, object]:
         """Project the trace to compact metadata for diagnostics surfaces."""
@@ -80,6 +81,8 @@ class TurnTrace:
             metadata["capability_degradations"] = list(self.capability_degradations)
         if self.speech:
             metadata["speech"] = list(self.speech)
+        if self.reasoning:
+            metadata["reasoning"] = list(self.reasoning)
         return metadata
 
 
@@ -139,6 +142,7 @@ def project_turn_trace(  # noqa: PLR0913
         multimodal=_extract_multimodal_metadata(turn_result),
         capability_degradations=_extract_capability_degradations(turn_result),
         speech=_extract_speech_metadata(turn_result),
+        reasoning=_extract_reasoning_metadata(turn_result),
     )
 
 
@@ -295,6 +299,39 @@ def _safe_speech_metadata(value: object) -> tuple[dict[str, object], ...]:
                 record[key] = field
         records.append(record)
     return tuple(records)
+
+
+def _extract_reasoning_metadata(
+    turn_result: "AgentTurnResult | None",
+) -> tuple[dict[str, object], ...]:
+    if turn_result is None:
+        return ()
+    metadata: list[dict[str, object]] = []
+    for attempt in turn_result.model_attempts[:5]:
+        diagnostics = getattr(attempt, "reasoning_diagnostics", None)
+        if not isinstance(diagnostics, dict) or not diagnostics:
+            continue
+        safe = _safe_reasoning_metadata(diagnostics)
+        if safe:
+            metadata.append(safe)
+    return tuple(metadata)
+
+
+def _safe_reasoning_metadata(value: dict[str, object]) -> dict[str, object]:
+    safe: dict[str, object] = {}
+    for key in (
+        "requested_effort",
+        "applied_effort",
+        "required",
+        "provider_reasoning_present",
+        "visible_reasoning_stripped",
+        "stripped_reasoning_blocks",
+        "degradation_reason",
+    ):
+        field = value.get(key)
+        if isinstance(field, bool | str | int):
+            safe[key] = field
+    return safe
 
 
 def _safe_multimodal_metadata(value: object) -> dict[str, object] | None:

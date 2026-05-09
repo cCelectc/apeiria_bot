@@ -6,7 +6,7 @@ from typing import Any
 
 from pytest import raises
 
-from apeiria.ai.model.adapters import openai_compatible
+from apeiria.ai.model.adapters import anthropic_compatible, openai_compatible
 from apeiria.ai.model.catalog.capability_templates import (
     ModelCapabilityTemplate,
     ModelCapabilityTemplateRegistry,
@@ -31,11 +31,13 @@ from apeiria.ai.model.runtime.adapter import (
     AIModelTranscriptionResponse,
 )
 from apeiria.ai.model.runtime.capabilities import (
+    AI_MODEL_REASONING_EFFORT_OPTION,
     AIModelCallOptions,
     AIModelCallRequirements,
     AIModelCapabilities,
     AIModelCapabilityPlanningError,
     merge_model_capabilities,
+    normalize_reasoning_effort,
     parse_model_capabilities,
 )
 from apeiria.ai.model.runtime.capability_sources import (
@@ -51,6 +53,7 @@ from apeiria.ai.model.runtime.factory import (
     UnsupportedAIModelAdapterKindError,
     build_source_adapter,
 )
+from apeiria.ai.model.runtime.normalization import sanitize_visible_reasoning
 from apeiria.ai.model.runtime.planning import plan_model_call
 from apeiria.ai.model.runtime.registry import provider_adapter_registry
 from apeiria.ai.model.sources.models import (
@@ -125,7 +128,7 @@ def test_model_capabilities_parse_defaults_and_model_overrides() -> None:
     model = parse_model_capabilities(
         {
             "input_modalities": ["text"],
-            "reasoning": {"supported": True},
+            "reasoning": {"supported": True, "efforts": ["low", "medium"]},
             "supported_options": ["max_tokens"],
         }
     )
@@ -137,6 +140,7 @@ def test_model_capabilities_parse_defaults_and_model_overrides() -> None:
     assert merged.input_modalities == frozenset({"text"})
     assert merged.supports_tool_calling is True
     assert merged.supports_reasoning is True
+    assert merged.reasoning_efforts == frozenset({"low", "medium"})
     assert merged.supported_options == frozenset({"temperature", "max_tokens"})
 
 
@@ -723,6 +727,101 @@ def test_model_call_planning_handles_required_and_optional_streaming() -> None:
     assert planned.degradations == ()
 
 
+def test_model_call_planning_handles_reasoning_effort_options() -> None:
+    unsupported = _selected_with_capabilities(
+        AIModelCapabilities(lanes=frozenset({"chat_completion"})),
+        suffix="no-reasoning",
+    )
+    supported = _selected_with_capabilities(
+        AIModelCapabilities(
+            lanes=frozenset({"chat_completion"}),
+            supports_reasoning=True,
+            supported_options=frozenset({AI_MODEL_REASONING_EFFORT_OPTION}),
+        ),
+        suffix="reasoning",
+    )
+
+    planned = plan_model_call(
+        selected=supported,
+        options=AIModelCallOptions(values={AI_MODEL_REASONING_EFFORT_OPTION: "medium"}),
+    )
+    degraded = plan_model_call(
+        selected=unsupported,
+        options=AIModelCallOptions(values={AI_MODEL_REASONING_EFFORT_OPTION: "high"}),
+    )
+    rejected = plan_model_call(
+        selected=unsupported,
+        options=AIModelCallOptions(
+            values={AI_MODEL_REASONING_EFFORT_OPTION: "low"},
+            required=frozenset({AI_MODEL_REASONING_EFFORT_OPTION}),
+        ),
+    )
+    invalid = plan_model_call(
+        selected=supported,
+        options=AIModelCallOptions(
+            values={AI_MODEL_REASONING_EFFORT_OPTION: "extreme"}
+        ),
+    )
+
+    assert normalize_reasoning_effort("low") == "low"
+    assert normalize_reasoning_effort("medium") == "medium"
+    assert normalize_reasoning_effort("high") == "high"
+    assert normalize_reasoning_effort("extreme") is None
+    assert planned.action == "invoke"
+    assert planned.options[AI_MODEL_REASONING_EFFORT_OPTION] == "medium"
+    assert planned.degradations == ()
+    assert degraded.action == "invoke"
+    assert AI_MODEL_REASONING_EFFORT_OPTION not in degraded.options
+    assert degraded.degradations[0].kind == "reasoning_omitted"
+    assert degraded.degradations[0].reason == "unsupported_reasoning"
+    assert degraded.degradations[0].metadata == {
+        "option": AI_MODEL_REASONING_EFFORT_OPTION,
+        "requested_effort": "high",
+    }
+    assert rejected.action == "reject"
+    assert rejected.reason == "unsupported_reasoning"
+    assert invalid.action == "invoke"
+    assert AI_MODEL_REASONING_EFFORT_OPTION not in invalid.options
+    assert invalid.degradations[0].kind == "reasoning_omitted"
+    assert invalid.degradations[0].reason == "invalid_reasoning_effort"
+
+
+def test_model_call_planning_uses_model_reasoning_effort_set() -> None:
+    supported_low_only = _selected_with_capabilities(
+        AIModelCapabilities(
+            lanes=frozenset({"chat_completion"}),
+            supports_reasoning=True,
+            reasoning_efforts=frozenset({"low"}),
+            supported_options=frozenset({AI_MODEL_REASONING_EFFORT_OPTION}),
+        ),
+        suffix="reasoning-low",
+    )
+
+    degraded = plan_model_call(
+        selected=supported_low_only,
+        options=AIModelCallOptions(values={AI_MODEL_REASONING_EFFORT_OPTION: "medium"}),
+    )
+    rejected = plan_model_call(
+        selected=supported_low_only,
+        options=AIModelCallOptions(
+            values={AI_MODEL_REASONING_EFFORT_OPTION: "medium"},
+            required=frozenset({AI_MODEL_REASONING_EFFORT_OPTION}),
+        ),
+    )
+
+    assert degraded.action == "invoke"
+    assert degraded.options[AI_MODEL_REASONING_EFFORT_OPTION] == "low"
+    assert degraded.degradations[0].kind == "reasoning_effort_adjusted"
+    assert degraded.degradations[0].reason == "unsupported_reasoning_effort"
+    assert degraded.degradations[0].metadata == {
+        "option": AI_MODEL_REASONING_EFFORT_OPTION,
+        "requested_effort": "medium",
+        "applied_effort": "low",
+    }
+    assert rejected.action == "reject"
+    assert rejected.reason == "unsupported_reasoning_effort"
+
+
 def test_streaming_planning_does_not_bypass_required_options() -> None:
     selected = _selected_with_capabilities(
         AIModelCapabilities(
@@ -882,6 +981,107 @@ def test_openai_compatible_adapter_forwards_json_schema_response_format(
     assert payloads[0]["response_format"] == response_format
 
 
+def test_openai_compatible_adapter_forwards_reasoning_effort(
+    monkeypatch: Any,
+) -> None:
+    payloads: list[dict[str, Any]] = []
+    monkeypatch.setattr(
+        openai_compatible,
+        "_build_openai_client",
+        lambda **_kwargs: _OpenAIClientStub(payloads),
+    )
+    provider = openai_compatible.OpenAICompatibleProvider(
+        api_base="https://api.example.test/v1",
+        api_key="test-key",
+    )
+
+    asyncio.run(
+        provider.generate_text(
+            AIModelGenerateRequest(
+                source_id="source-1",
+                model_name="model-1",
+                messages=(AIModelMessage(role="user", content="hello"),),
+                options={AI_MODEL_REASONING_EFFORT_OPTION: "medium"},
+            )
+        )
+    )
+
+    assert payloads[0]["reasoning_effort"] == "medium"
+
+
+def test_anthropic_compatible_adapter_forwards_reasoning_effort(
+    monkeypatch: Any,
+) -> None:
+    payloads: list[dict[str, Any]] = []
+    monkeypatch.setattr(
+        anthropic_compatible,
+        "AsyncAnthropic",
+        lambda **_kwargs: _AnthropicClientStub(payloads),
+    )
+    provider = anthropic_compatible.AnthropicCompatibleProvider(
+        api_base="https://api.example.test/v1",
+        api_key="test-key",
+    )
+
+    asyncio.run(
+        provider.generate_text(
+            AIModelGenerateRequest(
+                source_id="source-1",
+                model_name="claude-1",
+                messages=(AIModelMessage(role="user", content="hello"),),
+                options={AI_MODEL_REASONING_EFFORT_OPTION: "high"},
+            )
+        )
+    )
+
+    assert payloads[0]["thinking"] == {"type": "adaptive"}
+    assert payloads[0]["output_config"] == {"effort": "high"}
+
+
+def test_anthropic_compatible_adapter_extracts_model_reasoning_efforts() -> None:
+    page = SimpleNamespace(
+        data=[
+            SimpleNamespace(
+                id="claude-sonnet-4-5",
+                display_name="Claude Sonnet 4.5",
+                capabilities={
+                    "thinking": {"supported": True},
+                    "effort": {
+                        "low": {"supported": True},
+                        "medium": {"supported": True},
+                        "high": {"supported": False},
+                        "xhigh": {"supported": True},
+                    },
+                },
+            )
+        ]
+    )
+
+    models = anthropic_compatible._extract_anthropic_models(page)
+
+    assert models[0].capability_metadata == {
+        "reasoning": {"supported": True, "efforts": ["low", "medium"]},
+        "supported_options": [AI_MODEL_REASONING_EFFORT_OPTION],
+    }
+
+
+def test_response_normalization_strips_think_blocks_from_visible_text() -> None:
+    sanitized = sanitize_visible_reasoning(
+        "Hi <think>private</think> there <THINK>x</THINK>!"
+    )
+    unclosed = sanitize_visible_reasoning("answer <think>private")
+
+    assert sanitized.text == "Hi  there !"
+    assert sanitized.reasoning_stripped is True
+    assert sanitized.metadata == {
+        "visible_reasoning_stripped": True,
+        "stripped_reasoning_blocks": 2,
+    }
+    assert unclosed.text == "answer"
+    assert unclosed.metadata["visible_reasoning_stripped"] is True
+    assert "private" not in unclosed.metadata
+
+
 def test_openai_compatible_adapter_forwards_image_url_content_part(
     monkeypatch: Any,
 ) -> None:
@@ -1024,6 +1224,57 @@ def test_openai_compatible_adapter_normalizes_streaming_text_events(
     assert events[3].response.content == "hello"
     assert events[3].response.finish_reason == "stop"
     assert events[3].response.response_id == "chatcmpl-stream-1"
+
+
+def test_openai_compatible_streaming_strips_think_delta_text(
+    monkeypatch: Any,
+) -> None:
+    payloads: list[dict[str, Any]] = []
+    monkeypatch.setattr(
+        openai_compatible,
+        "_build_openai_client",
+        lambda **_kwargs: _OpenAIStreamClientStub(
+            payloads,
+            chunks=(
+                _openai_stream_chunk("chatcmpl-stream-2", content_delta="visible "),
+                _openai_stream_chunk("chatcmpl-stream-2", content_delta="<think>"),
+                _openai_stream_chunk("chatcmpl-stream-2", content_delta="secret"),
+                _openai_stream_chunk("chatcmpl-stream-2", content_delta="</think>"),
+                _openai_stream_chunk("chatcmpl-stream-2", content_delta=" reply"),
+                _openai_stream_chunk("chatcmpl-stream-2", finish_reason="stop"),
+            ),
+        ),
+    )
+    provider = openai_compatible.OpenAICompatibleProvider(
+        api_base="https://api.example.test/v1",
+        api_key="test-key",
+    )
+
+    async def collect_events() -> list[AIModelStreamEvent]:
+        return [
+            event
+            async for event in provider.stream_text(
+                AIModelStreamRequest(
+                    source_id="source-1",
+                    model_name="model-1",
+                    messages=(AIModelMessage(role="user", content="hello"),),
+                )
+            )
+        ]
+
+    events = asyncio.run(collect_events())
+
+    assert [event.content_delta for event in events if event.kind == "text_delta"] == [
+        "visible ",
+        " reply",
+    ]
+    final = events[-1].response
+    assert final is not None
+    assert final.content == "visible  reply"
+    assert final.provider_data == {
+        "visible_reasoning_stripped": True,
+        "stripped_reasoning_blocks": 1,
+    }
 
 
 def test_agent_runtime_uses_fallback_after_capability_planning_reject() -> None:
@@ -1221,6 +1472,24 @@ def test_text_message_and_rich_response_contract_remain_compatible() -> None:
     )
 
 
+def test_response_contract_exposes_sanitized_visible_text_metadata() -> None:
+    response = AIModelGenerateResponse(
+        source_id="source-1",
+        model_name="model-1",
+        content="hello <think>secret</think> world",
+    )
+
+    normalized = response.with_sanitized_visible_text()
+
+    assert normalized.content == "hello  world"
+    assert normalized.provider_data == {
+        "visible_reasoning_stripped": True,
+        "stripped_reasoning_blocks": 1,
+    }
+    assert "secret" not in normalized.content
+    assert "secret" not in str(normalized.provider_data)
+
+
 def _source(source_id: str) -> AISourceDefinition:
     return AISourceDefinition(
         source_id=source_id,
@@ -1342,6 +1611,30 @@ class _OpenAIClientStub:
         return None
 
 
+class _AnthropicClientStub:
+    def __init__(self, payloads: list[dict[str, Any]]) -> None:
+        self.messages = SimpleNamespace(create=self._create_message)
+        self._payloads = payloads
+
+    async def _create_message(self, **payload: Any) -> Any:
+        self._payloads.append(payload)
+
+        def model_dump(**_kwargs: Any) -> dict[str, Any]:
+            return {
+                "id": "msg-1",
+                "usage": {"input_tokens": 1},
+                "model": payload.get("model"),
+            }
+
+        return SimpleNamespace(
+            content=[SimpleNamespace(type="text", text="ok")],
+            model_dump=model_dump,
+        )
+
+    async def close(self) -> None:
+        return None
+
+
 class _OpenAISpeechClientStub:
     def __init__(self) -> None:
         self.audio = SimpleNamespace(
@@ -1363,30 +1656,39 @@ class _OpenAISpeechClientStub:
 
 
 class _OpenAIStreamClientStub:
-    def __init__(self, payloads: list[dict[str, Any]]) -> None:
+    def __init__(
+        self,
+        payloads: list[dict[str, Any]],
+        *,
+        chunks: tuple[Any, ...] | None = None,
+    ) -> None:
         self.chat = SimpleNamespace(
             completions=SimpleNamespace(create=self._create_completion)
         )
         self._payloads = payloads
+        self._chunks = chunks
 
     async def _create_completion(self, **payload: Any) -> Any:
         self._payloads.append(payload)
-        return _OpenAIStreamStub()
+        return _OpenAIStreamStub(self._chunks)
 
     async def close(self) -> None:
         return None
 
 
 class _OpenAIStreamStub:
+    def __init__(self, chunks: tuple[Any, ...] | None = None) -> None:
+        self._chunks = chunks
+
     def __aiter__(self) -> Any:
         return self._events()
 
     async def _events(self) -> Any:
-        chunks = [
+        chunks = self._chunks or (
             _openai_stream_chunk("chatcmpl-stream-1", content_delta="hel"),
             _openai_stream_chunk("chatcmpl-stream-1", content_delta="lo"),
             _openai_stream_chunk("chatcmpl-stream-1", finish_reason="stop"),
-        ]
+        )
         for chunk in chunks:
             yield chunk
 

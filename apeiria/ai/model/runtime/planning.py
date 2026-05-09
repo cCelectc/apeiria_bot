@@ -6,6 +6,7 @@ from dataclasses import replace
 from typing import TYPE_CHECKING, Any, TypeAlias
 
 from apeiria.ai.model.runtime.capabilities import (
+    AI_MODEL_REASONING_EFFORT_OPTION,
     AI_MODEL_RESPONSE_FORMAT_OPTION,
     AIModelCallDegradation,
     AIModelCallOptions,
@@ -14,6 +15,7 @@ from apeiria.ai.model.runtime.capabilities import (
     AIModelCapabilities,
     AIModelContentModality,
     json_object_response_format,
+    normalize_reasoning_effort,
 )
 
 if TYPE_CHECKING:
@@ -30,7 +32,7 @@ _ResponseFormatPlan: TypeAlias = tuple[
 ]
 
 
-def plan_model_call(  # noqa: C901, PLR0911, PLR0913
+def plan_model_call(  # noqa: C901, PLR0911, PLR0912, PLR0913
     *,
     selected: "AISelectedModel",
     messages: tuple["AIModelMessage", ...] = (),
@@ -53,6 +55,7 @@ def plan_model_call(  # noqa: C901, PLR0911, PLR0913
     response_format_required = (
         AI_MODEL_RESPONSE_FORMAT_OPTION in requested_required_options
     )
+    reasoning_required = AI_MODEL_REASONING_EFFORT_OPTION in requested_required_options
     response_format = effective_options.get(AI_MODEL_RESPONSE_FORMAT_OPTION)
     response_format_is_structured = isinstance(
         response_format,
@@ -81,10 +84,31 @@ def plan_model_call(  # noqa: C901, PLR0911, PLR0913
             reason=response_rejection[0],
             diagnostic=response_rejection[1],
         )
+    planned_reasoning, reasoning_degradations, reasoning_rejection = (
+        _plan_reasoning_effort(
+            effective_options.get(AI_MODEL_REASONING_EFFORT_OPTION),
+            capabilities=capabilities,
+            required=reasoning_required,
+        )
+    )
+    if reasoning_rejection is not None:
+        return _reject(
+            selected=selected,
+            messages=messages,
+            tools=tools,
+            options=effective_options,
+            capabilities=capabilities,
+            reason=reasoning_rejection[0],
+            diagnostic=reasoning_rejection[1],
+        )
+    planned_option_keys = {
+        AI_MODEL_RESPONSE_FORMAT_OPTION,
+        AI_MODEL_REASONING_EFFORT_OPTION,
+    }
     unsupported_required = sorted(
         key
         for key in requested_required_options
-        if key != AI_MODEL_RESPONSE_FORMAT_OPTION and key not in supported_options
+        if key not in planned_option_keys and key not in supported_options
     )
     if unsupported_required:
         return _reject(
@@ -134,10 +158,14 @@ def plan_model_call(  # noqa: C901, PLR0911, PLR0913
     filtered_options = {
         key: value
         for key, value in effective_options.items()
-        if key != AI_MODEL_RESPONSE_FORMAT_OPTION and key in supported_options
+        if key
+        not in {AI_MODEL_RESPONSE_FORMAT_OPTION, AI_MODEL_REASONING_EFFORT_OPTION}
+        and key in supported_options
     }
     if planned_response_format is not None:
         filtered_options[AI_MODEL_RESPONSE_FORMAT_OPTION] = planned_response_format
+    if planned_reasoning is not None:
+        filtered_options[AI_MODEL_REASONING_EFFORT_OPTION] = planned_reasoning
     if (
         tools
         and requirements.tool_calling == "required"
@@ -153,7 +181,10 @@ def plan_model_call(  # noqa: C901, PLR0911, PLR0913
             diagnostic="model does not support required tool calling",
         )
 
-    degradations: list[AIModelCallDegradation] = list(response_degradations)
+    degradations: list[AIModelCallDegradation] = [
+        *response_degradations,
+        *reasoning_degradations,
+    ]
     streaming, streaming_degradations = _plan_streaming(
         requirements,
         capabilities=capabilities,
@@ -380,6 +411,135 @@ def _structured_output_omitted(detail: str) -> AIModelCallDegradation:
         detail=detail,
         metadata={"option": AI_MODEL_RESPONSE_FORMAT_OPTION},
     )
+
+
+def _plan_reasoning_effort(
+    requested: Any,
+    *,
+    capabilities: AIModelCapabilities,
+    required: bool,
+) -> tuple[str | None, tuple[AIModelCallDegradation, ...], tuple[str, str] | None]:
+    if requested is None:
+        return None, (), None
+    normalized = normalize_reasoning_effort(requested)
+    if normalized is None:
+        return _plan_invalid_reasoning_effort(
+            requested,
+            required=required,
+        )
+    if _supports_reasoning_effort_option(capabilities):
+        return _plan_supported_reasoning_effort(
+            normalized,
+            capabilities=capabilities,
+            required=required,
+        )
+    if required:
+        return _reasoning_rejected(
+            "unsupported_reasoning",
+            "required reasoning_effort is unsupported by selected model",
+        )
+    return (
+        None,
+        (_reasoning_omitted("unsupported_reasoning", normalized),),
+        None,
+    )
+
+
+def _plan_invalid_reasoning_effort(
+    requested: Any,
+    *,
+    required: bool,
+) -> tuple[str | None, tuple[AIModelCallDegradation, ...], tuple[str, str] | None]:
+    if required:
+        return _reasoning_rejected(
+            "invalid_reasoning_effort",
+            "required reasoning_effort is not one of low, medium, high",
+        )
+    return (
+        None,
+        (_reasoning_omitted("invalid_reasoning_effort", requested),),
+        None,
+    )
+
+
+def _plan_supported_reasoning_effort(
+    normalized: str,
+    *,
+    capabilities: AIModelCapabilities,
+    required: bool,
+) -> tuple[str | None, tuple[AIModelCallDegradation, ...], tuple[str, str] | None]:
+    adjusted = _select_supported_reasoning_effort(
+        normalized,
+        capabilities.reasoning_efforts,
+    )
+    if adjusted is None:
+        return normalized, (), None
+    if adjusted == normalized:
+        return normalized, (), None
+    if required:
+        return _reasoning_rejected(
+            "unsupported_reasoning_effort",
+            "required reasoning_effort is unsupported by selected model",
+        )
+    return adjusted, (_reasoning_effort_adjusted(normalized, adjusted),), None
+
+
+def _reasoning_rejected(
+    reason: str,
+    diagnostic: str,
+) -> tuple[None, tuple[AIModelCallDegradation, ...], tuple[str, str]]:
+    return None, (), (reason, diagnostic)
+
+
+def _supports_reasoning_effort_option(capabilities: AIModelCapabilities) -> bool:
+    return (
+        capabilities.supports_reasoning
+        and AI_MODEL_REASONING_EFFORT_OPTION in capabilities.supported_options
+    )
+
+
+def _reasoning_omitted(reason: str, requested: Any) -> AIModelCallDegradation:
+    metadata: dict[str, Any] = {"option": AI_MODEL_REASONING_EFFORT_OPTION}
+    if isinstance(requested, str):
+        metadata["requested_effort"] = requested
+    return AIModelCallDegradation(
+        kind="reasoning_omitted",
+        reason=reason,
+        detail="reasoning effort omitted before provider invocation",
+        metadata=metadata,
+    )
+
+
+def _reasoning_effort_adjusted(
+    requested: str,
+    applied: str,
+) -> AIModelCallDegradation:
+    return AIModelCallDegradation(
+        kind="reasoning_effort_adjusted",
+        reason="unsupported_reasoning_effort",
+        detail="reasoning effort adjusted to selected model capability",
+        metadata={
+            "option": AI_MODEL_REASONING_EFFORT_OPTION,
+            "requested_effort": requested,
+            "applied_effort": applied,
+        },
+    )
+
+
+def _select_supported_reasoning_effort(
+    requested: str,
+    supported: frozenset[str],
+) -> str | None:
+    if not supported:
+        return requested
+    order = ("low", "medium", "high")
+    if requested not in order:
+        return None
+    requested_index = order.index(requested)
+    candidates = [
+        effort for effort in order[: requested_index + 1] if effort in supported
+    ]
+    return candidates[-1] if candidates else None
 
 
 def _plan_streaming_rejection(

@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, Any, Literal, Protocol
+
+from .normalization import sanitize_visible_reasoning
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
@@ -150,6 +152,17 @@ class AIModelGenerateResponse:
             return self.content
         text_parts = [part.text for part in self.parts if part.kind == "text"]
         return "\n".join(text for text in text_parts if isinstance(text, str))
+
+    def with_sanitized_visible_text(self) -> "AIModelGenerateResponse":
+        """Return a copy with inline think-tag reasoning stripped from content."""
+
+        sanitized = sanitize_visible_reasoning(self.content)
+        if not sanitized.reasoning_stripped:
+            return self
+        provider_data = dict(self.provider_data or {})
+        if sanitized.metadata:
+            provider_data.update(sanitized.metadata)
+        return replace(self, content=sanitized.text, provider_data=provider_data)
 
 
 @dataclass(frozen=True)

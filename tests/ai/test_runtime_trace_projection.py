@@ -331,6 +331,61 @@ def test_turn_trace_metadata_omits_provider_diagnostics() -> None:
     assert "secret-token" not in str(metadata)
 
 
+def test_turn_trace_records_bounded_reasoning_metadata() -> None:
+    strategy = RuntimeHardRuleDecision(
+        action="continue",
+        reason_codes=("direct_signal",),
+        reason_text="direct",
+        evidence={},
+        should_observe=True,
+        should_reply=True,
+    )
+    turn = AgentTurnResult(
+        trace_id="trace-reasoning",
+        runtime_mode="message",
+        status="completed",
+        finish_reason="direct_model_completed",
+        model_attempts=(
+            ModelAttempt(
+                attempt_index=1,
+                model_ref="source:gpt",
+                status="success",
+                response_source="direct",
+                reasoning_diagnostics={
+                    "requested_effort": "medium",
+                    "applied_effort": "medium",
+                    "required": False,
+                    "provider_reasoning_present": True,
+                    "visible_reasoning_stripped": True,
+                    "stripped_reasoning_blocks": 2,
+                    "raw_reasoning_content": "should not leak",
+                },
+            ),
+        ),
+        response_source="direct",
+    )
+
+    trace = project_turn_trace(
+        session_id="session-1",
+        strategy_decision=strategy,
+        turn_result=turn,
+    )
+
+    metadata = trace.to_metadata()
+
+    assert metadata["reasoning"] == [
+        {
+            "requested_effort": "medium",
+            "applied_effort": "medium",
+            "required": False,
+            "provider_reasoning_present": True,
+            "visible_reasoning_stripped": True,
+            "stripped_reasoning_blocks": 2,
+        }
+    ]
+    assert "should not leak" not in str(metadata)
+
+
 def test_project_turn_trace_includes_bounded_prompt_diagnostics() -> None:
     strategy = RuntimeHardRuleDecision(
         action="continue",

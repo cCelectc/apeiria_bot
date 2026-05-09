@@ -29,7 +29,12 @@ AIModelToolCallingRequirement: TypeAlias = Literal["required", "optional", "none
 AIModelStreamingRequirement: TypeAlias = Literal["required", "optional", "none"]
 AIModelCallAction: TypeAlias = Literal["invoke", "reject"]
 AIModelResponseFormatType: TypeAlias = Literal["json_object", "json_schema"]
+AIModelReasoningEffort: TypeAlias = Literal["low", "medium", "high"]
 AI_MODEL_RESPONSE_FORMAT_OPTION = "response_format"
+AI_MODEL_REASONING_EFFORT_OPTION = "reasoning_effort"
+AI_MODEL_REASONING_EFFORTS: frozenset[AIModelReasoningEffort] = frozenset(
+    {"low", "medium", "high"}
+)
 
 _KNOWN_LANES = frozenset(
     {
@@ -59,6 +64,7 @@ class AIModelCapabilities:
     supports_tool_calling: bool = False
     tool_choice_modes: frozenset[str] = frozenset()
     supports_reasoning: bool = False
+    reasoning_efforts: frozenset[AIModelReasoningEffort] = frozenset()
     supports_structured_output: bool = False
     supports_json_mode: bool = False
     supports_streaming: bool = False
@@ -155,6 +161,17 @@ def json_schema_response_format(
     }
 
 
+def normalize_reasoning_effort(value: Any) -> AIModelReasoningEffort | None:
+    """Normalize a provider-neutral reasoning effort value."""
+
+    if not isinstance(value, str):
+        return None
+    normalized = value.strip().lower()
+    if normalized in AI_MODEL_REASONING_EFFORTS:
+        return normalized  # type: ignore[return-value]
+    return None
+
+
 def parse_model_capabilities(raw: Any) -> AIModelCapabilities:
     """Parse stored JSON-like capability metadata conservatively."""
 
@@ -181,6 +198,11 @@ def parse_model_capabilities(raw: Any) -> AIModelCapabilities:
             _parse_bool(reasoning.get("supported"))
             if isinstance(reasoning, dict)
             else _parse_bool(raw.get("reasoning"))
+        ),
+        reasoning_efforts=(
+            _parse_literal_set(reasoning.get("efforts"), AI_MODEL_REASONING_EFFORTS)
+            if isinstance(reasoning, dict)
+            else frozenset()
         ),
         supports_structured_output=(
             _parse_bool(structured_output.get("supported"))
@@ -235,6 +257,11 @@ def merge_model_capabilities(
             if _field_specified(model, "reasoning")
             else source.supports_reasoning
         ),
+        reasoning_efforts=(
+            model.reasoning_efforts
+            if _field_specified(model, "reasoning")
+            else source.reasoning_efforts
+        ),
         supports_structured_output=(
             model.supports_structured_output
             if _field_specified(model, "structured_output")
@@ -280,7 +307,10 @@ def capabilities_to_metadata(
         "output_modalities": sorted(capabilities.output_modalities),
         "tool_calling": capabilities.supports_tool_calling,
         "tool_choice_modes": sorted(capabilities.tool_choice_modes),
-        "reasoning": {"supported": capabilities.supports_reasoning},
+        "reasoning": {
+            "supported": capabilities.supports_reasoning,
+            "efforts": sorted(capabilities.reasoning_efforts),
+        },
         "structured_output": {"supported": capabilities.supports_structured_output},
         "json_mode": capabilities.supports_json_mode,
         "streaming": capabilities.supports_streaming,

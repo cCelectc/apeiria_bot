@@ -24,6 +24,7 @@ if TYPE_CHECKING:
         AIModelToolDefinition,
         AISelectedModel,
     )
+    from apeiria.ai.model.runtime.capabilities import AIModelCallOptions
 
 
 @dataclass(frozen=True)
@@ -42,6 +43,7 @@ class GenerationRequest:
     prompt: str = ""
     stream_policy: Literal["none", "optional", "required"] = "none"
     stream_sink: Any | None = None
+    reasoning_options: "AIModelCallOptions | None" = None
 
 
 async def select_model(
@@ -108,6 +110,7 @@ async def generate_model_turn(
             fallback_models=request.fallback_models,
             stream_policy=request.stream_policy,
             stream_sink=request.stream_sink,
+            reasoning_options=request.reasoning_options,
         )
     )
 

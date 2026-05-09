@@ -16,6 +16,7 @@ from apeiria.ai.capabilities import (
 )
 from apeiria.ai.model.runtime.adapter import AIModelMessage
 from apeiria.ai.model.runtime.capabilities import (
+    AIModelCallOptions,
     AIModelCallRequirements,
     AIModelCapabilityPlanningError,
 )
@@ -102,6 +103,7 @@ class RuntimeToolLoopInput:
     capability_bindings: Mapping[str, AICapabilityBinding] | None = None
     execution_timeout_seconds: float | None = None
     tool_mode: str = "allow"
+    reasoning_options: AIModelCallOptions | None = None
 
 
 @dataclass(frozen=True)
@@ -202,6 +204,7 @@ class RuntimeToolLoopRunner:
                 loop_state=loop_state,
                 response_source="tool_loop",
                 allow_context_recovery=True,
+                reasoning_options=loop_input.reasoning_options,
             )
             all_model_attempts.extend(model_result.attempts)
             response = model_result.response
@@ -480,6 +483,7 @@ class RuntimeToolLoopRunner:
         loop_state: ToolLoopState,
         response_source: str,
         allow_context_recovery: bool,
+        reasoning_options: AIModelCallOptions | None = None,
     ) -> "_ToolLoopModelResult":
         attempts: list[ModelAttempt] = []
         last_finish_reason = "model_error"
@@ -498,6 +502,7 @@ class RuntimeToolLoopRunner:
                                 tool_calling_requirement if tools else "none"
                             ),
                         ),
+                        options=reasoning_options,
                     )
                 except AIModelCapabilityPlanningError as exc:
                     diagnostic = sanitize_model_diagnostic(str(exc))
@@ -586,6 +591,10 @@ class RuntimeToolLoopRunner:
                         model_ref=model_ref(candidate),
                         status="success",
                         response_source=response_source,
+                        reasoning_diagnostics=_reasoning_diagnostics(
+                            response,
+                            reasoning_options=reasoning_options,
+                        ),
                     )
                 )
                 _record_response_degradations(response, loop_state)
@@ -634,6 +643,7 @@ class RuntimeToolLoopRunner:
             loop_state=loop_state,
             response_source="tool_loop_finalization",
             allow_context_recovery=False,
+            reasoning_options=None,
         )
         response = result.response
         if response is None:
@@ -682,6 +692,34 @@ def _record_response_degradations(
     for item in degradations:
         if isinstance(item, dict):
             loop_state.capability_degradations.append(dict(item))
+
+
+def _reasoning_diagnostics(
+    response: "AIModelGenerateResponse",
+    *,
+    reasoning_options: AIModelCallOptions | None,
+) -> dict[str, object]:
+    diagnostics: dict[str, object] = {}
+    options = getattr(reasoning_options, "values", None)
+    if isinstance(options, dict):
+        requested_effort = options.get("reasoning_effort")
+        if isinstance(requested_effort, str):
+            diagnostics["requested_effort"] = requested_effort
+            diagnostics["required"] = "reasoning_effort" in getattr(
+                reasoning_options,
+                "required",
+                frozenset(),
+            )
+    provider_data = response.provider_data or {}
+    for key in ("visible_reasoning_stripped", "stripped_reasoning_blocks"):
+        field = provider_data.get(key)
+        if isinstance(field, bool | int):
+            diagnostics[key] = field
+    if response.reasoning_content or response.reasoning_signature:
+        diagnostics["provider_reasoning_present"] = True
+    if diagnostics.get("requested_effort"):
+        diagnostics["applied_effort"] = diagnostics["requested_effort"]
+    return diagnostics
 
 
 def _planned_feature_for_tool_loop(

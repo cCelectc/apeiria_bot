@@ -56,6 +56,10 @@ class AgentTurnModelRuntime:
                             model_ref=model_ref(selected),
                             status="success",
                             response_source=request.response_source,
+                            reasoning_diagnostics=_reasoning_diagnostics(
+                                response,
+                                request=request,
+                            ),
                         )
                     )
                     metadata = _turn_metadata_from_response(response)
@@ -88,6 +92,7 @@ class AgentTurnModelRuntime:
                     prompt=request.prompt,
                     messages=request.messages,
                     tools=request.tools,
+                    options=request.reasoning_options,
                 )
             except AIModelCapabilityPlanningError as exc:
                 diagnostic = sanitize_model_diagnostic(str(exc))
@@ -147,6 +152,10 @@ class AgentTurnModelRuntime:
                     model_ref=model_ref(selected),
                     status="success",
                     response_source=request.response_source,
+                    reasoning_diagnostics=_reasoning_diagnostics(
+                        response,
+                        request=request,
+                    ),
                 )
             )
             metadata = _turn_metadata_from_response(response)
@@ -196,6 +205,7 @@ class AgentTurnModelRuntime:
             prompt=request.prompt,
             messages=request.messages,
             tools=request.tools,
+            options=request.reasoning_options,
         )
         async for event in stream_iter:
             stream_events.append(event)
@@ -244,6 +254,79 @@ def _turn_metadata_from_response(response: Any) -> dict[str, object]:
     if not degradations:
         return {}
     return {"capability_degradations": degradations}
+
+
+def _reasoning_diagnostics(
+    response: Any,
+    *,
+    request: AgentModelGenerationRequest,
+) -> dict[str, object]:
+    diagnostics = _reasoning_request_diagnostics(request)
+    diagnostics.update(_reasoning_provider_diagnostics(response))
+    if _has_provider_reasoning(response):
+        diagnostics["provider_reasoning_present"] = True
+    if diagnostics.get("requested_effort") and "degradation_reason" not in diagnostics:
+        diagnostics["applied_effort"] = diagnostics["requested_effort"]
+    return diagnostics
+
+
+def _reasoning_request_diagnostics(
+    request: AgentModelGenerationRequest,
+) -> dict[str, object]:
+    diagnostics: dict[str, object] = {}
+    options = getattr(request.reasoning_options, "values", None)
+    if isinstance(options, dict):
+        requested_effort = options.get("reasoning_effort")
+        if isinstance(requested_effort, str):
+            diagnostics["requested_effort"] = requested_effort
+            diagnostics["required"] = "reasoning_effort" in getattr(
+                request.reasoning_options,
+                "required",
+                frozenset(),
+            )
+    return diagnostics
+
+
+def _reasoning_provider_diagnostics(response: Any) -> dict[str, object]:
+    diagnostics: dict[str, object] = {}
+    provider_data = getattr(response, "provider_data", None)
+    if not isinstance(provider_data, dict):
+        return diagnostics
+    for key in (
+        "visible_reasoning_stripped",
+        "stripped_reasoning_blocks",
+    ):
+        field = provider_data.get(key)
+        if isinstance(field, bool | int):
+            diagnostics[key] = field
+    degradations = provider_data.get("apeiria_degradations")
+    if isinstance(degradations, list):
+        degradation_reason = _reasoning_degradation_reason(degradations)
+        if degradation_reason is not None:
+            diagnostics["degradation_reason"] = degradation_reason
+    return diagnostics
+
+
+def _reasoning_degradation_reason(degradations: list[object]) -> str | None:
+    reasoning_degradation = next(
+        (
+            item
+            for item in degradations
+            if isinstance(item, dict) and item.get("kind") == "reasoning_omitted"
+        ),
+        None,
+    )
+    if not isinstance(reasoning_degradation, dict):
+        return None
+    reason = reasoning_degradation.get("reason")
+    return reason if isinstance(reason, str) else None
+
+
+def _has_provider_reasoning(response: Any) -> bool:
+    return bool(
+        getattr(response, "reasoning_content", None)
+        or getattr(response, "reasoning_signature", None)
+    )
 
 
 def _stream_metadata(

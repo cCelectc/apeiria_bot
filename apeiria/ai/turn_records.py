@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Literal
 
 if TYPE_CHECKING:
@@ -36,6 +36,7 @@ class ModelAttempt:
     response_source: str
     reason: str | None = None
     diagnostic: str | None = None
+    reasoning_diagnostics: dict[str, Any] = field(default_factory=dict)
     capability_observation: "AIModelCapabilityObservation | None" = None
 
 

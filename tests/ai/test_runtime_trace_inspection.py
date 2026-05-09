@@ -98,6 +98,56 @@ def test_ai_trace_routes_return_sanitized_compact_records(monkeypatch: Any) -> N
         assert loaded.diagnostics == {"api_key": "[redacted]"}
         assert loaded.created_at == "2026-05-01T08:30:00+00:00"
 
+
+def test_ai_trace_route_keeps_bounded_reasoning_metadata(monkeypatch: Any) -> None:
+    import apeiria.webui.routes.ai.traces as route_module
+    from apeiria.app.ai.runtime.trace import TurnTraceRecord
+
+    record = TurnTraceRecord(
+        trace_id="trace-2",
+        session_id="session-1",
+        runtime_mode="message",
+        terminal_status="generated",
+        strategy_action="continue",
+        strategy_reason_codes=("direct_signal",),
+        model_attempt_count=1,
+        tool_attempt_count=0,
+        final_response_source="direct",
+        skip_reason=None,
+        delivery_status=None,
+        commit_status="committed",
+        diagnostics={
+            "reasoning": [
+                {
+                    "requested_effort": "medium",
+                    "applied_effort": "medium",
+                    "provider_reasoning_present": True,
+                    "visible_reasoning_stripped": True,
+                }
+            ]
+        },
+        created_at=datetime.fromisoformat("2026-05-01T08:30:00+00:00"),
+    )
+
+    class FakeService:
+        async def list_turn_traces(self, **_kwargs: object) -> list[TurnTraceRecord]:
+            return [record]
+
+        async def get_turn_trace(self, *, trace_id: str) -> TurnTraceRecord | None:
+            return record if trace_id == "trace-2" else None
+
+    monkeypatch.setattr(
+        route_module,
+        "ai_application",
+        type("FakeApplication", (), {"diagnostics": FakeService()})(),
+    )
+
+    async def scenario() -> None:
+        loaded = await route_module.get_ai_turn_trace("trace-2", object())
+        assert loaded.diagnostics["reasoning"][0]["visible_reasoning_stripped"] is True
+
+    asyncio.run(scenario())
+
     asyncio.run(scenario())
 
 
