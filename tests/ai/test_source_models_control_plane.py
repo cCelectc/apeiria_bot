@@ -30,11 +30,10 @@ def test_source_model_admin_methods_use_new_database(
             capability_type="chat_completion",
             preset_type="openai_compatible",
             api_base="https://api.example.test/v1",
-            api_key_env_name="OPENAI_API_KEY",
             enabled=True,
             timeout_seconds=30,
             custom_headers={},
-            extra_config={},
+            extra_config={"api_keys": ["test-key"]},
         )
         return created.source_id
 
@@ -58,10 +57,12 @@ def test_source_model_admin_methods_use_new_database(
         )
         listed = await admin.list_source_models(source_id=source_id)
         assert [item.model_id for item in listed] == [created.model_id]
-        assert created.capability_metadata["tool_calling"] is True
-        assert created.capability_provenance["capability.tool_calling"]["source"] == (
-            "model_template"
-        )
+        assert created.capability_metadata["tool_calling"] is False
+        assert created.capability_provenance["capability.tool_calling"] == {
+            "source": "preset_template",
+            "confidence": "default",
+            "detail": "conservative source-model default",
+        }
 
         updated = await admin.update_source_model(
             model_id=created.model_id,
@@ -109,11 +110,10 @@ def test_fetch_and_test_source_model_uses_model_invoker(
             capability_type="chat_completion",
             preset_type="openai_compatible",
             api_base="https://api.example.test/v1",
-            api_key_env_name="OPENAI_API_KEY",
             enabled=True,
             timeout_seconds=30,
             custom_headers={},
-            extra_config={},
+            extra_config={"api_keys": ["test-key"]},
         )
         return created.source_id
 
@@ -153,11 +153,12 @@ def test_fetch_and_test_source_model_uses_model_invoker(
             api_key="test-key",
         )
         assert fetched[0].id == "gpt-4o-mini"
-        assert fetched[0].capability_metadata["tool_calling"] is True
-        assert (
-            fetched[0].capability_provenance["capability.tool_calling"]["source"]
-            == "model_template"
-        )
+        assert fetched[0].capability_metadata["tool_calling"] is False
+        assert fetched[0].capability_provenance["capability.tool_calling"] == {
+            "source": "preset_template",
+            "confidence": "default",
+            "detail": "conservative source-model default",
+        }
 
         tested = await admin.test_source_model(
             source_id=source_id,
@@ -188,11 +189,10 @@ def test_manual_unknown_source_model_uses_conservative_enrichment(
             capability_type="chat_completion",
             preset_type="openai_compatible",
             api_base="https://api.example.test/v1",
-            api_key_env_name="OPENAI_API_KEY",
             enabled=True,
             timeout_seconds=30,
             custom_headers={},
-            extra_config={},
+            extra_config={"api_keys": ["test-key"]},
         )
         created = await model_admin.create_source_model(
             source_id=source.source_id,

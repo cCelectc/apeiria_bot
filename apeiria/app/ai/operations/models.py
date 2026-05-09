@@ -129,13 +129,12 @@ class ModelsAdminMixin:
             source_id=source_id,
         )
 
-    async def fetch_source_models(  # noqa: PLR0913
+    async def fetch_source_models(
         self,
         *,
         source_id: str | None = None,
         preset_type: str | None = None,
         api_base: str | None = None,
-        api_key_env_name: str | None = None,
         api_key: str | None = None,
         extra_config: dict[str, object] | None = None,
     ) -> list["AIModelCatalogItem"]:
@@ -147,7 +146,6 @@ class ModelsAdminMixin:
             source_id=source_id,
             preset_type=preset_type,
             api_base=api_base,
-            api_key_env_name=api_key_env_name,
             api_key=api_key,
             extra_config=extra_config,
         )
@@ -311,7 +309,6 @@ class ModelsAdminMixin:
         source_id: str | None = None,
         preset_type: str | None = None,
         api_base: str | None = None,
-        api_key_env_name: str | None = None,
         api_key: str | None = None,
         extra_config: dict[str, object] | None = None,
         model_identifier: str,
@@ -324,7 +321,6 @@ class ModelsAdminMixin:
             source_id=source_id,
             preset_type=preset_type,
             api_base=api_base,
-            api_key_env_name=api_key_env_name,
             api_key=api_key,
             extra_config=extra_config,
             model_identifier=model_identifier,

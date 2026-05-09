@@ -20,7 +20,7 @@
         <div class="text-body-2 text-medium-emphasis mt-1">
           {{ sourceForm.api_base || (isCreatingSource ? t('ai.sourceCreateHint') : t('ai.sourceConfigHint')) }}
         </div>
-        <div class="source-summary-line mt-2">
+        <div v-if="sourceForm.preset_type" class="source-summary-line mt-2">
           <span>{{ t('ai.sourcePreset') }}：</span>
           <strong>{{ sourcePresetLabel(sourceForm.preset_type) }}</strong>
         </div>
@@ -38,6 +38,52 @@
         <v-btn color="primary" :disabled="!canSaveSource" :loading="savingSource" @click="saveSource">
           {{ t('ai.saveSourceConfig') }}
         </v-btn>
+      </div>
+    </div>
+
+    <div
+      v-if="isCreatingSource"
+      class="source-protocol-step mb-4"
+      :class="{ 'source-protocol-step--focused': !sourceForm.preset_type }"
+    >
+      <div class="source-protocol-step__header">
+        <div>
+          <div class="source-protocol-step__title">
+            {{ t('ai.sourceProtocolStepTitle') }}
+          </div>
+          <div class="source-protocol-step__hint">
+            {{ t('ai.sourceProtocolStepHint') }}
+          </div>
+        </div>
+      </div>
+      <div v-if="sourcePresets.length > 0" class="source-protocol-grid">
+        <button
+          v-for="preset in sourcePresets"
+          :key="preset.preset_type"
+          :aria-pressed="sourceForm.preset_type === preset.preset_type"
+          class="source-protocol-option"
+          :class="{ 'source-protocol-option--active': sourceForm.preset_type === preset.preset_type }"
+          type="button"
+          @click="selectProtocol(preset.preset_type)"
+        >
+          <v-avatar class="source-protocol-option__avatar" color="primary" size="36" variant="tonal">
+            {{ sourcePresetInitial(preset.preset_type) }}
+          </v-avatar>
+          <span class="source-protocol-option__body">
+            <span class="source-protocol-option__title">
+              {{ preset.display_name }}
+            </span>
+            <span class="source-protocol-option__text">
+              {{ preset.description || t('ai.sourceProtocolDefaultHint') }}
+            </span>
+            <span v-if="preset.default_api_base" class="source-protocol-option__meta">
+              {{ preset.default_api_base }}
+            </span>
+          </span>
+        </button>
+      </div>
+      <div v-else class="empty-state-hint">
+        {{ t('ai.sourceProtocolEmpty') }}
       </div>
     </div>
 
@@ -76,17 +122,25 @@
           <div class="workbench-field__title">{{ t('ai.sourcePreset') }}</div>
           <div class="workbench-field__helper">{{ t('ai.sourceConfigPresetHint') }}</div>
         </div>
-        <v-select
-          v-model="sourceForm.preset_type"
-          :aria-label="t('ai.sourcePreset')"
-          class="workbench-field-row__control"
-          density="comfortable"
-          :disabled="savingSource"
-          :error-messages="displayedSourceErrors.preset_type ? [displayedSourceErrors.preset_type] : []"
-          hide-details="auto"
-          :items="sourcePresetOptions"
-          @blur="touchSourceField('preset_type')"
-        />
+        <div class="workbench-field-row__control source-protocol-field">
+          <v-select
+            v-if="!isCreatingSource"
+            v-model="sourceForm.preset_type"
+            :aria-label="t('ai.sourcePreset')"
+            density="comfortable"
+            :disabled="savingSource"
+            :error-messages="displayedSourceErrors.preset_type ? [displayedSourceErrors.preset_type] : []"
+            hide-details="auto"
+            :items="sourcePresetOptions"
+            @blur="touchSourceField('preset_type')"
+          />
+          <div v-else class="source-protocol-field__value">
+            {{ sourceForm.preset_type ? sourcePresetLabel(sourceForm.preset_type) : t('ai.sourceProtocolNotSelected') }}
+          </div>
+          <div v-if="displayedSourceErrors.preset_type" class="disabled-reason mt-1">
+            {{ displayedSourceErrors.preset_type }}
+          </div>
+        </div>
       </div>
 
       <div class="source-config-row workbench-field-row">
@@ -385,6 +439,7 @@
 </template>
 
 <script setup lang="ts">
+  import type { AISourcePresetItem } from '@/api/ai/types'
   import type { SourceFormState } from '@/composables/aiModels/formState'
   import type {
     AISetupWorkflow,
@@ -406,13 +461,16 @@
     removeSource: () => void | Promise<void>
     saveSource: () => void | Promise<void>
     savingSource: boolean
+    selectSourceProtocol: (presetType: string) => void
     focused?: boolean
     highlight?: string
+    sourcePresetInitial: (value: string) => string
     sourcePresetLabel: (value: string) => string
     sourcePresetOptions: Array<{
       title: string
       value: string
     }>
+    sourcePresets: AISourcePresetItem[]
     touchSourceField: (field: 'name' | 'preset_type') => void
     workflow: AISetupWorkflow
     workflowResult: AIWorkflowOperationResult | null
@@ -474,6 +532,11 @@
     sourceApiKeysDialog.value = false
   }
 
+  function selectProtocol (presetType: string) {
+    props.selectSourceProtocol(presetType)
+    props.touchSourceField('preset_type')
+  }
+
   function connectionIssueLabel (issue: AISetupWorkflow['connectionIssues'][number]) {
     return t(`ai.connectionIssue.${issue}`)
   }
@@ -512,6 +575,127 @@
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+}
+
+.source-protocol-step {
+  display: grid;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid rgba(var(--v-theme-outline-variant), 0.26);
+  border-radius: var(--shape-medium);
+  background: rgba(var(--v-theme-surface-container-low), 0.62);
+}
+
+.source-protocol-step--focused {
+  border-color: rgba(var(--v-theme-primary), 0.38);
+  box-shadow: inset 0 0 0 1px rgba(var(--v-theme-primary), 0.1);
+}
+
+.source-protocol-step__header {
+  display: flex;
+  min-width: 0;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.source-protocol-step__title {
+  color: rgb(var(--v-theme-on-surface));
+  font-size: 0.98rem;
+  font-weight: 720;
+  line-height: 1.35;
+}
+
+.source-protocol-step__hint {
+  margin-top: 3px;
+  color: rgba(var(--v-theme-on-surface), 0.62);
+  font-size: 0.84rem;
+  line-height: 1.5;
+}
+
+.source-protocol-grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.source-protocol-option {
+  display: grid;
+  width: 100%;
+  min-width: 0;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+  padding: 12px;
+  border: 1px solid rgba(var(--v-theme-outline-variant), 0.28);
+  border-radius: var(--shape-small);
+  background: rgba(var(--v-theme-surface-container), 0.52);
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+  transition: background-color 160ms ease, border-color 160ms ease;
+}
+
+.source-protocol-option:hover {
+  border-color: rgba(var(--v-theme-primary), 0.36);
+  background: rgba(var(--v-theme-primary), 0.07);
+}
+
+.source-protocol-option:focus-visible {
+  outline: 2px solid rgba(var(--v-theme-primary), 0.72);
+  outline-offset: 2px;
+}
+
+.source-protocol-option--active {
+  border-color: rgba(var(--v-theme-primary), 0.46);
+  background: rgba(var(--v-theme-primary), 0.12);
+}
+
+.source-protocol-option__avatar {
+  flex-shrink: 0;
+}
+
+.source-protocol-option__body {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+
+.source-protocol-option__title {
+  color: rgb(var(--v-theme-on-surface));
+  font-size: 0.92rem;
+  font-weight: 720;
+  line-height: 1.35;
+}
+
+.source-protocol-option__text {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  color: rgba(var(--v-theme-on-surface), 0.62);
+  font-size: 0.8rem;
+  line-height: 1.45;
+  overflow: hidden;
+}
+
+.source-protocol-option__meta {
+  color: rgba(var(--v-theme-on-surface), 0.5);
+  font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 0.74rem;
+  line-height: 1.4;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.source-protocol-field__value {
+  min-height: 48px;
+  padding: 12px 14px;
+  border: 1px solid rgba(var(--v-theme-outline-variant), 0.32);
+  border-radius: var(--shape-small);
+  background: rgba(var(--v-theme-surface-container), 0.42);
+  color: rgba(var(--v-theme-on-surface), 0.82);
+  font-size: 0.9rem;
+  line-height: 1.45;
 }
 
 .disabled-reason {

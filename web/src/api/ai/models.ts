@@ -18,7 +18,6 @@ export function fetchAISourceModels (payload: {
   source_id?: string | null
   preset_type?: string | null
   api_base?: string | null
-  api_key_env_name?: string | null
   api_key?: string | null
   extra_config?: Record<string, unknown>
 }) {
@@ -29,7 +28,6 @@ export function testAISourceModel (payload: {
   source_id?: string | null
   preset_type?: string | null
   api_base?: string | null
-  api_key_env_name?: string | null
   api_key?: string | null
   extra_config?: Record<string, unknown>
   model_identifier: string

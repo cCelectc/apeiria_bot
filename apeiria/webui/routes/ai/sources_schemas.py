@@ -38,7 +38,6 @@ class AISourceItem(BaseModel):
     adapter_kind: str | None = None
     preset_type: str
     api_base: str | None = None
-    api_key_env_name: str | None = None
     enabled: bool
     timeout_seconds: int | None = None
     custom_headers: dict[str, str] = {}
@@ -54,7 +53,6 @@ class AISourceUpsertRequest(BaseModel):
     capability_type: str = Field(min_length=1, max_length=32)
     preset_type: str = Field(min_length=1, max_length=64)
     api_base: str | None = Field(default=None, max_length=2000)
-    api_key_env_name: str | None = Field(default=None, max_length=128)
     enabled: bool = True
     timeout_seconds: int | None = Field(default=None, ge=1, le=600)
     custom_headers: dict[str, str] = {}
@@ -89,7 +87,6 @@ def to_ai_source_item(item: "AISourceDefinition") -> AISourceItem:
         adapter_kind=item.adapter_kind,
         preset_type=item.preset_type,
         api_base=item.api_base,
-        api_key_env_name=item.api_key_env_name,
         enabled=item.enabled,
         timeout_seconds=item.timeout_seconds,
         custom_headers=item.custom_headers or {},

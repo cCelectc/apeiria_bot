@@ -8,7 +8,6 @@ export interface SourceFormState {
   adapter_kind: string
   api_base: string
   api_keys: string[]
-  api_key_env_name: string
   proxy: string
   enabled: boolean
   timeout_seconds: number | null
@@ -54,7 +53,6 @@ export function buildSourceSnapshot (form: SourceFormState) {
     adapter_kind: form.adapter_kind.trim(),
     api_base: form.api_base.trim(),
     api_keys: normalizeApiKeys(form.api_keys),
-    api_key_env_name: form.api_key_env_name.trim(),
     proxy: form.proxy.trim(),
     enabled: form.enabled,
     timeout_seconds: form.timeout_seconds,

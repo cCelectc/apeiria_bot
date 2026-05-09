@@ -226,7 +226,6 @@ export interface AISourceItem {
   adapter_kind: string | null
   preset_type: string
   api_base: string | null
-  api_key_env_name: string | null
   enabled: boolean
   timeout_seconds: number | null
   custom_headers: Record<string, string>

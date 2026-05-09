@@ -278,7 +278,6 @@ export function useAISourceModelState ({
         preset_type: sourceForm.preset_type,
         api_base: sourceForm.api_base.trim(),
         api_key: normalizedSourceApiKeys.value[0] || null,
-        api_key_env_name: sourceForm.api_key_env_name.trim() || null,
         extra_config: normalizedSourceExtraConfig.value,
       })
       fetchedSourceModels.value = response.data
@@ -313,7 +312,6 @@ export function useAISourceModelState ({
         preset_type: sourceForm.preset_type,
         api_base: sourceForm.api_base.trim(),
         api_key: normalizedSourceApiKeys.value[0] || null,
-        api_key_env_name: sourceForm.api_key_env_name.trim() || null,
         extra_config: normalizedSourceExtraConfig.value,
         model_identifier: resolvedModelIdentifier,
       })

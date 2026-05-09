@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from json import dumps
@@ -24,10 +23,10 @@ from apeiria.utils.json_utils import safe_json_loads
 if TYPE_CHECKING:
     from apeiria.ai.model.runtime.capabilities import AIModelAdapterKind
 
-_ADAPTER_KIND_COLUMN_INDEX = 11
-_CAPABILITY_METADATA_COLUMN_INDEX = 12
-_DEFAULT_OPTIONS_COLUMN_INDEX = 13
-_CAPABILITY_PROVENANCE_COLUMN_INDEX = 14
+_ADAPTER_KIND_COLUMN_INDEX = 10
+_CAPABILITY_METADATA_COLUMN_INDEX = 11
+_DEFAULT_OPTIONS_COLUMN_INDEX = 12
+_CAPABILITY_PROVENANCE_COLUMN_INDEX = 13
 
 
 @dataclass(frozen=True)
@@ -39,7 +38,6 @@ class AISourceCreateInput:
     client_type: AISourceClientType
     preset_type: AISourcePresetType
     api_base: str | None = None
-    api_key_env_name: str | None = None
     enabled: bool = True
     timeout_seconds: int | None = None
     custom_headers: dict[str, str] | None = None
@@ -76,7 +74,6 @@ class AISourceService:
                     client_type,
                     preset_type,
                     api_base,
-                    api_key_env_name,
                     enabled,
                     timeout_seconds,
                     custom_headers_json,
@@ -106,7 +103,6 @@ class AISourceService:
                     client_type,
                     preset_type,
                     api_base,
-                    api_key_env_name,
                     enabled,
                     timeout_seconds,
                     custom_headers_json,
@@ -135,7 +131,6 @@ class AISourceService:
             client_type=create_input.client_type,
             preset_type=create_input.preset_type,
             api_base=create_input.api_base,
-            api_key_env_name=create_input.api_key_env_name,
             enabled=create_input.enabled,
             timeout_seconds=create_input.timeout_seconds,
             custom_headers=create_input.custom_headers or {},
@@ -159,7 +154,6 @@ class AISourceService:
                     client_type,
                     preset_type,
                     api_base,
-                    api_key_env_name,
                     enabled,
                     timeout_seconds,
                     custom_headers_json,
@@ -169,7 +163,7 @@ class AISourceService:
                     default_options_json,
                     capability_provenance_json,
                     updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     source.source_id,
@@ -178,7 +172,6 @@ class AISourceService:
                     source.client_type,
                     source.preset_type,
                     source.api_base,
-                    source.api_key_env_name,
                     1 if source.enabled else 0,
                     source.timeout_seconds,
                     dumps(source.custom_headers or {}, ensure_ascii=False),
@@ -200,7 +193,6 @@ class AISourceService:
         client_type: AISourceClientType,
         preset_type: AISourcePresetType,
         api_base: str | None,
-        api_key_env_name: str | None,
         enabled: bool = True,
         timeout_seconds: int | None = None,
         custom_headers: dict[str, str] | None = None,
@@ -217,7 +209,6 @@ class AISourceService:
             client_type=client_type,
             preset_type=preset_type,
             api_base=api_base,
-            api_key_env_name=api_key_env_name,
             enabled=enabled,
             timeout_seconds=timeout_seconds,
             custom_headers=custom_headers or {},
@@ -247,7 +238,6 @@ class AISourceService:
             client_type=create_input.client_type,
             preset_type=create_input.preset_type,
             api_base=create_input.api_base,
-            api_key_env_name=create_input.api_key_env_name,
             enabled=create_input.enabled,
             timeout_seconds=create_input.timeout_seconds,
             custom_headers=create_input.custom_headers or {},
@@ -271,7 +261,6 @@ class AISourceService:
                     client_type = ?,
                     preset_type = ?,
                     api_base = ?,
-                    api_key_env_name = ?,
                     enabled = ?,
                     timeout_seconds = ?,
                     custom_headers_json = ?,
@@ -289,7 +278,6 @@ class AISourceService:
                     updated.client_type,
                     updated.preset_type,
                     updated.api_base,
-                    updated.api_key_env_name,
                     1 if updated.enabled else 0,
                     updated.timeout_seconds,
                     dumps(updated.custom_headers or {}, ensure_ascii=False),
@@ -345,19 +333,16 @@ class AISourceService:
         inline_api_key = _extract_inline_api_key(source)
         if inline_api_key:
             return inline_api_key
-        if not source.api_key_env_name:
-            return None
-        value = os.getenv(source.api_key_env_name)
-        return value.strip() if isinstance(value, str) and value.strip() else None
+        return None
 
     @staticmethod
     def _row_to_definition(row: tuple[object, ...]) -> AISourceDefinition:
         custom_headers = safe_json_loads(
-            str(row[9]) if row[9] is not None else None,
+            str(row[8]) if row[8] is not None else None,
             default={},
         )
         extra_config = safe_json_loads(
-            str(row[10]) if row[10] is not None else None,
+            str(row[9]) if row[9] is not None else None,
             default={},
         )
         capability_metadata = safe_json_loads(
@@ -408,9 +393,8 @@ class AISourceService:
             client_type=client_type,
             preset_type=cast("AISourcePresetType", str(row[4])),
             api_base=str(row[5]) if row[5] is not None else None,
-            api_key_env_name=str(row[6]) if row[6] is not None else None,
-            enabled=bool(row[7]),
-            timeout_seconds=_coerce_optional_int(row[8]),
+            enabled=bool(row[6]),
+            timeout_seconds=_coerce_optional_int(row[7]),
             custom_headers=(custom_headers if isinstance(custom_headers, dict) else {}),
             extra_config=extra_config if isinstance(extra_config, dict) else {},
             adapter_kind=adapter_kind,

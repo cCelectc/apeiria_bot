@@ -117,6 +117,9 @@ export function useAIModelsTab (
   }
 
   async function syncActiveCapabilitySelection () {
+    if (sourceState.providerDetailMode.value === 'creating') {
+      return
+    }
     const current = sourceState.sources.value.find(
       item => item.source_id === sourceState.sourceForm.source_id,
     )
@@ -185,7 +188,6 @@ export function useAIModelsTab (
     selectedSource: sourceState.sourceForm.source_id
       ? {
           api_base: sourceState.sourceForm.api_base,
-          api_key_env_name: sourceState.sourceForm.api_key_env_name,
           api_keys: sourceState.sourceForm.api_keys,
           enabled: sourceState.sourceForm.enabled,
           name: sourceState.sourceForm.name,
@@ -243,6 +245,7 @@ export function useAIModelsTab (
     savingModel: modelState.savingModel,
     savingProfile: profileState.savingProfile,
     savingSource: sourceState.savingSource,
+    selectSourceProtocol: sourceState.selectSourceProtocol,
     selectModelProfile: profileState.selectModelProfile,
     selectSource: sourceState.selectSource,
     selectSourceModel: modelState.selectSourceModel,

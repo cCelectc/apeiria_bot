@@ -14,7 +14,6 @@ import { getErrorMessage } from '@/api/client'
 import {
   buildSourceExtraConfig,
   buildSourceSnapshot,
-  defaultPresetTypeFor,
   extractOptionalInt,
   extractOptionalString,
   extractSourceApiKeys,
@@ -82,7 +81,6 @@ export function useAISourceState ({
     adapter_kind: 'openai_compatible',
     api_base: '',
     api_keys: [],
-    api_key_env_name: '',
     proxy: '',
     enabled: true,
     timeout_seconds: 120,
@@ -148,10 +146,7 @@ export function useAISourceState ({
   const canFetchSourceModels = computed(() => (
     sourceForm.preset_type.trim().length > 0
     && sourceForm.api_base.trim().length > 0
-    && (
-      normalizeApiKeys(sourceForm.api_keys).length > 0
-      || sourceForm.api_key_env_name.trim().length > 0
-    )
+    && normalizeApiKeys(sourceForm.api_keys).length > 0
   ))
 
   const normalizedSourceApiKeys = computed(() => (
@@ -207,6 +202,28 @@ export function useAISourceState ({
     sourceTouched[field] = true
   }
 
+  function selectSourceProtocol (presetType: string) {
+    const preset = sourcePresets.value.find(
+      item => item.preset_type === presetType,
+    )
+    if (!preset) {
+      sourceForm.preset_type = presetType
+      return
+    }
+    sourceForm.preset_type = preset.preset_type
+    sourceForm.capability_type = preset.capability_type
+    sourceForm.adapter_kind = preset.adapter_kind
+    sourceForm.api_base = preset.default_api_base ?? ''
+    sourceForm.capability_metadata_json = stringifyJsonObject(
+      preset.capability_metadata,
+    )
+    sourceForm.default_options_json = stringifyJsonObject(preset.default_options)
+    sourceForm.capability_provenance_json = stringifyJsonObject(
+      preset.capability_provenance,
+    )
+    sourceTouched.preset_type = true
+  }
+
   function clearSourceSelection () {
     providerDetailMode.value = 'empty'
     sourceForm.source_id = ''
@@ -216,7 +233,6 @@ export function useAISourceState ({
     sourceForm.adapter_kind = 'openai_compatible'
     sourceForm.api_base = ''
     sourceForm.api_keys = []
-    sourceForm.api_key_env_name = ''
     sourceForm.proxy = ''
     sourceForm.enabled = true
     sourceForm.timeout_seconds = 120
@@ -246,7 +262,6 @@ export function useAISourceState ({
     sourceForm.adapter_kind = item.adapter_kind ?? ''
     sourceForm.api_base = item.api_base ?? ''
     sourceForm.api_keys = extractSourceApiKeys(item)
-    sourceForm.api_key_env_name = item.api_key_env_name ?? ''
     sourceForm.proxy = extractOptionalString(item.extra_config?.proxy)
     sourceForm.enabled = item.enabled
     sourceForm.timeout_seconds = item.timeout_seconds
@@ -279,20 +294,13 @@ export function useAISourceState ({
 
   function startCreateSource (presetType?: string) {
     providerDetailMode.value = 'creating'
-    const defaultPreset = (
-      sourcePresets.value.find(item => item.preset_type === presetType)
-      ?? sourcePresets.value[0]
-    )
     sourceForm.source_id = ''
     sourceForm.name = ''
-    sourceForm.preset_type
-      = defaultPreset?.preset_type
-        ?? defaultPresetTypeFor(sourceCapabilityTab.value)
+    sourceForm.preset_type = ''
     sourceForm.capability_type = currentSourceCapability.value
-    sourceForm.adapter_kind = defaultPreset?.adapter_kind ?? 'openai_compatible'
-    sourceForm.api_base = defaultPreset?.default_api_base ?? ''
+    sourceForm.adapter_kind = 'openai_compatible'
+    sourceForm.api_base = ''
     sourceForm.api_keys = []
-    sourceForm.api_key_env_name = ''
     sourceForm.proxy = ''
     sourceForm.enabled = true
     sourceForm.timeout_seconds = 120
@@ -302,17 +310,14 @@ export function useAISourceState ({
     sourceForm.tts_response_format = 'wav'
     sourceForm.rerank_api_suffix = '/rerank'
     sourceForm.rerank_top_n = 2
-    sourceForm.capability_metadata_json = stringifyJsonObject(
-      defaultPreset?.capability_metadata,
-    )
-    sourceForm.default_options_json = stringifyJsonObject(
-      defaultPreset?.default_options,
-    )
-    sourceForm.capability_provenance_json = stringifyJsonObject(
-      defaultPreset?.capability_provenance,
-    )
+    sourceForm.capability_metadata_json = '{}'
+    sourceForm.default_options_json = '{}'
+    sourceForm.capability_provenance_json = '{}'
     syncSourceBaseline()
     resetSourceValidation()
+    if (presetType) {
+      selectSourceProtocol(presetType)
+    }
     sourceModels.value = []
     fetchedSourceModels.value = []
     startCreateSourceModel()
@@ -342,7 +347,6 @@ export function useAISourceState ({
         preset_type: sourceForm.preset_type,
         capability_type: sourceForm.capability_type,
         api_base: sourceForm.api_base.trim() || null,
-        api_key_env_name: sourceForm.api_key_env_name.trim() || null,
         enabled: sourceForm.enabled,
         timeout_seconds: sourceForm.timeout_seconds,
         custom_headers: {},
@@ -411,6 +415,7 @@ export function useAISourceState ({
     saveSource,
     savingSource,
     selectSource,
+    selectSourceProtocol,
     selectedSource,
     sourceForm,
     sourcePresets,

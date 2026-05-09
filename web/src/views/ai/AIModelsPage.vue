@@ -77,9 +77,7 @@
                   :empty-action-label="t('ai.setupAction.createProvider')"
                   :remove-source-item="removeSourceItem"
                   :select-source="selectSource"
-                  :source-preset-initial="sourcePresetInitial"
                   :source-preset-label="sourcePresetLabel"
-                  :source-presets="sourcePresets"
                   :sources="sources"
                   :start-create-source="startCreateSource"
                 />
@@ -104,8 +102,11 @@
                     :remove-source="removeSource"
                     :save-source="saveSource"
                     :saving-source="savingSource"
+                    :select-source-protocol="selectSourceProtocol"
+                    :source-preset-initial="sourcePresetInitial"
                     :source-preset-label="sourcePresetLabel"
                     :source-preset-options="sourcePresetOptions"
+                    :source-presets="sourcePresets"
                     :touch-source-field="touchSourceField"
                     :workflow="setupWorkflow"
                     :workflow-result="workflowResults.provider"
@@ -252,6 +253,7 @@
     savingModel,
     savingProfile,
     savingSource,
+    selectSourceProtocol,
     selectModelProfile,
     selectSource,
     selectSourceModel,

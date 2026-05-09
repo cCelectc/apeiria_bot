@@ -63,7 +63,6 @@ async def fetch_ai_source_models(
             source_id=payload.source_id,
             preset_type=payload.preset_type,
             api_base=payload.api_base,
-            api_key_env_name=payload.api_key_env_name,
             api_key=payload.api_key,
             extra_config=payload.extra_config,
         )
@@ -94,7 +93,6 @@ async def test_ai_source_model(
             source_id=payload.source_id,
             preset_type=payload.preset_type,
             api_base=payload.api_base,
-            api_key_env_name=payload.api_key_env_name,
             api_key=payload.api_key,
             extra_config=payload.extra_config,
             model_identifier=payload.model_identifier,

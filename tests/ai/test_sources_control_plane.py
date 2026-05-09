@@ -32,11 +32,10 @@ def test_sources_operations_crud_uses_new_database(
             capability_type="chat_completion",
             preset_type="openai_compatible",
             api_base="https://api.example.test/v1",
-            api_key_env_name="OPENAI_API_KEY",
             enabled=True,
             timeout_seconds=30,
             custom_headers={"X-Test": "1"},
-            extra_config={"temperature": 0.2},
+            extra_config={"api_keys": ["test-key"], "temperature": 0.2},
         )
         sources = await operations.list_sources()
         assert len(sources) == 1
@@ -49,24 +48,56 @@ def test_sources_operations_crud_uses_new_database(
             capability_type="chat_completion",
             preset_type="openai_compatible",
             api_base="https://api.example.test/v2",
-            api_key_env_name="UPDATED_KEY",
             enabled=False,
             timeout_seconds=45,
             custom_headers={"X-Test": "2"},
-            extra_config={"temperature": 0.3},
+            extra_config={"api_keys": ["updated-key"], "temperature": 0.3},
         )
         assert updated is not None
         assert updated.name == "Primary Updated"
         assert updated.enabled is False
         assert updated.timeout_seconds == UPDATED_TIMEOUT_SECONDS
         assert updated.custom_headers == {"X-Test": "2"}
-        assert updated.extra_config == {"temperature": 0.3}
+        assert updated.extra_config == {
+            "api_keys": ["updated-key"],
+            "temperature": 0.3,
+        }
 
         deleted = await operations.delete_source(source_id=created.source_id)
         assert deleted is True
         assert await operations.list_sources() == []
 
     asyncio.run(run())
+
+
+def test_source_presets_are_protocol_level_only(
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    from apeiria.ai.model import UnsupportedAISourcePresetError
+    from apeiria.app.ai.operations.sources import (
+        SourcesAdminMixin,
+        coerce_source_preset_type,
+    )
+
+    monkeypatch.setattr(database_runtime, "_project_root", tmp_path)
+    database_runtime.ensure_ready()
+    operations = SourcesAdminMixin()
+
+    presets = operations.list_source_presets()
+    preset_types = {item.preset_type for item in presets}
+
+    assert preset_types == {
+        "openai_compatible",
+        "openai_compatible_embedding",
+        "openai_compatible_stt",
+        "openai_compatible_tts",
+        "generic_rerank_api",
+        "anthropic_compatible",
+    }
+    assert all(item.display_name != "OpenRouter" for item in presets)
+    with raises(UnsupportedAISourcePresetError):
+        coerce_source_preset_type("openrouter")
 
 
 def test_source_delete_is_blocked_when_source_models_exist(
@@ -88,11 +119,10 @@ def test_source_delete_is_blocked_when_source_models_exist(
             capability_type="chat_completion",
             preset_type="openai_compatible",
             api_base="https://api.example.test/v1",
-            api_key_env_name="OPENAI_API_KEY",
             enabled=True,
             timeout_seconds=30,
             custom_headers={},
-            extra_config={},
+            extra_config={"api_keys": ["test-key"]},
         )
         await models.create_source_model(
             source_id=source.source_id,
@@ -113,6 +143,33 @@ def test_source_delete_is_blocked_when_source_models_exist(
     asyncio.run(run())
 
 
+def test_source_operations_rejects_openrouter_brand_preset(
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    from apeiria.ai.model import UnsupportedAISourcePresetError
+    from apeiria.app.ai.operations.sources import SourcesAdminMixin
+
+    monkeypatch.setattr(database_runtime, "_project_root", tmp_path)
+    database_runtime.ensure_ready()
+    operations = SourcesAdminMixin()
+
+    async def run() -> None:
+        with raises(UnsupportedAISourcePresetError):
+            await operations.create_source(
+                name="OpenRouter",
+                capability_type="chat_completion",
+                preset_type="openrouter",
+                api_base="https://openrouter.ai/api/v1",
+                enabled=True,
+                timeout_seconds=30,
+                custom_headers={},
+                extra_config={"api_keys": ["test-key"]},
+            )
+
+    asyncio.run(run())
+
+
 def test_source_operations_normalizes_capability_type_from_preset(
     tmp_path: Path,
     monkeypatch: MonkeyPatch,
@@ -129,11 +186,10 @@ def test_source_operations_normalizes_capability_type_from_preset(
             capability_type="chat_completion",
             preset_type="openai_compatible_embedding",
             api_base="https://api.example.test/v1",
-            api_key_env_name="OPENAI_API_KEY",
             enabled=True,
             timeout_seconds=30,
             custom_headers={},
-            extra_config={},
+            extra_config={"api_keys": ["test-key"]},
         )
         assert created.capability_type == "embedding"
         assert created.client_type == "openai"
@@ -144,11 +200,10 @@ def test_source_operations_normalizes_capability_type_from_preset(
             capability_type="text_to_speech",
             preset_type="generic_rerank_api",
             api_base="https://api.example.test/rerank",
-            api_key_env_name="RERANK_API_KEY",
             enabled=True,
             timeout_seconds=15,
             custom_headers={},
-            extra_config={},
+            extra_config={"api_keys": ["rerank-key"]},
         )
         assert updated is not None
         assert updated.capability_type == "rerank"

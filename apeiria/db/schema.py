@@ -190,6 +190,14 @@ def _ensure_current_schema_shape(  # noqa: C901, PLR0912
                 ADD COLUMN capability_provenance_json TEXT NOT NULL DEFAULT '{}'
                 """
             )
+        if "preset_type" in source_columns:
+            connection.execute(
+                """
+                UPDATE ai_source
+                SET preset_type = 'openai_compatible'
+                WHERE preset_type = 'openrouter'
+                """
+            )
         connection.execute(
             """
             UPDATE ai_source
@@ -411,12 +419,10 @@ def _create_ai_control_plane_tables(connection: sqlite3.Connection) -> None:
                     'openai_compatible_stt',
                     'openai_compatible_tts',
                     'generic_rerank_api',
-                    'anthropic_compatible',
-                    'openrouter'
+                    'anthropic_compatible'
                 )
             ),
             api_base TEXT,
-            api_key_env_name TEXT,
             enabled INTEGER NOT NULL DEFAULT 1 CHECK(enabled IN (0, 1)),
             timeout_seconds INTEGER CHECK(
                 timeout_seconds IS NULL OR timeout_seconds > 0

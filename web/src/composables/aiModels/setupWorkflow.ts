@@ -54,7 +54,6 @@ export interface AISetupSourceSummary {
   preset_type: string
   api_base: string | null
   api_keys?: string[]
-  api_key_env_name?: string | null
 }
 
 export interface AISetupModelSummary {
@@ -123,7 +122,6 @@ function hasText (value: string | null | undefined) {
 
 function hasApiKey (source: AISetupSourceSummary) {
   return (source.api_keys ?? []).some(value => hasText(value))
-    || hasText(source.api_key_env_name)
 }
 
 function resolveConnectionIssues (source: AISetupSourceSummary | null) {

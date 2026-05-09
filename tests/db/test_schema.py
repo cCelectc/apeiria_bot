@@ -178,6 +178,7 @@ def test_database_schema_declares_value_checks(tmp_path: Path) -> None:
 
     with database.connect_sync() as connection:
         assert "CHECK(enabled IN (0, 1))" in _table_sql(connection, "ai_source")
+        assert "api_key_env_name" not in _table_sql(connection, "ai_source")
         assert "json_valid(custom_headers_json)" in _table_sql(
             connection,
             "ai_source",
@@ -190,6 +191,7 @@ def test_database_schema_declares_value_checks(tmp_path: Path) -> None:
             connection,
             "ai_source",
         )
+        assert "'openrouter'" not in _table_sql(connection, "ai_source")
         for table_name in SOURCE_MODEL_TABLE_NAMES:
             assert "capability_provenance_json" in _table_sql(
                 connection,
@@ -259,6 +261,38 @@ def test_database_ensure_ready_adds_provider_metadata_columns_to_v1_shape(
     assert model_row == ("{}", "{}", "{}")
 
 
+def test_database_ensure_ready_rewrites_openrouter_source_preset(
+    tmp_path: Path,
+) -> None:
+    database = ApeiriaDatabase(project_root=tmp_path)
+    _create_minimal_legacy_ai_model_tables(database, preset_type="openrouter")
+
+    database.ensure_ready()
+
+    with database.connect_sync() as connection:
+        row = connection.execute(
+            """
+            SELECT preset_type, api_base, custom_headers_json,
+                extra_config_json, adapter_kind, capability_metadata_json,
+                default_options_json, capability_provenance_json
+            FROM ai_source
+            WHERE source_id = ?
+            """,
+            ("source-legacy",),
+        ).fetchone()
+
+    assert row == (
+        "openai_compatible",
+        "https://openrouter.ai/api/v1",
+        '{"HTTP-Referer":"https://apeiria.local"}',
+        '{"route":"openrouter"}',
+        "openai_compatible",
+        "{}",
+        "{}",
+        "{}",
+    )
+
+
 def test_database_ensure_ready_adds_turn_disposition_to_v1_chat_message(
     tmp_path: Path,
 ) -> None:
@@ -294,7 +328,11 @@ def _create_schema_meta(
         )
 
 
-def _create_minimal_legacy_ai_model_tables(database: ApeiriaDatabase) -> None:
+def _create_minimal_legacy_ai_model_tables(
+    database: ApeiriaDatabase,
+    *,
+    preset_type: str = "anthropic_compatible",
+) -> None:
     with database.connect_sync() as connection:
         _create_schema_meta_in_connection(
             connection,
@@ -310,7 +348,6 @@ def _create_minimal_legacy_ai_model_tables(database: ApeiriaDatabase) -> None:
                 client_type TEXT NOT NULL,
                 preset_type TEXT NOT NULL,
                 api_base TEXT,
-                api_key_env_name TEXT,
                 enabled INTEGER NOT NULL DEFAULT 1,
                 timeout_seconds INTEGER,
                 custom_headers_json TEXT NOT NULL DEFAULT '{}',
@@ -327,21 +364,25 @@ def _create_minimal_legacy_ai_model_tables(database: ApeiriaDatabase) -> None:
                 capability_type,
                 client_type,
                 preset_type,
+                api_base,
                 enabled,
                 custom_headers_json,
                 extra_config_json,
                 updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 "source-legacy",
                 "Legacy",
                 "chat_completion",
-                "anthropic",
-                "anthropic_compatible",
+                "openai" if preset_type == "openrouter" else "anthropic",
+                preset_type,
+                "https://openrouter.ai/api/v1" if preset_type == "openrouter" else None,
                 1,
-                "{}",
-                "{}",
+                '{"HTTP-Referer":"https://apeiria.local"}'
+                if preset_type == "openrouter"
+                else "{}",
+                '{"route":"openrouter"}' if preset_type == "openrouter" else "{}",
                 "2026-04-25T00:00:00",
             ),
         )

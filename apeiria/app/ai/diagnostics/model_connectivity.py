@@ -45,12 +45,11 @@ _AUTH_HEADER_PATTERN = re.compile(
 )
 
 
-async def fetch_source_model_catalog(  # noqa: PLR0913
+async def fetch_source_model_catalog(
     *,
     source_id: str | None = None,
     preset_type: str | None = None,
     api_base: str | None = None,
-    api_key_env_name: str | None = None,
     api_key: str | None = None,
     extra_config: dict[str, object] | None = None,
 ) -> list["AIModelCatalogItem"]:
@@ -64,7 +63,6 @@ async def fetch_source_model_catalog(  # noqa: PLR0913
         stored_source=stored_source,
         preset_type=preset_type,
         api_base=api_base,
-        api_key_env_name=api_key_env_name,
         extra_config=extra_config,
     )
     resolved_api_key = api_key or ai_source_service.get_source_api_key(source)
@@ -107,7 +105,6 @@ async def test_source_model_connectivity(  # noqa: PLR0913
     source_id: str | None = None,
     preset_type: str | None = None,
     api_base: str | None = None,
-    api_key_env_name: str | None = None,
     api_key: str | None = None,
     extra_config: dict[str, object] | None = None,
     model_identifier: str,
@@ -128,7 +125,6 @@ async def test_source_model_connectivity(  # noqa: PLR0913
         stored_source=stored_source,
         preset_type=preset_type,
         api_base=api_base,
-        api_key_env_name=api_key_env_name,
         extra_config=extra_config,
     )
     resolved_api_key = api_key or ai_source_service.get_source_api_key(source)
@@ -249,7 +245,6 @@ def _resolve_source_for_model_fetch(
     stored_source: "AISourceDefinition | None",
     preset_type: str | None,
     api_base: str | None,
-    api_key_env_name: str | None,
     extra_config: dict[str, object] | None = None,
 ) -> "AISourceDefinition":
     effective_preset_type = preset_type or (
@@ -273,14 +268,6 @@ def _resolve_source_for_model_fetch(
             AISourceModelFetchConfigError.MISSING_API_BASE
         )
 
-    effective_api_key_env_name = (
-        api_key_env_name
-        if api_key_env_name is not None
-        else stored_source.api_key_env_name
-        if stored_source
-        else None
-    )
-
     return ai_source_service.build_ephemeral_source(
         name=stored_source.name if stored_source is not None else "preview_source",
         capability_type=(  # type: ignore[arg-type]
@@ -298,12 +285,6 @@ def _resolve_source_for_model_fetch(
         client_type=resolve_client_type_for_preset(coerced_preset_type),
         preset_type=coerced_preset_type,
         api_base=effective_api_base.strip(),
-        api_key_env_name=(
-            effective_api_key_env_name.strip()
-            if isinstance(effective_api_key_env_name, str)
-            and effective_api_key_env_name.strip()
-            else None
-        ),
         enabled=stored_source.enabled if stored_source is not None else True,
         timeout_seconds=(
             stored_source.timeout_seconds if stored_source is not None else None

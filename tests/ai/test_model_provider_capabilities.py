@@ -104,12 +104,7 @@ def test_runtime_adapter_selection_uses_adapter_kind_not_preset() -> None:
         and preset.adapter_kind == "anthropic_compatible"
         for preset in SOURCE_PRESETS
     )
-    assert any(
-        preset.preset_type == "openrouter"
-        and preset.adapter_kind == "openai_compatible"
-        and preset.default_api_base == "https://openrouter.ai/api/v1"
-        for preset in SOURCE_PRESETS
-    )
+    assert "openrouter" not in {preset.preset_type for preset in SOURCE_PRESETS}
     assert resolve_adapter_kind_for_client_type("openai") == "openai_compatible"
 
 
@@ -301,8 +296,25 @@ def test_model_capability_template_registry_matches_deterministically() -> None:
     )
 
 
-def test_default_capability_template_enrichment_is_model_specific() -> None:
-    known = enrich_model_capabilities(
+def test_default_capability_template_registry_is_empty_and_conservative() -> None:
+    assert (
+        model_capability_template_registry.select(
+            adapter_kind="openai_compatible",
+            model_identifier="gpt-4o-mini",
+            source_hints=(),
+        )
+        is None
+    )
+    assert (
+        model_capability_template_registry.select(
+            adapter_kind="anthropic_compatible",
+            model_identifier="claude-3-5-sonnet",
+            source_hints=(),
+        )
+        is None
+    )
+
+    known_name = enrich_model_capabilities(
         source=_source("source-openai"),
         model_identifier="gpt-4o-mini",
         registry=model_capability_template_registry,
@@ -313,9 +325,9 @@ def test_default_capability_template_enrichment_is_model_specific() -> None:
         registry=model_capability_template_registry,
     )
 
-    assert known.capability_metadata["tool_calling"] is True
-    assert "image" in known.capability_metadata["input_modalities"]
-    assert known.provenance["capability.tool_calling"].source == "model_template"
+    assert known_name.capability_metadata["tool_calling"] is False
+    assert known_name.capability_metadata["input_modalities"] == ["text"]
+    assert known_name.provenance["capability.tool_calling"].source == "preset_template"
     assert unknown.capability_metadata["tool_calling"] is False
     assert unknown.provenance["capability.tool_calling"].source == "preset_template"
 

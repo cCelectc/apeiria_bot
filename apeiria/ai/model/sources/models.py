@@ -23,7 +23,6 @@ AISourcePresetType = Literal[
     "openai_compatible_tts",
     "generic_rerank_api",
     "anthropic_compatible",
-    "openrouter",
 ]
 
 
@@ -57,7 +56,6 @@ class AISourceDefinition:
     client_type: AISourceClientType
     preset_type: AISourcePresetType
     api_base: str | None
-    api_key_env_name: str | None = None
     enabled: bool = True
     timeout_seconds: int | None = None
     custom_headers: dict[str, str] | None = None
@@ -77,15 +75,6 @@ SOURCE_PRESETS: tuple[AISourcePresetDefinition, ...] = (
         adapter_kind="openai_compatible",
         default_api_base="https://api.openai.com/v1",
         description="适用于 OpenAI 风格的聊天补全接口。",
-    ),
-    AISourcePresetDefinition(
-        preset_type="openrouter",
-        display_name="OpenRouter",
-        capability_type="chat_completion",
-        client_type="openai",
-        adapter_kind="openai_compatible",
-        default_api_base="https://openrouter.ai/api/v1",
-        description="适用于 OpenRouter 的 OpenAI 兼容聊天补全接口。",
     ),
     AISourcePresetDefinition(
         preset_type="openai_compatible_embedding",

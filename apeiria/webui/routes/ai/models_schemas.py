@@ -19,7 +19,6 @@ class AISourceModelFetchRequest(BaseModel):
     source_id: str | None = Field(default=None, max_length=64)
     preset_type: str | None = Field(default=None, max_length=64)
     api_base: str | None = Field(default=None, max_length=2000)
-    api_key_env_name: str | None = Field(default=None, max_length=128)
     api_key: str | None = Field(default=None, max_length=512)
     extra_config: dict[str, object] = {}
 
@@ -28,7 +27,6 @@ class AISourceModelTestRequest(BaseModel):
     source_id: str | None = Field(default=None, max_length=64)
     preset_type: str | None = Field(default=None, max_length=64)
     api_base: str | None = Field(default=None, max_length=2000)
-    api_key_env_name: str | None = Field(default=None, max_length=128)
     api_key: str | None = Field(default=None, max_length=512)
     extra_config: dict[str, object] = {}
     model_identifier: str = Field(min_length=1, max_length=256)
