@@ -204,7 +204,6 @@ export interface AISourcePresetItem {
   capability_type: string
   client_type: string
   adapter_kind: string
-  default_api_base: string | null
   description: string
   capability_metadata: Record<string, unknown>
   default_options: Record<string, unknown>

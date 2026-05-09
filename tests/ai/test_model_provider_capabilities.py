@@ -6,7 +6,12 @@ from typing import Any
 
 from pytest import raises
 
-from apeiria.ai.model.adapters import anthropic_compatible, openai_compatible
+from apeiria.ai.model.adapters import (
+    anthropic_compatible,
+    gemini_native,
+    ollama_native,
+    openai_compatible,
+)
 from apeiria.ai.model.catalog.capability_templates import (
     ModelCapabilityTemplate,
     ModelCapabilityTemplateRegistry,
@@ -64,6 +69,8 @@ from apeiria.ai.model.sources.models import (
 from tests.ai.agent_turn_helpers import ModelInvokerStub, model_response
 
 _TEST_TEMPERATURE = 0.2
+_TEST_MAX_TOKENS = 32
+_HTTP_BAD_REQUEST = 400
 
 
 def test_provider_protocol_registry_resolves_current_adapter_kinds() -> None:
@@ -73,6 +80,8 @@ def test_provider_protocol_registry_resolves_current_adapter_kinds() -> None:
         "openai_compatible",
         "anthropic_compatible",
         "generic_rerank",
+        "gemini_native",
+        "ollama_native",
     }
     assert (
         provider_adapter_registry.get("openai_compatible").operation_support.chat
@@ -80,6 +89,16 @@ def test_provider_protocol_registry_resolves_current_adapter_kinds() -> None:
     )
     assert (
         provider_adapter_registry.get("generic_rerank").operation_support.rerank is True
+    )
+    assert provider_adapter_registry.get("gemini_native").operation_support.chat is True
+    assert (
+        provider_adapter_registry.get("gemini_native").operation_support.embedding
+        is True
+    )
+    assert provider_adapter_registry.get("ollama_native").operation_support.chat is True
+    assert (
+        provider_adapter_registry.get("ollama_native").operation_support.embedding
+        is True
     )
     with raises(UnsupportedAIModelAdapterKindError):
         provider_adapter_registry.get("missing-provider")
@@ -106,6 +125,8 @@ def test_runtime_adapter_selection_uses_adapter_kind_not_preset() -> None:
     )
     assert "openrouter" not in {preset.preset_type for preset in SOURCE_PRESETS}
     assert resolve_adapter_kind_for_client_type("openai") == "openai_compatible"
+    assert resolve_adapter_kind_for_client_type("gemini") == "gemini_native"
+    assert resolve_adapter_kind_for_client_type("ollama") == "ollama_native"
 
 
 def test_model_capabilities_parse_defaults_and_model_overrides() -> None:
@@ -1289,6 +1310,207 @@ def test_openai_compatible_streaming_strips_think_delta_text(
     }
 
 
+def test_gemini_native_adapter_normalizes_chat_catalog_and_embeddings(
+    monkeypatch: Any,
+) -> None:
+    requests: list[tuple[str, str, dict[str, Any] | None]] = []
+
+    async def request(spec: Any) -> _HTTPResponseStub:
+        payload = spec.json
+        requests.append(
+            (spec.method, spec.url, payload if isinstance(payload, dict) else None)
+        )
+        if spec.url.endswith(":generateContent"):
+            return _HTTPResponseStub(
+                {
+                    "candidates": [
+                        {
+                            "content": {
+                                "parts": [
+                                    {"text": "gemini ok"},
+                                ]
+                            },
+                            "finishReason": "STOP",
+                        }
+                    ],
+                    "usageMetadata": {"promptTokenCount": 3},
+                }
+            )
+        if spec.url.endswith(":embedContent"):
+            return _HTTPResponseStub(
+                {
+                    "embedding": {
+                        "values": [0.1, 0.2, 0.3],
+                    }
+                }
+            )
+        return _HTTPResponseStub(
+            {
+                "models": [
+                    {
+                        "name": "models/gemini-2.5-flash",
+                        "displayName": "Gemini 2.5 Flash",
+                    }
+                ]
+            }
+        )
+
+    monkeypatch.setattr(gemini_native, "_request_json", request)
+    provider = gemini_native.GeminiNativeProvider(
+        api_base="https://generativelanguage.googleapis.com/v1beta",
+        api_key="test-key",
+    )
+
+    async def scenario() -> tuple[Any, Any, Any]:
+        generated = await provider.generate_text(
+            AIModelGenerateRequest(
+                source_id="source-1",
+                model_name="gemini-2.5-flash",
+                messages=(AIModelMessage(role="user", content="hello"),),
+                max_tokens=_TEST_MAX_TOKENS,
+            )
+        )
+        models = await provider.list_models()
+        embeddings = await provider.embed_texts(
+            __import__(
+                "apeiria.ai.model.runtime.adapter",
+                fromlist=["AIModelEmbeddingRequest"],
+            ).AIModelEmbeddingRequest(
+                source_id="source-1",
+                model_name="text-embedding-004",
+                texts=("hello",),
+            )
+        )
+        return generated, models, embeddings
+
+    generated, models, embeddings = asyncio.run(scenario())
+
+    assert generated.content == "gemini ok"
+    assert generated.usage == {"promptTokenCount": 3}
+    assert generated.finish_reason == "STOP"
+    assert models[0].id == "gemini-2.5-flash"
+    assert models[0].name == "Gemini 2.5 Flash"
+    assert embeddings.vectors == ((0.1, 0.2, 0.3),)
+    assert requests[0][1].endswith("/models/gemini-2.5-flash:generateContent")
+    assert requests[0][2]["generationConfig"]["maxOutputTokens"] == _TEST_MAX_TOKENS
+
+
+def test_ollama_native_adapter_normalizes_chat_catalog_and_embeddings(
+    monkeypatch: Any,
+) -> None:
+    requests: list[tuple[str, str, dict[str, Any] | None]] = []
+
+    async def request(spec: Any) -> _HTTPResponseStub:
+        payload = spec.json
+        requests.append(
+            (spec.method, spec.url, payload if isinstance(payload, dict) else None)
+        )
+        if spec.url.endswith("/api/chat"):
+            return _HTTPResponseStub(
+                {
+                    "message": {"content": "ollama ok"},
+                    "done_reason": "stop",
+                    "prompt_eval_count": 2,
+                    "eval_count": 4,
+                }
+            )
+        if spec.url.endswith("/api/embed"):
+            return _HTTPResponseStub(
+                {
+                    "embeddings": [
+                        [0.1, 0.2],
+                        [0.3, 0.4],
+                    ]
+                }
+            )
+        return _HTTPResponseStub(
+            {
+                "models": [
+                    {
+                        "name": "qwen3:8b",
+                        "model": "qwen3:8b",
+                    }
+                ]
+            }
+        )
+
+    monkeypatch.setattr(ollama_native, "_request_json", request)
+    provider = ollama_native.OllamaNativeProvider(
+        api_base="http://127.0.0.1:11434",
+    )
+
+    async def scenario() -> tuple[Any, Any, Any]:
+        generated = await provider.generate_text(
+            AIModelGenerateRequest(
+                source_id="source-1",
+                model_name="qwen3:8b",
+                messages=(AIModelMessage(role="user", content="hello"),),
+                max_tokens=_TEST_MAX_TOKENS,
+            )
+        )
+        models = await provider.list_models()
+        embeddings = await provider.embed_texts(
+            __import__(
+                "apeiria.ai.model.runtime.adapter",
+                fromlist=["AIModelEmbeddingRequest"],
+            ).AIModelEmbeddingRequest(
+                source_id="source-1",
+                model_name="nomic-embed-text",
+                texts=("hello", "world"),
+            )
+        )
+        return generated, models, embeddings
+
+    generated, models, embeddings = asyncio.run(scenario())
+
+    assert generated.content == "ollama ok"
+    assert generated.usage == {"prompt_eval_count": 2, "eval_count": 4}
+    assert generated.finish_reason == "stop"
+    assert models[0].id == "qwen3:8b"
+    assert models[0].name == "qwen3:8b"
+    assert embeddings.vectors == ((0.1, 0.2), (0.3, 0.4))
+    assert requests[0][1].endswith("/api/chat")
+    assert requests[0][2]["options"]["num_predict"] == _TEST_MAX_TOKENS
+
+
+def test_native_protocol_adapters_report_unsupported_operations() -> None:
+    gemini = gemini_native.GeminiNativeProvider(
+        api_base="https://generativelanguage.googleapis.com/v1beta",
+        api_key="test-key",
+    )
+    ollama = ollama_native.OllamaNativeProvider(
+        api_base="http://127.0.0.1:11434",
+    )
+
+    with raises(gemini_native.GeminiNativeProviderCapabilityError):
+        asyncio.run(
+            gemini.rerank_documents(
+                __import__(
+                    "apeiria.ai.model.runtime.adapter",
+                    fromlist=["AIModelRerankRequest"],
+                ).AIModelRerankRequest(
+                    source_id="source-1",
+                    model_name="gemini-2.5-flash",
+                    query="hello",
+                    documents=("doc",),
+                )
+            )
+        )
+    with raises(ollama_native.OllamaNativeProviderCapabilityError):
+        asyncio.run(
+            ollama.synthesize_speech(
+                __import__(
+                    "apeiria.ai.model.runtime.adapter",
+                    fromlist=["AIModelSpeechRequest"],
+                ).AIModelSpeechRequest(
+                    source_id="source-1",
+                    model_name="qwen3:8b",
+                    text="hello",
+                )
+            )
+        )
+
+
 def test_agent_runtime_uses_fallback_after_capability_planning_reject() -> None:
     from apeiria.app.ai.agent_turn import (
         AgentModelGenerationRequest,
@@ -1686,6 +1908,19 @@ class _OpenAIStreamClientStub:
 
     async def close(self) -> None:
         return None
+
+
+class _HTTPResponseStub:
+    def __init__(self, payload: dict[str, Any], status_code: int = 200) -> None:
+        self._payload = payload
+        self.status_code = status_code
+
+    def json(self) -> dict[str, Any]:
+        return self._payload
+
+    def raise_for_status(self) -> None:
+        if self.status_code >= _HTTP_BAD_REQUEST:
+            raise RuntimeError
 
 
 class _OpenAIStreamStub:

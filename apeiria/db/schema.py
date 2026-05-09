@@ -403,13 +403,21 @@ def _create_ai_control_plane_tables(connection: sqlite3.Connection) -> None:
                 )
             ),
             client_type TEXT NOT NULL CHECK(
-                client_type IN ('openai', 'anthropic', 'generic_rerank')
+                client_type IN (
+                    'openai',
+                    'anthropic',
+                    'generic_rerank',
+                    'gemini',
+                    'ollama'
+                )
             ),
             adapter_kind TEXT NOT NULL DEFAULT 'openai_compatible' CHECK(
                 adapter_kind IN (
                     'openai_compatible',
                     'anthropic_compatible',
-                    'generic_rerank'
+                    'generic_rerank',
+                    'gemini_native',
+                    'ollama_native'
                 )
             ),
             preset_type TEXT NOT NULL CHECK(
@@ -419,7 +427,11 @@ def _create_ai_control_plane_tables(connection: sqlite3.Connection) -> None:
                     'openai_compatible_stt',
                     'openai_compatible_tts',
                     'generic_rerank_api',
-                    'anthropic_compatible'
+                    'anthropic_compatible',
+                    'gemini_native',
+                    'gemini_native_embedding',
+                    'ollama_native',
+                    'ollama_native_embedding'
                 )
             ),
             api_base TEXT,

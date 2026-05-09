@@ -16,7 +16,6 @@ class AISourcePresetItem(BaseModel):
     capability_type: str
     client_type: str
     adapter_kind: str
-    default_api_base: str | None = None
     description: str
     capability_metadata: dict[str, object] = {}
     default_options: dict[str, object] = {}
@@ -70,7 +69,6 @@ def to_ai_source_preset_item(item: "AISourcePresetDefinition") -> AISourcePreset
         capability_type=item.capability_type,
         client_type=item.client_type,
         adapter_kind=item.adapter_kind,
-        default_api_base=item.default_api_base,
         description=item.description,
         capability_metadata=item.capability_metadata or {},
         default_options=item.default_options or {},

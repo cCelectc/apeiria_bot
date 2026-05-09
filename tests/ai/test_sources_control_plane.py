@@ -94,6 +94,29 @@ def test_source_presets_are_protocol_level_only(
         "openai_compatible_tts",
         "generic_rerank_api",
         "anthropic_compatible",
+        "gemini_native",
+        "gemini_native_embedding",
+        "ollama_native",
+        "ollama_native_embedding",
+    }
+    compatible_presets = [item for item in presets if "compatible" in item.preset_type]
+    assert compatible_presets
+    assert all(item.default_api_base is None for item in compatible_presets)
+    assert {
+        (item.preset_type, item.client_type, item.adapter_kind)
+        for item in presets
+        if item.preset_type
+        in {
+            "gemini_native",
+            "gemini_native_embedding",
+            "ollama_native",
+            "ollama_native_embedding",
+        }
+    } == {
+        ("gemini_native", "gemini", "gemini_native"),
+        ("gemini_native_embedding", "gemini", "gemini_native"),
+        ("ollama_native", "ollama", "ollama_native"),
+        ("ollama_native_embedding", "ollama", "ollama_native"),
     }
     assert all(item.display_name != "OpenRouter" for item in presets)
     with raises(UnsupportedAISourcePresetError):

@@ -1,49 +1,28 @@
 <template>
   <v-sheet
-    class="surface-gradient-card pa-4 mb-4 source-workspace"
+    class="mb-4 source-workspace"
     :class="{ 'source-workspace--focused': focused }"
   >
-    <div class="source-workflow-step mb-4">
-      <v-chip color="primary" size="small" variant="tonal">
-        {{ t(focused ? 'ai.setupStep.connection' : 'ai.setupStep.provider') }}
-      </v-chip>
-      <div class="source-workflow-step__text">
-        {{ t(focused ? 'ai.modelFlowStepHint.connection' : 'ai.providerWorkflowHint') }}
-      </div>
-    </div>
-
-    <div class="d-flex flex-wrap justify-space-between align-start ga-3 mb-4">
-      <div>
-        <div class="text-h6 font-weight-medium">
-          {{ sourceForm.name || t('ai.sourceConfigTitle') }}
-        </div>
-        <div class="text-body-2 text-medium-emphasis mt-1">
-          {{ sourceForm.api_base || (isCreatingSource ? t('ai.sourceCreateHint') : t('ai.sourceConfigHint')) }}
+    <header class="source-workspace__header">
+      <div class="source-workspace__heading">
+        <div class="source-workflow-step">
+          <v-chip color="primary" size="small" variant="tonal">
+            {{ t(focused ? 'ai.setupStep.connection' : 'ai.setupStep.provider') }}
+          </v-chip>
+          <div class="source-workflow-step__text">
+            {{ t(focused ? 'ai.modelFlowStepHint.connection' : 'ai.providerWorkflowHint') }}
+          </div>
         </div>
         <div v-if="sourceForm.preset_type" class="source-summary-line mt-2">
           <span>{{ t('ai.sourcePreset') }}：</span>
           <strong>{{ sourcePresetLabel(sourceForm.preset_type) }}</strong>
         </div>
       </div>
-      <div class="d-flex flex-wrap ga-2">
-        <v-btn
-          v-if="sourceForm.source_id"
-          color="error"
-          :loading="deletingSource"
-          variant="tonal"
-          @click="removeSource"
-        >
-          {{ t('common.delete') }}
-        </v-btn>
-        <v-btn color="primary" :disabled="!canSaveSource" :loading="savingSource" @click="saveSource">
-          {{ t('ai.saveSourceConfig') }}
-        </v-btn>
-      </div>
-    </div>
+    </header>
 
     <div
       v-if="isCreatingSource"
-      class="source-protocol-step mb-4"
+      class="source-protocol-step"
       :class="{ 'source-protocol-step--focused': !sourceForm.preset_type }"
     >
       <div class="source-protocol-step__header">
@@ -66,7 +45,7 @@
           type="button"
           @click="selectProtocol(preset.preset_type)"
         >
-          <v-avatar class="source-protocol-option__avatar" color="primary" size="36" variant="tonal">
+          <v-avatar class="source-protocol-option__avatar" color="primary" size="28" variant="tonal">
             {{ sourcePresetInitial(preset.preset_type) }}
           </v-avatar>
           <span class="source-protocol-option__body">
@@ -76,9 +55,6 @@
             <span class="source-protocol-option__text">
               {{ preset.description || t('ai.sourceProtocolDefaultHint') }}
             </span>
-            <span v-if="preset.default_api_base" class="source-protocol-option__meta">
-              {{ preset.default_api_base }}
-            </span>
           </span>
         </button>
       </div>
@@ -87,7 +63,7 @@
       </div>
     </div>
 
-    <div v-if="workflow.connectionIssues.length > 0" class="source-issue-list mb-4">
+    <div v-if="workflow.connectionIssues.length > 0" class="source-issue-list">
       <v-chip
         v-for="issue in workflow.connectionIssues"
         :key="issue"
@@ -100,29 +76,25 @@
     </div>
 
     <div class="source-config-list">
-      <div class="source-config-row workbench-field-row">
-        <div class="workbench-field-row__meta">
-          <div class="workbench-field__title">{{ t('ai.sourceName') }}</div>
-          <div class="workbench-field__helper">{{ t('ai.sourceConfigNameHint') }}</div>
-        </div>
+      <label class="source-config-field workbench-field">
+        <span class="workbench-field__title">{{ t('ai.sourceName') }}</span>
+        <span class="workbench-field__helper">{{ t('ai.sourceConfigNameHint') }}</span>
         <v-text-field
           v-model.trim="sourceForm.name"
           :aria-label="t('ai.sourceName')"
-          class="workbench-field-row__control"
+          class="workbench-field__control"
           density="comfortable"
           :disabled="savingSource"
           :error-messages="displayedSourceErrors.name ? [displayedSourceErrors.name] : []"
           hide-details="auto"
           @blur="touchSourceField('name')"
         />
-      </div>
+      </label>
 
-      <div class="source-config-row workbench-field-row">
-        <div class="workbench-field-row__meta">
-          <div class="workbench-field__title">{{ t('ai.sourcePreset') }}</div>
-          <div class="workbench-field__helper">{{ t('ai.sourceConfigPresetHint') }}</div>
-        </div>
-        <div class="workbench-field-row__control source-protocol-field">
+      <div class="source-config-field workbench-field">
+        <div class="workbench-field__title">{{ t('ai.sourcePreset') }}</div>
+        <div class="workbench-field__helper">{{ t('ai.sourceConfigPresetHint') }}</div>
+        <div class="source-protocol-field">
           <v-select
             v-if="!isCreatingSource"
             v-model="sourceForm.preset_type"
@@ -143,18 +115,15 @@
         </div>
       </div>
 
-      <div class="source-config-row workbench-field-row">
-        <div class="workbench-field-row__meta">
-          <div class="workbench-field__title">{{ t('ai.sourceApiKey') }}</div>
-          <div class="workbench-field__helper">{{ t('ai.sourceConfigApiKeyHint') }}</div>
-        </div>
-        <div class="workbench-field-row__control source-api-key-field workbench-field-action-row">
+      <div class="source-config-field source-config-field--wide workbench-field">
+        <div class="workbench-field__title">{{ t('ai.sourceApiKey') }}</div>
+        <div class="workbench-field__helper">{{ t('ai.sourceConfigApiKeyHint') }}</div>
+        <div class="source-api-key-field workbench-field-action-row">
           <v-text-field
+            v-model.trim="sourcePrimaryApiKey"
             :aria-label="t('ai.sourceApiKey')"
             density="comfortable"
             hide-details
-            :model-value="sourcePrimaryApiKey"
-            readonly
           />
           <v-btn
             class="source-api-key-field__action"
@@ -166,28 +135,63 @@
             {{ t('ai.sourceApiKeyManage') }}
           </v-btn>
         </div>
+        <div v-if="extraSourceApiKeys.length > 0" class="source-api-key-inline-list">
+          <div
+            v-for="(item, index) in extraSourceApiKeys"
+            :key="`${index}-${item}`"
+            class="source-api-key-inline-item"
+          >
+            <span class="source-api-key-inline-item__value">{{ item }}</span>
+            <v-btn
+              :aria-label="t('common.delete')"
+              density="comfortable"
+              icon="mdi-close"
+              size="x-small"
+              variant="text"
+              @click="removeExtraSourceApiKey(index)"
+            />
+          </div>
+        </div>
       </div>
 
-      <div class="source-config-row workbench-field-row">
-        <div class="workbench-field-row__meta">
-          <div class="workbench-field__title">{{ t('ai.sourceApiBase') }}</div>
-          <div class="workbench-field__helper">{{ t('ai.sourceConfigApiBaseHint') }}</div>
-        </div>
+      <label class="source-config-field source-config-field--wide workbench-field">
+        <span class="workbench-field__title">{{ t('ai.sourceApiBase') }}</span>
+        <span class="workbench-field__helper">{{ t('ai.sourceConfigApiBaseHint') }}</span>
         <v-text-field
           v-model.trim="sourceForm.api_base"
           :aria-label="t('ai.sourceApiBase')"
-          class="workbench-field-row__control"
+          class="workbench-field__control"
           density="comfortable"
           :disabled="savingSource"
           hide-details
         />
-      </div>
+      </label>
     </div>
 
     <div v-if="providerSaveDisabledReason" class="disabled-reason mt-3">
       {{ providerSaveDisabledReason }}
     </div>
     <AIWorkflowResultAlert :result="workflowResult" />
+
+    <div class="source-form-actions">
+      <v-btn prepend-icon="mdi-tune-variant" variant="tonal" @click="sourceAdvancedDialog = true">
+        {{ t('ai.sourceAdvancedConfigAction') }}
+      </v-btn>
+      <div class="source-form-actions__primary">
+        <v-btn
+          v-if="sourceForm.source_id"
+          color="error"
+          :loading="deletingSource"
+          variant="tonal"
+          @click="removeSource"
+        >
+          {{ t('common.delete') }}
+        </v-btn>
+        <v-btn color="primary" :disabled="!canSaveSource" :loading="savingSource" @click="saveSource">
+          {{ t('ai.saveSourceConfig') }}
+        </v-btn>
+      </div>
+    </div>
 
     <v-dialog v-model="sourceApiKeysDialog" max-width="760">
       <v-card>
@@ -247,12 +251,6 @@
         </v-card-actions>
       </v-card>
     </v-dialog>
-
-    <div class="source-secondary-actions mt-3">
-      <v-btn prepend-icon="mdi-tune-variant" variant="tonal" @click="sourceAdvancedDialog = true">
-        {{ t('ai.sourceAdvancedConfigAction') }}
-      </v-btn>
-    </div>
 
     <PopupPanel
       v-model="sourceAdvancedDialog"
@@ -484,7 +482,20 @@
   const sourceApiKeyDraft = ref<string[]>([])
   const sourceApiKeyDraftInput = ref('')
 
-  const sourcePrimaryApiKey = computed(() => sourceForm.value.api_keys[0] ?? '')
+  const sourcePrimaryApiKey = computed({
+    get: () => sourceForm.value.api_keys[0] ?? '',
+    set: value => {
+      const nextValue = value.trim()
+      const nextKeys = [...sourceForm.value.api_keys]
+      if (nextValue) {
+        nextKeys[0] = nextValue
+      } else {
+        nextKeys.splice(0, 1)
+      }
+      sourceForm.value.api_keys = nextKeys
+    },
+  })
+  const extraSourceApiKeys = computed(() => sourceForm.value.api_keys.slice(1))
   const providerSaveDisabledReason = computed(() => {
     if (props.savingSource || props.canSaveSource) {
       return ''
@@ -527,6 +538,12 @@
     sourceApiKeyDraft.value = sourceApiKeyDraft.value.filter((_, itemIndex) => itemIndex !== index)
   }
 
+  function removeExtraSourceApiKey (index: number) {
+    sourceForm.value.api_keys = sourceForm.value.api_keys.filter(
+      (_, itemIndex) => itemIndex !== index + 1,
+    )
+  }
+
   function applySourceApiKeyDraft () {
     sourceForm.value.api_keys = [...sourceApiKeyDraft.value]
     sourceApiKeysDialog.value = false
@@ -544,12 +561,28 @@
 
 <style scoped>
 .source-workspace {
-  border: 1px solid rgba(var(--v-theme-on-surface), 0.08);
+  display: grid;
+  gap: 16px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid rgba(var(--v-theme-outline-variant), 0.2);
 }
 
 .source-workspace--focused {
-  border-color: rgba(var(--v-theme-primary), 0.38);
-  box-shadow: inset 0 0 0 1px rgba(var(--v-theme-primary), 0.12);
+  border-bottom-color: rgba(var(--v-theme-primary), 0.3);
+}
+
+.source-workspace__header {
+  display: flex;
+  min-width: 0;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.source-workspace__heading {
+  display: grid;
+  min-width: 0;
+  gap: 8px;
 }
 
 .source-summary-line {
@@ -579,16 +612,13 @@
 
 .source-protocol-step {
   display: grid;
-  gap: 12px;
-  padding: 12px;
-  border: 1px solid rgba(var(--v-theme-outline-variant), 0.26);
-  border-radius: var(--shape-medium);
-  background: rgba(var(--v-theme-surface-container-low), 0.62);
+  gap: 10px;
+  padding: 0 0 14px;
+  border-bottom: 1px solid rgba(var(--v-theme-outline-variant), 0.18);
 }
 
 .source-protocol-step--focused {
-  border-color: rgba(var(--v-theme-primary), 0.38);
-  box-shadow: inset 0 0 0 1px rgba(var(--v-theme-primary), 0.1);
+  border-bottom-color: rgba(var(--v-theme-primary), 0.28);
 }
 
 .source-protocol-step__header {
@@ -614,8 +644,8 @@
 
 .source-protocol-grid {
   display: grid;
-  gap: 10px;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 8px;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
 }
 
 .source-protocol-option {
@@ -623,12 +653,12 @@
   width: 100%;
   min-width: 0;
   grid-template-columns: auto minmax(0, 1fr);
-  gap: 10px;
-  align-items: start;
-  padding: 12px;
+  gap: 9px;
+  align-items: center;
+  padding: 10px 11px;
   border: 1px solid rgba(var(--v-theme-outline-variant), 0.28);
   border-radius: var(--shape-small);
-  background: rgba(var(--v-theme-surface-container), 0.52);
+  background: rgba(var(--v-theme-surface), 0.54);
   color: inherit;
   cursor: pointer;
   text-align: left;
@@ -646,12 +676,14 @@
 }
 
 .source-protocol-option--active {
-  border-color: rgba(var(--v-theme-primary), 0.46);
-  background: rgba(var(--v-theme-primary), 0.12);
+  border-color: rgba(var(--v-theme-primary), 0.52);
+  background: rgba(var(--v-theme-primary), 0.1);
 }
 
 .source-protocol-option__avatar {
   flex-shrink: 0;
+  font-size: 0.78rem;
+  font-weight: 760;
 }
 
 .source-protocol-option__body {
@@ -662,7 +694,7 @@
 
 .source-protocol-option__title {
   color: rgb(var(--v-theme-on-surface));
-  font-size: 0.92rem;
+  font-size: 0.88rem;
   font-weight: 720;
   line-height: 1.35;
 }
@@ -677,22 +709,12 @@
   overflow: hidden;
 }
 
-.source-protocol-option__meta {
-  color: rgba(var(--v-theme-on-surface), 0.5);
-  font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Consolas, monospace;
-  font-size: 0.74rem;
-  line-height: 1.4;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .source-protocol-field__value {
-  min-height: 48px;
-  padding: 12px 14px;
+  min-height: 44px;
+  padding: 10px 12px;
   border: 1px solid rgba(var(--v-theme-outline-variant), 0.32);
   border-radius: var(--shape-small);
-  background: rgba(var(--v-theme-surface-container), 0.42);
+  background: rgba(var(--v-theme-surface), 0.44);
   color: rgba(var(--v-theme-on-surface), 0.82);
   font-size: 0.9rem;
   line-height: 1.45;
@@ -706,7 +728,12 @@
 
 .source-config-list {
   display: grid;
-  gap: 14px;
+  gap: 14px 16px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.source-config-field--wide {
+  grid-column: 1 / -1;
 }
 
 .source-api-key-field {
@@ -721,9 +748,48 @@
   box-shadow: inset 0 0 0 1px rgba(var(--v-theme-primary), 0.34);
 }
 
-.source-secondary-actions {
+.source-api-key-inline-list {
+  display: grid;
+  gap: 8px;
+  padding-top: 2px;
+}
+
+.source-api-key-inline-item {
+  display: grid;
+  min-width: 0;
+  align-items: center;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid rgba(var(--v-theme-outline-variant), 0.22);
+  border-radius: var(--shape-small);
+  background: rgba(var(--v-theme-surface), 0.42);
+}
+
+.source-api-key-inline-item__value {
+  overflow: hidden;
+  color: rgba(var(--v-theme-on-surface), 0.78);
+  font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 0.8rem;
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.source-form-actions {
   display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding-top: 2px;
+}
+
+.source-form-actions__primary {
+  display: flex;
+  flex-wrap: wrap;
   justify-content: flex-end;
+  gap: 8px;
 }
 
 .source-api-key-editor {
@@ -755,6 +821,21 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+@media (max-width: 960px) {
+  .source-config-list {
+    grid-template-columns: 1fr;
+  }
+
+  .source-form-actions {
+    align-items: stretch;
+    flex-direction: column-reverse;
+  }
+
+  .source-form-actions__primary {
+    justify-content: flex-start;
+  }
 }
 
 </style>

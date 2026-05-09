@@ -61,6 +61,21 @@ def test_ai_model_connection_uses_workbench_resource_primitives() -> None:
     assert "common.noData" not in source_models
 
 
+def test_ai_source_protocol_selection_keeps_api_base_explicit() -> None:
+    source_state = _read("web/src/composables/aiModels/sourceState.ts")
+    source_workspace = _read("web/src/views/ai/AISourceWorkspace.vue")
+    api_types = _read("web/src/api/ai/types.ts")
+
+    assert "default_api_base" not in source_state
+    assert "default_api_base" not in source_workspace
+    assert "default_api_base" not in api_types
+    protocol_handler = source_state.split(
+        "function selectSourceProtocol",
+        1,
+    )[1].split("function clearSourceSelection", 1)[0]
+    assert "sourceForm.api_base" not in protocol_handler
+
+
 def test_ai_model_connection_locales_cover_empty_and_advanced_states() -> None:
     for path in ("web/src/locales/en_US.ts", "web/src/locales/zh_CN.ts"):
         source = _read(path)

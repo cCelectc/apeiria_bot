@@ -9,6 +9,8 @@ AIModelAdapterKind: TypeAlias = Literal[
     "openai_compatible",
     "anthropic_compatible",
     "generic_rerank",
+    "gemini_native",
+    "ollama_native",
 ]
 AIModelCapabilityLane: TypeAlias = Literal[
     "chat_completion",

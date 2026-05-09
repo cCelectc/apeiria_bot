@@ -190,6 +190,90 @@ def test_default_source_model_can_be_replaced_atomically(
     assert rows == [("model_primary", 0), ("model_secondary", 1)]
 
 
+def test_ai_source_accepts_native_protocol_values(
+    tmp_path: Path,
+    monkeypatch: "MonkeyPatch",
+) -> None:
+    monkeypatch.setattr(database_runtime, "_project_root", tmp_path)
+    database_runtime.ensure_ready()
+
+    with database_runtime.connect_sync() as connection:
+        connection.execute(
+            """
+            INSERT INTO ai_source (
+                source_id,
+                name,
+                capability_type,
+                client_type,
+                adapter_kind,
+                preset_type,
+                api_base,
+                enabled,
+                custom_headers_json,
+                extra_config_json,
+                updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "source-gemini",
+                "Gemini",
+                "chat_completion",
+                "gemini",
+                "gemini_native",
+                "gemini_native",
+                "https://generativelanguage.googleapis.com/v1beta",
+                1,
+                "{}",
+                "{}",
+                "2026-05-09T00:00:00",
+            ),
+        )
+        connection.execute(
+            """
+            INSERT INTO ai_source (
+                source_id,
+                name,
+                capability_type,
+                client_type,
+                adapter_kind,
+                preset_type,
+                api_base,
+                enabled,
+                custom_headers_json,
+                extra_config_json,
+                updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "source-ollama",
+                "Ollama",
+                "embedding",
+                "ollama",
+                "ollama_native",
+                "ollama_native_embedding",
+                "http://127.0.0.1:11434",
+                1,
+                "{}",
+                "{}",
+                "2026-05-09T00:00:00",
+            ),
+        )
+
+        rows = connection.execute(
+            """
+            SELECT source_id, client_type, adapter_kind, preset_type
+            FROM ai_source
+            WHERE source_id IN ('source-gemini', 'source-ollama')
+            ORDER BY source_id
+            """
+        ).fetchall()
+
+    assert rows == [
+        ("source-gemini", "gemini", "gemini_native", "gemini_native"),
+        ("source-ollama", "ollama", "ollama_native", "ollama_native_embedding"),
+    ]
+
+
 def _seed_source() -> None:
     with database_runtime.connect_sync() as connection:
         connection.execute(

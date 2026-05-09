@@ -162,9 +162,6 @@ export function useAISourceState ({
     }
     sourceForm.capability_type = preset.capability_type
     sourceForm.adapter_kind = preset.adapter_kind
-    if (!sourceForm.api_base.trim() && preset.default_api_base) {
-      sourceForm.api_base = preset.default_api_base
-    }
     if (sourceForm.capability_metadata_json.trim() === '{}') {
       sourceForm.capability_metadata_json = stringifyJsonObject(
         preset.capability_metadata,
@@ -213,7 +210,6 @@ export function useAISourceState ({
     sourceForm.preset_type = preset.preset_type
     sourceForm.capability_type = preset.capability_type
     sourceForm.adapter_kind = preset.adapter_kind
-    sourceForm.api_base = preset.default_api_base ?? ''
     sourceForm.capability_metadata_json = stringifyJsonObject(
       preset.capability_metadata,
     )

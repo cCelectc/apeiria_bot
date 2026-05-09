@@ -1,5 +1,8 @@
 <template>
-  <div class="source-list-panel">
+  <div
+    class="source-list-panel"
+    :class="{ 'source-list-panel--empty': sources.length === 0 }"
+  >
     <SelectableList
       :subtitle="t('ai.sourceListHint')"
       :title="t('ai.sourcesTitle')"
@@ -95,5 +98,19 @@
 .source-list-panel {
   min-width: 0;
   min-height: 100%;
+}
+
+.source-list-panel--empty :deep(.workbench-empty-state) {
+  min-height: 118px;
+  padding: 18px;
+  border-color: rgba(var(--v-theme-outline-variant), 0.18);
+  background: transparent;
+}
+
+.source-list-panel--empty :deep(.workbench-empty-state__icon) {
+  width: 40px;
+  height: 40px;
+  background: rgba(var(--v-theme-primary), 0.08);
+  opacity: 0.86;
 }
 </style>

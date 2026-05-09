@@ -15,7 +15,13 @@ AISourceCapabilityType = Literal[
     "text_to_speech",
     "rerank",
 ]
-AISourceClientType = Literal["openai", "anthropic", "generic_rerank"]
+AISourceClientType = Literal[
+    "openai",
+    "anthropic",
+    "generic_rerank",
+    "gemini",
+    "ollama",
+]
 AISourcePresetType = Literal[
     "openai_compatible",
     "openai_compatible_embedding",
@@ -23,6 +29,10 @@ AISourcePresetType = Literal[
     "openai_compatible_tts",
     "generic_rerank_api",
     "anthropic_compatible",
+    "gemini_native",
+    "gemini_native_embedding",
+    "ollama_native",
+    "ollama_native_embedding",
 ]
 
 
@@ -73,7 +83,7 @@ SOURCE_PRESETS: tuple[AISourcePresetDefinition, ...] = (
         capability_type="chat_completion",
         client_type="openai",
         adapter_kind="openai_compatible",
-        default_api_base="https://api.openai.com/v1",
+        default_api_base=None,
         description="适用于 OpenAI 风格的聊天补全接口。",
     ),
     AISourcePresetDefinition(
@@ -82,7 +92,7 @@ SOURCE_PRESETS: tuple[AISourcePresetDefinition, ...] = (
         capability_type="embedding",
         client_type="openai",
         adapter_kind="openai_compatible",
-        default_api_base="https://api.openai.com/v1",
+        default_api_base=None,
         description="适用于 OpenAI 风格的嵌入接口。",
     ),
     AISourcePresetDefinition(
@@ -91,7 +101,7 @@ SOURCE_PRESETS: tuple[AISourcePresetDefinition, ...] = (
         capability_type="speech_to_text",
         client_type="openai",
         adapter_kind="openai_compatible",
-        default_api_base="https://api.openai.com/v1",
+        default_api_base=None,
         description="适用于 OpenAI 风格的语音转文字接口。",
     ),
     AISourcePresetDefinition(
@@ -100,7 +110,7 @@ SOURCE_PRESETS: tuple[AISourcePresetDefinition, ...] = (
         capability_type="text_to_speech",
         client_type="openai",
         adapter_kind="openai_compatible",
-        default_api_base="https://api.openai.com/v1",
+        default_api_base=None,
         description="适用于 OpenAI 风格的文字转语音接口。",
     ),
     AISourcePresetDefinition(
@@ -121,12 +131,50 @@ SOURCE_PRESETS: tuple[AISourcePresetDefinition, ...] = (
         default_api_base=None,
         description="适用于 Anthropic 风格的消息接口。",
     ),
+    AISourcePresetDefinition(
+        preset_type="gemini_native",
+        display_name="Gemini Native",
+        capability_type="chat_completion",
+        client_type="gemini",
+        adapter_kind="gemini_native",
+        default_api_base=None,
+        description="适用于 Gemini 原生生成内容接口。",
+    ),
+    AISourcePresetDefinition(
+        preset_type="gemini_native_embedding",
+        display_name="Gemini Native",
+        capability_type="embedding",
+        client_type="gemini",
+        adapter_kind="gemini_native",
+        default_api_base=None,
+        description="适用于 Gemini 原生嵌入接口。",
+    ),
+    AISourcePresetDefinition(
+        preset_type="ollama_native",
+        display_name="Ollama Native",
+        capability_type="chat_completion",
+        client_type="ollama",
+        adapter_kind="ollama_native",
+        default_api_base="http://127.0.0.1:11434",
+        description="适用于 Ollama 本地原生聊天接口。",
+    ),
+    AISourcePresetDefinition(
+        preset_type="ollama_native_embedding",
+        display_name="Ollama Native",
+        capability_type="embedding",
+        client_type="ollama",
+        adapter_kind="ollama_native",
+        default_api_base="http://127.0.0.1:11434",
+        description="适用于 Ollama 本地原生嵌入接口。",
+    ),
 )
 
 CLIENT_TYPE_ADAPTER_KIND_MAP: dict[AISourceClientType, AIModelAdapterKind] = {
     "openai": "openai_compatible",
     "anthropic": "anthropic_compatible",
     "generic_rerank": "generic_rerank",
+    "gemini": "gemini_native",
+    "ollama": "ollama_native",
 }
 
 

@@ -91,7 +91,9 @@ UnsupportedProviderAdapterKindError = UnsupportedAIModelAdapterKindError
 def _build_default_registry() -> ProviderAdapterRegistry:
     from apeiria.ai.model.adapters import (
         AnthropicCompatibleProvider,
+        GeminiNativeProvider,
         GenericRerankProvider,
+        OllamaNativeProvider,
         OpenAICompatibleProvider,
     )
 
@@ -160,6 +162,48 @@ def _build_default_registry() -> ProviderAdapterRegistry:
                 ),
                 supported_options=frozenset(
                     {"api_key", "api_suffix", "top_n", "proxy"}
+                ),
+            ),
+            ProviderAdapterRegistryEntry(
+                adapter_kind="gemini_native",
+                display_name="Gemini Native",
+                factory=GeminiNativeProvider,
+                operation_support=ProviderOperationSupport(
+                    chat=True,
+                    embedding=True,
+                ),
+                default_capabilities=AIModelCapabilities(
+                    lanes=frozenset({"chat_completion", "embedding"}),
+                    input_modalities=frozenset({"text"}),
+                    output_modalities=frozenset({"text"}),
+                    supports_tool_calling=False,
+                    supported_options=frozenset(
+                        {"temperature", "max_tokens", "api_base", "api_key"}
+                    ),
+                ),
+                supported_options=frozenset(
+                    {"temperature", "max_tokens", "api_base", "api_key"}
+                ),
+            ),
+            ProviderAdapterRegistryEntry(
+                adapter_kind="ollama_native",
+                display_name="Ollama Native",
+                factory=OllamaNativeProvider,
+                operation_support=ProviderOperationSupport(
+                    chat=True,
+                    embedding=True,
+                ),
+                default_capabilities=AIModelCapabilities(
+                    lanes=frozenset({"chat_completion", "embedding"}),
+                    input_modalities=frozenset({"text"}),
+                    output_modalities=frozenset({"text"}),
+                    supports_tool_calling=False,
+                    supported_options=frozenset(
+                        {"temperature", "max_tokens", "api_base", "api_key"}
+                    ),
+                ),
+                supported_options=frozenset(
+                    {"temperature", "max_tokens", "api_base", "api_key"}
                 ),
             ),
         )
