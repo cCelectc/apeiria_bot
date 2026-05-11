@@ -1,14 +1,17 @@
 FROM node:22.12.0-bookworm-slim AS web-builder
 
-WORKDIR /frontend/web
+WORKDIR /frontend
 
 RUN npm install -g pnpm \
     && rm -rf /root/.npm
 
-COPY web/package.json web/pnpm-lock.yaml ./
+COPY webui/package.json webui/pnpm-lock.yaml ./webui/
+COPY scripts ./scripts
+COPY apeiria ./apeiria
+WORKDIR /frontend/webui
 RUN pnpm install --frozen-lockfile
 
-COPY web/ ./
+COPY webui/ ./
 RUN pnpm run build
 
 
@@ -33,7 +36,7 @@ COPY --from=ghcr.io/astral-sh/uv:0.8.17 /uv /uvx /bin/
 
 COPY pyproject.toml uv.lock README.md bot.py ./
 COPY apeiria ./apeiria
-COPY --from=web-builder /frontend/web/dist ./web/dist
+COPY --from=web-builder /frontend/webui/dist ./webui/dist
 
 RUN uv sync --locked --no-dev
 

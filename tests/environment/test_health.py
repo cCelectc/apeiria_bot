@@ -13,7 +13,9 @@ from apeiria.environment.manager import EnvironmentService
 from apeiria.webui.frontend_build import (
     build_meta_path,
     compute_frontend_fingerprint,
+    frontend_workspace_name,
     read_frontend_build_status,
+    serving_dist_dir,
     write_frontend_build_meta,
 )
 
@@ -148,7 +150,7 @@ def test_webui_build_metadata_entrypoint_refreshes_stale_metadata(
 ) -> None:
     _create_frontend_fixture(tmp_path)
     write_frontend_build_meta(tmp_path)
-    (tmp_path / "web" / "src" / "main.ts").write_text(
+    (tmp_path / "webui" / "src" / "main.ts").write_text(
         "console.log('changed')\n",
         encoding="utf-8",
     )
@@ -228,19 +230,53 @@ def test_webui_build_metadata_entrypoint_does_not_import_nonebot(
     assert meta["fingerprint"] == compute_frontend_fingerprint(tmp_path)
 
 
-def test_web_package_build_runs_metadata_writer() -> None:
-    package_path = Path(__file__).resolve().parents[2] / "web" / "package.json"
+def test_webui_package_build_runs_metadata_writer() -> None:
+    package_path = Path(__file__).resolve().parents[2] / "webui" / "package.json"
     package = json.loads(package_path.read_text(encoding="utf-8"))
 
     assert "write-build-meta" in package["scripts"]
     assert "write-build-meta" in package["scripts"]["build"]
+    assert "APEIRIA_WEBUI_FRONTEND_DIR=webui" in package["scripts"]["write-build-meta"]
+
+
+def test_legacy_web_package_build_writes_legacy_metadata() -> None:
+    package_path = Path(__file__).resolve().parents[2] / "web" / "package.json"
+    package = json.loads(package_path.read_text(encoding="utf-8"))
+
+    assert "APEIRIA_WEBUI_FRONTEND_DIR=web" in package["scripts"]["write-build-meta"]
+
+
+def test_webui_workspace_is_default_and_web_is_serving_fallback(
+    tmp_path: Path,
+) -> None:
+    _create_legacy_frontend_fixture(tmp_path)
+    assert frontend_workspace_name(tmp_path) == "web"
+    assert serving_dist_dir(tmp_path) == tmp_path / "web" / "dist"
+
+    _create_frontend_fixture(tmp_path)
+    assert frontend_workspace_name(tmp_path) == "webui"
+    assert serving_dist_dir(tmp_path) == tmp_path / "webui" / "dist"
 
 
 def _create_frontend_fixture(project_root: Path) -> None:
-    web = project_root / "web"
-    (web / "src").mkdir(parents=True)
-    (web / "dist").mkdir(parents=True)
-    (web / "package.json").write_text('{"name":"fixture"}\n', encoding="utf-8")
-    (web / "index.html").write_text("<main></main>\n", encoding="utf-8")
-    (web / "src" / "main.ts").write_text("console.log('ready')\n", encoding="utf-8")
-    (web / "dist" / "index.html").write_text("<main></main>\n", encoding="utf-8")
+    _create_frontend_workspace_fixture(project_root, "webui")
+
+
+def _create_legacy_frontend_fixture(project_root: Path) -> None:
+    _create_frontend_workspace_fixture(project_root, "web")
+
+
+def _create_frontend_workspace_fixture(project_root: Path, name: str) -> None:
+    workspace = project_root / name
+    (workspace / "src").mkdir(parents=True)
+    (workspace / "dist").mkdir(parents=True)
+    (workspace / "package.json").write_text('{"name":"fixture"}\n', encoding="utf-8")
+    (workspace / "index.html").write_text("<main></main>\n", encoding="utf-8")
+    (workspace / "src" / "main.ts").write_text(
+        "console.log('ready')\n",
+        encoding="utf-8",
+    )
+    (workspace / "dist" / "index.html").write_text(
+        "<main></main>\n",
+        encoding="utf-8",
+    )

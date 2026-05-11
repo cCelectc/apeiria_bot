@@ -13,4 +13,6 @@ __pycache__/
 node_modules/
 web/node_modules/
 web/dist/
+webui/node_modules/
+webui/dist/
 data/

@@ -20,7 +20,7 @@ def main(argv: list[str] | None = None) -> int:
         "--project-root",
         type=Path,
         default=repo_root,
-        help="Apeiria project root containing the web workspace.",
+        help="Apeiria project root containing the selected frontend workspace.",
     )
     args = parser.parse_args(argv)
 

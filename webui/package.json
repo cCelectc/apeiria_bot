@@ -5,17 +5,35 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vue-tsc -b && vite build",
+    "build": "pnpm build-assets && pnpm write-build-meta",
+    "build-assets": "pnpm type-check && pnpm build-only",
+    "build-only": "vite build",
+    "type-check": "vue-tsc --build --force",
+    "write-build-meta": "APEIRIA_WEBUI_FRONTEND_DIR=webui python ../scripts/write-webui-build-meta.py --project-root ..",
     "preview": "vite preview"
   },
   "dependencies": {
+    "@fontsource/jetbrains-mono": "^5.2.8",
+    "@fontsource/noto-sans-sc": "^5.2.9",
     "@tailwindcss/vite": "^4.3.0",
+    "@tanstack/vue-table": "^8.21.3",
+    "@vueuse/core": "^14.3.0",
+    "axios": "^1.16.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "dompurify": "^3.4.2",
     "lucide-vue-next": "^1.0.0",
+    "markdown-it": "^14.1.1",
+    "markdown-it-task-lists": "^2.1.1",
+    "monaco-editor": "^0.55.1",
+    "pinia": "^3.0.4",
+    "reka-ui": "^2.9.7",
     "tailwind-merge": "^3.5.0",
     "tailwindcss": "^4.3.0",
-    "vue": "^3.5.34"
+    "vue": "^3.5.34",
+    "vue-i18n": "^11.4.2",
+    "vue-router": "^5.0.6",
+    "vue-sonner": "^2.0.9"
   },
   "devDependencies": {
     "@types/node": "^25.6.2",

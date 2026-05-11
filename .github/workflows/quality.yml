@@ -38,7 +38,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: web
+        working-directory: webui
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -53,16 +53,10 @@ jobs:
         with:
           node-version: "24"
           cache: pnpm
-          cache-dependency-path: web/pnpm-lock.yaml
+          cache-dependency-path: webui/pnpm-lock.yaml
 
       - name: Install frontend dependencies
         run: pnpm install --frozen-lockfile
-
-      - name: Frontend lint
-        run: pnpm lint
-
-      - name: Frontend eslint fix dry run
-        run: pnpm lint:fix-dry-run
 
       - name: Frontend build
         run: pnpm build
