@@ -32,7 +32,7 @@ def _clear_webui_auth_modules() -> None:
         sys.modules.pop(module_name, None)
 
 
-def test_webui_auth_account_flow_still_works_via_app_secrets_facade(
+def test_webui_auth_account_flow_uses_current_storage(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:

@@ -13,7 +13,7 @@ from apeiria.access.audit_service import audit_service
 from apeiria.access.models import AccessContext, PermissionDecision, PluginPolicy
 from apeiria.access.service import access_service
 from apeiria.i18n import t
-from apeiria.plugins import plugin_policy_service
+from apeiria.plugins.policy import plugin_policy_service
 
 if TYPE_CHECKING:
     from nonebot.adapters import Bot, Event

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from apeiria.access.level import extract_group_id as _extract_group_id
 from apeiria.access.service import access_service
-from apeiria.plugins import plugin_policy_service
+from apeiria.plugins.policy import plugin_policy_service
 from apeiria.plugins.protection import get_default_protection_mode
 
 

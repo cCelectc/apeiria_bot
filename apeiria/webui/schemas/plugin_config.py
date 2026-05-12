@@ -8,21 +8,21 @@ from fastapi import HTTPException
 from pydantic import BaseModel, ConfigDict, Field
 
 from apeiria.i18n import t
-from apeiria.plugins import (
-    PluginConfigConflictError,
-    PluginSettingsNotConfigurableError,
-)
+from apeiria.plugins.metadata.registry import PluginConfigConflictError
+from apeiria.plugins.settings import PluginSettingsNotConfigurableError
 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from apeiria.plugins import (
+    from apeiria.plugins.registry import (
         AdapterConfigState,
+        DriverConfigState,
+        PluginConfigState,
+    )
+    from apeiria.plugins.settings import (
         ConfigTextView,
         ConfigValidationReport,
         ConfigView,
-        DriverConfigState,
-        PluginConfigState,
     )
 
 _ResultT = TypeVar("_ResultT")

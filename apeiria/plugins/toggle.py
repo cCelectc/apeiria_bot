@@ -12,7 +12,7 @@ from apeiria.i18n import t
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
 
-    from apeiria.plugins import PluginCatalogEntry
+    from apeiria.plugins.models import PluginCatalogEntry
 
 
 @dataclass(frozen=True)

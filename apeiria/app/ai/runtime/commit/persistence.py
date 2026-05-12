@@ -21,7 +21,7 @@ from apeiria.conversation.service import ChatMessageCreate, chat_session_service
 
 if TYPE_CHECKING:
     from apeiria.app.ai.agent_turn import AgentTurnResult
-    from apeiria.app.ai.reply_strategy import ReplyStrategyDecision
+    from apeiria.app.ai.reply_strategy.models import ReplyStrategyDecision
     from apeiria.app.ai.runtime.commit import RuntimeDeliveryOutcomeFull
     from apeiria.app.ai.runtime.session.context import (
         RuntimeContextMaterials,

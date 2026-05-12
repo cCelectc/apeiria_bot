@@ -8,7 +8,8 @@ from typing import TYPE_CHECKING
 from apeiria.access.groups import group_service
 from apeiria.access.service import access_service
 from apeiria.exceptions import ProtectedPluginError, ResourceNotFoundError
-from apeiria.plugins import plugin_governance_service, plugin_policy_service
+from apeiria.plugins.catalog import plugin_governance_service
+from apeiria.plugins.policy import plugin_policy_service
 
 if TYPE_CHECKING:
     from apeiria.access.models import AccessPolicyRule

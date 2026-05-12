@@ -21,7 +21,7 @@ if TYPE_CHECKING:
     from apeiria.ai.memory import AIMemoryDefinition
     from apeiria.ai.model import AIModelMessage
     from apeiria.ai.prompting import ReplyPersonaPromptBundleLike
-    from apeiria.app.ai.reply_strategy import ReplyStrategyDecision
+    from apeiria.app.ai.reply_strategy.models import ReplyStrategyDecision
     from apeiria.app.ai.runtime.context.projection import RuntimeContextPromptView
     from apeiria.app.ai.runtime.execution.tool_loop import RuntimeToolLoopResult
     from apeiria.app.ai.runtime.session.context import (

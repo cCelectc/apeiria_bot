@@ -14,8 +14,7 @@ from nonebot.log import logger
 from apeiria.ai.config import get_ai_plugin_config
 from apeiria.ai.retention import ai_retention_service
 from apeiria.app.ai.lifecycle import ensure_ai_runtime_support_initialized
-from apeiria.app.ai.reply_strategy import build_wake_context
-from apeiria.app.ai.reply_strategy.wake_gate import evaluate_wake
+from apeiria.app.ai.reply_strategy.wake_gate import build_wake_context, evaluate_wake
 from apeiria.app.ai.runtime.composition import (
     create_session_runtime_resolver,
     create_session_turn_engine,

@@ -46,7 +46,7 @@ from apeiria.app.ai.runtime.stages import (
 if TYPE_CHECKING:
     from apeiria.ai.model import AIModelMessage
     from apeiria.ai.prompting import PromptPacket
-    from apeiria.app.ai.reply_strategy import ReplyStrategyDecision
+    from apeiria.app.ai.reply_strategy.models import ReplyStrategyDecision
     from apeiria.app.ai.runtime.planning.prompts import RuntimePromptComposeInput
     from apeiria.app.ai.runtime.session.context import (
         RuntimeContextMaterials,

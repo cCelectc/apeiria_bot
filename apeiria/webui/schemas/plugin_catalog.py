@@ -10,8 +10,10 @@ from .plugin_config import PluginWorkspaceSettingsSummary  # noqa: TC001
 from .plugin_management import PluginTogglePreviewResponse  # noqa: TC001
 
 if TYPE_CHECKING:
-    from apeiria.plugins import OrphanPluginConfigItem as DomainOrphanPluginConfigItem
-    from apeiria.plugins import PluginReadme
+    from apeiria.plugins.readme import PluginReadme
+    from apeiria.plugins.settings_cleanup import (
+        OrphanPluginConfigItem as DomainOrphanPluginConfigItem,
+    )
 
 
 class PluginItem(BaseModel):

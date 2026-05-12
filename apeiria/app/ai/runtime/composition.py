@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from apeiria.ai.config import get_ai_plugin_config
-from apeiria.app.ai.reply_strategy import reply_strategy_service
+from apeiria.app.ai.reply_strategy.service import reply_strategy_service
 from apeiria.app.ai.runtime.commit import RuntimeCommitEffectsStage
 from apeiria.app.ai.runtime.commit.delivery import deliver_generated_reply
 from apeiria.app.ai.runtime.commit.persistence import AssistantReplyPersistenceStage

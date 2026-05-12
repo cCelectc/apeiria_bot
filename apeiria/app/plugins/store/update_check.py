@@ -19,7 +19,7 @@ from packaging.version import InvalidVersion, Version
 from apeiria.environment.extension_project import plugin_site_packages_paths
 
 if TYPE_CHECKING:
-    from apeiria.plugins import PluginCatalogEntry
+    from apeiria.plugins.models import PluginCatalogEntry
 
 
 _HTTP_NOT_FOUND = 404

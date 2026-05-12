@@ -7,13 +7,13 @@ from typing import TYPE_CHECKING
 from nonebot.log import logger
 
 from apeiria.ai.relationship import ai_relationship_service
-from apeiria.app.ai.reply_strategy import (
+from apeiria.app.ai.reply_strategy.helpers import (
     count_recent_bot_turns,
     latest_bot_turn_at,
     latest_user_turn_text,
-    reply_strategy_service,
 )
 from apeiria.app.ai.reply_strategy.models import WakeContext
+from apeiria.app.ai.reply_strategy.service import reply_strategy_service
 
 if TYPE_CHECKING:
     from datetime import datetime
@@ -21,7 +21,7 @@ if TYPE_CHECKING:
     from apeiria.ai.capabilities import AICapabilityContract
     from apeiria.ai.model import AIModelBindingTarget
     from apeiria.ai.prompting import ReplyPersonaPromptBundleLike
-    from apeiria.app.ai.reply_strategy import ReplyStrategyDecision
+    from apeiria.app.ai.reply_strategy.models import ReplyStrategyDecision
     from apeiria.app.ai.runtime.context.relationships import AIRelationshipTarget
     from apeiria.app.ai.runtime.session.context import RuntimeTurnInput
     from apeiria.conversation.models import ChatContextMessageView

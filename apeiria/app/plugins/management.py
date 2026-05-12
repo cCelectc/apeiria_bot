@@ -9,27 +9,26 @@ from apeiria.app.plugins.store.update_check import (
     plugin_update_check_service,
     supports_plugin_update_check,
 )
-from apeiria.plugins import (
-    config_mutation_service,
-    config_query_service,
-    plugin_governance_service,
-)
+from apeiria.plugins.catalog import plugin_governance_service
+from apeiria.plugins.settings import config_mutation_service, config_query_service
 
 if TYPE_CHECKING:
     from pathlib import Path
 
     from apeiria.app.plugins.store.update_check import PluginUpdateCheckResult
-    from apeiria.plugins import (
+    from apeiria.plugins.models import PluginCatalogEntry
+    from apeiria.plugins.readme import PluginReadme
+    from apeiria.plugins.registry import (
         AdapterConfigState,
+        DriverConfigState,
+        PluginConfigState,
+    )
+    from apeiria.plugins.settings import (
         ConfigTextView,
         ConfigValidationReport,
         ConfigView,
-        DriverConfigState,
-        OrphanPluginConfigItem,
-        PluginCatalogEntry,
-        PluginConfigState,
-        PluginReadme,
     )
+    from apeiria.plugins.settings_cleanup import OrphanPluginConfigItem
     from apeiria.plugins.toggle import PluginTogglePreview, PluginToggleResult
     from apeiria.plugins.uninstall import PluginUninstallResult
 

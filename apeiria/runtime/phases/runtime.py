@@ -28,7 +28,7 @@ def _get_runtime_services() -> tuple[
     from apeiria.conversation.service import chat_session_service
     from apeiria.db.runtime import database_runtime
     from apeiria.environment import environment_service
-    from apeiria.plugins import plugin_governance_service
+    from apeiria.plugins.catalog import plugin_governance_service
 
     return (
         project_config_service,
