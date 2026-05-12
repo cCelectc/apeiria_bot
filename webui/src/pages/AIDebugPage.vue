@@ -154,11 +154,13 @@ const promptSections = computed(() => [
 function applyRouteState() {
   const nextTab = normalizeAIDebugRouteValue(route.query.debug)
   if (debugTab.value === nextTab) {
+    applyRouteFilters()
     return
   }
   applyingRouteState = true
   debugTab.value = nextTab
   applyingRouteState = false
+  applyRouteFilters()
 }
 
 function syncRouteQuery() {
@@ -166,6 +168,18 @@ function syncRouteQuery() {
     return
   }
   void router.replace({ query: { ...route.query, debug: debugTab.value } })
+}
+
+function applyRouteFilters() {
+  const sessionId = routeQueryString(route.query.session)
+  const traceId = routeQueryString(route.query.trace)
+  if (sessionId) {
+    selectedConversationId.value = sessionId
+    traceFilter.session_id = sessionId
+  }
+  if (traceId) {
+    traceFilter.trace_id = traceId
+  }
 }
 
 async function loadData() {
@@ -203,6 +217,10 @@ function formatJson(value: unknown) {
     return t('common.none')
   }
   return JSON.stringify(value, null, 2)
+}
+
+function routeQueryString(value: unknown) {
+  return typeof value === 'string' ? value : ''
 }
 
 applyRouteState()

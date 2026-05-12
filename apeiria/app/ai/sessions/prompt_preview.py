@@ -60,6 +60,10 @@ from apeiria.app.ai.runtime.session.context import (
     RuntimeTurnInput,
     RuntimeTurnSource,
 )
+from apeiria.app.ai.runtime.session.management import (
+    managed_session_diagnostics,
+    managed_session_disabled_decision,
+)
 from apeiria.app.ai.runtime.stages import RuntimeContextBundle
 from apeiria.conversation.service import chat_session_service
 
@@ -70,6 +74,7 @@ from .models import (
     AISessionPromptSection,
 )
 from .prompt_projection import project_prompt_packet_to_preview
+from .repository import AISessionManagementRepository
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -234,6 +239,14 @@ def _build_preview_hard_rule_decision(
 ):
     """Evaluate preview-safe hard rules without touching session runtime state."""
 
+    managed_session = AISessionManagementRepository().get_session_sync(
+        turn.identity.session_id,
+    )
+    if managed_session is not None:
+        disabled_decision = managed_session_disabled_decision(managed_session)
+        if disabled_decision is not None:
+            return disabled_decision
+
     wake_context = WakeContext(
         bot_self_id=turn.sender_id,
         user_id=turn.user_id,
@@ -290,9 +303,13 @@ def _build_preview_diagnostics(
     hard_rule_decision: RuntimeHardRuleDecision,
     social_decision: ReplyStrategyDecision | None,
 ) -> tuple[str, ...]:
+    managed_session = AISessionManagementRepository().get_session_sync(
+        identity.session_id,
+    )
     diagnostics = [
         "social_judgment_model_not_invoked",
         "future_task_metadata_unavailable",
+        *managed_session_diagnostics(managed_session),
     ]
     if latest_user_turn is None:
         diagnostics.append("latest_user_message_unavailable")

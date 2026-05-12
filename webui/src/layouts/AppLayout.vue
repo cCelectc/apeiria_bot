@@ -84,6 +84,7 @@ const iconMap: Record<string, Component> = {
   CalendarClock,
   ContactRound,
   LayoutDashboard,
+  MessageSquare,
   MessagesSquare,
   Network,
   ServerCog,

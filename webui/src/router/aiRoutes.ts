@@ -1,5 +1,6 @@
 export type AIManagementPage =
   | 'overview'
+  | 'sessions'
   | 'models'
   | 'personas'
   | 'knowledge'
@@ -12,6 +13,7 @@ export type AIManagementPage =
 
 export type AIManagementRouteName =
   | 'ai-overview'
+  | 'ai-sessions'
   | 'ai-models'
   | 'ai-personas'
   | 'ai-knowledge'
@@ -37,6 +39,13 @@ export const aiManagementPageDescriptors: AIManagementPageDescriptor[] = [
     path: '/ai/overview',
     routeName: 'ai-overview',
     titleKey: 'ai.overviewTitle',
+  },
+  {
+    icon: 'MessagesSquare',
+    page: 'sessions',
+    path: '/ai/sessions',
+    routeName: 'ai-sessions',
+    titleKey: 'ai.sessionsTab',
   },
   {
     icon: 'ServerCog',

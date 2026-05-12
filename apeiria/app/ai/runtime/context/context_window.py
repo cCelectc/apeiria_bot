@@ -12,6 +12,7 @@ from apeiria.app.ai.conversation_context.summary import (
     build_short_conversation_summary,
     compress_conversation_history,
 )
+from apeiria.app.ai.sessions.repository import AISessionManagementRepository
 from apeiria.conversation.service import chat_session_service
 
 if TYPE_CHECKING:
@@ -32,6 +33,14 @@ async def build_and_store_context_window(
         identity,
         max_messages=MAX_FETCH_MESSAGES,
     )
+    managed_session = await AISessionManagementRepository().get_session(
+        identity.session_id,
+    )
+    reset_at = managed_session.context_reset_at if managed_session is not None else None
+    if reset_at is not None:
+        all_recent = [
+            message for message in all_recent if message.created_at >= reset_at
+        ]
     window = context_window_service.compute_window(
         all_recent,
         session_id=identity.session_id,
@@ -39,9 +48,11 @@ async def build_and_store_context_window(
     turns = window.kept_messages
 
     if window.needs_compression:
-        existing_summary = await chat_session_service.load_session_summary(
-            identity,
-        )
+        existing_summary = None
+        if reset_at is None:
+            existing_summary = await chat_session_service.load_session_summary(
+                identity,
+            )
         conversation_summary = await compress_conversation_history(
             window.overflow_messages,
             existing_summary=existing_summary,

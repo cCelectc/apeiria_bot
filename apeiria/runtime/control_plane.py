@@ -50,3 +50,21 @@ class ApeiriaControlPlane:
 
     def get_web_ui_build_status(self) -> Any:
         return system_management_service.get_web_ui_build_status()
+
+    async def list_ai_managed_sessions(self, *, limit: int = 50) -> list[Any]:
+        from apeiria.app.ai import ai_application
+
+        return await ai_application.sessions.list_managed_sessions(limit=limit)
+
+    async def get_ai_managed_session_detail(
+        self,
+        *,
+        session_id: str,
+        message_limit: int = 50,
+    ) -> Any:
+        from apeiria.app.ai import ai_application
+
+        return await ai_application.sessions.get_managed_session_detail(
+            session_id=session_id,
+            message_limit=message_limit,
+        )

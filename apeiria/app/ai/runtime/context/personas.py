@@ -11,6 +11,7 @@ from apeiria.ai.persona import (
     ai_persona_service,
     build_persona_render_context,
 )
+from apeiria.app.ai.sessions.repository import AISessionManagementRepository
 
 if TYPE_CHECKING:
     from datetime import datetime
@@ -105,12 +106,23 @@ async def load_persona_bundle(
 ) -> "ReplyPersonaPromptBundleLike | None":
     """Resolve persona binding target and build the prompt bundle."""
 
-    target = build_persona_binding_target(turn.identity, turn.user_id)
     render_context = await build_persona_render_context_for_reply(
         turn,
         current_time=current_time,
         turns=turns,
     )
+    managed_session = await AISessionManagementRepository().get_session(
+        turn.identity.session_id,
+    )
+    if managed_session is not None and managed_session.persona_id:
+        override = await ai_persona_service.build_persona_prompt_bundle_by_id(
+            persona_id=managed_session.persona_id,
+            render_context=render_context,
+        )
+        if override is not None:
+            return override
+
+    target = build_persona_binding_target(turn.identity, turn.user_id)
     return await ai_persona_service.build_persona_prompt_bundle(
         target=target,
         render_context=render_context,

@@ -9,11 +9,15 @@ from apeiria.app.ai.runtime.planning.hard_rules import (
     decide_runtime_hard_rule,
     social_skip_to_runtime_decision,
 )
+from apeiria.app.ai.runtime.session.management import (
+    managed_session_disabled_decision,
+)
 from apeiria.app.ai.runtime.stages import (
     RuntimeIngressInput,
     RuntimePolicyOutcome,
     RuntimeSocialDecisionInput,
 )
+from apeiria.app.ai.sessions.repository import AISessionManagementRepository
 
 if TYPE_CHECKING:
     from datetime import datetime
@@ -51,12 +55,30 @@ class RuntimePolicyDecisionStage:
     """Policy stage backed by runtime hard rules and reply strategy."""
 
     reply_decider: RuntimeReplyDecider
+    session_repository: AISessionManagementRepository | None = None
 
     def evaluate(
         self,
         *,
         ingress_input: RuntimeIngressInput,
     ) -> RuntimePolicyOutcome:
+        repository = self.session_repository or AISessionManagementRepository()
+        managed_session = repository.get_session_sync(
+            ingress_input.turn.identity.session_id
+        )
+        disabled_decision = (
+            managed_session_disabled_decision(managed_session)
+            if managed_session is not None
+            else None
+        )
+        if disabled_decision is not None:
+            source = ingress_input.turn.source
+            return RuntimePolicyOutcome(
+                stage="policy",
+                source=source,
+                decision=disabled_decision,
+            )
+
         source = ingress_input.turn.source
         return RuntimePolicyOutcome(
             stage="policy",

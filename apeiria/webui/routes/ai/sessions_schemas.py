@@ -11,10 +11,15 @@ from .memories_schemas import AIMemoryItem, to_ai_memory_item
 if TYPE_CHECKING:
     from apeiria.app.ai.sessions.models import (
         AIRecentTarget,
+        AISessionDetail,
+        AISessionDetailMessage,
+        AISessionInventoryItem,
+        AISessionPersonaSummary,
         AISessionPromptChannels,
         AISessionPromptDiagnostics,
         AISessionPromptPreview,
         AISessionPromptSection,
+        AISessionTraceEntry,
     )
     from apeiria.conversation.models import ChatMessageDetailView, ChatSessionAdminView
 
@@ -44,6 +49,72 @@ class AISessionItem(BaseModel):
     created_at: str
     updated_at: str
     last_message_at: str
+
+
+class AIManagedSessionPersonaItem(BaseModel):
+    persona_id: str
+    name: str
+    enabled: bool
+
+
+class AIManagedSessionItem(BaseModel):
+    session_id: str
+    platform_id: str
+    platform_type: str
+    message_type: str
+    subject_id: str
+    source_labels: dict[str, str] = Field(default_factory=dict)
+    ai_enabled: bool
+    persona: AIManagedSessionPersonaItem | None = None
+    last_observed_at: str | None = None
+    last_message_at: str | None = None
+    message_count: int = 0
+    diagnostic_count: int = 0
+
+
+class AIManagedSessionMessageItem(BaseModel):
+    message_id: str
+    author_role: str
+    author_id: str
+    text_content: str
+    created_at: str
+    before_reset_boundary: bool
+    trace_id: str | None = None
+    model_name: str | None = None
+
+
+class AIManagedSessionTraceItem(BaseModel):
+    trace_id: str
+    terminal_status: str
+    skip_reason: str | None = None
+    created_at: str
+
+
+class AIManagedSessionDetailItem(BaseModel):
+    session_id: str
+    platform_id: str
+    platform_type: str
+    message_type: str
+    subject_id: str
+    source_labels: dict[str, str] = Field(default_factory=dict)
+    ai_enabled: bool
+    persona: AIManagedSessionPersonaItem | None = None
+    recent_messages: list[AIManagedSessionMessageItem] = Field(default_factory=list)
+    reset_boundary_at: str | None = None
+    prompt_preview_session_id: str
+    trace_entries: list[AIManagedSessionTraceItem] = Field(default_factory=list)
+    model_summary: dict[str, str | None] = Field(default_factory=dict)
+    strategy_summary: dict[str, str | None] = Field(default_factory=dict)
+    tool_summary: dict[str, int] = Field(default_factory=dict)
+    diagnostics: dict[str, str | None] = Field(default_factory=dict)
+
+
+class AIManagedSessionAIEnabledUpdate(BaseModel):
+    ai_enabled: bool
+
+
+class AIManagedSessionPersonaUpdate(BaseModel):
+    persona_id: str | None = None
 
 
 class AIChatMessageItem(BaseModel):
@@ -172,6 +243,111 @@ def to_ai_session_item(item: "ChatSessionAdminView") -> AISessionItem:
         created_at=item.created_at.isoformat(),
         updated_at=item.updated_at.isoformat(),
         last_message_at=item.last_message_at.isoformat(),
+    )
+
+
+def to_ai_managed_session_persona_item(
+    item: "AISessionPersonaSummary",
+) -> AIManagedSessionPersonaItem:
+    return AIManagedSessionPersonaItem(
+        persona_id=item.persona_id,
+        name=item.name,
+        enabled=item.enabled,
+    )
+
+
+def to_ai_managed_session_item(
+    item: "AISessionInventoryItem",
+) -> AIManagedSessionItem:
+    identity = item.source_identity.identity
+    return AIManagedSessionItem(
+        session_id=item.session_id,
+        platform_id=identity.platform_id,
+        platform_type=identity.platform_type,
+        message_type=identity.message_type,
+        subject_id=identity.subject_id,
+        source_labels=item.source_labels,
+        ai_enabled=item.ai_enabled,
+        persona=(
+            to_ai_managed_session_persona_item(item.persona)
+            if item.persona is not None
+            else None
+        ),
+        last_observed_at=(
+            item.last_observed_at.isoformat()
+            if item.last_observed_at is not None
+            else None
+        ),
+        last_message_at=(
+            item.last_message_at.isoformat()
+            if item.last_message_at is not None
+            else None
+        ),
+        message_count=item.message_count,
+        diagnostic_count=item.diagnostic_count,
+    )
+
+
+def to_ai_managed_session_message_item(
+    item: "AISessionDetailMessage",
+) -> AIManagedSessionMessageItem:
+    return AIManagedSessionMessageItem(
+        message_id=item.message_id,
+        author_role=item.author_role,
+        author_id=item.author_id,
+        text_content=item.text_content,
+        created_at=item.created_at.isoformat(),
+        before_reset_boundary=item.before_reset_boundary,
+        trace_id=item.trace_id,
+        model_name=item.model_name,
+    )
+
+
+def to_ai_managed_session_trace_item(
+    item: "AISessionTraceEntry",
+) -> AIManagedSessionTraceItem:
+    return AIManagedSessionTraceItem(
+        trace_id=item.trace_id,
+        terminal_status=item.terminal_status,
+        skip_reason=item.skip_reason,
+        created_at=item.created_at.isoformat(),
+    )
+
+
+def to_ai_managed_session_detail_item(
+    item: "AISessionDetail",
+) -> AIManagedSessionDetailItem:
+    identity = item.source_identity.identity
+    return AIManagedSessionDetailItem(
+        session_id=item.session_id,
+        platform_id=identity.platform_id,
+        platform_type=identity.platform_type,
+        message_type=identity.message_type,
+        subject_id=identity.subject_id,
+        source_labels=item.source_identity.source_labels,
+        ai_enabled=item.ai_enabled,
+        persona=(
+            to_ai_managed_session_persona_item(item.persona)
+            if item.persona is not None
+            else None
+        ),
+        recent_messages=[
+            to_ai_managed_session_message_item(message)
+            for message in item.recent_messages
+        ],
+        reset_boundary_at=(
+            item.reset_boundary_at.isoformat()
+            if item.reset_boundary_at is not None
+            else None
+        ),
+        prompt_preview_session_id=item.prompt_preview_entry.session_id,
+        trace_entries=[
+            to_ai_managed_session_trace_item(trace) for trace in item.trace_entries
+        ],
+        model_summary=item.model_summary,
+        strategy_summary=item.strategy_summary,
+        tool_summary=item.tool_summary,
+        diagnostics=item.diagnostics,
     )
 
 

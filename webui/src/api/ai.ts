@@ -96,6 +96,64 @@ export interface AIPersonaBindingItem {
   persona_id: string
 }
 
+export interface AIManagedSessionPersonaItem {
+  persona_id: string
+  name: string
+  enabled: boolean
+}
+
+export interface AIManagedSessionItem {
+  session_id: string
+  platform_id: string
+  platform_type: string
+  message_type: string
+  subject_id: string
+  source_labels: Record<string, string>
+  ai_enabled: boolean
+  persona: AIManagedSessionPersonaItem | null
+  last_observed_at: string | null
+  last_message_at: string | null
+  message_count: number
+  diagnostic_count: number
+}
+
+export interface AIManagedSessionMessageItem {
+  message_id: string
+  author_role: string
+  author_id: string
+  text_content: string
+  created_at: string
+  before_reset_boundary: boolean
+  trace_id: string | null
+  model_name: string | null
+}
+
+export interface AIManagedSessionTraceItem {
+  trace_id: string
+  terminal_status: string
+  skip_reason: string | null
+  created_at: string
+}
+
+export interface AIManagedSessionDetailItem {
+  session_id: string
+  platform_id: string
+  platform_type: string
+  message_type: string
+  subject_id: string
+  source_labels: Record<string, string>
+  ai_enabled: boolean
+  persona: AIManagedSessionPersonaItem | null
+  recent_messages: AIManagedSessionMessageItem[]
+  reset_boundary_at: string | null
+  prompt_preview_session_id: string
+  trace_entries: AIManagedSessionTraceItem[]
+  model_summary: Record<string, string | null>
+  strategy_summary: Record<string, string | null>
+  tool_summary: Record<string, number>
+  diagnostics: Record<string, string | null>
+}
+
 export interface AIRecentTargetItem {
   target_type: string
   anchor_type: string
@@ -648,6 +706,46 @@ export function upsertAIPersona(payload: {
 
 export function getAIPersonaBindings() {
   return client.get<AIPersonaBindingItem[]>('/ai/persona-bindings')
+}
+
+export function getAIManagedSessions(params?: { limit?: number }) {
+  return client.get<AIManagedSessionItem[]>('/ai/managed-sessions', { params })
+}
+
+export function getAIManagedSession(
+  sessionId: string,
+  params?: { message_limit?: number },
+) {
+  return client.get<AIManagedSessionDetailItem>(
+    `/ai/managed-sessions/${encodeURIComponent(sessionId)}`,
+    { params },
+  )
+}
+
+export function updateAIManagedSessionEnabled(
+  sessionId: string,
+  aiEnabled: boolean,
+) {
+  return client.patch<AIManagedSessionDetailItem>(
+    `/ai/managed-sessions/${encodeURIComponent(sessionId)}/ai-enabled`,
+    { ai_enabled: aiEnabled },
+  )
+}
+
+export function updateAIManagedSessionPersona(
+  sessionId: string,
+  personaId: string | null,
+) {
+  return client.patch<AIManagedSessionDetailItem>(
+    `/ai/managed-sessions/${encodeURIComponent(sessionId)}/persona`,
+    { persona_id: personaId },
+  )
+}
+
+export function resetAIManagedSessionContext(sessionId: string) {
+  return client.post<AIManagedSessionDetailItem>(
+    `/ai/managed-sessions/${encodeURIComponent(sessionId)}/context-reset`,
+  )
 }
 
 export function getAIRecentTargets(params?: { limit?: number }) {

@@ -20,6 +20,7 @@ RuntimeHardRuleReasonCode = Literal[
     "duplicate_event",
     "bot_self_message",
     "empty_input",
+    "session_ai_disabled",
     "initiative_disabled",
     "direct_signal",
     "private_message",

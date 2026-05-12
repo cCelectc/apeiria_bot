@@ -159,6 +159,8 @@ def _ensure_current_schema_shape(  # noqa: C901, PLR0912
         _create_turn_trace_tables(connection)
     if "ai_knowledge_document" not in existing_tables:
         _create_knowledge_tables(connection)
+    if "ai_managed_session" not in existing_tables:
+        _create_ai_session_management_tables(connection)
 
     if "ai_source" in existing_tables:
         source_columns = _column_names(connection, "ai_source")
@@ -317,6 +319,7 @@ def _create_current_schema(connection: sqlite3.Connection) -> None:
     _create_future_task_tables(connection)
     _create_delivery_attempt_tables(connection)
     _create_turn_trace_tables(connection)
+    _create_ai_session_management_tables(connection)
 
 
 def _create_governance_tables(connection: sqlite3.Connection) -> None:
@@ -712,6 +715,56 @@ def _create_conversation_tables(connection: sqlite3.Connection) -> None:
         """
         CREATE INDEX idx_chat_message_created_at
         ON chat_message(created_at)
+        """
+    )
+
+
+def _create_ai_session_management_tables(connection: sqlite3.Connection) -> None:
+    source_labels_check = _json_check(connection, "source_labels_json")
+    diagnostic_raw_ids_check = _json_check(connection, "diagnostic_raw_ids_json")
+    connection.execute(
+        f"""
+        CREATE TABLE ai_managed_session (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_id TEXT NOT NULL UNIQUE,
+            platform_id TEXT NOT NULL,
+            platform_type TEXT NOT NULL,
+            message_type TEXT NOT NULL CHECK(
+                message_type IN ('group', 'private', 'web_chat')
+            ),
+            subject_id TEXT NOT NULL,
+            source_labels_json TEXT NOT NULL DEFAULT '{{}}'
+                CHECK({source_labels_check}),
+            diagnostic_raw_ids_json TEXT NOT NULL DEFAULT '{{}}'
+                CHECK({diagnostic_raw_ids_check}),
+            ai_enabled INTEGER NOT NULL DEFAULT 1 CHECK(ai_enabled IN (0, 1)),
+            persona_id TEXT,
+            context_reset_at TEXT,
+            context_reset_by TEXT,
+            last_observed_at TEXT,
+            last_user_message_at TEXT,
+            last_ai_message_at TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            audit_created_by TEXT,
+            audit_updated_by TEXT,
+            UNIQUE(platform_id, platform_type, message_type, subject_id),
+            FOREIGN KEY(persona_id)
+                REFERENCES ai_persona(persona_id)
+                ON DELETE SET NULL
+        )
+        """
+    )
+    connection.execute(
+        """
+        CREATE INDEX idx_ai_managed_session_source
+        ON ai_managed_session(platform_id, platform_type, message_type, subject_id)
+        """
+    )
+    connection.execute(
+        """
+        CREATE INDEX idx_ai_managed_session_recent
+        ON ai_managed_session(last_observed_at, updated_at)
         """
     )
 

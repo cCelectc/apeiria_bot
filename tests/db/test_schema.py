@@ -54,6 +54,7 @@ def test_database_ensure_ready_initializes_empty_sqlite_db(tmp_path: Path) -> No
         "ai_affinity",
         "ai_relationship_event",
         "ai_memory_item",
+        "ai_managed_session",
         "chat_session",
         "chat_message",
     } <= tables
@@ -142,6 +143,12 @@ def test_database_schema_declares_foreign_keys_and_delete_rules(
             "message_id",
             "SET NULL",
         ) in _foreign_keys(connection, "ai_memory_item")
+        assert (
+            "ai_persona",
+            "persona_id",
+            "persona_id",
+            "SET NULL",
+        ) in _foreign_keys(connection, "ai_managed_session")
 
 
 def test_database_schema_declares_unique_bindings_and_default_indexes(
@@ -226,6 +233,18 @@ def test_database_schema_declares_value_checks(tmp_path: Path) -> None:
         assert (
             "turn_disposition IN ('active', 'observed', 'generated', 'tool', 'system')"
             in _table_sql(connection, "chat_message")
+        )
+        assert "message_type IN ('group', 'private', 'web_chat')" in _table_sql(
+            connection,
+            "ai_managed_session",
+        )
+        assert "CHECK(ai_enabled IN (0, 1))" in _table_sql(
+            connection,
+            "ai_managed_session",
+        )
+        assert "json_valid(source_labels_json)" in _table_sql(
+            connection,
+            "ai_managed_session",
         )
 
 

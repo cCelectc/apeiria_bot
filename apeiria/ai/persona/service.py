@@ -121,6 +121,19 @@ class AIPersonaService:
             return None
         return persona_map.get(binding.persona_id)
 
+    async def get_persona(
+        self,
+        *,
+        persona_id: str,
+        include_disabled: bool = False,
+    ) -> AIPersonaDefinition | None:
+        """Load one persona definition by id."""
+
+        for persona in await self.list_personas(include_disabled=include_disabled):
+            if persona.persona_id == persona_id:
+                return persona
+        return None
+
     async def create_persona(
         self,
         create_input: AIPersonaCreateInput,
@@ -234,6 +247,25 @@ class AIPersonaService:
             style_prompt_template=persona.style_prompt,
         )
 
+    async def build_persona_prompt_bundle_by_id(
+        self,
+        *,
+        persona_id: str,
+        render_context: AIPersonaRenderContext | None = None,
+    ) -> AIPersonaPromptBundle | None:
+        """Build a persona prompt bundle from an explicit persona id."""
+
+        persona = await self.get_persona(
+            persona_id=persona_id,
+            include_disabled=False,
+        )
+        if persona is None:
+            return None
+        return _build_persona_prompt_bundle(
+            persona,
+            render_context=render_context,
+        )
+
 
 def render_persona_template(
     template: str,
@@ -252,6 +284,29 @@ def render_persona_template(
     for key, value in variables.items():
         rendered = rendered.replace(f"{{{key}}}", value)
     return rendered
+
+
+def _build_persona_prompt_bundle(
+    persona: AIPersonaDefinition,
+    *,
+    render_context: AIPersonaRenderContext | None,
+) -> AIPersonaPromptBundle:
+    return AIPersonaPromptBundle(
+        persona_id=persona.persona_id,
+        name=persona.name,
+        system_prompt=render_persona_template(
+            persona.system_prompt,
+            render_context,
+            extra_variables={"persona_name": persona.name},
+        ),
+        style_prompt=render_persona_template(
+            persona.style_prompt,
+            render_context,
+            extra_variables={"persona_name": persona.name},
+        ),
+        system_prompt_template=persona.system_prompt,
+        style_prompt_template=persona.style_prompt,
+    )
 
 
 def build_persona_render_context(  # noqa: PLR0913

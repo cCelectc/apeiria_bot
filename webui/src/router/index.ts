@@ -57,6 +57,12 @@ const routes: RouteRecordRaw[] = [
         meta: { titleKey: 'ai.modelsTitle' },
       },
       {
+        path: 'ai/sessions',
+        name: 'ai-sessions',
+        component: () => import('@/pages/AISessionsPage.vue'),
+        meta: { titleKey: 'ai.sessionsTab' },
+      },
+      {
         path: 'ai/knowledge',
         name: 'ai-knowledge',
         component: () => import('@/pages/AIKnowledgePage.vue'),
@@ -107,6 +113,7 @@ const routes: RouteRecordRaw[] = [
       ...aiManagementPageDescriptors
         .filter(item => ![
           'overview',
+          'sessions',
           'models',
           'knowledge',
           'personas',
