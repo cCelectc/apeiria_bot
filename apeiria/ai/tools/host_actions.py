@@ -36,6 +36,8 @@ class AIHostActionContractInput:
     read_only: bool = True
     risk_level: str = "low"
     concurrency_safe: bool = True
+    timeout_seconds: float | None = None
+    requires_operator_approval: bool = False
     origin: AICapabilityOrigin = AICapabilityOrigin.BUILTIN
     tags: tuple[str, ...] = ()
 
@@ -205,6 +207,8 @@ def host_action_contract(
             read_only=create_input.read_only,
             risk_level=create_input.risk_level,  # type: ignore[arg-type]
             concurrency_safe=create_input.concurrency_safe,
+            timeout_seconds=create_input.timeout_seconds,
+            requires_operator_approval=create_input.requires_operator_approval,
         ),
         tags=create_input.tags,
     )

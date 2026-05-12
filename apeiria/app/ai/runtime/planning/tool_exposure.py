@@ -229,6 +229,7 @@ class ToolOrchestrator:
                     for tool in selected_contracts
                     if tool.safety.concurrency_safe
                 ),
+                **_tool_metadata_diagnostics(tuple(selected_contracts)),
                 "selected_tool_count": len(capability_plan.model_visible_tools),
                 "capability_contract_count": (
                     capability_diagnostics.total_contracts
@@ -298,6 +299,32 @@ def _policy_denial_reason(
     if tool.name.startswith(("plugin.", "help.")) and not policy.allow_host_actions:
         return "host_action_denied"
     return None
+
+
+def _tool_metadata_diagnostics(
+    selected_contracts: tuple[AICapabilityContract, ...],
+) -> dict[str, object]:
+    return {
+        "read_only_tool_names": tuple(
+            tool.name for tool in selected_contracts if tool.safety.read_only
+        ),
+        "mutating_tool_names": tuple(
+            tool.name for tool in selected_contracts if tool.safety.mutates_state
+        ),
+        "approval_required_tool_names": tuple(
+            tool.name
+            for tool in selected_contracts
+            if tool.safety.requires_operator_approval
+        ),
+        "tool_risk_levels": {
+            tool.name: tool.safety.risk_level for tool in selected_contracts
+        },
+        "tool_timeout_seconds": {
+            tool.name: tool.safety.timeout_seconds
+            for tool in selected_contracts
+            if tool.safety.timeout_seconds is not None
+        },
+    }
 
 
 def _build_capability_exposure_plan(

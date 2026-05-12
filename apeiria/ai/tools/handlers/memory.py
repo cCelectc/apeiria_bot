@@ -18,6 +18,7 @@ from apeiria.ai.tools.models import (
     description="inspect recalled long-term memory",
     read_only=True,
     concurrency_safe=True,
+    timeout_seconds=3.0,
 )
 async def handle_memory_query(
     query_text: Annotated[  # noqa: ARG001
@@ -57,6 +58,7 @@ async def handle_memory_query(
     read_only=False,
     concurrency_safe=False,
     risk_level="low",
+    timeout_seconds=5.0,
 )
 async def handle_memory_update(
     memory_id: Annotated[

@@ -69,6 +69,8 @@ class AICapabilityInventoryRecord:
     risk_level: str
     tags: tuple[str, ...]
     version: int
+    timeout_seconds: float | None = None
+    requires_operator_approval: bool = False
     display_name: str | None = None
     binding_key: str | None = None
     binding_type: str | None = None
@@ -76,6 +78,12 @@ class AICapabilityInventoryRecord:
     policy_status: str = "not_evaluated"
     diagnostics: tuple[str, ...] = ()
     required_capabilities: tuple[str, ...] = ()
+
+    @property
+    def mutates_state(self) -> bool:
+        """Return whether the capability can change durable runtime state."""
+
+        return not self.read_only
 
 
 @dataclass(frozen=True)
@@ -451,6 +459,7 @@ def _build_capability_inventory(
                 risk_level="high",
                 tags=(),
                 version=1,
+                requires_operator_approval=True,
                 availability="incomplete",
                 diagnostics=(host_action.reason or "missing capability contract",),
             )
@@ -509,6 +518,8 @@ def _inventory_record(
         risk_level=safety.risk_level,
         tags=contract.tags,  # type: ignore[attr-defined]
         version=contract.version,  # type: ignore[attr-defined]
+        timeout_seconds=safety.timeout_seconds,
+        requires_operator_approval=safety.requires_operator_approval,
         display_name=contract.display_name,  # type: ignore[attr-defined]
         binding_key=binding.binding_key,
         binding_type=binding.binding_type,

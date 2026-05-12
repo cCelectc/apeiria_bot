@@ -469,6 +469,7 @@ def test_runtime_planning_uses_runtime_context_materials_for_plan_parity(
         "turn_count": 1,
         "recalled_memory_count": 0,
         "memory_layers": (),
+        "memory_layer_counts": {},
         "has_persona": False,
         "has_relationship_context": True,
         "person_profile_line_count": 1,
@@ -479,6 +480,9 @@ def test_runtime_planning_uses_runtime_context_materials_for_plan_parity(
         "rag_enabled": False,
         "rag_selected_count": 0,
         "rag_candidate_count": 0,
+        "rag_missing_embedding_count": 0,
+        "rag_stale_embedding_count": 0,
+        "rag_rerank_status": None,
         "rag_degradation_reason": None,
     }
     assert plan.tool_exposure_plan.selected_tool_names == ("memory.query",)

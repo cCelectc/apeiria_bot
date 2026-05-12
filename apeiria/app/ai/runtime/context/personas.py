@@ -17,7 +17,7 @@ if TYPE_CHECKING:
 
     from apeiria.ai.persona import AIPersonaRenderContext
     from apeiria.ai.prompting import ReplyPersonaPromptBundleLike
-    from apeiria.app.ai.runtime.live import AIRuntimeTurnRequest
+    from apeiria.app.ai.runtime.session.context import RuntimeTurnInput
     from apeiria.conversation.models import (
         ChatContextMessageView,
         ChatSessionIdentity,
@@ -75,14 +75,14 @@ async def load_group_name(identity: "ChatSessionIdentity") -> str | None:
 
 
 async def build_persona_render_context_for_reply(
-    request: "AIRuntimeTurnRequest",
+    turn: "RuntimeTurnInput",
     *,
     current_time: "datetime",
     turns: list["ChatContextMessageView"],
 ) -> "AIPersonaRenderContext":
-    """Build persona render context from request + recent turns."""
+    """Build persona render context from the runtime turn and recent turns."""
 
-    identity = request.identity
+    identity = turn.identity
     group_name = await load_group_name(identity)
     return build_persona_render_context(
         bot_id=identity.bot_id,
@@ -92,22 +92,22 @@ async def build_persona_render_context_for_reply(
         scene_id=identity.scene_id,
         session_id=identity.session_id,
         group_name=group_name,
-        user_id=request.user_id,
-        user_name=find_recent_user_name(turns, request.user_id) or request.user_id,
+        user_id=turn.user_id,
+        user_name=find_recent_user_name(turns, turn.user_id) or turn.user_id,
     )
 
 
 async def load_persona_bundle(
     *,
-    request: "AIRuntimeTurnRequest",
+    turn: "RuntimeTurnInput",
     current_time: "datetime",
     turns: list["ChatContextMessageView"],
 ) -> "ReplyPersonaPromptBundleLike | None":
     """Resolve persona binding target and build the prompt bundle."""
 
-    target = build_persona_binding_target(request.identity, request.user_id)
+    target = build_persona_binding_target(turn.identity, turn.user_id)
     render_context = await build_persona_render_context_for_reply(
-        request,
+        turn,
         current_time=current_time,
         turns=turns,
     )

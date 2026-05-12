@@ -67,6 +67,10 @@ class TurnTrace:
             "model_attempt_count": len(self.model_attempts),
             "tool_attempt_count": len(self.tool_attempts),
             "tool_observation_count": len(self.tool_attempts),
+            "model_attempts": _safe_model_attempts(self.model_attempts),
+            "tool_attempts": _safe_tool_attempts(self.tool_attempts),
+            "stage_summaries": _stage_summaries(self),
+            "final_outcome": _final_outcome(self),
             "final_response_source": self.final_response_source,
             "skip_reason": self.skip_reason,
             "delivery_status": self.delivery_status,
@@ -169,13 +173,107 @@ def _extract_prompt_diagnostics(
 
 
 def _safe_prompt_diagnostics(raw: dict[str, object]) -> dict[str, object]:
-    diagnostics = dict(raw)
-    rag = _safe_rag_metadata(diagnostics.get("rag"))
+    diagnostics: dict[str, object] = {}
+    for key in (
+        "prompt_purpose",
+        "stable_section_names",
+        "dynamic_section_names",
+        "stable_section_count",
+        "dynamic_section_count",
+        "total_section_count",
+    ):
+        field = raw.get(key)
+        if isinstance(field, str | int):
+            diagnostics[key] = field
+        elif isinstance(field, list | tuple):
+            safe_items = [item for item in field if isinstance(item, str)][:20]
+            diagnostics[key] = (
+                tuple(safe_items) if isinstance(field, tuple) else safe_items
+            )
+
+    context = _safe_context_metadata(raw.get("context"))
+    if context:
+        diagnostics["context"] = context
+    tool_exposure = _safe_tool_exposure_metadata(raw.get("tool_exposure"))
+    if tool_exposure:
+        diagnostics["tool_exposure"] = tool_exposure
+    rag = _safe_rag_metadata(raw.get("rag"))
     if rag:
         diagnostics["rag"] = rag
-    elif "rag" in diagnostics:
-        diagnostics.pop("rag")
+    multimodal = _safe_multimodal_metadata(raw.get("multimodal"))
+    if multimodal:
+        diagnostics["multimodal"] = multimodal
+    speech = _safe_speech_metadata(raw.get("speech"))
+    if speech:
+        diagnostics["speech"] = list(speech)
     return diagnostics
+
+
+def _safe_context_metadata(value: object) -> dict[str, object] | None:
+    if not isinstance(value, dict):
+        return None
+    metadata: dict[str, object] = {}
+    _copy_str_fields(value, metadata, fields=("projection_mode",))
+    _copy_int_fields(
+        value,
+        metadata,
+        fields=(
+            "turn_count",
+            "recalled_memory_count",
+            "person_profile_line_count",
+            "allowed_capability_count",
+        ),
+    )
+    _copy_bool_fields(
+        value,
+        metadata,
+        fields=("has_relationship_context", "has_conversation_summary"),
+    )
+    memory_layers = _safe_str_list(value.get("memory_layers"), limit=8)
+    if memory_layers:
+        metadata["memory_layers"] = memory_layers
+    memory_layer_counts = _safe_count_mapping(value.get("memory_layer_counts"))
+    if memory_layer_counts:
+        metadata["memory_layer_counts"] = memory_layer_counts
+    return metadata or None
+
+
+def _safe_tool_exposure_metadata(value: object) -> dict[str, object] | None:
+    if not isinstance(value, dict):
+        return None
+    metadata: dict[str, object] = {}
+    _copy_int_fields(
+        value,
+        metadata,
+        fields=(
+            "selected_tool_count",
+            "capability_contract_count",
+            "capability_visible_tool_count",
+            "capability_hidden_count",
+            "capability_denied_count",
+            "capability_unavailable_count",
+        ),
+    )
+    _copy_bool_fields(value, metadata, fields=("model_supports_tools",))
+    timeout = value.get("execution_timeout_seconds")
+    if isinstance(timeout, int | float):
+        metadata["execution_timeout_seconds"] = float(timeout)
+    for key in (
+        "parallel_safe_tool_names",
+        "read_only_tool_names",
+        "mutating_tool_names",
+        "approval_required_tool_names",
+    ):
+        names = _safe_str_list(value.get(key), limit=20)
+        if names:
+            metadata[key] = names
+    risk_levels = _safe_str_mapping(value.get("tool_risk_levels"), limit=20)
+    if risk_levels:
+        metadata["tool_risk_levels"] = risk_levels
+    tool_timeouts = _safe_numeric_mapping(value.get("tool_timeout_seconds"), limit=20)
+    if tool_timeouts:
+        metadata["tool_timeout_seconds"] = tool_timeouts
+    return metadata or None
 
 
 def _safe_rag_metadata(value: object) -> dict[str, object] | None:
@@ -183,7 +281,16 @@ def _safe_rag_metadata(value: object) -> dict[str, object] | None:
         return None
     metadata: dict[str, object] = {}
     _copy_bool_fields(value, metadata, fields=("enabled",))
-    _copy_int_fields(value, metadata, fields=("selected_count", "candidate_count"))
+    _copy_int_fields(
+        value,
+        metadata,
+        fields=(
+            "selected_count",
+            "candidate_count",
+            "missing_embedding_count",
+            "stale_embedding_count",
+        ),
+    )
     _copy_str_fields(value, metadata, fields=("rerank_status", "degradation_reason"))
     chunks = _safe_rag_chunks(value.get("chunks"))
     if chunks:
@@ -386,6 +493,104 @@ def _safe_count_mapping(value: object) -> dict[str, int]:
         for key, count in value.items()
         if isinstance(key, str) and isinstance(count, int)
     }
+
+
+def _safe_str_list(value: object, *, limit: int) -> list[str]:
+    if not isinstance(value, list | tuple):
+        return []
+    return [item for item in value if isinstance(item, str)][:limit]
+
+
+def _safe_str_mapping(value: object, *, limit: int) -> dict[str, str]:
+    if not isinstance(value, dict):
+        return {}
+    mapping: dict[str, str] = {}
+    for key, item in value.items():
+        if len(mapping) >= limit:
+            break
+        if isinstance(key, str) and isinstance(item, str):
+            mapping[key] = item
+    return mapping
+
+
+def _safe_numeric_mapping(value: object, *, limit: int) -> dict[str, float]:
+    if not isinstance(value, dict):
+        return {}
+    mapping: dict[str, float] = {}
+    for key, item in value.items():
+        if len(mapping) >= limit:
+            break
+        if isinstance(key, str) and isinstance(item, int | float):
+            mapping[key] = float(item)
+    return mapping
+
+
+def _safe_model_attempts(
+    attempts: tuple["ModelAttempt", ...],
+) -> list[dict[str, object]]:
+    records: list[dict[str, object]] = []
+    for attempt in attempts[:5]:
+        record: dict[str, object] = {
+            "attempt_index": attempt.attempt_index,
+            "model_ref": attempt.model_ref,
+            "status": attempt.status,
+            "response_source": attempt.response_source,
+        }
+        if attempt.reason:
+            record["reason"] = attempt.reason
+        records.append(record)
+    return records
+
+
+def _safe_tool_attempts(
+    attempts: tuple["ToolAttempt", ...],
+) -> list[dict[str, object]]:
+    records: list[dict[str, object]] = []
+    for attempt in attempts[:10]:
+        record: dict[str, object] = {
+            "tool_name": attempt.tool_name,
+            "status": attempt.status,
+            "repetition_count": attempt.repetition_count,
+            "repeated": attempt.repeated,
+        }
+        if attempt.diagnostic:
+            record["diagnostic"] = attempt.diagnostic
+        records.append(record)
+    return records
+
+
+def _stage_summaries(trace: TurnTrace) -> list[dict[str, object]]:
+    execution_status = "skipped" if trace.skip_reason is not None else "completed"
+    if not (trace.model_attempts or trace.tool_attempts or trace.final_response_source):
+        execution_status = (
+            "not_started" if trace.skip_reason is not None else "terminal"
+        )
+    return [
+        {
+            "stage": "policy",
+            "status": trace.strategy_action,
+            "reason_codes": list(trace.strategy_reason_codes),
+        },
+        {
+            "stage": "execution",
+            "status": execution_status,
+            "model_attempt_count": len(trace.model_attempts),
+            "tool_attempt_count": len(trace.tool_attempts),
+        },
+        {
+            "stage": "commit",
+            "status": trace.delivery_status or "not_required",
+        },
+    ]
+
+
+def _final_outcome(trace: TurnTrace) -> dict[str, object]:
+    outcome: dict[str, object] = {
+        "response_source": trace.final_response_source,
+        "skip_reason": trace.skip_reason,
+        "delivery_status": trace.delivery_status,
+    }
+    return {key: value for key, value in outcome.items() if value is not None}
 
 
 def _safe_degradation_metadata(value: object) -> dict[str, object]:

@@ -158,6 +158,16 @@ async def plan_runtime_turn(
         source=turn.source,
     )
     prompt_diagnostics = build_prompt_region_diagnostics(prompt_packet)
+    prompt_diagnostics = {
+        **prompt_diagnostics,
+        "context": _context_diagnostics_summary(
+            context_projection.diagnostics.as_dict()
+        ),
+        "tool_exposure": _tool_exposure_diagnostics_summary(
+            tool_exposure_plan.diagnostics
+        ),
+        "rag": _rag_diagnostics_summary(context_projection.diagnostics.as_dict()),
+    }
     if media_diagnostics:
         prompt_diagnostics = {**prompt_diagnostics, **media_diagnostics}
     if turn.source.speech_diagnostics:
@@ -266,6 +276,62 @@ def _initial_reply_has_tools(
     if isinstance(prompt_input, RuntimePromptPlanningInput):
         return bool(prompt_input.has_tools)
     return prompt_input.has_executable_tools
+
+
+def _context_diagnostics_summary(
+    diagnostics: dict[str, object],
+) -> dict[str, object]:
+    keys = (
+        "projection_mode",
+        "turn_count",
+        "recalled_memory_count",
+        "memory_layers",
+        "memory_layer_counts",
+        "person_profile_line_count",
+        "has_relationship_context",
+        "has_conversation_summary",
+        "allowed_capability_count",
+    )
+    return {key: diagnostics[key] for key in keys if key in diagnostics}
+
+
+def _tool_exposure_diagnostics_summary(
+    diagnostics: dict[str, object],
+) -> dict[str, object]:
+    keys = (
+        "selected_tool_count",
+        "execution_timeout_seconds",
+        "parallel_safe_tool_names",
+        "read_only_tool_names",
+        "mutating_tool_names",
+        "approval_required_tool_names",
+        "tool_risk_levels",
+        "tool_timeout_seconds",
+        "capability_contract_count",
+        "capability_visible_tool_count",
+        "capability_hidden_count",
+        "capability_denied_count",
+        "capability_unavailable_count",
+        "model_supports_tools",
+    )
+    return {key: diagnostics[key] for key in keys if key in diagnostics}
+
+
+def _rag_diagnostics_summary(
+    diagnostics: dict[str, object],
+) -> dict[str, object]:
+    keys = (
+        "rag_enabled",
+        "rag_selected_count",
+        "rag_candidate_count",
+        "rag_missing_embedding_count",
+        "rag_stale_embedding_count",
+        "rag_rerank_status",
+        "rag_degradation_reason",
+    )
+    return {
+        key.removeprefix("rag_"): diagnostics[key] for key in keys if key in diagnostics
+    }
 
 
 __all__ = [

@@ -94,6 +94,8 @@ class AIPluginCapabilityContractInput:
     read_only: bool = True
     concurrency_safe: bool = True
     risk_level: AIToolRiskLevel = "low"
+    timeout_seconds: float | None = None
+    requires_operator_approval: bool = False
     tags: tuple[str, ...] = ()
 
 
@@ -220,6 +222,8 @@ def register_ai_tool(  # noqa: PLR0913
     read_only: bool,
     concurrency_safe: bool,
     risk_level: "AIToolRiskLevel" = "low",
+    timeout_seconds: float | None = None,
+    requires_operator_approval: bool = False,
     tags: tuple[str, ...] = (),
 ) -> "Callable[[AIToolHandler], AIToolHandler]":
     """Decorator for plugin-declared local executable capabilities.
@@ -240,6 +244,8 @@ def register_ai_tool(  # noqa: PLR0913
                 read_only=read_only,
                 risk_level=risk_level,
                 concurrency_safe=concurrency_safe,
+                timeout_seconds=timeout_seconds,
+                requires_operator_approval=requires_operator_approval,
             ),
             tags=tags,
         )
@@ -275,6 +281,8 @@ def register_ai_capability_contract(
             read_only=create_input.read_only,
             risk_level=create_input.risk_level,
             concurrency_safe=create_input.concurrency_safe,
+            timeout_seconds=create_input.timeout_seconds,
+            requires_operator_approval=create_input.requires_operator_approval,
         ),
         tags=create_input.tags,
     )

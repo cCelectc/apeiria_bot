@@ -65,12 +65,6 @@ class RuntimeContextBundle:
     context: RuntimeContextMaterials
     diagnostics: dict[str, Any] = field(default_factory=dict)
 
-    @property
-    def inputs(self) -> RuntimeContextMaterials:
-        """Compatibility alias while callers move to runtime context materials."""
-
-        return self.context
-
 
 @dataclass(frozen=True, slots=True)
 class RuntimeIngressInput:

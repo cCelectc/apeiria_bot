@@ -14,7 +14,6 @@ from apeiria.app.ai.future_tasks.models import AIFutureTaskDefinition
 from apeiria.app.ai.reply_strategy import ReplyStrategyDecision
 from apeiria.app.ai.runtime.commit import RuntimeCommitEffectsStage
 from apeiria.app.ai.runtime.commit.delivery import DeliveryOutcome
-from apeiria.app.ai.runtime.context.materials import RuntimeContextInputBundle
 from apeiria.app.ai.runtime.execution.tool_loop import RuntimeToolLoopResult
 from apeiria.app.ai.runtime.live import AIRuntimeTurnRequest
 from apeiria.app.ai.runtime.orchestrator import AISessionTurnEngine
@@ -157,8 +156,8 @@ def _think_execution() -> RuntimeExecutionOutcome:
     )
 
 
-def _inputs() -> RuntimeContextInputBundle:
-    return RuntimeContextInputBundle(
+def _context_materials() -> RuntimeContextMaterials:
+    return RuntimeContextMaterials(
         turns=[],
         conversation_summary=None,
         relationship_target=object(),  # type: ignore[arg-type]
@@ -209,8 +208,8 @@ def _commit_input(
     return RuntimeCommitInput(
         stage="commit",
         trace_id="trace-1",
-        turn=RuntimeTurnInput.from_turn_request(reply_request),
-        context=RuntimeContextMaterials.from_context_input_bundle(_inputs()),
+        turn=reply_request.to_runtime_turn_input(),
+        context=_context_materials(),
         social_decision=_social_decision(),
         plan=_plan(),
         generation=generation or _execution(),
@@ -282,9 +281,7 @@ def test_commit_records_partial_delivery_failure() -> None:
         )
     )
 
-    assert deliveries == [
-        (RuntimeTurnInput.from_turn_request(_request()), "reminder", "trace-1")
-    ]
+    assert deliveries == [(_request().to_runtime_turn_input(), "reminder", "trace-1")]
     assert commit.commit_status == "partial"
     assert commit.delivery_result is not None
     assert commit.delivery_result.reason == "bot_not_connected"

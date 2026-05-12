@@ -273,9 +273,12 @@ export interface AIToolItem {
   display_name?: string
   display_description?: string
   read_only: boolean
+  mutates_state: boolean
   concurrency_safe: boolean
   risk_level: string
   risk_label?: string
+  timeout_seconds: number | null
+  requires_operator_approval: boolean
 }
 
 export type AISkillItem = AIToolItem
@@ -286,9 +289,12 @@ export interface AICapabilityItem {
   origin: string
   description: string
   read_only: boolean
+  mutates_state: boolean
   concurrency_safe: boolean
   risk_level: string
   risk_label: string
+  timeout_seconds: number | null
+  requires_operator_approval: boolean
   availability: string
   binding_key: string | null
   binding_type: string | null

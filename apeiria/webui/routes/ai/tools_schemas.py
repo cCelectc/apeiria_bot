@@ -23,8 +23,11 @@ class AIToolItem(BaseModel):
     name: str
     description: str
     read_only: bool
+    mutates_state: bool
     concurrency_safe: bool
     risk_level: str
+    timeout_seconds: float | None = None
+    requires_operator_approval: bool = False
 
 
 class AISkillItem(BaseModel):
@@ -33,9 +36,12 @@ class AISkillItem(BaseModel):
     display_name: str
     display_description: str
     read_only: bool
+    mutates_state: bool
     concurrency_safe: bool
     risk_level: str
     risk_label: str
+    timeout_seconds: float | None = None
+    requires_operator_approval: bool = False
 
 
 class AIToolExecutionItem(BaseModel):
@@ -122,9 +128,12 @@ class AICapabilityItem(BaseModel):
     origin: str
     description: str
     read_only: bool
+    mutates_state: bool
     concurrency_safe: bool
     risk_level: str
     risk_label: str
+    timeout_seconds: float | None = None
+    requires_operator_approval: bool = False
     availability: str
     binding_key: str | None = None
     binding_type: str | None = None
@@ -168,8 +177,11 @@ def to_ai_tool_item(item: "AICapabilityContract") -> AIToolItem:
         name=item.name,
         description=item.description,
         read_only=item.safety.read_only,
+        mutates_state=item.safety.mutates_state,
         concurrency_safe=item.safety.concurrency_safe,
         risk_level=item.safety.risk_level,
+        timeout_seconds=item.safety.timeout_seconds,
+        requires_operator_approval=item.safety.requires_operator_approval,
     )
 
 
@@ -190,6 +202,7 @@ def to_ai_skill_item(item: "AISkillMetadata") -> AISkillItem:
             item.description,
         ),
         read_only=item.side_effect_level == "read_only",
+        mutates_state=item.side_effect_level != "read_only",
         concurrency_safe=item.idempotent,
         risk_level=risk_level,
         risk_label=_skill_risk_label(risk_level),
@@ -267,9 +280,12 @@ def to_ai_capability_item(
         origin=item.origin,
         description=item.description,
         read_only=item.read_only,
+        mutates_state=item.mutates_state,
         concurrency_safe=item.concurrency_safe,
         risk_level=item.risk_level,
         risk_label=_skill_risk_label(item.risk_level),
+        timeout_seconds=item.timeout_seconds,
+        requires_operator_approval=item.requires_operator_approval,
         availability=item.availability,
         binding_key=item.binding_key,
         binding_type=item.binding_type,

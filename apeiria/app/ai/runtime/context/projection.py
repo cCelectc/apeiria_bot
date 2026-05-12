@@ -80,6 +80,7 @@ class RuntimeContextDiagnostics:
     turn_count: int
     recalled_memory_count: int
     memory_layers: tuple[str, ...]
+    memory_layer_counts: dict[str, int]
     has_persona: bool
     has_relationship_context: bool
     person_profile_line_count: int
@@ -90,6 +91,9 @@ class RuntimeContextDiagnostics:
     rag_enabled: bool
     rag_selected_count: int
     rag_candidate_count: int
+    rag_missing_embedding_count: int
+    rag_stale_embedding_count: int
+    rag_rerank_status: str | None
     rag_degradation_reason: str | None = None
 
     def as_dict(self) -> dict[str, object]:
@@ -100,6 +104,7 @@ class RuntimeContextDiagnostics:
             "turn_count": self.turn_count,
             "recalled_memory_count": self.recalled_memory_count,
             "memory_layers": self.memory_layers,
+            "memory_layer_counts": self.memory_layer_counts,
             "has_persona": self.has_persona,
             "has_relationship_context": self.has_relationship_context,
             "person_profile_line_count": self.person_profile_line_count,
@@ -110,6 +115,9 @@ class RuntimeContextDiagnostics:
             "rag_enabled": self.rag_enabled,
             "rag_selected_count": self.rag_selected_count,
             "rag_candidate_count": self.rag_candidate_count,
+            "rag_missing_embedding_count": self.rag_missing_embedding_count,
+            "rag_stale_embedding_count": self.rag_stale_embedding_count,
+            "rag_rerank_status": self.rag_rerank_status,
             "rag_degradation_reason": self.rag_degradation_reason,
         }
 
@@ -177,6 +185,7 @@ def project_runtime_context(  # noqa: PLR0913
             turn_count=len(context.turns),
             recalled_memory_count=len(context.recalled_memories),
             memory_layers=_memory_layers(context.recalled_memories),
+            memory_layer_counts=_memory_layer_counts(context.recalled_memories),
             has_persona=context.persona is not None,
             has_relationship_context=bool(context.relationship_context),
             person_profile_line_count=len(context.person_profile),
@@ -189,6 +198,15 @@ def project_runtime_context(  # noqa: PLR0913
             rag_candidate_count=_rag_candidate_count(
                 getattr(context, "rag_diagnostics", None)
             ),
+            rag_missing_embedding_count=_rag_missing_embedding_count(
+                getattr(context, "rag_diagnostics", None)
+            ),
+            rag_stale_embedding_count=_rag_stale_embedding_count(
+                getattr(context, "rag_diagnostics", None)
+            ),
+            rag_rerank_status=_rag_rerank_status(
+                getattr(context, "rag_diagnostics", None)
+            ),
             rag_degradation_reason=_rag_degradation_reason(
                 getattr(context, "rag_diagnostics", None)
             ),
@@ -198,6 +216,13 @@ def project_runtime_context(  # noqa: PLR0913
 
 def _memory_layers(memories: list["AIMemoryDefinition"]) -> tuple[str, ...]:
     return tuple(dict.fromkeys(memory.memory_layer for memory in memories))
+
+
+def _memory_layer_counts(memories: list["AIMemoryDefinition"]) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for memory in memories:
+        counts[memory.memory_layer] = counts.get(memory.memory_layer, 0) + 1
+    return counts
 
 
 def _rag_enabled(
@@ -212,6 +237,24 @@ def _rag_candidate_count(
     diagnostics: "KnowledgeRetrievalDiagnostics | None",
 ) -> int:
     return diagnostics.candidate_count if diagnostics is not None else 0
+
+
+def _rag_missing_embedding_count(
+    diagnostics: "KnowledgeRetrievalDiagnostics | None",
+) -> int:
+    return diagnostics.missing_embedding_count if diagnostics is not None else 0
+
+
+def _rag_stale_embedding_count(
+    diagnostics: "KnowledgeRetrievalDiagnostics | None",
+) -> int:
+    return diagnostics.stale_embedding_count if diagnostics is not None else 0
+
+
+def _rag_rerank_status(
+    diagnostics: "KnowledgeRetrievalDiagnostics | None",
+) -> str | None:
+    return diagnostics.rerank_status if diagnostics is not None else None
 
 
 def _rag_degradation_reason(

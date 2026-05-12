@@ -15,6 +15,7 @@ from apeiria.ai.tools.models import (
     description="inspect current affinity and mood projection",
     read_only=True,
     concurrency_safe=True,
+    timeout_seconds=3.0,
 )
 async def handle_relationship_inspect(
     *,

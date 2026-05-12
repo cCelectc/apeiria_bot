@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING
 
 from apeiria.ai.knowledge.models import (
     KnowledgeRetrievalDiagnostics,
-    KnowledgeRetrievalItem,
     KnowledgeRetrievalResult,
 )
 from apeiria.ai.knowledge.service import knowledge_retrieval_service
@@ -38,7 +37,6 @@ if TYPE_CHECKING:
     from apeiria.ai.prompting import ReplyPersonaPromptBundleLike
     from apeiria.ai.tools import AIToolPolicy
     from apeiria.app.ai.runtime.context.relationships import AIRelationshipTarget
-    from apeiria.app.ai.runtime.live import AIRuntimeTurnRequest
     from apeiria.app.ai.runtime.session.context import (
         RuntimeContextMaterials,
         RuntimeTurnInput,
@@ -47,79 +45,75 @@ if TYPE_CHECKING:
 
 
 @dataclass(frozen=True)
-class RuntimeContextInputBundle:
-    """Aggregated prompt/context materials for one reply turn."""
+class RuntimeConversationContext:
+    """Conversation-window materials for one reply turn."""
 
     turns: list["ChatContextMessageView"]
     conversation_summary: str | None
+
+
+@dataclass(frozen=True)
+class RuntimePersonaContext:
+    """Persona and model-binding materials for one reply turn."""
+
     relationship_target: "AIRelationshipTarget"
     model_target: "AIModelBindingTarget"
-    tool_policy: "AIToolPolicy"
     persona: "ReplyPersonaPromptBundleLike | None"
+
+
+@dataclass(frozen=True)
+class RuntimeToolContext:
+    """Tool policy and allowed capability materials for one reply turn."""
+
+    tool_policy: "AIToolPolicy"
+    allowed_tools: tuple["AICapabilityContract", ...]
+
+
+@dataclass(frozen=True)
+class RuntimeMemoryContext:
+    """Memory and relationship materials for one reply turn."""
+
     recalled_memories: list["AIMemoryDefinition"]
     relationship_context: str | None
     person_profile: tuple[str, ...]
-    allowed_tools: tuple["AICapabilityContract", ...]
     initiative_bias: float
-    rag_chunks: tuple[KnowledgeRetrievalItem, ...] = ()
-    rag_diagnostics: KnowledgeRetrievalDiagnostics | None = None
 
 
 async def collect_reply_inputs(
-    request: "AIRuntimeTurnRequest",
+    turn: "RuntimeTurnInput",
     current_time: "datetime",
-) -> RuntimeContextInputBundle:
+) -> "RuntimeContextMaterials":
     """Collect all prompt-facing materials needed to decide and generate a reply."""
 
-    identity = request.identity
-    turn = request.to_runtime_turn_input()
+    from apeiria.app.ai.runtime.session.context import RuntimeContextMaterials
 
-    turns, conversation_summary = await build_and_store_context_window(
-        identity=identity,
-    )
-    relationship_target = build_relationship_target(identity, turn.user_id)
-    model_target = build_model_binding_target(identity, turn.user_id)
-    tool_policy = await resolve_tool_policy(
-        identity,
-        is_tome=turn.is_tome,
-    )
-    persona = await load_persona_bundle(
-        request=request,
+    conversation = await collect_conversation_context(turn)
+    persona_context = await collect_persona_context(
+        turn=turn,
         current_time=current_time,
-        turns=turns,
+        turns=conversation.turns,
     )
-    recalled_memories = await retrieve_memories_for_context(
-        identity=identity,
-        user_id=turn.user_id,
-        query_text=turn.message_text,
-    )
-    relationship_context = await load_relationship_context(
-        target=relationship_target,
-    )
-    person_profile = await load_person_profile_for_prompt(
-        identity=identity,
-        user_id=turn.user_id,
-    )
-    allowed_tools = tuple(ai_tool_service.list_allowed_tools(tool_policy))
-    initiative_bias = await resolve_initiative_bias(
-        relationship_target=relationship_target,
+    tool_context = await collect_tool_context(turn)
+    memory_context = await collect_memory_context(
+        turn=turn,
+        relationship_target=persona_context.relationship_target,
     )
     rag_result = await retrieve_rag_for_context(
         query_text=turn.message_text,
         limit=3,
     )
-    return RuntimeContextInputBundle(
-        turns=turns,
-        conversation_summary=conversation_summary,
-        relationship_target=relationship_target,
-        model_target=model_target,
-        tool_policy=tool_policy,
-        persona=persona,
-        recalled_memories=recalled_memories,
-        relationship_context=relationship_context,
-        person_profile=person_profile,
-        allowed_tools=allowed_tools,
-        initiative_bias=initiative_bias,
+    return RuntimeContextMaterials(
+        turns=conversation.turns,
+        conversation_summary=conversation.conversation_summary,
+        relationship_target=persona_context.relationship_target,
+        model_target=persona_context.model_target,
+        tool_policy=tool_context.tool_policy,
+        persona=persona_context.persona,
+        recalled_memories=memory_context.recalled_memories,
+        relationship_context=memory_context.relationship_context,
+        person_profile=memory_context.person_profile,
+        allowed_tools=tool_context.allowed_tools,
+        initiative_bias=memory_context.initiative_bias,
         rag_chunks=rag_result.items,
         rag_diagnostics=rag_result.diagnostics,
     )
@@ -129,12 +123,83 @@ async def gather_reply_inputs(
     turn: "RuntimeTurnInput",
     current_time: "datetime",
 ) -> "RuntimeContextMaterials":
-    """Collect and adapt prompt-facing materials for runtime context assembly."""
+    """Collect runtime-owned prompt-facing materials for context assembly."""
 
-    from apeiria.app.ai.runtime.session.context import RuntimeContextMaterials
+    return await collect_reply_inputs(turn, current_time)
 
-    return RuntimeContextMaterials.from_context_input_bundle(
-        await collect_reply_inputs(turn.to_turn_request(), current_time)
+
+async def collect_conversation_context(
+    turn: "RuntimeTurnInput",
+) -> RuntimeConversationContext:
+    """Collect conversation-window context for one reply turn."""
+
+    turns, conversation_summary = await build_and_store_context_window(
+        identity=turn.identity,
+    )
+    return RuntimeConversationContext(
+        turns=turns,
+        conversation_summary=conversation_summary,
+    )
+
+
+async def collect_persona_context(
+    *,
+    turn: "RuntimeTurnInput",
+    current_time: "datetime",
+    turns: list["ChatContextMessageView"],
+) -> RuntimePersonaContext:
+    """Collect persona and model-binding context for one reply turn."""
+
+    relationship_target = build_relationship_target(turn.identity, turn.user_id)
+    return RuntimePersonaContext(
+        relationship_target=relationship_target,
+        model_target=build_model_binding_target(turn.identity, turn.user_id),
+        persona=await load_persona_bundle(
+            turn=turn,
+            current_time=current_time,
+            turns=turns,
+        ),
+    )
+
+
+async def collect_tool_context(
+    turn: "RuntimeTurnInput",
+) -> RuntimeToolContext:
+    """Collect tool policy and allowed capabilities for one reply turn."""
+
+    tool_policy = await resolve_tool_policy(
+        turn.identity,
+        is_tome=turn.is_tome,
+    )
+    return RuntimeToolContext(
+        tool_policy=tool_policy,
+        allowed_tools=tuple(ai_tool_service.list_allowed_tools(tool_policy)),
+    )
+
+
+async def collect_memory_context(
+    *,
+    turn: "RuntimeTurnInput",
+    relationship_target: "AIRelationshipTarget",
+) -> RuntimeMemoryContext:
+    """Collect memory, relationship, profile, and initiative context."""
+
+    return RuntimeMemoryContext(
+        recalled_memories=await retrieve_memories_for_context(
+            identity=turn.identity,
+            user_id=turn.user_id,
+            query_text=turn.message_text,
+        ),
+        relationship_context=await load_relationship_context(
+            target=relationship_target,
+        ),
+        person_profile=await load_person_profile_for_prompt(
+            identity=turn.identity,
+            user_id=turn.user_id,
+        ),
+        initiative_bias=await resolve_initiative_bias(
+            relationship_target=relationship_target,
+        ),
     )
 
 

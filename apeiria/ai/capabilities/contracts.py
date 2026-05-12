@@ -31,6 +31,19 @@ class AICapabilitySafety:
     read_only: bool
     risk_level: AICapabilityRiskLevel
     concurrency_safe: bool
+    timeout_seconds: float | None = None
+    requires_operator_approval: bool = False
+
+    def __post_init__(self) -> None:
+        if self.timeout_seconds is not None and self.timeout_seconds <= 0:
+            msg = "capability timeout_seconds must be positive when provided"
+            raise ValueError(msg)
+
+    @property
+    def mutates_state(self) -> bool:
+        """Return whether this capability can change host or memory state."""
+
+        return not self.read_only
 
 
 @dataclass(frozen=True)

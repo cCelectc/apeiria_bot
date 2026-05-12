@@ -3,7 +3,6 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from apeiria.ai.turn_records import ModelAttempt, PromptSafeObservation, ToolAttempt
-from apeiria.app.ai.runtime.session.context import RuntimeTurnInput
 from apeiria.app.ai.runtime.stages import RuntimeTraceInput
 from apeiria.app.ai.runtime.strategy import RuntimeHardRuleDecision
 from apeiria.app.ai.runtime.trace import TurnTrace
@@ -239,7 +238,7 @@ def test_engine_persists_hard_rule_trace_without_assistant_message(
         trace_input=RuntimeTraceInput(
             stage="trace",
             trace_id="trace-hard-rule",
-            turn=RuntimeTurnInput.from_turn_request(request),
+            turn=request.to_runtime_turn_input(),
             strategy_decision=decision,
             turn_result=None,
         ),

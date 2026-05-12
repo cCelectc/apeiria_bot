@@ -23,6 +23,7 @@ def register_builtin_capabilities(registry: "AIHostActionRegistry") -> None:
             AIHostActionContractInput(
                 name="help.show",
                 description="Show available built-in AI host actions.",
+                timeout_seconds=3.0,
             )
         ),
         handler=capability_help_show,
@@ -38,6 +39,7 @@ def register_builtin_capabilities(registry: "AIHostActionRegistry") -> None:
                     "required": ["plugin_query"],
                     "additionalProperties": False,
                 },
+                timeout_seconds=3.0,
             )
         ),
         handler=capability_plugin_inspect,

@@ -6,13 +6,11 @@ from apeiria.ai.model import AIModelBindingTarget, AIModelMessage, AIModelToolDe
 from apeiria.ai.tools import AIToolPolicy
 from apeiria.app.ai.reply_strategy import ReplyStrategyDecision
 from apeiria.app.ai.runtime.context.adapter import build_turn_context
-from apeiria.app.ai.runtime.context.materials import RuntimeContextInputBundle
 from apeiria.app.ai.runtime.live import AIRuntimeTurnRequest
 from apeiria.app.ai.runtime.planning.tool_exposure import ToolExposurePlan
 from apeiria.app.ai.runtime.session.context import (
     DeliveryTarget,
     RuntimeContextMaterials,
-    RuntimeTurnInput,
 )
 from apeiria.app.ai.runtime.strategy import RuntimeHardRuleDecision
 from apeiria.conversation.models import ChatSessionIdentity
@@ -29,8 +27,8 @@ def _identity(scene_type: str = "group") -> ChatSessionIdentity:
     )
 
 
-def _inputs() -> RuntimeContextInputBundle:
-    return RuntimeContextInputBundle(
+def _context_materials() -> RuntimeContextMaterials:
+    return RuntimeContextMaterials(
         turns=[],
         conversation_summary="summary",
         relationship_target=object(),  # type: ignore[arg-type]
@@ -104,11 +102,12 @@ def test_build_turn_context_freezes_message_turn_runtime_inputs() -> None:
         delivery_channel="message",
     )
     current_time = datetime(2026, 4, 29, 12, 0, tzinfo=timezone.utc)
+    materials = _context_materials()
 
     context = build_turn_context(
         trace_id="trace-1",
-        turn=RuntimeTurnInput.from_turn_request(request),
-        context=RuntimeContextMaterials.from_context_input_bundle(_inputs()),
+        turn=request.to_runtime_turn_input(),
+        context=materials,
         hard_decision=_hard_decision(),
         social_decision=_social_decision(),
         delivery_target=delivery,
@@ -127,8 +126,8 @@ def test_build_turn_context_freezes_message_turn_runtime_inputs() -> None:
     assert context.source.event_dedupe_claimed is True
     assert context.delivery_target == delivery
     assert context.current_time == current_time
-    assert context.model_target == _inputs().model_target
-    assert context.tool_policy == _inputs().tool_policy
+    assert context.model_target == materials.model_target
+    assert context.tool_policy == materials.tool_policy
     assert context.prompt_messages == prompt_messages
     assert context.tool_exposure_plan == tool_plan
     assert context.hard_rule_decision == _hard_decision()
@@ -152,8 +151,8 @@ def test_build_turn_context_records_future_task_delivery_target() -> None:
 
     context = build_turn_context(
         trace_id="trace-future",
-        turn=RuntimeTurnInput.from_turn_request(request),
-        context=RuntimeContextMaterials.from_context_input_bundle(_inputs()),
+        turn=request.to_runtime_turn_input(),
+        context=_context_materials(),
         hard_decision=_hard_decision(),
         social_decision=_social_decision(),
         delivery_target=delivery,

@@ -218,7 +218,7 @@ class DefaultAILiveRuntimeEntry:
             return None
 
         user_id = identity.subject_id or task.user_id or identity.scene_id
-        legacy_commit = await self._run_turn(
+        runtime_commit = await self._run_turn(
             trace=trace
             or RuntimeTraceContext(kind="conversation", trigger="ai_future_task"),
             request=AIRuntimeTurnRequest(
@@ -234,14 +234,14 @@ class DefaultAILiveRuntimeEntry:
             current_time=datetime.now(timezone.utc),
             session_runtime=None,
         )
-        if legacy_commit is None:
+        if runtime_commit is None:
             return None
         return CommitResult(
-            reply_text=legacy_commit.reply_text,
-            commit_status=legacy_commit.commit_status,
-            delivery_status=_delivery_status_for_commit(legacy_commit.delivery_result),
-            substeps=legacy_commit.substeps,
-            diagnostics=_delivery_diagnostics(legacy_commit.delivery_result),
+            reply_text=runtime_commit.reply_text,
+            commit_status=runtime_commit.commit_status,
+            delivery_status=_delivery_status_for_commit(runtime_commit.delivery_result),
+            substeps=runtime_commit.substeps,
+            diagnostics=_delivery_diagnostics(runtime_commit.delivery_result),
         )
 
     async def _run_turn(

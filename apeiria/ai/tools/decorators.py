@@ -28,6 +28,8 @@ def ai_tool(  # noqa: PLR0913
     read_only: bool,
     concurrency_safe: bool,
     risk_level: AIToolRiskLevel = "low",
+    timeout_seconds: float | None = None,
+    requires_operator_approval: bool = False,
     tags: tuple[str, ...] = (),
 ) -> Callable[..., Any]:
     """Decorator that registers an async function as an AI tool.
@@ -65,6 +67,8 @@ def ai_tool(  # noqa: PLR0913
                 read_only=read_only,
                 risk_level=risk_level,
                 concurrency_safe=concurrency_safe,
+                timeout_seconds=timeout_seconds,
+                requires_operator_approval=requires_operator_approval,
             ),
             tags=tags,
         )

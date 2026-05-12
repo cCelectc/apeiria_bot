@@ -245,6 +245,7 @@ def test_runtime_context_projection_emits_bounded_shape_diagnostics() -> None:
         "turn_count": 1,
         "recalled_memory_count": 2,
         "memory_layers": ("long_term", "summary"),
+        "memory_layer_counts": {"long_term": 1, "summary": 1},
         "has_persona": True,
         "has_relationship_context": True,
         "person_profile_line_count": 2,
@@ -255,5 +256,8 @@ def test_runtime_context_projection_emits_bounded_shape_diagnostics() -> None:
         "rag_enabled": False,
         "rag_selected_count": 0,
         "rag_candidate_count": 0,
+        "rag_missing_embedding_count": 0,
+        "rag_stale_embedding_count": 0,
+        "rag_rerank_status": None,
         "rag_degradation_reason": None,
     }

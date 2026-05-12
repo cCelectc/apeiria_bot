@@ -23,9 +23,7 @@ if TYPE_CHECKING:
     from apeiria.ai.tools import AIToolPolicy
     from apeiria.app.ai.future_tasks.models import AIFutureTaskDefinition
     from apeiria.app.ai.reply_strategy.models import ReplyStrategyDecision
-    from apeiria.app.ai.runtime.context.materials import RuntimeContextInputBundle
     from apeiria.app.ai.runtime.context.relationships import AIRelationshipTarget
-    from apeiria.app.ai.runtime.live import AIRuntimeTurnRequest
     from apeiria.app.ai.runtime.planning.tool_exposure import ToolExposurePlan
     from apeiria.app.ai.runtime.strategy import RuntimeHardRuleDecision
     from apeiria.conversation.models import ChatContextMessageView, ChatSessionIdentity
@@ -125,56 +123,6 @@ class RuntimeTurnInput:
     sentiment: "AIMessageSentiment | None" = None
     stream_sink: Any | None = field(default=None, compare=False, repr=False)
 
-    @classmethod
-    def from_turn_request(
-        cls,
-        request: "AIRuntimeTurnRequest",
-    ) -> "RuntimeTurnInput":
-        """Translate ingress request data into a runtime-owned turn input."""
-
-        identity = request.identity
-        return cls(
-            identity=identity,
-            source=RuntimeTurnSource(
-                runtime_mode=request.runtime_mode,
-                message_text=request.message_text,
-                source_message_id=request.source_message_id,
-                user_id=request.user_id,
-                direct_signal=request.is_tome,
-                is_private=identity.scene_type == "private",
-                event_dedupe_key=request.event_dedupe_key,
-                event_dedupe_claimed=request.event_dedupe_claimed,
-                media_parts=request.media_parts,
-                media_diagnostics=request.media_diagnostics,
-                speech_diagnostics=request.speech_diagnostics,
-            ),
-            sender_id=request.sender_id,
-            future_task=request.future_task,
-            sentiment=request.sentiment,
-        )
-
-    def to_turn_request(self) -> "AIRuntimeTurnRequest":
-        """Translate this runtime input back for context-local helpers."""
-
-        from apeiria.app.ai.runtime.live import AIRuntimeTurnRequest
-
-        return AIRuntimeTurnRequest(
-            identity=self.identity,
-            message_text=self.message_text,
-            source_message_id=self.source_message_id,
-            user_id=self.user_id,
-            sender_id=self.sender_id,
-            runtime_mode=self.runtime_mode,
-            is_tome=self.is_tome,
-            future_task=self.future_task,
-            sentiment=self.sentiment,
-            event_dedupe_key=self.event_dedupe_key,
-            event_dedupe_claimed=self.event_dedupe_claimed,
-            media_parts=self.source.media_parts,
-            media_diagnostics=self.source.media_diagnostics,
-            speech_diagnostics=self.source.speech_diagnostics,
-        )
-
     @property
     def runtime_mode(self) -> RuntimeMode:
         """Return the source runtime mode."""
@@ -253,29 +201,6 @@ class RuntimeContextMaterials:
     initiative_bias: float
     rag_chunks: tuple["KnowledgeRetrievalItem", ...] = ()
     rag_diagnostics: "KnowledgeRetrievalDiagnostics | None" = None
-
-    @classmethod
-    def from_context_input_bundle(
-        cls,
-        inputs: "RuntimeContextInputBundle",
-    ) -> "RuntimeContextMaterials":
-        """Translate collector output into runtime-owned context materials."""
-
-        return cls(
-            turns=inputs.turns,
-            conversation_summary=inputs.conversation_summary,
-            relationship_target=inputs.relationship_target,
-            model_target=inputs.model_target,
-            tool_policy=inputs.tool_policy,
-            persona=inputs.persona,
-            recalled_memories=inputs.recalled_memories,
-            relationship_context=inputs.relationship_context,
-            person_profile=inputs.person_profile,
-            allowed_tools=inputs.allowed_tools,
-            initiative_bias=inputs.initiative_bias,
-            rag_chunks=inputs.rag_chunks,
-            rag_diagnostics=inputs.rag_diagnostics,
-        )
 
 
 @dataclass(frozen=True, slots=True)

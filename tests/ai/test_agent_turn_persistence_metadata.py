@@ -97,7 +97,13 @@ def test_compact_turn_trace_metadata_is_available_to_persistence() -> None:
         delivery_delivered=None,
     )
 
-    assert persisted["turn_trace"] == {
+    trace = persisted["turn_trace"]
+    assert trace | {
+        "model_attempts": [],
+        "tool_attempts": [],
+        "stage_summaries": trace["stage_summaries"],
+        "final_outcome": trace["final_outcome"],
+    } == {
         "trace_id": "trace-1",
         "session_id": "session-1",
         "runtime_mode": "message",
@@ -111,6 +117,19 @@ def test_compact_turn_trace_metadata_is_available_to_persistence() -> None:
         "tool_attempt_count": 0,
         "tool_observation_count": 0,
         "final_response_source": None,
+        "skip_reason": "contract_test",
+        "delivery_status": "not_required",
+        "model_attempts": [],
+        "tool_attempts": [],
+        "stage_summaries": trace["stage_summaries"],
+        "final_outcome": trace["final_outcome"],
+    }
+    assert trace["stage_summaries"][0] == {
+        "stage": "policy",
+        "status": "continue",
+        "reason_codes": ["direct_signal"],
+    }
+    assert trace["final_outcome"] == {
         "skip_reason": "contract_test",
         "delivery_status": "not_required",
     }

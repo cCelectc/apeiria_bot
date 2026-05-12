@@ -191,14 +191,6 @@ def decide_runtime_hard_rule(  # noqa: C901, PLR0911
     )
 
 
-def map_legacy_skip_to_runtime_decision(
-    decision: ReplyStrategyDecision,
-) -> RuntimeHardRuleDecision:
-    """Project a legacy no-reply strategy result into runtime vocabulary."""
-
-    return social_skip_to_runtime_decision(decision)
-
-
 def social_skip_to_runtime_decision(
     decision: ReplyStrategyDecision,
 ) -> RuntimeHardRuleDecision:

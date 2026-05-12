@@ -360,7 +360,7 @@ def test_turn_trace_projects_provider_neutral_attempts() -> None:
 
     projection = trace.to_metadata()
 
-    assert projection == {
+    expected_base = {
         "trace_id": "trace-1",
         "session_id": "session-1",
         "runtime_mode": "message",
@@ -375,6 +375,32 @@ def test_turn_trace_projects_provider_neutral_attempts() -> None:
         "tool_observation_count": 1,
         "final_response_source": "direct",
         "skip_reason": None,
+        "delivery_status": "not_required",
+    }
+    assert {key: projection[key] for key in expected_base} == expected_base
+    assert projection["model_attempts"] == [
+        {
+            "attempt_index": 1,
+            "model_ref": "source:gpt",
+            "status": "success",
+            "response_source": "direct",
+        }
+    ]
+    assert projection["tool_attempts"] == [
+        {
+            "tool_name": "memory.query",
+            "status": "success",
+            "repetition_count": 1,
+            "repeated": False,
+        }
+    ]
+    assert projection["stage_summaries"][0] == {
+        "stage": "policy",
+        "status": "continue",
+        "reason_codes": ["direct_signal"],
+    }
+    assert projection["final_outcome"] == {
+        "response_source": "direct",
         "delivery_status": "not_required",
     }
 

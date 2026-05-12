@@ -22,6 +22,7 @@ _FutureTaskAction = Literal["create", "cancel", "list"]
     read_only=False,
     concurrency_safe=False,
     risk_level="low",
+    timeout_seconds=6.0,
 )
 async def handle_future_task(  # noqa: PLR0913
     action: Annotated[
