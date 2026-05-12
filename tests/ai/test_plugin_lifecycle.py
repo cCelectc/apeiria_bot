@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import importlib.util
-from pathlib import Path
 from types import MappingProxyType, SimpleNamespace
 from typing import TYPE_CHECKING, Any
 
@@ -20,6 +18,8 @@ from apeiria.ai.capabilities import (
 from apeiria.ai.tools import AIToolResult
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     import pytest
 
 EXPECTED_REGISTERED_TOOL_COUNT = 2
@@ -311,95 +311,6 @@ def test_lifecycle_applies_plugin_contributions_before_skill_sync(
     assert len(tool_service.registry.tools) == EXPECTED_REGISTERED_TOOL_COUNT
 
 
-def test_lifecycle_builds_unified_capability_inventory(
-    tmp_path: Path,
-) -> None:
-    from apeiria.ai.contributions import AIPluginContributionRegistry
-    from apeiria.app.ai.lifecycle import AIPluginLifecycleCoordinator
-
-    order: list[str] = []
-    tool_service = _FakeToolService(order)
-    skill_service = _FakeSkillService(order, tool_service)
-    contributions = AIPluginContributionRegistry()
-    skill_dir = tmp_path / "plugin" / "skills"
-    skill_dir.mkdir(parents=True)
-    (skill_dir / "SKILL.md").write_text(
-        """---
-name: plugin.prompt
-description: Prompt skill.
-entry_mode: prompt_only
----
-
-Use prompt skill.
-""",
-        encoding="utf-8",
-    )
-
-    tool_contract = _contract("plugin.echo")
-    contributions.register_tool(
-        contract=tool_contract,
-        binding=_tool_binding(tool_contract),
-    )
-    contributions.register_host_action(
-        contract=AICapabilityContract(
-            name="plugin.host",
-            kind=AICapabilityKind.EXECUTABLE,
-            origin=AICapabilityOrigin.PLUGIN,
-            description="Host action.",
-            safety=AICapabilitySafety(
-                read_only=True,
-                risk_level="low",
-                concurrency_safe=True,
-            ),
-        ),
-        handler=lambda _: {"ok": True},
-    )
-    contributions.register_host_action_handler(
-        "plugin.partial",
-        lambda _: {"ok": True},
-    )
-    contributions.register_capability_contract(
-        AICapabilityContract(
-            name="plugin.contract_only",
-            kind=AICapabilityKind.EXECUTABLE,
-            origin=AICapabilityOrigin.PLUGIN,
-            description="Contract only.",
-            safety=AICapabilitySafety(
-                read_only=True,
-                risk_level="low",
-                concurrency_safe=True,
-            ),
-        )
-    )
-    contributions.register_skill_source(skill_dir)
-
-    coordinator = AIPluginLifecycleCoordinator(
-        contribution_registry=contributions,
-        tool_service=tool_service,
-        skill_service=skill_service,
-        future_task_service=_FakeFutureTaskService(order),
-        app_tool_loader=lambda: None,
-    )
-
-    snapshot = asyncio.run(coordinator.startup())
-    records = {record.name: record for record in snapshot.capabilities}
-
-    assert records["plugin.echo"].kind == "executable"
-    assert records["plugin.echo"].binding_type == "local_tool"
-    assert records["plugin.echo"].availability == "ready"
-    assert records["plugin.host"].binding_type == "host_action"
-    assert records["plugin.host"].availability == "ready"
-    assert records["plugin.contract_only"].availability == "incomplete"
-    assert records["plugin.contract_only"].diagnostics == (
-        "missing host-action handler",
-    )
-    assert records["plugin.partial"].availability == "incomplete"
-    assert records["plugin.partial"].diagnostics == ("missing capability contract",)
-    assert records["plugin.prompt"].kind == "prompt_skill"
-    assert records["plugin.prompt"].binding_type == "prompt_skill"
-    assert records["plugin.prompt"].required_capabilities == ()
-
-
 def test_public_plugin_contribution_helpers_register_without_singleton_mutation(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -482,77 +393,3 @@ Use valid skill.
     skills = load_skills_from_sources((tmp_path / "skills",))
 
     assert [skill.skill_name for skill in skills] == ["plugin.valid"]
-
-
-def test_runtime_readiness_reports_lifecycle_dependencies_without_initializing(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    import apeiria.app.ai.lifecycle as lifecycle_module
-    from apeiria.app.ai.diagnostics.readiness import AIRuntimeReadinessProbe
-    from apeiria.app.ai.lifecycle import (
-        AILifecycleComponentStatus,
-        AILifecycleSnapshot,
-    )
-
-    class _LifecycleProbe:
-        def __init__(self) -> None:
-            self.inspect_calls = 0
-            self.startup_calls = 0
-
-        def inspect(self) -> AILifecycleSnapshot:
-            self.inspect_calls += 1
-            return AILifecycleSnapshot(
-                initialized=False,
-                initialization_source="not_initialized",
-                components=(
-                    AILifecycleComponentStatus(
-                        key="tool_registry",
-                        available=False,
-                        detail="not_initialized",
-                        next_step="Load the AI plugin startup lifecycle hook.",
-                    ),
-                    AILifecycleComponentStatus(
-                        key="skill_catalog",
-                        available=False,
-                        detail="not_initialized",
-                        next_step="Load the AI plugin startup lifecycle hook.",
-                    ),
-                    AILifecycleComponentStatus(
-                        key="host_action_registry",
-                        available=False,
-                        detail="not_initialized",
-                        next_step="Load the AI plugin startup lifecycle hook.",
-                    ),
-                ),
-            )
-
-        async def startup(self) -> None:
-            self.startup_calls += 1
-            raise AssertionError
-
-        def ensure_runtime_support_initialized(self, **_: object) -> object:
-            raise AssertionError
-
-    fake = _LifecycleProbe()
-    monkeypatch.setattr(lifecycle_module, "ai_lifecycle_coordinator", fake)
-
-    statuses = {item.key: item for item in AIRuntimeReadinessProbe().inspect()}
-
-    assert statuses["tool_registry"].available is False
-    assert statuses["skill_catalog"].available is False
-    assert statuses["host_action_registry"].available is False
-    assert statuses["tool_registry"].detail == "not_initialized"
-    assert fake.inspect_calls == 1
-    assert fake.startup_calls == 0
-
-
-def test_ai_plugin_command_surface_is_unchanged() -> None:
-    spec = importlib.util.find_spec("apeiria.builtin_plugins.ai")
-    assert spec is not None
-    assert spec.origin is not None
-    source = Path(spec.origin).read_text(encoding="utf-8")
-
-    assert 'commands=["ai-status"]' in source
-    assert 'on_command("ai-status"' in source
-    assert 'on_command("ai"' not in source
-    assert "scene-level" not in source

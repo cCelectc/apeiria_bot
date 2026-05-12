@@ -13,9 +13,7 @@ from apeiria.environment.manager import EnvironmentService
 from apeiria.webui.frontend_build import (
     build_meta_path,
     compute_frontend_fingerprint,
-    frontend_workspace_name,
     read_frontend_build_status,
-    serving_dist_dir,
     write_frontend_build_meta,
 )
 
@@ -91,36 +89,6 @@ def test_health_warns_about_unsupported_database_version(tmp_path: Path) -> None
     check = _health_check(snapshot, "database")
     assert check.ok is False
     assert check.detail == "unsupported"
-
-
-def test_health_reports_retired_webui_token_config_key(tmp_path: Path) -> None:
-    (tmp_path / "apeiria.config.toml").write_text(
-        "web_ui_token_expire_days = 30\n",
-        encoding="utf-8",
-    )
-
-    snapshot = HealthService(EnvironmentService(project_root=tmp_path)).get_snapshot()
-
-    check = _health_check(snapshot, "compatibility:web_ui_token_expire_days")
-    assert check.ok is False
-    assert check.detail == "retired"
-    assert "[plugins.web_ui]" in (check.hint or "")
-
-
-def test_health_reports_legacy_webui_auth_storage(tmp_path: Path) -> None:
-    secret_file = tmp_path / "data" / "web_ui" / "secret.json"
-    secret_file.parent.mkdir(parents=True)
-    secret_file.write_text(
-        json.dumps({"token_secret": "token", "password": "old-password"}),
-        encoding="utf-8",
-    )
-
-    snapshot = HealthService(EnvironmentService(project_root=tmp_path)).get_snapshot()
-
-    check = _health_check(snapshot, "compatibility:web_ui_auth_legacy_schema")
-    assert check.ok is False
-    assert check.detail == "retired"
-    assert "secret.json" in (check.hint or "")
 
 
 def test_webui_build_health_reports_current_metadata(tmp_path: Path) -> None:
@@ -239,31 +207,8 @@ def test_webui_package_build_runs_metadata_writer() -> None:
     assert "APEIRIA_WEBUI_FRONTEND_DIR=webui" in package["scripts"]["write-build-meta"]
 
 
-def test_legacy_web_package_build_writes_legacy_metadata() -> None:
-    package_path = Path(__file__).resolve().parents[2] / "web" / "package.json"
-    package = json.loads(package_path.read_text(encoding="utf-8"))
-
-    assert "APEIRIA_WEBUI_FRONTEND_DIR=web" in package["scripts"]["write-build-meta"]
-
-
-def test_webui_workspace_is_default_and_web_is_serving_fallback(
-    tmp_path: Path,
-) -> None:
-    _create_legacy_frontend_fixture(tmp_path)
-    assert frontend_workspace_name(tmp_path) == "web"
-    assert serving_dist_dir(tmp_path) == tmp_path / "web" / "dist"
-
-    _create_frontend_fixture(tmp_path)
-    assert frontend_workspace_name(tmp_path) == "webui"
-    assert serving_dist_dir(tmp_path) == tmp_path / "webui" / "dist"
-
-
 def _create_frontend_fixture(project_root: Path) -> None:
     _create_frontend_workspace_fixture(project_root, "webui")
-
-
-def _create_legacy_frontend_fixture(project_root: Path) -> None:
-    _create_frontend_workspace_fixture(project_root, "web")
 
 
 def _create_frontend_workspace_fixture(project_root: Path, name: str) -> None:

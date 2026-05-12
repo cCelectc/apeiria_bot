@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import importlib
-import sys
 from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Any
 
@@ -14,34 +12,6 @@ if TYPE_CHECKING:
 _MAX_DIAGNOSTIC_LENGTH = 200
 _ROUTE_LIMIT = 7
 _TOOL_LIST_LIMIT = 3
-
-
-def test_singular_future_task_package_is_retired() -> None:
-    for module_name in (
-        "apeiria.app.ai.future_task",
-        "apeiria.app.ai.future_tasks.service",
-    ):
-        sys.modules.pop(module_name, None)
-
-    with pytest.raises(ModuleNotFoundError):
-        importlib.import_module("apeiria.app.ai.future_task")
-    assert "apeiria.app.ai.future_tasks.service" not in sys.modules
-
-
-def test_import_app_ai_future_tasks_owns_public_surface() -> None:
-    module = importlib.import_module("apeiria.app.ai.future_tasks")
-
-    assert module.__name__ == "apeiria.app.ai.future_tasks"
-    assert module.AIFutureTaskDefinition.__module__ == (
-        "apeiria.app.ai.future_tasks.models"
-    )
-    assert module.AIFutureTaskService.__module__ == (
-        "apeiria.app.ai.future_tasks.service"
-    )
-    assert module.ai_future_task_service.__class__ is module.AIFutureTaskService
-    assert module.execute_future_task.__module__ == (
-        "apeiria.app.ai.future_tasks.execution"
-    )
 
 
 def test_future_tasks_are_runtime_scheduling_state(

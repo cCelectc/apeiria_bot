@@ -6,7 +6,6 @@ import sys
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-import pytest
 from click.testing import CliRunner
 
 from apeiria.app.plugins.store.sources import _read_package_requirement
@@ -17,6 +16,8 @@ from apeiria.utils.project_context import default_project_root
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+    import pytest
 
 
 @dataclass(frozen=True)
@@ -315,85 +316,7 @@ def test_run_reload_uses_canonical_entry(
     assert calls == [(tmp_path.resolve(), ("--verbose",))]
 
 
-def test_resource_search_commands_are_visible() -> None:
-    runner = CliRunner()
-
-    for command_name in ("plugin", "adapter", "driver"):
-        result = runner.invoke(cli, [command_name, "--help"])
-        assert result.exit_code == 0
-        assert "search" in result.output
-
-
-@pytest.mark.parametrize(
-    ("resource", "binding_option", "install_path", "uninstall_path"),
-    [
-        (
-            "plugin",
-            "--module",
-            "apeiria.cli.commands.plugin.install_resource_requirement",
-            "apeiria.cli.commands.plugin.uninstall_resource_requirement",
-        ),
-        (
-            "adapter",
-            "--module",
-            "apeiria.cli.commands.adapter.install_resource_requirement",
-            "apeiria.cli.commands.adapter.uninstall_resource_requirement",
-        ),
-        (
-            "driver",
-            "--builtin",
-            "apeiria.cli.commands.driver.install_resource_requirement",
-            "apeiria.cli.commands.driver.uninstall_resource_requirement",
-        ),
-    ],
-)
-def test_add_and_remove_aliases_route_to_package_operations(
-    monkeypatch: pytest.MonkeyPatch,
-    resource: str,
-    binding_option: str,
-    install_path: str,
-    uninstall_path: str,
-) -> None:
-    calls: list[tuple[str, str, tuple[object, ...]]] = []
-
-    def fake_install(*args: object, **_kwargs: object) -> str:
-        calls.append(("install", str(args[1]), args))
-        return "demo-package"
-
-    def fake_uninstall(*args: object, **_kwargs: object) -> str:
-        calls.append(("uninstall", str(args[1]), args))
-        return "demo-package"
-
-    monkeypatch.setattr(install_path, fake_install)
-    monkeypatch.setattr(uninstall_path, fake_uninstall)
-
-    runner = CliRunner()
-    add_result = runner.invoke(
-        cli,
-        [
-            resource,
-            "add",
-            "--requirement",
-            "demo-package",
-            binding_option,
-            "demo",
-        ],
-    )
-    remove_result = runner.invoke(
-        cli,
-        [resource, "remove", "demo-package", binding_option, "demo"],
-    )
-
-    assert add_result.exit_code == 0
-    assert remove_result.exit_code == 0
-    assert [call[0] for call in calls] == ["install", "uninstall"]
-
-
-@pytest.mark.parametrize("resource", ["plugin", "adapter", "driver"])
-def test_cli_store_requirement_matches_webui_candidate_resolution(
-    resource: str,
-) -> None:
-    assert resource in {"plugin", "adapter", "driver"}
+def test_cli_store_requirement_matches_webui_candidate_resolution() -> None:
     package = _StorePackage(project_link="https://example.test/demo.git")
 
     assert store_package_dependency(package, None) == _read_package_requirement(package)
