@@ -209,8 +209,12 @@ def test_database_schema_declares_value_checks(tmp_path: Path) -> None:
                 table_name,
             )
         assert "scope_type IN" in _table_sql(connection, "ai_tool_policy")
-        assert "'private_and_tome'" not in _table_sql(connection, "ai_tool_policy")
-        assert "CHECK(status IN ('success', 'error', 'timeout'))" in _table_sql(
+        assert "allowed_level IN ('none', 'read', 'write', 'host', 'admin')" in (
+            _table_sql(connection, "ai_tool_policy")
+        )
+        assert (
+            "CHECK(status IN ('success', 'error', 'timeout', 'denied', 'not_ready'))"
+        ) in _table_sql(
             connection,
             "ai_tool_execution",
         )

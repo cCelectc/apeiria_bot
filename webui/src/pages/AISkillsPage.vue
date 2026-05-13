@@ -60,9 +60,9 @@ const metrics = computed<WorkbenchMetricItem[]>(() => [
   },
   {
     key: 'readOnly',
-    label: t('ai.skillReadOnly'),
+    label: t('ai.requiredLevel'),
     tone: 'success',
-    value: skills.value.filter(item => item.read_only).length,
+    value: capabilities.value.filter(item => item.required_level === 'read').length,
   },
 ])
 const capabilitiesBySkill = computed(() => {
@@ -84,17 +84,21 @@ async function loadData() {
   }
 }
 
-function riskTone(riskLevel: string): WorkbenchTone {
-  if (riskLevel === 'low') {
+function levelTone(level: string): WorkbenchTone {
+  if (level === 'read') {
     return 'success'
   }
-  if (riskLevel === 'high') {
+  if (level === 'admin' || level === 'host') {
     return 'error'
   }
-  if (riskLevel === 'medium') {
+  if (level === 'write') {
     return 'warning'
   }
   return 'default'
+}
+
+function readinessTone(value: string): WorkbenchTone {
+  return value === 'ready' ? 'success' : 'warning'
 }
 
 onMounted(() => {
@@ -140,19 +144,11 @@ onMounted(() => {
               <span>{{ item.name }}</span>
             </div>
             <StatusBadge
-              :label="item.risk_label || item.risk_level"
-              :tone="riskTone(item.risk_level)"
+              :label="item.name"
+              tone="info"
             />
           </div>
           <p>{{ item.display_description || item.description || t('common.none') }}</p>
-          <div class="ai-data-form__meta">
-            <Badge :variant="item.read_only ? 'secondary' : 'outline'">
-              {{ t('ai.skillReadOnly') }}: {{ item.read_only ? t('ai.enabled') : t('ai.disabled') }}
-            </Badge>
-            <Badge :variant="item.concurrency_safe ? 'secondary' : 'outline'">
-              {{ t('ai.skillConcurrencySafe') }}: {{ item.concurrency_safe ? t('ai.enabled') : t('ai.disabled') }}
-            </Badge>
-          </div>
           <div class="ai-skill-card__capabilities">
             <span>{{ t('ai.linkedCapabilities') }}</span>
             <div v-if="(capabilitiesBySkill.get(item.name) ?? []).length > 0">
@@ -174,8 +170,8 @@ onMounted(() => {
       <div class="ai-capability-table">
         <div class="ai-capability-table__head">
           <span>{{ t('ai.capabilityName') }}</span>
-          <span>{{ t('ai.skillRiskLevel') }}</span>
-          <span>{{ t('ai.executionEnabled') }}</span>
+          <span>{{ t('ai.requiredLevel') }}</span>
+          <span>{{ t('ai.readiness') }}</span>
           <span>{{ t('ai.reason') }}</span>
         </div>
         <article
@@ -187,8 +183,8 @@ onMounted(() => {
             <strong>{{ item.capability_name }}</strong>
             <span>{{ item.description || t('common.none') }}</span>
           </div>
-          <StatusBadge :label="item.risk_label || item.risk_level" :tone="riskTone(item.risk_level)" />
-          <Badge variant="secondary">{{ item.availability }} / {{ item.policy_status }}</Badge>
+          <StatusBadge :label="item.required_level" :tone="levelTone(item.required_level)" />
+          <StatusBadge :label="item.readiness" :tone="readinessTone(item.readiness)" />
           <span>{{ item.diagnostics.join(' / ') || item.origin }}</span>
         </article>
       </div>

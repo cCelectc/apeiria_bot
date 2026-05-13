@@ -1,28 +1,143 @@
-"""Tool domain models."""
+"""First-class AI tool runtime models."""
 
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
+from enum import Enum
 from typing import TYPE_CHECKING, Any, Literal
 
 if TYPE_CHECKING:
     from datetime import datetime
 
-AIToolRiskLevel = Literal["low", "medium", "high"]
-AIToolOrigin = Literal["builtin", "plugin", "skill"]
+
+class AIToolLevel(str, Enum):
+    """Ordered AI tool permission levels."""
+
+    NONE = "none"
+    READ = "read"
+    WRITE = "write"
+    HOST = "host"
+    ADMIN = "admin"
+
+
+_TOOL_LEVEL_ORDER: dict[AIToolLevel, int] = {
+    AIToolLevel.NONE: 0,
+    AIToolLevel.READ: 1,
+    AIToolLevel.WRITE: 2,
+    AIToolLevel.HOST: 3,
+    AIToolLevel.ADMIN: 4,
+}
+
+
+def coerce_tool_level(value: AIToolLevel | str) -> AIToolLevel:
+    """Return a tool level enum from a stored or API value."""
+
+    if isinstance(value, AIToolLevel):
+        return value
+    return AIToolLevel(value)
+
+
+def tool_level_allows(
+    allowed: AIToolLevel | str,
+    required: AIToolLevel | str,
+) -> bool:
+    """Return whether *allowed* grants *required* power."""
+
+    return (
+        _TOOL_LEVEL_ORDER[coerce_tool_level(allowed)]
+        >= _TOOL_LEVEL_ORDER[coerce_tool_level(required)]
+    )
+
+
+AIToolOrigin = Literal["builtin", "plugin", "mcp", "legacy"]
+AIToolExecutionStatus = Literal[
+    "success",
+    "error",
+    "timeout",
+    "denied",
+    "not_ready",
+]
 AIToolIntentKind = Literal[
     "observe_read_only",
-    "invoke_capability",
+    "invoke_tool",
     "manage_future_task",
     "update_memory",
 ]
-AIToolCapabilityMode = Literal["off", "private_only", "direct_only"]
-AIToolExecutionStatus = Literal["success", "error", "timeout"]
+AIToolReadinessCode = Literal[
+    "ready",
+    "disabled",
+    "plugin_unavailable",
+    "runtime_missing_capability",
+    "missing_executor",
+    "approval_missing",
+]
+AIToolExecutor = Callable[..., Awaitable[Any]]
+
+
+@dataclass(frozen=True)
+class AIToolReadiness:
+    """Readiness result for one tool in one runtime context."""
+
+    ready: bool
+    code: AIToolReadinessCode = "ready"
+    reason: str = "ready"
+
+    @classmethod
+    def available(cls) -> "AIToolReadiness":
+        return cls(ready=True)
+
+    @classmethod
+    def not_ready(
+        cls,
+        code: AIToolReadinessCode,
+        reason: str,
+    ) -> "AIToolReadiness":
+        return cls(ready=False, code=code, reason=reason)
+
+
+@dataclass(frozen=True)
+class AIToolDefinition:
+    """Provider-neutral AI-callable tool definition."""
+
+    name: str
+    description: str
+    input_schema: dict[str, Any]
+    required_level: AIToolLevel
+    executor: AIToolExecutor | None
+    readiness: AIToolReadiness = field(default_factory=AIToolReadiness.available)
+    origin: AIToolOrigin = "builtin"
+    enabled: bool = True
+    manageable: bool = False
+    version: int = 1
+    tags: tuple[str, ...] = ()
+    display_name: str | None = None
+
+    @property
+    def parameters(self) -> dict[str, Any]:
+        """Alias used by model adapter projection."""
+
+        return self.input_schema
+
+
+@dataclass(frozen=True)
+class AIToolPolicy:
+    """Effective AI tool policy for one turn."""
+
+    allowed_level: AIToolLevel = AIToolLevel.NONE
+
+
+@dataclass(frozen=True)
+class AIToolPolicyDecision:
+    """Decision returned by tool policy evaluation."""
+
+    allowed: bool
+    reason: str
 
 
 @dataclass(frozen=True)
 class AIToolResult:
-    """Unified return type for declarative tool handlers."""
+    """Unified return type for tool executors."""
 
     summary: str
     output_payload: Any = None
@@ -31,7 +146,7 @@ class AIToolResult:
 
 @dataclass
 class AIToolExecutionContext:
-    """Unified context injected into every declarative tool handler."""
+    """Unified context injected into every declarative tool executor."""
 
     session_id: str
     source_message_id: str | None
@@ -45,35 +160,19 @@ class AIToolExecutionContext:
 
 
 @dataclass(frozen=True)
-class AIToolPolicy:
-    """Pure tool access policy for one AI scene."""
-
-    execution_enabled: bool = False
-    allowed_tool_names: set[str] | None = None
-    denied_tool_names: set[str] = field(default_factory=set)
-    allow_high_risk_tools: bool = False
-    allow_host_actions: bool = False
-
-
-@dataclass(frozen=True)
-class AIToolPolicyDecision:
-    """Decision returned by tool policy evaluation."""
-
-    allowed: bool
-    reason: str
-
-
-@dataclass(frozen=True)
 class AIToolExecutionView:
-    """Pure execution record view."""
+    """Pure persisted tool observation view."""
 
     execution_id: str
     session_id: str
     tool_name: str
-    status: str
+    status: AIToolExecutionStatus
     input_json: str | None
     output_json: str | None
     created_at: datetime
+    trace_id: str | None = None
+    call_id: str | None = None
+    reason: str | None = None
 
 
 @dataclass(frozen=True)
@@ -84,6 +183,17 @@ class AIToolIntent:
     kind: AIToolIntentKind
     input_payload: Any
     reason: str | None = None
+    call_id: str | None = None
+
+
+@dataclass(frozen=True)
+class AIToolIntentPreview:
+    """One planned tool intent visible to admin preview surfaces."""
+
+    tool_name: str
+    kind: str
+    reason: str | None
+    input_payload: object | None
 
 
 @dataclass(frozen=True)
@@ -143,32 +253,16 @@ class AIRelationshipInspectObservationOutput:
 
 
 @dataclass(frozen=True)
-class AIPluginInspectCapabilityInput:
-    """Structured input payload for plugin.inspect capability."""
-
-    plugin_query: str
-
-
-@dataclass(frozen=True)
-class AIPluginInspectCapabilityOutput:
-    """Structured output payload for plugin.inspect capability."""
-
-    plugin_query: str
-    plugin_name: str
-    module_name: str
-    description: str
-    usage: str
-
-
-@dataclass(frozen=True)
 class AIToolObservationResult:
-    """One read-only tool observation ready for prompt injection."""
+    """One tool observation ready for prompt injection."""
 
     tool_name: str
     summary: str
     input_payload: Any
     output_payload: Any
     status: AIToolExecutionStatus = "success"
+    reason: str | None = None
+    call_id: str | None = None
 
 
 @dataclass(frozen=True)

@@ -1,89 +1,71 @@
-"""Declarative @ai_tool decorator for tool registration."""
+"""Declarative @ai_tool decorator for first-class tool registration."""
 
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from apeiria.ai.capabilities import (
-    AICapabilityContract,
-    AICapabilityKind,
-    AICapabilityOrigin,
-    AICapabilitySafety,
+from apeiria.ai.tools.models import (
+    AIToolDefinition,
+    AIToolLevel,
+    AIToolOrigin,
+    AIToolReadiness,
+    coerce_tool_level,
 )
-from apeiria.ai.tools.registry import local_tool_declaration
 from apeiria.ai.tools.schema import build_json_schema, build_parameters_from_signature
 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from apeiria.ai.tools.models import AIToolRiskLevel
-
-_PENDING_TOOLS: list[Any] = []
+_PENDING_TOOLS: list[AIToolDefinition] = []
 
 
 def ai_tool(  # noqa: PLR0913
     *,
     name: str,
     description: str,
-    read_only: bool,
-    concurrency_safe: bool,
-    risk_level: AIToolRiskLevel = "low",
-    timeout_seconds: float | None = None,
-    requires_operator_approval: bool = False,
+    required_level: AIToolLevel | str,
+    origin: AIToolOrigin = "builtin",
+    enabled: bool = True,
+    manageable: bool = False,
+    readiness: AIToolReadiness | None = None,
+    version: int = 1,
     tags: tuple[str, ...] = (),
-) -> Callable[..., Any]:
-    """Decorator that registers an async function as an AI tool.
-
-    The function signature is inspected to auto-generate JSON Schema
-    parameters.  A keyword-only ``context: AIToolExecutionContext``
-    parameter is injected at call time and **not** included in the
-    schema.
-
-    Usage::
-
-        @ai_tool(
-            name="memory.query",
-            description="inspect recalled long-term memory",
-            read_only=True,
-            concurrency_safe=True,
-        )
-        async def handle_memory_query(
-            query_text: str,
-            *,
-            context: AIToolExecutionContext,
-        ) -> AIToolResult:
-            ...
-    """
+) -> "Callable[..., Any]":
+    """Register an async function as a provider-neutral AI tool."""
 
     def decorator(func: Any) -> Any:
         parameters = build_parameters_from_signature(func)
-        contract = AICapabilityContract(
+        tool = AIToolDefinition(
             name=name,
-            kind=AICapabilityKind.EXECUTABLE,
-            origin=AICapabilityOrigin.BUILTIN,
             description=description,
-            input_schema=build_json_schema(parameters) if parameters else {},
-            safety=AICapabilitySafety(
-                read_only=read_only,
-                risk_level=risk_level,
-                concurrency_safe=concurrency_safe,
-                timeout_seconds=timeout_seconds,
-                requires_operator_approval=requires_operator_approval,
-            ),
+            input_schema=build_json_schema(parameters) if parameters else _EMPTY_SCHEMA,
+            required_level=coerce_tool_level(required_level),
+            executor=func,
+            readiness=readiness or AIToolReadiness.available(),
+            origin=origin,
+            enabled=enabled,
+            manageable=manageable,
+            version=version,
             tags=tags,
         )
-        declaration = local_tool_declaration(contract=contract, handler=func)
-        _PENDING_TOOLS.append(declaration)
-        func.__ai_tool_contract__ = contract
-        func.__ai_tool_binding__ = declaration.binding
+        _PENDING_TOOLS.append(tool)
+        func.__ai_tool_definition__ = tool
         return func
 
     return decorator
 
 
-def collect_pending_tools() -> list[Any]:
-    """Return and clear all pending tool specs collected by decorators."""
+def collect_pending_tools() -> list[AIToolDefinition]:
+    """Return decorator-collected tool definitions."""
 
-    tools = list(_PENDING_TOOLS)
-    _PENDING_TOOLS.clear()
-    return tools
+    return list(_PENDING_TOOLS)
+
+
+_EMPTY_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {},
+    "additionalProperties": False,
+}
+
+
+__all__ = ["ai_tool", "collect_pending_tools"]

@@ -3,10 +3,13 @@
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-from apeiria.ai.capabilities import AICapabilityContract
-from apeiria.ai.capabilities.projections import project_executable_contract
 from apeiria.ai.model.runtime.adapter import AIModelToolCall, AIModelToolDefinition
-from apeiria.ai.tools.models import AIToolIntent, AIToolIntentKind
+from apeiria.ai.tools.models import (
+    AIToolDefinition,
+    AIToolIntent,
+    AIToolIntentKind,
+)
+from apeiria.ai.tools.projection import build_provider_name_map
 
 _DISPLAY_TIMEZONE = ZoneInfo("Asia/Shanghai")
 
@@ -39,20 +42,28 @@ def function_name_to_tool_name(function_name: str) -> str:
 
 
 def build_function_tools(
-    tools: list[AICapabilityContract],
+    tools: list[AIToolDefinition],
     *,
     current_time: datetime | None = None,
 ) -> tuple[AIModelToolDefinition, ...]:
-    """Convert executable capability contracts into function-call definitions."""
+    """Convert tool definitions into adapter-neutral function-call definitions."""
 
     definitions: list[AIModelToolDefinition] = []
-    for contract in tools:
-        definition = project_executable_contract(contract)
+    name_map = build_provider_name_map(tuple(tools))
+    provider_names_by_tool = {
+        tool_name: provider_name for provider_name, tool_name in name_map.items()
+    }
+    for tool in tools:
+        definition = AIModelToolDefinition(
+            name=provider_names_by_tool[tool.name],
+            description=tool.description,
+            parameters=tool.input_schema,
+        )
         definitions.append(
             _build_tool_definition_with_description(
                 definition,
-                tool_name=contract.name,
-                description=contract.description,
+                tool_name=tool.name,
+                description=tool.description,
                 current_time=current_time,
             )
         )
@@ -61,18 +72,25 @@ def build_function_tools(
 
 def build_intents_from_tool_calls(
     tool_calls: tuple[AIModelToolCall, ...],
+    *,
+    provider_name_map: dict[str, str] | None = None,
 ) -> list[AIToolIntent]:
     """Convert model-returned tool calls into executable intents."""
 
     intents: list[AIToolIntent] = []
     for tool_call in tool_calls:
-        tool_name = function_name_to_tool_name(tool_call.name)
+        tool_name = (
+            provider_name_map.get(tool_call.name)
+            if provider_name_map is not None
+            else None
+        ) or function_name_to_tool_name(tool_call.name)
         intents.append(
             AIToolIntent(
                 tool_name=tool_name,
                 kind=_infer_intent_kind(tool_name),
                 input_payload=tool_call.arguments,
                 reason="model-selected function call",
+                call_id=tool_call.tool_call_id,
             )
         )
     return intents
@@ -82,7 +100,6 @@ _TOOL_KIND_MAP: dict[str, AIToolIntentKind] = {
     "memory.query": "observe_read_only",
     "memory.update": "update_memory",
     "relationship.inspect": "observe_read_only",
-    "plugin.inspect": "invoke_capability",
     "future_task.manage": "manage_future_task",
 }
 _DEFAULT_KIND: AIToolIntentKind = "observe_read_only"

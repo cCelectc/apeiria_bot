@@ -8,7 +8,6 @@ from typing import TYPE_CHECKING, Any, Literal
 if TYPE_CHECKING:
     from datetime import datetime
 
-    from apeiria.ai.capabilities import AICapabilityContract
     from apeiria.ai.knowledge.models import (
         KnowledgeRetrievalDiagnostics,
         KnowledgeRetrievalItem,
@@ -20,7 +19,7 @@ if TYPE_CHECKING:
         AIModelMessage,
     )
     from apeiria.ai.prompting import ReplyPersonaPromptBundleLike
-    from apeiria.ai.tools import AIToolPolicy
+    from apeiria.ai.tools import AIToolDefinition, AIToolPolicy
     from apeiria.app.ai.future_tasks.models import AIFutureTaskDefinition
     from apeiria.app.ai.reply_strategy.models import ReplyStrategyDecision
     from apeiria.app.ai.runtime.context.relationships import AIRelationshipTarget
@@ -197,7 +196,7 @@ class RuntimeContextMaterials:
     recalled_memories: list["AIMemoryDefinition"]
     relationship_context: str | None
     person_profile: tuple[str, ...]
-    allowed_tools: tuple["AICapabilityContract", ...]
+    allowed_tools: tuple["AIToolDefinition", ...]
     initiative_bias: float
     rag_chunks: tuple["KnowledgeRetrievalItem", ...] = ()
     rag_diagnostics: "KnowledgeRetrievalDiagnostics | None" = None

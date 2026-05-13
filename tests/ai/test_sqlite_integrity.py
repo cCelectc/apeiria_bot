@@ -50,12 +50,11 @@ def test_duplicate_effective_tool_policy_binding_is_rejected(
                 binding_id,
                 scope_type,
                 scope_id,
-                allow_read_only_tools,
-                capability_mode,
+                allowed_level,
                 updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?)
             """,
-            ("policy-1", "group", "group-1", 1, "off", "2026-04-25T00:00:00"),
+            ("policy-1", "group", "group-1", "read", "2026-04-25T00:00:00"),
         )
         with raises(sqlite3.IntegrityError):
             connection.execute(
@@ -64,17 +63,15 @@ def test_duplicate_effective_tool_policy_binding_is_rejected(
                     binding_id,
                     scope_type,
                     scope_id,
-                    allow_read_only_tools,
-                    capability_mode,
+                    allowed_level,
                     updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?)
                 """,
                 (
                     "policy-2",
                     "group",
                     "group-1",
-                    0,
-                    "private_only",
+                    "host",
                     "2026-04-25T00:00:00",
                 ),
             )

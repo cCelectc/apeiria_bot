@@ -267,9 +267,9 @@ def _safe_tool_exposure_metadata(value: object) -> dict[str, object] | None:
         names = _safe_str_list(value.get(key), limit=20)
         if names:
             metadata[key] = names
-    risk_levels = _safe_str_mapping(value.get("tool_risk_levels"), limit=20)
-    if risk_levels:
-        metadata["tool_risk_levels"] = risk_levels
+    required_levels = _safe_str_mapping(value.get("tool_required_levels"), limit=20)
+    if required_levels:
+        metadata["tool_required_levels"] = required_levels
     tool_timeouts = _safe_numeric_mapping(value.get("tool_timeout_seconds"), limit=20)
     if tool_timeouts:
         metadata["tool_timeout_seconds"] = tool_timeouts

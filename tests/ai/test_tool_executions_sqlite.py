@@ -76,12 +76,10 @@ def test_tool_execution_payloads_are_sanitized(
         assert rows[0].output_json is not None
         input_payload = json.loads(rows[0].input_json)
         output_payload = json.loads(rows[0].output_json)
-        assert input_payload["payload"]["api_key"] == "[redacted]"
-        assert output_payload["payload"]["error"] == (
-            "Authorization: Bearer [redacted]"
-        )
-        assert output_payload["payload"]["items"] == list(range(20))
-        assert output_payload["payload"]["long"] == "x" * 200
+        assert input_payload["api_key"] == "[redacted]"
+        assert output_payload["error"] == ("Authorization: Bearer [redacted]")
+        assert output_payload["items"] == list(range(20))
+        assert output_payload["long"] == "x" * 200
 
     asyncio.run(scenario())
 

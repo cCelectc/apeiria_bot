@@ -7,16 +7,15 @@ from typing import TYPE_CHECKING, Any
 
 from nonebot.log import logger
 
-from apeiria.ai.capabilities import AICapabilityBindingType
 from apeiria.ai.tools.models import (
     AIToolExecutionContext,
     AIToolExecutionRequest,
     AIToolIntent,
     AIToolObservationResult,
 )
+from apeiria.ai.tools.policy import evaluate_tool_policy
 
 if TYPE_CHECKING:
-    from apeiria.ai.capabilities import AICapabilityBinding
     from apeiria.ai.tools.models import AIToolResult
     from apeiria.ai.tools.registry import AIToolRegistry
 
@@ -24,17 +23,16 @@ MAX_CONSECUTIVE_FAILURES = 3
 
 
 class AIToolIntentExecutor:
-    """Execute planned tool intents through registered entrypoints."""
+    """Execute planned tool intents through registered tool executors."""
 
     async def execute_tool_intents(
         self,
         *,
-        registry: AIToolRegistry,
-        bindings: "dict[str, AICapabilityBinding] | None" = None,
+        registry: "AIToolRegistry",
         request: AIToolExecutionRequest,
         intents: list[AIToolIntent],
     ) -> list[AIToolObservationResult]:
-        """Execute tool intents with consecutive failure detection."""
+        """Execute tool intents with exposure recheck and failure protection."""
 
         observations: list[AIToolObservationResult] = []
         consecutive_failures = 0
@@ -51,7 +49,6 @@ class AIToolIntentExecutor:
 
             observation = await self._execute_single_intent(
                 registry=registry,
-                bindings=bindings,
                 request=request,
                 intent=intent,
             )
@@ -64,29 +61,48 @@ class AIToolIntentExecutor:
 
         return observations
 
-    async def _execute_single_intent(
+    async def _execute_single_intent(  # noqa: PLR0911
         self,
         *,
-        registry: AIToolRegistry,
-        bindings: "dict[str, AICapabilityBinding] | None",
+        registry: "AIToolRegistry",
         request: AIToolExecutionRequest,
         intent: AIToolIntent,
     ) -> AIToolObservationResult:
-        binding = (
-            bindings.get(intent.tool_name)
-            if bindings is not None
-            else registry.get_binding_for_contract(intent.tool_name)
-        )
-        if binding is None or binding.handler is None:
+        tool = registry.get(intent.tool_name)
+        if tool is None:
             return AIToolObservationResult(
                 tool_name=intent.tool_name,
-                summary=(
-                    f"- [{intent.tool_name}] failed: capability not found or "
-                    "has no binding"
-                ),
+                summary=f"- [{intent.tool_name}] failed: tool is not registered",
                 input_payload=intent.input_payload,
-                output_payload={"error": "capability not found"},
+                output_payload={"error": "tool is not registered"},
                 status="error",
+                reason="tool is not registered",
+                call_id=intent.call_id,
+            )
+
+        decision = evaluate_tool_policy(tool, request.policy)
+        if not decision.allowed:
+            status = "not_ready" if not tool.readiness.ready else "denied"
+            return AIToolObservationResult(
+                tool_name=intent.tool_name,
+                summary=f"- [{intent.tool_name}] not executed: {decision.reason}",
+                input_payload=intent.input_payload,
+                output_payload={"error": decision.reason},
+                status=status,
+                reason=decision.reason,
+                call_id=intent.call_id,
+            )
+
+        if tool.executor is None:
+            reason = "tool has no executor"
+            return AIToolObservationResult(
+                tool_name=intent.tool_name,
+                summary=f"- [{intent.tool_name}] not executed: {reason}",
+                input_payload=intent.input_payload,
+                output_payload={"error": reason},
+                status="not_ready",
+                reason=reason,
+                call_id=intent.call_id,
             )
 
         context = AIToolExecutionContext(
@@ -105,31 +121,22 @@ class AIToolIntentExecutor:
         )
 
         try:
-            if binding.binding_type is AICapabilityBindingType.HOST_ACTION:
-                execution = binding.handler(arguments)
-                if request.execution_timeout_seconds is not None:
-                    result = await asyncio.wait_for(
-                        _await_if_needed(execution),
-                        timeout=request.execution_timeout_seconds,
-                    )
-                else:
-                    result = await _await_if_needed(execution)
-                result = _host_action_result(intent.tool_name, result)
+            execution = tool.executor(**arguments, context=context)
+            if request.execution_timeout_seconds is not None:
+                result = await asyncio.wait_for(
+                    _await_if_needed(execution),
+                    timeout=request.execution_timeout_seconds,
+                )
             else:
-                execution = binding.handler(**arguments, context=context)
-                if request.execution_timeout_seconds is not None:
-                    result = await asyncio.wait_for(
-                        execution,
-                        timeout=request.execution_timeout_seconds,
-                    )
-                else:
-                    result = await execution
+                result = await _await_if_needed(execution)
+            result = _tool_result(intent.tool_name, result)
             return AIToolObservationResult(
                 tool_name=intent.tool_name,
                 summary=result.summary,
                 input_payload=intent.input_payload,
                 output_payload=result.output_payload,
                 status=result.status,
+                call_id=intent.call_id,
             )
         except TimeoutError:
             logger.warning(
@@ -154,6 +161,8 @@ class AIToolIntentExecutor:
                     "trace_id": request.trace_id,
                 },
                 status="timeout",
+                reason="timeout",
+                call_id=intent.call_id,
             )
         except TypeError as exc:
             logger.opt(exception=exc).debug(
@@ -171,6 +180,8 @@ class AIToolIntentExecutor:
                     "trace_id": request.trace_id,
                 },
                 status="error",
+                reason="invalid arguments",
+                call_id=intent.call_id,
             )
         except Exception as exc:  # noqa: BLE001
             logger.opt(exception=exc).warning(
@@ -185,11 +196,13 @@ class AIToolIntentExecutor:
                 input_payload=intent.input_payload,
                 output_payload={"error": str(exc), "trace_id": request.trace_id},
                 status="error",
+                reason=str(exc),
+                call_id=intent.call_id,
             )
 
 
-def _host_action_result(
-    action_name: str,
+def _tool_result(
+    tool_name: str,
     result: Any,
 ) -> "AIToolResult":
     from apeiria.ai.tools.models import AIToolResult
@@ -197,22 +210,25 @@ def _host_action_result(
     if isinstance(result, AIToolResult):
         return result
     return AIToolResult(
-        summary=_format_host_action_observation(action_name, result),
+        summary=_format_tool_observation(tool_name, result),
         output_payload=result,
     )
 
 
-def _format_host_action_observation(
-    action_name: str,
+def _format_tool_observation(
+    tool_name: str,
     result: Any,
 ) -> str:
     if isinstance(result, dict):
         summary = ", ".join(f"{key}={value}" for key, value in sorted(result.items()))
-        return f"- [{action_name}] {summary}"
-    return f"- [{action_name}] {result}"
+        return f"- [{tool_name}] {summary}"
+    return f"- [{tool_name}] {result}"
 
 
 async def _await_if_needed(value: Any) -> Any:
     if asyncio.iscoroutine(value):
         return await value
     return value
+
+
+__all__ = ["MAX_CONSECUTIVE_FAILURES", "AIToolIntentExecutor"]

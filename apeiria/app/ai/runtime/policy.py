@@ -22,9 +22,9 @@ from apeiria.app.ai.sessions.repository import AISessionManagementRepository
 if TYPE_CHECKING:
     from datetime import datetime
 
-    from apeiria.ai.capabilities import AICapabilityContract
     from apeiria.ai.model import AIModelBindingTarget
     from apeiria.ai.prompting import ReplyPersonaPromptBundleLike
+    from apeiria.ai.tools import AIToolDefinition
     from apeiria.app.ai.reply_strategy.models import ReplyStrategyDecision, WakeContext
     from apeiria.app.ai.runtime.session.context import RuntimeTurnInput
     from apeiria.conversation.models import ChatContextMessageView
@@ -42,7 +42,7 @@ class RuntimeReplyDecider(Protocol):
         conversation_summary: str | None,
         relationship_context: str | None,
         persona: "ReplyPersonaPromptBundleLike | None",
-        allowed_tools: tuple["AICapabilityContract", ...],
+        allowed_tools: tuple["AIToolDefinition", ...],
         initiative_bias: float,
         model_target: "AIModelBindingTarget",
         current_time: "datetime",

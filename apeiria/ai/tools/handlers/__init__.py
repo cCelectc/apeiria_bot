@@ -17,3 +17,4 @@ def ensure_handlers_loaded() -> None:
         memory,
         relationship,
     )
+    from apeiria.app.ai.future_tasks import tool_handler  # noqa: F401

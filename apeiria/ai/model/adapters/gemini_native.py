@@ -106,6 +106,7 @@ class GeminiNativeProvider:
         payload = _build_gemini_generate_payload(
             prompt=request.prompt,
             messages=request.messages,
+            tools=request.tools,
             temperature=request.temperature,
             max_tokens=request.max_tokens,
             options=options,
@@ -317,10 +318,11 @@ def _build_headers(
     }
 
 
-def _build_gemini_generate_payload(
+def _build_gemini_generate_payload(  # noqa: PLR0913
     *,
     prompt: str,
     messages: tuple[AIModelMessage, ...],
+    tools: tuple[Any, ...] = (),
     temperature: float | None,
     max_tokens: int | None,
     options: dict[str, Any],
@@ -344,6 +346,19 @@ def _build_gemini_generate_payload(
     ).strip()
     if system_text:
         payload["systemInstruction"] = {"parts": [{"text": system_text}]}
+    if tools:
+        payload["tools"] = [
+            {
+                "functionDeclarations": [
+                    {
+                        "name": tool.name,
+                        "description": tool.description,
+                        "parameters": tool.parameters,
+                    }
+                    for tool in tools
+                ]
+            }
+        ]
     return payload
 
 

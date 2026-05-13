@@ -36,7 +36,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { Switch } from '@/components/ui/switch'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 import { useAIDebugTab } from '@/composables/useAIDebugTab'
@@ -79,8 +78,6 @@ const {
   bindingForm,
   bindings,
   capabilities,
-  capabilityPreview,
-  capabilityPreviewName,
   editBinding,
   editingBindingId,
   intentPreview,
@@ -89,12 +86,10 @@ const {
   loadingTools,
   policyPreview,
   previewForm,
-  previewingCapability,
   previewingIntents,
   previewingPolicy,
   removeBinding,
   resetBindingForm,
-  runCapabilityPreview,
   runIntentPreview,
   runPolicyPreview,
   saving,
@@ -112,7 +107,7 @@ const {
 const limitOptions = [10, 20, 50, 100]
 const turnLimitOptions = [20, 50, 100, 200]
 const scopeTypeOptions = ['global', 'private', 'group', 'scene']
-const capabilityModeOptions = ['off', 'private_only', 'direct_only']
+const toolLevelOptions = ['none', 'read', 'write', 'host', 'admin']
 const traceStatusOptions = ['__all__', 'success', 'failed', 'skipped']
 const metrics = computed<WorkbenchMetricItem[]>(() => [
   {
@@ -130,7 +125,7 @@ const metrics = computed<WorkbenchMetricItem[]>(() => [
   {
     key: 'tools',
     label: t('ai.debugToolCallCount'),
-    tone: toolExecutionStats.value.error > 0 ? 'warning' : 'success',
+    tone: toolExecutionStats.value.failed > 0 ? 'warning' : 'success',
     value: toolExecutions.value.length,
   },
   {
@@ -382,7 +377,7 @@ watch(debugTab, () => {
             <Panel :title="t('ai.toolExecutionSummary')">
               <div class="ai-data-form__meta">
                 <StatusBadge :label="`${t('ai.toolStatusSuccess')}: ${toolExecutionStats.success}`" tone="success" />
-                <StatusBadge :label="`${t('ai.toolStatusError')}: ${toolExecutionStats.error}`" tone="error" />
+                <StatusBadge :label="`${t('ai.toolStatusError')}: ${toolExecutionStats.failed}`" tone="error" />
                 <StatusBadge :label="`${t('ai.toolStatusTimeout')}: ${toolExecutionStats.timeout}`" tone="warning" />
               </div>
               <div class="ai-debug-execution-list">
@@ -396,6 +391,11 @@ watch(debugTab, () => {
                     <span>{{ item.created_at }}</span>
                   </div>
                   <StatusBadge :label="item.status" :tone="statusTone(item.status)" />
+                  <div class="ai-data-form__meta">
+                    <Badge v-if="item.trace_id" variant="outline">{{ t('ai.traceId') }}: {{ item.trace_id }}</Badge>
+                    <Badge v-if="item.call_id" variant="outline">{{ t('ai.callId') }}: {{ item.call_id }}</Badge>
+                    <Badge v-if="item.reason" variant="secondary">{{ t('ai.denialReason') }}: {{ item.reason }}</Badge>
+                  </div>
                   <p>{{ summarizeJsonText(item.output_json) }}</p>
                 </article>
               </div>
@@ -544,25 +544,16 @@ watch(debugTab, () => {
                   <Input v-model="bindingForm.scope_id" :disabled="!!editingBindingId" />
                 </FormField>
               </div>
-              <div class="ai-data-grid-2">
-                <FormField :label="t('ai.capabilityMode')">
-                  <Select v-model="bindingForm.capability_mode">
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem v-for="option in capabilityModeOptions" :key="option" :value="option">
-                        {{ option }}
-                      </SelectItem>
-                    </SelectContent>
-                  </Select>
-                </FormField>
-                <div class="ai-data-switch-row">
-                  <div>
-                    <strong>{{ t('ai.allowReadOnlyTools') }}</strong>
-                    <span>{{ bindingForm.allow_read_only_tools ? t('ai.enabled') : t('ai.disabled') }}</span>
-                  </div>
-                  <Switch v-model:checked="bindingForm.allow_read_only_tools" />
-                </div>
-              </div>
+              <FormField :label="t('ai.allowedLevel')">
+                <Select v-model="bindingForm.allowed_level">
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem v-for="option in toolLevelOptions" :key="option" :value="option">
+                      {{ option }}
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              </FormField>
               <div class="ai-data-actions">
                 <Button variant="ghost" @click="resetBindingForm">{{ t('common.cancel') }}</Button>
                 <Button :disabled="saving || !bindingForm.scope_id.trim()" @click="submitBinding">
@@ -584,10 +575,10 @@ watch(debugTab, () => {
               >
                 <div>
                   <strong>{{ item.scope_type }} / {{ item.scope_id }}</strong>
-                  <span>{{ item.capability_mode }}</span>
+                  <span>{{ item.allowed_level }}</span>
                 </div>
                 <Badge variant="secondary">
-                  {{ t('ai.allowReadOnlyTools') }}: {{ item.allow_read_only_tools ? t('ai.enabled') : t('ai.disabled') }}
+                  {{ t('ai.allowedLevel') }}: {{ item.allowed_level }}
                 </Badge>
                 <div>
                   <Button size="sm" variant="secondary" @click="editBinding(item)">
@@ -614,33 +605,24 @@ watch(debugTab, () => {
                     </SelectContent>
                   </Select>
                 </FormField>
-                <FormField :label="t('ai.capabilityMode')">
-                  <Select v-model="previewForm.capability_mode">
+                <FormField :label="t('ai.allowedLevel')">
+                  <Select v-model="previewForm.allowed_level">
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem v-for="option in capabilityModeOptions" :key="option" :value="option">
+                      <SelectItem v-for="option in toolLevelOptions" :key="option" :value="option">
                         {{ option }}
                       </SelectItem>
                     </SelectContent>
                   </Select>
                 </FormField>
               </div>
-              <div class="ai-data-grid-2">
-                <div class="ai-data-switch-row">
-                  <div>
-                    <strong>{{ t('ai.allowReadOnlyTools') }}</strong>
-                    <span>{{ previewForm.allow_read_only_tools ? t('ai.enabled') : t('ai.disabled') }}</span>
-                  </div>
-                  <Switch v-model:checked="previewForm.allow_read_only_tools" />
+              <label class="ai-data-switch-row">
+                <div>
+                  <strong>{{ t('ai.isTome') }}</strong>
+                  <span>{{ previewForm.is_tome ? t('ai.enabled') : t('ai.disabled') }}</span>
                 </div>
-                <div class="ai-data-switch-row">
-                  <div>
-                    <strong>{{ t('ai.isTome') }}</strong>
-                    <span>{{ previewForm.is_tome ? t('ai.enabled') : t('ai.disabled') }}</span>
-                  </div>
-                  <Switch v-model:checked="previewForm.is_tome" />
-                </div>
-              </div>
+                <input v-model="previewForm.is_tome" type="checkbox">
+              </label>
               <div class="ai-data-actions">
                 <Button :disabled="previewingPolicy" variant="secondary" @click="runPolicyPreview">
                   {{ t('ai.previewPolicy') }}
@@ -650,26 +632,22 @@ watch(debugTab, () => {
             </div>
           </Panel>
 
-          <Panel :title="t('ai.capabilityPreviewResult')">
-            <div class="ai-data-form">
-              <FormField :label="t('ai.capabilityName')">
-                <Select v-model="capabilityPreviewName">
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem
-                      v-for="item in capabilities"
-                      :key="item.capability_name"
-                      :value="item.capability_name"
-                    >
-                      {{ item.capability_name }}
-                    </SelectItem>
-                  </SelectContent>
-                </Select>
-              </FormField>
-              <Button :disabled="previewingCapability || !capabilityPreviewName" @click="runCapabilityPreview">
-                {{ t('ai.previewCapability') }}
-              </Button>
-              <pre v-if="capabilityPreview" class="ai-debug-json">{{ formatJson(capabilityPreview) }}</pre>
+          <Panel :title="t('ai.capabilityRegistry')">
+            <div class="ai-debug-binding-list">
+              <article
+                v-for="item in capabilities"
+                :key="`${item.capability_name}-${item.version}`"
+                class="ai-debug-binding"
+              >
+                <div>
+                  <strong>{{ item.capability_name }}</strong>
+                  <span>{{ item.description || t('common.none') }}</span>
+                </div>
+                <Badge variant="secondary">
+                  {{ t('ai.requiredLevel') }}: {{ item.required_level }}
+                </Badge>
+                <span>{{ item.readiness }} / {{ item.diagnostics.join(' / ') || item.origin }}</span>
+              </article>
             </div>
           </Panel>
 

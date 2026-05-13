@@ -39,7 +39,6 @@ async def get_ai_bootstrap(
             for item in ai_application.operations.list_source_presets()
         ],
         scope_types=["conversation", "user", "group", "global"],
-        capability_modes=["off", "private_only", "direct_only"],
         task_classes=[
             "reply_default",
             "reply_roleplay",

@@ -6,10 +6,10 @@ from typing import TYPE_CHECKING
 
 from apeiria.ai.skills import ai_skill_service
 from apeiria.ai.tools import (
+    AIToolLevel,
     AIToolPolicyBindingCreateInput,
     AIToolPolicyBindingSpec,
     AIToolSceneContext,
-    AIToolScenePolicyProfile,
     ai_tool_policy_binding_service,
     ai_tool_service,
     resolve_default_tool_policy,
@@ -19,10 +19,9 @@ from apeiria.app.ai.lifecycle import ensure_ai_runtime_support_initialized
 from apeiria.app.ai.runtime.planning.tool_intents import preview_runtime_tool_intents
 
 if TYPE_CHECKING:
-    from apeiria.ai.capabilities import AICapabilityContract
     from apeiria.ai.skills import AISkillMetadata
     from apeiria.ai.tools import (
-        AICapabilityPreview,
+        AIToolDefinition,
         AIToolExecutionView,
         AIToolIntentPreview,
         AIToolPolicy,
@@ -40,7 +39,7 @@ class ToolsAdminMixin:
     def list_tools(
         self,
         policy: "AIToolPolicy | None" = None,
-    ) -> list["AICapabilityContract"]:
+    ) -> list["AIToolDefinition"]:
         self._ensure_ai_support_ready()
         return ai_tool_service.list_tool_specs(policy)
 
@@ -61,15 +60,13 @@ class ToolsAdminMixin:
         message_text: str,
         scope_type: str,
         is_tome: bool,
-        allow_read_only_tools: bool = True,
-        capability_mode: str = "off",
+        allowed_level: AIToolLevel = AIToolLevel.NONE,
     ) -> list["AIToolIntentPreview"]:
         self._ensure_ai_support_ready()
         policy = self.preview_tool_policy(
             scope_type=scope_type,
             is_tome=is_tome,
-            allow_read_only_tools=allow_read_only_tools,
-            capability_mode=capability_mode,
+            allowed_level=allowed_level,
         )
         return await preview_runtime_tool_intents(
             message_text=message_text,
@@ -84,16 +81,14 @@ class ToolsAdminMixin:
         *,
         scope_type: str,
         scope_id: str,
-        allow_read_only_tools: bool,
-        capability_mode: str,
+        allowed_level: AIToolLevel,
         actor_username: str | None = None,
     ) -> AIToolPolicyBindingSpec:
         created = await ai_tool_policy_binding_service.create_binding(
             AIToolPolicyBindingCreateInput(
                 scope_type=scope_type,
                 scope_id=scope_id,
-                allow_read_only_tools=allow_read_only_tools,
-                capability_mode=capability_mode,  # type: ignore[arg-type]
+                allowed_level=allowed_level,
             ),
         )
         record_ai_admin_audit(
@@ -107,14 +102,12 @@ class ToolsAdminMixin:
         self,
         *,
         binding_id: str,
-        allow_read_only_tools: bool,
-        capability_mode: str,
+        allowed_level: AIToolLevel,
         actor_username: str | None = None,
     ) -> AIToolPolicyBindingSpec | None:
         updated = await ai_tool_policy_binding_service.update_binding(
             binding_id=binding_id,
-            allow_read_only_tools=allow_read_only_tools,
-            capability_mode=capability_mode,  # type: ignore[arg-type]
+            allowed_level=allowed_level,
         )
         if updated is None:
             return None
@@ -147,38 +140,14 @@ class ToolsAdminMixin:
         *,
         scope_type: str,
         is_tome: bool,
-        allow_read_only_tools: bool = True,
-        capability_mode: str = "off",
+        allowed_level: AIToolLevel | str | None = None,
     ) -> "AIToolPolicy":
         return resolve_default_tool_policy(
             AIToolSceneContext(
                 scope_type=scope_type,
                 is_tome=is_tome,
             ),
-            AIToolScenePolicyProfile(
-                allow_read_only_tools=allow_read_only_tools,
-                capability_mode=capability_mode,  # type: ignore[arg-type]
-            ),
-        )
-
-    def preview_capability(
-        self,
-        *,
-        capability_name: str,
-        scope_type: str,
-        is_tome: bool,
-        allow_read_only_tools: bool = True,
-        capability_mode: str = "off",
-    ) -> "AICapabilityPreview":
-        policy = self.preview_tool_policy(
-            scope_type=scope_type,
-            is_tome=is_tome,
-            allow_read_only_tools=allow_read_only_tools,
-            capability_mode=capability_mode,
-        )
-        return ai_tool_service.preview_capability(
-            capability_name=capability_name,
-            policy=policy,
+            allowed_level=allowed_level,
         )
 
     async def list_tool_executions(

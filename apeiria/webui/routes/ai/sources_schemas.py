@@ -25,7 +25,6 @@ class AISourcePresetItem(BaseModel):
 class AIBootstrapResponse(BaseModel):
     source_presets: list["AISourcePresetItem"] = []
     scope_types: list[str] = []
-    capability_modes: list[str] = []
     task_classes: list[str] = []
 
 

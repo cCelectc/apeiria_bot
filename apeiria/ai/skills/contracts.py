@@ -5,26 +5,30 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Literal
 
 from apeiria.ai.skills.catalog import AISkillMetadata
+from apeiria.ai.tools.models import AIToolLevel
 
 if TYPE_CHECKING:
-    from apeiria.ai.capabilities import AICapabilityContract
     from apeiria.ai.skills.parser import AISkillFileDefinition
+    from apeiria.ai.tools.models import AIToolDefinition
 
 
-def build_skill_metadata(contract: AICapabilityContract) -> AISkillMetadata:
-    """Map one executable capability contract into skill catalog metadata."""
+def build_tool_skill_metadata(tool: "AIToolDefinition") -> AISkillMetadata:
+    """Map one first-class tool into skill catalog metadata."""
 
     return AISkillMetadata(
-        name=contract.name,
-        description=contract.description,
-        side_effect_level=_map_side_effect_level(contract),
+        name=tool.name,
+        description=tool.description,
+        side_effect_level=_map_tool_side_effect_level(tool),
         permission_source="global",
-        idempotent=contract.safety.concurrency_safe,
+        idempotent=tool.required_level is AIToolLevel.READ,
         fallback_behavior="degrade_to_text_reply",
         origin="tool",
         entry_mode="tool_backed",
-        tags=contract.tags,
+        tags=tool.tags,
     )
+
+
+build_skill_metadata = build_tool_skill_metadata
 
 
 def build_file_skill_metadata(
@@ -45,12 +49,12 @@ def build_file_skill_metadata(
     )
 
 
-def _map_side_effect_level(
-    contract: "AICapabilityContract",
+def _map_tool_side_effect_level(
+    tool: "AIToolDefinition",
 ) -> Literal["read_only", "low_risk", "high_risk"]:
-    if contract.safety.read_only:
+    if tool.required_level is AIToolLevel.READ:
         return "read_only"
-    if contract.safety.risk_level == "high":
+    if tool.required_level in {AIToolLevel.HOST, AIToolLevel.ADMIN}:
         return "high_risk"
     return "low_risk"
 

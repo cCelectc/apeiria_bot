@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Annotated, Literal, cast
 
 from apeiria.ai.tools.decorators import ai_tool
-from apeiria.ai.tools.models import AIToolExecutionContext, AIToolResult
+from apeiria.ai.tools.models import AIToolExecutionContext, AIToolLevel, AIToolResult
 
 if TYPE_CHECKING:
     from apeiria.app.ai.future_tasks import AIFutureTasksEntry
@@ -19,10 +19,8 @@ _FutureTaskAction = Literal["create", "cancel", "list"]
 @ai_tool(
     name="future_task.manage",
     description="create, cancel, or inspect scheduled reminder tasks",
-    read_only=False,
-    concurrency_safe=False,
-    risk_level="low",
-    timeout_seconds=6.0,
+    required_level=AIToolLevel.WRITE,
+    tags=("future_task", "write"),
 )
 async def handle_future_task(  # noqa: PLR0913
     action: Annotated[

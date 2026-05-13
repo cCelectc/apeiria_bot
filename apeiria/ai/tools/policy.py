@@ -1,4 +1,4 @@
-"""Pure helpers for tool policy bindings and scene evaluation."""
+"""Pure helpers for level-based tool policy bindings and exposure."""
 
 from __future__ import annotations
 
@@ -6,30 +6,24 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from uuid import uuid4
 
-from apeiria.ai.capabilities import AICapabilityBindingType, AICapabilityContract
 from apeiria.ai.tools.models import (
-    AIToolCapabilityMode,
+    AIToolDefinition,
+    AIToolLevel,
     AIToolPolicy,
     AIToolPolicyDecision,
     AIToolTurnCreateInput,
+    coerce_tool_level,
+    tool_level_allows,
 )
 from apeiria.db.runtime import database_runtime
 
 
 @dataclass(frozen=True)
 class AIToolSceneContext:
-    """Minimal scene facts required for default skill-policy resolution."""
+    """Minimal scene facts required for default tool-policy resolution."""
 
     scope_type: str
     is_tome: bool
-
-
-@dataclass(frozen=True)
-class AIToolScenePolicyProfile:
-    """Configurable scene-level defaults for skill access."""
-
-    allow_read_only_tools: bool = True
-    capability_mode: AIToolCapabilityMode = "off"
 
 
 @dataclass(frozen=True)
@@ -39,8 +33,7 @@ class AIToolPolicyBindingSpec:
     binding_id: str
     scope_type: str
     scope_id: str
-    allow_read_only_tools: bool
-    capability_mode: AIToolCapabilityMode
+    allowed_level: AIToolLevel
 
 
 @dataclass(frozen=True)
@@ -58,149 +51,70 @@ class AIToolPolicyBindingCreateInput:
 
     scope_type: str
     scope_id: str
-    allow_read_only_tools: bool = True
-    capability_mode: AIToolCapabilityMode = "off"
+    allowed_level: AIToolLevel = AIToolLevel.NONE
 
 
 _MAX_SUMMARY_TOOLS = 5
 
 
 def evaluate_tool_policy(
-    tool: AICapabilityContract,
+    tool: AIToolDefinition,
     policy: AIToolPolicy,
-    *,
-    binding_type: AICapabilityBindingType | None = None,
 ) -> AIToolPolicyDecision:
-    """Return whether one executable capability is allowed by scene policy."""
+    """Return whether one executable tool is allowed by scene policy."""
 
-    if not policy.execution_enabled:
+    if not tool.enabled:
+        return AIToolPolicyDecision(allowed=False, reason="tool is disabled")
+    if not tool.readiness.ready:
+        return AIToolPolicyDecision(allowed=False, reason=tool.readiness.reason)
+    if not tool_level_allows(policy.allowed_level, tool.required_level):
         return AIToolPolicyDecision(
             allowed=False,
-            reason="capability execution is disabled for this scene",
+            reason=(
+                f"requires {tool.required_level.value}, "
+                f"scene allows {policy.allowed_level.value}"
+            ),
         )
-
-    if tool.name in policy.denied_tool_names:
-        return AIToolPolicyDecision(
-            allowed=False,
-            reason=f"tool '{tool.name}' is explicitly denied",
-        )
-
-    if (
-        policy.allowed_tool_names is not None
-        and tool.name not in policy.allowed_tool_names
-    ):
-        return AIToolPolicyDecision(
-            allowed=False,
-            reason=f"tool '{tool.name}' is not in the allowlist",
-        )
-
-    if tool.safety.risk_level == "high" and not policy.allow_high_risk_tools:
-        return AIToolPolicyDecision(
-            allowed=False,
-            reason=f"capability '{tool.name}' is high risk and not enabled",
-        )
-
-    if (
-        binding_type is AICapabilityBindingType.HOST_ACTION
-        and not policy.allow_host_actions
-    ):
-        return AIToolPolicyDecision(
-            allowed=False,
-            reason="host actions are not enabled",
-        )
-
-    return AIToolPolicyDecision(
-        allowed=True,
-        reason="allowed",
-    )
+    return AIToolPolicyDecision(allowed=True, reason="allowed")
 
 
 def summarize_tool_policy(
-    tools: list[AICapabilityContract],
+    tools: list[AIToolDefinition],
     policy: AIToolPolicy,
 ) -> str:
-    """Build a compact textual summary of capability availability."""
-
-    preauthorized_tools = [
-        tool
-        for tool in tools
-        if policy.allowed_tool_names is None or tool.name in policy.allowed_tool_names
-    ]
-    if not policy.execution_enabled:
-        if not preauthorized_tools:
-            return (
-                "No executable capabilities are active for this turn. "
-                "Reply using only the visible conversation and recalled context."
-            )
-
-        tool_list = ", ".join(
-            tool.name for tool in preauthorized_tools[:_MAX_SUMMARY_TOOLS]
-        )
-        if len(preauthorized_tools) > _MAX_SUMMARY_TOOLS:
-            tool_list += ", ..."
-        return (
-            "Executable capabilities are unavailable for this turn. "
-            f"Pre-authorized capabilities for other turns: {tool_list}. "
-            "Reply without claiming any external actions."
-        )
+    """Build a compact textual summary of level-based tool availability."""
 
     allowed_tools = [
         tool for tool in tools if evaluate_tool_policy(tool, policy).allowed
     ]
     if not allowed_tools:
-        return "No executable capabilities are currently allowed for this scene."
+        return (
+            "No executable tools are currently allowed for this scene. "
+            f"The scene allows up to {policy.allowed_level.value} tools."
+        )
 
     tool_list = ", ".join(tool.name for tool in allowed_tools[:_MAX_SUMMARY_TOOLS])
     if len(allowed_tools) > _MAX_SUMMARY_TOOLS:
         tool_list += ", ..."
     return (
-        "Executable capabilities are available only when they add clear value. "
-        f"Allowed capabilities for this scene: {tool_list}. "
+        "Executable tools are available only when they add clear value. "
+        f"The scene allows up to {policy.allowed_level.value}; "
+        f"available tools include: {tool_list}. "
         "Keep direct reply as the default path when external actions are unnecessary."
     )
 
 
 def resolve_default_tool_policy(
     context: AIToolSceneContext,
-    profile: AIToolScenePolicyProfile | None = None,
+    allowed_level: AIToolLevel | str | None = None,
 ) -> AIToolPolicy:
-    """Return the conservative default tool policy for one scene."""
+    """Return conservative default tool policy for one scene."""
 
-    profile = profile or AIToolScenePolicyProfile()
-    allowed_tool_names: set[str] = set()
-    if profile.allow_read_only_tools and (
-        context.scope_type == "private" or context.is_tome
-    ):
-        allowed_tool_names.update(
-            {
-                "future_task.manage",
-                "memory.query",
-                "memory.update",
-                "relationship.inspect",
-            }
-        )
-
-    allow_host_actions = _allow_host_actions(context, profile)
-    if allow_host_actions:
-        allowed_tool_names.update({"help.show", "plugin.inspect"})
-
-    return AIToolPolicy(
-        execution_enabled=bool(allowed_tool_names),
-        allowed_tool_names=allowed_tool_names or None,
-        allow_high_risk_tools=allow_host_actions,
-        allow_host_actions=allow_host_actions,
-    )
-
-
-def _allow_host_actions(
-    context: AIToolSceneContext,
-    profile: AIToolScenePolicyProfile,
-) -> bool:
-    if profile.capability_mode == "off":
-        return False
-    if profile.capability_mode == "private_only":
-        return context.scope_type == "private"
-    return context.scope_type == "private" or context.is_tome
+    if allowed_level is not None:
+        return AIToolPolicy(allowed_level=coerce_tool_level(allowed_level))
+    if context.scope_type == "private" or context.is_tome:
+        return AIToolPolicy(allowed_level=AIToolLevel.READ)
+    return AIToolPolicy(allowed_level=AIToolLevel.NONE)
 
 
 def resolve_tool_policy_binding(
@@ -225,25 +139,10 @@ def resolve_tool_policy_binding(
     return None
 
 
-def tool_policy_binding_to_profile(
-    binding: AIToolPolicyBindingSpec | None,
-) -> AIToolScenePolicyProfile | None:
-    """Convert a binding record into a scene policy profile."""
-
-    if binding is None:
-        return None
-    return AIToolScenePolicyProfile(
-        allow_read_only_tools=binding.allow_read_only_tools,
-        capability_mode=binding.capability_mode,
-    )
-
-
 class AIToolPolicyBindingService:
     """Persistence and resolution service for tool policy bindings."""
 
-    async def list_bindings(
-        self,
-    ) -> list[AIToolPolicyBindingSpec]:
+    async def list_bindings(self) -> list[AIToolPolicyBindingSpec]:
         return self._list_bindings_sync()
 
     async def create_binding(
@@ -254,8 +153,7 @@ class AIToolPolicyBindingService:
             binding_id=f"tool_policy_bind_{uuid4().hex}",
             scope_type=create_input.scope_type,
             scope_id=create_input.scope_id,
-            allow_read_only_tools=create_input.allow_read_only_tools,
-            capability_mode=create_input.capability_mode,
+            allowed_level=create_input.allowed_level,
         )
         with database_runtime.connect_sync() as connection:
             connection.execute(
@@ -264,17 +162,15 @@ class AIToolPolicyBindingService:
                     binding_id,
                     scope_type,
                     scope_id,
-                    allow_read_only_tools,
-                    capability_mode,
+                    allowed_level,
                     updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?)
                 """,
                 (
                     binding.binding_id,
                     binding.scope_type,
                     binding.scope_id,
-                    1 if binding.allow_read_only_tools else 0,
-                    binding.capability_mode,
+                    binding.allowed_level.value,
                     _utcnow_text(),
                 ),
             )
@@ -284,8 +180,7 @@ class AIToolPolicyBindingService:
         self,
         *,
         binding_id: str,
-        allow_read_only_tools: bool,
-        capability_mode: AIToolCapabilityMode,
+        allowed_level: AIToolLevel,
     ) -> AIToolPolicyBindingSpec | None:
         with database_runtime.connect_sync() as connection:
             row = connection.execute(
@@ -302,14 +197,12 @@ class AIToolPolicyBindingService:
                 """
                 UPDATE ai_tool_policy
                 SET
-                    allow_read_only_tools = ?,
-                    capability_mode = ?,
+                    allowed_level = ?,
                     updated_at = ?
                 WHERE binding_id = ?
                 """,
                 (
-                    1 if allow_read_only_tools else 0,
-                    capability_mode,
+                    allowed_level.value,
                     _utcnow_text(),
                     binding_id,
                 ),
@@ -318,8 +211,7 @@ class AIToolPolicyBindingService:
             binding_id=binding_id,
             scope_type=str(row[0]),
             scope_id=str(row[1]),
-            allow_read_only_tools=allow_read_only_tools,
-            capability_mode=capability_mode,
+            allowed_level=allowed_level,
         )
 
     async def delete_binding(
@@ -345,11 +237,9 @@ class AIToolPolicyBindingService:
     ) -> AIToolPolicy:
         bindings = await self.list_bindings()
         binding = resolve_tool_policy_binding(bindings, target)
-        profile = tool_policy_binding_to_profile(binding)
-        return resolve_default_tool_policy(
-            scene_context,
-            profile or AIToolScenePolicyProfile(),
-        )
+        if binding is not None:
+            return AIToolPolicy(allowed_level=binding.allowed_level)
+        return resolve_default_tool_policy(scene_context)
 
     def _list_bindings_sync(self) -> list[AIToolPolicyBindingSpec]:
         with database_runtime.connect_sync() as connection:
@@ -359,8 +249,7 @@ class AIToolPolicyBindingService:
                     binding_id,
                     scope_type,
                     scope_id,
-                    allow_read_only_tools,
-                    capability_mode
+                    allowed_level
                 FROM ai_tool_policy
                 ORDER BY rowid ASC
                 """
@@ -370,8 +259,7 @@ class AIToolPolicyBindingService:
                 binding_id=str(row[0]),
                 scope_type=str(row[1]),
                 scope_id=str(row[2]),
-                allow_read_only_tools=bool(row[3]),
-                capability_mode=row[4],
+                allowed_level=coerce_tool_level(str(row[3])),
             )
             for row in rows
         ]
@@ -380,20 +268,19 @@ class AIToolPolicyBindingService:
 ai_tool_policy_binding_service = AIToolPolicyBindingService()
 
 __all__ = [
+    "AIToolLevel",
     "AIToolPolicy",
     "AIToolPolicyBindingCreateInput",
     "AIToolPolicyBindingService",
     "AIToolPolicyBindingSpec",
     "AIToolPolicyBindingTarget",
     "AIToolSceneContext",
-    "AIToolScenePolicyProfile",
     "AIToolTurnCreateInput",
     "ai_tool_policy_binding_service",
     "evaluate_tool_policy",
     "resolve_default_tool_policy",
     "resolve_tool_policy_binding",
     "summarize_tool_policy",
-    "tool_policy_binding_to_profile",
 ]
 
 

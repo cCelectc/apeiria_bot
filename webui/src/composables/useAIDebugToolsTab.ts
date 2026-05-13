@@ -1,6 +1,5 @@
 import type {
   AICapabilityItem,
-  AICapabilityPreviewItem,
   AIToolIntentPreviewItem,
   AIToolPolicyBindingItem,
   AIToolPolicyPreviewItem,
@@ -11,7 +10,6 @@ import {
   deleteAIToolPolicyBinding,
   getAICapabilities,
   getAIToolPolicyBindings,
-  previewAICapability,
   previewAIToolIntents,
   previewAIToolPolicy,
   updateAIToolPolicyBinding,
@@ -24,26 +22,21 @@ export function useAIDebugToolsTab(t: (key: string) => string) {
 
   const saving = ref(false)
   const previewingPolicy = ref(false)
-  const previewingCapability = ref(false)
   const previewingIntents = ref(false)
   const loadingTools = ref(false)
   const capabilities = ref<AICapabilityItem[]>([])
   const bindings = ref<AIToolPolicyBindingItem[]>([])
   const policyPreview = ref<AIToolPolicyPreviewItem | null>(null)
-  const capabilityPreview = ref<AICapabilityPreviewItem | null>(null)
   const intentPreview = ref<AIToolIntentPreviewItem[]>([])
   const editingBindingId = ref('')
-  const capabilityPreviewName = ref('')
 
   const bindingForm = reactive({
-    allow_read_only_tools: true,
-    capability_mode: 'off',
+    allowed_level: 'none',
     scope_id: '__global__',
     scope_type: 'global',
   })
   const previewForm = reactive({
-    allow_read_only_tools: true,
-    capability_mode: 'off',
+    allowed_level: 'none',
     is_tome: false,
     scope_type: 'private',
   })
@@ -60,9 +53,6 @@ export function useAIDebugToolsTab(t: (key: string) => string) {
       ])
       capabilities.value = capabilitiesResponse.data
       bindings.value = bindingsResponse.data
-      if (!capabilityPreviewName.value && capabilities.value.length > 0) {
-        capabilityPreviewName.value = capabilities.value[0].capability_name
-      }
     } catch (error) {
       noticeStore.show(getErrorMessage(error, t('ai.loadFailed')), 'error')
     } finally {
@@ -75,13 +65,11 @@ export function useAIDebugToolsTab(t: (key: string) => string) {
     try {
       const action = editingBindingId.value
         ? updateAIToolPolicyBinding({
-            allow_read_only_tools: bindingForm.allow_read_only_tools,
+            allowed_level: bindingForm.allowed_level,
             binding_id: editingBindingId.value,
-            capability_mode: bindingForm.capability_mode,
           })
         : createAIToolPolicyBinding({
-            allow_read_only_tools: bindingForm.allow_read_only_tools,
-            capability_mode: bindingForm.capability_mode,
+            allowed_level: bindingForm.allowed_level,
             scope_id: bindingForm.scope_id.trim(),
             scope_type: bindingForm.scope_type,
           })
@@ -98,16 +86,14 @@ export function useAIDebugToolsTab(t: (key: string) => string) {
 
   function editBinding(item: AIToolPolicyBindingItem) {
     editingBindingId.value = item.binding_id
-    bindingForm.allow_read_only_tools = item.allow_read_only_tools
-    bindingForm.capability_mode = item.capability_mode
+    bindingForm.allowed_level = item.allowed_level
     bindingForm.scope_id = item.scope_id
     bindingForm.scope_type = item.scope_type
   }
 
   function resetBindingForm() {
     editingBindingId.value = ''
-    bindingForm.allow_read_only_tools = true
-    bindingForm.capability_mode = 'off'
+    bindingForm.allowed_level = 'none'
     bindingForm.scope_id = '__global__'
     bindingForm.scope_type = 'global'
   }
@@ -137,24 +123,6 @@ export function useAIDebugToolsTab(t: (key: string) => string) {
     }
   }
 
-  async function runCapabilityPreview() {
-    if (!capabilityPreviewName.value) {
-      return
-    }
-    previewingCapability.value = true
-    try {
-      const response = await previewAICapability({
-        ...previewForm,
-        capability_name: capabilityPreviewName.value,
-      })
-      capabilityPreview.value = response.data
-    } catch (error) {
-      noticeStore.show(getErrorMessage(error, t('ai.previewFailed')), 'error')
-    } finally {
-      previewingCapability.value = false
-    }
-  }
-
   async function runIntentPreview() {
     if (!intentPreviewForm.message_text.trim()) {
       return
@@ -177,8 +145,6 @@ export function useAIDebugToolsTab(t: (key: string) => string) {
     bindingForm,
     bindings,
     capabilities,
-    capabilityPreview,
-    capabilityPreviewName,
     editBinding,
     editingBindingId,
     intentPreview,
@@ -187,12 +153,10 @@ export function useAIDebugToolsTab(t: (key: string) => string) {
     loadingTools,
     policyPreview,
     previewForm,
-    previewingCapability,
     previewingIntents,
     previewingPolicy,
     removeBinding,
     resetBindingForm,
-    runCapabilityPreview,
     runIntentPreview,
     runPolicyPreview,
     saving,

@@ -536,7 +536,11 @@ def test_future_task_tool_handler_uses_application_future_tasks_entry(
     monkeypatch: Any,
 ) -> None:
     import apeiria.conversation.service as conversation_service_module
-    from apeiria.ai.tools.models import AIToolExecutionContext, AIToolPolicy
+    from apeiria.ai.tools.models import (
+        AIToolExecutionContext,
+        AIToolLevel,
+        AIToolPolicy,
+    )
     from apeiria.app.ai.future_tasks import tool_handler
     from apeiria.conversation.models import ChatSessionIdentity
 
@@ -581,7 +585,7 @@ def test_future_task_tool_handler_uses_application_future_tasks_entry(
                 source_message_id="message-1",
                 trace_id="trace-1",
                 message_text="list reminders",
-                policy=AIToolPolicy(execution_enabled=True),
+                policy=AIToolPolicy(allowed_level=AIToolLevel.WRITE),
                 recalled_memory_ids=(),
                 recalled_memory_contents=(),
                 relationship_context=None,

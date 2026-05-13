@@ -15,7 +15,6 @@ export interface AISourcePresetItem {
 export interface AIBootstrapResponse {
   source_presets: AISourcePresetItem[]
   scope_types: string[]
-  capability_modes: string[]
   task_classes: string[]
 }
 
@@ -328,37 +327,34 @@ export interface AIKnowledgeRetrievalResultItem {
 export interface AIToolItem {
   name: string
   description: string
-  display_name?: string
-  display_description?: string
-  read_only: boolean
-  mutates_state: boolean
-  concurrency_safe: boolean
-  risk_level: string
-  risk_label?: string
-  timeout_seconds: number | null
-  requires_operator_approval: boolean
+  origin: string
+  required_level: string
+  enabled: boolean
+  manageable: boolean
+  readiness_code: string
+  readiness_reason: string
+  provider_name: string
+  tags: string[]
+  version: number
 }
 
-export type AISkillItem = AIToolItem
+export interface AISkillItem {
+  name: string
+  description: string
+  display_name: string
+  display_description: string
+}
 
 export interface AICapabilityItem {
   capability_name: string
   kind: string
   origin: string
   description: string
-  read_only: boolean
-  mutates_state: boolean
-  concurrency_safe: boolean
-  risk_level: string
-  risk_label: string
-  timeout_seconds: number | null
-  requires_operator_approval: boolean
+  required_level: string
+  readiness: string
   availability: string
-  binding_key: string | null
-  binding_type: string | null
   policy_status: string
   diagnostics: string[]
-  required_capabilities: string[]
   tags: string[]
   version: number
 }
@@ -367,8 +363,7 @@ export interface AIToolPolicyBindingItem {
   binding_id: string
   scope_type: string
   scope_id: string
-  allow_read_only_tools: boolean
-  capability_mode: string
+  allowed_level: string
 }
 
 export interface AIToolIntentPreviewItem {
@@ -379,20 +374,7 @@ export interface AIToolIntentPreviewItem {
 }
 
 export interface AIToolPolicyPreviewItem {
-  execution_enabled: boolean
-  allowed_tool_names: string[] | null
-  denied_tool_names: string[]
-  allow_high_risk_tools: boolean
-  allow_host_actions: boolean
-}
-
-export interface AICapabilityPreviewItem {
-  capability_name: string
-  registered: boolean
-  allowed: boolean
-  reason: string
-  allow_host_actions: boolean
-  execution_enabled: boolean
+  allowed_level: string
 }
 
 export interface AIToolExecutionItem {
@@ -400,6 +382,9 @@ export interface AIToolExecutionItem {
   session_id: string
   tool_name: string
   status: string
+  reason: string | null
+  trace_id: string | null
+  call_id: string | null
   input_json: string | null
   output_json: string | null
   created_at: string
@@ -914,8 +899,7 @@ export function getAIToolPolicyBindings() {
 export function createAIToolPolicyBinding(payload: {
   scope_type: string
   scope_id: string
-  allow_read_only_tools: boolean
-  capability_mode: string
+  allowed_level: string
 }) {
   return client.post<AIToolPolicyBindingItem>(
     '/ai/tools/policy-bindings',
@@ -925,8 +909,7 @@ export function createAIToolPolicyBinding(payload: {
 
 export function updateAIToolPolicyBinding(payload: {
   binding_id: string
-  allow_read_only_tools: boolean
-  capability_mode: string
+  allowed_level: string
 }) {
   return client.patch<AIToolPolicyBindingItem | null>(
     '/ai/tools/policy-bindings',
@@ -943,8 +926,7 @@ export function deleteAIToolPolicyBinding(bindingId: string) {
 export function previewAIToolPolicy(payload: {
   scope_type: string
   is_tome: boolean
-  allow_read_only_tools: boolean
-  capability_mode: string
+  allowed_level: string
 }) {
   return client.post<AIToolPolicyPreviewItem>(
     '/ai/tools/policy-preview',
@@ -956,24 +938,10 @@ export function previewAIToolIntents(payload: {
   message_text: string
   scope_type: string
   is_tome: boolean
-  allow_read_only_tools: boolean
-  capability_mode: string
+  allowed_level: string
 }) {
   return client.post<AIToolIntentPreviewItem[]>(
     '/ai/tools/intent-preview',
-    payload,
-  )
-}
-
-export function previewAICapability(payload: {
-  capability_name: string
-  scope_type: string
-  is_tome: boolean
-  allow_read_only_tools: boolean
-  capability_mode: string
-}) {
-  return client.post<AICapabilityPreviewItem>(
-    '/ai/tools/capability-preview',
     payload,
   )
 }

@@ -4,28 +4,18 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
 from datetime import datetime  # noqa: TC003
-from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
 from zoneinfo import ZoneInfo
 
-from apeiria.ai.capabilities import (
-    AICapabilityBindingSnapshot,
-    AICapabilityContract,
-    AICapabilityContractSnapshot,
-    AICapabilityExposureContext,
-    AICapabilityExposurePlan,
-    AICapabilityExposureProfile,
-    create_capability_exposure_plan,
-)
 from apeiria.ai.model.runtime.adapter import AIModelToolDefinition
-from apeiria.ai.tools.function_calling import (
-    build_function_tools,
-    function_name_to_tool_name,
-)
+from apeiria.ai.tools.exposure import AIToolExposurePlan, create_tool_exposure_plan
+from apeiria.ai.tools.function_calling import build_function_tools
+from apeiria.ai.tools.projection import build_provider_name_map
 from apeiria.ai.turn_records import PromptSafeObservation
 
 if TYPE_CHECKING:
     from apeiria.ai.tools import AIToolPolicy
+    from apeiria.ai.tools.models import AIToolDefinition
     from apeiria.app.ai.runtime.execution.tool_loop import RuntimeToolLoopInput
 
 
@@ -44,37 +34,31 @@ class ToolExposurePlan:
 
     awareness_text: str = ""
     category_ids: tuple[str, ...] = ()
-    selected_tool_contracts: tuple[AICapabilityContract, ...] = ()
+    selected_tool_definitions: tuple[AIToolDefinition, ...] = ()
     selected_tools: tuple["AIModelToolDefinition", ...] = ()
     hidden_reasons: dict[str, str] = field(default_factory=dict)
     unavailable_reasons: dict[str, str] = field(default_factory=dict)
     denied_reasons: dict[str, str] = field(default_factory=dict)
     diagnostics: dict[str, Any] = field(default_factory=dict)
-    capability_contracts: AICapabilityContractSnapshot | None = None
-    capability_bindings: AICapabilityBindingSnapshot | None = None
-    capability_plan: AICapabilityExposurePlan = field(
-        default_factory=AICapabilityExposurePlan
-    )
+    provider_name_map: dict[str, str] = field(default_factory=dict)
+    exposure_plan: AIToolExposurePlan = field(default_factory=AIToolExposurePlan)
 
     @property
     def selected_tool_names(self) -> tuple[str, ...]:
-        """Return selected executable tool names in model-visible order."""
+        """Return selected executable stable tool names in model-visible order."""
 
-        if self.capability_contracts is not None:
-            return tuple(self.capability_plan.binding_map or {})
-        if self.selected_tool_contracts:
-            return tuple(tool.name for tool in self.selected_tool_contracts)
+        if self.selected_tool_definitions:
+            return tuple(tool.name for tool in self.selected_tool_definitions)
         return tuple(
-            function_name_to_tool_name(tool.name) for tool in self.selected_tools
+            self.provider_name_map.get(tool.name, tool.name)
+            for tool in self.selected_tools
         )
 
     @property
     def has_executable_tools(self) -> bool:
         """Return whether this plan exposes executable tool definitions."""
 
-        if self.capability_contracts is not None:
-            return bool(self.capability_plan.model_visible_tools)
-        return bool(self.selected_tool_contracts or self.selected_tools)
+        return bool(self.selected_tool_definitions or self.selected_tools)
 
 
 def compile_tool_exposure_provider_schema(
@@ -82,30 +66,28 @@ def compile_tool_exposure_provider_schema(
     *,
     current_time: datetime | None = None,
 ) -> tuple["AIModelToolDefinition", ...]:
-    """Compile selected logical tool specs into provider tool definitions."""
+    """Compile selected logical tool specs into adapter-neutral tool definitions."""
 
-    if plan.capability_contracts is not None:
+    if plan.selected_tool_definitions:
         return tuple(
             _with_runtime_projection_context(
                 definition,
                 current_time=current_time,
             )
-            for definition in plan.capability_plan.model_visible_tools
-        )
-    if plan.selected_tool_contracts:
-        return build_function_tools(
-            list(plan.selected_tool_contracts),
-            current_time=current_time,
+            for definition in build_function_tools(
+                list(plan.selected_tool_definitions),
+                current_time=current_time,
+            )
         )
     return plan.selected_tools
 
 
 def build_default_tool_exposure_plan(
     *,
-    allowed_tools: tuple[AICapabilityContract, ...],
+    allowed_tools: tuple[AIToolDefinition, ...],
     ordinary_ambient_group: bool,
 ) -> ToolExposurePlan:
-    """Build deterministic first-slice capability awareness for one turn."""
+    """Build deterministic first-slice tool awareness for one turn."""
 
     hidden_reasons: dict[str, str] = {}
     admin_project_tool_count = 0
@@ -138,7 +120,7 @@ def _default_awareness_text() -> str:
     )
 
 
-def _is_admin_project_tool(tool: AICapabilityContract) -> bool:
+def _is_admin_project_tool(tool: AIToolDefinition) -> bool:
     tags = set(tool.tags)
     return (
         "admin" in tags
@@ -155,9 +137,7 @@ class ToolOrchestrator:
     def plan_exposure(  # noqa: PLR0913
         self,
         *,
-        allowed_tools: tuple[AICapabilityContract, ...],
-        contracts: AICapabilityContractSnapshot | None = None,
-        bindings: AICapabilityBindingSnapshot | None = None,
+        allowed_tools: tuple[AIToolDefinition, ...],
         policy: "AIToolPolicy",
         requested_tool_names: tuple[str, ...] = (),
         ordinary_ambient_group: bool,
@@ -173,98 +153,36 @@ class ToolOrchestrator:
             ordinary_ambient_group=ordinary_ambient_group,
         )
         requested = set(requested_tool_names)
-        selected_contracts: list[AICapabilityContract] = []
-        unavailable_reasons: dict[str, str] = {}
-        denied_reasons: dict[str, str] = {}
-
-        for tool in allowed_tools:
-            if requested and tool.name not in requested:
-                continue
-            reason = _policy_denial_reason(tool, policy)
-            if reason is not None:
-                denied_reasons[tool.name] = reason
-                continue
-            if not policy.execution_enabled:
-                unavailable_reasons[tool.name] = "execution_disabled"
-                continue
-            if tool.name in base_plan.hidden_reasons:
-                continue
-            selected_contracts.append(tool)
-
-        contract_snapshot = contracts or _contract_snapshot(tuple(selected_contracts))
-        binding_snapshot = bindings or AICapabilityBindingSnapshot(
-            bindings=(),
-            by_key={},
-            by_contract={},
+        candidate_tools = tuple(
+            tool
+            for tool in allowed_tools
+            if (not requested or tool.name in requested)
+            and tool.name not in base_plan.hidden_reasons
         )
-        capability_plan = _build_capability_exposure_plan(
-            contracts=contract_snapshot,
-            bindings=binding_snapshot,
+        exposure_plan = create_tool_exposure_plan(
+            tools=candidate_tools,
             policy=policy,
             model_supports_tools=model_supports_tools,
         )
-        capability_diagnostics = capability_plan.diagnostics
+        provider_name_map = build_provider_name_map(exposure_plan.visible_tools)
 
         return ToolExposurePlan(
             awareness_text=base_plan.awareness_text,
             category_ids=base_plan.category_ids,
-            selected_tool_contracts=tuple(selected_contracts),
-            hidden_reasons={
-                **base_plan.hidden_reasons,
-                **dict(capability_plan.hidden_reasons or {}),
-            },
-            unavailable_reasons={
-                **unavailable_reasons,
-                **dict(capability_plan.unavailable_reasons or {}),
-            },
-            denied_reasons={
-                **denied_reasons,
-                **dict(capability_plan.denied_reasons or {}),
-            },
+            selected_tool_definitions=exposure_plan.visible_tools,
+            hidden_reasons=base_plan.hidden_reasons,
+            unavailable_reasons=exposure_plan.unavailable_reasons,
+            denied_reasons=exposure_plan.denied_reasons,
             diagnostics={
                 **base_plan.diagnostics,
                 "execution_timeout_seconds": execution_timeout_seconds,
-                "parallel_safe_tool_names": tuple(
-                    tool.name
-                    for tool in selected_contracts
-                    if tool.safety.concurrency_safe
-                ),
-                **_tool_metadata_diagnostics(tuple(selected_contracts)),
-                "selected_tool_count": len(capability_plan.model_visible_tools),
-                "capability_contract_count": (
-                    capability_diagnostics.total_contracts
-                    if capability_diagnostics is not None
-                    else 0
-                ),
-                "capability_visible_tool_count": (
-                    capability_diagnostics.visible_tools
-                    if capability_diagnostics is not None
-                    else 0
-                ),
-                "capability_hidden_count": (
-                    capability_diagnostics.hidden_count
-                    if capability_diagnostics is not None
-                    else 0
-                ),
-                "capability_denied_count": (
-                    capability_diagnostics.denied_count
-                    if capability_diagnostics is not None
-                    else 0
-                ),
-                "capability_unavailable_count": (
-                    capability_diagnostics.unavailable_count
-                    if capability_diagnostics is not None
-                    else 0
-                ),
-                "model_supports_tools": (
-                    capability_diagnostics.model_supports_tools
-                    if capability_diagnostics is not None
-                    else True
-                ),
+                "parallel_safe_tool_names": (),
+                "selected_tool_count": len(exposure_plan.visible_tools),
+                "model_supports_tools": model_supports_tools,
+                "tool_exposure": exposure_plan.diagnostics,
             },
-            capability_contracts=contract_snapshot,
-            capability_bindings=binding_snapshot,
-            capability_plan=capability_plan,
+            provider_name_map=provider_name_map,
+            exposure_plan=exposure_plan,
         )
 
     def build_denial_observation(
@@ -283,85 +201,12 @@ class ToolOrchestrator:
         )
 
 
-def _policy_denial_reason(
-    tool: AICapabilityContract,
-    policy: "AIToolPolicy",
-) -> str | None:
-    if tool.name in policy.denied_tool_names:
-        return "policy_denied"
-    if (
-        policy.allowed_tool_names is not None
-        and tool.name not in policy.allowed_tool_names
-    ):
-        return "not_in_allowed_tool_names"
-    if tool.safety.risk_level == "high" and not policy.allow_high_risk_tools:
-        return "high_risk_denied"
-    if tool.name.startswith(("plugin.", "help.")) and not policy.allow_host_actions:
-        return "host_action_denied"
-    return None
-
-
-def _tool_metadata_diagnostics(
-    selected_contracts: tuple[AICapabilityContract, ...],
-) -> dict[str, object]:
-    return {
-        "read_only_tool_names": tuple(
-            tool.name for tool in selected_contracts if tool.safety.read_only
-        ),
-        "mutating_tool_names": tuple(
-            tool.name for tool in selected_contracts if tool.safety.mutates_state
-        ),
-        "approval_required_tool_names": tuple(
-            tool.name
-            for tool in selected_contracts
-            if tool.safety.requires_operator_approval
-        ),
-        "tool_risk_levels": {
-            tool.name: tool.safety.risk_level for tool in selected_contracts
-        },
-        "tool_timeout_seconds": {
-            tool.name: tool.safety.timeout_seconds
-            for tool in selected_contracts
-            if tool.safety.timeout_seconds is not None
-        },
-    }
-
-
-def _build_capability_exposure_plan(
-    *,
-    contracts: AICapabilityContractSnapshot,
-    bindings: AICapabilityBindingSnapshot,
-    policy: "AIToolPolicy",
-    model_supports_tools: bool,
-) -> AICapabilityExposurePlan:
-    return create_capability_exposure_plan(
-        contracts=contracts,
-        bindings=bindings,
-        context=AICapabilityExposureContext(
-            profile=AICapabilityExposureProfile(
-                execution_enabled=policy.execution_enabled,
-                allowed_names=(
-                    frozenset(policy.allowed_tool_names)
-                    if policy.allowed_tool_names is not None
-                    else None
-                ),
-                denied_names=frozenset(policy.denied_tool_names),
-                allow_host_actions=policy.allow_host_actions,
-                allow_high_risk=policy.allow_high_risk_tools,
-                max_risk_level="high" if policy.allow_high_risk_tools else "medium",
-            ),
-            model_supports_tools=model_supports_tools,
-        ),
-    )
-
-
 def _with_runtime_projection_context(
     definition: "AIModelToolDefinition",
     *,
     current_time: datetime | None,
 ) -> "AIModelToolDefinition":
-    tool_name = function_name_to_tool_name(definition.name)
-    if tool_name != "future_task.manage" or current_time is None:
+    if not definition.name.startswith("future_task_") or current_time is None:
         return definition
     localized = current_time.astimezone(_DISPLAY_TIMEZONE)
     return AIModelToolDefinition(
@@ -387,28 +232,15 @@ def apply_tool_exposure_allowlist(
     return replace(
         request,
         executable_tool_names=frozenset(_executable_tool_names(plan)),
-        capability_binding_map=plan.capability_plan.binding_map,
-        capability_contracts=(
-            plan.capability_contracts.by_name
-            if plan.capability_contracts is not None
-            else None
-        ),
-        capability_bindings=(
-            plan.capability_bindings.by_key
-            if plan.capability_bindings is not None
-            else None
-        ),
+        provider_name_map=plan.provider_name_map,
     )
 
 
 def _executable_tool_names(plan: ToolExposurePlan) -> tuple[str, ...]:
-    if plan.capability_plan.binding_map:
-        return tuple(plan.capability_plan.binding_map)
-    if plan.selected_tool_contracts:
-        return tuple(tool.name for tool in plan.selected_tool_contracts)
+    if plan.selected_tool_definitions:
+        return tuple(tool.name for tool in plan.selected_tool_definitions)
     return tuple(
-        function_name_to_tool_name(tool.name)
-        for tool in compile_tool_exposure_provider_schema(plan)
+        plan.provider_name_map.get(tool.name, tool.name) for tool in plan.selected_tools
     )
 
 
@@ -420,12 +252,3 @@ __all__ = [
     "build_default_tool_exposure_plan",
     "compile_tool_exposure_provider_schema",
 ]
-
-
-def _contract_snapshot(
-    contracts: tuple[AICapabilityContract, ...],
-) -> AICapabilityContractSnapshot:
-    return AICapabilityContractSnapshot(
-        contracts=tuple(sorted(contracts, key=lambda item: item.name)),
-        by_name=MappingProxyType({contract.name: contract for contract in contracts}),
-    )

@@ -5,33 +5,34 @@ from __future__ import annotations
 from importlib import import_module
 from typing import TYPE_CHECKING, Any
 
-from .debug import AICapabilityPreview, AIToolIntentPreview
 from .models import (
     AIMemoryQueryObservationInput,
     AIMemoryQueryObservationOutput,
     AIMemoryUpdateInput,
     AIMemoryUpdateObservationOutput,
-    AIPluginInspectCapabilityInput,
-    AIPluginInspectCapabilityOutput,
     AIRelationshipInspectObservationOutput,
-    AIToolCapabilityMode,
+    AIToolDefinition,
     AIToolExecutionContext,
     AIToolExecutionRequest,
     AIToolExecutionStatus,
     AIToolExecutionView,
     AIToolIntent,
     AIToolIntentKind,
+    AIToolIntentPreview,
+    AIToolLevel,
     AIToolObservationResult,
     AIToolOrigin,
     AIToolPolicy,
     AIToolPolicyDecision,
+    AIToolReadiness,
     AIToolResult,
-    AIToolRiskLevel,
     AIToolTurnCreateInput,
+    coerce_tool_level,
+    tool_level_allows,
 )
 
 if TYPE_CHECKING:
-    from .contracts import AIToolExecutionCreateInput
+    from .contracts import AIToolObservationCreateInput
     from .loop.projection import ToolResult
     from .policy import (
         AIToolPolicyBindingCreateInput,
@@ -39,34 +40,30 @@ if TYPE_CHECKING:
         AIToolPolicyBindingSpec,
         AIToolPolicyBindingTarget,
         AIToolSceneContext,
-        AIToolScenePolicyProfile,
         ai_tool_policy_binding_service,
         evaluate_tool_policy,
         resolve_default_tool_policy,
         resolve_tool_policy_binding,
         summarize_tool_policy,
-        tool_policy_binding_to_profile,
     )
     from .service import AIToolService, ai_tool_service
 
 __all__ = [
-    "AICapabilityPreview",
     "AIMemoryQueryObservationInput",
     "AIMemoryQueryObservationOutput",
     "AIMemoryUpdateInput",
     "AIMemoryUpdateObservationOutput",
-    "AIPluginInspectCapabilityInput",
-    "AIPluginInspectCapabilityOutput",
     "AIRelationshipInspectObservationOutput",
-    "AIToolCapabilityMode",
+    "AIToolDefinition",
     "AIToolExecutionContext",
-    "AIToolExecutionCreateInput",
     "AIToolExecutionRequest",
     "AIToolExecutionStatus",
     "AIToolExecutionView",
     "AIToolIntent",
     "AIToolIntentKind",
     "AIToolIntentPreview",
+    "AIToolLevel",
+    "AIToolObservationCreateInput",
     "AIToolObservationResult",
     "AIToolOrigin",
     "AIToolPolicy",
@@ -75,30 +72,29 @@ __all__ = [
     "AIToolPolicyBindingSpec",
     "AIToolPolicyBindingTarget",
     "AIToolPolicyDecision",
+    "AIToolReadiness",
     "AIToolResult",
-    "AIToolRiskLevel",
     "AIToolSceneContext",
-    "AIToolScenePolicyProfile",
     "AIToolService",
     "AIToolTurnCreateInput",
     "ToolResult",
     "ai_tool_policy_binding_service",
     "ai_tool_service",
+    "coerce_tool_level",
     "evaluate_tool_policy",
     "resolve_default_tool_policy",
     "resolve_tool_policy_binding",
     "summarize_tool_policy",
-    "tool_policy_binding_to_profile",
+    "tool_level_allows",
 ]
 
 _LAZY_EXPORTS = {
-    "AIToolExecutionCreateInput": ".contracts",
+    "AIToolObservationCreateInput": ".contracts",
     "AIToolPolicyBindingCreateInput": ".policy",
     "AIToolPolicyBindingService": ".policy",
     "AIToolPolicyBindingSpec": ".policy",
     "AIToolPolicyBindingTarget": ".policy",
     "AIToolSceneContext": ".policy",
-    "AIToolScenePolicyProfile": ".policy",
     "AIToolService": ".service",
     "ToolResult": ".loop.projection",
     "ai_tool_policy_binding_service": ".policy",
@@ -107,7 +103,6 @@ _LAZY_EXPORTS = {
     "resolve_default_tool_policy": ".policy",
     "resolve_tool_policy_binding": ".policy",
     "summarize_tool_policy": ".policy",
-    "tool_policy_binding_to_profile": ".policy",
 }
 
 

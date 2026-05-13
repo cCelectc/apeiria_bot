@@ -13,6 +13,19 @@ if TYPE_CHECKING:
 CURRENT_SCHEMA_LINE = "apeiria_v1"
 CURRENT_SCHEMA_VERSION = 1
 
+TOOL_LEVEL_VALUES: tuple[str, ...] = ("none", "read", "write", "host", "admin")
+TOOL_LEVEL_CHECK = "allowed_level IN ('none', 'read', 'write', 'host', 'admin')"
+TOOL_OBSERVATION_STATUS_VALUES: tuple[str, ...] = (
+    "success",
+    "error",
+    "timeout",
+    "denied",
+    "not_ready",
+)
+TOOL_OBSERVATION_STATUS_CHECK = (
+    "status IN ('success', 'error', 'timeout', 'denied', 'not_ready')"
+)
+
 SOURCE_MODEL_TABLE_NAMES: tuple[str, ...] = (
     "ai_chat_model",
     "ai_embedding_model",
@@ -161,6 +174,10 @@ def _ensure_current_schema_shape(  # noqa: C901, PLR0912
         _create_knowledge_tables(connection)
     if "ai_managed_session" not in existing_tables:
         _create_ai_session_management_tables(connection)
+    if "ai_tool_policy" in existing_tables:
+        _replace_ai_tool_policy_if_legacy(connection)
+    if "ai_tool_execution" in existing_tables:
+        _replace_ai_tool_execution_if_legacy(connection)
 
     if "ai_source" in existing_tables:
         source_columns = _column_names(connection, "ai_source")
@@ -487,30 +504,7 @@ def _create_ai_control_plane_tables(connection: sqlite3.Connection) -> None:
         )
         """
     )
-    connection.execute(
-        """
-        CREATE TABLE ai_tool_policy (
-            binding_id TEXT PRIMARY KEY,
-            scope_type TEXT NOT NULL CHECK(
-                scope_type IN ('global', 'group', 'user', 'conversation')
-            ),
-            scope_id TEXT NOT NULL CHECK(length(scope_id) > 0),
-            allow_read_only_tools INTEGER NOT NULL DEFAULT 1
-                CHECK(allow_read_only_tools IN (0, 1)),
-            capability_mode TEXT NOT NULL DEFAULT 'off'
-                CHECK(
-                    capability_mode IN (
-                        'off',
-                        'private_only',
-                        'direct_only'
-                    )
-            ),
-            updated_at TEXT NOT NULL,
-            CHECK(scope_type != 'global' OR scope_id = '__global__'),
-            UNIQUE(scope_type, scope_id)
-        )
-        """
-    )
+    _create_tool_policy_table(connection)
 
 
 def _create_source_model_tables(connection: sqlite3.Connection) -> None:
@@ -779,7 +773,10 @@ def _create_tool_execution_tables(connection: sqlite3.Connection) -> None:
             execution_id TEXT NOT NULL UNIQUE,
             session_id TEXT NOT NULL,
             tool_name TEXT NOT NULL,
-            status TEXT NOT NULL CHECK(status IN ('success', 'error', 'timeout')),
+            status TEXT NOT NULL CHECK({TOOL_OBSERVATION_STATUS_CHECK}),
+            trace_id TEXT,
+            call_id TEXT,
+            reason TEXT,
             input_json TEXT CHECK({input_json_check}),
             output_json TEXT CHECK({output_json_check}),
             created_at TEXT NOT NULL,
@@ -802,6 +799,41 @@ def _create_tool_execution_tables(connection: sqlite3.Connection) -> None:
         ON ai_tool_execution(created_at)
         """
     )
+
+
+def _create_tool_policy_table(connection: sqlite3.Connection) -> None:
+    connection.execute(
+        f"""
+        CREATE TABLE ai_tool_policy (
+            binding_id TEXT PRIMARY KEY,
+            scope_type TEXT NOT NULL CHECK(
+                scope_type IN ('global', 'group', 'user', 'conversation')
+            ),
+            scope_id TEXT NOT NULL CHECK(length(scope_id) > 0),
+            allowed_level TEXT NOT NULL DEFAULT 'none'
+                CHECK({TOOL_LEVEL_CHECK}),
+            updated_at TEXT NOT NULL,
+            CHECK(scope_type != 'global' OR scope_id = '__global__'),
+            UNIQUE(scope_type, scope_id)
+        )
+        """
+    )
+
+
+def _replace_ai_tool_policy_if_legacy(connection: sqlite3.Connection) -> None:
+    columns = _column_names(connection, "ai_tool_policy")
+    if "allowed_level" in columns and "capability_mode" not in columns:
+        return
+    connection.execute("DROP TABLE ai_tool_policy")
+    _create_tool_policy_table(connection)
+
+
+def _replace_ai_tool_execution_if_legacy(connection: sqlite3.Connection) -> None:
+    columns = _column_names(connection, "ai_tool_execution")
+    if {"trace_id", "call_id", "reason"} <= columns:
+        return
+    connection.execute("DROP TABLE ai_tool_execution")
+    _create_tool_execution_tables(connection)
 
 
 def _create_relationship_person_tables(connection: sqlite3.Connection) -> None:

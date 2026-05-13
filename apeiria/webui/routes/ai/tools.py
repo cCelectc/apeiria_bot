@@ -6,14 +6,12 @@ from typing import TYPE_CHECKING, Annotated, Any
 
 from fastapi import APIRouter, Depends, Query
 
-from apeiria.ai.tools import AIToolPolicy
+from apeiria.ai.tools import AIToolPolicy, coerce_tool_level
 from apeiria.app.ai import ai_application
 from apeiria.webui.auth import require_control_panel
 
 from .tools_schemas import (
     AICapabilityItem,
-    AICapabilityPreviewItem,
-    AICapabilityPreviewRequest,
     AISkillItem,
     AIToolExecutionItem,
     AIToolIntentPreviewItem,
@@ -25,7 +23,6 @@ from .tools_schemas import (
     AIToolPolicyPreviewItem,
     AIToolPolicyPreviewRequest,
     to_ai_capability_item,
-    to_ai_capability_preview_item,
     to_ai_skill_item,
     to_ai_tool_execution_item,
     to_ai_tool_intent_preview_item,
@@ -52,14 +49,7 @@ async def list_ai_tools(
     *,
     allowed_only: Annotated[bool, Query()] = False,
 ) -> list[AIToolItem]:
-    policy = (
-        AIToolPolicy(
-            allow_high_risk_tools=False,
-            allow_host_actions=False,
-        )
-        if allowed_only
-        else None
-    )
+    policy = AIToolPolicy() if allowed_only else None
     tools = ai_application.operations.list_tools(policy=policy)
     return [to_ai_tool_item(item) for item in tools]
 
@@ -72,14 +62,7 @@ async def list_ai_skills(
 ) -> list[AISkillItem]:
     """List product-facing AI skills."""
 
-    policy = (
-        AIToolPolicy(
-            allow_high_risk_tools=False,
-            allow_host_actions=False,
-        )
-        if allowed_only
-        else None
-    )
+    policy = AIToolPolicy() if allowed_only else None
     skills = ai_application.operations.list_skills(policy=policy)
     return [to_ai_skill_item(item) for item in skills]
 
@@ -92,8 +75,7 @@ async def preview_ai_tool_policy(
     policy = ai_application.operations.preview_tool_policy(
         scope_type=payload.scope_type,
         is_tome=payload.is_tome,
-        allow_read_only_tools=payload.allow_read_only_tools,
-        capability_mode=payload.capability_mode,
+        allowed_level=payload.allowed_level,
     )
     return to_ai_tool_policy_preview_item(policy)
 
@@ -107,8 +89,7 @@ async def preview_ai_tool_intents(
         message_text=payload.message_text,
         scope_type=payload.scope_type,
         is_tome=payload.is_tome,
-        allow_read_only_tools=payload.allow_read_only_tools,
-        capability_mode=payload.capability_mode,
+        allowed_level=coerce_tool_level(payload.allowed_level),
     )
     return [to_ai_tool_intent_preview_item(item) for item in intents]
 
@@ -129,8 +110,7 @@ async def create_ai_tool_policy_binding(
     item = await ai_application.operations.create_tool_policy_binding(
         scope_type=payload.scope_type,
         scope_id=payload.scope_id,
-        allow_read_only_tools=payload.allow_read_only_tools,
-        capability_mode=payload.capability_mode,
+        allowed_level=coerce_tool_level(payload.allowed_level),
         actor_username=_actor_username_from_claims(session),
     )
     return to_ai_tool_policy_binding_item(item)
@@ -143,8 +123,7 @@ async def update_ai_tool_policy_binding(
 ) -> AIToolPolicyBindingItem | None:
     item = await ai_application.operations.update_tool_policy_binding(
         binding_id=payload.binding_id,
-        allow_read_only_tools=payload.allow_read_only_tools,
-        capability_mode=payload.capability_mode,
+        allowed_level=coerce_tool_level(payload.allowed_level),
         actor_username=_actor_username_from_claims(session),
     )
     if item is None:
@@ -162,21 +141,6 @@ async def delete_ai_tool_policy_binding(
         actor_username=_actor_username_from_claims(session),
     )
     return {"deleted": deleted}
-
-
-@router.post("/tools/capability-preview", response_model=AICapabilityPreviewItem)
-async def preview_ai_capability(
-    payload: AICapabilityPreviewRequest,
-    _: Annotated[Any, Depends(require_control_panel)],
-) -> AICapabilityPreviewItem:
-    preview = ai_application.operations.preview_capability(
-        capability_name=payload.capability_name,
-        scope_type=payload.scope_type,
-        is_tome=payload.is_tome,
-        allow_read_only_tools=payload.allow_read_only_tools,
-        capability_mode=payload.capability_mode,
-    )
-    return to_ai_capability_preview_item(preview)
 
 
 @router.get("/tools/capabilities", response_model=list[AICapabilityItem])

@@ -8,7 +8,7 @@ from nonebot.log import logger
 
 from apeiria.ai.skills.contracts import (
     build_file_skill_metadata,
-    build_skill_metadata,
+    build_tool_skill_metadata,
 )
 from apeiria.ai.skills.loader import (
     get_default_skills_directory,
@@ -19,14 +19,13 @@ from apeiria.ai.skills.runtime import ai_skill_runtime
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from apeiria.ai.capabilities import AICapabilityContract
     from apeiria.ai.skills.catalog import AISkillMetadata
     from apeiria.ai.skills.parser import AISkillFileDefinition
     from apeiria.ai.skills.runtime import (
         AISkillActivation,
         AISkillCatalogEntry,
     )
-    from apeiria.ai.tools.models import AIToolPolicy
+    from apeiria.ai.tools.models import AIToolDefinition, AIToolPolicy
     from apeiria.ai.tools.service import AIToolService
 
 
@@ -74,28 +73,28 @@ class AISkillService:
 
         self._initialized = True
 
-        tool_contracts = self._sync_tool_skills()
+        tool_skills = self._sync_tool_skills()
         if not was_initialized:
             logger.info(
                 "Skill service initialized: {} file skills, {} tool skills",
                 len(file_skills),
-                len(tool_contracts),
+                len(tool_skills),
             )
 
     @staticmethod
-    def _sync_tool_skills() -> list["AICapabilityContract"]:
+    def _sync_tool_skills() -> list["AIToolDefinition"]:
         tool_service = _get_ai_tool_service()
-        tool_contracts = tool_service.registry.list_tools()
+        tools = tool_service.registry.list_tools()
 
         # Sync tool-based skills (file skills take priority on name
         # collision — register_tool_skill skips existing entries)
-        for tool in tool_contracts:
+        for tool in tools:
             ai_skill_runtime.register_tool_skill(
                 skill_name=tool.name,
                 description=tool.description,
                 tags=tool.tags,
             )
-        return tool_contracts
+        return tools
 
     def list_skills(
         self,
@@ -107,7 +106,8 @@ class AISkillService:
         tool_service = _get_ai_tool_service()
 
         tool_skills = [
-            build_skill_metadata(tool) for tool in tool_service.list_tool_specs(policy)
+            build_tool_skill_metadata(tool)
+            for tool in tool_service.list_tool_specs(policy)
         ]
         file_skills = [
             build_file_skill_metadata(file_def)

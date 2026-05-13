@@ -25,7 +25,6 @@ from apeiria.app.ai.runtime.execution.tool_loop import RuntimeToolLoopInput
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
-    from apeiria.ai.capabilities import AICapabilityBinding, AICapabilityContract
     from apeiria.ai.model.runtime.adapter import AIModelToolDefinition
     from apeiria.ai.tools import AIToolObservationResult
 
@@ -174,7 +173,7 @@ def stream_final(
 @dataclass
 class ToolServiceStub:
     observations: list[list[AIToolObservationResult]]
-    allowed_tool_names: tuple[str, ...] = ("memory.query",)
+    visible_tool_names: tuple[str, ...] = ("memory.query",)
 
     def __post_init__(self) -> None:
         self.calls: list[object] = []
@@ -197,7 +196,7 @@ class ToolServiceStub:
         return []
 
     def list_allowed_tools(self, _policy: AIToolPolicy) -> list[Any]:
-        return [SimpleNamespace(name=name) for name in self.allowed_tool_names]
+        return [SimpleNamespace(name=name) for name in self.visible_tool_names]
 
     @property
     def registry(self) -> Any:
@@ -216,9 +215,7 @@ def tool_loop_input(  # noqa: PLR0913
     tools: tuple[AIModelToolDefinition, ...] = (),
     fallback_models: tuple[AISelectedModel, ...] = (),
     executable_tool_names: frozenset[str] | None = None,
-    capability_binding_map: dict[str, str] | None = None,
-    capability_contracts: Mapping[str, AICapabilityContract] | None = None,
-    capability_bindings: Mapping[str, AICapabilityBinding] | None = None,
+    provider_name_map: Mapping[str, str] | None = None,
     execution_timeout_seconds: float | None = None,
 ) -> RuntimeToolLoopInput:
     return RuntimeToolLoopInput(
@@ -232,11 +229,9 @@ def tool_loop_input(  # noqa: PLR0913
         fallback_models=fallback_models,
         messages=messages,
         tools=tools,
-        tool_policy=AIToolPolicy(execution_enabled=True),
+        tool_policy=AIToolPolicy(),
         executable_tool_names=executable_tool_names,
-        capability_binding_map=capability_binding_map,
-        capability_contracts=capability_contracts,
-        capability_bindings=capability_bindings,
+        provider_name_map=provider_name_map,
         recalled_memory_ids=(),
         recalled_memory_contents=(),
         relationship_context=None,

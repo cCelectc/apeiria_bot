@@ -19,6 +19,7 @@ def test_tool_policy_bindings_use_control_plane_sqlite(
     database_runtime.ensure_ready()
 
     from apeiria.ai.tools.policy import (
+        AIToolLevel,
         AIToolPolicyBindingTarget,
         AIToolSceneContext,
         ai_tool_policy_binding_service,
@@ -43,22 +44,19 @@ def test_tool_policy_bindings_use_control_plane_sqlite(
         global_binding = await operations.create_tool_policy_binding(
             scope_type="global",
             scope_id="__global__",
-            allow_read_only_tools=True,
-            capability_mode="off",
+            allowed_level=AIToolLevel.READ,
             actor_username="alice",
         )
         group_binding = await operations.create_tool_policy_binding(
             scope_type="group",
             scope_id="group-1",
-            allow_read_only_tools=False,
-            capability_mode="off",
+            allowed_level=AIToolLevel.NONE,
             actor_username="alice",
         )
         user_binding = await operations.create_tool_policy_binding(
             scope_type="user",
             scope_id="user-1",
-            allow_read_only_tools=False,
-            capability_mode="private_only",
+            allowed_level=AIToolLevel.HOST,
             actor_username="alice",
         )
 
@@ -72,13 +70,12 @@ def test_tool_policy_bindings_use_control_plane_sqlite(
 
         updated_global = await operations.update_tool_policy_binding(
             binding_id=global_binding.binding_id,
-            allow_read_only_tools=True,
-            capability_mode="direct_only",
+            allowed_level=AIToolLevel.WRITE,
             actor_username="alice",
         )
 
         assert updated_global is not None
-        assert updated_global.capability_mode == "direct_only"
+        assert updated_global.allowed_level is AIToolLevel.WRITE
 
         user_policy = await ai_tool_policy_binding_service.resolve_scene_policy(
             scene_context=AIToolSceneContext(scope_type="private", is_tome=False),
@@ -89,9 +86,7 @@ def test_tool_policy_bindings_use_control_plane_sqlite(
             ),
         )
 
-        assert user_policy.execution_enabled is True
-        assert user_policy.allowed_tool_names == {"help.show", "plugin.inspect"}
-        assert user_policy.allow_host_actions is True
+        assert user_policy.allowed_level is AIToolLevel.HOST
 
         deleted = await operations.delete_tool_policy_binding(
             binding_id=user_binding.binding_id,
@@ -109,8 +104,7 @@ def test_tool_policy_bindings_use_control_plane_sqlite(
             ),
         )
 
-        assert group_policy.execution_enabled is False
-        assert group_policy.allowed_tool_names is None
+        assert group_policy.allowed_level is AIToolLevel.NONE
         assert (
             await operations.delete_tool_policy_binding(binding_id="missing") is False
         )

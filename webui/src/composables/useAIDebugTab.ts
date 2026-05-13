@@ -69,7 +69,9 @@ export function useAIDebugTab(t: (key: string) => string) {
     return [...values]
   })
   const toolExecutionStats = computed(() => ({
-    error: toolExecutions.value.filter(item => item.status === 'error').length,
+    failed: toolExecutions.value.filter(item => (
+      ['error', 'failed', 'timeout', 'denied', 'not_ready'].includes(item.status)
+    )).length,
     success: toolExecutions.value.filter(item => item.status === 'success').length,
     timeout: toolExecutions.value.filter(item => item.status === 'timeout').length,
   }))

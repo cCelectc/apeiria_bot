@@ -73,13 +73,9 @@ async def plan_runtime_turn(
     allowed_tool_specs = (
         () if social_decision.tool_mode == "avoid" else tuple(context.allowed_tools)
     )
-    tool_contracts = ai_tool_service.contract_snapshot()
-    tool_bindings = ai_tool_service.binding_snapshot()
     tool_orchestrator = ToolOrchestrator()
     initial_tool_exposure_plan = tool_orchestrator.plan_exposure(
         allowed_tools=allowed_tool_specs,
-        contracts=tool_contracts,
-        bindings=tool_bindings,
         policy=context.tool_policy,
         ordinary_ambient_group=(
             identity.scene_type == "group"
@@ -108,8 +104,6 @@ async def plan_runtime_turn(
 
     tool_exposure_plan = tool_orchestrator.plan_exposure(
         allowed_tools=allowed_tool_specs,
-        contracts=tool_contracts,
-        bindings=tool_bindings,
         policy=context.tool_policy,
         ordinary_ambient_group=(
             identity.scene_type == "group"
@@ -305,7 +299,7 @@ def _tool_exposure_diagnostics_summary(
         "read_only_tool_names",
         "mutating_tool_names",
         "approval_required_tool_names",
-        "tool_risk_levels",
+        "tool_required_levels",
         "tool_timeout_seconds",
         "capability_contract_count",
         "capability_visible_tool_count",

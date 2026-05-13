@@ -6,6 +6,7 @@ from apeiria.ai.tools.decorators import ai_tool
 from apeiria.ai.tools.models import (
     AIRelationshipInspectObservationOutput,
     AIToolExecutionContext,
+    AIToolLevel,
     AIToolResult,
 )
 
@@ -13,9 +14,8 @@ from apeiria.ai.tools.models import (
 @ai_tool(
     name="relationship.inspect",
     description="inspect current affinity and mood projection",
-    read_only=True,
-    concurrency_safe=True,
-    timeout_seconds=3.0,
+    required_level=AIToolLevel.READ,
+    tags=("relationship", "read"),
 )
 async def handle_relationship_inspect(
     *,
