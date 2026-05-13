@@ -50,7 +50,7 @@ def tool_level_allows(
     )
 
 
-AIToolOrigin = Literal["builtin", "plugin", "mcp", "legacy"]
+AIToolOrigin = Literal["builtin", "plugin", "mcp"]
 AIToolExecutionStatus = Literal[
     "success",
     "error",

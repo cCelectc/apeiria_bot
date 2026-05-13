@@ -39,7 +39,10 @@ class AIToolRegistry:
     def register(self, tool: "AIToolDefinition") -> None:
         """Register one tool by stable name."""
 
-        if tool.name in self._tools:
+        existing = self._tools.get(tool.name)
+        if existing is tool:
+            return
+        if existing is not None:
             raise AIDuplicateToolError(tool.name)
         validate_tool_schema(tool.input_schema)
         self._tools[tool.name] = tool
@@ -70,6 +73,8 @@ class AIToolRegistry:
         pending: list[Any] = collect_pending_tools()
         count = 0
         for tool in pending:
+            if self.get(tool.name) is tool:
+                continue
             self.register(tool)
             count += 1
         return count

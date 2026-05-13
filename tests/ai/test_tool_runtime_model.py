@@ -57,9 +57,19 @@ def test_tool_registry_rejects_duplicates_and_snapshots_are_immutable() -> None:
     )
     registry = AIToolRegistry()
     registry.register(tool)
+    registry.register(tool)
 
     with pytest.raises(AIDuplicateToolError):
-        registry.register(tool)
+        registry.register(
+            AIToolDefinition(
+                name="relationship.inspect",
+                description="different implementation",
+                input_schema={"type": "object", "properties": {}},
+                required_level=AIToolLevel.READ,
+                executor=_executor,
+                readiness=AIToolReadiness.available(),
+            )
+        )
 
     snapshot = registry.snapshot()
     assert snapshot.tools == (tool,)
@@ -128,6 +138,7 @@ def test_builtin_tools_register_with_levels_and_nonmanageable_defaults() -> None
     from apeiria.ai.tools.service import AIToolService
 
     service = AIToolService()
+    assert service.registry.register_pending_tools() == 0
     tools = {tool.name: tool for tool in service.list_tool_specs()}
 
     assert tools["memory.query"].required_level is AIToolLevel.READ
@@ -399,31 +410,6 @@ def test_tool_execution_rechecks_policy_and_records_denials(
         assert rows[1].reason == "plugin disabled"
 
     asyncio.run(scenario())
-
-
-def test_legacy_command_tools_require_admin_and_approval_readiness() -> None:
-    from apeiria.ai.tools.legacy import legacy_command_tool_definition
-    from apeiria.ai.tools.models import AIToolLevel
-
-    approved = legacy_command_tool_definition(
-        command_name="plugin.reload",
-        description="reload plugin",
-        approved=True,
-        executor=lambda **_: None,
-    )
-    unapproved = legacy_command_tool_definition(
-        command_name="plugin.install",
-        description="install plugin",
-        approved=False,
-        executor=lambda **_: None,
-    )
-
-    assert approved.name == "legacy_command.plugin_reload"
-    assert approved.required_level is AIToolLevel.ADMIN
-    assert approved.readiness.ready is True
-    assert unapproved.required_level is AIToolLevel.ADMIN
-    assert unapproved.readiness.ready is False
-    assert unapproved.readiness.code == "approval_missing"
 
 
 def test_gemini_adapter_projects_tools_to_function_declarations() -> None:
