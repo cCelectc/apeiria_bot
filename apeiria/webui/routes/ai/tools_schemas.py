@@ -9,7 +9,6 @@ from pydantic import BaseModel, Field
 from apeiria.ai.tools.projection import build_provider_name_map
 
 if TYPE_CHECKING:
-    from apeiria.ai.skills import AISkillMetadata
     from apeiria.ai.tools import (
         AIToolDefinition,
         AIToolExecutionView,
@@ -34,13 +33,6 @@ class AIToolItem(BaseModel):
     status: str = "not_evaluated"
     denied_reason: str | None = None
     unavailable_reason: str | None = None
-
-
-class AISkillItem(BaseModel):
-    name: str
-    description: str
-    display_name: str
-    display_description: str
 
 
 class AIToolExecutionItem(BaseModel):
@@ -98,15 +90,6 @@ class AIToolPolicyBindingUpdateRequest(BaseModel):
     allowed_level: str = Field(min_length=1, max_length=16)
 
 
-def _skill_display_name(skill_name: str) -> str:
-    return skill_name
-
-
-def _skill_display_description(skill_name: str, fallback: str) -> str:
-    del skill_name
-    return fallback
-
-
 def to_ai_tool_item(
     item: "AIToolDefinition",
     *,
@@ -131,18 +114,6 @@ def to_ai_tool_item(
         status=status,
         denied_reason=denied_reason,
         unavailable_reason=unavailable_reason,
-    )
-
-
-def to_ai_skill_item(item: "AISkillMetadata") -> AISkillItem:
-    return AISkillItem(
-        name=item.name,
-        description=item.description,
-        display_name=_skill_display_name(item.name),
-        display_description=_skill_display_description(
-            item.name,
-            item.description,
-        ),
     )
 
 

@@ -13,7 +13,6 @@ from .errors import (
     AISourceModelTestConfigError,
     AISourceModelTestUpstreamError,
 )
-from .future_tasks import FutureTasksAdminMixin
 from .knowledge import KnowledgeAdminMixin
 from .memories import MemoriesAdminMixin
 from .models import ModelsAdminMixin
@@ -34,7 +33,6 @@ class AIOperationsEntry(
     MemoriesAdminMixin,
     RelationshipsAdminMixin,
     PersonProfilesAdminMixin,
-    FutureTasksAdminMixin,
 ):
     """Application entry for AI management write behavior."""
 

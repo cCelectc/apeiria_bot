@@ -21,6 +21,7 @@ from .person_profiles import router as _person_profiles_router
 from .personas import router as _personas_router
 from .relationships import router as _relationships_router
 from .sessions import router as _sessions_router
+from .skills import router as _skills_router
 from .sources import router as _sources_router
 from .sources_schemas import AIBootstrapResponse, to_ai_source_preset_item
 from .tools import router as _tools_router
@@ -58,6 +59,7 @@ router.include_router(_person_profiles_router)
 router.include_router(_personas_router)
 router.include_router(_relationships_router)
 router.include_router(_sessions_router)
+router.include_router(_skills_router)
 router.include_router(_sources_router)
 router.include_router(_tools_router)
 router.include_router(_traces_router)

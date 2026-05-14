@@ -20,7 +20,7 @@ from nonebot.plugin.on import on_command, on_message
 
 from apeiria.ai.config import AIPluginConfig
 from apeiria.app.ai import ai_application
-from apeiria.app.ai.runtime import RuntimeTraceContext
+from apeiria.app.ai.runtime.contracts import RuntimeTraceContext
 from apeiria.plugins.metadata.api import (
     ConfigExtra,
     PluginExtraData,

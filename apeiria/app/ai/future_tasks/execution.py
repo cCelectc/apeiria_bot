@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, cast
 
 from nonebot.log import logger
 
-from apeiria.app.ai.runtime.entry import RuntimeTraceContext
+from apeiria.app.ai.runtime.contracts import RuntimeTraceContext
 
 if TYPE_CHECKING:
     from apeiria.app.ai.runtime.factory import LiveRuntimeEntry

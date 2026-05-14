@@ -402,7 +402,10 @@ def test_future_task_execution_maps_runtime_delivery_to_durable_completion(
     import apeiria.app.ai.future_tasks.service as future_task_module
     from apeiria.app.ai.future_tasks.execution import execute_future_task
     from apeiria.app.ai.future_tasks.models import AIFutureTaskCreateInput
-    from apeiria.app.ai.runtime.entry import CommitResult, RuntimeTraceContext
+    from apeiria.app.ai.runtime.contracts import (
+        FutureTaskRuntimeResult,
+        RuntimeTraceContext,
+    )
     from apeiria.db.runtime import database_runtime
 
     monkeypatch.setattr(database_runtime, "_project_root", tmp_path)
@@ -421,13 +424,13 @@ def test_future_task_execution_maps_runtime_delivery_to_durable_completion(
             task_id: str,
             *,
             trace: RuntimeTraceContext | None = None,
-        ) -> CommitResult:
+        ) -> FutureTaskRuntimeResult:
             assert trace == RuntimeTraceContext(
                 kind="conversation",
                 trigger="ai_future_task",
             )
             self.calls.append(task_id)
-            return CommitResult(
+            return FutureTaskRuntimeResult(
                 reply_text="reminder",
                 delivery_status=delivery_status,
                 commit_status="committed"

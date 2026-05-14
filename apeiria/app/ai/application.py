@@ -11,8 +11,9 @@ if TYPE_CHECKING:
     from .diagnostics import AIDiagnosticsEntry
     from .future_tasks import AIFutureTasksEntry
     from .operations import AIOperationsEntry
-    from .runtime.entry import AIRuntimeEntry
+    from .runtime.factory import LiveRuntimeEntry
     from .sessions import AISessionsEntry
+    from .skills import AISkillsEntry
 
 
 class AILifecycleEntry(Protocol):
@@ -33,10 +34,10 @@ def _default_lifecycle_entry() -> AILifecycleEntry:
     return ai_lifecycle_coordinator
 
 
-def _default_runtime_entry() -> "AIRuntimeEntry":
+def _default_runtime_entry() -> "LiveRuntimeEntry":
     from .runtime.factory import create_default_ai_runtime_entry
 
-    return cast("AIRuntimeEntry", create_default_ai_runtime_entry())
+    return create_default_ai_runtime_entry()
 
 
 def _default_sessions_entry() -> "AISessionsEntry":
@@ -49,6 +50,12 @@ def _default_future_tasks_entry() -> "AIFutureTasksEntry":
     from .future_tasks import AIFutureTasksEntry
 
     return AIFutureTasksEntry()
+
+
+def _default_skills_entry() -> "AISkillsEntry":
+    from .skills import AISkillsEntry
+
+    return AISkillsEntry()
 
 
 def _default_operations_entry() -> "AIOperationsEntry":
@@ -67,9 +74,9 @@ def _default_diagnostics_entry() -> "AIDiagnosticsEntry":
 class AIApplication:
     """Composition root for AI application entries."""
 
-    runtime: "AIRuntimeEntry" = field(
+    runtime: "LiveRuntimeEntry" = field(
         default_factory=lambda: cast(
-            "AIRuntimeEntry",
+            "LiveRuntimeEntry",
             LazyApplicationEntry(_default_runtime_entry),
         )
     )
@@ -83,6 +90,12 @@ class AIApplication:
         default_factory=lambda: cast(
             "AIFutureTasksEntry",
             LazyApplicationEntry(_default_future_tasks_entry),
+        )
+    )
+    skills: "AISkillsEntry" = field(
+        default_factory=lambda: cast(
+            "AISkillsEntry",
+            LazyApplicationEntry(_default_skills_entry),
         )
     )
     operations: "AIOperationsEntry" = field(

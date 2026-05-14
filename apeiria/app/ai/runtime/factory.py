@@ -8,7 +8,10 @@ from typing import TYPE_CHECKING, Protocol
 if TYPE_CHECKING:
     from nonebot.adapters import Bot, Event
 
-    from apeiria.app.ai.runtime.entry import CommitResult, RuntimeTraceContext
+    from apeiria.app.ai.runtime.contracts import (
+        FutureTaskRuntimeResult,
+        RuntimeTraceContext,
+    )
 
 
 class LiveRuntimeEntry(Protocol):
@@ -27,7 +30,7 @@ class LiveRuntimeEntry(Protocol):
         task_id: str,
         *,
         trace: "RuntimeTraceContext | None" = None,
-    ) -> "CommitResult | None": ...
+    ) -> "FutureTaskRuntimeResult | None": ...
 
 
 @dataclass(slots=True)
@@ -52,7 +55,7 @@ class LazyAIRuntimeEntry:
         task_id: str,
         *,
         trace: "RuntimeTraceContext | None" = None,
-    ) -> "CommitResult | None":
+    ) -> "FutureTaskRuntimeResult | None":
         """Handle one due future task through the default runtime entry."""
 
         return await self._resolve().handle_future_task(task_id, trace=trace)
@@ -71,4 +74,4 @@ def create_default_ai_runtime_entry() -> LazyAIRuntimeEntry:
     return LazyAIRuntimeEntry()
 
 
-__all__ = ["LazyAIRuntimeEntry", "create_default_ai_runtime_entry"]
+__all__ = ["LazyAIRuntimeEntry", "LiveRuntimeEntry", "create_default_ai_runtime_entry"]

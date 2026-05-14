@@ -20,8 +20,8 @@ from apeiria.app.ai.runtime.composition import (
     create_session_turn_engine,
 )
 from apeiria.app.ai.runtime.context.memories import store_extracted_memories
-from apeiria.app.ai.runtime.entry import (
-    CommitResult,
+from apeiria.app.ai.runtime.contracts import (
+    FutureTaskRuntimeResult,
     RuntimeTraceContext,
 )
 from apeiria.app.ai.runtime.session.context import (
@@ -199,7 +199,7 @@ class DefaultAILiveRuntimeEntry:
         task_id: str,
         *,
         trace: RuntimeTraceContext | None = None,
-    ) -> CommitResult | None:
+    ) -> FutureTaskRuntimeResult | None:
         """Handle one due future task by running the normal reply runtime."""
 
         from apeiria.app.ai.future_tasks import ai_future_task_service
@@ -235,7 +235,7 @@ class DefaultAILiveRuntimeEntry:
         )
         if runtime_commit is None:
             return None
-        return CommitResult(
+        return FutureTaskRuntimeResult(
             reply_text=runtime_commit.reply_text,
             commit_status=runtime_commit.commit_status,
             delivery_status=_delivery_status_for_commit(runtime_commit.delivery_result),

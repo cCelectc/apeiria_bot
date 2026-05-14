@@ -1,4 +1,4 @@
-"""AI tools, prompt skills, policy-bindings, and executions routes."""
+"""AI executable tools, policy-bindings, and executions routes."""
 
 from __future__ import annotations
 
@@ -12,7 +12,6 @@ from apeiria.app.ai import ai_application
 from apeiria.webui.auth import require_control_panel
 
 from .tools_schemas import (
-    AISkillItem,
     AIToolExecutionItem,
     AIToolIntentPreviewItem,
     AIToolIntentPreviewRequest,
@@ -22,7 +21,6 @@ from .tools_schemas import (
     AIToolPolicyBindingUpdateRequest,
     AIToolPolicyPreviewItem,
     AIToolPolicyPreviewRequest,
-    to_ai_skill_item,
     to_ai_tool_execution_item,
     to_ai_tool_intent_preview_item,
     to_ai_tool_item,
@@ -80,16 +78,6 @@ async def list_ai_tools(
         )
         for item in tools
     ]
-
-
-@router.get("/skills", response_model=list[AISkillItem])
-async def list_ai_skills(
-    _: Annotated[Any, Depends(require_control_panel)],
-) -> list[AISkillItem]:
-    """List file-based prompt skills."""
-
-    skills = ai_application.operations.list_skills()
-    return [to_ai_skill_item(item) for item in skills]
 
 
 @router.post("/tools/policy-preview", response_model=AIToolPolicyPreviewItem)

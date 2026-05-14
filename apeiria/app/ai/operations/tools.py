@@ -1,10 +1,9 @@
-"""Tools, prompt skills, policies, and executions admin operations."""
+"""Executable tool, policy, and execution admin operations."""
 
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from apeiria.ai.skills import ai_skill_service
 from apeiria.ai.tools import (
     AIToolLevel,
     AIToolPolicyBindingCreateInput,
@@ -19,7 +18,6 @@ from apeiria.app.ai.lifecycle import ensure_ai_runtime_support_initialized
 from apeiria.app.ai.runtime.planning.tool_intents import preview_runtime_tool_intents
 
 if TYPE_CHECKING:
-    from apeiria.ai.skills import AISkillMetadata
     from apeiria.ai.tools import (
         AIToolDefinition,
         AIToolExecutionView,
@@ -29,7 +27,7 @@ if TYPE_CHECKING:
 
 
 class ToolsAdminMixin:
-    """Admin read/mutation for tools, prompt skills, policies, and executions."""
+    """Admin read/mutation for executable tools, policies, and executions."""
 
     @staticmethod
     def _ensure_ai_support_ready() -> None:
@@ -41,10 +39,6 @@ class ToolsAdminMixin:
     ) -> list["AIToolDefinition"]:
         self._ensure_ai_support_ready()
         return ai_tool_service.list_tool_specs(policy)
-
-    def list_skills(self) -> list["AISkillMetadata"]:
-        self._ensure_ai_support_ready()
-        return ai_skill_service.list_skills()
 
     async def preview_tool_intents(
         self,
