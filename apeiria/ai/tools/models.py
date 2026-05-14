@@ -50,7 +50,7 @@ def tool_level_allows(
     )
 
 
-AIToolOrigin = Literal["builtin", "plugin", "mcp"]
+AIToolOrigin = Literal["internal", "plugin", "mcp"]
 AIToolExecutionStatus = Literal[
     "success",
     "error",
@@ -106,11 +106,10 @@ class AIToolDefinition:
     required_level: AIToolLevel
     executor: AIToolExecutor | None
     readiness: AIToolReadiness = field(default_factory=AIToolReadiness.available)
-    origin: AIToolOrigin = "builtin"
+    origin: AIToolOrigin = "internal"
     enabled: bool = True
     manageable: bool = False
     version: int = 1
-    tags: tuple[str, ...] = ()
     display_name: str | None = None
 
     @property

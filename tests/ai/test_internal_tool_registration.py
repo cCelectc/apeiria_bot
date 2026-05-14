@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import importlib.util
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 
@@ -22,13 +23,14 @@ if TYPE_CHECKING:
     import pytest
 
 
-ESSENTIAL_TOOL_NAMES = (
+INTERNAL_TOOL_NAMES = (
     "future_task.cancel",
     "future_task.create",
     "future_task.list",
     "knowledge.search",
     "memory.search",
     "memory.write",
+    "relationship.inspect",
 )
 HTTP_OK = 200
 HTTP_NOT_FOUND = 404
@@ -38,17 +40,20 @@ KNOWLEDGE_RESULT_LIMIT = 5
 TOOL_GUIDANCE_LIMIT = 900
 
 
-def test_builtin_catalog_loads_idempotently_and_deterministically() -> None:
-    from apeiria.ai.tools.catalog import load_builtin_tool_catalog
+def test_internal_tools_contribute_idempotently_and_deterministically() -> None:
+    from apeiria.ai.contributions import AIContributionRegistry
     from apeiria.ai.tools.registry import AIToolRegistry
+    from apeiria.app.ai.builtin_tools import register_internal_tools
 
+    contributions = AIContributionRegistry()
     registry = AIToolRegistry()
 
-    assert load_builtin_tool_catalog(registry) == len(ESSENTIAL_TOOL_NAMES)
-    assert load_builtin_tool_catalog(registry) == 0
-    assert (
-        tuple(tool.name for tool in registry.snapshot().tools) == ESSENTIAL_TOOL_NAMES
-    )
+    register_internal_tools(contributions)
+    register_internal_tools(contributions)
+    for contribution in contributions.snapshot().tools:
+        registry.register(contribution.tool)
+
+    assert tuple(tool.name for tool in registry.snapshot().tools) == INTERNAL_TOOL_NAMES
 
     tools = registry.snapshot().by_name
     assert tools["memory.search"].required_level is AIToolLevel.READ
@@ -57,17 +62,39 @@ def test_builtin_catalog_loads_idempotently_and_deterministically() -> None:
     assert tools["future_task.create"].required_level is AIToolLevel.WRITE
     assert tools["future_task.list"].required_level is AIToolLevel.READ
     assert tools["future_task.cancel"].required_level is AIToolLevel.WRITE
-    assert all(tool.origin == "builtin" for tool in tools.values())
+    assert tools["relationship.inspect"].required_level is AIToolLevel.READ
+    assert all(tool.origin == "internal" for tool in tools.values())
     assert all(tool.manageable is False for tool in tools.values())
-    assert all("essential" in tool.tags for tool in tools.values())
 
 
-def test_builtin_catalog_excludes_host_level_tools() -> None:
-    from apeiria.ai.tools.catalog import load_builtin_tool_catalog
+def test_internal_tool_package_uses_decorated_handlers() -> None:
+    from apeiria.app.ai import builtin_tools
+    from apeiria.app.ai.builtin_tools import common, future_tasks, knowledge, memory
+
+    assert not hasattr(builtin_tools, "build_internal_tools")
+    assert not hasattr(builtin_tools, "INTERNAL_TOOLS")
+    assert not hasattr(memory, "build_memory_tools")
+    assert not hasattr(knowledge, "build_knowledge_tools")
+    assert not hasattr(future_tasks, "build_future_task_tools")
+    assert hasattr(memory.search_memory, "__ai_tool_definition__")
+    assert hasattr(knowledge.search_knowledge, "__ai_tool_definition__")
+    assert hasattr(future_tasks.create_future_task, "__ai_tool_definition__")
+    assert not hasattr(common, "object_schema")
+    assert not hasattr(common, "string_schema")
+    assert not hasattr(common, "integer_schema")
+    assert not hasattr(common, "number_schema")
+
+
+def test_internal_tools_exclude_host_level_tools() -> None:
+    from apeiria.ai.contributions import AIContributionRegistry
     from apeiria.ai.tools.registry import AIToolRegistry
+    from apeiria.app.ai.builtin_tools import register_internal_tools
 
+    contributions = AIContributionRegistry()
     registry = AIToolRegistry()
-    load_builtin_tool_catalog(registry)
+    register_internal_tools(contributions)
+    for contribution in contributions.snapshot().tools:
+        registry.register(contribution.tool)
 
     forbidden_fragments = (
         "shell",
@@ -78,63 +105,85 @@ def test_builtin_catalog_excludes_host_level_tools() -> None:
         "computer",
     )
     for tool in registry.snapshot().tools:
-        searchable = f"{tool.name} {' '.join(tool.tags)} {tool.description}".lower()
+        searchable = f"{tool.name} {tool.description}".lower()
         assert tool.required_level not in {AIToolLevel.HOST, AIToolLevel.ADMIN}
         assert not any(fragment in searchable for fragment in forbidden_fragments)
 
 
-def test_lifecycle_loads_builtin_catalog_before_plugin_contributions() -> None:
-    from apeiria.ai.contributions import AIPluginContributionRegistry
+def test_builtin_catalog_apis_are_removed() -> None:
+    from apeiria.ai.tools.registry import AIToolRegistry
+
+    assert importlib.util.find_spec("apeiria.ai.tools.catalog") is None
+    assert importlib.util.find_spec("apeiria.ai.tools.essential") is None
+    assert not hasattr(AIToolRegistry(), "load_builtin_catalog")
+
+
+def test_lifecycle_registers_internal_and_plugin_tools_in_one_loop() -> None:
+    from apeiria.ai.contributions import AIContributionRegistry
     from apeiria.app.ai.lifecycle import AIPluginLifecycleCoordinator
 
     order: list[str] = []
     tool_service = _FakeToolService(order)
     skill_service = _FakeSkillService(order, tool_service)
     future_service = _FakeFutureTaskService(order)
-    contributions = AIPluginContributionRegistry()
+    contributions = AIContributionRegistry()
 
     contributions.register_tool(tool=_plugin_tool("plugin.echo"))
+
+    def app_loader(registry: AIContributionRegistry) -> int:
+        from apeiria.app.ai.builtin_tools import register_internal_tools
+
+        order.append("app_loader")
+        return register_internal_tools(registry)
 
     coordinator = AIPluginLifecycleCoordinator(
         contribution_registry=contributions,
         tool_service=tool_service,
         skill_service=skill_service,
         future_task_service=future_service,
-        app_tool_loader=lambda: order.append("app_loader"),
+        app_tool_loader=app_loader,
     )
 
     snapshot = asyncio.run(coordinator.startup())
     asyncio.run(coordinator.startup())
 
-    assert order[: len(ESSENTIAL_TOOL_NAMES) + 4] == [
-        "app_loader",
-        *[f"tool:{name}" for name in ESSENTIAL_TOOL_NAMES],
-        "builtin_catalog",
-        "pending_tools",
+    first_startup_order = order[: order.index("future_recovery") + 1]
+    assert first_startup_order[0] == "app_loader"
+    assert first_startup_order[-2:] == ["skills", "future_recovery"]
+    assert set(first_startup_order[1:-2]) == {
+        *[f"tool:{name}" for name in INTERNAL_TOOL_NAMES],
         "tool:plugin.echo",
-    ]
+    }
+    assert "builtin_catalog" not in order
+    assert "pending_tools" not in order
     assert skill_service.calls[0] == ()
-    assert tuple(tool_service.registry.tools) == (
-        *ESSENTIAL_TOOL_NAMES,
-        "plugin.echo",
-    )
+    assert set(tool_service.registry.tools) == {*INTERNAL_TOOL_NAMES, "plugin.echo"}
     assert not hasattr(snapshot, "capabilities")
+    assert all(
+        "builtin_tools" not in component.detail for component in snapshot.components
+    )
     assert future_service.calls == 1
 
 
-def test_plugin_duplicate_with_builtin_catalog_is_rejected() -> None:
-    from apeiria.ai.contributions import AIPluginContributionRegistry
+def test_plugin_duplicate_with_internal_tool_is_rejected() -> None:
+    from apeiria.ai.contributions import AIContributionRegistry
     from apeiria.app.ai.lifecycle import AIPluginLifecycleCoordinator
 
-    contributions = AIPluginContributionRegistry()
+    contributions = AIContributionRegistry()
     contributions.register_tool(tool=_plugin_tool("memory.search"))
     tool_service = _FakeToolService([])
+
+    def app_loader(registry: AIContributionRegistry) -> int:
+        from apeiria.app.ai.builtin_tools import register_internal_tools
+
+        return register_internal_tools(registry)
+
     coordinator = AIPluginLifecycleCoordinator(
         contribution_registry=contributions,
         tool_service=tool_service,
         skill_service=_FakeSkillService([], tool_service),
         future_task_service=_FakeFutureTaskService([]),
-        app_tool_loader=lambda: None,
+        app_tool_loader=app_loader,
     )
 
     snapshot = coordinator.ensure_runtime_support_initialized()
@@ -148,7 +197,7 @@ def test_memory_search_facade_delegates_with_actor_context(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from apeiria.ai.memory.models import AIMemoryQuery
-    from apeiria.ai.tools import essential as essential_tools
+    from apeiria.app.ai.builtin_tools import memory as memory_tools
 
     calls: list[AIMemoryQuery] = []
 
@@ -164,10 +213,10 @@ def test_memory_search_facade_delegates_with_actor_context(
                 )
             ]
 
-    monkeypatch.setattr(essential_tools, "ai_memory_service", FakeMemoryService())
+    monkeypatch.setattr(memory_tools, "ai_memory_service", FakeMemoryService())
 
     result = asyncio.run(
-        essential_tools.search_memory(
+        memory_tools.search_memory(
             "implementation notes",
             limit=25,
             context=_tool_context(
@@ -201,7 +250,7 @@ def test_memory_write_facade_normalizes_and_delegates(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from apeiria.ai.memory.contracts import AIMemoryCreateInput
-    from apeiria.ai.tools import essential as essential_tools
+    from apeiria.app.ai.builtin_tools import memory as memory_tools
 
     calls: list[AIMemoryCreateInput] = []
 
@@ -215,10 +264,10 @@ def test_memory_write_facade_normalizes_and_delegates(
                 content=create_input.content,
             )
 
-    monkeypatch.setattr(essential_tools, "ai_memory_service", FakeMemoryService())
+    monkeypatch.setattr(memory_tools, "ai_memory_service", FakeMemoryService())
 
     result = asyncio.run(
-        essential_tools.write_memory(
+        memory_tools.write_memory(
             "  Likes deterministic tests.  ",
             memory_kind="invalid",
             salience=99,
@@ -251,7 +300,7 @@ def test_knowledge_search_facade_delegates_and_bounds_results(
         KnowledgeRetrievalItem,
         KnowledgeRetrievalResult,
     )
-    from apeiria.ai.tools import essential as essential_tools
+    from apeiria.app.ai.builtin_tools import knowledge as knowledge_tools
 
     calls: list[tuple[str, int, bool]] = []
 
@@ -288,13 +337,13 @@ def test_knowledge_search_facade_delegates_and_bounds_results(
             )
 
     monkeypatch.setattr(
-        essential_tools,
+        knowledge_tools,
         "knowledge_retrieval_service",
         FakeKnowledgeService(),
     )
 
     result = asyncio.run(
-        essential_tools.search_knowledge(
+        knowledge_tools.search_knowledge(
             "Apeiria knowledge",
             limit=99,
             context=_tool_context(),
@@ -314,7 +363,7 @@ def test_future_task_facades_delegate_to_application_entry(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     import apeiria.conversation.service as conversation_service_module
-    from apeiria.ai.tools import essential as essential_tools
+    from apeiria.app.ai.builtin_tools import future_tasks as future_task_tools
     from apeiria.conversation.models import ChatSessionIdentity
 
     calls: list[tuple[str, object]] = []
@@ -354,7 +403,7 @@ def test_future_task_facades_delegate_to_application_entry(
             )
 
     monkeypatch.setattr(
-        essential_tools,
+        future_task_tools,
         "_resolve_future_tasks_entry",
         FakeFutureTasksEntry,
     )
@@ -372,15 +421,15 @@ def test_future_task_facades_delegate_to_application_entry(
         reply_audience="group:group-1",
     )
     create_result = asyncio.run(
-        essential_tools.create_future_task(
+        future_task_tools.create_future_task(
             description="Follow up",
             trigger_at="2026-05-15T09:00:00+08:00",
             context=context,
         )
     )
-    list_result = asyncio.run(essential_tools.list_future_tasks(context=context))
+    list_result = asyncio.run(future_task_tools.list_future_tasks(context=context))
     cancel_result = asyncio.run(
-        essential_tools.cancel_future_task("task-1", context=context)
+        future_task_tools.cancel_future_task("task-1", context=context)
     )
 
     assert [call[0] for call in calls] == ["create", "list", "get", "cancel"]
@@ -466,7 +515,7 @@ def test_prompt_tool_guidance_is_generated_from_selected_exposure_plan() -> None
             input_schema={"type": "object", "properties": {}},
             required_level=AIToolLevel.READ,
             executor=handler,
-            origin="builtin",
+            origin="internal",
         ),
         AIToolDefinition(
             name="plugin.echo",
@@ -525,7 +574,7 @@ def test_prompt_tool_guidance_is_generated_from_selected_exposure_plan() -> None
     assert "future_task.cancel" not in guidance
 
 
-def test_tool_diagnostics_route_reports_builtin_status(
+def test_tool_diagnostics_route_reports_internal_status(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -550,7 +599,8 @@ def test_tool_diagnostics_route_reports_builtin_status(
 
     assert response.status_code == HTTP_OK
     payload = {item["name"]: item for item in response.json()}
-    assert payload["memory.search"]["origin"] == "builtin"
+    assert payload["memory.search"]["origin"] == "internal"
+    assert "tags" not in payload["memory.search"]
     assert payload["memory.search"]["status"] == "visible"
     assert payload["memory.search"]["required_level"] == "read"
     assert payload["memory.write"]["status"] == "denied"
@@ -609,7 +659,6 @@ class _FakeToolRegistry:
     def __init__(self, order: list[str]) -> None:
         self._order = order
         self.tools: dict[str, AIToolDefinition] = {}
-        self.pending_tools: list[AIToolDefinition] = []
 
     def register(self, tool: AIToolDefinition) -> None:
         from apeiria.ai.tools.registry import AIDuplicateToolError
@@ -620,25 +669,8 @@ class _FakeToolRegistry:
             self._order.append(f"tool:{tool.name}")
             self.tools[tool.name] = tool
 
-    def load_builtin_catalog(self) -> int:
-        from apeiria.ai.tools.catalog import load_builtin_tool_catalog
-
-        count = load_builtin_tool_catalog(self)
-        self._order.append("builtin_catalog")
-        return count
-
     def list_tools(self) -> list[AIToolDefinition]:
         return [self.tools[name] for name in sorted(self.tools)]
-
-    def register_pending_tools(self) -> int:
-        self._order.append("pending_tools")
-        count = 0
-        for tool in self.pending_tools:
-            if tool.name not in self.tools:
-                self.tools[tool.name] = tool
-                count += 1
-        self.pending_tools = []
-        return count
 
 
 class _FakeToolService:

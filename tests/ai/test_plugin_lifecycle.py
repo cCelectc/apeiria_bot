@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import inspect
 from typing import TYPE_CHECKING, Any
 
 from apeiria.ai.tools import (
@@ -15,18 +16,19 @@ if TYPE_CHECKING:
 
     import pytest
 
-ESSENTIAL_TOOL_NAMES = (
+INTERNAL_TOOL_NAMES = (
     "future_task.cancel",
     "future_task.create",
     "future_task.list",
     "knowledge.search",
     "memory.search",
     "memory.write",
+    "relationship.inspect",
 )
-EXPECTED_REGISTERED_TOOL_COUNT = len(ESSENTIAL_TOOL_NAMES) + 2
+EXPECTED_REGISTERED_TOOL_COUNT = len(INTERNAL_TOOL_NAMES) + 1
 
 
-def _tool(name: str) -> AIToolDefinition:
+def _tool(name: str, *, origin: str = "plugin") -> AIToolDefinition:
     async def handler(**_: Any) -> AIToolResult:
         return AIToolResult(summary="ok")
 
@@ -37,8 +39,8 @@ def _tool(name: str) -> AIToolDefinition:
         required_level=AIToolLevel.READ,
         executor=handler,
         readiness=AIToolReadiness.available(),
-        origin="plugin",
-        manageable=True,
+        origin=origin,  # type: ignore[arg-type]
+        manageable=origin == "plugin",
     )
 
 
@@ -46,31 +48,13 @@ class _FakeToolRegistry:
     def __init__(self, order: list[str]) -> None:
         self._order = order
         self.tools: dict[str, AIToolDefinition] = {}
-        self.pending_tools = [_tool("app.future")]
 
     def register(self, tool: AIToolDefinition) -> None:
         self._order.append(f"tool:{tool.name}")
         self.tools[tool.name] = tool
 
-    def load_builtin_catalog(self) -> int:
-        from apeiria.ai.tools.catalog import load_builtin_tool_catalog
-
-        count = load_builtin_tool_catalog(self)
-        self._order.append("builtin_catalog")
-        return count
-
     def list_tools(self) -> list[AIToolDefinition]:
         return [self.tools[name] for name in sorted(self.tools)]
-
-    def register_pending_tools(self) -> int:
-        self._order.append("pending_tools")
-        count = 0
-        for tool in self.pending_tools:
-            if tool.name not in self.tools:
-                self.tools[tool.name] = tool
-                count += 1
-        self.pending_tools = []
-        return count
 
 
 class _FakeToolService:
@@ -122,39 +106,45 @@ class _FakeFutureTaskService:
 def test_lifecycle_applies_plugin_contributions_before_skill_sync(
     tmp_path: Path,
 ) -> None:
-    from apeiria.ai.contributions import AIPluginContributionRegistry
+    from apeiria.ai.contributions import AIContributionRegistry
     from apeiria.app.ai.lifecycle import AIPluginLifecycleCoordinator
 
     order: list[str] = []
     tool_service = _FakeToolService(order)
     skill_service = _FakeSkillService(order, tool_service)
     future_service = _FakeFutureTaskService(order)
-    contributions = AIPluginContributionRegistry()
+    contributions = AIContributionRegistry()
     skill_dir = tmp_path / "plugin" / "skills"
 
     contributions.register_tool(tool=_tool("plugin.echo"))
     contributions.register_skill_source(skill_dir)
+
+    def app_loader(registry: AIContributionRegistry) -> int:
+        from apeiria.app.ai.builtin_tools import register_internal_tools
+
+        order.append("app_loader")
+        return register_internal_tools(registry)
 
     coordinator = AIPluginLifecycleCoordinator(
         contribution_registry=contributions,
         tool_service=tool_service,
         skill_service=skill_service,
         future_task_service=future_service,
-        app_tool_loader=lambda: order.append("app_loader"),
+        app_tool_loader=app_loader,
     )
 
     snapshot = asyncio.run(coordinator.startup())
     asyncio.run(coordinator.startup())
 
-    assert order[: len(ESSENTIAL_TOOL_NAMES) + 6] == [
-        "app_loader",
-        *[f"tool:{name}" for name in ESSENTIAL_TOOL_NAMES],
-        "builtin_catalog",
-        "pending_tools",
+    first_startup_order = order[: order.index("future_recovery") + 1]
+    assert first_startup_order[0] == "app_loader"
+    assert first_startup_order[-2:] == ["skills", "future_recovery"]
+    assert set(first_startup_order[1:-2]) == {
+        *[f"tool:{name}" for name in INTERNAL_TOOL_NAMES],
         "tool:plugin.echo",
-        "skills",
-        "future_recovery",
-    ]
+    }
+    assert "builtin_catalog" not in order
+    assert "pending_tools" not in order
     assert "plugin.echo" in tool_service.registry.tools
     assert tool_service.registry.tools["plugin.echo"].origin == "plugin"
     assert skill_service.calls[0] == (skill_dir.resolve(),)
@@ -164,21 +154,17 @@ def test_lifecycle_applies_plugin_contributions_before_skill_sync(
     assert len(tool_service.registry.tools) == EXPECTED_REGISTERED_TOOL_COUNT
 
 
-def test_public_plugin_contribution_helpers_register_without_singleton_mutation(
+def test_public_plugin_ai_tool_decorator_registers_plugin_tool(
     monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
 ) -> None:
-    import apeiria.ai.contributions as contribution_module
-    from apeiria.ai.contributions import (
-        AIPluginContributionRegistry,
-        register_ai_skill_source,
-        register_ai_tool,
-    )
+    import apeiria.ai.plugin_api as plugin_api_module
+    from apeiria.ai.contributions import AIContributionRegistry
+    from apeiria.ai.plugin_api import ai_tool
 
-    registry = AIPluginContributionRegistry()
-    monkeypatch.setattr(contribution_module, "ai_plugin_contributions", registry)
+    registry = AIContributionRegistry()
+    monkeypatch.setattr(plugin_api_module, "ai_contributions", registry)
 
-    @register_ai_tool(
+    @ai_tool(
         name="plugin.echo",
         description="echo from a plugin",
         required_level="read",
@@ -187,16 +173,63 @@ def test_public_plugin_contribution_helpers_register_without_singleton_mutation(
         del message, context
         return AIToolResult(summary="ok")
 
-    plugin_dir = tmp_path / "plugin"
-    skill_source = register_ai_skill_source("skills", base_path=plugin_dir)
     snapshot = registry.snapshot()
 
     assert echo_tool.__ai_tool_definition__.origin == "plugin"
     assert [tool.tool.name for tool in snapshot.tools] == ["plugin.echo"]
     assert snapshot.tools[0].tool.origin == "plugin"
     assert snapshot.tools[0].tool.required_level.value == "read"
-    assert snapshot.skill_sources[0].path == skill_source
-    assert skill_source == (plugin_dir / "skills").resolve()
+
+
+def test_plugin_ai_tool_decorator_does_not_accept_origin_parameter() -> None:
+    from apeiria.ai.plugin_api import ai_tool
+
+    signature = inspect.signature(ai_tool)
+
+    assert "origin" not in signature.parameters
+    assert "tags" not in signature.parameters
+
+
+def test_removed_plugin_tool_helper_is_not_exported() -> None:
+    import apeiria.ai.plugin_api as plugin_api_module
+
+    assert not hasattr(plugin_api_module, "register_ai_tool")
+
+
+def test_contribution_registry_does_not_export_plugin_tool_api() -> None:
+    import apeiria.ai.contributions as contribution_module
+
+    assert not hasattr(contribution_module, "register_ai_tool")
+    assert not hasattr(contribution_module, "ai_tool")
+    assert hasattr(contribution_module, "register_ai_skill_source")
+
+
+def test_contribution_registry_preserves_explicit_internal_origin() -> None:
+    from apeiria.ai.contributions import AIContributionRegistry
+
+    registry = AIContributionRegistry()
+    contribution = registry.register_tool(
+        tool=_tool("internal.echo", origin="internal")
+    )
+
+    assert contribution.tool.origin == "internal"
+    assert registry.snapshot().tools[0].tool.origin == "internal"
+
+
+def test_definition_ai_tool_decorator_declares_without_registration() -> None:
+    from apeiria.ai.tools.decorators import ai_tool as define_ai_tool
+
+    @define_ai_tool(
+        name="internal.decorated",
+        description="decorated internal tool",
+        required_level=AIToolLevel.READ,
+    )
+    async def decorated_tool(*, context: object) -> AIToolResult:
+        del context
+        return AIToolResult(summary="ok")
+
+    assert decorated_tool.__ai_tool_definition__.origin == "internal"
+    assert decorated_tool.__ai_tool_definition__.name == "internal.decorated"
 
 
 def test_plugin_skill_sources_skip_malformed_files(tmp_path: Path) -> None:

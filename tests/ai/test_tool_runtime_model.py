@@ -77,6 +77,57 @@ def test_tool_registry_rejects_duplicates_and_snapshots_are_immutable() -> None:
         snapshot.by_name["relationship.inspect"] = tool  # type: ignore[index]
 
 
+def test_tool_definition_default_origin_is_internal() -> None:
+    from apeiria.ai.tools.models import AIToolDefinition, AIToolLevel, AIToolReadiness
+
+    async def _executor(**_: Any) -> object:
+        return object()
+
+    tool = AIToolDefinition(
+        name="memory.search",
+        description="search",
+        input_schema={"type": "object", "properties": {}},
+        required_level=AIToolLevel.READ,
+        executor=_executor,
+        readiness=AIToolReadiness.available(),
+    )
+
+    assert tool.origin == "internal"
+
+
+def test_registry_rejects_duplicate_names_across_origins() -> None:
+    from apeiria.ai.tools.models import AIToolDefinition, AIToolLevel
+    from apeiria.ai.tools.registry import AIDuplicateToolError, AIToolRegistry
+
+    async def _executor(**_: Any) -> object:
+        return object()
+
+    registry = AIToolRegistry()
+    registry.register(
+        AIToolDefinition(
+            name="memory.search",
+            description="internal",
+            input_schema={"type": "object", "properties": {}},
+            required_level=AIToolLevel.READ,
+            executor=_executor,
+            origin="internal",
+        )
+    )
+
+    with pytest.raises(AIDuplicateToolError):
+        registry.register(
+            AIToolDefinition(
+                name="memory.search",
+                description="plugin",
+                input_schema={"type": "object", "properties": {}},
+                required_level=AIToolLevel.READ,
+                executor=_executor,
+                origin="plugin",
+                manageable=True,
+            )
+        )
+
+
 def test_tool_registry_rejects_unsupported_canonical_schemas() -> None:
     from apeiria.ai.tools.models import AIToolDefinition, AIToolLevel, AIToolReadiness
     from apeiria.ai.tools.registry import AIInvalidToolSchemaError, AIToolRegistry
@@ -133,13 +184,17 @@ def test_tool_readiness_result_codes_are_explicit() -> None:
         assert readiness.reason == f"{code} reason"
 
 
-def test_builtin_tools_register_with_levels_and_nonmanageable_defaults() -> None:
+def test_internal_tools_register_with_levels_and_nonmanageable_defaults() -> None:
+    from apeiria.ai.contributions import AIContributionRegistry
     from apeiria.ai.tools.models import AIToolLevel
     from apeiria.ai.tools.service import AIToolService
+    from apeiria.app.ai.builtin_tools import register_internal_tools
 
     service = AIToolService()
-    service.registry.load_builtin_catalog()
-    assert service.registry.register_pending_tools() == 0
+    contributions = AIContributionRegistry()
+    register_internal_tools(contributions)
+    for contribution in contributions.snapshot().tools:
+        service.registry.register(contribution.tool)
     tools = {tool.name: tool for tool in service.list_tool_specs()}
 
     assert tools["memory.search"].required_level is AIToolLevel.READ
@@ -149,7 +204,7 @@ def test_builtin_tools_register_with_levels_and_nonmanageable_defaults() -> None
     assert tools["future_task.create"].required_level is AIToolLevel.WRITE
     assert tools["future_task.list"].required_level is AIToolLevel.READ
     assert tools["future_task.cancel"].required_level is AIToolLevel.WRITE
-    assert all(tool.origin == "builtin" for tool in tools.values())
+    assert all(tool.origin == "internal" for tool in tools.values())
     assert all(tool.manageable is False for tool in tools.values())
 
 

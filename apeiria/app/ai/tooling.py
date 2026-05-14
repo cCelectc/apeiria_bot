@@ -2,22 +2,15 @@
 
 from __future__ import annotations
 
-_APP_AI_TOOL_MODULES_LOADED = False
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from apeiria.ai.contributions import AIContributionRegistry
 
 
-def load_app_ai_tool_modules() -> None:
-    """Import app-owned AI tool handlers once so decorators can collect specs."""
+def register_app_ai_tools(registry: "AIContributionRegistry") -> int:
+    """Register app-owned executable AI tool declarations once."""
 
-    global _APP_AI_TOOL_MODULES_LOADED  # noqa: PLW0603
-    if _APP_AI_TOOL_MODULES_LOADED:
-        return
+    from apeiria.app.ai.builtin_tools import register_internal_tools
 
-    _APP_AI_TOOL_MODULES_LOADED = True
-
-
-def drain_pending_ai_tools() -> int:
-    """Register pending decorator-collected AI tool specs."""
-
-    from apeiria.ai.tools import ai_tool_service
-
-    return ai_tool_service.registry.register_pending_tools()
+    return register_internal_tools(registry)

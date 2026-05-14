@@ -1,4 +1,4 @@
-"""Declarative @ai_tool decorator for first-class tool registration."""
+"""Declarative @ai_tool decorator for provider-neutral tool definitions."""
 
 from __future__ import annotations
 
@@ -16,22 +16,19 @@ from apeiria.ai.tools.schema import build_json_schema, build_parameters_from_sig
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-_PENDING_TOOLS: list[AIToolDefinition] = []
-
 
 def ai_tool(  # noqa: PLR0913
     *,
     name: str,
     description: str,
     required_level: AIToolLevel | str,
-    origin: AIToolOrigin = "builtin",
+    origin: AIToolOrigin = "internal",
     enabled: bool = True,
     manageable: bool = False,
     readiness: AIToolReadiness | None = None,
     version: int = 1,
-    tags: tuple[str, ...] = (),
 ) -> "Callable[..., Any]":
-    """Register an async function as a provider-neutral AI tool."""
+    """Declare an async function as a provider-neutral AI tool."""
 
     def decorator(func: Any) -> Any:
         parameters = build_parameters_from_signature(func)
@@ -46,19 +43,11 @@ def ai_tool(  # noqa: PLR0913
             enabled=enabled,
             manageable=manageable,
             version=version,
-            tags=tags,
         )
-        _PENDING_TOOLS.append(tool)
         func.__ai_tool_definition__ = tool
         return func
 
     return decorator
-
-
-def collect_pending_tools() -> list[AIToolDefinition]:
-    """Return decorator-collected tool definitions."""
-
-    return list(_PENDING_TOOLS)
 
 
 _EMPTY_SCHEMA: dict[str, Any] = {
@@ -68,4 +57,4 @@ _EMPTY_SCHEMA: dict[str, Any] = {
 }
 
 
-__all__ = ["ai_tool", "collect_pending_tools"]
+__all__ = ["ai_tool"]

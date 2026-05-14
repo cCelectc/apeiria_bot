@@ -334,7 +334,6 @@ export interface AIToolItem {
   readiness_code: string
   readiness_reason: string
   provider_name: string
-  tags: string[]
   version: number
   status: string
   denied_reason: string | null

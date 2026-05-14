@@ -70,6 +70,8 @@ def build_json_schema(
         prop: dict[str, Any] = {"type": json_type, "description": description}
         if enum_values is not None:
             prop["enum"] = list(enum_values)
+        if _default is not _MISSING and _default is not None:
+            prop["default"] = _default
         properties[name] = prop
         if is_required:
             required.append(name)
@@ -111,27 +113,27 @@ def _unwrap_annotation(
 ) -> tuple[Any, str, bool]:
     """Strip ``Annotated`` and ``Optional``/``Union[..., None]`` wrappers."""
 
-    origin = get_origin(annotation)
-
-    # Unwrap Annotated if present — extract description from metadata
-    if origin is not None and _is_annotated(origin):
-        args = get_args(annotation)
-        annotation = args[0]
-        for meta in args[1:]:
-            if isinstance(meta, str):
-                description = meta
-                break
+    while True:
         origin = get_origin(annotation)
+        if origin is not None and _is_annotated(origin):
+            args = get_args(annotation)
+            annotation = args[0]
+            for meta in args[1:]:
+                if isinstance(meta, str):
+                    description = meta
+                    break
+            continue
 
-    # Unwrap Optional / Union with None
-    if origin is Union or _is_union_type(annotation):
-        args = get_args(annotation)
-        non_none = [a for a in args if a is not type(None)]
-        if len(non_none) == 1:
-            is_nullable = True
-            annotation = non_none[0]
-        elif len(args) != len(non_none):
-            is_nullable = True
+        if origin is Union or _is_union_type(annotation):
+            args = get_args(annotation)
+            non_none = [arg for arg in args if arg is not type(None)]
+            if len(non_none) == 1:
+                is_nullable = True
+                annotation = non_none[0]
+                continue
+            if len(args) != len(non_none):
+                is_nullable = True
+        break
 
     return annotation, description, is_nullable
 

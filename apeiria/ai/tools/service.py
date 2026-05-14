@@ -5,8 +5,6 @@ from __future__ import annotations
 from dataclasses import asdict, is_dataclass
 from typing import Any
 
-from nonebot.log import logger
-
 from apeiria.ai.tools.contracts import AIToolExecutionCreateInput
 from apeiria.ai.tools.execution import AIToolIntentExecutor
 from apeiria.ai.tools.execution_repository import AIToolExecutionRepository
@@ -31,19 +29,10 @@ class AIToolService:
         *,
         execution_repository: AIToolExecutionRepository | None = None,
         intent_executor: AIToolIntentExecutor | None = None,
-        load_declarative_tools: bool = True,
     ) -> None:
         self.registry = AIToolRegistry()
         self._execution_repository = execution_repository or AIToolExecutionRepository()
         self._intent_executor = intent_executor or AIToolIntentExecutor()
-        if load_declarative_tools:
-            self._load_declarative_tools()
-
-    def _load_declarative_tools(self) -> None:
-        """Import handler modules and register all @ai_tool decorated definitions."""
-
-        count = self.registry.register_pending_tools()
-        logger.debug("Registered {} declarative AI tools", count)
 
     def list_tool_specs(
         self,

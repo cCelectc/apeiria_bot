@@ -1,4 +1,4 @@
-"""Relationship tool handler — relationship.inspect."""
+"""App-owned relationship AI tools."""
 
 from __future__ import annotations
 
@@ -15,9 +15,8 @@ from apeiria.ai.tools.models import (
     name="relationship.inspect",
     description="inspect current affinity and mood projection",
     required_level=AIToolLevel.READ,
-    tags=("relationship", "read"),
 )
-async def handle_relationship_inspect(
+async def inspect_relationship(
     *,
     context: AIToolExecutionContext,
 ) -> AIToolResult:

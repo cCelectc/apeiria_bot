@@ -153,13 +153,7 @@ def _default_awareness_text() -> str:
 
 
 def _is_admin_project_tool(tool: AIToolDefinition) -> bool:
-    tags = set(tool.tags)
-    return (
-        "admin" in tags
-        or "project_management" in tags
-        or tool.name.startswith("admin.")
-        or tool.name.startswith("project.")
-    )
+    return tool.name.startswith("admin.") or tool.name.startswith("project.")
 
 
 @dataclass(frozen=True, slots=True)

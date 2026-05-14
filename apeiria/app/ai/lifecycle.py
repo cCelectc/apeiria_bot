@@ -8,10 +8,10 @@ from typing import TYPE_CHECKING, Literal, Protocol
 from nonebot.log import logger
 
 from apeiria.ai.contributions import (
-    AIPluginContributionRegistry,
-    ai_plugin_contributions,
+    AIContributionRegistry,
+    ai_contributions,
 )
-from apeiria.app.ai.tooling import load_app_ai_tool_modules
+from apeiria.app.ai.tooling import register_app_ai_tools
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -67,10 +67,6 @@ class _ToolRegistry(Protocol):
 
     def list_tools(self) -> list["AIToolDefinition"]: ...
 
-    def load_builtin_catalog(self) -> int: ...
-
-    def register_pending_tools(self) -> int: ...
-
 
 class _ToolService(Protocol):
     @property
@@ -95,17 +91,17 @@ class AIPluginLifecycleCoordinator:
     def __init__(
         self,
         *,
-        contribution_registry: AIPluginContributionRegistry | None = None,
+        contribution_registry: AIContributionRegistry | None = None,
         tool_service: _ToolService | None = None,
         skill_service: _SkillService | None = None,
         future_task_service: _FutureTaskService | None = None,
-        app_tool_loader: "Callable[[], None] | None" = None,
+        app_tool_loader: "Callable[[AIContributionRegistry], int] | None" = None,
     ) -> None:
-        self._contribution_registry = contribution_registry or ai_plugin_contributions
+        self._contribution_registry = contribution_registry or ai_contributions
         self._tool_service = tool_service
         self._skill_service = skill_service
         self._future_task_service = future_task_service
-        self._app_tool_loader = app_tool_loader or load_app_ai_tool_modules
+        self._app_tool_loader = app_tool_loader or register_app_ai_tools
         self._snapshot = _not_initialized_snapshot()
         self._recovery: AIFutureTaskRecoveryDiagnostics | None = None
         self._future_recovery_attempted = False
@@ -128,9 +124,7 @@ class AIPluginLifecycleCoordinator:
         tool_service = self._get_tool_service()
         skill_service = self._get_skill_service()
         try:
-            self._app_tool_loader()
-            builtin_tool_count = tool_service.registry.load_builtin_catalog()
-            pending_tool_count = tool_service.registry.register_pending_tools()
+            self._app_tool_loader(self._contribution_registry)
             contributions = self._contribution_registry.snapshot()
             for tool in contributions.tools:
                 tool_service.registry.register(tool.tool)
@@ -158,8 +152,7 @@ class AIPluginLifecycleCoordinator:
             components=_ready_components(
                 tool_service=tool_service,
                 skill_source_count=len(skill_sources),
-                builtin_tool_count=builtin_tool_count,
-                pending_tool_count=pending_tool_count,
+                contributed_tool_count=len(contributions.tools),
             ),
             recovery=self._recovery,
         )
@@ -274,8 +267,7 @@ def _ready_components(
     *,
     tool_service: _ToolService,
     skill_source_count: int,
-    builtin_tool_count: int,
-    pending_tool_count: int,
+    contributed_tool_count: int,
 ) -> tuple[AILifecycleComponentStatus, ...]:
     tool_count = len(tool_service.registry.list_tools())
     return (
@@ -289,8 +281,7 @@ def _ready_components(
             available=True,
             detail=(
                 f"initialized; skill_sources={skill_source_count}; "
-                f"builtin_tools={builtin_tool_count}; "
-                f"pending_tools={pending_tool_count}"
+                f"contributed_tools={contributed_tool_count}"
             ),
         ),
     )

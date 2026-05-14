@@ -63,29 +63,6 @@ class AIToolRegistry:
             by_name=MappingProxyType({tool.name: tool for tool in tools}),
         )
 
-    def load_builtin_catalog(self) -> int:
-        """Load lifecycle-owned essential builtin tools into this registry."""
-
-        from apeiria.ai.tools.catalog import load_builtin_tool_catalog
-
-        return load_builtin_tool_catalog(self)
-
-    def register_pending_tools(self) -> int:
-        """Import handler modules and register all decorator-collected tools."""
-
-        from apeiria.ai.tools.decorators import collect_pending_tools
-        from apeiria.ai.tools.handlers import ensure_handlers_loaded
-
-        ensure_handlers_loaded()
-        pending: list[Any] = collect_pending_tools()
-        count = 0
-        for tool in pending:
-            if self.get(tool.name) is tool:
-                continue
-            self.register(tool)
-            count += 1
-        return count
-
 
 __all__ = [
     "AIDuplicateToolError",

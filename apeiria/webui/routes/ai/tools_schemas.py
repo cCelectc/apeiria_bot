@@ -28,7 +28,6 @@ class AIToolItem(BaseModel):
     readiness_code: str
     readiness_reason: str
     provider_name: str
-    tags: list[str] = []
     version: int
     status: str = "not_evaluated"
     denied_reason: str | None = None
@@ -109,7 +108,6 @@ def to_ai_tool_item(
         readiness_code=item.readiness.code,
         readiness_reason=item.readiness.reason,
         provider_name=provider_name,
-        tags=list(item.tags),
         version=item.version,
         status=status,
         denied_reason=denied_reason,
