@@ -25,8 +25,8 @@ if TYPE_CHECKING:
 RuntimeContextProjectionMode = Literal["runtime", "preview"]
 
 
-class RuntimeContextSkillRuntimeView(Protocol):
-    """Minimal skill/tool prompt result shape consumed by context projection."""
+class RuntimeContextToolRuntimeView(Protocol):
+    """Minimal tool-loop prompt result shape consumed by context projection."""
 
     @property
     def policy_text(self) -> str: ...
@@ -136,7 +136,7 @@ def project_runtime_context(  # noqa: PLR0913
     turn: "RuntimeTurnInput",
     context: "RuntimeContextMaterials",
     social_decision: "ReplyStrategyDecision | None",
-    skill_runtime: RuntimeContextSkillRuntimeView,
+    tool_runtime: RuntimeContextToolRuntimeView,
     skill_activation: str | None = None,
     capability_awareness: str | None = None,
     projection_mode: RuntimeContextProjectionMode = "runtime",
@@ -148,8 +148,8 @@ def project_runtime_context(  # noqa: PLR0913
         persona=context.persona,
         scene_type=turn.identity.scene_type,
         relationship=context.relationship_context,
-        tool_policy=skill_runtime.policy_text,
-        tool_results=skill_runtime.result_lines,
+        tool_policy=tool_runtime.policy_text,
+        tool_results=tool_runtime.result_lines,
         memories=tuple(context.recalled_memories),
         turns=tuple(context.turns),
         person_profile=context.person_profile,
@@ -168,8 +168,8 @@ def project_runtime_context(  # noqa: PLR0913
         persona=context.persona,
         conversation_summary=context.conversation_summary,
         relationship_context=context.relationship_context,
-        tool_policy_text=skill_runtime.policy_text,
-        tool_results=skill_runtime.result_lines,
+        tool_policy_text=tool_runtime.policy_text,
+        tool_results=tool_runtime.result_lines,
         memories=tuple(context.recalled_memories),
         turns=tuple(context.turns),
         person_profile=context.person_profile,
@@ -284,6 +284,6 @@ __all__ = [
     "RuntimeContextPreviewView",
     "RuntimeContextProjection",
     "RuntimeContextPromptView",
-    "RuntimeContextSkillRuntimeView",
+    "RuntimeContextToolRuntimeView",
     "project_runtime_context",
 ]

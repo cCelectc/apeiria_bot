@@ -71,7 +71,7 @@ async def execute_direct_runtime_turn(
     return RuntimeExecutionOutcome(
         stage="execution",
         response=turn_result.response,
-        skill_runtime=plan.skill_runtime,
+        tool_runtime=plan.tool_runtime,
         post_tool_task_class=None,
         delivery_result=None,
         turn_result=turn_result,
@@ -133,25 +133,25 @@ async def execute_tool_capable_runtime_turn(
 ) -> "RuntimeExecutionOutcome":
     from apeiria.app.ai.runtime.stages import RuntimeExecutionOutcome
 
-    skill_runtime = await _run_tool_loop(
+    tool_runtime = await _run_tool_loop(
         turn_context=turn_context,
         plan=plan,
     )
-    response = skill_runtime.final_response
+    response = tool_runtime.final_response
     turn_result = _build_tool_loop_turn_result(
         trace_id=turn_context.trace_id,
         runtime_mode=turn_context.runtime_mode,
-        skill_runtime=skill_runtime,
+        tool_runtime=tool_runtime,
     )
     turn_result = _with_prompt_diagnostics(turn_result, turn_context)
 
     post_tool_task_class: AIModelTaskClass | None = None
-    if skill_runtime.turns:
+    if tool_runtime.turns:
         post_tool_task_class = select_post_tool_reply_task_class()
         response, turn_result = await _maybe_refine_tool_response(
             turn_context=turn_context,
             plan=plan,
-            skill_runtime=skill_runtime,
+            tool_runtime=tool_runtime,
             base=turn_result,
             post_tool_task_class=post_tool_task_class,
         )
@@ -159,7 +159,7 @@ async def execute_tool_capable_runtime_turn(
     return RuntimeExecutionOutcome(
         stage="execution",
         response=response,
-        skill_runtime=skill_runtime,
+        tool_runtime=tool_runtime,
         post_tool_task_class=post_tool_task_class,
         delivery_result=None,
         turn_result=turn_result,
@@ -222,7 +222,7 @@ async def _maybe_refine_tool_response(
     *,
     turn_context: "TurnContext",
     plan: "RuntimeTurnPlan",
-    skill_runtime: RuntimeToolLoopResult,
+    tool_runtime: RuntimeToolLoopResult,
     base: AgentTurnResult,
     post_tool_task_class: "AIModelTaskClass",
 ) -> tuple["AIModelGenerateResponse | None", AgentTurnResult]:
@@ -243,8 +243,8 @@ async def _maybe_refine_tool_response(
             messages=build_roleplay_reply_messages(
                 replace(
                     plan.reply_compose_input,
-                    tool_policy=skill_runtime.policy_text,
-                    tool_results=skill_runtime.result_lines,
+                    tool_policy=tool_runtime.policy_text,
+                    tool_results=tool_runtime.result_lines,
                 )
             ),
             trace_id=turn_context.trace_id,
@@ -285,23 +285,23 @@ def _build_tool_loop_turn_result(
     *,
     trace_id: str,
     runtime_mode: str,
-    skill_runtime: RuntimeToolLoopResult,
+    tool_runtime: RuntimeToolLoopResult,
 ) -> AgentTurnResult:
-    response = skill_runtime.final_response
+    response = tool_runtime.final_response
     has_reply = response is not None and bool((response.content or "").strip())
     return AgentTurnResult(
         trace_id=trace_id,
         runtime_mode=runtime_mode,
         status="completed" if has_reply else "failed",
-        finish_reason=skill_runtime.finish_reason,
-        model_attempts=skill_runtime.model_attempts,
-        tool_attempts=skill_runtime.tool_attempts,
+        finish_reason=tool_runtime.finish_reason,
+        model_attempts=tool_runtime.model_attempts,
+        tool_attempts=tool_runtime.tool_attempts,
         response=response,
         response_source="tool_loop",
         metadata={
-            "tool_observation_count": len(skill_runtime.turns),
-            "tool_message_count": len(skill_runtime.tool_messages),
-            **skill_runtime.diagnostics,
+            "tool_observation_count": len(tool_runtime.turns),
+            "tool_message_count": len(tool_runtime.tool_messages),
+            **tool_runtime.diagnostics,
         },
     )
 

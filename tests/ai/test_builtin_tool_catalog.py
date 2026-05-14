@@ -31,6 +31,7 @@ ESSENTIAL_TOOL_NAMES = (
     "memory.write",
 )
 HTTP_OK = 200
+HTTP_NOT_FOUND = 404
 KNOWLEDGE_CANDIDATE_COUNT = 20
 KNOWLEDGE_EXCERPT_LIMIT = 320
 KNOWLEDGE_RESULT_LIMIT = 5
@@ -102,7 +103,7 @@ def test_lifecycle_loads_builtin_catalog_before_plugin_contributions() -> None:
         app_tool_loader=lambda: order.append("app_loader"),
     )
 
-    asyncio.run(coordinator.startup())
+    snapshot = asyncio.run(coordinator.startup())
     asyncio.run(coordinator.startup())
 
     assert order[: len(ESSENTIAL_TOOL_NAMES) + 4] == [
@@ -112,10 +113,12 @@ def test_lifecycle_loads_builtin_catalog_before_plugin_contributions() -> None:
         "pending_tools",
         "tool:plugin.echo",
     ]
-    assert skill_service.visible_tool_names[0] == (
+    assert skill_service.calls[0] == ()
+    assert tuple(tool_service.registry.tools) == (
         *ESSENTIAL_TOOL_NAMES,
         "plugin.echo",
     )
+    assert not hasattr(snapshot, "capabilities")
     assert future_service.calls == 1
 
 
@@ -560,6 +563,32 @@ def test_tool_diagnostics_route_reports_builtin_status(
     }
 
 
+def test_combined_capability_inventory_route_is_not_registered(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    from apeiria.webui.auth import require_control_panel
+    from apeiria.webui.routes.ai import router
+
+    monkeypatch.setattr(database_runtime, "_project_root", tmp_path)
+    database_runtime.ensure_ready()
+
+    def dependency_override() -> object:
+        return object()
+
+    app = FastAPI()
+    app.dependency_overrides[require_control_panel] = dependency_override
+    app.include_router(router, prefix="/ai")
+    client = TestClient(app)
+
+    response = client.get("/ai/tools/capabilities")
+
+    assert response.status_code == HTTP_NOT_FOUND
+
+
 def _plugin_tool(name: str) -> AIToolDefinition:
     async def handler(**_: Any) -> AIToolResult:
         return AIToolResult(summary="ok")
@@ -619,23 +648,17 @@ class _FakeToolService:
 
 class _FakeSkillService:
     def __init__(self, order: list[str], tool_service: _FakeToolService) -> None:
+        del tool_service
         self._order = order
-        self._tool_service = tool_service
-        self.visible_tool_names: list[tuple[str, ...]] = []
+        self.calls: list[tuple[Path, ...]] = []
 
     def ensure_initialized(
         self,
         *,
         skill_sources: tuple[Path, ...] = (),
     ) -> None:
-        del skill_sources
         self._order.append("skills")
-        self.visible_tool_names.append(
-            tuple(tool.name for tool in self._tool_service.registry.list_tools())
-        )
-
-    def list_skills(self) -> list[object]:
-        return []
+        self.calls.append(skill_sources)
 
 
 class _FakeFutureTaskService:

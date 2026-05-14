@@ -1,4 +1,4 @@
-"""Tools / capabilities / skills / policies / executions admin operations."""
+"""Tools, prompt skills, policies, and executions admin operations."""
 
 from __future__ import annotations
 
@@ -26,11 +26,10 @@ if TYPE_CHECKING:
         AIToolIntentPreview,
         AIToolPolicy,
     )
-    from apeiria.app.ai.lifecycle import AICapabilityInventoryRecord
 
 
 class ToolsAdminMixin:
-    """Admin read/mutation for tools, skills, capabilities, policies, and executions."""
+    """Admin read/mutation for tools, prompt skills, policies, and executions."""
 
     @staticmethod
     def _ensure_ai_support_ready() -> None:
@@ -43,16 +42,9 @@ class ToolsAdminMixin:
         self._ensure_ai_support_ready()
         return ai_tool_service.list_tool_specs(policy)
 
-    def list_capabilities(self) -> list["AICapabilityInventoryRecord"]:
-        snapshot = ensure_ai_runtime_support_initialized(source="admin_fallback")
-        return list(snapshot.capabilities)
-
-    def list_skills(
-        self,
-        policy: "AIToolPolicy | None" = None,
-    ) -> list["AISkillMetadata"]:
+    def list_skills(self) -> list["AISkillMetadata"]:
         self._ensure_ai_support_ready()
-        return ai_skill_service.list_skills(policy)
+        return ai_skill_service.list_skills()
 
     async def preview_tool_intents(
         self,

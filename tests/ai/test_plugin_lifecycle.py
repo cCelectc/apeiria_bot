@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any
 
 from apeiria.ai.tools import (
@@ -81,10 +80,9 @@ class _FakeToolService:
 
 class _FakeSkillService:
     def __init__(self, order: list[str], tool_service: _FakeToolService) -> None:
+        del tool_service
         self._order = order
-        self._tool_service = tool_service
         self.calls: list[tuple[Path, ...]] = []
-        self.visible_tool_names: list[tuple[str, ...]] = []
         self.skill_sources: tuple[Path, ...] = ()
 
     def ensure_initialized(
@@ -95,27 +93,15 @@ class _FakeSkillService:
         self._order.append("skills")
         self.calls.append(skill_sources)
         self.skill_sources = skill_sources
-        self.visible_tool_names.append(
-            tuple(tool.name for tool in self._tool_service.registry.list_tools())
-        )
 
     def list_skills(self) -> list[object]:
         from apeiria.ai.skills.contracts import build_file_skill_metadata
         from apeiria.ai.skills.loader import load_skills_from_sources
 
-        tool_skills = [
-            SimpleNamespace(
-                name=tool.name,
-                description=tool.description,
-                origin="tool",
-            )
-            for tool in self._tool_service.registry.list_tools()
-        ]
-        file_skills = [
+        return [
             build_file_skill_metadata(skill)
             for skill in load_skills_from_sources(self.skill_sources)
         ]
-        return [*tool_skills, *file_skills]
 
 
 class _FakeFutureTaskService:
@@ -157,7 +143,7 @@ def test_lifecycle_applies_plugin_contributions_before_skill_sync(
         app_tool_loader=lambda: order.append("app_loader"),
     )
 
-    asyncio.run(coordinator.startup())
+    snapshot = asyncio.run(coordinator.startup())
     asyncio.run(coordinator.startup())
 
     assert order[: len(ESSENTIAL_TOOL_NAMES) + 6] == [
@@ -172,7 +158,8 @@ def test_lifecycle_applies_plugin_contributions_before_skill_sync(
     assert "plugin.echo" in tool_service.registry.tools
     assert tool_service.registry.tools["plugin.echo"].origin == "plugin"
     assert skill_service.calls[0] == (skill_dir.resolve(),)
-    assert "plugin.echo" in skill_service.visible_tool_names[0]
+    assert all(skill.name != "plugin.echo" for skill in skill_service.list_skills())
+    assert not hasattr(snapshot, "capabilities")
     assert future_service.calls == 1
     assert len(tool_service.registry.tools) == EXPECTED_REGISTERED_TOOL_COUNT
 

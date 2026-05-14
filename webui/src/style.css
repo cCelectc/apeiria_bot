@@ -3820,76 +3820,6 @@
   white-space: pre-wrap;
 }
 
-.ai-skill-card__capabilities {
-  display: flex;
-  flex-direction: column;
-  gap: 7px;
-}
-
-.ai-skill-card__capabilities > span {
-  color: var(--muted-foreground);
-  font-size: 0.78rem;
-  font-weight: 700;
-}
-
-.ai-skill-card__capabilities > div {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 7px;
-}
-
-.ai-capability-table {
-  display: flex;
-  min-width: 0;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.ai-capability-table__head,
-.ai-capability-row {
-  display: grid;
-  grid-template-columns: minmax(220px, 1fr) minmax(90px, 120px) minmax(150px, 190px) minmax(0, 1fr);
-  gap: 12px;
-  align-items: center;
-}
-
-.ai-capability-table__head {
-  color: var(--muted-foreground);
-  font-size: 0.76rem;
-  font-weight: 800;
-  text-transform: uppercase;
-}
-
-.ai-capability-row {
-  padding: 11px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: color-mix(in oklch, var(--card) 82%, transparent);
-}
-
-.ai-capability-row > div {
-  display: flex;
-  min-width: 0;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.ai-capability-row strong {
-  overflow: hidden;
-  font-size: 0.9rem;
-  line-height: 1.35;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.ai-capability-row span {
-  min-width: 0;
-  color: var(--muted-foreground);
-  font-size: 0.8rem;
-  line-height: 1.4;
-  overflow-wrap: anywhere;
-}
-
 .ai-debug-tabs,
 .ai-debug-tabs [data-slot="tabs-content"] {
   min-width: 0;
@@ -5520,11 +5450,6 @@
     width: 100%;
   }
 
-  .ai-capability-table__head {
-    display: none;
-  }
-
-  .ai-capability-row,
   .ai-debug-tools-grid,
   .ai-debug-execution,
   .ai-debug-binding,

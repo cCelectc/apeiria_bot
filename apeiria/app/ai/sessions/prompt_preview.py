@@ -382,7 +382,7 @@ def _project_preview_context(
     *,
     turn: RuntimeTurnInput,
     context: RuntimeContextMaterials,
-    skill_runtime: RuntimeToolLoopResult,
+    tool_runtime: RuntimeToolLoopResult,
     skill_activation: str | None,
     social_decision: ReplyStrategyDecision | None,
 ) -> "RuntimeContextProjection":
@@ -390,7 +390,7 @@ def _project_preview_context(
         turn=turn,
         context=context,
         social_decision=social_decision,
-        skill_runtime=skill_runtime,
+        tool_runtime=tool_runtime,
         skill_activation=skill_activation,
         projection_mode="preview",
     )
@@ -607,7 +607,7 @@ class PromptPreviewReader:
             if has_tools
             else None
         )
-        skill_runtime = RuntimeToolLoopResult(
+        tool_runtime = RuntimeToolLoopResult(
             policy_text=tool_policy_text,
             result_lines=tool_results,
             turns=(),
@@ -620,7 +620,7 @@ class PromptPreviewReader:
         projected_context = _project_preview_context(
             turn=preview_turn,
             context=context,
-            skill_runtime=skill_runtime,
+            tool_runtime=tool_runtime,
             skill_activation=None,
             social_decision=social_decision,
         )

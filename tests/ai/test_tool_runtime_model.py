@@ -153,6 +153,74 @@ def test_builtin_tools_register_with_levels_and_nonmanageable_defaults() -> None
     assert all(tool.manageable is False for tool in tools.values())
 
 
+def test_skill_service_lists_file_skills_without_tool_registry_sync(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import apeiria.ai.skills.service as skill_service_module
+    from apeiria.ai.skills.runtime import AISkillRuntime
+    from apeiria.ai.skills.service import AISkillService
+
+    skill_dir = tmp_path / "skills" / "prompt"
+    skill_dir.mkdir(parents=True)
+    (skill_dir / "SKILL.md").write_text(
+        """---
+name: prompt.only
+description: prompt skill only
+entry_mode: prompt_only
+---
+
+Use only prompt instructions.
+""",
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(skill_service_module, "ai_skill_runtime", AISkillRuntime())
+    assert not hasattr(skill_service_module, "_get_ai_tool_service")
+
+    service = AISkillService()
+
+    service.ensure_initialized(skills_dir=tmp_path / "skills")
+    listed = service.list_skills()
+
+    assert [skill.name for skill in listed] == ["prompt.only"]
+    assert all(skill.origin == "file" for skill in listed)
+
+
+def test_skill_runtime_activates_file_skills_only() -> None:
+    from apeiria.ai.skills.parser import parse_skill_file
+    from apeiria.ai.skills.runtime import AISkillRuntime
+
+    runtime = AISkillRuntime()
+    runtime.register_file_skills(
+        [
+            parse_skill_file(
+                """---
+name: prompt.only
+description: prompt skill only
+entry_mode: workflow
+tools:
+  - memory.search
+---
+
+Use the prompt workflow.
+""",
+                file_path="SKILL.md",
+            )
+        ]
+    )
+
+    result = runtime.build_selection_result(
+        selected_names=("prompt.only", "memory.search"),
+    )
+
+    assert result.selected_names == ("prompt.only", "memory.search")
+    assert [activation.skill_name for activation in result.activations] == [
+        "prompt.only"
+    ]
+    assert runtime.activate_skill_explicit("memory.search") is None
+
+
 def test_tool_exposure_plan_filters_by_model_support_readiness_and_level() -> None:
     from apeiria.ai.tools.exposure import create_tool_exposure_plan
     from apeiria.ai.tools.models import (

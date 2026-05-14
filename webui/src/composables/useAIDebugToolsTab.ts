@@ -1,5 +1,4 @@
 import type {
-  AICapabilityItem,
   AIToolIntentPreviewItem,
   AIToolPolicyBindingItem,
   AIToolPolicyPreviewItem,
@@ -8,7 +7,6 @@ import { reactive, ref } from 'vue'
 import {
   createAIToolPolicyBinding,
   deleteAIToolPolicyBinding,
-  getAICapabilities,
   getAIToolPolicyBindings,
   previewAIToolIntents,
   previewAIToolPolicy,
@@ -24,7 +22,6 @@ export function useAIDebugToolsTab(t: (key: string) => string) {
   const previewingPolicy = ref(false)
   const previewingIntents = ref(false)
   const loadingTools = ref(false)
-  const capabilities = ref<AICapabilityItem[]>([])
   const bindings = ref<AIToolPolicyBindingItem[]>([])
   const policyPreview = ref<AIToolPolicyPreviewItem | null>(null)
   const intentPreview = ref<AIToolIntentPreviewItem[]>([])
@@ -47,11 +44,7 @@ export function useAIDebugToolsTab(t: (key: string) => string) {
   async function loadDebugToolsData() {
     loadingTools.value = true
     try {
-      const [capabilitiesResponse, bindingsResponse] = await Promise.all([
-        getAICapabilities(),
-        getAIToolPolicyBindings(),
-      ])
-      capabilities.value = capabilitiesResponse.data
+      const bindingsResponse = await getAIToolPolicyBindings()
       bindings.value = bindingsResponse.data
     } catch (error) {
       noticeStore.show(getErrorMessage(error, t('ai.loadFailed')), 'error')
@@ -144,7 +137,6 @@ export function useAIDebugToolsTab(t: (key: string) => string) {
   return {
     bindingForm,
     bindings,
-    capabilities,
     editBinding,
     editingBindingId,
     intentPreview,

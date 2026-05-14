@@ -1,4 +1,4 @@
-"""AI tools / skills / capabilities / policy-bindings / executions routes."""
+"""AI tools, prompt skills, policy-bindings, and executions routes."""
 
 from __future__ import annotations
 
@@ -12,7 +12,6 @@ from apeiria.app.ai import ai_application
 from apeiria.webui.auth import require_control_panel
 
 from .tools_schemas import (
-    AICapabilityItem,
     AISkillItem,
     AIToolExecutionItem,
     AIToolIntentPreviewItem,
@@ -23,7 +22,6 @@ from .tools_schemas import (
     AIToolPolicyBindingUpdateRequest,
     AIToolPolicyPreviewItem,
     AIToolPolicyPreviewRequest,
-    to_ai_capability_item,
     to_ai_skill_item,
     to_ai_tool_execution_item,
     to_ai_tool_intent_preview_item,
@@ -87,13 +85,10 @@ async def list_ai_tools(
 @router.get("/skills", response_model=list[AISkillItem])
 async def list_ai_skills(
     _: Annotated[Any, Depends(require_control_panel)],
-    *,
-    allowed_only: Annotated[bool, Query()] = False,
 ) -> list[AISkillItem]:
-    """List product-facing AI skills."""
+    """List file-based prompt skills."""
 
-    policy = AIToolPolicy() if allowed_only else None
-    skills = ai_application.operations.list_skills(policy=policy)
+    skills = ai_application.operations.list_skills()
     return [to_ai_skill_item(item) for item in skills]
 
 
@@ -171,14 +166,6 @@ async def delete_ai_tool_policy_binding(
         actor_username=_actor_username_from_claims(session),
     )
     return {"deleted": deleted}
-
-
-@router.get("/tools/capabilities", response_model=list[AICapabilityItem])
-async def list_ai_capabilities(
-    _: Annotated[Any, Depends(require_control_panel)],
-) -> list[AICapabilityItem]:
-    rows = ai_application.operations.list_capabilities()
-    return [to_ai_capability_item(item) for item in rows]
 
 
 @router.get("/tools/executions", response_model=list[AIToolExecutionItem])

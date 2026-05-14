@@ -108,7 +108,7 @@ class RuntimeTurnPlan:
     stage: RuntimeStageName
     selected: "AISelectedModel"
     fallback_models: tuple["AISelectedModel", ...]
-    skill_runtime: "RuntimeToolLoopResult"
+    tool_runtime: "RuntimeToolLoopResult"
     skill_activation: str | None
     pre_tool_task_class: "AIModelTaskClass"
     prompt_messages: tuple["AIModelMessage", ...]
@@ -134,7 +134,7 @@ class RuntimeExecutionOutcome:
 
     stage: RuntimeStageName
     response: Any | None
-    skill_runtime: "RuntimeToolLoopResult"
+    tool_runtime: "RuntimeToolLoopResult"
     post_tool_task_class: "AIModelTaskClass | None"
     delivery_result: "RuntimeDeliveryOutcome | None"
     turn_result: "AgentTurnResult | None" = None

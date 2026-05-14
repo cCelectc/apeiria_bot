@@ -45,12 +45,12 @@ class AssistantReplyPersistenceStage:
         generation: "RuntimeExecutionOutcome",
         trace_id: str,
     ) -> str:
-        if not generation.skill_runtime.turns:
+        if not generation.tool_runtime.turns:
             return "not_required"
         await append_tool_observation_turns(
             identity=turn.identity,
             trace_id=trace_id,
-            tool_turns=generation.skill_runtime.turns,
+            tool_turns=generation.tool_runtime.turns,
         )
         return "committed"
 
@@ -87,11 +87,11 @@ class AssistantReplyPersistenceStage:
                         "model_name": response.model_name,
                         "task_class": (
                             generation.post_tool_task_class
-                            if generation.skill_runtime.turns
+                            if generation.tool_runtime.turns
                             else plan.pre_tool_task_class
                         ),
                         "recalled_memory_count": len(context.recalled_memories),
-                        "tool_observation_count": len(generation.skill_runtime.turns),
+                        "tool_observation_count": len(generation.tool_runtime.turns),
                         "social_action": social_decision.action,
                         "social_tool_mode": social_decision.tool_mode,
                         "social_reason_text": social_decision.reason_text,

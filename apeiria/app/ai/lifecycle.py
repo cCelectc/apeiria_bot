@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Literal, Protocol
+from typing import TYPE_CHECKING, Literal, Protocol
 
 from nonebot.log import logger
 
@@ -17,7 +17,6 @@ if TYPE_CHECKING:
     from collections.abc import Callable
     from pathlib import Path
 
-    from apeiria.ai.skills import AISkillMetadata
     from apeiria.ai.tools.models import AIToolDefinition
     from apeiria.app.ai.future_tasks.service import AIFutureTaskRecoveryResult
 
@@ -43,32 +42,6 @@ class AILifecycleComponentStatus:
 
 
 @dataclass(frozen=True)
-class AICapabilityInventoryRecord:
-    """Unified admin read model for one AI capability contract."""
-
-    name: str
-    kind: str
-    origin: str
-    description: str
-    input_schema: dict[str, Any]
-    read_only: bool
-    concurrency_safe: bool
-    required_level: str
-    tags: tuple[str, ...]
-    version: int
-    display_name: str | None = None
-    availability: Literal["ready", "incomplete", "disabled"] = "incomplete"
-    policy_status: str = "not_evaluated"
-    diagnostics: tuple[str, ...] = ()
-
-    @property
-    def mutates_state(self) -> bool:
-        """Return whether the capability can change durable runtime state."""
-
-        return not self.read_only
-
-
-@dataclass(frozen=True)
 class AIFutureTaskRecoveryDiagnostics:
     """Bounded diagnostics for future-task startup recovery."""
 
@@ -86,7 +59,6 @@ class AILifecycleSnapshot:
     initialization_source: AILifecycleSource
     components: tuple[AILifecycleComponentStatus, ...]
     recovery: AIFutureTaskRecoveryDiagnostics | None = None
-    capabilities: tuple[AICapabilityInventoryRecord, ...] = ()
     diagnostics: tuple[str, ...] = ()
 
 
@@ -111,8 +83,6 @@ class _SkillService(Protocol):
         *,
         skill_sources: tuple["Path", ...] = (),
     ) -> None: ...
-
-    def list_skills(self) -> list["AISkillMetadata"]: ...
 
 
 class _FutureTaskService(Protocol):
@@ -174,7 +144,6 @@ class AIPluginLifecycleCoordinator:
                 initialization_source="failed",
                 components=_failed_components(detail),
                 recovery=self._recovery,
-                capabilities=(),
                 diagnostics=(detail,),
             )
             return self._snapshot
@@ -193,10 +162,6 @@ class AIPluginLifecycleCoordinator:
                 pending_tool_count=pending_tool_count,
             ),
             recovery=self._recovery,
-            capabilities=_build_capability_inventory(
-                tool_service=tool_service,
-                skill_service=skill_service,
-            ),
         )
         return self._snapshot
 
@@ -331,68 +296,6 @@ def _ready_components(
     )
 
 
-def _build_capability_inventory(
-    *,
-    tool_service: _ToolService,
-    skill_service: _SkillService,
-) -> tuple[AICapabilityInventoryRecord, ...]:
-    records: dict[str, AICapabilityInventoryRecord] = {}
-
-    for tool in tool_service.registry.list_tools():
-        records[tool.name] = _inventory_record_from_tool(tool)
-
-    for skill in skill_service.list_skills():
-        if skill.origin != "file":  # type: ignore[attr-defined]
-            continue
-        records[skill.name] = _inventory_record_from_file_skill(skill)
-
-    return tuple(records[name] for name in sorted(records))
-
-
-def _inventory_record_from_tool(tool: AIToolDefinition) -> AICapabilityInventoryRecord:
-    diagnostics = () if tool.readiness.ready else (tool.readiness.reason,)
-    return AICapabilityInventoryRecord(
-        name=tool.name,
-        kind="executable",
-        origin=tool.origin,
-        description=tool.description,
-        input_schema=tool.input_schema,
-        read_only=tool.required_level.value == "read",
-        concurrency_safe=False,
-        required_level=tool.required_level.value,
-        tags=tool.tags,
-        version=tool.version,
-        display_name=tool.display_name,
-        availability="ready" if tool.readiness.ready and tool.enabled else "disabled",
-        policy_status="not_evaluated",
-        diagnostics=diagnostics,
-    )
-
-
-def _inventory_record_from_file_skill(
-    skill: "AISkillMetadata",
-) -> AICapabilityInventoryRecord:
-    return AICapabilityInventoryRecord(
-        name=skill.name,
-        kind="prompt_skill",
-        origin="skill",
-        description=skill.description,
-        input_schema={
-            "type": "object",
-            "properties": {},
-            "additionalProperties": False,
-        },
-        read_only=True,
-        concurrency_safe=True,
-        required_level="read",
-        tags=(),
-        version=1,
-        display_name=skill.name,
-        availability="ready",
-        policy_status="not_evaluated",
-    )
-
-
 def _effective_source(
     *,
     requested: AILifecycleSource,
@@ -414,7 +317,6 @@ def _with_recovery(
         initialization_source=snapshot.initialization_source,
         components=snapshot.components,
         recovery=recovery,
-        capabilities=snapshot.capabilities,
         diagnostics=snapshot.diagnostics,
     )
 
@@ -427,7 +329,6 @@ ai_lifecycle_coordinator = AIPluginLifecycleCoordinator()
 
 
 __all__ = [
-    "AICapabilityInventoryRecord",
     "AIFutureTaskRecoveryDiagnostics",
     "AILifecycleComponentStatus",
     "AILifecycleSnapshot",

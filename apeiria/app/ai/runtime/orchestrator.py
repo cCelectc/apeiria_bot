@@ -311,7 +311,7 @@ class AISessionTurnEngine:
             response.source_id,
             response.model_name,
             len(context.recalled_memories),
-            len(execution.skill_runtime.turns),
+            len(execution.tool_runtime.turns),
             trace.kind,
             trace.trigger,
         )

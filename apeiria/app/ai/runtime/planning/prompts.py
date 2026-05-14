@@ -57,7 +57,7 @@ class RuntimePromptComposeInput:
 class RuntimePromptPlanningInput:
     """Prompt-facing runtime planning materials for reply prompt projection."""
 
-    skill_runtime: "RuntimeToolLoopResult"
+    tool_runtime: "RuntimeToolLoopResult"
     skill_activation: str | None
     has_tools: bool | None = None
 
@@ -234,7 +234,7 @@ def build_initial_prompt_compose_input(
         turn=turn,
         context=context,
         social_decision=social_decision,
-        skill_runtime=prompt_input.skill_runtime,
+        tool_runtime=prompt_input.tool_runtime,
         skill_activation=prompt_input.skill_activation,
     )
     compose_input = compose_input_from_context_projection(projection.prompt)

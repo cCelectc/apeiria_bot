@@ -348,20 +348,6 @@ export interface AISkillItem {
   display_description: string
 }
 
-export interface AICapabilityItem {
-  capability_name: string
-  kind: string
-  origin: string
-  description: string
-  required_level: string
-  readiness: string
-  availability: string
-  policy_status: string
-  diagnostics: string[]
-  tags: string[]
-  version: number
-}
-
 export interface AIToolPolicyBindingItem {
   binding_id: string
   scope_type: string
@@ -889,10 +875,6 @@ export function getAISkills() {
 
 export function getAITools() {
   return client.get<AIToolItem[]>('/ai/tools')
-}
-
-export function getAICapabilities() {
-  return client.get<AICapabilityItem[]>('/ai/tools/capabilities')
 }
 
 export function getAIToolPolicyBindings() {

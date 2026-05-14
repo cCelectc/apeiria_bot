@@ -17,7 +17,6 @@ if TYPE_CHECKING:
         AIToolPolicy,
         AIToolPolicyBindingSpec,
     )
-    from apeiria.app.ai.lifecycle import AICapabilityInventoryRecord
 
 
 class AIToolItem(BaseModel):
@@ -99,42 +98,13 @@ class AIToolPolicyBindingUpdateRequest(BaseModel):
     allowed_level: str = Field(min_length=1, max_length=16)
 
 
-class AICapabilityItem(BaseModel):
-    capability_name: str
-    kind: str
-    origin: str
-    description: str
-    required_level: str
-    readiness: str
-    availability: str
-    policy_status: str
-    diagnostics: list[str] = []
-    tags: list[str] = []
-    version: int
-
-
 def _skill_display_name(skill_name: str) -> str:
-    return {
-        "future_task.cancel": "取消提醒",
-        "future_task.create": "创建提醒",
-        "future_task.list": "查看提醒",
-        "knowledge.search": "查询知识",
-        "memory.search": "查询记忆",
-        "memory.write": "写入记忆",
-        "relationship.inspect": "查看关系状态",
-    }.get(skill_name, skill_name)
+    return skill_name
 
 
 def _skill_display_description(skill_name: str, fallback: str) -> str:
-    return {
-        "future_task.cancel": "取消当前会话中已安排的提醒任务。",
-        "future_task.create": "为当前会话创建新的提醒任务。",
-        "future_task.list": "查看当前会话已安排的提醒任务。",
-        "knowledge.search": "查询已配置知识库中的相关文档片段。",
-        "memory.search": "查询当前参与者可访问的长期记忆内容。",
-        "memory.write": "写入或修正一条明确的长期记忆。",
-        "relationship.inspect": "查看机器人对当前用户关系状态与情绪倾向的理解。",
-    }.get(skill_name, fallback)
+    del skill_name
+    return fallback
 
 
 def to_ai_tool_item(
@@ -214,22 +184,4 @@ def to_ai_tool_policy_binding_item(
         scope_type=item.scope_type,
         scope_id=item.scope_id,
         allowed_level=item.allowed_level.value,
-    )
-
-
-def to_ai_capability_item(
-    item: "AICapabilityInventoryRecord",
-) -> AICapabilityItem:
-    return AICapabilityItem(
-        capability_name=item.name,
-        kind=item.kind,
-        origin=item.origin,
-        description=item.description,
-        required_level=item.required_level,
-        readiness=item.availability,
-        availability=item.availability,
-        policy_status=item.policy_status,
-        diagnostics=list(item.diagnostics),
-        tags=list(item.tags),
-        version=item.version,
     )

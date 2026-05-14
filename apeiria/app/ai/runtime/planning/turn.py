@@ -117,7 +117,7 @@ async def plan_runtime_turn(
         model_supports_tools=selected.resolved_capabilities.supports_tool_calling,
     )
 
-    skill_runtime = RuntimeToolLoopResult(
+    tool_runtime = RuntimeToolLoopResult(
         policy_text=summarize_tool_policy(
             ai_tool_service.registry.list_tools(),
             context.tool_policy,
@@ -138,7 +138,7 @@ async def plan_runtime_turn(
         turn=turn,
         context=context,
         social_decision=social_decision,
-        skill_runtime=skill_runtime,
+        tool_runtime=tool_runtime,
         skill_activation=skill_selection.activation_prompt,
         projection_mode="runtime",
     )
@@ -179,7 +179,7 @@ async def plan_runtime_turn(
         stage="planning",
         selected=selected,
         fallback_models=await select_fallback_models(selected),
-        skill_runtime=skill_runtime,
+        tool_runtime=tool_runtime,
         skill_activation=skill_selection.activation_prompt,
         pre_tool_task_class=pre_tool_task_class,
         prompt_messages=prompt_messages,
@@ -263,7 +263,7 @@ def build_initial_prompt_compose_input(
         turn=turn,
         context=context,
         social_decision=social_decision,
-        skill_runtime=prompt_input.skill_runtime,
+        tool_runtime=prompt_input.tool_runtime,
         skill_activation=prompt_input.skill_activation,
         projection_mode="runtime",
     )

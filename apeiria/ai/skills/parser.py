@@ -7,7 +7,7 @@ from typing import Any, Literal
 
 import yaml
 
-SkillEntryMode = Literal["prompt_only", "tool_backed", "workflow"]
+SkillEntryMode = Literal["prompt_only", "workflow"]
 
 
 @dataclass(frozen=True)
@@ -36,9 +36,7 @@ class SkillParseError(ValueError):
 
 
 _REQUIRED_FIELDS = frozenset({"name", "description"})
-_VALID_ENTRY_MODES: frozenset[str] = frozenset(
-    {"prompt_only", "tool_backed", "workflow"}
-)
+_VALID_ENTRY_MODES: frozenset[str] = frozenset({"prompt_only", "workflow"})
 
 
 def parse_skill_file(

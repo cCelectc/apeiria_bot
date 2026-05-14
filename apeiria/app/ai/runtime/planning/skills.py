@@ -81,7 +81,7 @@ async def select_runtime_skills(
 
 def _file_catalog_entries() -> list["AISkillCatalogEntry"]:
     return sorted(
-        [entry for entry in ai_skill_runtime.list_catalog() if entry.origin == "file"],
+        ai_skill_runtime.list_catalog(),
         key=lambda entry: entry.skill_name,
     )
 

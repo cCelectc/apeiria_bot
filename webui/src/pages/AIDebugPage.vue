@@ -77,7 +77,6 @@ const {
 const {
   bindingForm,
   bindings,
-  capabilities,
   editBinding,
   editingBindingId,
   intentPreview,
@@ -629,25 +628,6 @@ watch(debugTab, () => {
                 </Button>
               </div>
               <pre v-if="policyPreview" class="ai-debug-json">{{ formatJson(policyPreview) }}</pre>
-            </div>
-          </Panel>
-
-          <Panel :title="t('ai.capabilityRegistry')">
-            <div class="ai-debug-binding-list">
-              <article
-                v-for="item in capabilities"
-                :key="`${item.capability_name}-${item.version}`"
-                class="ai-debug-binding"
-              >
-                <div>
-                  <strong>{{ item.capability_name }}</strong>
-                  <span>{{ item.description || t('common.none') }}</span>
-                </div>
-                <Badge variant="secondary">
-                  {{ t('ai.requiredLevel') }}: {{ item.required_level }}
-                </Badge>
-                <span>{{ item.readiness }} / {{ item.diagnostics.join(' / ') || item.origin }}</span>
-              </article>
             </div>
           </Panel>
 

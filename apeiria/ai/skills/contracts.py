@@ -5,30 +5,9 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Literal
 
 from apeiria.ai.skills.catalog import AISkillMetadata
-from apeiria.ai.tools.models import AIToolLevel
 
 if TYPE_CHECKING:
     from apeiria.ai.skills.parser import AISkillFileDefinition
-    from apeiria.ai.tools.models import AIToolDefinition
-
-
-def build_tool_skill_metadata(tool: "AIToolDefinition") -> AISkillMetadata:
-    """Map one first-class tool into skill catalog metadata."""
-
-    return AISkillMetadata(
-        name=tool.name,
-        description=tool.description,
-        side_effect_level=_map_tool_side_effect_level(tool),
-        permission_source="global",
-        idempotent=tool.required_level is AIToolLevel.READ,
-        fallback_behavior="degrade_to_text_reply",
-        origin="tool",
-        entry_mode="tool_backed",
-        tags=tool.tags,
-    )
-
-
-build_skill_metadata = build_tool_skill_metadata
 
 
 def build_file_skill_metadata(
@@ -47,16 +26,6 @@ def build_file_skill_metadata(
         entry_mode=file_def.entry_mode,
         tags=file_def.tags,
     )
-
-
-def _map_tool_side_effect_level(
-    tool: "AIToolDefinition",
-) -> Literal["read_only", "low_risk", "high_risk"]:
-    if tool.required_level is AIToolLevel.READ:
-        return "read_only"
-    if tool.required_level in {AIToolLevel.HOST, AIToolLevel.ADMIN}:
-        return "high_risk"
-    return "low_risk"
 
 
 def _infer_file_skill_side_effect(

@@ -147,7 +147,7 @@ class InMemoryAISessionRuntime:
                 return RuntimeExecutionOutcome(
                     stage="execution",
                     response=None,
-                    skill_runtime=plan.skill_runtime,
+                    tool_runtime=plan.tool_runtime,
                     post_tool_task_class=None,
                     delivery_result=None,
                     turn_result=AgentTurnResult.skipped(

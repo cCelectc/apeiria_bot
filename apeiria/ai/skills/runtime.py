@@ -25,14 +25,11 @@ class AISkillCatalogEntry:
     skill_name: str
     description: str
     entry_mode: str
-    origin: Literal["file", "tool"]
+    _file_definition: AISkillFileDefinition
     tags: tuple[str, ...] = ()
 
-    # Populated only for file-based skills
-    _file_definition: AISkillFileDefinition | None = None
-
     @property
-    def file_definition(self) -> AISkillFileDefinition | None:
+    def file_definition(self) -> AISkillFileDefinition:
         return self._file_definition
 
 
@@ -68,8 +65,7 @@ class AISkillRuntime:
 
     Responsibilities:
 
-    1. **Catalog management**: Maintain a unified index of file-based and
-       tool-based skills.
+    1. **Catalog management**: Maintain an index of file-based prompt skills.
     2. **Progressive disclosure**: Only expose name + description to the
        model.  Load full body on demand.
     3. **Selection projection**: Activate selected catalog names supplied by
@@ -99,31 +95,11 @@ class AISkillRuntime:
                 description=skill.description,
                 entry_mode=skill.entry_mode,
                 tags=skill.tags,
-                origin="file",
                 _file_definition=skill,
             )
         logger.debug(
             "Registered {} file-based skills into runtime catalog",
             len(skills),
-        )
-
-    def register_tool_skill(
-        self,
-        *,
-        skill_name: str,
-        description: str,
-        tags: tuple[str, ...] = (),
-    ) -> None:
-        """Register a tool-based skill entry (unified catalog view)."""
-
-        if skill_name in self._catalog:
-            return
-        self._catalog[skill_name] = AISkillCatalogEntry(
-            skill_name=skill_name,
-            description=description,
-            entry_mode="tool_backed",
-            tags=tags,
-            origin="tool",
         )
 
     # ------------------------------------------------------------------
@@ -186,23 +162,14 @@ class AISkillRuntime:
         if entry is None:
             return None
 
-        if entry.origin == "file":
-            file_def = self._file_skills.get(skill_name)
-            if file_def is None:
-                return None
-            return AISkillActivation(
-                skill_name=skill_name,
-                entry_mode=file_def.entry_mode,
-                body_markdown=file_def.body_markdown,
-                tools=file_def.tools,
-                reason=reason,
-            )
-
+        file_def = self._file_skills.get(skill_name)
+        if file_def is None:
+            return None
         return AISkillActivation(
             skill_name=skill_name,
-            entry_mode="tool_backed",
-            body_markdown="",
-            tools=(),
+            entry_mode=file_def.entry_mode,
+            body_markdown=file_def.body_markdown,
+            tools=file_def.tools,
             reason=reason,
         )
 
@@ -231,17 +198,10 @@ class AISkillRuntime:
                 f"## Active Skill: {activation.skill_name}",
             ]
 
-            if activation.entry_mode == "prompt_only":
+            if activation.entry_mode in {"prompt_only", "workflow"}:
                 section_lines.append(activation.body_markdown)
-            elif activation.entry_mode == "tool_backed":
-                if activation.body_markdown:
-                    section_lines.append(activation.body_markdown)
-                if activation.tools:
-                    section_lines.append(
-                        f"\nRequired tools: {', '.join(activation.tools)}"
-                    )
-            elif activation.entry_mode == "workflow":
-                section_lines.append(activation.body_markdown)
+            if activation.tools:
+                section_lines.append(f"\nRequired tools: {', '.join(activation.tools)}")
 
             sections.append("\n".join(section_lines))
 

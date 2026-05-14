@@ -12,7 +12,6 @@ SkillPermissionSource = Literal[
     "conversation",
     "persona",
 ]
-SkillOrigin = Literal["tool", "file"]
 
 
 @dataclass(frozen=True)
@@ -25,6 +24,6 @@ class AISkillMetadata:
     permission_source: SkillPermissionSource
     idempotent: bool
     fallback_behavior: str
-    origin: SkillOrigin = "tool"
-    entry_mode: str = "tool_backed"
+    origin: Literal["file"] = "file"
+    entry_mode: str = "prompt_only"
     tags: tuple[str, ...] = ()
