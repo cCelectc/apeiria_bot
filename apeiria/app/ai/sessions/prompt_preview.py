@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
 from apeiria.access.groups import group_service
+from apeiria.ai.config import get_ai_plugin_config
 from apeiria.ai.model import AIModelRouteQuery
 from apeiria.ai.model.routing.profile import ai_model_profile_service
 from apeiria.ai.persona import (
@@ -46,7 +47,6 @@ from apeiria.app.ai.runtime.context.relationships import (
 from apeiria.app.ai.runtime.execution.tool_loop import RuntimeToolLoopResult
 from apeiria.app.ai.runtime.planning.hard_rules import decide_runtime_hard_rule
 from apeiria.app.ai.runtime.planning.prompts import (
-    RuntimePromptPlanningInput,
     build_pre_tool_reply_packet,
     build_roleplay_reply_packet,
     compose_input_from_context_projection,
@@ -54,6 +54,11 @@ from apeiria.app.ai.runtime.planning.prompts import (
 from apeiria.app.ai.runtime.planning.reply_decision import (
     select_post_tool_reply_task_class,
     select_pre_tool_reply_task_class,
+)
+from apeiria.app.ai.runtime.planning.tool_exposure import (
+    ToolOrchestrator,
+    build_tool_guidance_text,
+    compile_tool_exposure_provider_schema,
 )
 from apeiria.app.ai.runtime.session.context import (
     RuntimeContextMaterials,
@@ -377,15 +382,16 @@ def _project_preview_context(
     *,
     turn: RuntimeTurnInput,
     context: RuntimeContextMaterials,
-    prompt_planning: RuntimePromptPlanningInput,
+    skill_runtime: RuntimeToolLoopResult,
+    skill_activation: str | None,
     social_decision: ReplyStrategyDecision | None,
 ) -> "RuntimeContextProjection":
     return project_runtime_context(
         turn=turn,
         context=context,
         social_decision=social_decision,
-        skill_runtime=prompt_planning.skill_runtime,
-        skill_activation=prompt_planning.skill_activation,
+        skill_runtime=skill_runtime,
+        skill_activation=skill_activation,
         projection_mode="preview",
     )
 
@@ -394,6 +400,7 @@ def _build_preview_prompt_outputs(
     *,
     context_projection: "RuntimeContextProjection",
     has_tools: bool,
+    tool_guidance: str | None,
     hard_rule_decision: RuntimeHardRuleDecision,
     social_decision: ReplyStrategyDecision | None,
 ) -> tuple[
@@ -409,6 +416,7 @@ def _build_preview_prompt_outputs(
         social_decision is not None and social_decision.should_speak
     )
     compose_input = compose_input_from_context_projection(context_projection.prompt)
+    compose_input = replace(compose_input, tool_guidance=tool_guidance)
     if should_show_prompt:
         assert social_decision is not None
         planning_packet = build_pre_tool_reply_packet(
@@ -528,21 +536,6 @@ class PromptPreviewReader:
             identity=identity,
             user_id=resolved_user_id,
         )
-        allowed_tools = ai_tool_service.list_allowed_tools(tool_policy)
-        has_tools = bool(allowed_tools)
-        pre_tool_task_class = select_pre_tool_reply_task_class(has_tools=has_tools)
-        selected = await ai_model_profile_service.select_model(
-            query=AIModelRouteQuery(task_class=pre_tool_task_class),
-            target=build_model_binding_target(identity, resolved_user_id),
-        )
-        roleplay_selected = (
-            await ai_model_profile_service.select_model(
-                query=AIModelRouteQuery(task_class=select_post_tool_reply_task_class()),
-                target=build_model_binding_target(identity, resolved_user_id),
-            )
-            if has_tools
-            else None
-        )
         context_turns = to_context_turns(turns)
         hard_rule_decision = _build_preview_hard_rule_decision(
             turn=preview_turn,
@@ -568,22 +561,67 @@ class PromptPreviewReader:
             memories=memories,
             relationship_context=relationship_context,
             person_profile=person_profile,
-            allowed_tools=tuple(allowed_tools),
+            allowed_tools=tuple(ai_tool_service.list_allowed_tools(tool_policy)),
         )
         context = context_bundle.context
-        prompt_planning = RuntimePromptPlanningInput(
-            skill_runtime=RuntimeToolLoopResult(
-                policy_text=tool_policy_text,
-                result_lines=tool_results,
-                turns=(),
+        allowed_tool_specs = (
+            ()
+            if social_decision is not None and social_decision.tool_mode == "avoid"
+            else tuple(context.allowed_tools)
+        )
+        tool_orchestrator = ToolOrchestrator()
+        initial_exposure_plan = tool_orchestrator.plan_exposure(
+            allowed_tools=allowed_tool_specs,
+            policy=context.tool_policy,
+            ordinary_ambient_group=(
+                identity.scene_type == "group" and not preview_turn.is_tome
             ),
-            skill_activation=None,
-            has_tools=has_tools,
+            execution_timeout_seconds=get_ai_plugin_config().tool_execution_timeout_seconds,
+        )
+        has_tools = initial_exposure_plan.has_executable_tools
+        pre_tool_task_class = select_pre_tool_reply_task_class(has_tools=has_tools)
+        selected = await ai_model_profile_service.select_model(
+            query=AIModelRouteQuery(task_class=pre_tool_task_class),
+            target=build_model_binding_target(identity, resolved_user_id),
+        )
+        preview_exposure_plan = tool_orchestrator.plan_exposure(
+            allowed_tools=allowed_tool_specs,
+            policy=context.tool_policy,
+            ordinary_ambient_group=(
+                identity.scene_type == "group" and not preview_turn.is_tome
+            ),
+            execution_timeout_seconds=get_ai_plugin_config().tool_execution_timeout_seconds,
+            model_supports_tools=(
+                selected.resolved_capabilities.supports_tool_calling
+                if selected is not None
+                else False
+            ),
+        )
+        has_tools = preview_exposure_plan.has_executable_tools
+        pre_tool_task_class = select_pre_tool_reply_task_class(has_tools=has_tools)
+        roleplay_selected = (
+            await ai_model_profile_service.select_model(
+                query=AIModelRouteQuery(task_class=select_post_tool_reply_task_class()),
+                target=build_model_binding_target(identity, resolved_user_id),
+            )
+            if has_tools
+            else None
+        )
+        skill_runtime = RuntimeToolLoopResult(
+            policy_text=tool_policy_text,
+            result_lines=tool_results,
+            turns=(),
+            available_tools=compile_tool_exposure_provider_schema(
+                preview_exposure_plan,
+                current_time=prompt_time,
+            ),
+            diagnostics=dict(preview_exposure_plan.diagnostics),
         )
         projected_context = _project_preview_context(
             turn=preview_turn,
             context=context,
-            prompt_planning=prompt_planning,
+            skill_runtime=skill_runtime,
+            skill_activation=None,
             social_decision=social_decision,
         )
         (
@@ -596,6 +634,7 @@ class PromptPreviewReader:
         ) = _build_preview_prompt_outputs(
             context_projection=projected_context,
             has_tools=has_tools,
+            tool_guidance=build_tool_guidance_text(preview_exposure_plan),
             hard_rule_decision=hard_rule_decision,
             social_decision=social_decision,
         )

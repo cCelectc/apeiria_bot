@@ -21,6 +21,7 @@ REPLY_SECTION_SYSTEM_INSTRUCTIONS = "SystemInstructions"
 REPLY_SECTION_PERSONA = "Persona"
 REPLY_SECTION_STYLE = "Style"
 REPLY_SECTION_CAPABILITY_AWARENESS = "CapabilityAwareness"
+REPLY_SECTION_TOOL_GUIDANCE = "ToolGuidance"
 REPLY_SECTION_RELATIONSHIP = "Relationship"
 REPLY_SECTION_PERSON_PROFILE = "PersonProfile"
 REPLY_SECTION_SOCIAL_POLICY = "SocialPolicy"
@@ -43,6 +44,7 @@ REPLY_STABLE_REGION_SECTIONS = (
     REPLY_SECTION_PERSONA,
     REPLY_SECTION_STYLE,
     REPLY_SECTION_CAPABILITY_AWARENESS,
+    REPLY_SECTION_TOOL_GUIDANCE,
     REPLY_SECTION_RESPONSE_RULES,
 )
 
@@ -76,6 +78,7 @@ class ReplyPromptInput:
     conversation_summary: str | None = None
     social_policy_summary: str | None = None
     capability_awareness: str | None = None
+    tool_guidance: str | None = None
     future_task_context: str | None = None
     skill_activation: str | None = None
 
@@ -130,6 +133,13 @@ def _build_reply_packet(
         name=REPLY_SECTION_CAPABILITY_AWARENESS,
         content=inputs.capability_awareness,
     )
+    if mode == "planner":
+        _append_section(
+            sections,
+            role="system",
+            name=REPLY_SECTION_TOOL_GUIDANCE,
+            content=inputs.tool_guidance,
+        )
     _append_lines(
         sections,
         role="system",

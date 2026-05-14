@@ -90,6 +90,10 @@ class RuntimeToolLoopInput:
     recalled_memory_ids: tuple[str, ...]
     recalled_memory_contents: tuple[str, ...]
     relationship_context: str | None
+    actor_id: str | None = None
+    chat_scope_type: str | None = None
+    chat_scope_id: str | None = None
+    reply_audience: str | None = None
     provider_name_map: Mapping[str, str] | None = None
     execution_timeout_seconds: float | None = None
     tool_mode: str = "allow"
@@ -339,6 +343,10 @@ class RuntimeToolLoopRunner:
             recalled_memory_contents=loop_input.recalled_memory_contents,
             relationship_context=loop_input.relationship_context,
             execution_timeout_seconds=loop_input.execution_timeout_seconds,
+            actor_id=loop_input.actor_id,
+            chat_scope_type=loop_input.chat_scope_type,
+            chat_scope_id=loop_input.chat_scope_id,
+            reply_audience=loop_input.reply_audience,
         )
 
     async def _execute_intents_with_policy(

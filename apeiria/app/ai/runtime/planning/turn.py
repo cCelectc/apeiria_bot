@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import TYPE_CHECKING
 
 from nonebot.log import logger
@@ -36,6 +37,7 @@ from apeiria.app.ai.runtime.planning.reply_decision import (
 from apeiria.app.ai.runtime.planning.skills import select_runtime_skills
 from apeiria.app.ai.runtime.planning.tool_exposure import (
     ToolOrchestrator,
+    build_tool_guidance_text,
     compile_tool_exposure_provider_schema,
 )
 from apeiria.app.ai.runtime.stages import (
@@ -142,6 +144,10 @@ async def plan_runtime_turn(
     )
     reply_compose_input = compose_input_from_context_projection(
         context_projection.prompt,
+    )
+    reply_compose_input = replace(
+        reply_compose_input,
+        tool_guidance=build_tool_guidance_text(tool_exposure_plan),
     )
     prompt_packet = build_pre_tool_reply_packet(
         reply_compose_input,
@@ -261,7 +267,13 @@ def build_initial_prompt_compose_input(
         skill_activation=prompt_input.skill_activation,
         projection_mode="runtime",
     )
-    return compose_input_from_context_projection(context_projection.prompt)
+    compose_input = compose_input_from_context_projection(context_projection.prompt)
+    if isinstance(prompt_input, RuntimeTurnPlan):
+        return replace(
+            compose_input,
+            tool_guidance=build_tool_guidance_text(prompt_input.tool_exposure_plan),
+        )
+    return compose_input
 
 
 def _initial_reply_has_tools(

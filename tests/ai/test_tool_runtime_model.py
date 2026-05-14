@@ -24,7 +24,7 @@ def test_tool_level_ordering_and_policy_decision() -> None:
         return object()
 
     tool = AIToolDefinition(
-        name="memory.update",
+        name="memory.write",
         description="update memory",
         input_schema={"type": "object", "properties": {}},
         required_level=AIToolLevel.WRITE,
@@ -138,13 +138,17 @@ def test_builtin_tools_register_with_levels_and_nonmanageable_defaults() -> None
     from apeiria.ai.tools.service import AIToolService
 
     service = AIToolService()
+    service.registry.load_builtin_catalog()
     assert service.registry.register_pending_tools() == 0
     tools = {tool.name: tool for tool in service.list_tool_specs()}
 
-    assert tools["memory.query"].required_level is AIToolLevel.READ
+    assert tools["memory.search"].required_level is AIToolLevel.READ
     assert tools["relationship.inspect"].required_level is AIToolLevel.READ
-    assert tools["memory.update"].required_level is AIToolLevel.WRITE
-    assert tools["future_task.manage"].required_level is AIToolLevel.WRITE
+    assert tools["memory.write"].required_level is AIToolLevel.WRITE
+    assert tools["knowledge.search"].required_level is AIToolLevel.READ
+    assert tools["future_task.create"].required_level is AIToolLevel.WRITE
+    assert tools["future_task.list"].required_level is AIToolLevel.READ
+    assert tools["future_task.cancel"].required_level is AIToolLevel.WRITE
     assert all(tool.origin == "builtin" for tool in tools.values())
     assert all(tool.manageable is False for tool in tools.values())
 
@@ -162,7 +166,7 @@ def test_tool_exposure_plan_filters_by_model_support_readiness_and_level() -> No
         return object()
 
     ready_read = AIToolDefinition(
-        name="memory.query",
+        name="memory.search",
         description="read",
         input_schema={"type": "object", "properties": {}},
         required_level=AIToolLevel.READ,
@@ -210,9 +214,9 @@ def test_tool_exposure_plan_filters_by_model_support_readiness_and_level() -> No
 
     assert unsupported.visible_tools == ()
     assert unsupported.unavailable_reasons == {
-        "memory.query": "model does not support tool calling"
+        "memory.search": "model does not support tool calling"
     }
-    assert unsupported.diagnostics["memory.query"].unsupported_model_reason == (
+    assert unsupported.diagnostics["memory.search"].unsupported_model_reason == (
         "model does not support tool calling"
     )
 
@@ -229,18 +233,17 @@ def test_provider_tool_projection_uses_safe_names_and_provider_payloads() -> Non
         return object()
 
     tool = AIToolDefinition(
-        name="future_task.manage",
-        description="manage reminders",
+        name="future_task.create",
+        description="create reminder",
         input_schema={
             "type": "object",
             "properties": {
-                "action": {
+                "description": {
                     "type": "string",
-                    "enum": ["create", "cancel", "list"],
-                    "description": "operation",
+                    "description": "reminder content",
                 }
             },
-            "required": ["action"],
+            "required": ["description"],
             "additionalProperties": False,
         },
         required_level=AIToolLevel.WRITE,
@@ -251,13 +254,13 @@ def test_provider_tool_projection_uses_safe_names_and_provider_payloads() -> Non
     anthropic_projection = project_tools_for_anthropic((tool,))
     gemini_projection = project_tools_for_gemini((tool,))
 
-    assert openai_projection.name_map == {"future_task_manage": "future_task.manage"}
+    assert openai_projection.name_map == {"future_task_create": "future_task.create"}
     assert openai_projection.payloads == (
         {
             "type": "function",
             "function": {
-                "name": "future_task_manage",
-                "description": "manage reminders",
+                "name": "future_task_create",
+                "description": "create reminder",
                 "parameters": tool.input_schema,
                 "strict": True,
             },
@@ -265,20 +268,20 @@ def test_provider_tool_projection_uses_safe_names_and_provider_payloads() -> Non
     )
     assert anthropic_projection.payloads == (
         {
-            "name": "future_task_manage",
-            "description": "manage reminders",
+            "name": "future_task_create",
+            "description": "create reminder",
             "input_schema": tool.input_schema,
         },
     )
     assert gemini_projection.payloads == (
         {
-            "name": "future_task_manage",
-            "description": "manage reminders",
+            "name": "future_task_create",
+            "description": "create reminder",
             "parameters": tool.input_schema,
         },
     )
-    assert gemini_projection.resolve_provider_name("future_task_manage") == (
-        "future_task.manage"
+    assert gemini_projection.resolve_provider_name("future_task_create") == (
+        "future_task.create"
     )
 
 
@@ -290,14 +293,14 @@ def test_tool_call_intents_use_provider_name_mapping() -> None:
         (
             AIModelToolCall(
                 tool_call_id="call-1",
-                name="future_task_manage",
-                arguments={"action": "list"},
+                name="future_task_list",
+                arguments={"limit": 5},
             ),
         ),
-        provider_name_map={"future_task_manage": "future_task.manage"},
+        provider_name_map={"future_task_list": "future_task.list"},
     )
 
-    assert intents[0].tool_name == "future_task.manage"
+    assert intents[0].tool_name == "future_task.list"
     assert intents[0].call_id == "call-1"
 
 
@@ -421,8 +424,8 @@ def test_gemini_adapter_projects_tools_to_function_declarations() -> None:
         messages=(),
         tools=(
             AIModelToolDefinition(
-                name="memory_query",
-                description="inspect memory",
+                name="memory_search",
+                description="search memory",
                 parameters={"type": "object", "properties": {}},
             ),
         ),
@@ -435,8 +438,8 @@ def test_gemini_adapter_projects_tools_to_function_declarations() -> None:
         {
             "functionDeclarations": [
                 {
-                    "name": "memory_query",
-                    "description": "inspect memory",
+                    "name": "memory_search",
+                    "description": "search memory",
                     "parameters": {"type": "object", "properties": {}},
                 }
             ]

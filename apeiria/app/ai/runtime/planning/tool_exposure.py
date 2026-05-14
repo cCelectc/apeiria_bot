@@ -26,6 +26,7 @@ DEFAULT_TOOL_AWARENESS_CATEGORIES = (
     "plugin_capability",
 )
 _DISPLAY_TIMEZONE = ZoneInfo("Asia/Shanghai")
+_MAX_TOOL_GUIDANCE_DESCRIPTION_CHARS = 160
 
 
 @dataclass(frozen=True, slots=True)
@@ -80,6 +81,37 @@ def compile_tool_exposure_provider_schema(
             )
         )
     return plan.selected_tools
+
+
+def build_tool_guidance_text(plan: ToolExposurePlan) -> str | None:
+    """Build compact prompt guidance from the actual exposed tool set."""
+
+    if plan.selected_tool_definitions:
+        lines = [
+            _tool_guidance_line(
+                tool,
+                provider_name=_provider_name_for_tool(plan, tool.name),
+            )
+            for tool in plan.selected_tool_definitions
+        ]
+    else:
+        lines = [
+            (f"- {tool.name}: {_bounded_tool_guidance_description(tool.description)}")
+            for tool in plan.selected_tools
+        ]
+    if not lines:
+        return None
+    return "\n".join(
+        (
+            "Model-visible tools this turn:",
+            *lines,
+            (
+                "Call a tool only when its description matches a needed lookup "
+                "or action; answer directly when current context is enough."
+            ),
+            "Do not claim a tool result unless a tool observation is provided.",
+        )
+    )
 
 
 def build_default_tool_exposure_plan(
@@ -221,6 +253,31 @@ def _with_runtime_projection_context(
     )
 
 
+def _tool_guidance_line(
+    tool: "AIToolDefinition",
+    *,
+    provider_name: str,
+) -> str:
+    return (
+        f"- {provider_name} ({tool.name}, {tool.required_level.value}): "
+        f"{_bounded_tool_guidance_description(tool.description)}"
+    )
+
+
+def _provider_name_for_tool(plan: ToolExposurePlan, tool_name: str) -> str:
+    for provider_name, stable_name in plan.provider_name_map.items():
+        if stable_name == tool_name:
+            return provider_name
+    return tool_name
+
+
+def _bounded_tool_guidance_description(description: str) -> str:
+    normalized = " ".join(description.split())
+    if len(normalized) <= _MAX_TOOL_GUIDANCE_DESCRIPTION_CHARS:
+        return normalized
+    return f"{normalized[: _MAX_TOOL_GUIDANCE_DESCRIPTION_CHARS - 1].rstrip()}..."
+
+
 def apply_tool_exposure_allowlist(
     request: "RuntimeToolLoopInput",
     plan: ToolExposurePlan,
@@ -250,5 +307,6 @@ __all__ = [
     "ToolOrchestrator",
     "apply_tool_exposure_allowlist",
     "build_default_tool_exposure_plan",
+    "build_tool_guidance_text",
     "compile_tool_exposure_provider_schema",
 ]

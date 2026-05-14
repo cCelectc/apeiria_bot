@@ -29,6 +29,7 @@ def function_name_to_tool_name(function_name: str) -> str:
     # Known prefixes where the first `_` is the namespace separator.
     for prefix in (
         "future_task_",
+        "knowledge_",
         "memory_",
         "relationship_",
         "plugin_",
@@ -97,10 +98,13 @@ def build_intents_from_tool_calls(
 
 
 _TOOL_KIND_MAP: dict[str, AIToolIntentKind] = {
-    "memory.query": "observe_read_only",
-    "memory.update": "update_memory",
+    "memory.search": "observe_read_only",
+    "memory.write": "update_memory",
+    "knowledge.search": "observe_read_only",
     "relationship.inspect": "observe_read_only",
-    "future_task.manage": "manage_future_task",
+    "future_task.create": "manage_future_task",
+    "future_task.list": "manage_future_task",
+    "future_task.cancel": "manage_future_task",
 }
 _DEFAULT_KIND: AIToolIntentKind = "observe_read_only"
 
@@ -137,7 +141,7 @@ def _build_tool_description(
     description: str,
     current_time: datetime | None,
 ) -> str:
-    if tool_name != "future_task.manage" or current_time is None:
+    if not tool_name.startswith("future_task.") or current_time is None:
         return description
     localized = current_time.astimezone(_DISPLAY_TIMEZONE)
     return (

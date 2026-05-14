@@ -63,6 +63,13 @@ class AIToolRegistry:
             by_name=MappingProxyType({tool.name: tool for tool in tools}),
         )
 
+    def load_builtin_catalog(self) -> int:
+        """Load lifecycle-owned essential builtin tools into this registry."""
+
+        from apeiria.ai.tools.catalog import load_builtin_tool_catalog
+
+        return load_builtin_tool_catalog(self)
+
     def register_pending_tools(self) -> int:
         """Import handler modules and register all decorator-collected tools."""
 

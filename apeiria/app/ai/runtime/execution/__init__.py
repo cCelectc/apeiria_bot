@@ -191,6 +191,12 @@ async def _run_tool_loop(
                 if plan.reply_compose_input
                 else None
             ),
+            actor_id=turn_context.source.user_id,
+            chat_scope_type=turn_context.identity.scene_type,
+            chat_scope_id=turn_context.identity.scene_id,
+            reply_audience=(
+                f"{turn_context.identity.scene_type}:{turn_context.identity.scene_id}"
+            ),
             current_time=turn_context.current_time,
             runtime_mode=turn_context.runtime_mode,
             tool_mode=plan.tool_mode,

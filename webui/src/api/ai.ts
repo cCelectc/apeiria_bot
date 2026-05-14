@@ -336,6 +336,9 @@ export interface AIToolItem {
   provider_name: string
   tags: string[]
   version: number
+  status: string
+  denied_reason: string | null
+  unavailable_reason: string | null
 }
 
 export interface AISkillItem {

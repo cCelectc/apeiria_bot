@@ -68,7 +68,7 @@ async def plan_runtime_tool_intents(
     return [
         intent
         for intent in build_intents_from_tool_calls(response.tool_calls)
-        if intent.tool_name != "memory.update"
+        if intent.tool_name != "memory.write"
         or _memory_update_is_recalled(intent, recalled_memory_ids)
     ]
 

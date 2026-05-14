@@ -31,11 +31,13 @@ class AIToolService:
         *,
         execution_repository: AIToolExecutionRepository | None = None,
         intent_executor: AIToolIntentExecutor | None = None,
+        load_declarative_tools: bool = True,
     ) -> None:
         self.registry = AIToolRegistry()
         self._execution_repository = execution_repository or AIToolExecutionRepository()
         self._intent_executor = intent_executor or AIToolIntentExecutor()
-        self._load_declarative_tools()
+        if load_declarative_tools:
+            self._load_declarative_tools()
 
     def _load_declarative_tools(self) -> None:
         """Import handler modules and register all @ai_tool decorated definitions."""

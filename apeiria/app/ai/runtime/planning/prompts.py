@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING
 
 from apeiria.ai.prompting import (
@@ -47,6 +47,7 @@ class RuntimePromptComposeInput:
     conversation_summary: str | None = None
     social_policy_summary: str | None = None
     capability_awareness: str | None = None
+    tool_guidance: str | None = None
     future_task_context: str | None = None
     skill_activation: str | None = None
     rag_chunks: "Sequence[KnowledgeRetrievalItem]" = ()
@@ -103,6 +104,7 @@ def build_runtime_prompt_packet(
         conversation_summary=inputs.conversation_summary,
         social_policy_summary=inputs.social_policy_summary,
         capability_awareness=inputs.capability_awareness,
+        tool_guidance=inputs.tool_guidance,
         future_task_context=inputs.future_task_context,
         skill_activation=inputs.skill_activation,
         rag_chunks=inputs.rag_chunks,
@@ -235,7 +237,17 @@ def build_initial_prompt_compose_input(
         skill_runtime=prompt_input.skill_runtime,
         skill_activation=prompt_input.skill_activation,
     )
-    return compose_input_from_context_projection(projection.prompt)
+    compose_input = compose_input_from_context_projection(projection.prompt)
+    tool_exposure_plan = getattr(prompt_input, "tool_exposure_plan", None)
+    if tool_exposure_plan is None:
+        return compose_input
+
+    from apeiria.app.ai.runtime.planning.tool_exposure import build_tool_guidance_text
+
+    return replace(
+        compose_input,
+        tool_guidance=build_tool_guidance_text(tool_exposure_plan),
+    )
 
 
 def _initial_reply_has_tools(prompt_input: object) -> bool:

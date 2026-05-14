@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Annotated, Any
 from fastapi import APIRouter, Depends, Query
 
 from apeiria.ai.tools import AIToolPolicy, coerce_tool_level
+from apeiria.ai.tools.exposure import create_tool_exposure_plan
 from apeiria.app.ai import ai_application
 from apeiria.webui.auth import require_control_panel
 
@@ -48,10 +49,39 @@ async def list_ai_tools(
     _: Annotated[Any, Depends(require_control_panel)],
     *,
     allowed_only: Annotated[bool, Query()] = False,
+    allowed_level: Annotated[str | None, Query()] = None,
 ) -> list[AIToolItem]:
-    policy = AIToolPolicy() if allowed_only else None
-    tools = ai_application.operations.list_tools(policy=policy)
-    return [to_ai_tool_item(item) for item in tools]
+    policy = (
+        AIToolPolicy(allowed_level=coerce_tool_level(allowed_level))
+        if allowed_level is not None
+        else AIToolPolicy()
+        if allowed_only
+        else None
+    )
+    tools = ai_application.operations.list_tools(policy=None)
+    if policy is None:
+        return [to_ai_tool_item(item) for item in tools]
+
+    exposure = create_tool_exposure_plan(
+        tools=tuple(tools),
+        policy=policy,
+        model_supports_tools=True,
+    )
+    visible = {tool.name for tool in exposure.visible_tools}
+    return [
+        to_ai_tool_item(
+            item,
+            status=_tool_status(
+                item.name,
+                visible=visible,
+                unavailable=exposure.unavailable_reasons,
+                denied=exposure.denied_reasons,
+            ),
+            denied_reason=exposure.denied_reasons.get(item.name),
+            unavailable_reason=exposure.unavailable_reasons.get(item.name),
+        )
+        for item in tools
+    ]
 
 
 @router.get("/skills", response_model=list[AISkillItem])
@@ -163,3 +193,19 @@ async def list_ai_tool_executions(
 
 
 __all__ = ["router"]
+
+
+def _tool_status(
+    name: str,
+    *,
+    visible: set[str],
+    unavailable: dict[str, str],
+    denied: dict[str, str],
+) -> str:
+    if name in visible:
+        return "visible"
+    if name in unavailable:
+        return "unavailable"
+    if name in denied:
+        return "denied"
+    return "not_evaluated"

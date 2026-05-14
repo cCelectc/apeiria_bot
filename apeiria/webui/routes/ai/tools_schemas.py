@@ -32,6 +32,9 @@ class AIToolItem(BaseModel):
     provider_name: str
     tags: list[str] = []
     version: int
+    status: str = "not_evaluated"
+    denied_reason: str | None = None
+    unavailable_reason: str | None = None
 
 
 class AISkillItem(BaseModel):
@@ -112,23 +115,35 @@ class AICapabilityItem(BaseModel):
 
 def _skill_display_name(skill_name: str) -> str:
     return {
-        "future_task.manage": "提醒与任务",
-        "memory.query": "查询记忆",
-        "memory.update": "修正记忆",
+        "future_task.cancel": "取消提醒",
+        "future_task.create": "创建提醒",
+        "future_task.list": "查看提醒",
+        "knowledge.search": "查询知识",
+        "memory.search": "查询记忆",
+        "memory.write": "写入记忆",
         "relationship.inspect": "查看关系状态",
     }.get(skill_name, skill_name)
 
 
 def _skill_display_description(skill_name: str, fallback: str) -> str:
     return {
-        "future_task.manage": "创建、取消或查看机器人已安排的提醒任务。",
-        "memory.query": "查看机器人为当前用户或会话召回的长期记忆内容。",
-        "memory.update": "修正当前会话中已召回的长期记忆内容。",
+        "future_task.cancel": "取消当前会话中已安排的提醒任务。",
+        "future_task.create": "为当前会话创建新的提醒任务。",
+        "future_task.list": "查看当前会话已安排的提醒任务。",
+        "knowledge.search": "查询已配置知识库中的相关文档片段。",
+        "memory.search": "查询当前参与者可访问的长期记忆内容。",
+        "memory.write": "写入或修正一条明确的长期记忆。",
         "relationship.inspect": "查看机器人对当前用户关系状态与情绪倾向的理解。",
     }.get(skill_name, fallback)
 
 
-def to_ai_tool_item(item: "AIToolDefinition") -> AIToolItem:
+def to_ai_tool_item(
+    item: "AIToolDefinition",
+    *,
+    status: str = "not_evaluated",
+    denied_reason: str | None = None,
+    unavailable_reason: str | None = None,
+) -> AIToolItem:
     name_map = build_provider_name_map((item,))
     provider_name = next(iter(name_map))
     return AIToolItem(
@@ -143,6 +158,9 @@ def to_ai_tool_item(item: "AIToolDefinition") -> AIToolItem:
         provider_name=provider_name,
         tags=list(item.tags),
         version=item.version,
+        status=status,
+        denied_reason=denied_reason,
+        unavailable_reason=unavailable_reason,
     )
 
 

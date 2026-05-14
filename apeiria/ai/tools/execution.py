@@ -115,6 +115,10 @@ class AIToolIntentExecutor:
             recalled_memory_contents=request.recalled_memory_contents,
             relationship_context=request.relationship_context,
             execution_timeout_seconds=request.execution_timeout_seconds,
+            actor_id=request.actor_id,
+            chat_scope_type=request.chat_scope_type,
+            chat_scope_id=request.chat_scope_id,
+            reply_audience=request.reply_audience,
         )
         arguments = (
             intent.input_payload if isinstance(intent.input_payload, dict) else {}

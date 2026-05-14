@@ -173,7 +173,7 @@ def stream_final(
 @dataclass
 class ToolServiceStub:
     observations: list[list[AIToolObservationResult]]
-    visible_tool_names: tuple[str, ...] = ("memory.query",)
+    visible_tool_names: tuple[str, ...] = ("memory.search",)
 
     def __post_init__(self) -> None:
         self.calls: list[object] = []
@@ -239,7 +239,7 @@ def tool_loop_input(  # noqa: PLR0913
     )
 
 
-def tool_call(call_id: str, name: str = "memory_query") -> AIModelToolCall:
+def tool_call(call_id: str, name: str = "memory_search") -> AIModelToolCall:
     return AIModelToolCall(
         tool_call_id=call_id,
         name=name,

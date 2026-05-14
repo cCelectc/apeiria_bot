@@ -95,6 +95,8 @@ class _ToolRegistry(Protocol):
 
     def list_tools(self) -> list["AIToolDefinition"]: ...
 
+    def load_builtin_catalog(self) -> int: ...
+
     def register_pending_tools(self) -> int: ...
 
 
@@ -157,6 +159,7 @@ class AIPluginLifecycleCoordinator:
         skill_service = self._get_skill_service()
         try:
             self._app_tool_loader()
+            builtin_tool_count = tool_service.registry.load_builtin_catalog()
             pending_tool_count = tool_service.registry.register_pending_tools()
             contributions = self._contribution_registry.snapshot()
             for tool in contributions.tools:
@@ -186,6 +189,7 @@ class AIPluginLifecycleCoordinator:
             components=_ready_components(
                 tool_service=tool_service,
                 skill_source_count=len(skill_sources),
+                builtin_tool_count=builtin_tool_count,
                 pending_tool_count=pending_tool_count,
             ),
             recovery=self._recovery,
@@ -305,6 +309,7 @@ def _ready_components(
     *,
     tool_service: _ToolService,
     skill_source_count: int,
+    builtin_tool_count: int,
     pending_tool_count: int,
 ) -> tuple[AILifecycleComponentStatus, ...]:
     tool_count = len(tool_service.registry.list_tools())
@@ -319,6 +324,7 @@ def _ready_components(
             available=True,
             detail=(
                 f"initialized; skill_sources={skill_source_count}; "
+                f"builtin_tools={builtin_tool_count}; "
                 f"pending_tools={pending_tool_count}"
             ),
         ),

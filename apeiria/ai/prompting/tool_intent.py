@@ -39,8 +39,9 @@ def build_tool_intent_planning_packet(
             role="system",
             name="MemoryUpdatePolicy",
             content=(
-                "If you need to revise a recalled memory, use memory.update "
-                "with a memory_id from the recalled memory list below."
+                "If you need to revise durable memory, use memory.write with "
+                "a memory_id from the recalled memory list below when correcting "
+                "an existing item."
             ),
         ),
         PromptSection(

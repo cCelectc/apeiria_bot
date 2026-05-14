@@ -157,6 +157,10 @@ class AIToolExecutionContext:
     recalled_memory_contents: tuple[str, ...]
     relationship_context: str | None
     execution_timeout_seconds: float | None
+    actor_id: str | None = None
+    chat_scope_type: str | None = None
+    chat_scope_id: str | None = None
+    reply_audience: str | None = None
 
 
 @dataclass(frozen=True)
@@ -209,40 +213,10 @@ class AIToolExecutionRequest:
     recalled_memory_contents: tuple[str, ...]
     relationship_context: str | None
     execution_timeout_seconds: float | None = None
-
-
-@dataclass(frozen=True)
-class AIMemoryQueryObservationInput:
-    """Structured input payload for memory.query observations."""
-
-    query_text: str
-
-
-@dataclass(frozen=True)
-class AIMemoryQueryObservationOutput:
-    """Structured output payload for memory.query observations."""
-
-    memory_ids: tuple[str, ...]
-
-
-@dataclass(frozen=True)
-class AIMemoryUpdateInput:
-    """Structured input payload for memory.update operations."""
-
-    memory_id: str
-    updated_content: str
-    salience: float | None = None
-    confidence: float | None = None
-
-
-@dataclass(frozen=True)
-class AIMemoryUpdateObservationOutput:
-    """Structured output payload for memory.update operations."""
-
-    memory_id: str
-    content: str
-    salience: float
-    confidence: float
+    actor_id: str | None = None
+    chat_scope_type: str | None = None
+    chat_scope_id: str | None = None
+    reply_audience: str | None = None
 
 
 @dataclass(frozen=True)

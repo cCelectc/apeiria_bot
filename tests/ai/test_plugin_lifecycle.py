@@ -16,7 +16,15 @@ if TYPE_CHECKING:
 
     import pytest
 
-EXPECTED_REGISTERED_TOOL_COUNT = 2
+ESSENTIAL_TOOL_NAMES = (
+    "future_task.cancel",
+    "future_task.create",
+    "future_task.list",
+    "knowledge.search",
+    "memory.search",
+    "memory.write",
+)
+EXPECTED_REGISTERED_TOOL_COUNT = len(ESSENTIAL_TOOL_NAMES) + 2
 
 
 def _tool(name: str) -> AIToolDefinition:
@@ -44,6 +52,13 @@ class _FakeToolRegistry:
     def register(self, tool: AIToolDefinition) -> None:
         self._order.append(f"tool:{tool.name}")
         self.tools[tool.name] = tool
+
+    def load_builtin_catalog(self) -> int:
+        from apeiria.ai.tools.catalog import load_builtin_tool_catalog
+
+        count = load_builtin_tool_catalog(self)
+        self._order.append("builtin_catalog")
+        return count
 
     def list_tools(self) -> list[AIToolDefinition]:
         return [self.tools[name] for name in sorted(self.tools)]
@@ -145,8 +160,10 @@ def test_lifecycle_applies_plugin_contributions_before_skill_sync(
     asyncio.run(coordinator.startup())
     asyncio.run(coordinator.startup())
 
-    assert order[:5] == [
+    assert order[: len(ESSENTIAL_TOOL_NAMES) + 6] == [
         "app_loader",
+        *[f"tool:{name}" for name in ESSENTIAL_TOOL_NAMES],
+        "builtin_catalog",
         "pending_tools",
         "tool:plugin.echo",
         "skills",

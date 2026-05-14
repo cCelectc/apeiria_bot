@@ -134,7 +134,7 @@ def test_conversation_disposition_defaults_and_observed_reads(
             identity,
             ChatMessageCreate(
                 author_role="tool",
-                author_id="memory.query",
+                author_id="memory.search",
                 message_kind="tool",
                 text_content="tool result",
                 turn_disposition="tool",

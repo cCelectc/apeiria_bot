@@ -6,10 +6,6 @@ from importlib import import_module
 from typing import TYPE_CHECKING, Any
 
 from .models import (
-    AIMemoryQueryObservationInput,
-    AIMemoryQueryObservationOutput,
-    AIMemoryUpdateInput,
-    AIMemoryUpdateObservationOutput,
     AIRelationshipInspectObservationOutput,
     AIToolDefinition,
     AIToolExecutionContext,
@@ -49,10 +45,6 @@ if TYPE_CHECKING:
     from .service import AIToolService, ai_tool_service
 
 __all__ = [
-    "AIMemoryQueryObservationInput",
-    "AIMemoryQueryObservationOutput",
-    "AIMemoryUpdateInput",
-    "AIMemoryUpdateObservationOutput",
     "AIRelationshipInspectObservationOutput",
     "AIToolDefinition",
     "AIToolExecutionContext",

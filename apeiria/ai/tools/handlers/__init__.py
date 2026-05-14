@@ -13,8 +13,4 @@ def ensure_handlers_loaded() -> None:
         return
     _LOADED = True
 
-    from apeiria.ai.tools.handlers import (  # noqa: F401
-        memory,
-        relationship,
-    )
-    from apeiria.app.ai.future_tasks import tool_handler  # noqa: F401
+    from apeiria.ai.tools.handlers import relationship  # noqa: F401

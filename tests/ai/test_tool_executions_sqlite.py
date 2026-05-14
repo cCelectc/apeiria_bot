@@ -28,7 +28,7 @@ def test_tool_executions_use_sqlite_runtime(
         created = await service.record_execution(
             AIToolExecutionCreateInput(
                 session_id="session-1",
-                tool_name="memory.query",
+                tool_name="memory.search",
                 status="success",
                 trace_id="trace-1",
                 input_payload={"query": "hello"},
@@ -59,7 +59,7 @@ def test_tool_execution_payloads_are_sanitized(
         await service.record_execution(
             AIToolExecutionCreateInput(
                 session_id="session-1",
-                tool_name="memory.query",
+                tool_name="memory.search",
                 status="error",
                 trace_id="trace-1",
                 input_payload={"api_key": "sk-secret", "query": "hello"},
@@ -108,7 +108,7 @@ def test_tool_execution_retention_deletes_old_sqlite_rows(
                 created_at
             ) VALUES (?, ?, ?, ?, ?)
             """,
-            ("tool_exec_old", "session-1", "memory.query", "success", old_time),
+            ("tool_exec_old", "session-1", "memory.search", "success", old_time),
         )
         connection.execute(
             """
@@ -120,7 +120,7 @@ def test_tool_execution_retention_deletes_old_sqlite_rows(
                 created_at
             ) VALUES (?, ?, ?, ?, ?)
             """,
-            ("tool_exec_new", "session-1", "memory.query", "success", new_time),
+            ("tool_exec_new", "session-1", "memory.search", "success", new_time),
         )
 
     deleted = AIRetentionService().cleanup_tool_executions(retention_days=1)
