@@ -13,6 +13,8 @@ from nonebot.log import logger
 from apeiria.ai.diagnostics import sanitize_runtime_diagnostics
 from apeiria.db.runtime import database_runtime
 
+_MAX_MEMORY_DIAGNOSTIC_ITEMS = 8
+
 if TYPE_CHECKING:
     from apeiria.ai.turn_records import ModelAttempt, ToolAttempt
     from apeiria.app.ai.agent_turn import AgentTurnResult
@@ -235,7 +237,49 @@ def _safe_context_metadata(value: object) -> dict[str, object] | None:
     memory_layer_counts = _safe_count_mapping(value.get("memory_layer_counts"))
     if memory_layer_counts:
         metadata["memory_layer_counts"] = memory_layer_counts
+    memory_use_mode_counts = _safe_count_mapping(value.get("memory_use_mode_counts"))
+    if memory_use_mode_counts:
+        metadata["memory_use_mode_counts"] = memory_use_mode_counts
+    memory_lifecycle_counts = _safe_count_mapping(value.get("memory_lifecycle_counts"))
+    if memory_lifecycle_counts:
+        metadata["memory_lifecycle_counts"] = memory_lifecycle_counts
+    memory_selected = _safe_memory_diagnostic_items(value.get("memory_selected"))
+    if memory_selected:
+        metadata["memory_selected"] = memory_selected
+    memory_excluded = _safe_memory_diagnostic_items(value.get("memory_excluded"))
+    if memory_excluded:
+        metadata["memory_excluded"] = memory_excluded
     return metadata or None
+
+
+def _safe_memory_diagnostic_items(value: object) -> list[dict[str, object]]:
+    if not isinstance(value, list | tuple):
+        return []
+    items: list[dict[str, object]] = []
+    for raw_item in value:
+        if not isinstance(raw_item, dict):
+            continue
+        item: dict[str, object] = {}
+        for key in (
+            "memory_id",
+            "anchor_type",
+            "memory_layer",
+            "memory_kind",
+            "lifecycle_state",
+            "use_mode",
+            "exclusion_reason",
+        ):
+            raw_value = raw_item.get(key)
+            if isinstance(raw_value, str):
+                item[key] = raw_value[:160]
+        scope_rank = raw_item.get("scope_rank")
+        if isinstance(scope_rank, int):
+            item["scope_rank"] = scope_rank
+        if item:
+            items.append(item)
+        if len(items) >= _MAX_MEMORY_DIAGNOSTIC_ITEMS:
+            break
+    return items
 
 
 def _safe_tool_exposure_metadata(value: object) -> dict[str, object] | None:

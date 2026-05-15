@@ -74,6 +74,10 @@ MEMORY_EXTRACTION_SCHEMA: dict[str, Any] = {
                     "target_memory_id": {
                         "type": ["string", "null"],
                     },
+                    "scope_hint": {
+                        "type": "string",
+                        "enum": ["auto", "scene", "participant", "user"],
+                    },
                     "confidence": {
                         "type": "number",
                         "minimum": 0.0,

@@ -10,6 +10,8 @@ if TYPE_CHECKING:
         AIMemoryAnchorType,
         AIMemoryKind,
         AIMemoryLayer,
+        AIMemoryLifecycleState,
+        AIMemoryUseMode,
     )
 
 
@@ -23,7 +25,9 @@ class AIMemoryCreateInput:
     memory_kind: AIMemoryKind
     content: str
     is_editable: bool = True
-    is_ignored: bool = False
+    lifecycle_state: AIMemoryLifecycleState = "active"
+    default_use_mode: AIMemoryUseMode = "context"
+    governance_reason: str | None = None
     source_message_id: str | None = None
     salience: float = 0.5
     confidence: float = 0.5
@@ -37,3 +41,12 @@ class AIMemoryUpdateInput:
     salience: float
     confidence: float
     source_message_id: str | None
+
+
+@dataclass(frozen=True)
+class AIMemoryStateUpdateInput:
+    """Lifecycle update payload for one governed memory belief."""
+
+    lifecycle_state: AIMemoryLifecycleState
+    default_use_mode: AIMemoryUseMode | None = None
+    governance_reason: str | None = None

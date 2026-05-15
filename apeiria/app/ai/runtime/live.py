@@ -19,7 +19,6 @@ from apeiria.app.ai.runtime.composition import (
     create_session_runtime_resolver,
     create_session_turn_engine,
 )
-from apeiria.app.ai.runtime.context.memories import store_extracted_memories
 from apeiria.app.ai.runtime.contracts import (
     FutureTaskRuntimeResult,
     RuntimeTraceContext,
@@ -160,12 +159,6 @@ class DefaultAILiveRuntimeEntry:
 
         message_text = wake_context.message_text
         user_id = str(event.get_user_id())
-        extraction_result = await store_extracted_memories(
-            identity=identity,
-            user_id=user_id,
-            message_text=message_text,
-            source_message_id=turn.message_id,
-        )
         media = extract_runtime_media(getattr(turn, "content_json", None))
         result = await self._run_turn(
             trace=trace
@@ -178,7 +171,6 @@ class DefaultAILiveRuntimeEntry:
                 sender_id=str(bot.self_id),
                 runtime_mode="message",
                 is_tome=bool(hasattr(event, "is_tome") and event.is_tome()),
-                sentiment=extraction_result.sentiment,
                 event_dedupe_key=event_dedupe_key,
                 event_dedupe_claimed=event_dedupe_claimed,
                 media_parts=media.parts,

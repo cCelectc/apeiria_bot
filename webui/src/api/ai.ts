@@ -175,7 +175,9 @@ export interface AIMemoryItem {
   memory_kind: string
   content: string
   is_editable: boolean
-  is_ignored: boolean
+  lifecycle_state: string
+  default_use_mode: string
+  governance_reason: string | null
   source_message_id: string | null
   salience: number
   confidence: number
@@ -755,8 +757,9 @@ export function deleteAIMemory(memoryId: string) {
   })
 }
 
-export function toggleAIMemoryIgnored(memoryId: string) {
-  return client.patch<AIMemoryItem | null>('/ai/memories/toggle-ignored', {
+export function setAIMemoryLifecycle(memoryId: string, lifecycleState: string) {
+  return client.patch<AIMemoryItem | null>('/ai/memories/lifecycle', {
+    lifecycle_state: lifecycleState,
     memory_id: memoryId,
   })
 }
@@ -767,10 +770,10 @@ export function bulkDeleteAIMemories(memoryIds: string[]) {
   })
 }
 
-export function bulkToggleAIMemoryIgnored(memoryIds: string[], ignored: boolean) {
+export function bulkSetAIMemoryLifecycle(memoryIds: string[], lifecycleState: string) {
   return client.post<AIMemoryBulkActionResult>(
-    '/ai/memories/bulk-toggle-ignored',
-    { ignored, memory_ids: memoryIds },
+    '/ai/memories/bulk-lifecycle',
+    { lifecycle_state: lifecycleState, memory_ids: memoryIds },
   )
 }
 

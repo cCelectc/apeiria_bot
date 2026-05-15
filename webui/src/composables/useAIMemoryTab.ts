@@ -2,12 +2,12 @@ import type { AIMemoryItem, AIRecentTargetItem } from '@/api/ai'
 import { computed, reactive, ref } from 'vue'
 import {
   bulkDeleteAIMemories,
-  bulkToggleAIMemoryIgnored,
+  bulkSetAIMemoryLifecycle,
   createAIMemory,
   deleteAIMemory,
   getAIMemories,
   getAIRecentTargets,
-  toggleAIMemoryIgnored,
+  setAIMemoryLifecycle,
   updateAIMemory,
 } from '@/api/ai'
 import { getErrorMessage } from '@/api/client'
@@ -48,7 +48,7 @@ export function useAIMemoryTab(t: (key: string) => string) {
   const selectedRecentTargetId = ref('')
   const selectedMemoryIds = ref<Set<string>>(new Set())
   const bulkActionLoading = ref(false)
-  const togglingIgnoredId = ref('')
+  const settingLifecycleId = ref('')
   const memoryForm = reactive<MemoryFormState>({
     anchor_id: '',
     anchor_type: 'scene',
@@ -216,19 +216,19 @@ export function useAIMemoryTab(t: (key: string) => string) {
     }
   }
 
-  async function toggleIgnored(memoryId: string) {
-    togglingIgnoredId.value = memoryId
+  async function setLifecycle(memoryId: string, lifecycleState: string) {
+    settingLifecycleId.value = memoryId
     try {
-      const response = await toggleAIMemoryIgnored(memoryId)
+      const response = await setAIMemoryLifecycle(memoryId, lifecycleState)
       if (response.data) {
         memories.value = memories.value.map(item => (
           item.memory_id === response.data?.memory_id ? response.data : item
         ))
       }
     } catch (error) {
-      noticeStore.show(getErrorMessage(error, t('ai.memoryToggleIgnoredFailed')), 'error')
+      noticeStore.show(getErrorMessage(error, t('ai.memoryLifecycleUpdateFailed')), 'error')
     } finally {
-      togglingIgnoredId.value = ''
+      settingLifecycleId.value = ''
     }
   }
 
@@ -271,22 +271,24 @@ export function useAIMemoryTab(t: (key: string) => string) {
     }
   }
 
-  async function bulkSetIgnored(ignored: boolean) {
+  async function bulkSetLifecycle(lifecycleState: string) {
     const ids = [...selectedMemoryIds.value]
     if (ids.length === 0) {
       return
     }
     bulkActionLoading.value = true
     try {
-      await bulkToggleAIMemoryIgnored(ids, ignored)
+      await bulkSetAIMemoryLifecycle(ids, lifecycleState)
       const idSet = new Set(ids)
       memories.value = memories.value.map(item => (
-        idSet.has(item.memory_id) ? { ...item, is_ignored: ignored } : item
+        idSet.has(item.memory_id)
+          ? { ...item, lifecycle_state: lifecycleState }
+          : item
       ))
       selectedMemoryIds.value = new Set()
-      noticeStore.show(t('ai.memoryBulkIgnoreUpdated'), 'success')
+      noticeStore.show(t('ai.memoryBulkLifecycleUpdated'), 'success')
     } catch (error) {
-      noticeStore.show(getErrorMessage(error, t('ai.memoryBulkIgnoreFailed')), 'error')
+      noticeStore.show(getErrorMessage(error, t('ai.memoryBulkLifecycleFailed')), 'error')
     } finally {
       bulkActionLoading.value = false
     }
@@ -296,7 +298,7 @@ export function useAIMemoryTab(t: (key: string) => string) {
     allMemoriesSelected,
     bulkActionLoading,
     bulkDelete,
-    bulkSetIgnored,
+    bulkSetLifecycle,
     canLoadMemories,
     canSaveEditedMemory,
     canSaveMemory,
@@ -314,6 +316,7 @@ export function useAIMemoryTab(t: (key: string) => string) {
     memoryForm,
     recentTargets,
     removeMemory,
+    setLifecycle,
     saveEditedMemory,
     saveMemory,
     savingEditedMemoryId,
@@ -323,10 +326,9 @@ export function useAIMemoryTab(t: (key: string) => string) {
     selectedMemoryIds,
     selectedRecentTargetId,
     startEditMemory,
-    toggleIgnored,
     toggleMemorySelection,
     toggleSelectAll,
-    togglingIgnoredId,
+    settingLifecycleId,
   }
 }
 

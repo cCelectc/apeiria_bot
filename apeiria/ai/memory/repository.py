@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Literal, cast
 from uuid import uuid4
 
 from apeiria.ai.memory.models import AIMemoryDefinition
@@ -13,12 +13,22 @@ from apeiria.db.runtime import database_runtime
 if TYPE_CHECKING:
     from sqlite3 import Connection
 
-    from apeiria.ai.memory.contracts import AIMemoryCreateInput, AIMemoryUpdateInput
+    from apeiria.ai.memory.contracts import (
+        AIMemoryCreateInput,
+        AIMemoryStateUpdateInput,
+        AIMemoryUpdateInput,
+    )
     from apeiria.ai.memory.models import (
         AIMemoryAnchorType,
+        AIMemoryBeliefAction,
         AIMemoryKind,
         AIMemoryLayer,
+        AIMemoryLifecycleState,
+        AIMemoryUseMode,
     )
+
+AI_MEMORY_ACTOR_TYPES = ("system", "user", "operator", "tool")
+AIMemoryActorType = Literal["system", "user", "operator", "tool"]
 
 
 @dataclass
@@ -31,7 +41,9 @@ class _MemoryRow:
     memory_kind: str
     content: str
     is_editable: bool
-    is_ignored: bool
+    lifecycle_state: str
+    default_use_mode: str
+    governance_reason: str | None
     source_message_id: str | None
     salience: float
     confidence: float
@@ -140,7 +152,7 @@ class AIMemoryRepository:
         anchor_id: str,
         memory_layer: AIMemoryLayer | None = None,
         memory_kind: AIMemoryKind | None = None,
-        include_ignored: bool = False,
+        lifecycle_states: tuple[AIMemoryLifecycleState, ...] = ("active",),
     ) -> list[AIMemoryDefinition]:
         conditions = ["anchor_type = ?", "anchor_id = ?"]
         params: list[object] = [anchor_type, anchor_id]
@@ -150,8 +162,10 @@ class AIMemoryRepository:
         if memory_kind is not None:
             conditions.append("memory_kind = ?")
             params.append(memory_kind)
-        if not include_ignored:
-            conditions.append("is_ignored = 0")
+        if lifecycle_states:
+            placeholders = ",".join("?" for _ in lifecycle_states)
+            conditions.append(f"lifecycle_state IN ({placeholders})")
+            params.extend(lifecycle_states)
 
         with database_runtime.connect_sync() as connection:
             rows = connection.execute(
@@ -176,31 +190,43 @@ class AIMemoryRepository:
             )
         return int(cursor.rowcount or 0) > 0
 
-    def toggle_memory_ignored(
+    def set_memory_state(
         self,
         *,
         memory_id: str,
+        update_input: AIMemoryStateUpdateInput,
     ) -> AIMemoryDefinition | None:
         row = _get_memory_row(memory_id=memory_id)
         if row is None:
             return None
-        row.is_ignored = not row.is_ignored
+        row.lifecycle_state = update_input.lifecycle_state
+        if update_input.default_use_mode is not None:
+            row.default_use_mode = update_input.default_use_mode
+        row.governance_reason = update_input.governance_reason
         with database_runtime.connect_sync() as connection:
             connection.execute(
                 """
                 UPDATE ai_memory_item
-                SET is_ignored = ?
+                SET
+                    lifecycle_state = ?,
+                    default_use_mode = ?,
+                    governance_reason = ?
                 WHERE memory_id = ?
                 """,
-                (1 if row.is_ignored else 0, memory_id),
+                (
+                    row.lifecycle_state,
+                    row.default_use_mode,
+                    row.governance_reason,
+                    memory_id,
+                ),
             )
         return _to_definition(row)
 
-    def bulk_set_ignored(
+    def bulk_set_memory_state(
         self,
         *,
         memory_ids: list[str],
-        ignored: bool,
+        update_input: AIMemoryStateUpdateInput,
     ) -> int:
         if not memory_ids:
             return 0
@@ -209,12 +235,60 @@ class AIMemoryRepository:
             cursor = connection.execute(
                 f"""
                 UPDATE ai_memory_item
-                SET is_ignored = ?
+                SET
+                    lifecycle_state = ?,
+                    default_use_mode = ?,
+                    governance_reason = ?
                 WHERE memory_id IN ({placeholders})
                 """,
-                (1 if ignored else 0, *memory_ids),
+                (
+                    update_input.lifecycle_state,
+                    update_input.default_use_mode
+                    or _default_use_mode_for_state(update_input.lifecycle_state),
+                    update_input.governance_reason,
+                    *memory_ids,
+                ),
             )
         return int(cursor.rowcount or 0)
+
+    def record_belief_action(  # noqa: PLR0913
+        self,
+        *,
+        memory_id: str | None,
+        action: AIMemoryBeliefAction,
+        actor_type: AIMemoryActorType,
+        reason: str | None = None,
+        source_message_id: str | None = None,
+        previous_state: AIMemoryLifecycleState | None = None,
+        next_state: AIMemoryLifecycleState | None = None,
+    ) -> None:
+        with database_runtime.connect_sync() as connection:
+            connection.execute(
+                """
+                INSERT INTO ai_memory_belief_action (
+                    action_id,
+                    memory_id,
+                    action,
+                    actor_type,
+                    reason,
+                    source_message_id,
+                    previous_state,
+                    next_state,
+                    created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    f"mem_action_{uuid4().hex}",
+                    memory_id,
+                    action,
+                    actor_type,
+                    reason,
+                    source_message_id,
+                    previous_state,
+                    next_state,
+                    _datetime_to_text(utcnow()),
+                ),
+            )
 
     def mark_memories_recalled(
         self,
@@ -263,13 +337,15 @@ def _insert_memory_row(
             memory_kind,
             content,
             is_editable,
-            is_ignored,
+            lifecycle_state,
+            default_use_mode,
+            governance_reason,
             source_message_id,
             salience,
             confidence,
             last_recalled_at,
             created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         {conflict_clause}
         """,
         (
@@ -280,7 +356,9 @@ def _insert_memory_row(
             create_input.memory_kind,
             create_input.content,
             1 if create_input.is_editable else 0,
-            1 if create_input.is_ignored else 0,
+            create_input.lifecycle_state,
+            create_input.default_use_mode,
+            create_input.governance_reason,
             create_input.source_message_id,
             create_input.salience,
             create_input.confidence,
@@ -299,7 +377,9 @@ def _insert_memory_row(
         memory_kind=create_input.memory_kind,
         content=create_input.content,
         is_editable=create_input.is_editable,
-        is_ignored=create_input.is_ignored,
+        lifecycle_state=create_input.lifecycle_state,
+        default_use_mode=create_input.default_use_mode,
+        governance_reason=create_input.governance_reason,
         source_message_id=create_input.source_message_id,
         salience=create_input.salience,
         confidence=create_input.confidence,
@@ -326,7 +406,9 @@ def _to_definition(row: _MemoryRow) -> AIMemoryDefinition:
         memory_kind=cast("AIMemoryKind", row.memory_kind),
         content=row.content,
         is_editable=row.is_editable,
-        is_ignored=row.is_ignored,
+        lifecycle_state=cast("AIMemoryLifecycleState", row.lifecycle_state),
+        default_use_mode=cast("AIMemoryUseMode", row.default_use_mode),
+        governance_reason=row.governance_reason,
         source_message_id=row.source_message_id,
         salience=row.salience,
         confidence=row.confidence,
@@ -345,7 +427,9 @@ SELECT
     memory_kind,
     content,
     is_editable,
-    is_ignored,
+    lifecycle_state,
+    default_use_mode,
+    governance_reason,
     source_message_id,
     salience,
     confidence,
@@ -365,13 +449,19 @@ def _row_to_memory(row: tuple[object, ...]) -> _MemoryRow:
         memory_kind=str(row[5]),
         content=str(row[6]),
         is_editable=bool(row[7]),
-        is_ignored=bool(row[8]),
-        source_message_id=str(row[9]) if row[9] is not None else None,
-        salience=float(str(row[10])),
-        confidence=float(str(row[11])),
-        last_recalled_at=_optional_datetime_from_text(row[12]),
-        created_at=_datetime_from_text(row[13]),
+        lifecycle_state=str(row[8]),
+        default_use_mode=str(row[9]),
+        governance_reason=str(row[10]) if row[10] is not None else None,
+        source_message_id=str(row[11]) if row[11] is not None else None,
+        salience=float(str(row[12])),
+        confidence=float(str(row[13])),
+        last_recalled_at=_optional_datetime_from_text(row[14]),
+        created_at=_datetime_from_text(row[15]),
     )
+
+
+def _default_use_mode_for_state(state: str) -> str:
+    return "context" if state == "active" else "ignore"
 
 
 def _datetime_to_text(value: datetime | None) -> str | None:

@@ -39,6 +39,7 @@ def build_memory_extraction_packet(
                     '  "memories": [{"memory_kind": "...", "content": "...",',
                     '    "action": "add|update|noop",',
                     '    "target_memory_id": "optional-existing-id",',
+                    '    "scope_hint": "auto|scene|participant|user",',
                     '    "confidence": 0.0, "salience": 0.0}],',
                     '  "sentiment": {"polarity": "...", "intensity": 0.0},',
                     '  "self_introduction_name": null',
@@ -72,6 +73,13 @@ def build_memory_extraction_packet(
                         "character traits (e.g. enthusiastic, introverted, "
                         "knowledgeable). Only extract impressions when there is "
                         "clear behavioral evidence."
+                    ),
+                    (
+                        "Use scope_hint=user for durable facts or preferences about "
+                        "the speaker across scenes, participant for scene-local "
+                        "facts or preferences about the speaker, and scene for group, "
+                        "channel, project, or conversation-space information. Use "
+                        "auto when the best scope is unclear."
                     ),
                 )
             ),

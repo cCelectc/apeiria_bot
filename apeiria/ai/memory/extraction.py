@@ -10,6 +10,7 @@ from apeiria.ai.memory.models import (
     AIMemoryExtractionCandidate,
     AIMemoryExtractionResult,
     AIMemoryKind,
+    AIMemoryScopeHint,
     AIMessageSentiment,
     AISentimentPolarity,
 )
@@ -27,6 +28,12 @@ _PERSON_PROFILE_ALLOWED_KINDS: set[AIMemoryKind] = {
     "preference",
     "relationship",
     "impression",
+}
+_ALLOWED_SCOPE_HINTS: set[AIMemoryScopeHint] = {
+    "auto",
+    "scene",
+    "participant",
+    "user",
 }
 _PERSON_PROFILE_MIN_CONFIDENCE = 0.8
 _MAX_PERSON_PROFILE_CANDIDATES = 4
@@ -66,6 +73,7 @@ def select_person_profile_candidates(
         candidate
         for candidate in candidates
         if candidate.memory_kind in _PERSON_PROFILE_ALLOWED_KINDS
+        and candidate.scope_hint in {"auto", "participant", "user"}
         and candidate.confidence >= _PERSON_PROFILE_MIN_CONFIDENCE
     ]
     selected.sort(
@@ -155,6 +163,7 @@ def _parse_candidate(row: dict[str, Any]) -> AIMemoryExtractionCandidate | None:
         content=content.strip(),
         action=action,
         target_memory_id=_coerce_optional_id(row.get("target_memory_id")),
+        scope_hint=_coerce_scope_hint(row.get("scope_hint")),
         confidence=_coerce_score(row.get("confidence"), default=0.7),
         salience=_coerce_score(row.get("salience"), default=0.6),
     )
@@ -172,6 +181,12 @@ def _coerce_action(value: Any) -> AIMemoryExtractionAction:
     if value == "update":
         return "update"
     return "add"
+
+
+def _coerce_scope_hint(value: Any) -> AIMemoryScopeHint:
+    if value in _ALLOWED_SCOPE_HINTS:
+        return value
+    return "auto"
 
 
 def _coerce_optional_id(value: Any) -> str | None:

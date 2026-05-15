@@ -13,7 +13,9 @@ from apeiria.ai.knowledge.service import knowledge_retrieval_service
 from apeiria.ai.knowledge.settings import knowledge_settings_store
 from apeiria.ai.tools import ai_tool_service
 from apeiria.app.ai.runtime.context.context_window import build_and_store_context_window
-from apeiria.app.ai.runtime.context.memories import retrieve_memories_for_context
+from apeiria.app.ai.runtime.context.memories import (
+    retrieve_memory_diagnostics_for_context,
+)
 from apeiria.app.ai.runtime.context.person_profiles import (
     load_person_profile_for_prompt,
 )
@@ -31,7 +33,7 @@ from apeiria.app.ai.runtime.planning.wake import resolve_initiative_bias
 if TYPE_CHECKING:
     from datetime import datetime
 
-    from apeiria.ai.memory import AIMemoryDefinition
+    from apeiria.ai.memory import AIMemoryDefinition, AIMemoryRetrievalDiagnostics
     from apeiria.ai.model import AIModelBindingTarget
     from apeiria.ai.prompting import ReplyPersonaPromptBundleLike
     from apeiria.ai.tools import AIToolDefinition, AIToolPolicy
@@ -73,6 +75,7 @@ class RuntimeMemoryContext:
     """Memory and relationship materials for one reply turn."""
 
     recalled_memories: list["AIMemoryDefinition"]
+    memory_diagnostics: "AIMemoryRetrievalDiagnostics | None"
     relationship_context: str | None
     person_profile: tuple[str, ...]
     initiative_bias: float
@@ -109,6 +112,7 @@ async def collect_reply_inputs(
         tool_policy=tool_context.tool_policy,
         persona=persona_context.persona,
         recalled_memories=memory_context.recalled_memories,
+        memory_diagnostics=memory_context.memory_diagnostics,
         relationship_context=memory_context.relationship_context,
         person_profile=memory_context.person_profile,
         allowed_tools=tool_context.allowed_tools,
@@ -183,12 +187,18 @@ async def collect_memory_context(
 ) -> RuntimeMemoryContext:
     """Collect memory, relationship, profile, and initiative context."""
 
+    diagnostics = await retrieve_memory_diagnostics_for_context(
+        identity=turn.identity,
+        user_id=turn.user_id,
+        query_text=turn.message_text,
+    )
     return RuntimeMemoryContext(
-        recalled_memories=await retrieve_memories_for_context(
-            identity=turn.identity,
-            user_id=turn.user_id,
-            query_text=turn.message_text,
-        ),
+        recalled_memories=[
+            selection.memory
+            for selection in diagnostics.selected
+            if selection.is_prompt_visible
+        ],
+        memory_diagnostics=diagnostics,
         relationship_context=await load_relationship_context(
             target=relationship_target,
         ),

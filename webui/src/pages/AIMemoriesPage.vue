@@ -47,7 +47,7 @@ const {
   allMemoriesSelected,
   bulkActionLoading,
   bulkDelete,
-  bulkSetIgnored,
+  bulkSetLifecycle,
   canLoadMemories,
   canSaveEditedMemory,
   canSaveMemory,
@@ -65,6 +65,7 @@ const {
   memoryForm,
   recentTargets,
   removeMemory,
+  setLifecycle,
   saveEditedMemory,
   saveMemory,
   savingEditedMemoryId,
@@ -74,10 +75,9 @@ const {
   selectedMemoryIds,
   selectedRecentTargetId,
   startEditMemory,
-  toggleIgnored,
   toggleMemorySelection,
   toggleSelectAll,
-  togglingIgnoredId,
+  settingLifecycleId,
 } = useAIMemoryTab(t)
 
 const anchorTypeOptions = computed(() => [
@@ -156,10 +156,10 @@ const metrics = computed<WorkbenchMetricItem[]>(() => [
     value: selectedMemoryCount.value,
   },
   {
-    key: 'ignored',
-    label: t('ai.memoryIgnored'),
+    key: 'suppressed',
+    label: t('ai.memorySuppressed'),
     tone: 'warning',
-    value: memories.value.filter(item => item.is_ignored).length,
+    value: memories.value.filter(item => item.lifecycle_state === 'suppressed').length,
   },
 ])
 
@@ -378,18 +378,18 @@ onMounted(() => {
               :disabled="bulkActionLoading"
               size="sm"
               variant="secondary"
-              @click="bulkSetIgnored(true)"
+              @click="bulkSetLifecycle('suppressed')"
             >
-              {{ t('ai.memoryBulkIgnore') }}
+              {{ t('ai.memoryBulkSuppress') }}
             </Button>
             <Button
               v-if="selectedMemoryCount > 0"
               :disabled="bulkActionLoading"
               size="sm"
               variant="secondary"
-              @click="bulkSetIgnored(false)"
+              @click="bulkSetLifecycle('active')"
             >
-              {{ t('ai.memoryBulkUnignore') }}
+              {{ t('ai.memoryBulkActivate') }}
             </Button>
             <Button
               v-if="selectedMemoryCount > 0"
@@ -455,9 +455,10 @@ onMounted(() => {
                   />
                   <Badge variant="secondary">{{ item.memory_kind }}</Badge>
                   <Badge variant="outline">{{ item.memory_layer }}</Badge>
+                  <Badge variant="outline">{{ item.default_use_mode }}</Badge>
                   <StatusBadge
-                    v-if="item.is_ignored"
-                    :label="t('ai.memoryIgnored')"
+                    v-if="item.lifecycle_state !== 'active'"
+                    :label="item.lifecycle_state"
                     tone="error"
                   />
                   <StatusBadge
@@ -490,21 +491,25 @@ onMounted(() => {
                 <span>{{ t('ai.memorySalience') }} {{ formatScore(item.salience) }}</span>
                 <span>{{ t('ai.memoryLastRecalledAt') }} {{ item.last_recalled_at || t('common.none') }}</span>
                 <span>{{ t('ai.memorySourceTurn') }} {{ memorySourceTurn(item) }}</span>
+                <span>{{ t('ai.memoryGovernanceReason') }} {{ item.governance_reason || t('common.none') }}</span>
               </div>
 
               <div class="ai-memory-card__actions">
                 <Button
-                  :disabled="togglingIgnoredId === item.memory_id"
+                  :disabled="settingLifecycleId === item.memory_id"
                   size="sm"
                   variant="ghost"
-                  @click="toggleIgnored(item.memory_id)"
+                  @click="setLifecycle(
+                    item.memory_id,
+                    item.lifecycle_state === 'active' ? 'suppressed' : 'active',
+                  )"
                 >
                   <RefreshCw
-                    v-if="togglingIgnoredId === item.memory_id"
+                    v-if="settingLifecycleId === item.memory_id"
                     class="animate-spin"
                     :size="15"
                   />
-                  {{ item.is_ignored ? t('ai.memoryUnignore') : t('ai.memoryIgnore') }}
+                  {{ item.lifecycle_state === 'active' ? t('ai.memorySuppress') : t('ai.memoryActivate') }}
                 </Button>
                 <Button
                   v-if="editingMemoryId === item.memory_id"

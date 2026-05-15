@@ -3,13 +3,31 @@
 from __future__ import annotations
 
 from dataclasses import replace
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from apeiria.ai.memory.actions import build_memory_write_plans
-from apeiria.ai.memory.contracts import AIMemoryCreateInput, AIMemoryUpdateInput
+from apeiria.ai.memory.contracts import (
+    AIMemoryCreateInput,
+    AIMemoryStateUpdateInput,
+    AIMemoryUpdateInput,
+)
+from apeiria.ai.memory.governance import (
+    default_use_mode_for_manual_memory,
+    govern_extracted_memory,
+)
 from apeiria.ai.memory.knowledge import KnowledgeMemoryCoordinator
+from apeiria.ai.memory.models import (
+    AIMemoryBeliefAction,
+    AIMemoryRetrievalDiagnostics,
+    AIMemoryRetrievalSelection,
+    AIMemoryUseMode,
+)
 from apeiria.ai.memory.ranking import rank_memory_items
-from apeiria.ai.memory.repository import AIMemoryRepository, utcnow
+from apeiria.ai.memory.repository import (
+    AIMemoryActorType,
+    AIMemoryRepository,
+    utcnow,
+)
 from apeiria.ai.memory.summaries import MemorySummaryCoordinator
 
 if TYPE_CHECKING:
@@ -22,6 +40,7 @@ if TYPE_CHECKING:
         AIMemoryExtractionCandidate,
         AIMemoryKind,
         AIMemoryLayer,
+        AIMemoryLifecycleState,
         AIMemoryQuery,
     )
 
@@ -51,13 +70,22 @@ class AIMemoryService:
         self,
         create_input: AIMemoryCreateInput,
     ) -> AIMemoryDefinition:
-        """Create one structured memory item."""
+        """Create one governed memory item."""
 
+        governed_input = _with_default_governance(create_input)
         memory = self._repository.create_memory(
-            create_input,
+            governed_input,
             ignore_existing=False,
         )
         assert memory is not None
+        self._repository.record_belief_action(
+            memory_id=memory.memory_id,
+            action=_creation_action_for_state(memory.lifecycle_state),
+            actor_type=_actor_for_memory(memory),
+            reason=memory.governance_reason,
+            source_message_id=memory.source_message_id,
+            next_state=memory.lifecycle_state,
+        )
         return memory
 
     async def create_memory_if_absent(
@@ -66,10 +94,21 @@ class AIMemoryService:
     ) -> AIMemoryDefinition | None:
         """Create one memory item only when an identical item does not exist."""
 
-        return self._repository.create_memory(
-            create_input,
+        governed_input = _with_default_governance(create_input)
+        memory = self._repository.create_memory(
+            governed_input,
             ignore_existing=True,
         )
+        if memory is not None:
+            self._repository.record_belief_action(
+                memory_id=memory.memory_id,
+                action=_creation_action_for_state(memory.lifecycle_state),
+                actor_type=_actor_for_memory(memory),
+                reason=memory.governance_reason,
+                source_message_id=memory.source_message_id,
+                next_state=memory.lifecycle_state,
+            )
+        return memory
 
     async def get_memory_by_identity(
         self,
@@ -93,13 +132,28 @@ class AIMemoryService:
         *,
         memory_id: str,
         update_input: AIMemoryUpdateInput,
+        record_action: bool = True,
     ) -> AIMemoryDefinition | None:
         """Update one existing memory item in place."""
 
-        return self._repository.update_memory_content(
+        existing = await self.get_memory(memory_id=memory_id)
+        row = self._repository.update_memory_content(
             memory_id=memory_id,
             update_input=update_input,
         )
+        if row is not None and record_action:
+            self._repository.record_belief_action(
+                memory_id=memory_id,
+                action="revise",
+                actor_type=_actor_for_memory(row),
+                reason="memory content revised",
+                source_message_id=update_input.source_message_id,
+                previous_state=(
+                    existing.lifecycle_state if existing is not None else None
+                ),
+                next_state=row.lifecycle_state,
+            )
+        return row
 
     async def remember_candidates(
         self,
@@ -108,6 +162,7 @@ class AIMemoryService:
         anchor_id: str,
         source_message_id: str | None,
         candidates: list[AIMemoryExtractionCandidate],
+        scene_type: str = "private",
     ) -> list[AIMemoryDefinition]:
         """Persist extracted long-term memory candidates while avoiding duplicates."""
 
@@ -115,12 +170,39 @@ class AIMemoryService:
             anchor_type=anchor_type,
             anchor_id=anchor_id,
             memory_layer="long_term",
+            lifecycle_states=("active", "candidate"),
         )
         plans = build_memory_write_plans(existing_memories, candidates)
         created: list[AIMemoryDefinition] = []
         for plan in plans:
             candidate = plan.candidate
+            decision = govern_extracted_memory(candidate, scene_type=scene_type)
+            if decision.lifecycle_state is None:
+                self._repository.record_belief_action(
+                    memory_id=None,
+                    action="reject",
+                    actor_type="system",
+                    reason=decision.reason,
+                    source_message_id=source_message_id,
+                    next_state=None,
+                )
+                continue
+            if decision.target_scope != anchor_type:
+                self._repository.record_belief_action(
+                    memory_id=None,
+                    action="reject",
+                    actor_type="system",
+                    reason=(
+                        "candidate target scope "
+                        f"{decision.target_scope} does not match write scope "
+                        f"{anchor_type}"
+                    ),
+                    source_message_id=source_message_id,
+                    next_state=None,
+                )
+                continue
             if plan.action == "update" and plan.target_memory_id is not None:
+                existing = await self.get_memory(memory_id=plan.target_memory_id)
                 row = await self.update_memory_content(
                     memory_id=plan.target_memory_id,
                     update_input=AIMemoryUpdateInput(
@@ -129,8 +211,22 @@ class AIMemoryService:
                         confidence=candidate.confidence,
                         source_message_id=source_message_id,
                     ),
+                    record_action=False,
                 )
                 if row is not None:
+                    updated = await self.set_memory_state(
+                        memory_id=row.memory_id,
+                        lifecycle_state=decision.lifecycle_state,
+                        default_use_mode=decision.use_mode,
+                        governance_reason=decision.reason,
+                        action="revise",
+                        actor_type="system",
+                        source_message_id=source_message_id,
+                        previous_state=(
+                            existing.lifecycle_state if existing is not None else None
+                        ),
+                    )
+                    row = updated or row
                     created.append(row)
                 continue
             row = await self.create_memory_if_absent(
@@ -141,6 +237,9 @@ class AIMemoryService:
                     memory_kind=candidate.memory_kind,
                     content=candidate.content,
                     is_editable=True,
+                    lifecycle_state=decision.lifecycle_state,
+                    default_use_mode=decision.use_mode,
+                    governance_reason=decision.reason,
                     source_message_id=source_message_id,
                     salience=candidate.salience,
                     confidence=candidate.confidence,
@@ -157,7 +256,7 @@ class AIMemoryService:
         anchor_id: str,
         memory_layer: AIMemoryLayer | None = None,
         memory_kind: AIMemoryKind | None = None,
-        include_ignored: bool = False,
+        lifecycle_states: tuple[AIMemoryLifecycleState, ...] = ("active",),
     ) -> list[AIMemoryDefinition]:
         """List all memories for one anchor boundary."""
 
@@ -166,7 +265,7 @@ class AIMemoryService:
             anchor_id=anchor_id,
             memory_layer=memory_layer,
             memory_kind=memory_kind,
-            include_ignored=include_ignored,
+            lifecycle_states=lifecycle_states,
         )
 
     async def retrieve_memories(
@@ -182,6 +281,46 @@ class AIMemoryService:
             memory_kind=query.memory_kind,
         )
         return rank_memory_items(memories, query)
+
+    async def retrieve_memory_selections(
+        self,
+        query: AIMemoryQuery,
+    ) -> AIMemoryRetrievalDiagnostics:
+        """Retrieve active memories with use-mode diagnostics for one query."""
+
+        active = await self.list_memories(
+            anchor_type=query.anchor_type,
+            anchor_id=query.anchor_id,
+            memory_layer=query.memory_layer,
+            memory_kind=query.memory_kind,
+            lifecycle_states=("active",),
+        )
+        inactive = await self.list_memories(
+            anchor_type=query.anchor_type,
+            anchor_id=query.anchor_id,
+            memory_layer=query.memory_layer,
+            memory_kind=query.memory_kind,
+            lifecycle_states=("candidate", "suppressed", "archived"),
+        )
+        selected = tuple(
+            AIMemoryRetrievalSelection(
+                memory=memory,
+                use_mode=memory.default_use_mode,
+                scope_rank=0,
+            )
+            for memory in rank_memory_items(active, query)
+            if memory.default_use_mode != "ignore"
+        )
+        excluded = tuple(
+            AIMemoryRetrievalSelection(
+                memory=memory,
+                use_mode="ignore",
+                scope_rank=0,
+                exclusion_reason=f"lifecycle_state:{memory.lifecycle_state}",
+            )
+            for memory in inactive[: query.limit]
+        )
+        return AIMemoryRetrievalDiagnostics(selected=selected, excluded=excluded)
 
     async def create_knowledge_memory(
         self,
@@ -230,7 +369,7 @@ class AIMemoryService:
             return []
 
         recalled_at = utcnow()
-        await self._mark_memories_recalled(
+        await self.mark_memories_recalled(
             memory_ids=[memory.memory_id for memory in recalled],
             recalled_at=recalled_at,
         )
@@ -247,16 +386,54 @@ class AIMemoryService:
         if memory is None:
             return False
         self._knowledge.delete_memory_embedding(memory_id=memory_id)
-        return self._repository.delete_memory(memory_id=memory_id)
+        deleted = self._repository.delete_memory(memory_id=memory_id)
+        if deleted:
+            self._repository.record_belief_action(
+                memory_id=None,
+                action="delete",
+                actor_type=_actor_for_memory(memory),
+                reason=f"deleted memory {memory_id}",
+                source_message_id=memory.source_message_id,
+                previous_state=memory.lifecycle_state,
+                next_state=None,
+            )
+        return deleted
 
-    async def toggle_memory_ignored(
+    async def set_memory_state(  # noqa: PLR0913
         self,
         *,
         memory_id: str,
+        lifecycle_state: AIMemoryLifecycleState,
+        default_use_mode: AIMemoryUseMode | None = None,
+        governance_reason: str | None = None,
+        action: AIMemoryBeliefAction | None = None,
+        actor_type: AIMemoryActorType = "operator",
+        source_message_id: str | None = None,
+        previous_state: AIMemoryLifecycleState | None = None,
     ) -> AIMemoryDefinition | None:
-        """Toggle the is_ignored flag on one memory item."""
+        """Set lifecycle state for one governed memory belief."""
 
-        return self._repository.toggle_memory_ignored(memory_id=memory_id)
+        existing = await self.get_memory(memory_id=memory_id)
+        row = self._repository.set_memory_state(
+            memory_id=memory_id,
+            update_input=AIMemoryStateUpdateInput(
+                lifecycle_state=lifecycle_state,
+                default_use_mode=default_use_mode,
+                governance_reason=governance_reason,
+            ),
+        )
+        if row is not None:
+            self._repository.record_belief_action(
+                memory_id=memory_id,
+                action=action or _action_for_state(lifecycle_state),
+                actor_type=actor_type,
+                reason=governance_reason,
+                source_message_id=source_message_id,
+                previous_state=previous_state
+                or (existing.lifecycle_state if existing is not None else None),
+                next_state=lifecycle_state,
+            )
+        return row
 
     async def bulk_delete_memories(
         self,
@@ -271,18 +448,39 @@ class AIMemoryService:
                 deleted += 1
         return deleted
 
-    async def bulk_set_ignored(
+    async def bulk_set_memory_state(
         self,
         *,
         memory_ids: list[str],
-        ignored: bool,
+        lifecycle_state: AIMemoryLifecycleState,
+        default_use_mode: AIMemoryUseMode | None = None,
+        governance_reason: str | None = None,
     ) -> int:
-        """Set is_ignored on multiple memories. Returns count updated."""
+        """Set lifecycle state on multiple memories. Returns count updated."""
 
-        return self._repository.bulk_set_ignored(
+        existing = {
+            memory_id: memory
+            for memory_id in memory_ids
+            if (memory := await self.get_memory(memory_id=memory_id)) is not None
+        }
+        count = self._repository.bulk_set_memory_state(
             memory_ids=memory_ids,
-            ignored=ignored,
+            update_input=AIMemoryStateUpdateInput(
+                lifecycle_state=lifecycle_state,
+                default_use_mode=default_use_mode,
+                governance_reason=governance_reason,
+            ),
         )
+        for memory_id, memory in existing.items():
+            self._repository.record_belief_action(
+                memory_id=memory_id,
+                action=_action_for_state(lifecycle_state),
+                actor_type="operator",
+                reason=governance_reason,
+                previous_state=memory.lifecycle_state,
+                next_state=lifecycle_state,
+            )
+        return count
 
     async def consolidate_anchor_summary(
         self,
@@ -297,12 +495,14 @@ class AIMemoryService:
             anchor_id=anchor_id,
         )
 
-    async def _mark_memories_recalled(
+    async def mark_memories_recalled(
         self,
         *,
         memory_ids: list[str],
         recalled_at: datetime,
     ) -> None:
+        """Stamp recall timestamps for selected memories."""
+
         self._repository.mark_memories_recalled(
             memory_ids=memory_ids,
             recalled_at=recalled_at,
@@ -310,3 +510,49 @@ class AIMemoryService:
 
 
 ai_memory_service = AIMemoryService()
+
+
+def _with_default_governance(create_input: AIMemoryCreateInput) -> AIMemoryCreateInput:
+    if create_input.default_use_mode != "context" or create_input.governance_reason:
+        return create_input
+    return AIMemoryCreateInput(
+        anchor_type=create_input.anchor_type,
+        anchor_id=create_input.anchor_id,
+        memory_layer=create_input.memory_layer,
+        memory_kind=create_input.memory_kind,
+        content=create_input.content,
+        is_editable=create_input.is_editable,
+        lifecycle_state=create_input.lifecycle_state,
+        default_use_mode=cast(
+            "AIMemoryUseMode",
+            default_use_mode_for_manual_memory(create_input.memory_kind),
+        ),
+        governance_reason="manual governed memory write",
+        source_message_id=create_input.source_message_id,
+        salience=create_input.salience,
+        confidence=create_input.confidence,
+    )
+
+
+def _action_for_state(state: AIMemoryLifecycleState) -> AIMemoryBeliefAction:
+    if state == "active":
+        return "activate"
+    if state == "suppressed":
+        return "suppress"
+    if state == "archived":
+        return "archive"
+    return "revise"
+
+
+def _creation_action_for_state(
+    state: AIMemoryLifecycleState,
+) -> AIMemoryBeliefAction:
+    if state in {"active", "candidate"}:
+        return "accept"
+    if state == "suppressed":
+        return "suppress"
+    return "archive"
+
+
+def _actor_for_memory(memory: AIMemoryDefinition) -> AIMemoryActorType:
+    return "operator" if memory.memory_layer == "operator" else "system"

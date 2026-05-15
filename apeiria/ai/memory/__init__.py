@@ -7,18 +7,31 @@ from typing import TYPE_CHECKING, Any
 
 from .models import (
     AIMemoryAnchorType,
+    AIMemoryBeliefAction,
     AIMemoryDefinition,
     AIMemoryExtractionCandidate,
     AIMemoryExtractionResult,
+    AIMemoryGovernanceDecision,
     AIMemoryKind,
     AIMemoryLayer,
+    AIMemoryLifecycleState,
     AIMemoryQuery,
+    AIMemoryRetrievalDiagnostics,
+    AIMemoryRetrievalSelection,
+    AIMemoryScopeHint,
+    AIMemoryTargetScope,
+    AIMemoryUseMode,
     AIMessageSentiment,
+    AIObservationLevel,
 )
 from .ranking import rank_memory_items
 
 if TYPE_CHECKING:
-    from .contracts import AIMemoryCreateInput, AIMemoryUpdateInput
+    from .contracts import (
+        AIMemoryCreateInput,
+        AIMemoryStateUpdateInput,
+        AIMemoryUpdateInput,
+    )
     from .service import (
         AIMemoryService,
         ai_memory_service,
@@ -26,16 +39,26 @@ if TYPE_CHECKING:
 
 __all__ = [
     "AIMemoryAnchorType",
+    "AIMemoryBeliefAction",
     "AIMemoryCreateInput",
     "AIMemoryDefinition",
     "AIMemoryExtractionCandidate",
     "AIMemoryExtractionResult",
+    "AIMemoryGovernanceDecision",
     "AIMemoryKind",
     "AIMemoryLayer",
+    "AIMemoryLifecycleState",
     "AIMemoryQuery",
+    "AIMemoryRetrievalDiagnostics",
+    "AIMemoryRetrievalSelection",
+    "AIMemoryScopeHint",
     "AIMemoryService",
+    "AIMemoryStateUpdateInput",
+    "AIMemoryTargetScope",
     "AIMemoryUpdateInput",
+    "AIMemoryUseMode",
     "AIMessageSentiment",
+    "AIObservationLevel",
     "ai_memory_service",
     "rank_memory_items",
 ]
@@ -43,6 +66,7 @@ __all__ = [
 _LAZY_EXPORTS = {
     "AIMemoryCreateInput": ".contracts",
     "AIMemoryService": ".service",
+    "AIMemoryStateUpdateInput": ".contracts",
     "AIMemoryUpdateInput": ".contracts",
     "ai_memory_service": ".service",
 }

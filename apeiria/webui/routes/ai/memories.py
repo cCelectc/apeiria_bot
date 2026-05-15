@@ -12,11 +12,11 @@ from apeiria.webui.auth import require_control_panel
 from .memories_schemas import (
     AIMemoryBulkActionRequest,
     AIMemoryBulkActionResult,
-    AIMemoryBulkIgnoreRequest,
+    AIMemoryBulkLifecycleRequest,
     AIMemoryCreateRequest,
     AIMemoryDeleteResult,
     AIMemoryItem,
-    AIMemoryToggleIgnoredRequest,
+    AIMemoryLifecycleRequest,
     AIMemoryUpdateRequest,
     to_ai_memory_item,
 )
@@ -103,13 +103,14 @@ async def delete_ai_memory(
     )
 
 
-@router.patch("/memories/toggle-ignored", response_model=AIMemoryItem | None)
-async def toggle_ai_memory_ignored(
-    payload: AIMemoryToggleIgnoredRequest,
+@router.patch("/memories/lifecycle", response_model=AIMemoryItem | None)
+async def set_ai_memory_lifecycle(
+    payload: AIMemoryLifecycleRequest,
     session: Annotated["AuthSession", Depends(require_control_panel)],
 ) -> AIMemoryItem | None:
-    memory = await ai_application.operations.toggle_memory_ignored(
+    memory = await ai_application.operations.set_memory_lifecycle(
         memory_id=payload.memory_id,
+        lifecycle_state=payload.lifecycle_state,
         actor_username=_actor_username_from_claims(session),
     )
     return to_ai_memory_item(memory) if memory is not None else None
@@ -127,14 +128,14 @@ async def bulk_delete_ai_memories(
     return AIMemoryBulkActionResult(affected=count)
 
 
-@router.post("/memories/bulk-toggle-ignored", response_model=AIMemoryBulkActionResult)
-async def bulk_toggle_ai_memory_ignored(
-    payload: AIMemoryBulkIgnoreRequest,
+@router.post("/memories/bulk-lifecycle", response_model=AIMemoryBulkActionResult)
+async def bulk_set_ai_memory_lifecycle(
+    payload: AIMemoryBulkLifecycleRequest,
     session: Annotated["AuthSession", Depends(require_control_panel)],
 ) -> AIMemoryBulkActionResult:
-    count = await ai_application.operations.bulk_set_memories_ignored(
+    count = await ai_application.operations.bulk_set_memory_lifecycle(
         memory_ids=payload.memory_ids,
-        ignored=payload.ignored,
+        lifecycle_state=payload.lifecycle_state,
         actor_username=_actor_username_from_claims(session),
     )
     return AIMemoryBulkActionResult(affected=count)

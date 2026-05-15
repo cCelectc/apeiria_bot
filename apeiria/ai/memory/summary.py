@@ -20,7 +20,7 @@ def build_summary_memory_content(
         for memory in memories
         if (
             memory.memory_layer == "long_term"
-            and not memory.is_ignored
+            and memory.lifecycle_state == "active"
             and memory.content.strip()
         )
     ]

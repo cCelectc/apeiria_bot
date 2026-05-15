@@ -12,7 +12,11 @@ if TYPE_CHECKING:
         KnowledgeRetrievalDiagnostics,
         KnowledgeRetrievalItem,
     )
-    from apeiria.ai.memory import AIMemoryDefinition, AIMessageSentiment
+    from apeiria.ai.memory import (
+        AIMemoryDefinition,
+        AIMemoryRetrievalDiagnostics,
+        AIMessageSentiment,
+    )
     from apeiria.ai.model import (
         AIModelBindingTarget,
         AIModelContentPart,
@@ -198,6 +202,7 @@ class RuntimeContextMaterials:
     person_profile: tuple[str, ...]
     allowed_tools: tuple["AIToolDefinition", ...]
     initiative_bias: float
+    memory_diagnostics: "AIMemoryRetrievalDiagnostics | None" = None
     rag_chunks: tuple["KnowledgeRetrievalItem", ...] = ()
     rag_diagnostics: "KnowledgeRetrievalDiagnostics | None" = None
 

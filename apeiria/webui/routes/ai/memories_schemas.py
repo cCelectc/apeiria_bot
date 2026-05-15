@@ -18,7 +18,9 @@ class AIMemoryItem(BaseModel):
     memory_kind: str
     content: str
     is_editable: bool
-    is_ignored: bool
+    lifecycle_state: str
+    default_use_mode: str
+    governance_reason: str | None = None
     source_message_id: str | None = None
     salience: float
     confidence: float
@@ -51,17 +53,18 @@ class AIMemoryBulkActionRequest(BaseModel):
     memory_ids: list[str] = Field(min_length=1, max_length=100)
 
 
-class AIMemoryBulkIgnoreRequest(BaseModel):
+class AIMemoryBulkLifecycleRequest(BaseModel):
     memory_ids: list[str] = Field(min_length=1, max_length=100)
-    ignored: bool = True
+    lifecycle_state: Literal["candidate", "active", "suppressed", "archived"]
 
 
 class AIMemoryBulkActionResult(BaseModel):
     affected: int
 
 
-class AIMemoryToggleIgnoredRequest(BaseModel):
+class AIMemoryLifecycleRequest(BaseModel):
     memory_id: str = Field(min_length=1, max_length=64)
+    lifecycle_state: Literal["candidate", "active", "suppressed", "archived"]
 
 
 def to_ai_memory_item(item: "AIMemoryDefinition") -> AIMemoryItem:
@@ -73,7 +76,9 @@ def to_ai_memory_item(item: "AIMemoryDefinition") -> AIMemoryItem:
         memory_kind=item.memory_kind,
         content=item.content,
         is_editable=item.is_editable,
-        is_ignored=item.is_ignored,
+        lifecycle_state=item.lifecycle_state,
+        default_use_mode=item.default_use_mode,
+        governance_reason=item.governance_reason,
         source_message_id=item.source_message_id,
         salience=item.salience,
         confidence=item.confidence,

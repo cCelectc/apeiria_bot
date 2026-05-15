@@ -140,9 +140,9 @@ __plugin_meta__ = PluginMetadata(
                     type=int,
                 ),
                 RegisterConfig(
-                    key="ignored_memory_retention_days",
+                    key="suppressed_memory_retention_days",
                     default=30,
-                    help="Retention window for ignored AI memory rows.",
+                    help="Retention window for suppressed AI memory rows.",
                     type=int,
                 ),
             ]

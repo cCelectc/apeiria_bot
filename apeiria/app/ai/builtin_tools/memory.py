@@ -152,7 +152,7 @@ async def _update_memory(
     existing = await ai_memory_service.get_memory(memory_id=memory_id)
     if existing is None:
         return error_result("memory.write", f"memory {memory_id} was not found")
-    if not existing.is_editable or existing.is_ignored:
+    if not existing.is_editable or existing.lifecycle_state != "active":
         return error_result("memory.write", f"memory {memory_id} is not editable")
     try:
         updated = await ai_memory_service.update_memory_content(
@@ -193,6 +193,8 @@ def _memory_item(memory: "AIMemoryDefinition") -> dict[str, object]:
         "anchor_id": memory.anchor_id,
         "memory_layer": memory.memory_layer,
         "memory_kind": memory.memory_kind,
+        "lifecycle_state": memory.lifecycle_state,
+        "use_mode": memory.default_use_mode,
         "content": bounded_text(memory.content),
         "salience": memory.salience,
         "confidence": memory.confidence,

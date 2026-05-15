@@ -28,7 +28,7 @@ class AIPluginConfig(BaseModel):
     conversation_retention_days: int = 30
     raw_event_retention_days: int = 7
     tool_execution_retention_days: int = 30
-    ignored_memory_retention_days: int = 30
+    suppressed_memory_retention_days: int = 30
 
 
 def _validate_config(model: type[ModelT], data: dict[str, object]) -> ModelT:

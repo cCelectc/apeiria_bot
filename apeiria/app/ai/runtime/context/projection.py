@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Literal, Protocol
+from typing import TYPE_CHECKING, Literal, Protocol, TypeGuard
 
 from apeiria.app.ai.runtime.planning.social import summarize_social_decision
 
@@ -12,7 +12,7 @@ if TYPE_CHECKING:
         KnowledgeRetrievalDiagnostics,
         KnowledgeRetrievalItem,
     )
-    from apeiria.ai.memory import AIMemoryDefinition
+    from apeiria.ai.memory import AIMemoryDefinition, AIMemoryRetrievalDiagnostics
     from apeiria.ai.prompting import ReplyPersonaPromptBundleLike
     from apeiria.app.ai.future_tasks.models import AIFutureTaskDefinition
     from apeiria.app.ai.reply_strategy.models import ReplyStrategyDecision
@@ -81,6 +81,8 @@ class RuntimeContextDiagnostics:
     recalled_memory_count: int
     memory_layers: tuple[str, ...]
     memory_layer_counts: dict[str, int]
+    memory_use_mode_counts: dict[str, int]
+    memory_lifecycle_counts: dict[str, int]
     has_persona: bool
     has_relationship_context: bool
     person_profile_line_count: int
@@ -94,6 +96,8 @@ class RuntimeContextDiagnostics:
     rag_missing_embedding_count: int
     rag_stale_embedding_count: int
     rag_rerank_status: str | None
+    memory_selected: tuple[dict[str, object], ...] = ()
+    memory_excluded: tuple[dict[str, object], ...] = ()
     rag_degradation_reason: str | None = None
 
     def as_dict(self) -> dict[str, object]:
@@ -105,6 +109,10 @@ class RuntimeContextDiagnostics:
             "recalled_memory_count": self.recalled_memory_count,
             "memory_layers": self.memory_layers,
             "memory_layer_counts": self.memory_layer_counts,
+            "memory_use_mode_counts": self.memory_use_mode_counts,
+            "memory_lifecycle_counts": self.memory_lifecycle_counts,
+            "memory_selected": list(self.memory_selected),
+            "memory_excluded": list(self.memory_excluded),
             "has_persona": self.has_persona,
             "has_relationship_context": self.has_relationship_context,
             "person_profile_line_count": self.person_profile_line_count,
@@ -186,6 +194,22 @@ def project_runtime_context(  # noqa: PLR0913
             recalled_memory_count=len(context.recalled_memories),
             memory_layers=_memory_layers(context.recalled_memories),
             memory_layer_counts=_memory_layer_counts(context.recalled_memories),
+            memory_use_mode_counts=_memory_diagnostics_counts(
+                context.memory_diagnostics,
+                "use_mode_counts",
+            ),
+            memory_lifecycle_counts=_memory_diagnostics_counts(
+                context.memory_diagnostics,
+                "lifecycle_counts",
+            ),
+            memory_selected=_memory_diagnostics_items(
+                context.memory_diagnostics,
+                "selected",
+            ),
+            memory_excluded=_memory_diagnostics_items(
+                context.memory_diagnostics,
+                "excluded",
+            ),
             has_persona=context.persona is not None,
             has_relationship_context=bool(context.relationship_context),
             person_profile_line_count=len(context.person_profile),
@@ -223,6 +247,44 @@ def _memory_layer_counts(memories: list["AIMemoryDefinition"]) -> dict[str, int]
     for memory in memories:
         counts[memory.memory_layer] = counts.get(memory.memory_layer, 0) + 1
     return counts
+
+
+def _memory_diagnostics_counts(
+    diagnostics: object,
+    key: str,
+) -> dict[str, int]:
+    if not _is_memory_diagnostics(diagnostics):
+        return {}
+    data = diagnostics.as_dict()
+    value = data.get(key)
+    if not isinstance(value, dict):
+        return {}
+    return {
+        str(item_key): int(item_value)
+        for item_key, item_value in value.items()
+        if isinstance(item_value, int)
+    }
+
+
+def _memory_diagnostics_items(
+    diagnostics: object,
+    key: str,
+) -> tuple[dict[str, object], ...]:
+    if not _is_memory_diagnostics(diagnostics):
+        return ()
+    data = diagnostics.as_dict()
+    value = data.get(key)
+    if not isinstance(value, list | tuple):
+        return ()
+    return tuple(item for item in value if isinstance(item, dict))[:8]
+
+
+def _is_memory_diagnostics(
+    value: object,
+) -> "TypeGuard[AIMemoryRetrievalDiagnostics]":
+    from apeiria.ai.memory import AIMemoryRetrievalDiagnostics
+
+    return isinstance(value, AIMemoryRetrievalDiagnostics)
 
 
 def _rag_enabled(

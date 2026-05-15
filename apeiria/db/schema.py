@@ -44,6 +44,37 @@ TURN_DISPOSITION_VALUES: tuple[str, ...] = (
 TURN_DISPOSITION_CHECK = (
     "turn_disposition IN ('active', 'observed', 'generated', 'tool', 'system')"
 )
+MEMORY_ANCHOR_VALUES: tuple[str, ...] = (
+    "operator",
+    "scene",
+    "participant",
+    "user",
+    "project",
+)
+MEMORY_LIFECYCLE_VALUES: tuple[str, ...] = (
+    "candidate",
+    "active",
+    "suppressed",
+    "archived",
+)
+MEMORY_USE_MODE_VALUES: tuple[str, ...] = (
+    "ignore",
+    "silent",
+    "context",
+    "explicit",
+)
+MEMORY_ACTION_VALUES: tuple[str, ...] = (
+    "accept",
+    "reject",
+    "reinforce",
+    "revise",
+    "rescope",
+    "suppress",
+    "activate",
+    "archive",
+    "supersede",
+    "delete",
+)
 
 
 class DatabaseSchemaError(RuntimeError):
@@ -277,6 +308,11 @@ def _ensure_current_schema_shape(  # noqa: C901, PLR0912
                 """
             )
 
+    if "ai_memory_item" in existing_tables:
+        _ensure_memory_belief_shape(connection)
+    if "ai_memory_belief_action" not in existing_tables:
+        _create_memory_belief_action_table(connection)
+
 
 def _sqlite_supports_json_valid(connection: sqlite3.Connection) -> bool:
     try:
@@ -296,6 +332,63 @@ def _optional_json_check(connection: sqlite3.Connection, column_name: str) -> st
     if _sqlite_supports_json_valid(connection):
         return f"{column_name} IS NULL OR json_valid({column_name})"
     return "1"
+
+
+def _literal_check(column_name: str, values: tuple[str, ...]) -> str:
+    rendered = ", ".join(f"'{value}'" for value in values)
+    return f"{column_name} IN ({rendered})"
+
+
+def _ensure_memory_belief_shape(connection: sqlite3.Connection) -> None:
+    columns = _column_names(connection, "ai_memory_item")
+    if "lifecycle_state" not in columns:
+        connection.execute(
+            """
+            ALTER TABLE ai_memory_item
+            ADD COLUMN lifecycle_state TEXT NOT NULL DEFAULT 'active'
+                CHECK(lifecycle_state IN (
+                    'candidate',
+                    'active',
+                    'suppressed',
+                    'archived'
+                ))
+            """
+        )
+        if "is_ignored" in columns:
+            connection.execute(
+                """
+                UPDATE ai_memory_item
+                SET lifecycle_state = 'suppressed'
+                WHERE is_ignored = 1
+                """
+            )
+    if "default_use_mode" not in columns:
+        connection.execute(
+            """
+            ALTER TABLE ai_memory_item
+            ADD COLUMN default_use_mode TEXT NOT NULL DEFAULT 'context'
+                CHECK(default_use_mode IN (
+                    'ignore',
+                    'silent',
+                    'context',
+                    'explicit'
+                ))
+            """
+        )
+    if "governance_reason" not in columns:
+        connection.execute(
+            """
+            ALTER TABLE ai_memory_item
+            ADD COLUMN governance_reason TEXT
+            """
+        )
+    connection.execute(
+        """
+        UPDATE ai_memory_item
+        SET default_use_mode = 'ignore'
+        WHERE lifecycle_state != 'active'
+        """
+    )
 
 
 def _create_current_schema(connection: sqlite3.Connection) -> None:
@@ -332,6 +425,7 @@ def _create_current_schema(connection: sqlite3.Connection) -> None:
     _create_tool_execution_tables(connection)
     _create_relationship_person_tables(connection)
     _create_memory_item_tables(connection)
+    _create_memory_belief_action_table(connection)
     _create_knowledge_tables(connection)
     _create_future_task_tables(connection)
     _create_delivery_attempt_tables(connection)
@@ -933,7 +1027,7 @@ def _create_memory_item_tables(connection: sqlite3.Connection) -> None:
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             memory_id TEXT NOT NULL UNIQUE,
             anchor_type TEXT NOT NULL CHECK(
-                anchor_type IN ('scene', 'participant', 'user')
+                anchor_type IN ('operator', 'scene', 'participant', 'user', 'project')
             ),
             anchor_id TEXT NOT NULL,
             memory_layer TEXT NOT NULL CHECK(
@@ -950,7 +1044,13 @@ def _create_memory_item_tables(connection: sqlite3.Connection) -> None:
             ),
             content TEXT NOT NULL,
             is_editable INTEGER NOT NULL DEFAULT 1 CHECK(is_editable IN (0, 1)),
-            is_ignored INTEGER NOT NULL DEFAULT 0 CHECK(is_ignored IN (0, 1)),
+            lifecycle_state TEXT NOT NULL DEFAULT 'active' CHECK(
+                lifecycle_state IN ('candidate', 'active', 'suppressed', 'archived')
+            ),
+            default_use_mode TEXT NOT NULL DEFAULT 'context' CHECK(
+                default_use_mode IN ('ignore', 'silent', 'context', 'explicit')
+            ),
+            governance_reason TEXT,
             source_message_id TEXT,
             salience REAL NOT NULL DEFAULT 0.5 CHECK(salience BETWEEN 0.0 AND 1.0),
             confidence REAL NOT NULL DEFAULT 0.5
@@ -980,6 +1080,58 @@ def _create_memory_item_tables(connection: sqlite3.Connection) -> None:
         """
         CREATE INDEX idx_ai_memory_item_created_at
         ON ai_memory_item(created_at)
+        """
+    )
+
+
+def _create_memory_belief_action_table(connection: sqlite3.Connection) -> None:
+    connection.execute(
+        """
+        CREATE TABLE ai_memory_belief_action (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            action_id TEXT NOT NULL UNIQUE,
+            memory_id TEXT,
+            action TEXT NOT NULL CHECK(
+                action IN (
+                    'accept',
+                    'reject',
+                    'reinforce',
+                    'revise',
+                    'rescope',
+                    'suppress',
+                    'activate',
+                    'archive',
+                    'supersede',
+                    'delete'
+                )
+            ),
+            actor_type TEXT NOT NULL CHECK(
+                actor_type IN ('system', 'user', 'operator', 'tool')
+            ),
+            reason TEXT,
+            source_message_id TEXT,
+            previous_state TEXT,
+            next_state TEXT,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY(memory_id)
+                REFERENCES ai_memory_item(memory_id)
+                ON DELETE SET NULL,
+            FOREIGN KEY(source_message_id)
+                REFERENCES chat_message(message_id)
+                ON DELETE SET NULL
+        )
+        """
+    )
+    connection.execute(
+        """
+        CREATE INDEX idx_ai_memory_belief_action_memory_id
+        ON ai_memory_belief_action(memory_id)
+        """
+    )
+    connection.execute(
+        """
+        CREATE INDEX idx_ai_memory_belief_action_created_at
+        ON ai_memory_belief_action(created_at)
         """
     )
 

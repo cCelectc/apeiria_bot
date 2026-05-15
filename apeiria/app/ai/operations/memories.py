@@ -18,6 +18,7 @@ if TYPE_CHECKING:
         AIMemoryDefinition,
         AIMemoryKind,
         AIMemoryLayer,
+        AIMemoryLifecycleState,
     )
 
 
@@ -73,7 +74,7 @@ def _normalize_required_memory_kind(
 
 
 class MemoriesAdminMixin:
-    """Admin CRUD, bulk ops, and ignored-toggle for AI memory items."""
+    """Admin CRUD and lifecycle control for AI memory beliefs."""
 
     async def list_memories(  # noqa: PLR0913
         self,
@@ -104,7 +105,7 @@ class MemoriesAdminMixin:
             anchor_id=anchor_id,
             memory_layer=normalized_layer,
             memory_kind=normalized_kind,
-            include_ignored=True,
+            lifecycle_states=(),
         )
         return memories[:limit]
 
@@ -156,7 +157,7 @@ class MemoriesAdminMixin:
             anchor_type=normalized_anchor_type,
             anchor_id=anchor_id,
             memory_layer=normalized_layer,
-            include_ignored=True,
+            lifecycle_states=(),
         )
         created = next(item for item in memories if item.memory_id == row.memory_id)
         record_ai_admin_audit(
@@ -222,7 +223,7 @@ class MemoriesAdminMixin:
             anchor_type=cast("AIMemoryAnchorType", row.anchor_type),
             anchor_id=row.anchor_id,
             memory_layer=cast("AIMemoryLayer", row.memory_layer),
-            include_ignored=True,
+            lifecycle_states=(),
         )
         updated = next(
             (item for item in memories if item.memory_id == row.memory_id),
@@ -235,20 +236,24 @@ class MemoriesAdminMixin:
             )
         return updated
 
-    async def toggle_memory_ignored(
+    async def set_memory_lifecycle(
         self,
         *,
         memory_id: str,
+        lifecycle_state: str,
         actor_username: str | None = None,
     ) -> "AIMemoryDefinition | None":
-        result = await ai_memory_service.toggle_memory_ignored(
+        normalized_state = _normalize_memory_lifecycle_state(lifecycle_state)
+        result = await ai_memory_service.set_memory_state(
             memory_id=memory_id,
+            lifecycle_state=normalized_state,
+            governance_reason=f"operator set lifecycle {normalized_state}",
         )
         if result is not None:
             record_ai_admin_audit(
-                "ai_memory_ignored_toggled",
+                "ai_memory_lifecycle_set",
                 actor_username=actor_username,
-                detail=f"{result.memory_id} ignored={result.is_ignored}",
+                detail=f"{result.memory_id} lifecycle={result.lifecycle_state}",
             )
         return result
 
@@ -269,24 +274,35 @@ class MemoriesAdminMixin:
             )
         return count
 
-    async def bulk_set_memories_ignored(
+    async def bulk_set_memory_lifecycle(
         self,
         *,
         memory_ids: list[str],
-        ignored: bool,
+        lifecycle_state: str,
         actor_username: str | None = None,
     ) -> int:
-        count = await ai_memory_service.bulk_set_ignored(
+        normalized_state = _normalize_memory_lifecycle_state(lifecycle_state)
+        count = await ai_memory_service.bulk_set_memory_state(
             memory_ids=memory_ids,
-            ignored=ignored,
+            lifecycle_state=normalized_state,
+            governance_reason=f"operator bulk set lifecycle {normalized_state}",
         )
         if count > 0:
             record_ai_admin_audit(
-                "ai_memory_bulk_ignored_set",
+                "ai_memory_bulk_lifecycle_set",
                 actor_username=actor_username,
-                detail=f"count={count} ignored={ignored}",
+                detail=f"count={count} lifecycle={normalized_state}",
             )
         return count
 
 
 __all__ = ["MemoriesAdminMixin"]
+
+
+def _normalize_memory_lifecycle_state(
+    lifecycle_state: str,
+) -> "AIMemoryLifecycleState":
+    if lifecycle_state in {"candidate", "active", "suppressed", "archived"}:
+        return cast("AIMemoryLifecycleState", lifecycle_state)
+    msg = f"Unsupported memory lifecycle_state: {lifecycle_state}"
+    raise ValueError(msg)

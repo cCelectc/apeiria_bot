@@ -61,16 +61,31 @@ def test_memory_items_use_sqlite(
         assert [item.memory_id for item in recalled] == [created.memory_id]
         assert recalled[0].last_recalled_at is not None
 
-        toggled = await ai_memory_service.toggle_memory_ignored(
+        suppressed = await ai_memory_service.set_memory_state(
             memory_id=created.memory_id,
+            lifecycle_state="suppressed",
+            governance_reason="test suppression",
         )
-        assert toggled is not None
-        assert toggled.is_ignored is True
+        assert suppressed is not None
+        assert suppressed.lifecycle_state == "suppressed"
+
+        assert (
+            await ai_memory_service.retrieve_memories(
+                AIMemoryQuery(
+                    anchor_type="user",
+                    anchor_id="user-1",
+                    query_text="short",
+                    limit=10,
+                    memory_layer="long_term",
+                ),
+            )
+            == []
+        )
 
         listed = await ai_memory_service.list_memories(
             anchor_type="user",
             anchor_id="user-1",
-            include_ignored=True,
+            lifecycle_states=(),
         )
         assert [item.memory_id for item in listed] == [created.memory_id]
 
@@ -122,7 +137,7 @@ def test_consolidate_anchor_summary_creates_first_summary_memory(
     asyncio.run(scenario())
 
 
-def test_ignored_memory_retention_deletes_sqlite_rows_and_embedding(
+def test_suppressed_memory_retention_deletes_sqlite_rows_and_embedding(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -137,10 +152,10 @@ def test_ignored_memory_retention_deletes_sqlite_rows_and_embedding(
     )
     new_time = datetime.now(timezone.utc).isoformat(timespec="seconds")
     with database_runtime.connect_sync() as connection:
-        for memory_id, is_ignored, created_at in (
-            ("mem_old", 1, old_time),
-            ("mem_new", 1, new_time),
-            ("mem_visible", 0, old_time),
+        for memory_id, lifecycle_state, created_at in (
+            ("mem_old", "suppressed", old_time),
+            ("mem_new", "suppressed", new_time),
+            ("mem_visible", "active", old_time),
         ):
             connection.execute(
                 """
@@ -152,11 +167,12 @@ def test_ignored_memory_retention_deletes_sqlite_rows_and_embedding(
                     memory_kind,
                     content,
                     is_editable,
-                    is_ignored,
+                    lifecycle_state,
+                    default_use_mode,
                     salience,
                     confidence,
                     created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     memory_id,
@@ -166,7 +182,8 @@ def test_ignored_memory_retention_deletes_sqlite_rows_and_embedding(
                     "note",
                     memory_id,
                     1,
-                    is_ignored,
+                    lifecycle_state,
+                    "ignore" if lifecycle_state == "suppressed" else "context",
                     0.5,
                     0.5,
                     created_at,
@@ -178,7 +195,7 @@ def test_ignored_memory_retention_deletes_sqlite_rows_and_embedding(
         vector=[1.0],
     )
 
-    deleted = AIRetentionService().cleanup_ignored_memories(
+    deleted = AIRetentionService().cleanup_suppressed_memories(
         retention_days=RETENTION_DAYS
     )
 

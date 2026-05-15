@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Any, NoReturn
 from nonebot.log import logger
 
 from .context.adapter import build_turn_context
+from .observation import classify_observation_level
 from .policy import social_skip_to_runtime_decision
 from .session.context import (
     DeliveryTarget,
@@ -59,6 +60,9 @@ class _UnavailableRuntimeStage:
         self._raise()
 
     async def apply_observed_turn(self, **_: Any) -> None:
+        self._raise()
+
+    async def apply_deep_observation(self, **_: Any) -> Any:
         self._raise()
 
     async def assemble(self, **_: Any) -> RuntimeContextBundle:
@@ -157,11 +161,13 @@ class AISessionTurnEngine:
             ingress_input=ingress_input,
         )
         hard_decision = policy.decision
+        observation_level = classify_observation_level(hard_decision)
         if not policy.should_continue:
-            if hard_decision.action == "observe" and hard_decision.should_observe:
-                await self.apply_observed_turn(
-                    ingress_input=ingress_input,
-                )
+            await self._apply_pre_context_observation(
+                ingress_input=ingress_input,
+                observation_level=observation_level,
+                persist_light_turn=True,
+            )
             logger.debug(
                 "AI trace {} skipped reply: hard_rule for session {} action={} "
                 "reason_codes={}",
@@ -181,9 +187,13 @@ class AISessionTurnEngine:
             )
             return None
 
-        await self.apply_observation_side_effects(
+        ingress_input = await self._apply_pre_context_observation(
             ingress_input=ingress_input,
+            observation_level=observation_level,
+            persist_light_turn=False,
         )
+        await self.apply_observation_side_effects(ingress_input=ingress_input)
+        turn = ingress_input.turn
         context_bundle = await self.assemble_context(
             ingress_input=ingress_input,
         )
@@ -348,6 +358,56 @@ class AISessionTurnEngine:
 
         await self.observation_stage.apply_observed_turn(
             ingress_input=ingress_input,
+        )
+
+    async def apply_deep_observation(
+        self,
+        *,
+        ingress_input: RuntimeIngressInput,
+    ) -> Any:
+        """Run governed deep observation before read-oriented context assembly."""
+
+        return await self.observation_stage.apply_deep_observation(
+            ingress_input=ingress_input,
+        )
+
+    async def _apply_pre_context_observation(
+        self,
+        *,
+        ingress_input: RuntimeIngressInput,
+        observation_level: str,
+        persist_light_turn: bool,
+    ) -> RuntimeIngressInput:
+        if observation_level == "observe_deep":
+            ingress_input = await self._apply_deep_observation_result(
+                ingress_input=ingress_input,
+            )
+            await self.apply_observed_turn(ingress_input=ingress_input)
+            return ingress_input
+        if observation_level == "engage":
+            return await self._apply_deep_observation_result(
+                ingress_input=ingress_input,
+            )
+        if observation_level == "observe_light" and persist_light_turn:
+            await self.apply_observed_turn(ingress_input=ingress_input)
+        return ingress_input
+
+    async def _apply_deep_observation_result(
+        self,
+        *,
+        ingress_input: RuntimeIngressInput,
+    ) -> RuntimeIngressInput:
+        extraction_result = await self.apply_deep_observation(
+            ingress_input=ingress_input,
+        )
+        if extraction_result is None:
+            return ingress_input
+        return replace(
+            ingress_input,
+            turn=replace(
+                ingress_input.turn,
+                sentiment=extraction_result.sentiment,
+            ),
         )
 
     async def assemble_context(

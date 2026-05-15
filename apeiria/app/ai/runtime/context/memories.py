@@ -3,13 +3,17 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
 from apeiria.ai.memory import (
     AIMemoryLayer,
     AIMemoryQuery,
+    AIMemoryRetrievalDiagnostics,
+    AIMemoryRetrievalSelection,
     ai_memory_service,
 )
+from apeiria.ai.memory.governance import decide_candidate_scope
 from apeiria.app.ai.runtime.context.memory_extraction import extract_memory_from_message
 from apeiria.app.ai.runtime.context.person_profiles import (
     ingest_person_profile_from_memory,
@@ -20,6 +24,7 @@ if TYPE_CHECKING:
     from apeiria.ai.memory import (
         AIMemoryAnchorType,
         AIMemoryDefinition,
+        AIMemoryExtractionCandidate,
         AIMemoryExtractionResult,
     )
     from apeiria.conversation.models import ChatSessionIdentity
@@ -98,13 +103,38 @@ def build_memory_anchors(
 def build_memory_write_anchors(
     identity: "ChatSessionIdentity",
     user_id: str,
-) -> list[AIMemoryWriteAnchor]:
-    """Build persistent storage anchors for extracted long-term memory."""
+) -> tuple[AIMemoryWriteAnchor, ...]:
+    """Build available persistent storage anchors for one runtime turn."""
 
-    return [
+    return tuple(
         AIMemoryWriteAnchor(anchor_type=anchor.anchor_type, anchor_id=anchor.anchor_id)
         for anchor in build_memory_anchors(identity, user_id)
-    ]
+    )
+
+
+def select_memory_write_anchor(
+    *,
+    identity: "ChatSessionIdentity",
+    candidate: "AIMemoryExtractionCandidate",
+    write_anchors: tuple[AIMemoryWriteAnchor, ...],
+) -> AIMemoryWriteAnchor | None:
+    """Choose the narrowest reasonable scope for one automatic candidate."""
+
+    target_scope = decide_candidate_scope(
+        candidate,
+        scene_type=identity.scene_type,
+    )
+    return _anchor_for_scope_hint(target_scope, write_anchors)
+
+
+def _anchor_for_scope_hint(
+    scope_hint: "AIMemoryAnchorType",
+    write_anchors: tuple[AIMemoryWriteAnchor, ...],
+) -> AIMemoryWriteAnchor | None:
+    for anchor in write_anchors:
+        if anchor.anchor_type == scope_hint:
+            return anchor
+    return None
 
 
 def apply_memory_budget(
@@ -200,31 +230,83 @@ async def _retrieve_memories(
     """Retrieve runtime memories, optionally applying live recall mutation."""
 
     recalled: list[AIMemoryDefinition] = []
-    seen_ids: set[str] = set()
+    diagnostics = await retrieve_memory_diagnostics_for_context(
+        identity=identity,
+        user_id=user_id,
+        query_text=query_text,
+    )
+    recalled = [
+        selection.memory
+        for selection in diagnostics.selected
+        if selection.is_prompt_visible
+    ]
+    if mutate_recall and recalled:
+        await ai_memory_service.mark_memories_recalled(
+            memory_ids=[memory.memory_id for memory in recalled],
+            recalled_at=datetime.now(timezone.utc),
+        )
+    return recalled
 
+
+async def retrieve_memory_diagnostics_for_context(
+    *,
+    identity: "ChatSessionIdentity",
+    user_id: str,
+    query_text: str,
+) -> "AIMemoryRetrievalDiagnostics":
+    """Retrieve scoped memory selections with diagnostics for one runtime turn."""
+
+    selected: list[AIMemoryRetrievalSelection] = []
+    excluded: list[AIMemoryRetrievalSelection] = []
+    seen_ids: set[str] = set()
+    scope_rank = 0
     for memory_layer in _RECALL_LAYER_ORDER:
         if memory_layer == "knowledge":
-            layer_rows = await ai_memory_service.retrieve_knowledge_memories(
+            memories = await ai_memory_service.retrieve_knowledge_memories(
                 targets=_build_knowledge_targets(identity, user_id),
                 query_text=query_text,
                 limit=_LAYER_RECALL_LIMITS[memory_layer],
             )
-        else:
-            layer_rows = await _collect_layer_memories(
-                identity=identity,
-                user_id=user_id,
+            for memory in apply_memory_budget(
+                [item for item in memories if item.memory_id not in seen_ids],
+                max_memories=_LAYER_RECALL_LIMITS[memory_layer],
+            ):
+                seen_ids.add(memory.memory_id)
+                selected.append(
+                    AIMemoryRetrievalSelection(
+                        memory=memory,
+                        use_mode=memory.default_use_mode,
+                        scope_rank=scope_rank,
+                    )
+                )
+            scope_rank += 1
+            continue
+        for anchor in build_memory_anchors(identity, user_id):
+            query = AIMemoryQuery(
+                anchor_type=anchor.anchor_type,
+                anchor_id=anchor.anchor_id,
                 query_text=query_text,
+                limit=_LAYER_RECALL_LIMITS[memory_layer],
                 memory_layer=memory_layer,
-                mutate_recall=mutate_recall,
             )
-        for memory in apply_memory_budget(
-            [item for item in layer_rows if item.memory_id not in seen_ids],
-            max_memories=_LAYER_RECALL_LIMITS[memory_layer],
-        ):
-            seen_ids.add(memory.memory_id)
-            recalled.append(memory)
-
-    return recalled
+            result = await ai_memory_service.retrieve_memory_selections(query)
+            for item in result.selected:
+                if item.memory.memory_id in seen_ids:
+                    continue
+                seen_ids.add(item.memory.memory_id)
+                selected.append(
+                    AIMemoryRetrievalSelection(
+                        memory=item.memory,
+                        use_mode=item.use_mode,
+                        scope_rank=scope_rank,
+                    )
+                )
+            excluded.extend(result.excluded)
+            scope_rank += 1
+    return AIMemoryRetrievalDiagnostics(
+        selected=tuple(selected),
+        excluded=tuple(excluded),
+    )
 
 
 async def retrieve_memories_for_preview(
@@ -323,12 +405,27 @@ async def store_extracted_memories(
         self_introduction_name=extraction_result.self_introduction_name,
     )
     if candidates:
-        for anchor in write_anchors:
+        candidates_by_anchor: dict[
+            AIMemoryWriteAnchor,
+            list[AIMemoryExtractionCandidate],
+        ] = {}
+        for candidate in candidates:
+            anchor = select_memory_write_anchor(
+                identity=identity,
+                candidate=candidate,
+                write_anchors=write_anchors,
+            )
+            if anchor is None:
+                continue
+            candidates_by_anchor.setdefault(anchor, []).append(candidate)
+
+        for anchor, scoped_candidates in candidates_by_anchor.items():
             await ai_memory_service.remember_candidates(
                 anchor_type=anchor.anchor_type,
                 anchor_id=anchor.anchor_id,
                 source_message_id=source_message_id,
-                candidates=candidates,
+                candidates=scoped_candidates,
+                scene_type=identity.scene_type,
             )
             await ai_memory_service.consolidate_anchor_summary(
                 anchor_type=anchor.anchor_type,

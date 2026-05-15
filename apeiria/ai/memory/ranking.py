@@ -56,7 +56,8 @@ def rank_memory_items(
         for item in items
         if item.anchor_type == query.anchor_type
         and item.anchor_id == query.anchor_id
-        and not item.is_ignored
+        and item.lifecycle_state == "active"
+        and item.default_use_mode != "ignore"
     ]
     if query.memory_layer is not None:
         filtered = [

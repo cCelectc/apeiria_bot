@@ -4,7 +4,10 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from apeiria.app.ai.runtime.context.memories import record_live_memory_recall
+from apeiria.app.ai.runtime.context.memories import (
+    record_live_memory_recall,
+    store_extracted_memories,
+)
 from apeiria.app.ai.runtime.context.relationships import (
     build_relationship_target,
     update_relationship_state,
@@ -14,6 +17,7 @@ from apeiria.conversation.service import chat_session_service
 if TYPE_CHECKING:
     from datetime import datetime
 
+    from apeiria.ai.memory import AIMemoryExtractionResult
     from apeiria.app.ai.runtime.session.context import RuntimeTurnInput
     from apeiria.conversation.models import ChatSessionIdentity
 
@@ -65,4 +69,22 @@ async def persist_observed_conversation_turn(
     )
 
 
-__all__ = ["apply_reply_observation_effects", "persist_observed_conversation_turn"]
+async def apply_deep_memory_observation(
+    *,
+    turn: "RuntimeTurnInput",
+) -> "AIMemoryExtractionResult":
+    """Interpret one observed turn into governed memory candidates."""
+
+    return await store_extracted_memories(
+        identity=turn.identity,
+        user_id=turn.user_id,
+        message_text=turn.message_text,
+        source_message_id=turn.source_message_id,
+    )
+
+
+__all__ = [
+    "apply_deep_memory_observation",
+    "apply_reply_observation_effects",
+    "persist_observed_conversation_turn",
+]

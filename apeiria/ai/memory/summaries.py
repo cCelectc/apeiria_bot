@@ -34,7 +34,7 @@ class MemorySummaryCoordinator:
         memories = self._repository.list_memories(
             anchor_type=anchor_type,
             anchor_id=anchor_id,
-            include_ignored=True,
+            lifecycle_states=(),
         )
         summary_content = build_summary_memory_content(memories)
         existing_summary = next(

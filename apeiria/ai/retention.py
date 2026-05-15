@@ -102,8 +102,8 @@ class AIRetentionService:
         deleted_tool_execution_count = self.cleanup_tool_executions(
             retention_days=config.tool_execution_retention_days
         )
-        deleted_memory_count = self.cleanup_ignored_memories(
-            retention_days=config.ignored_memory_retention_days
+        deleted_memory_count = self.cleanup_suppressed_memories(
+            retention_days=config.suppressed_memory_retention_days
         )
         return AIRetentionCleanupResult(
             deleted_messages=conversation_result.deleted_messages,
@@ -166,8 +166,8 @@ class AIRetentionService:
             )
             return int(cursor.rowcount or 0)
 
-    def cleanup_ignored_memories(self, *, retention_days: int) -> int:
-        """Delete old ignored SQLite-backed memory rows and embeddings."""
+    def cleanup_suppressed_memories(self, *, retention_days: int) -> int:
+        """Delete old suppressed SQLite-backed memory rows and embeddings."""
 
         from apeiria.ai.memory.embedding_store import ai_memory_embedding_store
 
@@ -177,7 +177,7 @@ class AIRetentionService:
                 """
                 SELECT memory_id
                 FROM ai_memory_item
-                WHERE created_at < ? AND is_ignored = 1
+                WHERE created_at < ? AND lifecycle_state = 'suppressed'
                 """,
                 (cutoff,),
             ).fetchall()
@@ -187,7 +187,7 @@ class AIRetentionService:
             cursor = connection.execute(
                 """
                 DELETE FROM ai_memory_item
-                WHERE created_at < ? AND is_ignored = 1
+                WHERE created_at < ? AND lifecycle_state = 'suppressed'
                 """,
                 (cutoff,),
             )

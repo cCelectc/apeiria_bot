@@ -224,6 +224,12 @@ class RuntimeObservationStage(Protocol):
         ingress_input: RuntimeIngressInput,
     ) -> None: ...
 
+    async def apply_deep_observation(
+        self,
+        *,
+        ingress_input: RuntimeIngressInput,
+    ) -> object | None: ...
+
 
 @runtime_checkable
 class RuntimeContextStage(Protocol):
