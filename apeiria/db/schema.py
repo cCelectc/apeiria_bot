@@ -75,6 +75,22 @@ MEMORY_ACTION_VALUES: tuple[str, ...] = (
     "supersede",
     "delete",
 )
+PROFILE_NAME_SOURCE_VALUES: tuple[str, ...] = (
+    "manual",
+    "self_introduced",
+    "platform",
+    "inferred",
+)
+PROFILE_NAME_VISIBILITY_VALUES: tuple[str, ...] = (
+    "private_only",
+    "public_allowed",
+    "disabled",
+)
+RELATIONSHIP_EVENT_TYPE_VALUES: tuple[str, ...] = (
+    "message",
+    "manual",
+    "decay",
+)
 
 
 class DatabaseSchemaError(RuntimeError):
@@ -187,6 +203,18 @@ def _column_names(connection: sqlite3.Connection, table_name: str) -> set[str]:
     return {
         str(row[1]) for row in connection.execute(f"PRAGMA table_info({table_name})")
     }
+
+
+def _table_sql(connection: sqlite3.Connection, table_name: str) -> str:
+    row = connection.execute(
+        """
+        SELECT sql
+        FROM sqlite_master
+        WHERE type = 'table' AND name = ?
+        """,
+        (table_name,),
+    ).fetchone()
+    return str(row[0]) if row else ""
 
 
 def _ensure_current_schema_shape(  # noqa: C901, PLR0912
@@ -312,6 +340,7 @@ def _ensure_current_schema_shape(  # noqa: C901, PLR0912
         _ensure_memory_belief_shape(connection)
     if "ai_memory_belief_action" not in existing_tables:
         _create_memory_belief_action_table(connection)
+    _ensure_profile_relationship_shape(connection)
 
 
 def _sqlite_supports_json_valid(connection: sqlite3.Connection) -> bool:
@@ -423,7 +452,7 @@ def _create_current_schema(connection: sqlite3.Connection) -> None:
     _create_command_statistics_tables(connection)
     _create_conversation_tables(connection)
     _create_tool_execution_tables(connection)
-    _create_relationship_person_tables(connection)
+    _create_profile_relationship_tables(connection)
     _create_memory_item_tables(connection)
     _create_memory_belief_action_table(connection)
     _create_knowledge_tables(connection)
@@ -930,24 +959,168 @@ def _replace_ai_tool_execution_if_legacy(connection: sqlite3.Connection) -> None
     _create_tool_execution_tables(connection)
 
 
-def _create_relationship_person_tables(connection: sqlite3.Connection) -> None:
-    memory_points_check = _json_check(connection, "memory_points_json")
-    mood_tags_check = _json_check(connection, "mood_tags_json")
+def _create_profile_relationship_tables(connection: sqlite3.Connection) -> None:
+    _create_profile_table(connection)
+    _create_affinity_table(connection)
+    _create_relationship_event_table(connection)
+
+
+def _ensure_profile_relationship_shape(connection: sqlite3.Connection) -> None:
+    existing_tables = _table_names(connection)
+    if "ai_profile" not in existing_tables:
+        _create_profile_table(connection)
+    if "ai_person_profile" in _table_names(connection):
+        _migrate_person_profile_to_profile(connection)
+        connection.execute("DROP TABLE ai_person_profile")
+
+    existing_tables = _table_names(connection)
+    if "ai_affinity" not in existing_tables:
+        _create_affinity_table(connection)
+    elif _relationship_affinity_needs_replacement(connection):
+        _replace_legacy_affinity_tables(connection)
+
+    if "ai_relationship_event" not in _table_names(connection):
+        _create_relationship_event_table(connection)
+    elif _relationship_event_needs_replacement(connection):
+        _replace_legacy_relationship_event_table(connection)
+
+
+def _migrate_person_profile_to_profile(connection: sqlite3.Connection) -> None:
+    timestamp = _utcnow_text()
+    connection.execute(
+        """
+        INSERT INTO ai_profile (
+            profile_id,
+            platform,
+            user_id,
+            display_name,
+            preferred_name,
+            name_source,
+            name_visibility,
+            profile_enabled,
+            last_interaction_at,
+            created_at,
+            updated_at
+        )
+        SELECT
+            'profile_' || lower(hex(randomblob(16))),
+            platform,
+            user_id,
+            person_name,
+            COALESCE(nickname, person_name),
+            CASE
+                WHEN nickname IS NOT NULL OR person_name IS NOT NULL
+                    THEN 'self_introduced'
+                ELSE NULL
+            END,
+            'public_allowed',
+            1,
+            COALESCE(last_interaction, ?),
+            created_at,
+            updated_at
+        FROM ai_person_profile
+        WHERE 1
+        ON CONFLICT(platform, user_id) DO UPDATE SET
+            display_name = COALESCE(ai_profile.display_name, excluded.display_name),
+            preferred_name = COALESCE(
+                ai_profile.preferred_name,
+                excluded.preferred_name
+            ),
+            name_source = COALESCE(ai_profile.name_source, excluded.name_source),
+            last_interaction_at = CASE
+                WHEN excluded.last_interaction_at > ai_profile.last_interaction_at
+                    THEN excluded.last_interaction_at
+                ELSE ai_profile.last_interaction_at
+            END,
+            updated_at = CASE
+                WHEN excluded.updated_at > ai_profile.updated_at
+                    THEN excluded.updated_at
+                ELSE ai_profile.updated_at
+            END
+        """,
+        (timestamp,),
+    )
+
+
+def _relationship_affinity_needs_replacement(
+    connection: sqlite3.Connection,
+) -> bool:
+    columns = _column_names(connection, "ai_affinity")
+    if "group_id" in columns or "scope_key" in columns:
+        return True
+    table_sql = _table_sql(connection, "ai_affinity")
+    return "BETWEEN -1.0 AND 1.0" in table_sql or "REAL" in table_sql
+
+
+def _relationship_event_needs_replacement(
+    connection: sqlite3.Connection,
+) -> bool:
+    columns = _column_names(connection, "ai_relationship_event")
+    if "group_id" in columns or "scene_id" not in columns:
+        return True
+    table_sql = _table_sql(connection, "ai_relationship_event")
+    return "absence_decay" in table_sql or "BETWEEN -1.0 AND 1.0" in table_sql
+
+
+def _replace_legacy_affinity_tables(connection: sqlite3.Connection) -> None:
+    if "ai_relationship_event" in _table_names(connection):
+        connection.execute("DROP TABLE ai_relationship_event")
+    connection.execute("ALTER TABLE ai_affinity RENAME TO ai_affinity_legacy")
+    _create_affinity_table(connection)
+    connection.execute(
+        """
+        INSERT OR IGNORE INTO ai_affinity (
+            affinity_id,
+            platform,
+            user_id,
+            score,
+            mood_tags_json,
+            last_event_at,
+            last_decay_at
+        )
+        SELECT
+            affinity_id,
+            platform,
+            user_id,
+            CAST(max(-100, min(100, round(score * 100))) AS INTEGER),
+            mood_tags_json,
+            last_event_at,
+            last_decay_at
+        FROM ai_affinity_legacy
+        ORDER BY last_event_at DESC, id DESC
+        """,
+    )
+    connection.execute("DROP TABLE ai_affinity_legacy")
+
+
+def _replace_legacy_relationship_event_table(connection: sqlite3.Connection) -> None:
+    connection.execute("DROP TABLE ai_relationship_event")
+    _create_relationship_event_table(connection)
+
+
+def _create_profile_table(connection: sqlite3.Connection) -> None:
+    name_visibility_check = _literal_check(
+        "name_visibility",
+        PROFILE_NAME_VISIBILITY_VALUES,
+    )
     connection.execute(
         f"""
-        CREATE TABLE ai_person_profile (
+        CREATE TABLE ai_profile (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            person_id TEXT NOT NULL UNIQUE,
+            profile_id TEXT NOT NULL UNIQUE,
             platform TEXT NOT NULL,
             user_id TEXT NOT NULL,
-            person_name TEXT,
-            nickname TEXT,
-            name_reason TEXT,
-            memory_points_json TEXT NOT NULL DEFAULT '[]'
-                CHECK({memory_points_check}),
-            is_known INTEGER NOT NULL DEFAULT 0 CHECK(is_known IN (0, 1)),
-            know_since TEXT,
-            last_interaction TEXT NOT NULL,
+            display_name TEXT,
+            preferred_name TEXT,
+            name_source TEXT CHECK(
+                name_source IS NULL
+                OR {_literal_check("name_source", PROFILE_NAME_SOURCE_VALUES)}
+            ),
+            name_visibility TEXT NOT NULL DEFAULT 'public_allowed'
+                CHECK({name_visibility_check}),
+            profile_enabled INTEGER NOT NULL DEFAULT 1
+                CHECK(profile_enabled IN (0, 1)),
+            last_interaction_at TEXT NOT NULL,
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL,
             UNIQUE(platform, user_id)
@@ -956,47 +1129,51 @@ def _create_relationship_person_tables(connection: sqlite3.Connection) -> None:
     )
     connection.execute(
         """
-        CREATE INDEX idx_ai_person_profile_last_interaction
-        ON ai_person_profile(last_interaction)
+        CREATE INDEX idx_ai_profile_last_interaction
+        ON ai_profile(last_interaction_at)
         """
     )
+
+
+def _create_affinity_table(connection: sqlite3.Connection) -> None:
+    mood_tags_check = _json_check(connection, "mood_tags_json")
     connection.execute(
         f"""
         CREATE TABLE ai_affinity (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             affinity_id TEXT NOT NULL UNIQUE,
             platform TEXT NOT NULL,
-            group_id TEXT,
-            scope_key TEXT NOT NULL,
             user_id TEXT NOT NULL,
-            score REAL NOT NULL DEFAULT 0.0 CHECK(score BETWEEN -1.0 AND 1.0),
+            score INTEGER NOT NULL DEFAULT 0 CHECK(score BETWEEN -100 AND 100),
             mood_tags_json TEXT NOT NULL DEFAULT '[]' CHECK({mood_tags_check}),
             last_event_at TEXT NOT NULL,
             last_decay_at TEXT,
-            UNIQUE(platform, scope_key, user_id)
+            UNIQUE(platform, user_id)
         )
         """
     )
     connection.execute(
         """
-        CREATE INDEX idx_ai_affinity_scope
-        ON ai_affinity(platform, scope_key, user_id)
+        CREATE INDEX idx_ai_affinity_user
+        ON ai_affinity(platform, user_id)
         """
     )
+
+
+def _create_relationship_event_table(connection: sqlite3.Connection) -> None:
     connection.execute(
-        """
+        f"""
         CREATE TABLE ai_relationship_event (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             event_id TEXT NOT NULL UNIQUE,
             affinity_id TEXT NOT NULL,
             platform TEXT NOT NULL,
-            group_id TEXT,
             user_id TEXT NOT NULL,
-            event_type TEXT NOT NULL CHECK(
-                event_type IN ('message', 'manual', 'absence_decay')
-            ),
-            score_delta REAL NOT NULL,
-            score_after REAL NOT NULL CHECK(score_after BETWEEN -1.0 AND 1.0),
+            scene_id TEXT,
+            event_type TEXT NOT NULL
+                CHECK({_literal_check("event_type", RELATIONSHIP_EVENT_TYPE_VALUES)}),
+            score_delta INTEGER NOT NULL,
+            score_after INTEGER NOT NULL CHECK(score_after BETWEEN -100 AND 100),
             mood_tag TEXT,
             reason TEXT,
             created_at TEXT NOT NULL,

@@ -17,8 +17,8 @@ from .future_tasks import router as _future_tasks_router
 from .knowledge import router as _knowledge_router
 from .memories import router as _memories_router
 from .models import router as _models_router
-from .person_profiles import router as _person_profiles_router
 from .personas import router as _personas_router
+from .profiles import router as _profiles_router
 from .relationships import router as _relationships_router
 from .sessions import router as _sessions_router
 from .skills import router as _skills_router
@@ -55,8 +55,8 @@ router.include_router(_future_tasks_router)
 router.include_router(_knowledge_router)
 router.include_router(_memories_router)
 router.include_router(_models_router)
-router.include_router(_person_profiles_router)
 router.include_router(_personas_router)
+router.include_router(_profiles_router)
 router.include_router(_relationships_router)
 router.include_router(_sessions_router)
 router.include_router(_skills_router)

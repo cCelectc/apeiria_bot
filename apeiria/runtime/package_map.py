@@ -81,9 +81,9 @@ PACKAGE_RULES: tuple[ApeiriaPackageRule, ...] = (
         description="Reusable AI memory storage and retrieval behavior.",
     ),
     ApeiriaPackageRule(
-        prefix="apeiria.ai.person",
+        prefix="apeiria.ai.profile",
         band=ApeiriaPackageBand.STABLE_ROOT,
-        description="Reusable person profile domain behavior.",
+        description="Reusable user profile domain behavior.",
     ),
     ApeiriaPackageRule(
         prefix="apeiria.ai.persona",

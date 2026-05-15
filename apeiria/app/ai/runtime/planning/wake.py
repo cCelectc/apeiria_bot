@@ -35,7 +35,6 @@ async def resolve_initiative_bias(
 
     projection = await ai_relationship_service.project_state(
         platform=relationship_target.platform,
-        group_id=relationship_target.group_id,
         user_id=relationship_target.user_id,
     )
     return projection.initiative_bias

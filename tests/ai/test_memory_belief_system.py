@@ -885,7 +885,7 @@ class _ContextStub:
                 conversation_summary=None,
                 relationship_target=AIRelationshipTarget(
                     platform=ingress_input.turn.identity.platform,
-                    group_id=None,
+                    scene_id=ingress_input.turn.identity.scene_id,
                     user_id=ingress_input.turn.user_id,
                     is_private=ingress_input.turn.identity.scene_type == "private",
                 ),
@@ -898,7 +898,8 @@ class _ContextStub:
                 persona=None,
                 recalled_memories=[],
                 relationship_context=None,
-                person_profile=(),
+                profile_card=(),
+                profile_card_source_refs=(),
                 allowed_tools=(),
                 initiative_bias=0.0,
             ),

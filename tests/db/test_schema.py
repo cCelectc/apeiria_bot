@@ -50,7 +50,7 @@ def test_database_ensure_ready_initializes_empty_sqlite_db(tmp_path: Path) -> No
         "ai_tool_policy",
         "command_statistics",
         "ai_tool_execution",
-        "ai_person_profile",
+        "ai_profile",
         "ai_affinity",
         "ai_relationship_event",
         "ai_memory_item",
@@ -218,10 +218,15 @@ def test_database_schema_declares_value_checks(tmp_path: Path) -> None:
             connection,
             "ai_tool_execution",
         )
-        assert "CHECK(score BETWEEN -1.0 AND 1.0)" in _table_sql(
+        assert "CHECK(score BETWEEN -100 AND 100)" in _table_sql(
             connection,
             "ai_affinity",
         )
+        assert "ai_person_profile" not in _table_names(connection)
+        assert "scope_key" not in _table_sql(connection, "ai_affinity")
+        assert "group_id" not in _table_sql(connection, "ai_affinity")
+        assert "scene_id TEXT" in _table_sql(connection, "ai_relationship_event")
+        assert "'decay'" in _table_sql(connection, "ai_relationship_event")
         assert "CHECK(salience BETWEEN 0.0 AND 1.0)" in _table_sql(
             connection,
             "ai_memory_item",
@@ -337,6 +342,39 @@ def test_database_ensure_ready_adds_turn_disposition_to_v1_chat_message(
     assert row == ("msg-legacy", "active")
 
 
+def test_database_ensure_ready_merges_legacy_person_profile_into_existing_profile(
+    tmp_path: Path,
+) -> None:
+    database = ApeiriaDatabase(project_root=tmp_path)
+    _create_profile_migration_conflict_tables(database)
+
+    database.ensure_ready()
+
+    with database.connect_sync() as connection:
+        row = connection.execute(
+            """
+            SELECT display_name, preferred_name, name_source, name_visibility,
+                profile_enabled, last_interaction_at, created_at, updated_at
+            FROM ai_profile
+            WHERE platform = ? AND user_id = ?
+            """,
+            ("onebot", "user-1"),
+        ).fetchone()
+        tables = _table_names(connection)
+
+    assert row == (
+        "Legacy Display",
+        "Existing Preferred",
+        "self_introduced",
+        "private_only",
+        1,
+        "2026-04-25T10:00:00",
+        "2026-04-25T00:00:00",
+        "2026-04-25T10:00:00",
+    )
+    assert "ai_person_profile" not in tables
+
+
 def _create_schema_meta(
     database: ApeiriaDatabase,
     *,
@@ -446,6 +484,116 @@ def _create_minimal_legacy_ai_model_tables(
                 1,
                 "{}",
                 "2026-04-25T00:00:00",
+            ),
+        )
+
+
+def _create_profile_migration_conflict_tables(database: ApeiriaDatabase) -> None:
+    with database.connect_sync() as connection:
+        _create_schema_meta_in_connection(
+            connection,
+            schema_line=CURRENT_SCHEMA_LINE,
+            schema_version=CURRENT_SCHEMA_VERSION,
+        )
+        connection.execute(
+            """
+            CREATE TABLE ai_profile (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                profile_id TEXT NOT NULL UNIQUE,
+                platform TEXT NOT NULL,
+                user_id TEXT NOT NULL,
+                display_name TEXT,
+                preferred_name TEXT,
+                name_source TEXT,
+                name_visibility TEXT NOT NULL DEFAULT 'public_allowed',
+                profile_enabled INTEGER NOT NULL DEFAULT 1,
+                last_interaction_at TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                UNIQUE(platform, user_id)
+            )
+            """
+        )
+        connection.execute(
+            """
+            INSERT INTO ai_profile (
+                profile_id,
+                platform,
+                user_id,
+                display_name,
+                preferred_name,
+                name_source,
+                name_visibility,
+                profile_enabled,
+                last_interaction_at,
+                created_at,
+                updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "profile-existing",
+                "onebot",
+                "user-1",
+                None,
+                "Existing Preferred",
+                None,
+                "private_only",
+                1,
+                "2026-04-25T00:00:00",
+                "2026-04-25T00:00:00",
+                "2026-04-25T01:00:00",
+            ),
+        )
+        connection.execute(
+            """
+            CREATE TABLE ai_person_profile (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                person_id TEXT NOT NULL UNIQUE,
+                platform TEXT NOT NULL,
+                user_id TEXT NOT NULL,
+                person_name TEXT,
+                nickname TEXT,
+                name_reason TEXT,
+                memory_points_json TEXT NOT NULL DEFAULT '[]',
+                is_known INTEGER NOT NULL DEFAULT 0,
+                know_since TEXT,
+                last_interaction TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                UNIQUE(platform, user_id)
+            )
+            """
+        )
+        connection.execute(
+            """
+            INSERT INTO ai_person_profile (
+                person_id,
+                platform,
+                user_id,
+                person_name,
+                nickname,
+                name_reason,
+                memory_points_json,
+                is_known,
+                know_since,
+                last_interaction,
+                created_at,
+                updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "person-legacy",
+                "onebot",
+                "user-1",
+                "Legacy Display",
+                "Legacy Preferred",
+                "self introduced",
+                "[]",
+                1,
+                "2026-04-25T00:00:00",
+                "2026-04-25T10:00:00",
+                "2026-04-25T00:00:00",
+                "2026-04-25T10:00:00",
             ),
         )
 

@@ -142,7 +142,8 @@ class AISessionPromptChannelsItem(BaseModel):
     persona: str
     style: str | None = None
     relationship: str | None = None
-    person_profile: list[str] = []
+    profile_card: list[str] = []
+    profile_card_source_refs: list[str] = []
     social_policy: str | None = None
     tool_policy: str | None = None
     future_task: str | None = None
@@ -404,7 +405,8 @@ def to_ai_session_prompt_channels_item(
         persona=item.persona,
         style=item.style,
         relationship=item.relationship,
-        person_profile=list(item.person_profile),
+        profile_card=list(item.profile_card),
+        profile_card_source_refs=list(item.profile_card_source_refs),
         social_policy=item.social_policy,
         tool_policy=item.tool_policy,
         future_task=item.future_task,

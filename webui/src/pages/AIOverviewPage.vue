@@ -141,7 +141,7 @@ const aiMetrics = computed<WorkbenchMetricItem[]>(() => [
   },
   {
     key: 'profiles',
-    label: t('ai.personProfileTab'),
+    label: t('ai.profileTab'),
     value: modelProfiles.value.length,
     icon: ContactRound,
     hint: t(

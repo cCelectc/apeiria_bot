@@ -6,7 +6,7 @@ context assembly, planning, execution, commit, and trace projection under
 before adding a new coordinator.
 
 Context gathering is intentionally split into small providers for conversation
-window, persona/model target, tool policy, memory, relationship/person profile,
+window, persona/model target, tool policy, memory, relationship/profile,
 initiative bias, and optional RAG. These providers feed the existing
 `RuntimeContextMaterials` shape instead of a configurable pipeline framework.
 

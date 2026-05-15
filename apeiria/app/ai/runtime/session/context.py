@@ -199,7 +199,8 @@ class RuntimeContextMaterials:
     persona: "ReplyPersonaPromptBundleLike | None"
     recalled_memories: list["AIMemoryDefinition"]
     relationship_context: str | None
-    person_profile: tuple[str, ...]
+    profile_card: tuple[str, ...]
+    profile_card_source_refs: tuple[str, ...]
     allowed_tools: tuple["AIToolDefinition", ...]
     initiative_bias: float
     memory_diagnostics: "AIMemoryRetrievalDiagnostics | None" = None

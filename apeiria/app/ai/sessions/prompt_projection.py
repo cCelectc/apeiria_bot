@@ -17,8 +17,8 @@ from apeiria.ai.prompting.reply import (
     REPLY_SECTION_KNOWLEDGE_MEMORIES,
     REPLY_SECTION_LONG_TERM_MEMORIES,
     REPLY_SECTION_OPERATOR_MEMORIES,
-    REPLY_SECTION_PERSON_PROFILE,
     REPLY_SECTION_PERSONA,
+    REPLY_SECTION_PROFILE,
     REPLY_SECTION_RELATIONSHIP,
     REPLY_SECTION_RESPONSE_RULES,
     REPLY_SECTION_SOCIAL_POLICY,
@@ -43,6 +43,7 @@ def project_prompt_packet_to_channels(
     packet: "PromptPacket",
     *,
     mode: str,
+    profile_card_source_refs: tuple[str, ...] = (),
 ) -> AISessionPromptChannels:
     """Project a reply prompt packet into session-read preview channels."""
 
@@ -63,7 +64,8 @@ def project_prompt_packet_to_channels(
         social_policy=_section_text(packet, REPLY_SECTION_SOCIAL_POLICY),
         tool_policy=_section_text(packet, REPLY_SECTION_TOOL_POLICY),
         future_task=_section_text(packet, REPLY_SECTION_FUTURE_TASK),
-        person_profile=_section_lines(packet, REPLY_SECTION_PERSON_PROFILE),
+        profile_card=_section_lines(packet, REPLY_SECTION_PROFILE),
+        profile_card_source_refs=profile_card_source_refs,
         tool_results=_section_lines(packet, REPLY_SECTION_TOOL_RESULTS),
         operator_memories=_section_lines(packet, REPLY_SECTION_OPERATOR_MEMORIES),
         summary_memories=_section_lines(packet, REPLY_SECTION_SUMMARY_MEMORIES),
@@ -89,11 +91,16 @@ def project_prompt_packet_to_preview(
     packet: "PromptPacket",
     *,
     mode: str,
+    profile_card_source_refs: tuple[str, ...] = (),
 ) -> tuple[AISessionPromptChannels, AISessionPromptDiagnostics]:
     """Project a packet into preview channels plus bounded region diagnostics."""
 
     return (
-        project_prompt_packet_to_channels(packet, mode=mode),
+        project_prompt_packet_to_channels(
+            packet,
+            mode=mode,
+            profile_card_source_refs=profile_card_source_refs,
+        ),
         project_prompt_packet_to_diagnostics(packet),
     )
 

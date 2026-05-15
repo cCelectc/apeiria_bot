@@ -30,13 +30,11 @@ from apeiria.app.ai.diagnostics.workbench import (
 from apeiria.app.ai.lifecycle import ensure_ai_runtime_support_initialized
 from apeiria.app.ai.reply_strategy.models import ReplyStrategyDecision, WakeContext
 from apeiria.app.ai.runtime.context.memories import retrieve_memories_for_preview
-from apeiria.app.ai.runtime.context.person_profiles import (
-    load_person_profile_for_prompt,
-)
 from apeiria.app.ai.runtime.context.personas import (
     build_model_binding_target,
     build_persona_binding_target,
 )
+from apeiria.app.ai.runtime.context.profiles import load_profile_card_for_context
 from apeiria.app.ai.runtime.context.projection import (
     project_runtime_context,
 )
@@ -212,7 +210,8 @@ def _build_preview_context_bundle(  # noqa: PLR0913
     persona: "ReplyPersonaPromptBundleLike | None",
     memories: "Sequence[AIMemoryDefinition]",
     relationship_context: str | None,
-    person_profile: tuple[str, ...],
+    profile_card: tuple[str, ...],
+    profile_card_source_refs: tuple[str, ...],
     allowed_tools: "Sequence[AIToolDefinition]",
 ) -> RuntimeContextBundle:
     """Build preview-safe context without mutating runtime state."""
@@ -228,7 +227,8 @@ def _build_preview_context_bundle(  # noqa: PLR0913
             persona=persona,
             recalled_memories=list(memories),
             relationship_context=relationship_context,
-            person_profile=person_profile,
+            profile_card=profile_card,
+            profile_card_source_refs=profile_card_source_refs,
             allowed_tools=tuple(allowed_tools),
             initiative_bias=0.0,
         ),
@@ -336,6 +336,7 @@ def _suppressed_prompt_channels(
     *,
     mode: str,
     reason_text: str,
+    profile_card_source_refs: tuple[str, ...] = (),
 ) -> AISessionPromptChannels:
     return AISessionPromptChannels(
         mode=mode,
@@ -343,7 +344,8 @@ def _suppressed_prompt_channels(
         persona="",
         style=None,
         relationship=None,
-        person_profile=(),
+        profile_card=(),
+        profile_card_source_refs=profile_card_source_refs,
         social_policy=None,
         tool_policy=None,
         future_task=None,
@@ -424,7 +426,11 @@ def _build_preview_prompt_outputs(
             has_tools=has_tools,
         )
         planning_channels, planning_prompt_diagnostics = (
-            project_prompt_packet_to_preview(planning_packet, mode=planning_mode)
+            project_prompt_packet_to_preview(
+                planning_packet,
+                mode=planning_mode,
+                profile_card_source_refs=context_projection.prompt.profile_card_source_refs,
+            )
         )
         rendered_prompt = render_flat(planning_packet)
     else:
@@ -436,6 +442,9 @@ def _build_preview_prompt_outputs(
         planning_channels = _suppressed_prompt_channels(
             mode=planning_mode,
             reason_text=suppression_text,
+            profile_card_source_refs=(
+                context_projection.prompt.profile_card_source_refs
+            ),
         )
         planning_prompt_diagnostics = _suppressed_prompt_diagnostics()
         rendered_prompt = suppression_text
@@ -443,7 +452,11 @@ def _build_preview_prompt_outputs(
     roleplay_packet = build_roleplay_reply_packet(compose_input)
     if has_tools and should_show_prompt:
         roleplay_channels, roleplay_prompt_diagnostics = (
-            project_prompt_packet_to_preview(roleplay_packet, mode="roleplay")
+            project_prompt_packet_to_preview(
+                roleplay_packet,
+                mode="roleplay",
+                profile_card_source_refs=context_projection.prompt.profile_card_source_refs,
+            )
         )
         rendered_roleplay_prompt = render_flat(roleplay_packet)
     else:
@@ -532,9 +545,10 @@ class PromptPreviewReader:
             ai_tool_service.registry.list_tools(),
             tool_policy,
         )
-        person_profile = await load_person_profile_for_prompt(
+        profile_card = await load_profile_card_for_context(
             identity=identity,
             user_id=resolved_user_id,
+            memories=tuple(memories),
         )
         context_turns = to_context_turns(turns)
         hard_rule_decision = _build_preview_hard_rule_decision(
@@ -560,7 +574,10 @@ class PromptPreviewReader:
             persona=persona,
             memories=memories,
             relationship_context=relationship_context,
-            person_profile=person_profile,
+            profile_card=profile_card.lines if profile_card is not None else (),
+            profile_card_source_refs=(
+                profile_card.source_refs if profile_card is not None else ()
+            ),
             allowed_tools=tuple(ai_tool_service.list_allowed_tools(tool_policy)),
         )
         context = context_bundle.context

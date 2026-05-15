@@ -15,9 +15,7 @@ from apeiria.ai.memory import (
 )
 from apeiria.ai.memory.governance import decide_candidate_scope
 from apeiria.app.ai.runtime.context.memory_extraction import extract_memory_from_message
-from apeiria.app.ai.runtime.context.person_profiles import (
-    ingest_person_profile_from_memory,
-)
+from apeiria.app.ai.runtime.context.profiles import ingest_profile_from_message
 from apeiria.conversation.identity import build_participant_subject_id
 
 if TYPE_CHECKING:
@@ -397,11 +395,9 @@ async def store_extracted_memories(
         existing_memories=tuple(existing_memories),
     )
     candidates = extraction_result.candidates
-    await ingest_person_profile_from_memory(
+    await ingest_profile_from_message(
         identity=identity,
         user_id=user_id,
-        source_message_id=source_message_id,
-        candidates=tuple(candidates),
         self_introduction_name=extraction_result.self_introduction_name,
     )
     if candidates:

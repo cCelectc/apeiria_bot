@@ -16,13 +16,11 @@ from apeiria.app.ai.runtime.context.context_window import build_and_store_contex
 from apeiria.app.ai.runtime.context.memories import (
     retrieve_memory_diagnostics_for_context,
 )
-from apeiria.app.ai.runtime.context.person_profiles import (
-    load_person_profile_for_prompt,
-)
 from apeiria.app.ai.runtime.context.personas import (
     build_model_binding_target,
     load_persona_bundle,
 )
+from apeiria.app.ai.runtime.context.profiles import load_profile_card_for_context
 from apeiria.app.ai.runtime.context.relationships import (
     build_relationship_target,
     load_relationship_context,
@@ -77,7 +75,8 @@ class RuntimeMemoryContext:
     recalled_memories: list["AIMemoryDefinition"]
     memory_diagnostics: "AIMemoryRetrievalDiagnostics | None"
     relationship_context: str | None
-    person_profile: tuple[str, ...]
+    profile_card: tuple[str, ...]
+    profile_card_source_refs: tuple[str, ...]
     initiative_bias: float
 
 
@@ -114,7 +113,8 @@ async def collect_reply_inputs(
         recalled_memories=memory_context.recalled_memories,
         memory_diagnostics=memory_context.memory_diagnostics,
         relationship_context=memory_context.relationship_context,
-        person_profile=memory_context.person_profile,
+        profile_card=memory_context.profile_card,
+        profile_card_source_refs=memory_context.profile_card_source_refs,
         allowed_tools=tool_context.allowed_tools,
         initiative_bias=memory_context.initiative_bias,
         rag_chunks=rag_result.items,
@@ -192,6 +192,16 @@ async def collect_memory_context(
         user_id=turn.user_id,
         query_text=turn.message_text,
     )
+    visible_memories = tuple(
+        selection.memory
+        for selection in diagnostics.selected
+        if selection.is_prompt_visible
+    )
+    profile_card = await load_profile_card_for_context(
+        identity=turn.identity,
+        user_id=turn.user_id,
+        memories=visible_memories,
+    )
     return RuntimeMemoryContext(
         recalled_memories=[
             selection.memory
@@ -202,9 +212,9 @@ async def collect_memory_context(
         relationship_context=await load_relationship_context(
             target=relationship_target,
         ),
-        person_profile=await load_person_profile_for_prompt(
-            identity=turn.identity,
-            user_id=turn.user_id,
+        profile_card=profile_card.lines if profile_card is not None else (),
+        profile_card_source_refs=(
+            profile_card.source_refs if profile_card is not None else ()
         ),
         initiative_bias=await resolve_initiative_bias(
             relationship_target=relationship_target,

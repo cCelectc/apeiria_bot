@@ -12,7 +12,6 @@ from .models import (
     AIRelationshipState,
     EmotionProjection,
 )
-from .scope import build_affinity_scope_key
 from .signals import derive_relationship_delta
 
 if TYPE_CHECKING:
@@ -20,7 +19,9 @@ if TYPE_CHECKING:
         TONE_LABEL,
         apply_inactivity_decay,
         apply_relationship_delta,
+        clamp_relationship_score,
         project_emotion,
+        relationship_tier,
     )
     from .service import AIRelationshipService, ai_relationship_service
 
@@ -35,9 +36,10 @@ __all__ = [
     "ai_relationship_service",
     "apply_inactivity_decay",
     "apply_relationship_delta",
-    "build_affinity_scope_key",
+    "clamp_relationship_score",
     "derive_relationship_delta",
     "project_emotion",
+    "relationship_tier",
 ]
 
 _LAZY_EXPORTS = {
@@ -46,7 +48,9 @@ _LAZY_EXPORTS = {
     "ai_relationship_service": ".service",
     "apply_inactivity_decay": ".scoring",
     "apply_relationship_delta": ".scoring",
+    "clamp_relationship_score": ".scoring",
     "project_emotion": ".scoring",
+    "relationship_tier": ".scoring",
 }
 
 

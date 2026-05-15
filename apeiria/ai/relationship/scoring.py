@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from dataclasses import replace
-from datetime import timedelta
 from typing import TYPE_CHECKING
 
 from apeiria.ai.relationship.models import (
@@ -15,18 +14,18 @@ from apeiria.ai.relationship.models import (
 if TYPE_CHECKING:
     from datetime import datetime
 
-_MIN_SCORE = -1.0
-_MAX_SCORE = 1.0
-_DECAY_START_AFTER_DAYS = 7
-_DAILY_DECAY_RATE = 0.02
-_NEUTRAL_EPSILON = 0.03
-_MOOD_TAG_KEEP_SCORE = 0.1
+MIN_RELATIONSHIP_SCORE = -100
+MAX_RELATIONSHIP_SCORE = 100
+_DECAY_START_AFTER_DAYS = 14
+_DECAY_PERIOD_DAYS = 7
+_DECAY_STEP = 2
+_MOOD_TAG_KEEP_SCORE = 20
 
 # -- Emotion projection: 5-tier thresholds --
-_CLOSE_THRESHOLD = 0.7
-_WARM_THRESHOLD = 0.35
-_GUARDED_THRESHOLD = -0.25
-_COLD_THRESHOLD = -0.6
+_CLOSE_THRESHOLD = 61
+_WARM_THRESHOLD = 21
+_GUARDED_THRESHOLD = -21
+_COLD_THRESHOLD = -61
 
 # -- Mood-tag bias adjustments --
 _MOOD_TAG_INITIATIVE_ADJUST: dict[str, float] = {
@@ -86,8 +85,8 @@ TONE_LABEL: dict[str, str] = {
 }
 
 
-def _clamp_score(value: float) -> float:
-    return max(_MIN_SCORE, min(_MAX_SCORE, value))
+def clamp_relationship_score(value: int) -> int:
+    return max(MIN_RELATIONSHIP_SCORE, min(MAX_RELATIONSHIP_SCORE, value))
 
 
 def apply_relationship_delta(
@@ -102,11 +101,11 @@ def apply_relationship_delta(
     return AIRelationshipState(
         affinity_id=state.affinity_id,
         platform=state.platform,
-        group_id=state.group_id,
         user_id=state.user_id,
-        score=_clamp_score(state.score + delta.score_delta),
+        score=clamp_relationship_score(state.score + delta.score_delta),
         mood_tags=tuple(tags[-3:]),
         last_event_at=state.last_event_at,
+        last_decay_at=state.last_decay_at,
     )
 
 
@@ -120,23 +119,27 @@ def apply_inactivity_decay(
     if state.last_event_at is None:
         return state
 
-    decay_start_date = state.last_event_at.date() + timedelta(
-        days=_DECAY_START_AFTER_DAYS
-    )
-    reference_date = decay_start_date
-    if state.last_decay_at is not None and state.last_decay_at.date() > reference_date:
-        reference_date = state.last_decay_at.date()
-    decay_days = max((current_time.date() - reference_date).days, 0)
-    if decay_days <= 0 or state.score == 0.0:
+    current_date = current_time.date()
+    if state.last_decay_at is None:
+        inactive_days = max((current_date - state.last_event_at.date()).days, 0)
+        if inactive_days < _DECAY_START_AFTER_DAYS:
+            return state
+        periods = 1 + ((inactive_days - _DECAY_START_AFTER_DAYS) // _DECAY_PERIOD_DAYS)
+    else:
+        decay_days = max((current_date - state.last_decay_at.date()).days, 0)
+        periods = decay_days // _DECAY_PERIOD_DAYS
+    if periods <= 0 or state.score == 0:
         return state
 
-    decayed_score = state.score * ((1.0 - _DAILY_DECAY_RATE) ** decay_days)
-    if abs(decayed_score) < _NEUTRAL_EPSILON:
-        decayed_score = 0.0
+    amount = periods * _DECAY_STEP
+    if state.score > 0:
+        decayed_score = max(0, state.score - amount)
+    else:
+        decayed_score = min(0, state.score + amount)
     decayed_tags = state.mood_tags if abs(decayed_score) >= _MOOD_TAG_KEEP_SCORE else ()
     return replace(
         state,
-        score=_clamp_score(decayed_score),
+        score=clamp_relationship_score(decayed_score),
         mood_tags=decayed_tags,
         last_decay_at=current_time,
     )
@@ -174,16 +177,29 @@ def project_emotion(state: AIRelationshipState) -> EmotionProjection:
     )
 
 
-def _score_to_base_tier(score: float) -> tuple[str, float, float]:
+def relationship_tier(score: int) -> str:
+    if score >= _CLOSE_THRESHOLD:
+        return "close"
+    if score >= _WARM_THRESHOLD:
+        return "warm"
+    if score > _GUARDED_THRESHOLD:
+        return "neutral"
+    if score > _COLD_THRESHOLD:
+        return "guarded"
+    return "cold"
+
+
+def _score_to_base_tier(score: int) -> tuple[str, float, float]:
     """Map a score to (tone, initiative_bias, warmth_bias)."""
 
-    if score >= _CLOSE_THRESHOLD:
+    tier = relationship_tier(score)
+    if tier == "close":
         return "close", 0.45, 0.9
-    if score >= _WARM_THRESHOLD:
+    if tier == "warm":
         return "warm", 0.25, 0.55
-    if score > _GUARDED_THRESHOLD:
+    if tier == "neutral":
         return "neutral", 0.0, 0.1
-    if score > _COLD_THRESHOLD:
+    if tier == "guarded":
         return "guarded", -0.15, -0.3
     return "cold", -0.3, -0.6
 

@@ -89,8 +89,8 @@ const routes: RouteRecordRaw[] = [
       {
         path: 'ai/profiles',
         name: 'ai-profiles',
-        component: () => import('@/pages/AIPersonProfilesPage.vue'),
-        meta: { titleKey: 'ai.personProfileTab' },
+        component: () => import('@/pages/AIProfilesPage.vue'),
+        meta: { titleKey: 'ai.profileTab' },
       },
       {
         path: 'ai/future-tasks',

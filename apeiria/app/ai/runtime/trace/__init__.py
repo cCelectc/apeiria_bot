@@ -222,7 +222,7 @@ def _safe_context_metadata(value: object) -> dict[str, object] | None:
         fields=(
             "turn_count",
             "recalled_memory_count",
-            "person_profile_line_count",
+            "profile_card_line_count",
             "allowed_capability_count",
         ),
     )

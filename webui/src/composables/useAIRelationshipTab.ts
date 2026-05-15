@@ -74,7 +74,6 @@ export function useAIRelationshipTab(t: (key: string) => string) {
     try {
       const response = await client.get<AIRelationshipStateItem>('/ai/relationships', {
         params: {
-          group_id: target.scope_type === 'group' ? target.scope_id ?? undefined : undefined,
           platform: target.platform,
           user_id: userId,
         },
@@ -100,7 +99,6 @@ export function useAIRelationshipTab(t: (key: string) => string) {
     savingRelationship.value = true
     try {
       const response = await updateAIRelationshipScore({
-        group_id: relationship.value.group_id,
         platform: relationship.value.platform,
         score: Number(relationshipForm.score),
         user_id: relationship.value.user_id,
@@ -127,7 +125,6 @@ export function useAIRelationshipTab(t: (key: string) => string) {
     loadingRelationshipEvents.value = true
     try {
       const response = await getAIRelationshipEvents({
-        group_id: item.group_id ?? undefined,
         limit: 20,
         platform: item.platform,
         user_id: item.user_id,
@@ -178,6 +175,5 @@ function isSameRelationshipTarget(
   return (
     left.platform === right.platform
     && left.user_id === right.user_id
-    && (left.group_id ?? null) === (right.group_id ?? null)
   )
 }

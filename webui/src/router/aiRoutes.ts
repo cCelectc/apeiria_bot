@@ -87,7 +87,7 @@ export const aiManagementPageDescriptors: AIManagementPageDescriptor[] = [
     page: 'profiles',
     path: '/ai/profiles',
     routeName: 'ai-profiles',
-    titleKey: 'ai.personProfileTab',
+    titleKey: 'ai.profileTab',
   },
   {
     icon: 'CalendarClock',

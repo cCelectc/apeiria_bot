@@ -78,7 +78,7 @@ const metrics = computed<WorkbenchMetricItem[]>(() => [
     key: 'score',
     label: t('ai.relationshipScore'),
     tone: relationship.value ? 'info' : 'default',
-    value: relationship.value ? relationship.value.effective_score.toFixed(2) : t('common.none'),
+    value: relationship.value ? formatSigned(relationship.value.effective_score) : t('common.none'),
   },
   {
     key: 'events',
@@ -100,7 +100,7 @@ async function loadData() {
 }
 
 function formatSigned(value: number) {
-  return `${value >= 0 ? '+' : ''}${value.toFixed(2)}`
+  return `${value >= 0 ? '+' : ''}${Math.round(value)}`
 }
 
 function formatEventType(value: string) {
@@ -110,7 +110,7 @@ function formatEventType(value: string) {
   if (value === 'manual') {
     return t('ai.relationshipEventManual')
   }
-  if (value === 'absence_decay') {
+  if (value === 'decay') {
     return t('ai.relationshipEventDecay')
   }
   return value
@@ -192,10 +192,10 @@ onMounted(() => {
               <div class="ai-data-list-item">
                 <div class="ai-data-list-item__main">
                   <strong>{{ item.user_id }}</strong>
-                  <span>{{ item.platform }} / {{ item.group_id || t('common.none') }}</span>
+                  <span>{{ item.platform }}</span>
                 </div>
                 <StatusBadge
-                  :label="item.effective_score.toFixed(1)"
+                  :label="formatSigned(item.effective_score)"
                   :tone="item.effective_score >= 0 ? 'success' : 'warning'"
                 />
               </div>
@@ -214,15 +214,12 @@ onMounted(() => {
               <Badge variant="secondary">
                 {{ t('ai.relationshipUserId') }}: {{ relationship.user_id }}
               </Badge>
-              <Badge variant="outline">
-                {{ t('ai.relationshipGroupId') }}: {{ relationship.group_id || t('common.none') }}
-              </Badge>
             </div>
 
             <div class="ai-relationship-grid">
               <div>
                 <span>{{ t('ai.relationshipScore') }}</span>
-                <strong>{{ relationship.effective_score.toFixed(2) }}</strong>
+                <strong>{{ formatSigned(relationship.effective_score) }}</strong>
               </div>
               <div>
                 <span>{{ t('ai.relationshipProjectedTone') }}</span>
@@ -261,7 +258,7 @@ onMounted(() => {
 
             <div class="ai-relationship-score-editor">
               <FormField :label="t('ai.relationshipScore')">
-                <Input v-model="relationshipForm.score" max="1" min="-1" step="0.1" type="number" />
+                <Input v-model="relationshipForm.score" max="100" min="-100" step="1" type="number" />
               </FormField>
               <Button :disabled="savingRelationship" @click="saveRelationship">
                 <RefreshCw v-if="savingRelationship" class="animate-spin" :size="16" />
@@ -308,7 +305,7 @@ onMounted(() => {
               <div class="ai-event-row__meta">
                 <Badge variant="secondary">{{ formatSigned(event.score_delta) }}</Badge>
                 <Badge variant="outline">
-                  {{ t('ai.relationshipScoreAfter') }}: {{ event.score_after.toFixed(2) }}
+                  {{ t('ai.relationshipScoreAfter') }}: {{ formatSigned(event.score_after) }}
                 </Badge>
                 <span>{{ event.created_at }}</span>
               </div>

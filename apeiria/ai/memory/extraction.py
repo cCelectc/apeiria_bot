@@ -23,20 +23,12 @@ _ALLOWED_MEMORY_KINDS: set[AIMemoryKind] = {
     "impression",
 }
 _MAX_CANDIDATES = 5
-_PERSON_PROFILE_ALLOWED_KINDS: set[AIMemoryKind] = {
-    "fact",
-    "preference",
-    "relationship",
-    "impression",
-}
 _ALLOWED_SCOPE_HINTS: set[AIMemoryScopeHint] = {
     "auto",
     "scene",
     "participant",
     "user",
 }
-_PERSON_PROFILE_MIN_CONFIDENCE = 0.8
-_MAX_PERSON_PROFILE_CANDIDATES = 4
 _ALLOWED_POLARITIES: set[AISentimentPolarity] = {
     "positive",
     "neutral",
@@ -62,25 +54,6 @@ def parse_memory_extraction_response(
         sentiment=sentiment,
         self_introduction_name=self_introduction_name,
     )
-
-
-def select_person_profile_candidates(
-    candidates: list[AIMemoryExtractionCandidate],
-) -> list[AIMemoryExtractionCandidate]:
-    """Choose high-precision candidates that should shape person profiles."""
-
-    selected = [
-        candidate
-        for candidate in candidates
-        if candidate.memory_kind in _PERSON_PROFILE_ALLOWED_KINDS
-        and candidate.scope_hint in {"auto", "participant", "user"}
-        and candidate.confidence >= _PERSON_PROFILE_MIN_CONFIDENCE
-    ]
-    selected.sort(
-        key=lambda item: (item.confidence, item.salience, item.content),
-        reverse=True,
-    )
-    return selected[:_MAX_PERSON_PROFILE_CANDIDATES]
 
 
 def _parse_candidates(

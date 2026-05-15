@@ -551,7 +551,7 @@ def test_prompt_tool_guidance_is_generated_from_selected_exposure_plan() -> None
             tool_results=(),
             memories=(),
             turns=(),
-            person_profile=(),
+            profile_card=(),
             tool_guidance=generated_guidance,
         )
     )

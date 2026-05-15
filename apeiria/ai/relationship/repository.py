@@ -9,7 +9,6 @@ from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
-from apeiria.ai.relationship.scope import build_affinity_scope_key
 from apeiria.db.runtime import database_runtime
 
 if TYPE_CHECKING:
@@ -24,10 +23,8 @@ class AffinityRow:
     id: int
     affinity_id: str
     platform: str
-    group_id: str | None
-    scope_key: str
     user_id: str
-    score: float
+    score: int
     mood_tags_json: str
     last_event_at: datetime
     last_decay_at: datetime | None
@@ -39,11 +36,11 @@ class RelationshipEventRow:
     event_id: str
     affinity_id: str
     platform: str
-    group_id: str | None
     user_id: str
+    scene_id: str | None
     event_type: str
-    score_delta: float
-    score_after: float
+    score_delta: int
+    score_after: int
     mood_tag: str | None
     reason: str | None
     created_at: datetime
@@ -61,14 +58,12 @@ class RelationshipRepository:
         self,
         *,
         platform: str,
-        group_id: str | None,
         user_id: str,
     ) -> AffinityRow | None:
         with database_runtime.connect_sync() as connection:
             return self.find_row_with_connection(
                 connection,
                 platform=platform,
-                group_id=group_id,
                 user_id=user_id,
             )
 
@@ -77,42 +72,35 @@ class RelationshipRepository:
         connection: "Connection",
         *,
         platform: str,
-        group_id: str | None,
         user_id: str,
     ) -> AffinityRow:
         row = self.find_row_with_connection(
             connection,
             platform=platform,
-            group_id=group_id,
             user_id=user_id,
         )
         if row is not None:
             return row
 
-        scope_key = build_affinity_scope_key(group_id)
         now = utcnow()
         connection.execute(
             """
             INSERT INTO ai_affinity (
                 affinity_id,
                 platform,
-                group_id,
-                scope_key,
                 user_id,
                 score,
                 mood_tags_json,
                 last_event_at,
                 last_decay_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(platform, scope_key, user_id) DO NOTHING
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(platform, user_id) DO NOTHING
             """,
             (
                 f"aff_{uuid4().hex}",
                 platform,
-                group_id,
-                scope_key,
                 user_id,
-                0.0,
+                0,
                 "[]",
                 datetime_to_text(now),
                 None,
@@ -121,7 +109,6 @@ class RelationshipRepository:
         row = self.find_row_with_connection(
             connection,
             platform=platform,
-            group_id=group_id,
             user_id=user_id,
         )
         assert row is not None
@@ -132,27 +119,23 @@ class RelationshipRepository:
         connection: "Connection",
         *,
         platform: str,
-        group_id: str | None,
         user_id: str,
     ) -> AffinityRow | None:
-        scope_key = build_affinity_scope_key(group_id)
         row = connection.execute(
             """
             SELECT
                 id,
                 affinity_id,
                 platform,
-                group_id,
-                scope_key,
                 user_id,
                 score,
                 mood_tags_json,
                 last_event_at,
                 last_decay_at
             FROM ai_affinity
-            WHERE platform = ? AND scope_key = ? AND user_id = ?
+            WHERE platform = ? AND user_id = ?
             """,
-            (platform, scope_key, user_id),
+            (platform, user_id),
         ).fetchone()
         return None if row is None else row_to_affinity(row)
 
@@ -168,8 +151,6 @@ class RelationshipRepository:
                     id,
                     affinity_id,
                     platform,
-                    group_id,
-                    scope_key,
                     user_id,
                     score,
                     mood_tags_json,
@@ -197,8 +178,8 @@ class RelationshipRepository:
                     event_id,
                     affinity_id,
                     platform,
-                    group_id,
                     user_id,
+                    scene_id,
                     event_type,
                     score_delta,
                     score_after,
@@ -211,6 +192,38 @@ class RelationshipRepository:
                 LIMIT ?
                 """,
                 (affinity_id, limit),
+            ).fetchall()
+        return [row_to_relationship_event(row) for row in rows]
+
+    def list_event_rows_since(
+        self,
+        *,
+        affinity_id: str,
+        since: datetime,
+        limit: int,
+    ) -> list[RelationshipEventRow]:
+        with database_runtime.connect_sync() as connection:
+            rows = connection.execute(
+                """
+                SELECT
+                    id,
+                    event_id,
+                    affinity_id,
+                    platform,
+                    user_id,
+                    scene_id,
+                    event_type,
+                    score_delta,
+                    score_after,
+                    mood_tag,
+                    reason,
+                    created_at
+                FROM ai_relationship_event
+                WHERE affinity_id = ? AND created_at >= ?
+                ORDER BY created_at DESC, id DESC
+                LIMIT ?
+                """,
+                (affinity_id, datetime_to_text(since), limit),
             ).fetchall()
         return [row_to_relationship_event(row) for row in rows]
 
@@ -240,11 +253,11 @@ class RelationshipRepository:
         *,
         affinity_id: str,
         platform: str,
-        group_id: str | None,
         user_id: str,
+        scene_id: str | None,
         event_type: AIRelationshipEventType,
-        score_delta: float,
-        score_after: float,
+        score_delta: int,
+        score_after: int,
         mood_tag: str | None,
         reason: str | None,
         created_at: datetime,
@@ -255,8 +268,8 @@ class RelationshipRepository:
                 event_id,
                 affinity_id,
                 platform,
-                group_id,
                 user_id,
+                scene_id,
                 event_type,
                 score_delta,
                 score_after,
@@ -269,8 +282,8 @@ class RelationshipRepository:
                 f"rel_evt_{uuid4().hex}",
                 affinity_id,
                 platform,
-                group_id,
                 user_id,
+                scene_id,
                 event_type,
                 score_delta,
                 score_after,
@@ -323,13 +336,11 @@ def row_to_affinity(row: tuple[object, ...]) -> AffinityRow:
         id=int(str(row[0])),
         affinity_id=str(row[1]),
         platform=str(row[2]),
-        group_id=str(row[3]) if row[3] is not None else None,
-        scope_key=str(row[4]),
-        user_id=str(row[5]),
-        score=float(str(row[6])),
-        mood_tags_json=str(row[7] or "[]"),
-        last_event_at=datetime_from_text(row[8]),
-        last_decay_at=optional_datetime_from_text(row[9]),
+        user_id=str(row[3]),
+        score=int(str(row[4])),
+        mood_tags_json=str(row[5] or "[]"),
+        last_event_at=datetime_from_text(row[6]),
+        last_decay_at=optional_datetime_from_text(row[7]),
     )
 
 
@@ -339,11 +350,11 @@ def row_to_relationship_event(row: tuple[object, ...]) -> RelationshipEventRow:
         event_id=str(row[1]),
         affinity_id=str(row[2]),
         platform=str(row[3]),
-        group_id=str(row[4]) if row[4] is not None else None,
-        user_id=str(row[5]),
+        user_id=str(row[4]),
+        scene_id=str(row[5]) if row[5] is not None else None,
         event_type=str(row[6]),
-        score_delta=float(str(row[7])),
-        score_after=float(str(row[8])),
+        score_delta=int(str(row[7])),
+        score_after=int(str(row[8])),
         mood_tag=str(row[9]) if row[9] is not None else None,
         reason=str(row[10]) if row[10] is not None else None,
         created_at=datetime_from_text(row[11]),

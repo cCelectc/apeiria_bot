@@ -26,11 +26,9 @@ class RelationshipsAdminMixin:
         *,
         platform: str,
         user_id: str,
-        group_id: str | None = None,
     ) -> "AIRelationshipState":
         return await ai_relationship_service.get_state(
             platform=platform,
-            group_id=group_id,
             user_id=user_id,
         )
 
@@ -39,12 +37,10 @@ class RelationshipsAdminMixin:
         *,
         platform: str,
         user_id: str,
-        group_id: str | None = None,
         limit: int = 20,
     ) -> list["AIRelationshipEvent"]:
         return await ai_relationship_service.list_events_for_target(
             platform=platform,
-            group_id=group_id,
             user_id=user_id,
             limit=limit,
         )
@@ -54,20 +50,20 @@ class RelationshipsAdminMixin:
         *,
         platform: str,
         user_id: str,
-        score: float,
-        group_id: str | None = None,
+        score: int,
+        scene_id: str | None = None,
         actor_username: str | None = None,
     ) -> "AIRelationshipState":
         state = await ai_relationship_service.set_manual_score(
             platform=platform,
-            group_id=group_id,
             user_id=user_id,
             score=score,
+            scene_id=scene_id,
         )
         record_ai_admin_audit(
             "ai_relationship_score_updated",
             actor_username=actor_username,
-            detail=f"{platform}:{group_id or '__private__'}:{user_id} score={score}",
+            detail=f"{platform}:{user_id} score={score}",
         )
         return state
 

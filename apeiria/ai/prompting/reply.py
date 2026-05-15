@@ -23,7 +23,7 @@ REPLY_SECTION_STYLE = "Style"
 REPLY_SECTION_CAPABILITY_AWARENESS = "CapabilityAwareness"
 REPLY_SECTION_TOOL_GUIDANCE = "ToolGuidance"
 REPLY_SECTION_RELATIONSHIP = "Relationship"
-REPLY_SECTION_PERSON_PROFILE = "PersonProfile"
+REPLY_SECTION_PROFILE = "Profile"
 REPLY_SECTION_SOCIAL_POLICY = "SocialPolicy"
 REPLY_SECTION_TOOL_POLICY = "ToolPolicy"
 REPLY_SECTION_TOOL_RESULTS = "ToolResults"
@@ -73,7 +73,7 @@ class ReplyPromptInput:
     tool_results: tuple[str, ...]
     memories: "Sequence[AIMemoryDefinition]"
     turns: "Sequence[ChatContextMessageView]"
-    person_profile: tuple[str, ...]
+    profile_card: tuple[str, ...]
     rag_chunks: "Sequence[KnowledgeRetrievalItem]" = ()
     conversation_summary: str | None = None
     social_policy_summary: str | None = None
@@ -155,8 +155,8 @@ def _build_reply_packet(
     _append_lines(
         sections,
         role="system",
-        name=REPLY_SECTION_PERSON_PROFILE,
-        lines=inputs.person_profile,
+        name=REPLY_SECTION_PROFILE,
+        lines=inputs.profile_card,
     )
     _append_section(
         sections,

@@ -323,7 +323,8 @@ class AISessionPromptChannels:
     persona: str
     style: str | None
     relationship: str | None
-    person_profile: tuple[str, ...]
+    profile_card: tuple[str, ...]
+    profile_card_source_refs: tuple[str, ...]
     social_policy: str | None
     tool_policy: str | None
     future_task: str | None

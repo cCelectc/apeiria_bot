@@ -297,7 +297,7 @@ def _context_diagnostics_summary(
         "memory_lifecycle_counts",
         "memory_selected",
         "memory_excluded",
-        "person_profile_line_count",
+        "profile_card_line_count",
         "has_relationship_context",
         "has_conversation_summary",
         "allowed_capability_count",

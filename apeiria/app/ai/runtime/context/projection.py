@@ -46,7 +46,8 @@ class RuntimeContextPromptView:
     tool_results: tuple[str, ...]
     memories: tuple["AIMemoryDefinition", ...]
     turns: tuple["ChatContextMessageView", ...]
-    person_profile: tuple[str, ...]
+    profile_card: tuple[str, ...]
+    profile_card_source_refs: tuple[str, ...]
     conversation_summary: str | None
     social_policy_summary: str | None
     capability_awareness: str | None = None
@@ -66,7 +67,8 @@ class RuntimeContextPreviewView:
     tool_results: tuple[str, ...]
     memories: tuple["AIMemoryDefinition", ...]
     turns: tuple["ChatContextMessageView", ...]
-    person_profile: tuple[str, ...]
+    profile_card: tuple[str, ...]
+    profile_card_source_refs: tuple[str, ...]
     capability_awareness: str | None = None
     rag_chunks: tuple["KnowledgeRetrievalItem", ...] = ()
     rag_diagnostics: "KnowledgeRetrievalDiagnostics | None" = None
@@ -85,7 +87,7 @@ class RuntimeContextDiagnostics:
     memory_lifecycle_counts: dict[str, int]
     has_persona: bool
     has_relationship_context: bool
-    person_profile_line_count: int
+    profile_card_line_count: int
     has_conversation_summary: bool
     allowed_capability_count: int
     has_capability_awareness: bool
@@ -115,7 +117,7 @@ class RuntimeContextDiagnostics:
             "memory_excluded": list(self.memory_excluded),
             "has_persona": self.has_persona,
             "has_relationship_context": self.has_relationship_context,
-            "person_profile_line_count": self.person_profile_line_count,
+            "profile_card_line_count": self.profile_card_line_count,
             "has_conversation_summary": self.has_conversation_summary,
             "allowed_capability_count": self.allowed_capability_count,
             "has_capability_awareness": self.has_capability_awareness,
@@ -160,7 +162,8 @@ def project_runtime_context(  # noqa: PLR0913
         tool_results=tool_runtime.result_lines,
         memories=tuple(context.recalled_memories),
         turns=tuple(context.turns),
-        person_profile=context.person_profile,
+        profile_card=context.profile_card,
+        profile_card_source_refs=context.profile_card_source_refs,
         conversation_summary=context.conversation_summary,
         social_policy_summary=(
             summarize_social_decision(social_decision)
@@ -180,7 +183,8 @@ def project_runtime_context(  # noqa: PLR0913
         tool_results=tool_runtime.result_lines,
         memories=tuple(context.recalled_memories),
         turns=tuple(context.turns),
-        person_profile=context.person_profile,
+        profile_card=context.profile_card,
+        profile_card_source_refs=context.profile_card_source_refs,
         capability_awareness=capability_awareness,
         rag_chunks=getattr(context, "rag_chunks", ()),
         rag_diagnostics=getattr(context, "rag_diagnostics", None),
@@ -212,7 +216,7 @@ def project_runtime_context(  # noqa: PLR0913
             ),
             has_persona=context.persona is not None,
             has_relationship_context=bool(context.relationship_context),
-            person_profile_line_count=len(context.person_profile),
+            profile_card_line_count=len(context.profile_card),
             has_conversation_summary=bool(context.conversation_summary),
             allowed_capability_count=len(context.allowed_tools),
             has_capability_awareness=capability_awareness is not None,

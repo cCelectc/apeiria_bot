@@ -43,11 +43,9 @@ async def get_ai_relationship_state(
     _: Annotated[Any, Depends(require_control_panel)],
     platform: Annotated[str, Query(min_length=1)],
     user_id: Annotated[str, Query(min_length=1)],
-    group_id: Annotated[str | None, Query()] = None,
 ) -> AIRelationshipStateItem:
     state = await ai_application.operations.get_relationship_state(
         platform=platform,
-        group_id=group_id,
         user_id=user_id,
     )
     return to_ai_relationship_state_item(state)
@@ -58,12 +56,10 @@ async def list_ai_relationship_events(
     _: Annotated[Any, Depends(require_control_panel)],
     platform: Annotated[str, Query(min_length=1)],
     user_id: Annotated[str, Query(min_length=1)],
-    group_id: Annotated[str | None, Query()] = None,
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
 ) -> list[AIRelationshipEventItem]:
     events = await ai_application.operations.list_relationship_events(
         platform=platform,
-        group_id=group_id,
         user_id=user_id,
         limit=limit,
     )
@@ -77,9 +73,9 @@ async def update_ai_relationship_score(
 ) -> AIRelationshipStateItem:
     state = await ai_application.operations.set_relationship_score(
         platform=payload.platform,
-        group_id=payload.group_id,
         user_id=payload.user_id,
         score=payload.score,
+        scene_id=payload.scene_id,
         actor_username=_actor_username_from_claims(session),
     )
     return to_ai_relationship_state_item(state)

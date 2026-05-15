@@ -16,9 +16,8 @@ if TYPE_CHECKING:
 class AIRelationshipStateItem(BaseModel):
     affinity_id: str
     platform: str
-    group_id: str | None = None
     user_id: str
-    score: float
+    score: int
     mood_tags: list[str] = []
     last_event_at: str | None = None
     last_decay_at: str | None = None
@@ -26,7 +25,7 @@ class AIRelationshipStateItem(BaseModel):
     warmth_bias: float
     initiative_bias: float
     style_modulation: list[str] = []
-    effective_score: float
+    effective_score: int
     effective_mood_tags: list[str] = []
     effective_projected_tone: str
     effective_warmth_bias: float
@@ -38,11 +37,11 @@ class AIRelationshipEventItem(BaseModel):
     event_id: str
     affinity_id: str
     platform: str
-    group_id: str | None = None
     user_id: str
+    scene_id: str | None = None
     event_type: str
-    score_delta: float
-    score_after: float
+    score_delta: int
+    score_after: int
     mood_tag: str | None = None
     reason: str | None = None
     created_at: str
@@ -51,8 +50,8 @@ class AIRelationshipEventItem(BaseModel):
 class AIRelationshipScoreUpdateRequest(BaseModel):
     platform: str = Field(min_length=1, max_length=32)
     user_id: str = Field(min_length=1, max_length=64)
-    group_id: str | None = Field(default=None, max_length=128)
-    score: float = Field(ge=-1.0, le=1.0)
+    scene_id: str | None = Field(default=None, max_length=128)
+    score: int = Field(ge=-100, le=100)
 
 
 def to_ai_relationship_state_item(
@@ -67,7 +66,6 @@ def to_ai_relationship_state_item(
     return AIRelationshipStateItem(
         affinity_id=item.affinity_id,
         platform=item.platform,
-        group_id=item.group_id,
         user_id=item.user_id,
         score=item.score,
         mood_tags=list(item.mood_tags),
@@ -93,8 +91,8 @@ def to_ai_relationship_event_item(
         event_id=item.event_id,
         affinity_id=item.affinity_id,
         platform=item.platform,
-        group_id=item.group_id,
         user_id=item.user_id,
+        scene_id=item.scene_id,
         event_type=item.event_type,
         score_delta=item.score_delta,
         score_after=item.score_after,

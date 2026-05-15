@@ -43,7 +43,7 @@ class RuntimePromptComposeInput:
     tool_results: tuple[str, ...]
     memories: "Sequence[AIMemoryDefinition]"
     turns: "Sequence[ChatContextMessageView]"
-    person_profile: tuple[str, ...]
+    profile_card: tuple[str, ...]
     conversation_summary: str | None = None
     social_policy_summary: str | None = None
     capability_awareness: str | None = None
@@ -75,7 +75,7 @@ def compose_input_from_context_projection(
         tool_results=view.tool_results,
         memories=view.memories,
         turns=view.turns,
-        person_profile=view.person_profile,
+        profile_card=view.profile_card,
         conversation_summary=view.conversation_summary,
         social_policy_summary=view.social_policy_summary,
         capability_awareness=view.capability_awareness,
@@ -96,7 +96,7 @@ def build_runtime_prompt_packet(
     recipe_input = ReplyPromptInput(
         persona=inputs.persona,
         scene_type=inputs.scene_type,
-        person_profile=inputs.person_profile,
+        profile_card=inputs.profile_card,
         relationship=inputs.relationship,
         tool_policy=inputs.tool_policy if include_tool_policy else None,
         tool_results=inputs.tool_results,

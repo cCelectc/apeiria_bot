@@ -16,8 +16,8 @@ from .errors import (
 from .knowledge import KnowledgeAdminMixin
 from .memories import MemoriesAdminMixin
 from .models import ModelsAdminMixin
-from .person_profiles import PersonProfilesAdminMixin
 from .personas import PersonasAdminMixin
+from .profiles import ProfilesAdminMixin
 from .relationships import RelationshipsAdminMixin
 from .sources import SourcesAdminMixin
 from .tools import ToolsAdminMixin
@@ -32,7 +32,7 @@ class AIOperationsEntry(
     KnowledgeAdminMixin,
     MemoriesAdminMixin,
     RelationshipsAdminMixin,
-    PersonProfilesAdminMixin,
+    ProfilesAdminMixin,
 ):
     """Application entry for AI management write behavior."""
 

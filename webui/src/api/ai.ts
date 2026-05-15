@@ -199,24 +199,16 @@ export interface AIMemoryBulkActionResult {
   affected: number
 }
 
-export interface AIPersonMemoryPointItem {
-  category: string
-  content: string
-  confidence: number
-  source_message_id: string | null
-}
-
-export interface AIPersonProfileItem {
-  person_id: string
+export interface AIProfileItem {
+  profile_id: string
   platform: string
   user_id: string
-  person_name: string | null
-  nickname: string | null
-  name_reason: string | null
-  memory_points: AIPersonMemoryPointItem[]
-  is_known: boolean
-  know_since: string | null
-  last_interaction: string
+  display_name: string | null
+  preferred_name: string | null
+  name_source: string | null
+  name_visibility: string
+  profile_enabled: boolean
+  last_interaction_at: string
   created_at: string
   updated_at: string
 }
@@ -224,7 +216,6 @@ export interface AIPersonProfileItem {
 export interface AIRelationshipStateItem {
   affinity_id: string
   platform: string
-  group_id: string | null
   user_id: string
   score: number
   mood_tags: string[]
@@ -246,8 +237,8 @@ export interface AIRelationshipEventItem {
   event_id: string
   affinity_id: string
   platform: string
-  group_id: string | null
   user_id: string
+  scene_id: string | null
   event_type: string
   score_delta: number
   score_after: number
@@ -451,7 +442,8 @@ export interface AISessionPromptChannelsItem {
   persona: string
   style: string | null
   relationship: string | null
-  person_profile: string[]
+  profile_card: string[]
+  profile_card_source_refs: string[]
   social_policy: string | null
   tool_policy: string | null
   future_task: string | null
@@ -777,22 +769,24 @@ export function bulkSetAIMemoryLifecycle(memoryIds: string[], lifecycleState: st
   )
 }
 
-export function getAIPersonProfiles(params?: { limit?: number }) {
-  return client.get<AIPersonProfileItem[]>('/ai/person-profiles', { params })
+export function getAIProfiles(params?: { limit?: number }) {
+  return client.get<AIProfileItem[]>('/ai/profiles', { params })
 }
 
-export function updateAIPersonProfile(payload: {
-  person_id: string
-  person_name?: string | null
-  nickname?: string | null
-  memory_points?: AIPersonMemoryPointItem[] | null
+export function updateAIProfile(payload: {
+  profile_id: string
+  display_name?: string | null
+  preferred_name?: string | null
+  name_source?: string | null
+  name_visibility?: string | null
+  profile_enabled?: boolean | null
 }) {
-  return client.patch<AIPersonProfileItem | null>('/ai/person-profiles', payload)
+  return client.patch<AIProfileItem | null>('/ai/profiles', payload)
 }
 
-export function deleteAIPersonProfile(personId: string) {
-  return client.delete<boolean>('/ai/person-profiles', {
-    params: { person_id: personId },
+export function deleteAIProfile(profileId: string) {
+  return client.delete<boolean>('/ai/profiles', {
+    params: { profile_id: profileId },
   })
 }
 
@@ -805,7 +799,7 @@ export function getAIRelationshipStates(params?: { limit?: number }) {
 export function updateAIRelationshipScore(payload: {
   platform: string
   user_id: string
-  group_id?: string | null
+  scene_id?: string | null
   score: number
 }) {
   return client.patch<AIRelationshipStateItem>('/ai/relationships', payload)
@@ -814,7 +808,6 @@ export function updateAIRelationshipScore(payload: {
 export function getAIRelationshipEvents(params: {
   platform: string
   user_id: string
-  group_id?: string
   limit?: number
 }) {
   return client.get<AIRelationshipEventItem[]>('/ai/relationships/events', {

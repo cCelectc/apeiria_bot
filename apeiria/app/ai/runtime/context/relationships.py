@@ -23,7 +23,7 @@ class AIRelationshipTarget:
     """Resolved relationship target for one runtime turn."""
 
     platform: str
-    group_id: str | None
+    scene_id: str | None
     user_id: str
     is_private: bool
 
@@ -36,7 +36,7 @@ def build_relationship_target(
 
     return AIRelationshipTarget(
         platform=identity.platform,
-        group_id=identity.scene_id if identity.scene_type == "group" else None,
+        scene_id=identity.scene_id,
         user_id=identity.subject_id or user_id,
         is_private=identity.scene_type == "private",
     )
@@ -52,8 +52,10 @@ def format_relationship_context(
     projection = project_emotion(state)
     tone_label = TONE_LABEL.get(projection.tone, projection.tone)
     sections = [
-        "⚠ 关系调制仅影响表达层（语气、措辞、主动性），不改变人格核心设定。",
-        f"当前关系: {tone_label} (score={state.score:.2f})",
+        "关系好感只影响表达层：语气、措辞、主动性、互动距离。",
+        "关系好感不得改变人格、事实、权限、工具授权、安全策略或记忆治理。",
+        f"当前好感: {state.score:+d} / range [-100, 100], neutral=0",
+        f"关系层级: {tone_label}",
     ]
     if projection.style_modulation:
         sections.append("表达调制:")
@@ -76,12 +78,10 @@ async def load_relationship_context(
 
     state = await ai_relationship_service.get_state(
         platform=target.platform,
-        group_id=target.group_id,
         user_id=target.user_id,
     )
     effective_state = await ai_relationship_service.get_effective_state(
         platform=target.platform,
-        group_id=target.group_id,
         user_id=target.user_id,
     )
     events = await ai_relationship_service.list_events(
@@ -112,8 +112,8 @@ async def update_relationship_state(
 
     await ai_relationship_service.apply_delta(
         platform=target.platform,
-        group_id=target.group_id,
         user_id=target.user_id,
+        scene_id=target.scene_id,
         delta=delta,
     )
 
@@ -122,6 +122,6 @@ def _format_relationship_event_line(event: "AIRelationshipEvent") -> str:
     reason = event.reason or "无明确原因"
     delta_sign = "+" if event.score_delta >= 0 else ""
     return (
-        f"- [{event.event_type}] {delta_sign}{event.score_delta:.2f}"
-        f" → {event.score_after:.2f}; {reason}"
+        f"- [{event.event_type}] {delta_sign}{event.score_delta}"
+        f" -> {event.score_after}; {reason}"
     )
