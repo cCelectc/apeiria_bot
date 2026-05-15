@@ -302,7 +302,7 @@ def test_knowledge_search_facade_delegates_and_bounds_results(
     )
     from apeiria.app.ai.builtin_tools import knowledge as knowledge_tools
 
-    calls: list[tuple[str, int, bool]] = []
+    calls: list[tuple[str, int]] = []
 
     class FakeKnowledgeService:
         async def retrieve(
@@ -310,11 +310,8 @@ def test_knowledge_search_facade_delegates_and_bounds_results(
             *,
             query_text: str,
             limit: int,
-            mutate_embeddings: bool = False,
-            candidate_limit: int | None = None,
         ):
-            del candidate_limit
-            calls.append((query_text, limit, mutate_embeddings))
+            calls.append((query_text, limit))
             return KnowledgeRetrievalResult(
                 items=tuple(
                     KnowledgeRetrievalItem(
@@ -350,7 +347,7 @@ def test_knowledge_search_facade_delegates_and_bounds_results(
         )
     )
 
-    assert calls == [("Apeiria knowledge", KNOWLEDGE_RESULT_LIMIT, False)]
+    assert calls == [("Apeiria knowledge", KNOWLEDGE_RESULT_LIMIT)]
     assert len(result.output_payload["items"]) == KNOWLEDGE_RESULT_LIMIT
     assert len(result.output_payload["items"][0]["excerpt"]) <= KNOWLEDGE_EXCERPT_LIMIT
     assert (

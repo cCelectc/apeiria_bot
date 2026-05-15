@@ -15,16 +15,14 @@ from apeiria.ai.knowledge.models import (
     KnowledgeUploadResult,
 )
 from apeiria.ai.knowledge.repository import KnowledgeRepository
-from apeiria.ai.memory.embeddings import (
-    EMBEDDING_MODEL_NAME,
-    cosine_similarity,
-    embed_text,
+from apeiria.ai.retrieval import (
+    DenseVectorRecord,
+    RetrievalCandidateService,
+    RetrievalDocument,
+    content_hash_for_text,
+    retrieval_candidate_service,
+    retrieval_document_id,
 )
-from apeiria.ai.model.routing.capability_selection import (
-    ai_model_capability_selection_service,
-)
-from apeiria.ai.model.runtime.service import model_invoker
-from apeiria.ai.model.sources.service import ai_source_service
 
 if TYPE_CHECKING:
     from apeiria.ai.knowledge.models import (
@@ -36,16 +34,16 @@ if TYPE_CHECKING:
 class KnowledgeRetrievalService:
     """Small service boundary for the default knowledge base."""
 
-    RERANK_CANDIDATE_MULTIPLIER = 4
-    RERANK_MIN_CANDIDATES = 8
     DEFAULT_CANDIDATE_LIMIT = 12
 
     def __init__(
         self,
         *,
         repository: KnowledgeRepository | None = None,
+        retrieval: RetrievalCandidateService | None = None,
     ) -> None:
         self._repository = repository or KnowledgeRepository()
+        self._retrieval = retrieval or retrieval_candidate_service
 
     async def upload_document(
         self,
@@ -68,6 +66,7 @@ class KnowledgeRetrievalService:
                 ),
             )
         )
+        self._index_chunks(document_id=document.document_id)
         diagnostics = await self.rebuild_embeddings(document_id=document.document_id)
         chunks = tuple(self._repository.list_chunks(document_id=document.document_id))
         refreshed = self._repository.get_document(document_id=document.document_id)
@@ -78,6 +77,50 @@ class KnowledgeRetrievalService:
             diagnostics=diagnostics,
         )
 
+    def replace_document_content(
+        self,
+        *,
+        document_id: str,
+        source_file_name: str,
+        content: str | bytes,
+    ) -> KnowledgeUploadResult | None:
+        """Replace one knowledge document and refresh retrieval indexes."""
+
+        existing_chunks = tuple(self._repository.list_chunks(document_id=document_id))
+        uploaded = chunk_uploaded_document(
+            source_file_name=source_file_name,
+            content=content,
+        )
+        document = self._repository._replace_document_content(
+            document_id=document_id,
+            create_input=KnowledgeDocumentCreate(
+                title=uploaded.title,
+                source_file_name=uploaded.source_file_name,
+                content_text=uploaded.content_text,
+                content_hash=uploaded.content_hash,
+                chunks=tuple(
+                    (chunk.chunk_hash, chunk.text) for chunk in uploaded.chunks
+                ),
+            ),
+        )
+        if document is None:
+            return None
+        self._retrieval.delete_documents(
+            tuple(
+                retrieval_document_id(domain="knowledge", source_id=chunk.chunk_id)
+                for chunk in existing_chunks
+            )
+        )
+        for chunk in existing_chunks:
+            chunk_embedding_store.delete(chunk_id=chunk.chunk_id)
+        self._index_chunks(document_id=document_id)
+        chunks = tuple(self._repository.list_chunks(document_id=document_id))
+        return KnowledgeUploadResult(
+            document=document,
+            chunks=chunks,
+            diagnostics=KnowledgeRebuildDiagnostics(),
+        )
+
     async def rebuild_embeddings(
         self,
         *,
@@ -85,16 +128,34 @@ class KnowledgeRetrievalService:
     ) -> KnowledgeRebuildDiagnostics:
         chunks = self._repository.list_chunks(document_id=document_id)
         processed = 0
+        skipped = 0
         failed = 0
         model_name: str | None = None
         embedded_chunk_ids: list[str] = []
+        documents = {
+            document.document_id: document
+            for document in self._repository.list_documents()
+        }
         for chunk in chunks:
             try:
-                model_name, vector = await self._build_embedding_vector(chunk.text)
+                document = documents.get(chunk.document_id)
+                retrieval_document = _chunk_to_retrieval_document(
+                    chunk=chunk,
+                    document=document,
+                )
+                embedding = await self._retrieval.build_embedding_for_document(
+                    retrieval_document,
+                )
+                if embedding is None:
+                    skipped += 1
+                    continue
+                model_name = embedding.embedding_model_label
                 chunk_embedding_store.upsert(
                     chunk_id=chunk.chunk_id,
                     embedding_model=model_name,
-                    vector=vector,
+                    embedding_space_id=embedding.embedding_space_id,
+                    content_hash=retrieval_document.content_hash,
+                    vector=list(embedding.vector),
                 )
             except Exception:  # noqa: BLE001
                 failed += 1
@@ -102,16 +163,20 @@ class KnowledgeRetrievalService:
             processed += 1
             embedded_chunk_ids.append(chunk.chunk_id)
 
-        if document_id is not None and model_name is not None:
+        if document_id is not None:
             self._repository.mark_chunk_embeddings(
                 document_id=document_id,
                 chunk_ids=embedded_chunk_ids,
-                embedding_model=model_name,
+                embedding_model=model_name or "",
                 status="embedded",
             )
             self._repository.mark_document_status(
                 document_id=document_id,
-                status="embedded" if failed == 0 else "degraded",
+                status=_document_status_for_rebuild(
+                    processed=processed,
+                    skipped=skipped,
+                    failed=failed,
+                ),
             )
         elif model_name is not None:
             by_document: dict[str, list[str]] = {}
@@ -128,19 +193,8 @@ class KnowledgeRetrievalService:
 
         return KnowledgeRebuildDiagnostics(
             processed_count=processed,
+            skipped_count=skipped,
             failed_count=failed,
-        )
-
-    async def preview_retrieval(
-        self,
-        *,
-        query_text: str,
-        limit: int,
-    ) -> KnowledgeRetrievalResult:
-        return await self.retrieve(
-            query_text=query_text,
-            limit=limit,
-            mutate_embeddings=False,
         )
 
     async def retrieve(
@@ -148,8 +202,6 @@ class KnowledgeRetrievalService:
         *,
         query_text: str,
         limit: int,
-        mutate_embeddings: bool = False,
-        candidate_limit: int | None = None,
     ) -> KnowledgeRetrievalResult:
         if limit <= 0:
             return KnowledgeRetrievalResult(
@@ -166,150 +218,97 @@ class KnowledgeRetrievalService:
                 ),
             )
 
-        embedding_model, query_vector = await self._build_embedding_vector(query_text)
-        chunks = self._repository.list_chunks()
         documents = {
             document.document_id: document
             for document in self._repository.list_documents()
         }
-        scored: list[tuple[float, KnowledgeChunkDefinition]] = []
-        missing_embedding_count = 0
-        stale_embedding_count = 0
-        for chunk in chunks:
-            embedding = chunk_embedding_store.get(chunk_id=chunk.chunk_id)
-            if embedding is None:
-                missing_embedding_count += 1
-                if not mutate_embeddings:
-                    continue
-                embedding_model, vector = await self._build_embedding_vector(chunk.text)
-                embedding = chunk_embedding_store.upsert(
-                    chunk_id=chunk.chunk_id,
-                    embedding_model=embedding_model,
-                    vector=vector,
-                )
-            if embedding.embedding_model != embedding_model:
-                stale_embedding_count += 1
-                continue
-            scored.append((cosine_similarity(query_vector, embedding.vector), chunk))
-
-        scored.sort(key=lambda item: item[0], reverse=True)
-        bounded_candidates = scored[
-            : candidate_limit or max(limit, self.DEFAULT_CANDIDATE_LIMIT)
-        ]
-        ranked, rerank_status = await self._maybe_rerank(
-            query_text=query_text,
-            candidates=bounded_candidates,
-            limit=limit,
+        chunks = _available_chunks(
+            chunks=self._repository.list_chunks(),
+            documents=documents,
         )
-        selected = ranked[:limit]
+        retrieval_documents = tuple(
+            _chunk_to_retrieval_document(
+                chunk=chunk,
+                document=documents.get(chunk.document_id),
+            )
+            for chunk in chunks
+        )
+        dense_records = tuple(_chunk_to_dense_record(chunk) for chunk in chunks)
+        dense_records = tuple(record for record in dense_records if record is not None)
+        result = await self._retrieval.retrieve_candidates(
+            query_text=query_text,
+            documents=retrieval_documents,
+            limit=limit,
+            candidate_limit=max(limit, self.DEFAULT_CANDIDATE_LIMIT),
+            allow_rerank=True,
+            dense_records=dense_records,
+        )
+        chunks_by_id = {chunk.chunk_id: chunk for chunk in chunks}
         items = tuple(
             self._to_retrieval_item(
                 label=f"K{index + 1}",
                 rank=index + 1,
-                score=score,
+                score=candidate.rerank_score or candidate.score,
+                rerank_score=candidate.rerank_score,
                 chunk=chunk,
                 document=documents.get(chunk.document_id),
             )
-            for index, (score, chunk) in enumerate(selected)
+            for index, candidate in enumerate(result.candidates)
+            if (chunk := chunks_by_id.get(_source_id_from_document(candidate.document)))
+            is not None
         )
         return KnowledgeRetrievalResult(
             items=items,
             diagnostics=KnowledgeRetrievalDiagnostics(
-                candidate_count=len(bounded_candidates),
+                candidate_count=result.diagnostics.candidate_count,
                 selected_count=len(items),
-                missing_embedding_count=missing_embedding_count,
-                stale_embedding_count=stale_embedding_count,
-                rerank_status=rerank_status,
+                missing_embedding_count=result.diagnostics.missing_embedding_count,
+                stale_embedding_count=result.diagnostics.stale_embedding_count,
+                rerank_status=result.diagnostics.rerank_status,
+                degradation_reason=result.diagnostics.fallback_reason,
             ),
         )
 
-    async def _build_embedding_vector(
-        self,
-        content: str,
-    ) -> tuple[str, list[float]]:
-        selected = await ai_model_capability_selection_service.select_default_model(
-            capability_type="embedding",
-        )
-        if selected is None:
-            return EMBEDDING_MODEL_NAME, embed_text(content)
+    def delete_document(self, *, document_id: str) -> bool:
+        """Delete one knowledge document and associated retrieval index records."""
 
-        try:
-            api_key = ai_source_service.get_source_api_key(selected.source)
-            if not api_key:
-                return EMBEDDING_MODEL_NAME, embed_text(content)
-            response = await model_invoker.embed_texts_for_source(
-                source=selected.source,
-                api_key=api_key,
-                model_name=selected.model.model_identifier,
-                texts=(content,),
+        chunk_ids = tuple(
+            chunk.chunk_id
+            for chunk in self._repository.list_chunks(document_id=document_id)
+        )
+        deleted = self._repository.delete_document(document_id=document_id)
+        if deleted:
+            self._retrieval.delete_documents(
+                tuple(
+                    retrieval_document_id(domain="knowledge", source_id=chunk_id)
+                    for chunk_id in chunk_ids
+                )
             )
-        except Exception:  # noqa: BLE001
-            return EMBEDDING_MODEL_NAME, embed_text(content)
-        if not response.vectors:
-            return EMBEDDING_MODEL_NAME, embed_text(content)
-        return selected.model.model_id, list(response.vectors[0])
+            for chunk_id in chunk_ids:
+                chunk_embedding_store.delete(chunk_id=chunk_id)
+        return deleted
 
-    async def _maybe_rerank(
-        self,
-        *,
-        query_text: str,
-        candidates: list[tuple[float, "KnowledgeChunkDefinition"]],
-        limit: int,
-    ) -> tuple[list[tuple[float, "KnowledgeChunkDefinition"]], str]:
-        if not candidates:
-            return [], "not_applicable"
-        selected = await ai_model_capability_selection_service.select_default_model(
-            capability_type="rerank",
-        )
-        if selected is None:
-            return candidates, "not_configured"
-        api_key = ai_source_service.get_source_api_key(selected.source)
-        if not api_key:
-            return candidates, "skipped"
-
-        candidate_limit = min(
-            len(candidates),
-            max(limit * self.RERANK_CANDIDATE_MULTIPLIER, self.RERANK_MIN_CANDIDATES),
-        )
-        limited = candidates[:candidate_limit]
-        try:
-            response = await model_invoker.rerank_documents_for_source(
-                source=selected.source,
-                api_key=api_key,
-                model_name=selected.model.model_identifier,
-                query=query_text,
-                documents=tuple(chunk.text for _, chunk in limited),
-                top_n=min(limit, len(limited)),
+    def _index_chunks(self, *, document_id: str | None = None) -> None:
+        documents = {
+            document.document_id: document
+            for document in self._repository.list_documents()
+        }
+        retrieval_documents = tuple(
+            _chunk_to_retrieval_document(
+                chunk=chunk,
+                document=documents.get(chunk.document_id),
             )
-        except Exception:  # noqa: BLE001
-            return candidates, "failed"
-
-        reranked: list[tuple[float, KnowledgeChunkDefinition]] = []
-        seen_indexes: set[int] = set()
-        for item in response.results:
-            if item.index < 0 or item.index >= len(limited):
-                continue
-            if item.index in seen_indexes:
-                continue
-            seen_indexes.add(item.index)
-            _, chunk = limited[item.index]
-            reranked.append((float(item.relevance_score), chunk))
-
-        if not reranked:
-            return candidates, "failed"
-        tail = [
-            candidate
-            for index, candidate in enumerate(limited)
-            if index not in seen_indexes
-        ]
-        return (reranked + tail), "applied"
+            for chunk in self._repository.list_chunks(document_id=document_id)
+        )
+        self._retrieval.index_documents(retrieval_documents)
 
     @staticmethod
-    def _to_retrieval_item(
+    def _to_retrieval_item(  # noqa: PLR0913
         *,
         label: str,
         rank: int,
         score: float,
+        rerank_score: float | None,
         chunk: "KnowledgeChunkDefinition",
         document: "KnowledgeDocumentDefinition | None",
     ) -> KnowledgeRetrievalItem:
@@ -325,7 +324,7 @@ class KnowledgeRetrievalService:
             source_file_name=source_file_name,
             rank=rank,
             score=score,
-            rerank_score=None,
+            rerank_score=rerank_score,
             excerpt=_excerpt(chunk.text),
         )
 
@@ -335,6 +334,91 @@ def _excerpt(text: str, *, max_chars: int = 500) -> str:
     if len(normalized) <= max_chars:
         return normalized
     return f"{normalized[: max_chars - 1].rstrip()}..."
+
+
+def _chunk_to_retrieval_document(
+    *,
+    chunk: "KnowledgeChunkDefinition",
+    document: "KnowledgeDocumentDefinition | None",
+) -> RetrievalDocument:
+    title = document.title if document is not None else None
+    source_file_name = document.source_file_name if document is not None else None
+    return RetrievalDocument(
+        document_id=retrieval_document_id(domain="knowledge", source_id=chunk.chunk_id),
+        domain="knowledge",
+        title=title,
+        text=chunk.text,
+        content_hash=content_hash_for_text(title, chunk.chunk_hash, chunk.text),
+        updated_at=chunk.updated_at.isoformat(),
+        metadata={
+            "chunk_id": chunk.chunk_id,
+            "document_id": chunk.document_id,
+            "source_file_name": source_file_name,
+        },
+    )
+
+
+def _chunk_to_dense_record(
+    chunk: "KnowledgeChunkDefinition",
+) -> DenseVectorRecord | None:
+    embedding = chunk_embedding_store.get(chunk_id=chunk.chunk_id)
+    if embedding is None:
+        return None
+    return DenseVectorRecord(
+        document_id=retrieval_document_id(domain="knowledge", source_id=chunk.chunk_id),
+        embedding_space_id=embedding.embedding_space_id,
+        dimension=embedding.dimension or len(embedding.vector),
+        vector=tuple(embedding.vector),
+        content_hash=embedding.content_hash,
+    )
+
+
+def _available_chunks(
+    *,
+    chunks: list["KnowledgeChunkDefinition"],
+    documents: dict[str, "KnowledgeDocumentDefinition"],
+) -> tuple["KnowledgeChunkDefinition", ...]:
+    return tuple(
+        chunk
+        for chunk in chunks
+        if _is_knowledge_document_available(documents.get(chunk.document_id))
+        and _is_knowledge_chunk_available(chunk)
+    )
+
+
+def _is_knowledge_document_available(
+    document: "KnowledgeDocumentDefinition | None",
+) -> bool:
+    return document is not None and document.status != "failed"
+
+
+def _is_knowledge_chunk_available(chunk: "KnowledgeChunkDefinition") -> bool:
+    return chunk.embedding_status != "failed"
+
+
+def _source_id_from_document(document: RetrievalDocument) -> str:
+    chunk_id = document.metadata.get("chunk_id")
+    if isinstance(chunk_id, str):
+        return chunk_id
+    prefix = "knowledge:"
+    if document.document_id.startswith(prefix):
+        return document.document_id[len(prefix) :]
+    return document.document_id
+
+
+def _document_status_for_rebuild(
+    *,
+    processed: int,
+    skipped: int,
+    failed: int,
+) -> str:
+    if failed > 0:
+        return "degraded"
+    if processed > 0 and skipped == 0:
+        return "embedded"
+    if processed > 0:
+        return "degraded"
+    return "pending"
 
 
 knowledge_retrieval_service = KnowledgeRetrievalService()

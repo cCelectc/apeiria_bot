@@ -214,11 +214,6 @@ class MemoriesAdminMixin:
         )
         if row is None:
             return None
-        if row.memory_layer == "knowledge":
-            await ai_memory_service.upsert_memory_embedding(
-                memory_id=row.memory_id,
-                content=row.content,
-            )
         memories = await ai_memory_service.list_memories(
             anchor_type=cast("AIMemoryAnchorType", row.anchor_type),
             anchor_id=row.anchor_id,

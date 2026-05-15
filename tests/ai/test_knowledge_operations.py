@@ -38,7 +38,8 @@ def test_knowledge_operations_cover_management_workflow(
             actor_username="admin",
         )
         assert upload.document.title == "guide"
-        assert upload.diagnostics.processed_count == EXPECTED_CHUNK_COUNT
+        assert upload.diagnostics.processed_count == 0
+        assert upload.diagnostics.skipped_count == EXPECTED_CHUNK_COUNT
 
         listed = await operations.list_knowledge_documents()
         assert [item.document_id for item in listed] == [upload.document.document_id]
@@ -58,7 +59,8 @@ def test_knowledge_operations_cover_management_workflow(
             document_id=upload.document.document_id,
             actor_username="admin",
         )
-        assert rebuild.processed_count == EXPECTED_CHUNK_COUNT
+        assert rebuild.processed_count == 0
+        assert rebuild.skipped_count == EXPECTED_CHUNK_COUNT
 
         deleted = await operations.delete_knowledge_document(
             document_id=upload.document.document_id,

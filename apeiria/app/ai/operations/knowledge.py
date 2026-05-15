@@ -114,7 +114,7 @@ class KnowledgeAdminMixin:
         query_text: str,
         limit: int,
     ) -> KnowledgeRetrievalResult:
-        return await knowledge_retrieval_service.preview_retrieval(
+        return await knowledge_retrieval_service.retrieve(
             query_text=query_text,
             limit=limit,
         )
@@ -125,7 +125,7 @@ class KnowledgeAdminMixin:
         document_id: str,
         actor_username: str | None = None,
     ) -> bool:
-        deleted = KnowledgeRepository().delete_document(document_id=document_id)
+        deleted = knowledge_retrieval_service.delete_document(document_id=document_id)
         if deleted:
             record_ai_admin_audit(
                 "ai_knowledge_document_deleted",

@@ -21,6 +21,9 @@ class ChunkEmbeddingRecord:
     embedding_model: str
     vector: list[float]
     updated_at: str
+    embedding_space_id: str | None = None
+    dimension: int | None = None
+    content_hash: str | None = None
 
 
 def _storage_dir() -> Path:
@@ -45,12 +48,17 @@ class ChunkEmbeddingStore:
         chunk_id: str,
         embedding_model: str,
         vector: list[float],
+        embedding_space_id: str | None = None,
+        content_hash: str | None = None,
     ) -> ChunkEmbeddingRecord:
         record = ChunkEmbeddingRecord(
             chunk_id=chunk_id,
             embedding_model=embedding_model,
             vector=vector,
             updated_at=_utcnow_text(),
+            embedding_space_id=embedding_space_id,
+            dimension=len(vector),
+            content_hash=content_hash,
         )
         target = _record_path(chunk_id)
         target.parent.mkdir(parents=True, exist_ok=True)
@@ -60,6 +68,9 @@ class ChunkEmbeddingStore:
                 {
                     "chunk_id": record.chunk_id,
                     "embedding_model": record.embedding_model,
+                    "embedding_space_id": record.embedding_space_id,
+                    "dimension": record.dimension,
+                    "content_hash": record.content_hash,
                     "vector": record.vector,
                     "updated_at": record.updated_at,
                 },
@@ -98,6 +109,9 @@ class ChunkEmbeddingStore:
         if not isinstance(payload, dict):
             return None
         embedding_model = payload.get("embedding_model")
+        embedding_space_id = payload.get("embedding_space_id")
+        dimension = payload.get("dimension")
+        content_hash = payload.get("content_hash")
         vector = payload.get("vector")
         updated_at = payload.get("updated_at")
         if not isinstance(embedding_model, str):
@@ -116,6 +130,15 @@ class ChunkEmbeddingStore:
             embedding_model=embedding_model,
             vector=numeric_vector,
             updated_at=updated_at,
+            embedding_space_id=(
+                embedding_space_id if isinstance(embedding_space_id, str) else None
+            ),
+            dimension=(
+                int(dimension)
+                if isinstance(dimension, int) and dimension > 0
+                else len(numeric_vector)
+            ),
+            content_hash=content_hash if isinstance(content_hash, str) else None,
         )
 
 

@@ -50,7 +50,7 @@ class KnowledgeRepository:
         assert document is not None
         return document
 
-    def replace_document_content(
+    def _replace_document_content(
         self,
         *,
         document_id: str,
@@ -76,7 +76,7 @@ class KnowledgeRepository:
                     source_file_name = ?,
                     content_text = ?,
                     content_hash = ?,
-                    status = 'embedded',
+                    status = 'pending',
                     chunk_count = ?,
                     last_error = NULL,
                     updated_at = ?
@@ -233,7 +233,7 @@ class KnowledgeRepository:
                 create_input.source_file_name,
                 create_input.content_text,
                 create_input.content_hash,
-                "embedded",
+                "pending",
                 len(create_input.chunks),
                 _datetime_to_text(created_at),
                 _datetime_to_text(updated_at),

@@ -98,6 +98,82 @@ def test_memory_items_use_sqlite(
     asyncio.run(scenario())
 
 
+def test_memory_lifecycle_changes_sync_sparse_index(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setattr(database_runtime, "_project_root", tmp_path)
+    database_runtime.ensure_ready()
+
+    from apeiria.ai.memory.service import (
+        AIMemoryCreateInput,
+        _memory_to_retrieval_document,
+        ai_memory_service,
+    )
+    from apeiria.ai.retrieval import service as retrieval_service_module
+    from apeiria.ai.retrieval.sparse import retrieval_sparse_index
+
+    async def select_default_model(*, capability_type: str) -> object | None:
+        del capability_type
+        return None
+
+    monkeypatch.setattr(
+        retrieval_service_module.ai_model_capability_selection_service,
+        "select_default_model",
+        select_default_model,
+    )
+
+    async def scenario() -> None:
+        memory = await ai_memory_service.create_memory(
+            AIMemoryCreateInput(
+                anchor_type="user",
+                anchor_id="user-1",
+                memory_layer="long_term",
+                memory_kind="note",
+                content="prefers retrieval architecture notes",
+            )
+        )
+
+        await ai_memory_service.set_memory_state(
+            memory_id=memory.memory_id,
+            lifecycle_state="suppressed",
+            default_use_mode="ignore",
+            governance_reason="test suppression",
+        )
+
+        suppressed_document = _memory_to_retrieval_document(memory)
+        suppressed_result = retrieval_sparse_index.search(
+            query_text="retrieval architecture",
+            documents=(suppressed_document,),
+            limit=1,
+        )
+
+        assert suppressed_result.candidates == ()
+
+        await ai_memory_service.set_memory_state(
+            memory_id=memory.memory_id,
+            lifecycle_state="active",
+            default_use_mode="context",
+            governance_reason="test reactivation",
+        )
+        reactivated = await ai_memory_service.get_memory(memory_id=memory.memory_id)
+        assert reactivated is not None
+
+        reactivated_document = _memory_to_retrieval_document(reactivated)
+        reactivated_result = retrieval_sparse_index.search(
+            query_text="retrieval architecture",
+            documents=(reactivated_document,),
+            limit=1,
+        )
+
+        assert [
+            candidate.document.document_id
+            for candidate in reactivated_result.candidates
+        ] == [reactivated_document.document_id]
+
+    asyncio.run(scenario())
+
+
 def test_consolidate_anchor_summary_creates_first_summary_memory(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

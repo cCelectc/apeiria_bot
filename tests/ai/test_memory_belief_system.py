@@ -178,6 +178,98 @@ def test_subjective_beliefs_default_to_silent_use(
     asyncio.run(scenario())
 
 
+def test_memory_retrieval_uses_sparse_after_policy_filtering(
+    tmp_path: Path,
+    monkeypatch: "MonkeyPatch",
+) -> None:
+    monkeypatch.setattr(database_runtime, "_project_root", tmp_path)
+    database_runtime.ensure_ready()
+
+    from apeiria.ai.memory import AIMemoryCreateInput, AIMemoryQuery, ai_memory_service
+    from apeiria.ai.memory import service as memory_service_module
+    from apeiria.ai.retrieval import service as retrieval_service_module
+
+    async def select_default_model(*, capability_type: str) -> object | None:
+        del capability_type
+        return None
+
+    monkeypatch.setattr(
+        retrieval_service_module.ai_model_capability_selection_service,
+        "select_default_model",
+        select_default_model,
+    )
+    assert not hasattr(memory_service_module, "rank_memory_items")
+
+    async def scenario() -> None:
+        selected = await ai_memory_service.create_memory(
+            AIMemoryCreateInput(
+                anchor_type="user",
+                anchor_id="user-1",
+                memory_layer="long_term",
+                memory_kind="preference",
+                content="喜欢原神多人联机",
+                salience=0.8,
+                confidence=0.9,
+            )
+        )
+        await ai_memory_service.create_memory(
+            AIMemoryCreateInput(
+                anchor_type="user",
+                anchor_id="user-1",
+                memory_layer="long_term",
+                memory_kind="preference",
+                content="喜欢烤面包",
+                default_use_mode="ignore",
+                salience=0.8,
+                confidence=0.9,
+            )
+        )
+        await ai_memory_service.create_memory(
+            AIMemoryCreateInput(
+                anchor_type="user",
+                anchor_id="user-1",
+                memory_layer="long_term",
+                memory_kind="preference",
+                content="候选原神资料",
+                lifecycle_state="candidate",
+                default_use_mode="ignore",
+                salience=0.8,
+                confidence=0.9,
+            )
+        )
+
+        rows = await ai_memory_service.retrieve_memories(
+            AIMemoryQuery(
+                anchor_type="user",
+                anchor_id="user-1",
+                query_text="原神联机",
+                limit=5,
+                memory_layer="long_term",
+            )
+        )
+        diagnostics = await ai_memory_service.retrieve_memory_selections(
+            AIMemoryQuery(
+                anchor_type="user",
+                anchor_id="user-1",
+                query_text="原神联机",
+                limit=5,
+                memory_layer="long_term",
+            )
+        )
+
+        assert [item.memory_id for item in rows] == [selected.memory_id]
+        assert [item.memory.memory_id for item in diagnostics.selected] == [
+            selected.memory_id
+        ]
+        assert {
+            item.exclusion_reason
+            for item in diagnostics.excluded
+            if item.exclusion_reason
+        } == {"lifecycle_state:candidate"}
+
+    asyncio.run(scenario())
+
+
 def test_group_extracted_memories_are_written_to_one_scope(
     tmp_path: Path,
     monkeypatch: "MonkeyPatch",

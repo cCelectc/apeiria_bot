@@ -39,7 +39,7 @@ def test_default_knowledge_documents_and_chunks_use_sqlite(
     assert created.document_id.startswith("kdoc_")
     assert created.title == "Project Notes"
     assert created.source_file_name == "notes.md"
-    assert created.status == "embedded"
+    assert created.status == "pending"
     assert created.chunk_count == EXPECTED_CHUNK_COUNT
     assert created.created_at.tzinfo is not None
     assert created.updated_at.tzinfo is not None
@@ -95,7 +95,7 @@ def test_default_knowledge_document_update_replaces_chunks(
     )
     old_chunk_id = repository.list_chunks(document_id=created.document_id)[0].chunk_id
 
-    updated = repository.replace_document_content(
+    updated = repository._replace_document_content(
         document_id=created.document_id,
         create_input=KnowledgeDocumentCreate(
             title="Runbook v2",

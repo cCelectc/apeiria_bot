@@ -35,30 +35,26 @@ def test_upload_rebuild_and_runtime_retrieval_are_explicit(
         )
 
         assert uploaded.document.chunk_count == EXPECTED_CHUNK_COUNT
-        assert uploaded.diagnostics.processed_count == EXPECTED_CHUNK_COUNT
+        assert uploaded.diagnostics.processed_count == 0
+        assert uploaded.diagnostics.skipped_count == EXPECTED_CHUNK_COUNT
         assert uploaded.diagnostics.failed_count == 0
         for chunk in uploaded.chunks:
-            assert chunk_embedding_store.get(chunk_id=chunk.chunk_id) is not None
-
-        deleted_embedding = uploaded.chunks[0]
-        assert chunk_embedding_store.delete(chunk_id=deleted_embedding.chunk_id) is True
+            assert chunk_embedding_store.get(chunk_id=chunk.chunk_id) is None
 
         runtime_result = await service.retrieve(
             query_text="Apeiria retrieval",
             limit=3,
-            mutate_embeddings=False,
         )
 
-        assert runtime_result.diagnostics.missing_embedding_count == 1
-        assert chunk_embedding_store.get(chunk_id=deleted_embedding.chunk_id) is None
+        assert runtime_result.diagnostics.degradation_reason == "no_embedding_model"
+        assert runtime_result.diagnostics.candidate_count == EXPECTED_CANDIDATE_COUNT
+        assert runtime_result.items
 
         rebuild = await service.rebuild_embeddings(
             document_id=uploaded.document.document_id
         )
-        assert rebuild.processed_count == EXPECTED_CHUNK_COUNT
-        assert (
-            chunk_embedding_store.get(chunk_id=deleted_embedding.chunk_id) is not None
-        )
+        assert rebuild.processed_count == 0
+        assert rebuild.skipped_count == EXPECTED_CHUNK_COUNT
 
     asyncio.run(scenario())
 
@@ -81,7 +77,7 @@ def test_retrieval_preview_returns_ranked_labeled_chunks(
             content="Apeiria RAG retrieval uses chunks.\n\nCooking recipes need salt.",
         )
 
-        result = await service.preview_retrieval(
+        result = await service.retrieve(
             query_text="How does Apeiria RAG retrieve chunks?",
             limit=2,
         )
@@ -100,6 +96,119 @@ def test_retrieval_preview_returns_ranked_labeled_chunks(
     asyncio.run(scenario())
 
 
+def test_retrieval_excludes_failed_documents(
+    tmp_path: Path,
+    monkeypatch: "MonkeyPatch",
+) -> None:
+    monkeypatch.setattr(database_runtime, "_project_root", tmp_path)
+    database_runtime.ensure_ready()
+
+    from apeiria.ai.knowledge.repository import KnowledgeRepository
+    from apeiria.ai.knowledge.service import KnowledgeRetrievalService
+
+    repository = KnowledgeRepository()
+    service = KnowledgeRetrievalService(repository=repository)
+
+    async def scenario() -> None:
+        uploaded = await service.upload_document(
+            source_file_name="failed.txt",
+            content="failed source should not appear in retrieval",
+        )
+        repository.mark_document_status(
+            document_id=uploaded.document.document_id,
+            status="failed",
+            last_error="unavailable",
+        )
+
+        result = await service.retrieve(
+            query_text="failed source retrieval",
+            limit=3,
+        )
+
+        assert result.items == ()
+        assert result.diagnostics.degradation_reason == "no_documents"
+
+    asyncio.run(scenario())
+
+
+def test_embedding_failure_keeps_document_available_for_sparse_retrieval(
+    tmp_path: Path,
+    monkeypatch: "MonkeyPatch",
+) -> None:
+    monkeypatch.setattr(database_runtime, "_project_root", tmp_path)
+    database_runtime.ensure_ready()
+
+    from apeiria.ai.knowledge.repository import KnowledgeRepository
+    from apeiria.ai.knowledge.service import KnowledgeRetrievalService
+
+    repository = KnowledgeRepository()
+    service = KnowledgeRetrievalService(repository=repository)
+
+    async def scenario() -> None:
+        uploaded = await service.upload_document(
+            source_file_name="sparse.md",
+            content="sparse retrieval survives embedding failure",
+        )
+        repository.mark_document_status(
+            document_id=uploaded.document.document_id,
+            status="degraded",
+            last_error="embedding_failed",
+        )
+
+        result = await service.retrieve(
+            query_text="sparse retrieval",
+            limit=3,
+        )
+
+        assert [item.excerpt for item in result.items] == [
+            "sparse retrieval survives embedding failure"
+        ]
+
+    asyncio.run(scenario())
+
+
+def test_replace_document_content_refreshes_retrieval_indexes(
+    tmp_path: Path,
+    monkeypatch: "MonkeyPatch",
+) -> None:
+    monkeypatch.setattr(database_runtime, "_project_root", tmp_path)
+    database_runtime.ensure_ready()
+
+    from apeiria.ai.knowledge.embedding_store import chunk_embedding_store
+    from apeiria.ai.knowledge.service import KnowledgeRetrievalService
+
+    service = KnowledgeRetrievalService()
+
+    async def scenario() -> None:
+        uploaded = await service.upload_document(
+            source_file_name="runbook.txt",
+            content="obsidian archive note",
+        )
+        old_chunk_id = uploaded.chunks[0].chunk_id
+        chunk_embedding_store.upsert(
+            chunk_id=old_chunk_id,
+            embedding_model="test",
+            vector=[1.0],
+        )
+
+        replaced = service.replace_document_content(
+            document_id=uploaded.document.document_id,
+            source_file_name="runbook.txt",
+            content="vector compass note",
+        )
+
+        assert replaced is not None
+        assert chunk_embedding_store.get(chunk_id=old_chunk_id) is None
+
+        old_result = await service.retrieve(query_text="obsidian archive", limit=3)
+        new_result = await service.retrieve(query_text="vector compass", limit=3)
+
+        assert old_result.items == ()
+        assert [item.excerpt for item in new_result.items] == ["vector compass note"]
+
+    asyncio.run(scenario())
+
+
 def test_retrieval_handles_empty_query_without_failure(
     tmp_path: Path,
     monkeypatch: "MonkeyPatch",
@@ -113,7 +222,7 @@ def test_retrieval_handles_empty_query_without_failure(
     service = KnowledgeRetrievalService(repository=KnowledgeRepository())
 
     async def scenario() -> None:
-        result = await service.preview_retrieval(query_text=" ", limit=3)
+        result = await service.retrieve(query_text=" ", limit=3)
 
         assert result.items == ()
         assert result.diagnostics.degradation_reason == "empty_query"
@@ -130,7 +239,6 @@ def test_retrieval_uses_optional_rerank_when_configured(
     monkeypatch.setattr(database_runtime, "_project_root", tmp_path)
     database_runtime.ensure_ready()
 
-    from apeiria.ai.knowledge import service as service_module
     from apeiria.ai.knowledge.repository import KnowledgeRepository
     from apeiria.ai.knowledge.service import KnowledgeRetrievalService
     from apeiria.ai.model.runtime.adapter import (
@@ -161,18 +269,30 @@ def test_retrieval_uses_optional_rerank_when_configured(
             ),
         )
 
+    from apeiria.ai.retrieval import rerank as rerank_module
+    from apeiria.ai.retrieval import service as retrieval_service_module
+
+    async def select_embedding_model(*, capability_type: str) -> object | None:
+        del capability_type
+        return None
+
     monkeypatch.setattr(
-        service_module.ai_model_capability_selection_service,
+        retrieval_service_module.ai_model_capability_selection_service,
+        "select_default_model",
+        select_embedding_model,
+    )
+    monkeypatch.setattr(
+        rerank_module.ai_model_capability_selection_service,
         "select_default_model",
         select_default_model,
     )
     monkeypatch.setattr(
-        service_module.ai_source_service,
+        rerank_module.ai_source_service,
         "get_source_api_key",
         lambda _: "key",
     )
     monkeypatch.setattr(
-        service_module.model_invoker,
+        rerank_module.model_invoker,
         "rerank_documents_for_source",
         rerank_documents_for_source,
     )
@@ -185,7 +305,7 @@ def test_retrieval_uses_optional_rerank_when_configured(
             content="alpha target paragraph\n\nbeta reranked paragraph",
         )
 
-        result = await service.preview_retrieval(query_text="alpha", limit=2)
+        result = await service.retrieve(query_text="paragraph", limit=2)
 
         assert result.diagnostics.rerank_status == "applied"
         assert [item.excerpt for item in result.items] == [

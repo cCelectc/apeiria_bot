@@ -60,7 +60,8 @@ def test_knowledge_routes_validate_and_preview_without_live_turns(
     assert uploaded.status_code == HTTP_OK
     uploaded_payload = uploaded.json()
     assert uploaded_payload["document"]["title"] == "manual"
-    assert uploaded_payload["diagnostics"]["processed_count"] == EXPECTED_CHUNK_COUNT
+    assert uploaded_payload["diagnostics"]["processed_count"] == 0
+    assert uploaded_payload["diagnostics"]["skipped_count"] == EXPECTED_CHUNK_COUNT
 
     documents = client.get("/ai/knowledge/documents")
     assert documents.status_code == HTTP_OK

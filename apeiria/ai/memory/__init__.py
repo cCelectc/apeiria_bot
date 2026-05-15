@@ -24,7 +24,6 @@ from .models import (
     AIMessageSentiment,
     AIObservationLevel,
 )
-from .ranking import rank_memory_items
 
 if TYPE_CHECKING:
     from .contracts import (
@@ -60,7 +59,6 @@ __all__ = [
     "AIMessageSentiment",
     "AIObservationLevel",
     "ai_memory_service",
-    "rank_memory_items",
 ]
 
 _LAZY_EXPORTS = {

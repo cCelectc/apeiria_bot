@@ -227,5 +227,4 @@ async def retrieve_rag_for_context(
     return await knowledge_retrieval_service.retrieve(
         query_text=query_text,
         limit=limit,
-        mutate_embeddings=False,
     )

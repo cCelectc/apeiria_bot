@@ -65,7 +65,6 @@ async def search_knowledge(
         result = await knowledge_retrieval_service.retrieve(
             query_text=query_text,
             limit=bounded_limit,
-            mutate_embeddings=False,
         )
     except PermissionError as exc:
         return denied_result("knowledge.search", str(exc))

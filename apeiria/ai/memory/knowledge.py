@@ -1,20 +1,18 @@
-"""Knowledge-memory embedding and rerank coordination."""
+"""Knowledge-memory retrieval coordination through the shared retrieval layer."""
 
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
 from apeiria.ai.memory.embedding_store import ai_memory_embedding_store
-from apeiria.ai.memory.embeddings import (
-    EMBEDDING_MODEL_NAME,
-    cosine_similarity,
-    embed_text,
+from apeiria.ai.retrieval import (
+    DenseVectorRecord,
+    RetrievalCandidateService,
+    RetrievalDocument,
+    content_hash_for_text,
+    retrieval_candidate_service,
+    retrieval_document_id,
 )
-from apeiria.ai.model.routing.capability_selection import (
-    ai_model_capability_selection_service,
-)
-from apeiria.ai.model.runtime.service import model_invoker
-from apeiria.ai.model.sources.service import ai_source_service
 
 if TYPE_CHECKING:
     from apeiria.ai.memory.contracts import AIMemoryCreateInput
@@ -24,18 +22,21 @@ if TYPE_CHECKING:
 
 
 class KnowledgeMemoryCoordinator:
-    """Own embedding lookup and model-assisted ranking for knowledge memories."""
+    """Own knowledge-memory indexing and shared candidate retrieval."""
 
-    RERANK_CANDIDATE_MULTIPLIER = 4
-    RERANK_MIN_CANDIDATES = 8
-
-    def __init__(self, repository: AIMemoryRepository) -> None:
+    def __init__(
+        self,
+        repository: "AIMemoryRepository",
+        *,
+        retrieval: RetrievalCandidateService | None = None,
+    ) -> None:
         self._repository = repository
+        self._retrieval = retrieval or retrieval_candidate_service
 
     async def create_knowledge_memory(
         self,
-        create_input: AIMemoryCreateInput,
-    ) -> AIMemoryDefinition:
+        create_input: "AIMemoryCreateInput",
+    ) -> "AIMemoryDefinition":
         memory = self._repository.create_memory(
             create_input,
             ignore_existing=True,
@@ -44,10 +45,6 @@ class KnowledgeMemoryCoordinator:
             existing = self._repository.get_memory_by_identity(create_input)
             assert existing is not None
             memory = existing
-        await self.upsert_memory_embedding(
-            memory_id=memory.memory_id,
-            content=memory.content,
-        )
         return memory
 
     async def upsert_memory_embedding(
@@ -55,14 +52,22 @@ class KnowledgeMemoryCoordinator:
         *,
         memory_id: str,
         content: str,
-    ) -> AIMemoryEmbeddingRecord:
-        embedding_model, vector = await self._build_knowledge_embedding_vector(
+    ) -> "AIMemoryEmbeddingRecord | None":
+        memory = self._repository.get_memory(memory_id=memory_id)
+        document = _memory_to_retrieval_document(
+            memory_id=memory_id,
             content=content,
+            memory=memory,
         )
+        embedding = await self._retrieval.build_embedding_for_document(document)
+        if embedding is None:
+            return None
         return ai_memory_embedding_store.upsert(
             memory_id=memory_id,
-            embedding_model=embedding_model,
-            vector=vector,
+            embedding_model=embedding.embedding_model_label,
+            embedding_space_id=embedding.embedding_space_id,
+            content_hash=document.content_hash,
+            vector=list(embedding.vector),
         )
 
     def delete_memory_embedding(
@@ -75,142 +80,99 @@ class KnowledgeMemoryCoordinator:
     async def retrieve_knowledge_memories(
         self,
         *,
-        targets: list[tuple[AIMemoryAnchorType, str]],
+        targets: list[tuple["AIMemoryAnchorType", str]],
         query_text: str,
         limit: int,
-    ) -> list[AIMemoryDefinition]:
+    ) -> list["AIMemoryDefinition"]:
         if limit <= 0 or not query_text.strip():
             return []
 
-        (
-            query_embedding_model,
-            query_vector,
-        ) = await self._build_knowledge_embedding_vector(
-            content=query_text,
-        )
-        scored: list[tuple[float, AIMemoryDefinition]] = []
         seen_memory_ids: set[str] = set()
-
+        memories: list[AIMemoryDefinition] = []
         for anchor_type, anchor_id in targets:
-            memories = self._repository.list_memories(
+            for memory in self._repository.list_memories(
                 anchor_type=anchor_type,
                 anchor_id=anchor_id,
                 memory_layer="knowledge",
-            )
-            for memory in memories:
+            ):
                 if memory.memory_id in seen_memory_ids:
                     continue
+                if memory.default_use_mode == "ignore":
+                    continue
                 seen_memory_ids.add(memory.memory_id)
-                embedding_row = ai_memory_embedding_store.get(
-                    memory_id=memory.memory_id
-                )
-                if (
-                    embedding_row is None
-                    or embedding_row.embedding_model != query_embedding_model
-                ):
-                    embedding_row = await self.upsert_memory_embedding(
-                        memory_id=memory.memory_id,
-                        content=memory.content,
-                    )
-                scored.append(
-                    (cosine_similarity(query_vector, embedding_row.vector), memory)
-                )
+                memories.append(memory)
 
-        scored.sort(key=lambda item: item[0], reverse=True)
-        dense_ranked = [memory for _, memory in scored]
-        return await self._rerank_knowledge_memories(
+        documents = tuple(
+            _memory_to_retrieval_document(
+                memory_id=memory.memory_id,
+                content=memory.content,
+                memory=memory,
+            )
+            for memory in memories
+        )
+        dense_records = tuple(_memory_to_dense_record(memory) for memory in memories)
+        result = await self._retrieval.retrieve_candidates(
             query_text=query_text,
-            memories=dense_ranked,
+            documents=documents,
             limit=limit,
+            allow_rerank=True,
+            dense_records=dense_records,
         )
+        memory_by_id = {memory.memory_id: memory for memory in memories}
+        ranked: list[AIMemoryDefinition] = []
+        for candidate in result.candidates:
+            memory_id = _memory_id_from_document(candidate.document)
+            memory = memory_by_id.get(memory_id)
+            if memory is not None:
+                ranked.append(memory)
+        return ranked
 
-    async def _build_knowledge_embedding_vector(
-        self,
-        *,
-        content: str,
-    ) -> tuple[str, list[float]]:
-        selected = await ai_model_capability_selection_service.select_default_model(
-            capability_type="embedding",
+
+def _memory_to_retrieval_document(
+    *,
+    memory_id: str,
+    content: str,
+    memory: "AIMemoryDefinition | None",
+) -> RetrievalDocument:
+    layer = memory.memory_layer if memory is not None else "knowledge"
+    kind = memory.memory_kind if memory is not None else "note"
+    title = f"{layer}:{kind}"
+    return RetrievalDocument(
+        document_id=retrieval_document_id(domain="memory", source_id=memory_id),
+        domain="memory",
+        title=title,
+        text=content,
+        content_hash=content_hash_for_text(title, content, layer, kind),
+        updated_at=memory.created_at.isoformat() if memory is not None else None,
+        metadata={"memory_id": memory_id},
+    )
+
+
+def _memory_to_dense_record(memory: "AIMemoryDefinition") -> DenseVectorRecord:
+    document_id = retrieval_document_id(domain="memory", source_id=memory.memory_id)
+    embedding = ai_memory_embedding_store.get(memory_id=memory.memory_id)
+    if embedding is None:
+        return DenseVectorRecord(
+            document_id=document_id,
+            embedding_space_id=None,
+            dimension=0,
+            vector=(),
+            content_hash=None,
         )
-        if selected is None:
-            return EMBEDDING_MODEL_NAME, embed_text(content)
+    return DenseVectorRecord(
+        document_id=document_id,
+        embedding_space_id=embedding.embedding_space_id,
+        dimension=embedding.dimension or len(embedding.vector),
+        vector=tuple(embedding.vector),
+        content_hash=embedding.content_hash,
+    )
 
-        try:
-            api_key = ai_source_service.get_source_api_key(selected.source)
-            if not api_key:
-                return EMBEDDING_MODEL_NAME, embed_text(content)
-            response = await model_invoker.embed_texts_for_source(
-                source=selected.source,
-                api_key=api_key,
-                model_name=selected.model.model_identifier,
-                texts=(content,),
-            )
-        except Exception:  # noqa: BLE001
-            return EMBEDDING_MODEL_NAME, embed_text(content)
 
-        if not response.vectors:
-            return EMBEDDING_MODEL_NAME, embed_text(content)
-
-        return selected.model.model_id, list(response.vectors[0])
-
-    async def _rerank_knowledge_memories(  # noqa: PLR0911
-        self,
-        *,
-        query_text: str,
-        memories: list[AIMemoryDefinition],
-        limit: int,
-    ) -> list[AIMemoryDefinition]:
-        if limit <= 0 or not memories:
-            return []
-
-        selected = await ai_model_capability_selection_service.select_default_model(
-            capability_type="rerank",
-        )
-        if selected is None:
-            return memories[:limit]
-
-        api_key = ai_source_service.get_source_api_key(selected.source)
-        if not api_key:
-            return memories[:limit]
-
-        candidate_limit = min(
-            len(memories),
-            max(
-                limit * self.RERANK_CANDIDATE_MULTIPLIER,
-                self.RERANK_MIN_CANDIDATES,
-            ),
-        )
-        candidates = memories[:candidate_limit]
-        try:
-            response = await model_invoker.rerank_documents_for_source(
-                source=selected.source,
-                api_key=api_key,
-                model_name=selected.model.model_identifier,
-                query=query_text,
-                documents=tuple(memory.content for memory in candidates),
-                top_n=min(limit, len(candidates)),
-            )
-        except Exception:  # noqa: BLE001
-            return memories[:limit]
-
-        reranked: list[AIMemoryDefinition] = []
-        seen_indexes: set[int] = set()
-        for item in response.results:
-            if item.index < 0 or item.index >= len(candidates):
-                continue
-            if item.index in seen_indexes:
-                continue
-            seen_indexes.add(item.index)
-            reranked.append(candidates[item.index])
-            if len(reranked) >= limit:
-                return reranked
-
-        if reranked:
-            dense_fallback = [
-                memory
-                for index, memory in enumerate(candidates)
-                if index not in seen_indexes
-            ]
-            return (reranked + dense_fallback)[:limit]
-
-        return memories[:limit]
+def _memory_id_from_document(document: RetrievalDocument) -> str:
+    memory_id = document.metadata.get("memory_id")
+    if isinstance(memory_id, str):
+        return memory_id
+    prefix = "memory:"
+    if document.document_id.startswith(prefix):
+        return document.document_id[len(prefix) :]
+    return document.document_id
