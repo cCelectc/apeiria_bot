@@ -17,7 +17,6 @@ _SPEAKER_MAP = {
     "system": "系统",
     "tool": "工具",
 }
-_MAX_OVERFLOW_CHARS_FOR_PROMPT = 4000
 
 
 @dataclass(frozen=True)
@@ -74,17 +73,11 @@ def _format_overflow_for_prompt(
     messages: tuple["ChatContextMessageView", ...],
 ) -> str:
     parts: list[str] = []
-    total_chars = 0
     for msg in messages:
         text = msg.text_content.strip()
         if not text:
             continue
-        speaker = _format_summary_message(msg)
-        if total_chars + len(speaker) > _MAX_OVERFLOW_CHARS_FOR_PROMPT:
-            parts.append("……（更早的消息已省略）")
-            break
-        parts.append(speaker)
-        total_chars += len(speaker)
+        parts.append(_format_summary_message(msg))
     return "\n".join(parts)
 
 

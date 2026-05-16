@@ -57,7 +57,10 @@ def test_final_reply_prompt_uses_tagged_stable_order_and_contexts() -> None:
         "记忆: likes tests"
     )
     assert rendered.index("记忆: likes tests") < rendered.index("知识: Setup")
-    assert rendered.index("知识: Setup") < rendered.index("摘要: previous summary")
+    assert rendered.index("知识: Setup") < rendered.index(
+        "摘要: 被截断的较早聊天: previous summary"
+    )
+    assert "若与近期原始聊天冲突，以近期原始聊天为准。" in rendered
     assert "memory-1" not in rendered
     assert "score=0.920" not in rendered
     assert "<conversation>" in rendered
@@ -140,10 +143,18 @@ def test_fixed_reply_prompt_text_keeps_necessary_templates_chinese() -> None:
 
     assert _has_han_char(system_instructions) is True
     assert response_rules.startswith(load_prompt_template("reply/response_rules.md"))
-    assert "只有在对用户有帮助时，才提及工具、记忆或来源。" in response_rules
+    assert "只有在对当前交流有帮助时，才提及工具、记忆或来源。" in response_rules
+    assert "群聊中先区分谁在说话" in context_priority
     assert context_priority == load_prompt_template("reply/context_priority.md")
+    assert "近期原始聊天优先于更早的对话摘要" in context_priority
     assert _has_han_char(response_rules) is True
     assert _has_han_char(context_priority) is True
+
+    combined = "\n".join((system_instructions, response_rules, context_priority))
+    assert "当前任务" not in combined
+    assert "完成用户请求" not in combined
+    assert "规划文本" not in combined
+    assert "agent" not in combined.lower()
 
 
 def test_conversation_summary_fixed_text_loads_from_chinese_templates() -> None:
@@ -271,7 +282,7 @@ def test_prompt_preview_channels_follow_new_section_shape() -> None:
         "工具结果: tool completed",
         "记忆: likes tests",
         "知识: Setup (setup.md): Use uv sync.",
-        "摘要: previous summary",
+        "摘要: 被截断的较早聊天: previous summary",
         "摘要: future task text",
         "摘要: skill text",
     )

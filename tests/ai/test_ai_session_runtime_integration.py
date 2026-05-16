@@ -273,19 +273,25 @@ def test_context_reset_filters_earlier_turns(
             del max_messages
             return list(messages)
 
-        async def load_session_summary(
-            self,
-            _identity: ChatSessionIdentity,
-        ) -> str | None:
-            return "old summary"
+        async def load_session_summary(self, _identity: ChatSessionIdentity) -> None:
+            return None
 
-        async def store_summary_text(
+        async def store_session_summary(
             self,
             _identity: ChatSessionIdentity,
             *,
             summary: str | None,
+            source_until_message_id: str,
+            source_until_created_at: datetime,
         ) -> None:
+            del source_until_message_id, source_until_created_at
             stored_summaries.append(summary)
+
+        async def clear_session_summary(
+            self,
+            _identity: ChatSessionIdentity,
+        ) -> None:
+            stored_summaries.append(None)
 
     monkeypatch.setattr(
         context_window_module,
@@ -316,7 +322,454 @@ def test_context_reset_filters_earlier_turns(
         )
 
         assert [turn.text_content for turn in context.turns] == ["new"]
-        assert stored_summaries == ["User: new"]
+        assert stored_summaries == []
+
+    asyncio.run(scenario())
+
+
+def test_context_window_overflow_rewrites_and_stores_summary_boundary(
+    tmp_path: Path,
+    monkeypatch: "MonkeyPatch",
+) -> None:
+    monkeypatch.setattr(database_runtime, "_project_root", tmp_path)
+    database_runtime.ensure_ready()
+
+    import apeiria.app.ai.runtime.context.context_window as context_window_module
+    from apeiria.app.ai.runtime.context.materials import collect_conversation_context
+    from apeiria.app.ai.runtime.session.context import (
+        RuntimeTurnInput,
+        RuntimeTurnSource,
+    )
+
+    identity = ChatSessionIdentity(
+        session_id="onebot:bot-1:private:user-1",
+        platform="onebot",
+        bot_id="bot-1",
+        scene_type="private",
+        scene_id="user-1",
+        subject_id="user-1",
+    )
+    created_at = datetime(2026, 5, 12, 1, 0, tzinfo=timezone.utc)
+    messages = [
+        _context_message("old", created_at=created_at),
+        _context_message("new", created_at=created_at),
+    ]
+    stored: list[tuple[str | None, str, datetime]] = []
+
+    class ChatSessionServiceStub:
+        async def list_recent_messages(
+            self,
+            _identity: ChatSessionIdentity,
+            *,
+            max_messages: int,
+        ) -> list[ChatContextMessageView]:
+            del max_messages
+            return list(messages)
+
+        async def load_session_summary(self, _identity: ChatSessionIdentity) -> None:
+            return None
+
+        async def store_session_summary(
+            self,
+            _identity: ChatSessionIdentity,
+            *,
+            summary: str | None,
+            source_until_message_id: str,
+            source_until_created_at: datetime,
+        ) -> None:
+            stored.append(
+                (
+                    summary,
+                    source_until_message_id,
+                    source_until_created_at,
+                )
+            )
+
+        async def clear_session_summary(
+            self,
+            _identity: ChatSessionIdentity,
+        ) -> None:
+            stored.append((None, "", created_at))
+
+    async def fake_compress(
+        overflow_messages: list[ChatContextMessageView],
+        *,
+        existing_summary: str | None,
+        scene_type: str,
+    ) -> str:
+        del existing_summary, scene_type
+        return f"summary:{overflow_messages[-1].message_id}"
+
+    class WindowServiceStub:
+        def compute_window(
+            self,
+            _messages: list[ChatContextMessageView],
+            *,
+            session_id: str,
+            context_token_limit: int,
+        ):
+            del session_id, context_token_limit
+            return type(
+                "Window",
+                (),
+                {
+                    "kept_messages": [messages[1]],
+                    "overflow_messages": [messages[0]],
+                    "needs_compression": True,
+                },
+            )()
+
+    monkeypatch.setattr(
+        context_window_module,
+        "chat_session_service",
+        ChatSessionServiceStub(),
+    )
+    monkeypatch.setattr(
+        context_window_module,
+        "compress_conversation_history",
+        fake_compress,
+    )
+    monkeypatch.setattr(
+        context_window_module,
+        "context_window_service",
+        WindowServiceStub(),
+    )
+
+    async def scenario() -> None:
+        context = await collect_conversation_context(
+            RuntimeTurnInput(
+                identity=identity,
+                source=RuntimeTurnSource(
+                    runtime_mode="message",
+                    message_text="hello",
+                    source_message_id="message-new",
+                    user_id="user-1",
+                    is_private=True,
+                ),
+                sender_id="user-1",
+            )
+        )
+
+        assert [turn.text_content for turn in context.turns] == ["new"]
+        assert context.conversation_summary == "summary:message-old"
+        assert stored == [("summary:message-old", "message-old", created_at)]
+
+    asyncio.run(scenario())
+
+
+def test_context_window_summary_boundary_follows_overflow_messages(
+    tmp_path: Path,
+    monkeypatch: "MonkeyPatch",
+) -> None:
+    monkeypatch.setattr(database_runtime, "_project_root", tmp_path)
+    database_runtime.ensure_ready()
+
+    import apeiria.app.ai.runtime.context.context_window as context_window_module
+    from apeiria.app.ai.runtime.context.materials import collect_conversation_context
+    from apeiria.app.ai.runtime.session.context import (
+        RuntimeTurnInput,
+        RuntimeTurnSource,
+    )
+
+    identity = ChatSessionIdentity(
+        session_id="onebot:bot-1:private:user-1",
+        platform="onebot",
+        bot_id="bot-1",
+        scene_type="private",
+        scene_id="user-1",
+        subject_id="user-1",
+    )
+    created_at = datetime(2026, 5, 12, 1, 0, tzinfo=timezone.utc)
+    messages = [
+        _context_message("older", created_at=created_at),
+        _context_message("newer", created_at=created_at),
+        _context_message("kept", created_at=created_at),
+    ]
+    compressed: list[list[str]] = []
+    stored: list[tuple[str | None, str, datetime]] = []
+
+    class ChatSessionServiceStub:
+        async def list_recent_messages(
+            self,
+            _identity: ChatSessionIdentity,
+            *,
+            max_messages: int,
+        ) -> list[ChatContextMessageView]:
+            del max_messages
+            return list(messages)
+
+        async def load_session_summary(self, _identity: ChatSessionIdentity) -> None:
+            return None
+
+        async def store_session_summary(
+            self,
+            _identity: ChatSessionIdentity,
+            *,
+            summary: str | None,
+            source_until_message_id: str,
+            source_until_created_at: datetime,
+        ) -> None:
+            stored.append((summary, source_until_message_id, source_until_created_at))
+
+    async def fake_compress(
+        overflow_messages: list[ChatContextMessageView],
+        *,
+        existing_summary: str | None,
+        scene_type: str,
+    ) -> str:
+        del existing_summary, scene_type
+        compressed.append([message.message_id for message in overflow_messages])
+        return f"summary:{overflow_messages[-1].message_id}"
+
+    class WindowServiceStub:
+        def compute_window(
+            self,
+            _messages: list[ChatContextMessageView],
+            *,
+            session_id: str,
+            context_token_limit: int,
+        ):
+            del session_id, context_token_limit
+            return type(
+                "Window",
+                (),
+                {
+                    "kept_messages": [messages[2]],
+                    "overflow_messages": [messages[0], messages[1]],
+                    "needs_compression": True,
+                },
+            )()
+
+    monkeypatch.setattr(
+        context_window_module,
+        "chat_session_service",
+        ChatSessionServiceStub(),
+    )
+    monkeypatch.setattr(
+        context_window_module,
+        "compress_conversation_history",
+        fake_compress,
+    )
+    monkeypatch.setattr(
+        context_window_module,
+        "context_window_service",
+        WindowServiceStub(),
+    )
+
+    async def scenario() -> None:
+        context = await collect_conversation_context(
+            RuntimeTurnInput(
+                identity=identity,
+                source=RuntimeTurnSource(
+                    runtime_mode="message",
+                    message_text="hello",
+                    source_message_id="message-new",
+                    user_id="user-1",
+                    is_private=True,
+                ),
+                sender_id="user-1",
+            )
+        )
+
+        assert compressed == [["message-older", "message-newer"]]
+        assert context.conversation_summary == "summary:message-newer"
+        assert stored == [("summary:message-newer", "message-newer", created_at)]
+
+    asyncio.run(scenario())
+
+
+def test_context_window_uses_selected_model_context_window(
+    tmp_path: Path,
+    monkeypatch: "MonkeyPatch",
+) -> None:
+    monkeypatch.setattr(database_runtime, "_project_root", tmp_path)
+    database_runtime.ensure_ready()
+
+    import apeiria.app.ai.runtime.context.context_window as context_window_module
+    from apeiria.app.ai.runtime.context.materials import collect_conversation_context
+    from apeiria.app.ai.runtime.session.context import (
+        RuntimeTurnInput,
+        RuntimeTurnSource,
+    )
+
+    identity = ChatSessionIdentity(
+        session_id="onebot:bot-1:private:user-1",
+        platform="onebot",
+        bot_id="bot-1",
+        scene_type="private",
+        scene_id="user-1",
+        subject_id="user-1",
+    )
+    message = _context_message(
+        "current",
+        created_at=datetime(2026, 5, 12, 1, 0, tzinfo=timezone.utc),
+    )
+    seen_limits: list[int] = []
+
+    class ChatSessionServiceStub:
+        async def list_recent_messages(
+            self,
+            _identity: ChatSessionIdentity,
+            *,
+            max_messages: int,
+        ) -> list[ChatContextMessageView]:
+            del max_messages
+            return [message]
+
+        async def load_session_summary(self, _identity: ChatSessionIdentity) -> None:
+            return None
+
+    class WindowServiceStub:
+        def compute_window(
+            self,
+            _messages: list[ChatContextMessageView],
+            *,
+            session_id: str,
+            context_token_limit: int,
+        ):
+            del session_id
+            seen_limits.append(context_token_limit)
+            return type(
+                "Window",
+                (),
+                {
+                    "kept_messages": [message],
+                    "overflow_messages": [],
+                    "needs_compression": False,
+                },
+            )()
+
+    monkeypatch.setattr(
+        context_window_module,
+        "chat_session_service",
+        ChatSessionServiceStub(),
+    )
+    monkeypatch.setattr(
+        context_window_module,
+        "context_window_service",
+        WindowServiceStub(),
+    )
+
+    async def scenario() -> None:
+        await collect_conversation_context(
+            RuntimeTurnInput(
+                identity=identity,
+                source=RuntimeTurnSource(
+                    runtime_mode="message",
+                    message_text="hello",
+                    source_message_id="message-current",
+                    user_id="user-1",
+                    is_private=True,
+                ),
+                sender_id="user-1",
+            ),
+            model_context_window=64000,
+        )
+
+        assert seen_limits == [64000]
+
+    asyncio.run(scenario())
+
+
+def test_context_window_omits_summary_when_no_bridge_needed(
+    tmp_path: Path,
+    monkeypatch: "MonkeyPatch",
+) -> None:
+    monkeypatch.setattr(database_runtime, "_project_root", tmp_path)
+    database_runtime.ensure_ready()
+
+    import apeiria.app.ai.runtime.context.context_window as context_window_module
+    from apeiria.app.ai.runtime.context.materials import collect_conversation_context
+    from apeiria.app.ai.runtime.session.context import (
+        RuntimeTurnInput,
+        RuntimeTurnSource,
+    )
+    from apeiria.conversation.models import ChatSessionContextSummary
+
+    identity = ChatSessionIdentity(
+        session_id="onebot:bot-1:private:user-1",
+        platform="onebot",
+        bot_id="bot-1",
+        scene_type="private",
+        scene_id="user-1",
+        subject_id="user-1",
+    )
+    created_at = datetime(2026, 5, 12, 1, 0, tzinfo=timezone.utc)
+    message = _context_message("current", created_at=created_at)
+    stored_summary = ChatSessionContextSummary(
+        session_id=identity.session_id,
+        summary_text="stored summary",
+        source_until_message_id=message.message_id,
+        source_until_created_at=created_at,
+        updated_at=created_at,
+    )
+
+    class ChatSessionServiceStub:
+        async def list_recent_messages(
+            self,
+            _identity: ChatSessionIdentity,
+            *,
+            max_messages: int,
+        ) -> list[ChatContextMessageView]:
+            del max_messages
+            return [message]
+
+        async def load_session_summary(
+            self,
+            _identity: ChatSessionIdentity,
+        ) -> ChatSessionContextSummary:
+            return stored_summary
+
+        async def store_session_summary(self, **_: object) -> None:
+            raise AssertionError
+
+    class WindowServiceStub:
+        def compute_window(
+            self,
+            _messages: list[ChatContextMessageView],
+            *,
+            session_id: str,
+            context_token_limit: int,
+        ):
+            del session_id, context_token_limit
+            return type(
+                "Window",
+                (),
+                {
+                    "kept_messages": [message],
+                    "overflow_messages": [],
+                    "needs_compression": False,
+                },
+            )()
+
+    monkeypatch.setattr(
+        context_window_module,
+        "chat_session_service",
+        ChatSessionServiceStub(),
+    )
+    monkeypatch.setattr(
+        context_window_module,
+        "context_window_service",
+        WindowServiceStub(),
+    )
+
+    async def scenario() -> None:
+        context = await collect_conversation_context(
+            RuntimeTurnInput(
+                identity=identity,
+                source=RuntimeTurnSource(
+                    runtime_mode="message",
+                    message_text="hello",
+                    source_message_id="message-current",
+                    user_id="user-1",
+                    is_private=True,
+                ),
+                sender_id="user-1",
+            )
+        )
+
+        assert [turn.text_content for turn in context.turns] == ["current"]
+        assert context.conversation_summary is None
 
     asyncio.run(scenario())
 

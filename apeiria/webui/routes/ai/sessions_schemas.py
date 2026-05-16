@@ -45,7 +45,6 @@ class AISessionItem(BaseModel):
     scene_type: str
     scene_id: str
     subject_id: str | None = None
-    summary_text: str | None = None
     created_at: str
     updated_at: str
     last_message_at: str
@@ -233,7 +232,6 @@ def to_ai_session_item(item: "ChatSessionAdminView") -> AISessionItem:
         scene_type=item.scene_type,
         scene_id=item.scene_id,
         subject_id=item.subject_id,
-        summary_text=item.summary_text,
         created_at=item.created_at.isoformat(),
         updated_at=item.updated_at.isoformat(),
         last_message_at=item.last_message_at.isoformat(),

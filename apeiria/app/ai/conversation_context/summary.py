@@ -16,8 +16,6 @@ from apeiria.conversation.summary import build_short_conversation_summary
 if TYPE_CHECKING:
     from apeiria.conversation.models import ChatContextMessageView
 
-_MAX_SUMMARY_LENGTH = 280
-
 
 async def compress_conversation_history(
     overflow_messages: list["ChatContextMessageView"],
@@ -74,10 +72,5 @@ def _fallback_summary(
     overflow_messages: list["ChatContextMessageView"],
     existing_summary: str | None,
 ) -> str | None:
-    rule_summary = build_short_conversation_summary(overflow_messages)
-    if existing_summary and rule_summary:
-        combined = f"{existing_summary} | {rule_summary}"
-        if len(combined) > _MAX_SUMMARY_LENGTH:
-            return f"{combined[: _MAX_SUMMARY_LENGTH - 1].rstrip()}…"
-        return combined
-    return rule_summary or existing_summary
+    del existing_summary
+    return build_short_conversation_summary(overflow_messages)

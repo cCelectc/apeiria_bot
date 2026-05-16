@@ -29,6 +29,7 @@ from apeiria.app.ai.diagnostics.workbench import (
 )
 from apeiria.app.ai.lifecycle import ensure_ai_runtime_support_initialized
 from apeiria.app.ai.reply_strategy.models import ReplyStrategyDecision, WakeContext
+from apeiria.app.ai.runtime.context.context_window import project_conversation_summary
 from apeiria.app.ai.runtime.context.memories import retrieve_memories_for_preview
 from apeiria.app.ai.runtime.context.personas import (
     build_model_binding_target,
@@ -474,6 +475,7 @@ class PromptPreviewReader:
         identity: "ChatSessionIdentity",
         turns: list["ChatMessageDetailView"],
     ) -> PromptPreviewReadResult:
+        del conversation
         latest_user_turn = select_latest_user_turn(turns)
         latest_user_message = (
             latest_user_turn.text_content.strip()
@@ -556,10 +558,23 @@ class PromptPreviewReader:
             hard_rule_decision=hard_rule_decision,
             social_decision=social_decision,
         )
+        summary_record = await chat_session_service.load_session_summary(identity)
+        managed_session = await AISessionManagementRepository().get_session(
+            identity.session_id,
+        )
+        conversation_summary = project_conversation_summary(
+            context_turns,
+            summary_record,
+            reset_at=(
+                managed_session.context_reset_at
+                if managed_session is not None
+                else None
+            ),
+        )
         context_bundle = _build_preview_context_bundle(
             turn=preview_turn,
             turns=context_turns,
-            conversation_summary=conversation.summary_text,
+            conversation_summary=conversation_summary,
             relationship_target=relationship_target,
             tool_policy=tool_policy,
             persona=persona,

@@ -233,6 +233,7 @@ def _ensure_current_schema_shape(  # noqa: C901, PLR0912
         _create_knowledge_tables(connection)
     if "ai_managed_session" not in existing_tables:
         _create_ai_session_management_tables(connection)
+    _ensure_context_summary_shape(connection, existing_tables)
     if "ai_tool_policy" in existing_tables:
         _replace_ai_tool_policy_if_legacy(connection)
     if "ai_tool_execution" in existing_tables:
@@ -341,6 +342,19 @@ def _ensure_current_schema_shape(  # noqa: C901, PLR0912
     if "ai_memory_belief_action" not in existing_tables:
         _create_memory_belief_action_table(connection)
     _ensure_profile_relationship_shape(connection)
+
+
+def _ensure_context_summary_shape(
+    connection: sqlite3.Connection,
+    existing_tables: set[str],
+) -> None:
+    if "chat_session_context_summary" not in existing_tables:
+        _create_chat_session_context_summary_table(connection)
+    if "chat_session" not in existing_tables:
+        return
+    chat_session_columns = _column_names(connection, "chat_session")
+    if "summary_text" in chat_session_columns:
+        connection.execute("UPDATE chat_session SET summary_text = NULL")
 
 
 def _sqlite_supports_json_valid(connection: sqlite3.Connection) -> bool:
@@ -767,7 +781,6 @@ def _create_conversation_tables(connection: sqlite3.Connection) -> None:
             scene_id TEXT NOT NULL,
             subject_id TEXT,
             title TEXT,
-            summary_text TEXT,
             extra_json TEXT CHECK({extra_json_check}),
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL,
@@ -782,6 +795,7 @@ def _create_conversation_tables(connection: sqlite3.Connection) -> None:
         ON chat_session(last_message_at)
         """
     )
+    _create_chat_session_context_summary_table(connection)
     connection.execute(
         f"""
         CREATE TABLE chat_message (
@@ -832,6 +846,28 @@ def _create_conversation_tables(connection: sqlite3.Connection) -> None:
         """
         CREATE INDEX idx_chat_message_created_at
         ON chat_message(created_at)
+        """
+    )
+
+
+def _create_chat_session_context_summary_table(
+    connection: sqlite3.Connection,
+) -> None:
+    connection.execute(
+        """
+        CREATE TABLE chat_session_context_summary (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_id TEXT NOT NULL,
+            summary_text TEXT NOT NULL CHECK(length(summary_text) > 0),
+            source_until_message_id TEXT NOT NULL,
+            source_until_created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            UNIQUE(session_id),
+            FOREIGN KEY(session_id)
+                REFERENCES chat_session(session_id)
+                ON DELETE CASCADE
+                ON UPDATE CASCADE
+        )
         """
     )
 

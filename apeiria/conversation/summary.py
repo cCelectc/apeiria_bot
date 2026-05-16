@@ -7,9 +7,6 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from apeiria.conversation.models import ChatContextMessageView
 
-_MAX_SUMMARY_TURNS = 4
-_MAX_SUMMARY_LENGTH = 280
-
 _SPEAKER_MAP = {
     "user": "User",
     "assistant": "Assistant",
@@ -21,24 +18,19 @@ _SPEAKER_MAP = {
 def build_short_conversation_summary(
     messages: list["ChatContextMessageView"],
 ) -> str | None:
-    """Build a compact summary from the latest non-empty messages."""
+    """Build a stable fallback excerpt from the selected overflow messages."""
 
     summary_lines = [
-        _format_summary_message(msg)
-        for msg in messages[-_MAX_SUMMARY_TURNS:]
-        if msg.text_content.strip()
+        _format_summary_message(msg) for msg in messages if msg.text_content.strip()
     ]
     if not summary_lines:
         return None
-
-    summary = " | ".join(summary_lines)
-    if len(summary) <= _MAX_SUMMARY_LENGTH:
-        return summary
-    return f"{summary[: _MAX_SUMMARY_LENGTH - 1].rstrip()}…"
+    return "\n".join(summary_lines)
 
 
 def _format_summary_message(msg: "ChatContextMessageView") -> str:
     speaker = _SPEAKER_MAP.get(msg.author_role, "Message")
     if msg.author_name:
         speaker = msg.author_name
-    return f"{speaker}: {msg.text_content.strip()}"
+    normalized = " ".join(msg.text_content.strip().split())
+    return f"{speaker}: {normalized}"

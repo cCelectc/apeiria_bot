@@ -12,6 +12,7 @@ from apeiria.conversation.models import (
     ChatContextMessageView,
     ChatMessageDetailView,
     ChatSessionAdminView,
+    ChatSessionContextSummary,
     ChatSessionIdentity,
 )
 from apeiria.conversation.repository import (
@@ -21,6 +22,8 @@ from apeiria.conversation.repository import (
 )
 
 if TYPE_CHECKING:
+    from datetime import datetime
+
     from nonebot.adapters import Bot, Event
 
     from apeiria.conversation.models import (
@@ -62,23 +65,43 @@ class ChatSessionService:
     async def load_session_summary(
         self,
         identity: ChatSessionIdentity,
-    ) -> str | None:
-        """Load the stored conversation summary for one session."""
+    ) -> ChatSessionContextSummary | None:
+        """Load the prompt-facing context summary for one session."""
 
-        chat_session = self._repository.get_session_row(session_id=identity.session_id)
-        if chat_session is None:
+        row = self._repository.get_context_summary_row(
+            session_id=identity.session_id,
+        )
+        if row is None:
             return None
-        return chat_session.summary_text
+        return ChatSessionContextSummary(
+            session_id=row.session_id,
+            summary_text=row.summary_text,
+            source_until_message_id=row.source_until_message_id,
+            source_until_created_at=row.source_until_created_at,
+            updated_at=row.updated_at,
+        )
 
-    async def store_summary_text(
+    async def store_session_summary(
         self,
         identity: ChatSessionIdentity,
         *,
         summary: str | None,
+        source_until_message_id: str,
+        source_until_created_at: datetime,
     ) -> None:
-        """Persist an externally-built conversation summary."""
+        """Persist a prompt-facing context summary."""
 
-        await self._repository.store_summary_text(identity, summary=summary)
+        await self._repository.store_context_summary(
+            identity,
+            summary=summary,
+            source_until_message_id=source_until_message_id,
+            source_until_created_at=source_until_created_at,
+        )
+
+    async def clear_session_summary(self, identity: ChatSessionIdentity) -> None:
+        """Clear the prompt-facing context summary for one session."""
+
+        await self._repository.clear_context_summary(session_id=identity.session_id)
 
     async def append_message(
         self,
@@ -292,7 +315,6 @@ class ChatSessionService:
             scene_id=row.scene_id,
             subject_id=row.subject_id,
             title=row.title,
-            summary_text=row.summary_text,
             created_at=row.created_at,
             updated_at=row.updated_at,
             last_message_at=row.last_message_at,

@@ -2,10 +2,15 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from apeiria.conversation.identity import build_participant_subject_id
 
 from .models import AIRecentTarget
 from .scenes import list_recent_sessions
+
+if TYPE_CHECKING:
+    from apeiria.conversation.models import ChatSessionAdminView
 
 
 async def list_recent_targets(
@@ -18,8 +23,7 @@ async def list_recent_targets(
     seen_participants: set[str] = set()
 
     for item in sessions:
-        summary = (item.summary_text or "").strip()
-        conversation_title = summary or item.session_id[:12]
+        conversation_title = await _session_title(item)
         conversation_subtitle = f"{item.platform} · {item.scene_type} · {item.scene_id}"
         targets.append(
             AIRecentTarget(
@@ -92,6 +96,30 @@ async def list_recent_targets(
             )
 
     return targets[: limit * 2]
+
+
+async def _session_title(item: "ChatSessionAdminView") -> str:
+    title = (item.title or "").strip()
+    if title:
+        return title
+    latest = await _latest_meaningful_message_excerpt(
+        session_id=item.session_id,
+    )
+    return latest or item.session_id[:12]
+
+
+async def _latest_meaningful_message_excerpt(*, session_id: str) -> str | None:
+    from apeiria.conversation.service import chat_session_service
+
+    messages = await chat_session_service.list_messages_for_session(
+        session_id=session_id,
+        limit=10,
+    )
+    for message in reversed(messages):
+        text = message.text_content.strip()
+        if text:
+            return text[:40]
+    return None
 
 
 async def _list_recent_user_ids_for_session(

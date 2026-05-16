@@ -55,11 +55,6 @@ def test_conversation_service_uses_sqlite(
                 text_content="hi",
             ),
         )
-        await chat_session_service.store_summary_text(
-            identity,
-            summary="User greeted the bot.",
-        )
-
         turns = await chat_session_service.list_recent_messages(
             identity,
             max_messages=10,
@@ -69,12 +64,96 @@ def test_conversation_service_uses_sqlite(
 
         sessions = await chat_session_service.list_recent_sessions(limit=10)
         assert [session.session_id for session in sessions] == [identity.session_id]
-        assert sessions[0].summary_text == "User greeted the bot."
 
         user_ids = await chat_session_service.list_recent_user_ids_for_session(
             session_id=identity.session_id,
         )
         assert user_ids == ["user-1"]
+
+    asyncio.run(scenario())
+
+
+def test_conversation_context_summary_uses_dedicated_storage(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setattr(database_runtime, "_project_root", tmp_path)
+    database_runtime.ensure_ready()
+
+    from apeiria.conversation.models import ChatSessionIdentity
+    from apeiria.conversation.service import chat_session_service
+
+    identity = ChatSessionIdentity(
+        session_id="onebot:bot-1:private:user-1",
+        platform="onebot",
+        bot_id="bot-1",
+        scene_type="private",
+        scene_id="user-1",
+        subject_id="user-1",
+    )
+    first_boundary = datetime(2026, 5, 16, 1, 0, tzinfo=timezone.utc)
+    second_boundary = datetime(2026, 5, 16, 2, 0, tzinfo=timezone.utc)
+
+    async def scenario() -> None:
+        await chat_session_service.store_session_summary(
+            identity,
+            summary="first summary",
+            source_until_message_id="msg-1",
+            source_until_created_at=first_boundary,
+        )
+        await chat_session_service.store_session_summary(
+            identity,
+            summary="second summary",
+            source_until_message_id="msg-2",
+            source_until_created_at=second_boundary,
+        )
+
+        summary = await chat_session_service.load_session_summary(identity)
+        sessions = await chat_session_service.list_recent_sessions(limit=10)
+
+        assert summary is not None
+        assert summary.summary_text == "second summary"
+        assert summary.source_until_message_id == "msg-2"
+        assert summary.source_until_created_at == second_boundary
+        assert [session.session_id for session in sessions] == [identity.session_id]
+
+    asyncio.run(scenario())
+
+
+def test_recent_target_title_uses_latest_message_excerpt(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setattr(database_runtime, "_project_root", tmp_path)
+    database_runtime.ensure_ready()
+
+    from apeiria.app.ai.sessions.targets import list_recent_targets
+    from apeiria.conversation.models import ChatSessionIdentity
+    from apeiria.conversation.service import ChatMessageCreate, chat_session_service
+
+    identity = ChatSessionIdentity(
+        session_id="onebot:bot-1:private:user-1",
+        platform="onebot",
+        bot_id="bot-1",
+        scene_type="private",
+        scene_id="user-1",
+        subject_id="user-1",
+    )
+
+    async def scenario() -> None:
+        await chat_session_service.append_message(
+            identity,
+            ChatMessageCreate(
+                author_role="user",
+                author_id="user-1",
+                text_content="latest useful message",
+            ),
+        )
+
+        targets = await list_recent_targets(limit=1)
+
+        assert targets[0].target_type == "scene"
+        assert targets[0].title == "latest useful message"
 
     asyncio.run(scenario())
 

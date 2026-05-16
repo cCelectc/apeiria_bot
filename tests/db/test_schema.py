@@ -56,6 +56,7 @@ def test_database_ensure_ready_initializes_empty_sqlite_db(tmp_path: Path) -> No
         "ai_memory_item",
         "ai_managed_session",
         "chat_session",
+        "chat_session_context_summary",
         "chat_message",
     } <= tables
 
@@ -247,6 +248,19 @@ def test_database_schema_declares_value_checks(tmp_path: Path) -> None:
             connection,
             "ai_managed_session",
         )
+        assert "summary_text" not in _table_sql(connection, "chat_session")
+        assert "source_until_message_id TEXT NOT NULL" in _table_sql(
+            connection,
+            "chat_session_context_summary",
+        )
+        assert "source_until_created_at TEXT NOT NULL" in _table_sql(
+            connection,
+            "chat_session_context_summary",
+        )
+        assert "UNIQUE(session_id)" in _table_sql(
+            connection,
+            "chat_session_context_summary",
+        )
         assert "CHECK(ai_enabled IN (0, 1))" in _table_sql(
             connection,
             "ai_managed_session",
@@ -340,6 +354,29 @@ def test_database_ensure_ready_adds_turn_disposition_to_v1_chat_message(
         ).fetchone()
 
     assert row == ("msg-legacy", "active")
+
+
+def test_database_ensure_ready_adds_context_summary_and_clears_legacy_summary(
+    tmp_path: Path,
+) -> None:
+    database = ApeiriaDatabase(project_root=tmp_path)
+    _create_minimal_legacy_conversation_tables(database, summary_text="legacy")
+
+    database.ensure_ready()
+
+    with database.connect_sync() as connection:
+        tables = _table_names(connection)
+        legacy_summary = connection.execute(
+            """
+            SELECT summary_text
+            FROM chat_session
+            WHERE session_id = ?
+            """,
+            ("session-legacy",),
+        ).fetchone()
+
+    assert "chat_session_context_summary" in tables
+    assert legacy_summary == (None,)
 
 
 def test_database_ensure_ready_merges_legacy_person_profile_into_existing_profile(
@@ -598,7 +635,11 @@ def _create_profile_migration_conflict_tables(database: ApeiriaDatabase) -> None
         )
 
 
-def _create_minimal_legacy_conversation_tables(database: ApeiriaDatabase) -> None:
+def _create_minimal_legacy_conversation_tables(
+    database: ApeiriaDatabase,
+    *,
+    summary_text: str | None = None,
+) -> None:
     with database.connect_sync() as connection:
         _create_schema_meta_in_connection(
             connection,
@@ -657,10 +698,11 @@ def _create_minimal_legacy_conversation_tables(database: ApeiriaDatabase) -> Non
                 bot_id,
                 scene_type,
                 scene_id,
+                summary_text,
                 created_at,
                 updated_at,
                 last_message_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 "session-legacy",
@@ -668,6 +710,7 @@ def _create_minimal_legacy_conversation_tables(database: ApeiriaDatabase) -> Non
                 "bot-1",
                 "group",
                 "group-1",
+                summary_text,
                 "2026-04-25T00:00:00",
                 "2026-04-25T00:00:00",
                 "2026-04-25T00:00:00",

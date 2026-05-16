@@ -20,29 +20,28 @@ ReplyPromptMode = Literal["planner", "roleplay"]
 _GROUP_USER_ID_SUFFIX_LENGTH = 4
 _REPLY_SYSTEM_INSTRUCTIONS = {
     "planner": (
-        "你正在判断当前聊天轮次应该如何处理。",
-        "如果会生成用户可见内容，必须保持人格语气稳定。",
-        "只有在能提升正确性或完成用户明确请求时，才使用工具。",
+        "你是当前群聊或私聊中的聊天参与者。",
+        "理解最近发言、参与者关系和当前语境，需要回应时自然接住话题。",
+        "工具只是补充事实、记忆或上下文的辅助手段；当前聊天不需要时直接回应。",
     ),
     "roleplay": (
-        "你正在为当前聊天轮次写最终可见回复。",
-        "只输出用户可见的回复内容，并保持人格语气稳定。",
-        "工具结果、记忆和对话上下文只有在与当前回复相关时才使用。",
+        "你是当前群聊或私聊中的聊天参与者。",
+        "只输出这次要发出的聊天内容，保持人格语气稳定、自然。",
+        "工具结果、记忆和对话上下文只作为相关背景，不要机械复述。",
     ),
 }
 _REPLY_RESPONSE_RULES = {
-    "planner": "只调用为保证正确性或完成用户请求所必需的最少工具。",
-    "roleplay": "只有在对用户有帮助时，才提及工具、记忆或来源。",
+    "planner": "工具只用于补充当前聊天所需的信息；能自然回应时直接回应。",
+    "roleplay": "只有在对当前交流有帮助时，才提及工具、记忆或来源。",
 }
 _REPLY_INSTRUCTIONS = {
     "planner": (
-        "决定下一步动作。如果需要工具，只调用为保证正确性或完成用户请求"
-        "所必需的最少工具。如果现有上下文已经足够支持回答，"
-        "就直接以人格语气回复。不要暴露规划文本。"
+        "围绕当前发言自然回应。只有需要补充事实、检索记忆或使用已授权能力时，"
+        "才使用最少工具；上下文已经足够时直接回复。不要解释内部判断。"
     ),
-    "roleplay": "只写当前聊天轮次的最终助手回复。",
-    "scheduled_planner": "为同一个聊天会话中的定时跟进回复做规划。",
-    "scheduled_roleplay": "写出同一个聊天会话中的定时跟进回复。",
+    "roleplay": "只写这次要发出的聊天内容。",
+    "scheduled_planner": "在同一个聊天会话中自然延续此前约定的定时跟进。",
+    "scheduled_roleplay": "写出这次定时跟进要发出的聊天内容。",
 }
 REPLY_SECTION_SYSTEM_INSTRUCTIONS = "system_instructions"
 REPLY_SECTION_RESPONSE_RULES = "response_rules"
@@ -282,7 +281,10 @@ def _format_knowledge(
 
 def _build_summary_lines(inputs: ReplyPromptInput) -> tuple[str, ...]:
     lines: list[str] = []
-    lines.extend(_clean_lines((inputs.conversation_summary,)))
+    lines.extend(
+        f"被截断的较早聊天: {line}"
+        for line in _clean_lines((inputs.conversation_summary,))
+    )
     lines.extend(_clean_lines((inputs.future_task_context,)))
     lines.extend(_clean_lines((inputs.skill_activation,)))
     return tuple(lines)

@@ -27,11 +27,21 @@ class ChatSessionRow:
     scene_id: str
     subject_id: str | None
     title: str | None
-    summary_text: str | None
     extra_json: str | None
     created_at: datetime
     updated_at: datetime
     last_message_at: datetime
+
+
+@dataclass(frozen=True)
+class ChatSessionContextSummaryRow:
+    """Stored prompt-facing conversation summary for one chat session."""
+
+    session_id: str
+    summary_text: str
+    source_until_message_id: str
+    source_until_created_at: datetime
+    updated_at: datetime
 
 
 @dataclass
@@ -68,27 +78,74 @@ class ChatSessionRepository:
         with database_runtime.transaction_sync() as connection:
             return _upsert_session_row(connection, identity, now)
 
-    async def store_summary_text(
+    async def store_context_summary(
         self,
         identity: "ChatSessionIdentity",
         *,
         summary: str | None,
+        source_until_message_id: str,
+        source_until_created_at: datetime,
     ) -> None:
         chat_session = await self.ensure_session(identity)
+        if summary is None or not summary.strip():
+            await self.clear_context_summary(session_id=chat_session.session_id)
+            return
         updated_at = utcnow()
         with database_runtime.connect_sync() as connection:
             connection.execute(
                 """
-                UPDATE chat_session
-                SET summary_text = ?, updated_at = ?
-                WHERE session_id = ?
+                INSERT INTO chat_session_context_summary (
+                    session_id,
+                    summary_text,
+                    source_until_message_id,
+                    source_until_created_at,
+                    updated_at
+                ) VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(session_id) DO UPDATE SET
+                    summary_text = excluded.summary_text,
+                    source_until_message_id = excluded.source_until_message_id,
+                    source_until_created_at = excluded.source_until_created_at,
+                    updated_at = excluded.updated_at
                 """,
                 (
-                    summary,
-                    datetime_to_text(updated_at),
                     chat_session.session_id,
+                    summary.strip(),
+                    source_until_message_id,
+                    datetime_to_text(source_until_created_at),
+                    datetime_to_text(updated_at),
                 ),
             )
+
+    async def clear_context_summary(self, *, session_id: str) -> None:
+        with database_runtime.connect_sync() as connection:
+            connection.execute(
+                """
+                DELETE FROM chat_session_context_summary
+                WHERE session_id = ?
+                """,
+                (session_id,),
+            )
+
+    def get_context_summary_row(
+        self,
+        *,
+        session_id: str,
+    ) -> ChatSessionContextSummaryRow | None:
+        with database_runtime.connect_sync() as connection:
+            row = connection.execute(
+                """
+                SELECT
+                    session_id,
+                    summary_text,
+                    source_until_message_id,
+                    source_until_created_at,
+                    updated_at
+                FROM chat_session_context_summary
+                WHERE session_id = ?
+                """,
+                (session_id,),
+            ).fetchone()
+        return None if row is None else row_to_context_summary(row)
 
     async def append_message(
         self,
@@ -351,7 +408,6 @@ SELECT
     scene_id,
     subject_id,
     title,
-    summary_text,
     extra_json,
     created_at,
     updated_at,
@@ -398,11 +454,20 @@ def row_to_chat_session(row: tuple[object, ...]) -> ChatSessionRow:
         scene_id=str(row[5]),
         subject_id=str(row[6]) if row[6] is not None else None,
         title=str(row[7]) if row[7] is not None else None,
-        summary_text=str(row[8]) if row[8] is not None else None,
-        extra_json=str(row[9]) if row[9] is not None else None,
-        created_at=datetime_from_text(row[10]),
-        updated_at=datetime_from_text(row[11]),
-        last_message_at=datetime_from_text(row[12]),
+        extra_json=str(row[8]) if row[8] is not None else None,
+        created_at=datetime_from_text(row[9]),
+        updated_at=datetime_from_text(row[10]),
+        last_message_at=datetime_from_text(row[11]),
+    )
+
+
+def row_to_context_summary(row: tuple[object, ...]) -> ChatSessionContextSummaryRow:
+    return ChatSessionContextSummaryRow(
+        session_id=str(row[0]),
+        summary_text=str(row[1]),
+        source_until_message_id=str(row[2]),
+        source_until_created_at=datetime_from_text(row[3]),
+        updated_at=datetime_from_text(row[4]),
     )
 
 

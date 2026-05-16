@@ -27,6 +27,17 @@ class ChatSessionIdentity:
 
 
 @dataclass(frozen=True)
+class ChatSessionContextSummary:
+    """Prompt-facing overflow continuity summary for one chat session."""
+
+    session_id: str
+    summary_text: str
+    source_until_message_id: str
+    source_until_created_at: datetime
+    updated_at: datetime
+
+
+@dataclass(frozen=True)
 class ChatContextMessageView:
     """Small immutable message view used by runtime context assembly."""
 
@@ -68,7 +79,6 @@ class ChatSessionAdminView:
     scene_id: str
     subject_id: str | None
     title: str | None
-    summary_text: str | None
     created_at: datetime
     updated_at: datetime
     last_message_at: datetime

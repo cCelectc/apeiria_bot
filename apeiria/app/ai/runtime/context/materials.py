@@ -25,6 +25,9 @@ from apeiria.app.ai.runtime.context.relationships import (
     build_relationship_target,
     load_relationship_context,
 )
+from apeiria.app.ai.runtime.planning.reply_decision import (
+    select_pre_tool_reply_task_class,
+)
 from apeiria.app.ai.runtime.planning.tool_policy import resolve_tool_policy
 from apeiria.app.ai.runtime.planning.wake import resolve_initiative_bias
 
@@ -88,13 +91,20 @@ async def collect_reply_inputs(
 
     from apeiria.app.ai.runtime.session.context import RuntimeContextMaterials
 
-    conversation = await collect_conversation_context(turn)
+    tool_context = await collect_tool_context(turn)
+    model_context_window = await _resolve_context_model_window(
+        turn=turn,
+        allowed_tools=tool_context.allowed_tools,
+    )
+    conversation = await collect_conversation_context(
+        turn,
+        model_context_window=model_context_window,
+    )
     persona_context = await collect_persona_context(
         turn=turn,
         current_time=current_time,
         turns=conversation.turns,
     )
-    tool_context = await collect_tool_context(turn)
     memory_context = await collect_memory_context(
         turn=turn,
         relationship_target=persona_context.relationship_target,
@@ -133,16 +143,37 @@ async def gather_reply_inputs(
 
 async def collect_conversation_context(
     turn: "RuntimeTurnInput",
+    *,
+    model_context_window: int | None = None,
 ) -> RuntimeConversationContext:
     """Collect conversation-window context for one reply turn."""
 
     turns, conversation_summary = await build_and_store_context_window(
         identity=turn.identity,
+        model_context_window=model_context_window,
     )
     return RuntimeConversationContext(
         turns=turns,
         conversation_summary=conversation_summary,
     )
+
+
+async def _resolve_context_model_window(
+    *,
+    turn: "RuntimeTurnInput",
+    allowed_tools: tuple["AIToolDefinition", ...],
+) -> int | None:
+    from apeiria.ai.model import AIModelRouteQuery
+    from apeiria.ai.model.routing.profile import ai_model_profile_service
+
+    task_class = select_pre_tool_reply_task_class(has_tools=bool(allowed_tools))
+    selected = await ai_model_profile_service.select_model(
+        query=AIModelRouteQuery(task_class=task_class),
+        target=build_model_binding_target(turn.identity, turn.user_id),
+    )
+    if selected is None:
+        return None
+    return selected.resolved_capabilities.context_window
 
 
 async def collect_persona_context(
