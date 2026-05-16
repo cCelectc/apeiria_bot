@@ -69,19 +69,10 @@ _TONE_BASE_MODULATION: dict[str, tuple[str, ...]] = {
 
 # -- Mood-tag specific modulation overlays --
 _MOOD_TAG_MODULATION: dict[str, str] = {
-    "playful_contact": "对方最近在开玩笑 — 如果符合人格，可以用轻松的语气回应。",
-    "positive_contact": "最近的互动比较愉快 — 可以自然地延续积极的氛围。",
-    "negative_contact": "最近的互动有些紧张 — 措辞谨慎，避免激化。",
-    "direct_contact": "对方在主动找你聊 — 认真回应，不敷衍。",
-}
-
-# -- Tone display labels (Chinese) --
-TONE_LABEL: dict[str, str] = {
-    "close": "亲近",
-    "warm": "温暖",
-    "neutral": "中性",
-    "guarded": "疏远",
-    "cold": "冷淡",
+    "playful_contact": "对方最近在开玩笑，如果符合人格，可以用轻松的语气回应。",
+    "positive_contact": "最近的互动比较愉快，可以自然地延续积极氛围。",
+    "negative_contact": "最近的互动有些紧张，措辞谨慎，避免激化。",
+    "direct_contact": "对方在主动找你聊，认真回应，不敷衍。",
 }
 
 
@@ -149,7 +140,7 @@ def project_emotion(state: AIRelationshipState) -> EmotionProjection:
     """Project relationship state into lightweight response parameters.
 
     Uses a 5-tier score mapping (close/warm/neutral/guarded/cold) with
-    mood-tag adjustments layered on top.  Style modulation strings are
+    mood-tag adjustments layered on top. Style modulation strings are
     Chinese-language behavioral directives consumed by the prompt layer.
     """
 

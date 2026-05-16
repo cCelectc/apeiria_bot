@@ -28,7 +28,7 @@ def build_memory_extraction_packet(
         PromptSection(
             role="system",
             name="Instruction",
-            content="Analyze the user message and return strict JSON.",
+            content="分析用户消息，并返回严格 JSON。",
         ),
         PromptSection(
             role="system",
@@ -45,11 +45,11 @@ def build_memory_extraction_packet(
                     '  "self_introduction_name": null',
                     "}",
                     "",
-                    "Allowed memory_kind values: "
-                    "preference, fact, relationship, note, impression.",
+                    "允许的 memory_kind 值："
+                    "preference, fact, relationship, note, impression。",
                     (
-                        "Allowed sentiment polarity values: positive, neutral, "
-                        "negative, playful."
+                        "允许的 sentiment polarity 值：positive, neutral, "
+                        "negative, playful。"
                     ),
                 )
             ),
@@ -59,27 +59,21 @@ def build_memory_extraction_packet(
             name="MemoryExtractionRules",
             content="\n".join(
                 (
-                    "Only include information that is useful in future conversations.",
-                    "Do not include transient requests, jokes, or uncertain guesses.",
-                    "Use the same language as the source message for content.",
-                    "Use action=noop when nothing should be stored for that row.",
+                    "只包含未来对话中仍然有用的信息。",
+                    "不要包含临时请求、玩笑或不确定猜测。",
+                    "content 使用和原消息相同的语言。",
+                    "某一行没有内容需要存储时，使用 action=noop。",
+                    "当消息改变或更正已有持久记忆时，使用 action=update。",
                     (
-                        "Use action=update when the message changes or corrects "
-                        "an existing durable memory."
+                        "memory_kind=impression 用于关于用户性格、沟通风格或特质"
+                        "的主观观察（例如热情、内向、知识面广）。"
+                        "只有存在明确行为证据时才提取印象。"
                     ),
                     (
-                        "Use memory_kind=impression for subjective observations "
-                        "about the user's personality, communication style, or "
-                        "character traits (e.g. enthusiastic, introverted, "
-                        "knowledgeable). Only extract impressions when there is "
-                        "clear behavioral evidence."
-                    ),
-                    (
-                        "Use scope_hint=user for durable facts or preferences about "
-                        "the speaker across scenes, participant for scene-local "
-                        "facts or preferences about the speaker, and scene for group, "
-                        "channel, project, or conversation-space information. Use "
-                        "auto when the best scope is unclear."
+                        "scope_hint=user 用于跨场景的说话者事实或偏好；"
+                        "participant 用于场景内关于说话者的事实或偏好；"
+                        "scene 用于群、频道、项目或对话空间信息。"
+                        "范围不确定时使用 auto。"
                     ),
                 )
             ),
@@ -89,14 +83,13 @@ def build_memory_extraction_packet(
             name="SentimentRules",
             content="\n".join(
                 (
-                    "Analyze the overall emotional tone of the message.",
+                    "分析消息的整体情绪语气。",
                     (
-                        "polarity: positive (grateful, happy, affectionate), "
-                        "negative (angry, annoyed, hostile), playful (teasing, "
-                        "joking, lighthearted), neutral (informational, calm, "
-                        "ambiguous)."
+                        "polarity: positive（感谢、开心、亲近），"
+                        "negative（生气、烦躁、敌意），playful（调侃、玩笑、轻松），"
+                        "neutral（信息性、平静、模糊）。"
                     ),
-                    "intensity: 0.0 (barely perceptible) to 1.0 (very strong).",
+                    "intensity: 0.0（几乎不可察觉）到 1.0（非常强烈）。",
                 )
             ),
         ),
@@ -104,9 +97,9 @@ def build_memory_extraction_packet(
             role="system",
             name="SelfIntroductionName",
             content=(
-                "If the user introduces themselves by name "
+                "如果用户介绍了自己的称呼"
                 '(e.g. "叫我小明", "I\'m Alice", "你可以喊我阿澈"), '
-                "extract the name into self_introduction_name. Otherwise null."
+                "将名称提取到 self_introduction_name。否则填 null。"
             ),
         ),
     ]
@@ -130,7 +123,7 @@ def build_memory_extraction_packet(
                 role="user",
                 name="FallbackInstruction",
                 content=(
-                    'If there is nothing durable, return {"memories":[], '
+                    '如果没有任何持久信息，返回 {"memories":[], '
                     '"sentiment": {"polarity": "neutral", "intensity": 0.0}, '
                     '"self_introduction_name": null}.'
                 ),

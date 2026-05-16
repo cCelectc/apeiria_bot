@@ -21,7 +21,6 @@ if TYPE_CHECKING:
     from apeiria.ai.memory import AIMemoryDefinition
     from apeiria.ai.model import AIModelMessage
     from apeiria.ai.prompting import ReplyPersonaPromptBundleLike
-    from apeiria.app.ai.reply_strategy.models import ReplyStrategyDecision
     from apeiria.app.ai.runtime.context.projection import RuntimeContextPromptView
     from apeiria.app.ai.runtime.execution.tool_loop import RuntimeToolLoopResult
     from apeiria.app.ai.runtime.session.context import (
@@ -45,8 +44,6 @@ class RuntimePromptComposeInput:
     turns: "Sequence[ChatContextMessageView]"
     profile_card: tuple[str, ...]
     conversation_summary: str | None = None
-    social_policy_summary: str | None = None
-    capability_awareness: str | None = None
     tool_guidance: str | None = None
     future_task_context: str | None = None
     skill_activation: str | None = None
@@ -77,8 +74,6 @@ def compose_input_from_context_projection(
         turns=view.turns,
         profile_card=view.profile_card,
         conversation_summary=view.conversation_summary,
-        social_policy_summary=view.social_policy_summary,
-        capability_awareness=view.capability_awareness,
         future_task_context=view.future_task_context,
         skill_activation=view.skill_activation,
         rag_chunks=view.rag_chunks,
@@ -102,8 +97,6 @@ def build_runtime_prompt_packet(
         tool_results=inputs.tool_results,
         memories=inputs.memories,
         conversation_summary=inputs.conversation_summary,
-        social_policy_summary=inputs.social_policy_summary,
-        capability_awareness=inputs.capability_awareness,
         tool_guidance=inputs.tool_guidance,
         future_task_context=inputs.future_task_context,
         skill_activation=inputs.skill_activation,
@@ -184,7 +177,6 @@ def build_initial_reply_prompt_messages(
     *,
     turn: "RuntimeTurnInput",
     context: "RuntimeContextMaterials",
-    social_decision: "ReplyStrategyDecision",
     prompt_input: "RuntimePromptPlanningInput | RuntimeTurnPlan",
 ) -> tuple["AIModelMessage", ...]:
     """Build the first model prompt messages used by direct/tool planning."""
@@ -193,7 +185,6 @@ def build_initial_reply_prompt_messages(
         build_initial_reply_prompt_packet(
             turn=turn,
             context=context,
-            social_decision=social_decision,
             prompt_input=prompt_input,
         )
     )
@@ -203,7 +194,6 @@ def build_initial_reply_prompt_packet(
     *,
     turn: "RuntimeTurnInput",
     context: "RuntimeContextMaterials",
-    social_decision: "ReplyStrategyDecision",
     prompt_input: "RuntimePromptPlanningInput | RuntimeTurnPlan",
 ) -> PromptPacket:
     """Build the first model prompt packet used by runtime and preview planning."""
@@ -212,7 +202,6 @@ def build_initial_reply_prompt_packet(
         build_initial_prompt_compose_input(
             turn=turn,
             context=context,
-            social_decision=social_decision,
             prompt_input=prompt_input,
         ),
         has_tools=_initial_reply_has_tools(prompt_input),
@@ -223,7 +212,6 @@ def build_initial_prompt_compose_input(
     *,
     turn: "RuntimeTurnInput",
     context: "RuntimeContextMaterials",
-    social_decision: "ReplyStrategyDecision",
     prompt_input: "RuntimePromptPlanningInput | RuntimeTurnPlan",
 ) -> RuntimePromptComposeInput:
     """Build the prompt compose input for the initial reply prompt."""
@@ -233,7 +221,6 @@ def build_initial_prompt_compose_input(
     projection = project_runtime_context(
         turn=turn,
         context=context,
-        social_decision=social_decision,
         tool_runtime=prompt_input.tool_runtime,
         skill_activation=prompt_input.skill_activation,
     )

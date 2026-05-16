@@ -89,18 +89,18 @@ def summarize_tool_policy(
     ]
     if not allowed_tools:
         return (
-            "No executable tools are currently allowed for this scene. "
-            f"The scene allows up to {policy.allowed_level.value} tools."
+            "当前场景没有可用的可执行工具。"
+            f"当前场景最多允许 {policy.allowed_level.value} 级工具。"
         )
 
     tool_list = ", ".join(tool.name for tool in allowed_tools[:_MAX_SUMMARY_TOOLS])
     if len(allowed_tools) > _MAX_SUMMARY_TOOLS:
         tool_list += ", ..."
     return (
-        "Executable tools are available only when they add clear value. "
-        f"The scene allows up to {policy.allowed_level.value}; "
-        f"available tools include: {tool_list}. "
-        "Keep direct reply as the default path when external actions are unnecessary."
+        "只有在确实带来明确价值时才使用可执行工具。"
+        f"当前场景最多允许 {policy.allowed_level.value} 级工具；"
+        f"可用工具包括：{tool_list}。"
+        "当不需要外部动作时，优先直接回复。"
     )
 
 

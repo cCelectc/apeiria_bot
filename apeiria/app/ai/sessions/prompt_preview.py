@@ -343,18 +343,10 @@ def _suppressed_prompt_channels(
         system_instructions=(),
         persona="",
         style=None,
-        relationship=None,
-        profile_card=(),
         profile_card_source_refs=profile_card_source_refs,
-        social_policy=None,
         tool_policy=None,
-        future_task=None,
-        tool_results=(),
-        operator_memories=(),
-        summary_memories=(),
-        long_term_memories=(),
-        knowledge_memories=(),
-        conversation_summary=None,
+        expression_context=(),
+        evidence_context=(),
         context_priority=(),
         conversation_messages=(),
         response_rules=(),
@@ -372,6 +364,7 @@ def _suppressed_prompt_channels(
 def _suppressed_prompt_diagnostics() -> AISessionPromptDiagnostics:
     return AISessionPromptDiagnostics(
         prompt_purpose="suppressed",
+        section_names=(),
         stable_section_names=(),
         dynamic_section_names=(),
         stable_section_count=0,
@@ -386,12 +379,10 @@ def _project_preview_context(
     context: RuntimeContextMaterials,
     tool_runtime: RuntimeToolLoopResult,
     skill_activation: str | None,
-    social_decision: ReplyStrategyDecision | None,
 ) -> "RuntimeContextProjection":
     return project_runtime_context(
         turn=turn,
         context=context,
-        social_decision=social_decision,
         tool_runtime=tool_runtime,
         skill_activation=skill_activation,
         projection_mode="preview",
@@ -590,9 +581,6 @@ class PromptPreviewReader:
         initial_exposure_plan = tool_orchestrator.plan_exposure(
             allowed_tools=allowed_tool_specs,
             policy=context.tool_policy,
-            ordinary_ambient_group=(
-                identity.scene_type == "group" and not preview_turn.is_tome
-            ),
             execution_timeout_seconds=get_ai_plugin_config().tool_execution_timeout_seconds,
         )
         has_tools = initial_exposure_plan.has_executable_tools
@@ -604,9 +592,6 @@ class PromptPreviewReader:
         preview_exposure_plan = tool_orchestrator.plan_exposure(
             allowed_tools=allowed_tool_specs,
             policy=context.tool_policy,
-            ordinary_ambient_group=(
-                identity.scene_type == "group" and not preview_turn.is_tome
-            ),
             execution_timeout_seconds=get_ai_plugin_config().tool_execution_timeout_seconds,
             model_supports_tools=(
                 selected.resolved_capabilities.supports_tool_calling
@@ -639,7 +624,6 @@ class PromptPreviewReader:
             context=context,
             tool_runtime=tool_runtime,
             skill_activation=None,
-            social_decision=social_decision,
         )
         (
             planning_channels,

@@ -141,18 +141,10 @@ class AISessionPromptChannelsItem(BaseModel):
     system_instructions: list[str] = []
     persona: str
     style: str | None = None
-    relationship: str | None = None
-    profile_card: list[str] = []
     profile_card_source_refs: list[str] = []
-    social_policy: str | None = None
     tool_policy: str | None = None
-    future_task: str | None = None
-    tool_results: list[str] = []
-    operator_memories: list[str] = []
-    summary_memories: list[str] = []
-    long_term_memories: list[str] = []
-    knowledge_memories: list[str] = []
-    conversation_summary: str | None = None
+    expression_context: list[str] = []
+    evidence_context: list[str] = []
     context_priority: list[str] = []
     conversation_messages: list[str] = []
     response_rules: list[str] = []
@@ -162,6 +154,7 @@ class AISessionPromptChannelsItem(BaseModel):
 
 class AISessionPromptDiagnosticsItem(BaseModel):
     prompt_purpose: str
+    section_names: list[str] = Field(default_factory=list)
     stable_section_names: list[str] = Field(default_factory=list)
     dynamic_section_names: list[str] = Field(default_factory=list)
     stable_section_count: int = 0
@@ -388,6 +381,7 @@ def to_ai_session_prompt_diagnostics_item(
 ) -> AISessionPromptDiagnosticsItem:
     return AISessionPromptDiagnosticsItem(
         prompt_purpose=item.prompt_purpose,
+        section_names=list(item.section_names),
         stable_section_names=list(item.stable_section_names),
         dynamic_section_names=list(item.dynamic_section_names),
         stable_section_count=item.stable_section_count,
@@ -404,18 +398,10 @@ def to_ai_session_prompt_channels_item(
         system_instructions=list(item.system_instructions),
         persona=item.persona,
         style=item.style,
-        relationship=item.relationship,
-        profile_card=list(item.profile_card),
         profile_card_source_refs=list(item.profile_card_source_refs),
-        social_policy=item.social_policy,
         tool_policy=item.tool_policy,
-        future_task=item.future_task,
-        tool_results=list(item.tool_results),
-        operator_memories=list(item.operator_memories),
-        summary_memories=list(item.summary_memories),
-        long_term_memories=list(item.long_term_memories),
-        knowledge_memories=list(item.knowledge_memories),
-        conversation_summary=item.conversation_summary,
+        expression_context=list(item.expression_context),
+        evidence_context=list(item.evidence_context),
         context_priority=list(item.context_priority),
         conversation_messages=list(item.conversation_messages),
         response_rules=list(item.response_rules),

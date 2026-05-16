@@ -16,7 +16,6 @@ from .signals import derive_relationship_delta
 
 if TYPE_CHECKING:
     from .scoring import (
-        TONE_LABEL,
         apply_inactivity_decay,
         apply_relationship_delta,
         clamp_relationship_score,
@@ -26,7 +25,6 @@ if TYPE_CHECKING:
     from .service import AIRelationshipService, ai_relationship_service
 
 __all__ = [
-    "TONE_LABEL",
     "AIRelationshipDelta",
     "AIRelationshipEvent",
     "AIRelationshipEventType",
@@ -44,7 +42,6 @@ __all__ = [
 
 _LAZY_EXPORTS = {
     "AIRelationshipService": ".service",
-    "TONE_LABEL": ".scoring",
     "ai_relationship_service": ".service",
     "apply_inactivity_decay": ".scoring",
     "apply_relationship_delta": ".scoring",

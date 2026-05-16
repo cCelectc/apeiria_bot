@@ -493,7 +493,7 @@ def test_essential_execution_context_propagates_group_chat_scope() -> None:
 
 def test_prompt_tool_guidance_is_generated_from_selected_exposure_plan() -> None:
     from apeiria.ai.prompting.reply import (
-        REPLY_SECTION_TOOL_GUIDANCE,
+        REPLY_SECTION_TOOL_POLICY,
         ReplyPromptInput,
         build_reply_planner_packet,
     )
@@ -555,20 +555,67 @@ def test_prompt_tool_guidance_is_generated_from_selected_exposure_plan() -> None
             tool_guidance=generated_guidance,
         )
     )
-    guidance = next(
+    tool_policy = next(
         section.content
         for section in packet.sections
-        if section.name == REPLY_SECTION_TOOL_GUIDANCE
+        if section.name == REPLY_SECTION_TOOL_POLICY
     )
 
-    assert guidance == generated_guidance
-    assert len(guidance) < TOOL_GUIDANCE_LIMIT
-    assert "memory_search (memory.search, read)" in guidance
-    assert "plugin_echo (plugin.echo, read)" in guidance
-    assert "mcp_ticket_search (mcp.ticket.search, read)" in guidance
-    assert "Echo one plugin-selected value." in guidance
-    assert "Search external MCP tickets selected for this scene." in guidance
-    assert "future_task.cancel" not in guidance
+    assert "allowed" in tool_policy
+    assert generated_guidance in tool_policy
+    assert len(generated_guidance) < TOOL_GUIDANCE_LIMIT
+    assert "memory_search (memory.search, read)" in tool_policy
+    assert "plugin_echo (plugin.echo, read)" in tool_policy
+    assert "mcp_ticket_search (mcp.ticket.search, read)" in tool_policy
+    assert "Echo one plugin-selected value." in tool_policy
+    assert "Search external MCP tickets selected for this scene." in tool_policy
+    assert "future_task.cancel" not in tool_policy
+
+
+def test_tool_guidance_does_not_distinguish_tool_origin() -> None:
+    from apeiria.app.ai.runtime.planning.tool_exposure import (
+        ToolExposurePlan,
+        build_tool_guidance_text,
+    )
+
+    async def handler(**_: Any) -> AIToolResult:
+        return AIToolResult(summary="ok")
+
+    selected = (
+        AIToolDefinition(
+            name="memory.search",
+            description="Search selected memories only when compact context is stale.",
+            input_schema={"type": "object", "properties": {}},
+            required_level=AIToolLevel.READ,
+            executor=handler,
+            origin="internal",
+        ),
+        AIToolDefinition(
+            name="plugin.echo",
+            description="Echo one plugin-selected value.",
+            input_schema={"type": "object", "properties": {}},
+            required_level=AIToolLevel.READ,
+            executor=handler,
+            origin="plugin",
+        ),
+    )
+
+    guidance = build_tool_guidance_text(
+        ToolExposurePlan(
+            selected_tool_definitions=selected,
+            provider_name_map={
+                "memory_search": "memory.search",
+                "plugin_echo": "plugin.echo",
+            },
+        )
+    )
+
+    assert guidance is not None
+    assert "memory.search" in guidance
+    assert "plugin.echo" in guidance
+    assert "origin" not in guidance
+    assert "builtin" not in guidance
+    assert "internal" not in guidance
 
 
 def test_tool_diagnostics_route_reports_internal_status(

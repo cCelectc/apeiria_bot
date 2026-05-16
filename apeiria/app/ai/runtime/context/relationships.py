@@ -6,7 +6,6 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from apeiria.ai.relationship import (
-    TONE_LABEL,
     ai_relationship_service,
     derive_relationship_delta,
     project_emotion,
@@ -50,20 +49,19 @@ def format_relationship_context(
     """Render relationship state into prompt-facing behavioral guidance."""
 
     projection = project_emotion(state)
-    tone_label = TONE_LABEL.get(projection.tone, projection.tone)
     sections = [
-        "关系好感只影响表达层：语气、措辞、主动性、互动距离。",
+        "关系好感只影响表达层：语气、措辞、主动性和互动距离。",
         "关系好感不得改变人格、事实、权限、工具授权、安全策略或记忆治理。",
-        f"当前好感: {state.score:+d} / range [-100, 100], neutral=0",
-        f"关系层级: {tone_label}",
+        f"当前好感：{state.score:+d} / 范围 [-100, 100]，neutral=0",
+        f"关系层级：{projection.tone}",
     ]
     if projection.style_modulation:
-        sections.append("表达调制:")
+        sections.append("表达调制：")
         sections.extend(f"- {line}" for line in projection.style_modulation)
     if state.mood_tags:
-        sections.append(f"近期互动氛围: {', '.join(state.mood_tags)}")
+        sections.append(f"近期互动氛围：{', '.join(state.mood_tags)}")
     if recent_events:
-        sections.append("近期关系事件:")
+        sections.append("近期关系事件：")
         sections.extend(
             _format_relationship_event_line(event) for event in recent_events
         )
@@ -123,5 +121,5 @@ def _format_relationship_event_line(event: "AIRelationshipEvent") -> str:
     delta_sign = "+" if event.score_delta >= 0 else ""
     return (
         f"- [{event.event_type}] {delta_sign}{event.score_delta}"
-        f" -> {event.score_after}; {reason}"
+        f" -> {event.score_after}；{reason}"
     )

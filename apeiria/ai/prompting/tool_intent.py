@@ -28,10 +28,9 @@ def build_tool_intent_planning_packet(
             name="Instruction",
             content="\n".join(
                 (
-                    "Decide whether any available tools should be called for "
-                    "the user message.",
-                    "Only call a tool when it is genuinely necessary.",
-                    "If no tool is needed, return plain text and no tool calls.",
+                    "判断是否需要针对用户消息调用任何可用工具。",
+                    "只有在确实必要时才调用工具。",
+                    "如果不需要工具，就直接返回纯文本，不要发起工具调用。",
                 )
             ),
         ),
@@ -39,9 +38,8 @@ def build_tool_intent_planning_packet(
             role="system",
             name="MemoryUpdatePolicy",
             content=(
-                "If you need to revise durable memory, use memory.write with "
-                "a memory_id from the recalled memory list below when correcting "
-                "an existing item."
+                "如果需要修订持久记忆，在更正已有条目时，"
+                "使用下面召回记忆列表里的 memory_id 调用 memory.write。"
             ),
         ),
         PromptSection(

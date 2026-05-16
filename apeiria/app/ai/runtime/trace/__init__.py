@@ -178,6 +178,7 @@ def _safe_prompt_diagnostics(raw: dict[str, object]) -> dict[str, object]:
     diagnostics: dict[str, object] = {}
     for key in (
         "prompt_purpose",
+        "section_names",
         "stable_section_names",
         "dynamic_section_names",
         "stable_section_count",

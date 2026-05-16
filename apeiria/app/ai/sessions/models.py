@@ -307,6 +307,7 @@ class AISessionPromptDiagnostics:
     """Bounded region metadata for one composed runtime prompt."""
 
     prompt_purpose: str
+    section_names: tuple[str, ...]
     stable_section_names: tuple[str, ...]
     dynamic_section_names: tuple[str, ...]
     stable_section_count: int
@@ -322,18 +323,10 @@ class AISessionPromptChannels:
     system_instructions: tuple[str, ...]
     persona: str
     style: str | None
-    relationship: str | None
-    profile_card: tuple[str, ...]
     profile_card_source_refs: tuple[str, ...]
-    social_policy: str | None
     tool_policy: str | None
-    future_task: str | None
-    tool_results: tuple[str, ...]
-    operator_memories: tuple[str, ...]
-    summary_memories: tuple[str, ...]
-    long_term_memories: tuple[str, ...]
-    knowledge_memories: tuple[str, ...]
-    conversation_summary: str | None
+    expression_context: tuple[str, ...]
+    evidence_context: tuple[str, ...]
     context_priority: tuple[str, ...]
     conversation_messages: tuple[str, ...]
     response_rules: tuple[str, ...]

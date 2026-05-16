@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Literal, Protocol
 
 from .models import PromptPacket, PromptSection, PromptSectionRole
 from .regions import PromptRegionProjection, project_prompt_regions
+from .template_loader import load_prompt_template_lines
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -17,35 +18,56 @@ if TYPE_CHECKING:
 
 ReplyPromptMode = Literal["planner", "roleplay"]
 _GROUP_USER_ID_SUFFIX_LENGTH = 4
-REPLY_SECTION_SYSTEM_INSTRUCTIONS = "SystemInstructions"
-REPLY_SECTION_PERSONA = "Persona"
-REPLY_SECTION_STYLE = "Style"
-REPLY_SECTION_CAPABILITY_AWARENESS = "CapabilityAwareness"
-REPLY_SECTION_TOOL_GUIDANCE = "ToolGuidance"
-REPLY_SECTION_RELATIONSHIP = "Relationship"
-REPLY_SECTION_PROFILE = "Profile"
-REPLY_SECTION_SOCIAL_POLICY = "SocialPolicy"
-REPLY_SECTION_TOOL_POLICY = "ToolPolicy"
-REPLY_SECTION_TOOL_RESULTS = "ToolResults"
-REPLY_SECTION_OPERATOR_MEMORIES = "OperatorMemories"
-REPLY_SECTION_SUMMARY_MEMORIES = "SummaryMemories"
-REPLY_SECTION_LONG_TERM_MEMORIES = "LongTermMemories"
-REPLY_SECTION_KNOWLEDGE_MEMORIES = "KnowledgeMemories"
-REPLY_SECTION_RAG_KNOWLEDGE = "RAGKnowledge"
-REPLY_SECTION_CONVERSATION_SUMMARY = "ConversationSummary"
-REPLY_SECTION_FUTURE_TASK = "FutureTask"
-REPLY_SECTION_ACTIVE_SKILLS = "ActiveSkills"
-REPLY_SECTION_CONTEXT_PRIORITY = "ContextPriority"
-REPLY_SECTION_RESPONSE_RULES = "ResponseRules"
-REPLY_SECTION_CONVERSATION = "Conversation"
-REPLY_SECTION_INSTRUCTION = "Instruction"
+_REPLY_SYSTEM_INSTRUCTIONS = {
+    "planner": (
+        "你正在判断当前聊天轮次应该如何处理。",
+        "如果会生成用户可见内容，必须保持人格语气稳定。",
+        "只有在能提升正确性或完成用户明确请求时，才使用工具。",
+    ),
+    "roleplay": (
+        "你正在为当前聊天轮次写最终可见回复。",
+        "只输出用户可见的回复内容，并保持人格语气稳定。",
+        "工具结果、记忆和对话上下文只有在与当前回复相关时才使用。",
+    ),
+}
+_REPLY_RESPONSE_RULES = {
+    "planner": "只调用为保证正确性或完成用户请求所必需的最少工具。",
+    "roleplay": "只有在对用户有帮助时，才提及工具、记忆或来源。",
+}
+_REPLY_INSTRUCTIONS = {
+    "planner": (
+        "决定下一步动作。如果需要工具，只调用为保证正确性或完成用户请求"
+        "所必需的最少工具。如果现有上下文已经足够支持回答，"
+        "就直接以人格语气回复。不要暴露规划文本。"
+    ),
+    "roleplay": "只写当前聊天轮次的最终助手回复。",
+    "scheduled_planner": "为同一个聊天会话中的定时跟进回复做规划。",
+    "scheduled_roleplay": "写出同一个聊天会话中的定时跟进回复。",
+}
+REPLY_SECTION_SYSTEM_INSTRUCTIONS = "system_instructions"
+REPLY_SECTION_RESPONSE_RULES = "response_rules"
+REPLY_SECTION_CONTEXT_PRIORITY = "context_priority"
+REPLY_SECTION_PERSONA = "persona"
+REPLY_SECTION_STYLE = "style"
+REPLY_SECTION_TOOL_POLICY = "tool_policy"
+REPLY_SECTION_EXPRESSION_CONTEXT = "expression_context"
+REPLY_SECTION_EVIDENCE_CONTEXT = "evidence_context"
+REPLY_SECTION_CONVERSATION = "conversation"
+REPLY_SECTION_INSTRUCTION = "instruction"
 REPLY_STABLE_REGION_SECTIONS = (
     REPLY_SECTION_SYSTEM_INSTRUCTIONS,
+    REPLY_SECTION_RESPONSE_RULES,
+    REPLY_SECTION_CONTEXT_PRIORITY,
+)
+REPLY_SECTION_TAG_NAMES = (
+    *REPLY_STABLE_REGION_SECTIONS,
     REPLY_SECTION_PERSONA,
     REPLY_SECTION_STYLE,
-    REPLY_SECTION_CAPABILITY_AWARENESS,
-    REPLY_SECTION_TOOL_GUIDANCE,
-    REPLY_SECTION_RESPONSE_RULES,
+    REPLY_SECTION_TOOL_POLICY,
+    REPLY_SECTION_EXPRESSION_CONTEXT,
+    REPLY_SECTION_EVIDENCE_CONTEXT,
+    REPLY_SECTION_CONVERSATION,
+    REPLY_SECTION_INSTRUCTION,
 )
 
 
@@ -76,8 +98,6 @@ class ReplyPromptInput:
     profile_card: tuple[str, ...]
     rag_chunks: "Sequence[KnowledgeRetrievalItem]" = ()
     conversation_summary: str | None = None
-    social_policy_summary: str | None = None
-    capability_awareness: str | None = None
     tool_guidance: str | None = None
     future_task_context: str | None = None
     skill_activation: str | None = None
@@ -107,6 +127,18 @@ def _build_reply_packet(
         name=REPLY_SECTION_SYSTEM_INSTRUCTIONS,
         content="\n".join(_build_system_instructions(mode)),
     )
+    _append_lines(
+        sections,
+        role="system",
+        name=REPLY_SECTION_RESPONSE_RULES,
+        lines=_build_response_rules(mode),
+    )
+    _append_lines(
+        sections,
+        role="system",
+        name=REPLY_SECTION_CONTEXT_PRIORITY,
+        lines=_build_context_priority(),
+    )
     _append_section(
         sections,
         role="system",
@@ -114,7 +146,7 @@ def _build_reply_packet(
         content=(
             inputs.persona.system_prompt
             if inputs.persona is not None
-            else "You are a chat participant in an ongoing conversation."
+            else "你是当前对话中的自然聊天参与者。"
         ),
     )
     _append_section(
@@ -127,81 +159,25 @@ def _build_reply_packet(
             else None
         ),
     )
-    _append_section(
-        sections,
-        role="system",
-        name=REPLY_SECTION_CAPABILITY_AWARENESS,
-        content=inputs.capability_awareness,
-    )
-    if mode == "planner":
-        _append_section(
-            sections,
-            role="system",
-            name=REPLY_SECTION_TOOL_GUIDANCE,
-            content=inputs.tool_guidance,
-        )
-    _append_lines(
-        sections,
-        role="system",
-        name=REPLY_SECTION_RESPONSE_RULES,
-        lines=_build_response_rules(inputs, mode),
-    )
-    _append_section(
-        sections,
-        role="system",
-        name=REPLY_SECTION_RELATIONSHIP,
-        content=inputs.relationship,
-    )
-    _append_lines(
-        sections,
-        role="system",
-        name=REPLY_SECTION_PROFILE,
-        lines=inputs.profile_card,
-    )
-    _append_section(
-        sections,
-        role="system",
-        name=REPLY_SECTION_SOCIAL_POLICY,
-        content=inputs.social_policy_summary,
-    )
     if mode == "planner":
         _append_section(
             sections,
             role="system",
             name=REPLY_SECTION_TOOL_POLICY,
-            content=inputs.tool_policy,
+            content=_build_tool_policy_context(inputs),
+        )
+    if mode != "planner":
+        _append_lines(
+            sections,
+            role="system",
+            name=REPLY_SECTION_EXPRESSION_CONTEXT,
+            lines=_build_expression_context(inputs),
         )
     _append_lines(
         sections,
         role="system",
-        name=REPLY_SECTION_TOOL_RESULTS,
-        lines=inputs.tool_results,
-    )
-    _append_memory_sections(sections, inputs.memories)
-    _append_rag_section(sections, inputs.rag_chunks)
-    _append_section(
-        sections,
-        role="system",
-        name=REPLY_SECTION_CONVERSATION_SUMMARY,
-        content=inputs.conversation_summary,
-    )
-    _append_section(
-        sections,
-        role="system",
-        name=REPLY_SECTION_FUTURE_TASK,
-        content=inputs.future_task_context,
-    )
-    _append_section(
-        sections,
-        role="system",
-        name=REPLY_SECTION_ACTIVE_SKILLS,
-        content=inputs.skill_activation,
-    )
-    _append_lines(
-        sections,
-        role="system",
-        name=REPLY_SECTION_CONTEXT_PRIORITY,
-        lines=_build_context_priority(),
+        name=REPLY_SECTION_EVIDENCE_CONTEXT,
+        lines=_build_evidence_context(inputs),
     )
     _append_conversation_sections(sections, inputs.turns, scene_type=inputs.scene_type)
     _append_section(
@@ -225,38 +201,91 @@ def project_reply_prompt_regions(packet: PromptPacket) -> PromptRegionProjection
     )
 
 
-def _append_memory_sections(
-    sections: list[PromptSection],
-    memories: "Sequence[AIMemoryDefinition]",
-) -> None:
-    for name, layer in (
-        (REPLY_SECTION_OPERATOR_MEMORIES, "operator"),
-        (REPLY_SECTION_SUMMARY_MEMORIES, "summary"),
-        (REPLY_SECTION_LONG_TERM_MEMORIES, "long_term"),
-        (REPLY_SECTION_KNOWLEDGE_MEMORIES, "knowledge"),
-    ):
-        _append_lines(
-            sections,
-            role="system",
-            name=name,
-            lines=tuple(
-                _format_memory(memory)
-                for memory in memories
-                if memory.memory_layer == layer
-            ),
-        )
+def _build_tool_policy_context(inputs: ReplyPromptInput) -> str | None:
+    lines: list[str] = []
+    if inputs.tool_policy:
+        lines.append(inputs.tool_policy.strip())
+    if inputs.tool_guidance:
+        lines.append(inputs.tool_guidance.strip())
+    return "\n".join(lines) if lines else None
 
 
-def _append_rag_section(
-    sections: list[PromptSection],
-    rag_chunks: "Sequence[KnowledgeRetrievalItem]",
-) -> None:
-    _append_lines(
-        sections,
-        role="system",
-        name=REPLY_SECTION_RAG_KNOWLEDGE,
-        lines=tuple(_format_rag_chunk(chunk) for chunk in rag_chunks),
+def _build_expression_context(inputs: ReplyPromptInput) -> tuple[str, ...]:
+    lines = [f"档案: {line}" for line in _clean_lines(inputs.profile_card)]
+    relationship = _expression_relationship_line(inputs.relationship)
+    if relationship is not None:
+        lines.append(f"关系: {relationship}")
+    return tuple(lines)
+
+
+def _expression_relationship_line(relationship: str | None) -> str | None:
+    if relationship is None or not relationship.strip():
+        return None
+    text = _strip_relationship_diagnostics(relationship)
+    if not text:
+        return None
+    normalized = text.lower()
+    if normalized in {"neutral", "neutral score 0", "score 0", "0"}:
+        return None
+    if "neutral=0" in normalized and "近期互动氛围：" not in text:
+        return None
+    return text
+
+
+def _strip_relationship_diagnostics(relationship: str) -> str:
+    lines: list[str] = []
+    for line in _clean_lines(relationship.splitlines()):
+        if line.startswith("近期关系事件"):
+            break
+        lines.append(line)
+    return "\n".join(lines)
+
+
+def _build_evidence_context(inputs: ReplyPromptInput) -> tuple[str, ...]:
+    lines: list[str] = []
+    lines.extend(f"工具结果: {line}" for line in _clean_lines(inputs.tool_results))
+    lines.extend(
+        f"记忆: {line}"
+        for line in _format_memories(inputs.memories, layers=("operator", "long_term"))
     )
+    lines.extend(
+        f"知识: {line}"
+        for line in _format_memories(inputs.memories, layers=("knowledge",))
+    )
+    lines.extend(f"知识: {line}" for line in _format_knowledge(inputs.rag_chunks))
+    lines.extend(
+        f"摘要: {line}"
+        for line in _format_memories(inputs.memories, layers=("summary",))
+    )
+    lines.extend(f"摘要: {line}" for line in _build_summary_lines(inputs))
+    return tuple(lines)
+
+
+def _format_memories(
+    memories: "Sequence[AIMemoryDefinition]",
+    *,
+    layers: tuple[str, ...],
+) -> tuple[str, ...]:
+    return tuple(
+        _format_memory(memory)
+        for layer in layers
+        for memory in memories
+        if memory.memory_layer == layer
+    )
+
+
+def _format_knowledge(
+    rag_chunks: "Sequence[KnowledgeRetrievalItem]",
+) -> tuple[str, ...]:
+    return tuple(_format_rag_chunk(chunk) for chunk in rag_chunks)
+
+
+def _build_summary_lines(inputs: ReplyPromptInput) -> tuple[str, ...]:
+    lines: list[str] = []
+    lines.extend(_clean_lines((inputs.conversation_summary,)))
+    lines.extend(_clean_lines((inputs.future_task_context,)))
+    lines.extend(_clean_lines((inputs.skill_activation,)))
+    return tuple(lines)
 
 
 def _append_conversation_sections(
@@ -265,24 +294,17 @@ def _append_conversation_sections(
     *,
     scene_type: str,
 ) -> None:
-    appended = False
+    lines: list[str] = []
     for turn in turns:
         if not turn.text_content.strip():
             continue
-        appended = True
-        _append_section(
-            sections,
-            role=_conversation_section_role(turn),
-            name=REPLY_SECTION_CONVERSATION,
-            content=_format_turn(turn, scene_type=scene_type),
-        )
-    if not appended:
-        _append_section(
-            sections,
-            role="user",
-            name=REPLY_SECTION_CONVERSATION,
-            content="User: <empty>",
-        )
+        lines.append(_format_turn(turn, scene_type=scene_type))
+    _append_section(
+        sections,
+        role="user",
+        name=REPLY_SECTION_CONVERSATION,
+        content="\n".join(lines) if lines else "用户: <空>",
+    )
 
 
 def _append_section(
@@ -309,36 +331,11 @@ def _append_lines(
 
 
 def _build_context_priority() -> tuple[str, ...]:
-    return (
-        "Trust explicit tool results over inferred assumptions.",
-        "Use conversation summary and memories only as relevant supporting "
-        "context for the active exchange.",
-        "Prefer the latest conversation when it carries fresher detail.",
-    )
+    return load_prompt_template_lines("reply/context_priority.md")
 
 
 def _build_system_instructions(mode: ReplyPromptMode) -> tuple[str, ...]:
-    if mode == "planner":
-        return (
-            "You are deciding how to handle the current turn in an ongoing chat.",
-            "Keep the persona voice stable in any visible text you generate.",
-            "Use tools only when they improve correctness or complete a "
-            "requested action.",
-        )
-    return (
-        "You are writing the final visible reply for the current chat turn.",
-        "Produce only the user-visible reply and keep the persona voice stable.",
-        "Use tool results, memory, and conversation context only when they are "
-        "relevant to the reply.",
-    )
-
-
-def _conversation_section_role(
-    turn: "ChatContextMessageView",
-) -> PromptSectionRole:
-    if turn.author_role == "assistant":
-        return "assistant"
-    return "user"
+    return _REPLY_SYSTEM_INSTRUCTIONS[mode]
 
 
 def _format_turn(
@@ -349,13 +346,13 @@ def _format_turn(
     if turn.author_role == "user":
         speaker = _format_user_label(turn, scene_type=scene_type)
     elif turn.author_role == "assistant":
-        speaker = "Assistant"
+        speaker = "助手"
     elif turn.author_role == "tool":
-        speaker = f"Tool[{turn.author_id}]"
+        speaker = f"工具[{turn.author_id}]"
     elif turn.author_role == "system":
-        speaker = "System"
+        speaker = "系统"
     else:
-        speaker = "Message"
+        speaker = "消息"
     return f"{speaker}: {turn.text_content}"
 
 
@@ -373,77 +370,22 @@ def _format_user_label(
             if len(turn.author_id) > _GROUP_USER_ID_SUFFIX_LENGTH
             else turn.author_id
         )
-        return f"User#{suffix}"
-    return author_name or "User"
+        return f"用户#{suffix}"
+    return author_name or "用户"
 
 
 def _format_memory(memory: "AIMemoryDefinition") -> str:
-    return (
-        f"- [{memory.memory_layer}/{memory.memory_kind}] {memory.content} "
-        f"(salience={memory.salience:.2f}, confidence={memory.confidence:.2f})"
-    )
+    return memory.content
 
 
 def _format_rag_chunk(chunk: "KnowledgeRetrievalItem") -> str:
-    return (
-        f"- [{chunk.label}] {chunk.title} ({chunk.source_file_name}) "
-        f"rank={chunk.rank} score={chunk.score:.3f}: {chunk.excerpt}"
-    )
+    source = f" ({chunk.source_file_name})" if chunk.source_file_name else ""
+    return f"{chunk.title}{source}: {chunk.excerpt}"
 
 
-def _build_response_rules(
-    inputs: ReplyPromptInput,
-    mode: ReplyPromptMode,
-) -> tuple[str, ...]:
-    rules = [
-        "Stay in character and answer naturally.",
-        (
-            "For ordinary chat, prefer concise, natural replies instead of "
-            "summaries, plans, or task-oriented wrap-ups."
-        ),
-        (
-            "Do not end with a follow-up question by default; ask only when a "
-            "useful answer needs missing essential information or the user "
-            "explicitly asks you to continue."
-        ),
-        (
-            "Avoid assistant-style task offers, summaries, next steps, and "
-            "wrap-up lines unless the user clearly asks for task help."
-        ),
-        (
-            "Longer answers are fine for explicit tasks such as explanations, "
-            "analysis, planning, decisions, or concrete requested actions."
-        ),
-        "Ground factual claims in relevant conversation, tool results, and memory.",
-        "Use recalled memory only when it supports the active exchange.",
-        (
-            "Relationship context modulates only your expression layer - "
-            "warmth, distance, initiative, and phrasing style. "
-            "It must never override, weaken, or replace any aspect of "
-            "the persona core (identity, goals, personality traits, speech patterns)."
-        ),
-    ]
-    if mode == "planner":
-        rules.append(
-            "Call tools with focused arguments when they improve correctness or "
-            "complete a requested action."
-        )
-        rules.append("Use direct reply when the existing context already supports it.")
-        rules.append(
-            "Keep internal planning and policy language out of the visible reply."
-        )
-    else:
-        rules.append(
-            "Write one final reply to the current turn; a short direct reply "
-            "is valid when enough."
-        )
-        rules.append(
-            "Keep tool usage implicit unless the user-facing result should mention it."
-        )
-    if inputs.future_task_context:
-        rules.append(
-            "Treat this turn as a scheduled follow-up inside the same chat session."
-        )
+def _build_response_rules(mode: ReplyPromptMode) -> tuple[str, ...]:
+    rules = list(load_prompt_template_lines("reply/response_rules.md"))
+    rules.append(_REPLY_RESPONSE_RULES[mode])
     return tuple(rules)
 
 
@@ -452,9 +394,10 @@ def _build_instruction(
     mode: ReplyPromptMode,
 ) -> str:
     if inputs.future_task_context:
-        if mode == "planner":
-            return "Plan the scheduled follow-up reply for the same chat session."
-        return "Write the scheduled follow-up reply for the same chat session."
-    if mode == "planner":
-        return "Decide whether to reply directly or call tools for this chat turn."
-    return "Write only the final assistant reply for this chat turn."
+        scheduled_mode = f"scheduled_{mode}"
+        return _REPLY_INSTRUCTIONS[scheduled_mode]
+    return _REPLY_INSTRUCTIONS[mode]
+
+
+def _clean_lines(lines: "Sequence[str | None]") -> tuple[str, ...]:
+    return tuple(line.strip() for line in lines if line is not None and line.strip())

@@ -60,6 +60,7 @@ def prompt_region_diagnostics(
 
     return {
         "prompt_purpose": projection.purpose,
+        "section_names": tuple(section.name for section in projection.sections),
         "stable_section_names": tuple(section.name for section in projection.stable),
         "dynamic_section_names": tuple(section.name for section in projection.dynamic),
         "stable_section_count": len(projection.stable),

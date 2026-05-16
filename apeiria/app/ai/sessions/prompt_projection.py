@@ -11,22 +11,14 @@ from apeiria.ai.prompting import (
 from apeiria.ai.prompting.reply import (
     REPLY_SECTION_CONTEXT_PRIORITY,
     REPLY_SECTION_CONVERSATION,
-    REPLY_SECTION_CONVERSATION_SUMMARY,
-    REPLY_SECTION_FUTURE_TASK,
+    REPLY_SECTION_EVIDENCE_CONTEXT,
+    REPLY_SECTION_EXPRESSION_CONTEXT,
     REPLY_SECTION_INSTRUCTION,
-    REPLY_SECTION_KNOWLEDGE_MEMORIES,
-    REPLY_SECTION_LONG_TERM_MEMORIES,
-    REPLY_SECTION_OPERATOR_MEMORIES,
     REPLY_SECTION_PERSONA,
-    REPLY_SECTION_PROFILE,
-    REPLY_SECTION_RELATIONSHIP,
     REPLY_SECTION_RESPONSE_RULES,
-    REPLY_SECTION_SOCIAL_POLICY,
     REPLY_SECTION_STYLE,
-    REPLY_SECTION_SUMMARY_MEMORIES,
     REPLY_SECTION_SYSTEM_INSTRUCTIONS,
     REPLY_SECTION_TOOL_POLICY,
-    REPLY_SECTION_TOOL_RESULTS,
 )
 
 from .models import (
@@ -55,31 +47,19 @@ def project_prompt_packet_to_channels(
         )
         for section in packet.sections
     )
+    evidence_lines = _section_lines(packet, REPLY_SECTION_EVIDENCE_CONTEXT)
     return AISessionPromptChannels(
         mode=mode,
         system_instructions=_section_lines(packet, REPLY_SECTION_SYSTEM_INSTRUCTIONS),
         persona=_section_text(packet, REPLY_SECTION_PERSONA) or "",
         style=_section_text(packet, REPLY_SECTION_STYLE),
-        relationship=_section_text(packet, REPLY_SECTION_RELATIONSHIP),
-        social_policy=_section_text(packet, REPLY_SECTION_SOCIAL_POLICY),
         tool_policy=_section_text(packet, REPLY_SECTION_TOOL_POLICY),
-        future_task=_section_text(packet, REPLY_SECTION_FUTURE_TASK),
-        profile_card=_section_lines(packet, REPLY_SECTION_PROFILE),
         profile_card_source_refs=profile_card_source_refs,
-        tool_results=_section_lines(packet, REPLY_SECTION_TOOL_RESULTS),
-        operator_memories=_section_lines(packet, REPLY_SECTION_OPERATOR_MEMORIES),
-        summary_memories=_section_lines(packet, REPLY_SECTION_SUMMARY_MEMORIES),
-        long_term_memories=_section_lines(packet, REPLY_SECTION_LONG_TERM_MEMORIES),
-        knowledge_memories=_section_lines(packet, REPLY_SECTION_KNOWLEDGE_MEMORIES),
-        conversation_summary=_section_text(
-            packet,
-            REPLY_SECTION_CONVERSATION_SUMMARY,
-        ),
+        expression_context=_section_lines(packet, REPLY_SECTION_EXPRESSION_CONTEXT),
+        evidence_context=evidence_lines,
         context_priority=_section_lines(packet, REPLY_SECTION_CONTEXT_PRIORITY),
         conversation_messages=tuple(
-            section.content
-            for section in packet.sections
-            if section.name == REPLY_SECTION_CONVERSATION and section.content.strip()
+            line for line in _section_lines(packet, REPLY_SECTION_CONVERSATION)
         ),
         response_rules=_section_lines(packet, REPLY_SECTION_RESPONSE_RULES),
         instruction=_section_text(packet, REPLY_SECTION_INSTRUCTION) or "",
@@ -113,6 +93,7 @@ def project_prompt_packet_to_diagnostics(
     diagnostics = prompt_region_diagnostics(project_reply_prompt_regions(packet))
     return AISessionPromptDiagnostics(
         prompt_purpose=str(diagnostics["prompt_purpose"]),
+        section_names=_string_tuple(diagnostics["section_names"]),
         stable_section_names=_string_tuple(diagnostics["stable_section_names"]),
         dynamic_section_names=_string_tuple(diagnostics["dynamic_section_names"]),
         stable_section_count=_int_value(diagnostics["stable_section_count"]),

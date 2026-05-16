@@ -429,6 +429,7 @@ export interface AISessionPromptSectionItem {
 
 export interface AISessionPromptDiagnosticsItem {
   prompt_purpose: string
+  section_names: string[]
   stable_section_names: string[]
   dynamic_section_names: string[]
   stable_section_count: number
@@ -441,18 +442,10 @@ export interface AISessionPromptChannelsItem {
   system_instructions: string[]
   persona: string
   style: string | null
-  relationship: string | null
-  profile_card: string[]
   profile_card_source_refs: string[]
-  social_policy: string | null
   tool_policy: string | null
-  future_task: string | null
-  tool_results: string[]
-  operator_memories: string[]
-  summary_memories: string[]
-  long_term_memories: string[]
-  knowledge_memories: string[]
-  conversation_summary: string | null
+  expression_context: string[]
+  evidence_context: string[]
   context_priority: string[]
   conversation_messages: string[]
   response_rules: string[]

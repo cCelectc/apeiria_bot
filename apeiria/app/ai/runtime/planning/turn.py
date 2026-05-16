@@ -48,7 +48,6 @@ from apeiria.app.ai.runtime.stages import (
 if TYPE_CHECKING:
     from apeiria.ai.model import AIModelMessage
     from apeiria.ai.prompting import PromptPacket
-    from apeiria.app.ai.reply_strategy.models import ReplyStrategyDecision
     from apeiria.app.ai.runtime.planning.prompts import RuntimePromptComposeInput
     from apeiria.app.ai.runtime.session.context import (
         RuntimeContextMaterials,
@@ -79,11 +78,6 @@ async def plan_runtime_turn(
     initial_tool_exposure_plan = tool_orchestrator.plan_exposure(
         allowed_tools=allowed_tool_specs,
         policy=context.tool_policy,
-        ordinary_ambient_group=(
-            identity.scene_type == "group"
-            and not turn.is_tome
-            and turn.runtime_mode != "future_task"
-        ),
         execution_timeout_seconds=tool_execution_timeout_seconds,
         current_time=current_time,
     )
@@ -107,11 +101,6 @@ async def plan_runtime_turn(
     tool_exposure_plan = tool_orchestrator.plan_exposure(
         allowed_tools=allowed_tool_specs,
         policy=context.tool_policy,
-        ordinary_ambient_group=(
-            identity.scene_type == "group"
-            and not turn.is_tome
-            and turn.runtime_mode != "future_task"
-        ),
         execution_timeout_seconds=tool_execution_timeout_seconds,
         current_time=current_time,
         model_supports_tools=selected.resolved_capabilities.supports_tool_calling,
@@ -137,7 +126,6 @@ async def plan_runtime_turn(
     context_projection = project_runtime_context(
         turn=turn,
         context=context,
-        social_decision=social_decision,
         tool_runtime=tool_runtime,
         skill_activation=skill_selection.activation_prompt,
         projection_mode="runtime",
@@ -197,7 +185,6 @@ def build_initial_runtime_reply_prompt_messages(
     *,
     turn: "RuntimeTurnInput",
     context: "RuntimeContextMaterials",
-    social_decision: "ReplyStrategyDecision",
     prompt_input: RuntimeTurnPlan | RuntimePromptPlanningInput,
 ) -> tuple["AIModelMessage", ...]:
     """Build the first model prompt messages used by direct/tool planning."""
@@ -206,7 +193,6 @@ def build_initial_runtime_reply_prompt_messages(
         build_initial_runtime_reply_prompt_packet(
             turn=turn,
             context=context,
-            social_decision=social_decision,
             prompt_input=prompt_input,
         )
     )
@@ -218,7 +204,6 @@ def build_initial_runtime_reply_prompt_packet(
     *,
     turn: "RuntimeTurnInput",
     context: "RuntimeContextMaterials",
-    social_decision: "ReplyStrategyDecision",
     prompt_input: RuntimeTurnPlan | RuntimePromptPlanningInput,
 ) -> "PromptPacket":
     """Build the first model prompt packet used by runtime and preview planning."""
@@ -227,7 +212,6 @@ def build_initial_runtime_reply_prompt_packet(
         build_initial_prompt_compose_input(
             turn=turn,
             context=context,
-            social_decision=social_decision,
             prompt_input=prompt_input,
         ),
         has_tools=_initial_reply_has_tools(prompt_input),
@@ -238,7 +222,6 @@ def build_initial_runtime_reply_prompt_diagnostics(
     *,
     turn: "RuntimeTurnInput",
     context: "RuntimeContextMaterials",
-    social_decision: "ReplyStrategyDecision",
     prompt_input: RuntimeTurnPlan | RuntimePromptPlanningInput,
 ) -> dict[str, object]:
     """Build bounded prompt-region diagnostics for the first reply prompt."""
@@ -246,7 +229,6 @@ def build_initial_runtime_reply_prompt_diagnostics(
     packet = build_initial_runtime_reply_prompt_packet(
         turn=turn,
         context=context,
-        social_decision=social_decision,
         prompt_input=prompt_input,
     )
     return build_prompt_region_diagnostics(packet)
@@ -256,13 +238,11 @@ def build_initial_prompt_compose_input(
     *,
     turn: "RuntimeTurnInput",
     context: "RuntimeContextMaterials",
-    social_decision: "ReplyStrategyDecision",
     prompt_input: RuntimeTurnPlan | RuntimePromptPlanningInput,
 ) -> "RuntimePromptComposeInput":
     context_projection = project_runtime_context(
         turn=turn,
         context=context,
-        social_decision=social_decision,
         tool_runtime=prompt_input.tool_runtime,
         skill_activation=prompt_input.skill_activation,
         projection_mode="runtime",

@@ -51,11 +51,8 @@ def build_social_judgment_packet(
             name="Instruction",
             content="\n".join(
                 (
-                    "Decide your social behavior for the current turn.",
-                    (
-                        "Optimize for social coherence, restraint, persona "
-                        "consistency, and avoiding a tool-brained feel."
-                    ),
+                    "判断当前轮次的社交行为。",
+                    "优先保证社交连贯、克制、人格一致，并避免显得像只会调用工具。",
                 )
             ),
         ),
@@ -69,29 +66,16 @@ def build_social_judgment_packet(
             name="ActionPolicy",
             content="\n".join(
                 (
-                    "Use action=reply for normal direct response.",
+                    "普通直接回应使用 action=reply。",
                     (
-                        "Use action=interject only when speaking without strong "
-                        "direct address still has clear social value."
+                        "只有在没有强直接点名但发言仍有明确社交价值时，"
+                        "才使用 action=interject。"
                     ),
-                    (
-                        "Use action=wait when you should hold off for "
-                        "now but the conversation may continue soon."
-                    ),
-                    "Use action=suppress when you should stay silent.",
-                    (
-                        "Do not choose reply or interject just to keep the "
-                        "conversation going."
-                    ),
-                    (
-                        "When speaking, a complete short statement is valid; "
-                        "do not force a follow-up question, offer, or "
-                        "continuation hook."
-                    ),
-                    (
-                        "Use tool_mode=allow only when tools are genuinely needed; "
-                        "otherwise use avoid."
-                    ),
+                    "如果现在应先停一下、但对话可能很快继续，使用 action=wait。",
+                    "应该保持沉默时使用 action=suppress。",
+                    "不要只为了延续对话而选择 reply 或 interject。",
+                    "发言时，完整的短句也是有效回复；不要强行追加追问、邀约或延续钩子。",
+                    "只有确实需要工具时才使用 tool_mode=allow；否则使用 avoid。",
                 )
             ),
         ),
@@ -105,7 +89,7 @@ def build_social_judgment_packet(
             name="OutputContract",
             content="\n".join(
                 (
-                    "Return strict JSON only with this shape:",
+                    "只返回严格 JSON，格式如下：",
                     _JSON_SHAPE,
                 )
             ),
@@ -117,23 +101,19 @@ def build_social_judgment_packet(
 def _build_engagement_policy(inputs: SocialJudgmentPromptInput) -> str:
     if inputs.engagement_type == "direct":
         return (
-            "The user has directly addressed the bot (@mention or private message). "
-            "Prefer action=reply unless the message is empty filler, pure noise, "
-            "or genuinely not worth responding to - in that case use action=suppress."
+            "用户已经直接对机器人说话（@提及或私聊）。"
+            "除非消息只是空泛填充、纯噪声或确实不值得回应，否则优先使用 action=reply；"
+            "不值得回应时使用 action=suppress。"
         )
     return "\n".join(
         (
             (
-                "The bot was NOT directly addressed. The default and most common "
-                "action should be action=suppress (stay silent). Only use "
-                "action=interject when speaking without direct address still has "
-                "clear social value - the bot has something genuinely relevant "
-                "or socially fitting to add."
+                "机器人没有被直接点名。默认且最常见的动作应为 "
+                "action=suppress（保持沉默）。"
+                "只有在没有直接点名但发言仍有明确社交价值时，才使用 "
+                "action=interject；也就是机器人确实有相关或合适的内容可以补充。"
             ),
-            (
-                "Do NOT interject just because the bot 'could' answer. Real people "
-                "stay silent most of the time in group chats."
-            ),
+            "不要仅仅因为机器人“能回答”就插话。真实群聊里，大多数时候人会保持沉默。",
         )
     )
 
@@ -141,20 +121,20 @@ def _build_engagement_policy(inputs: SocialJudgmentPromptInput) -> str:
 def _build_context(inputs: SocialJudgmentPromptInput) -> str:
     tool_names = ", ".join(inputs.available_tool_names) or "<none>"
     lines = [
-        f"Scene type: {inputs.scene_type}",
-        f"Runtime mode: {inputs.runtime_mode}",
-        f"Engagement type: {inputs.engagement_type}",
-        f"Message text: {inputs.message_text}",
-        f"Latest user turn text: {inputs.latest_user_turn_text or '<none>'}",
-        f"Conversation summary: {inputs.conversation_summary or '<none>'}",
-        f"Relationship context: {inputs.relationship_context or '<none>'}",
-        f"Persona id: {inputs.persona_id or '<none>'}",
-        f"Available tool names: {tool_names}",
-        f"Recent turn count: {inputs.recent_turn_count}",
-        f"Recent bot turn count: {inputs.recent_bot_turn_count}",
-        f"Consecutive silence count: {inputs.consecutive_silence_count}",
-        f"Current time: {inputs.current_time.isoformat()}",
+        f"场景类型: {inputs.scene_type}",
+        f"运行模式: {inputs.runtime_mode}",
+        f"互动类型: {inputs.engagement_type}",
+        f"消息内容: {inputs.message_text}",
+        f"最新用户发言: {inputs.latest_user_turn_text or '<none>'}",
+        f"对话摘要: {inputs.conversation_summary or '<none>'}",
+        f"关系上下文: {inputs.relationship_context or '<none>'}",
+        f"人格 id: {inputs.persona_id or '<none>'}",
+        f"可用工具名: {tool_names}",
+        f"近期轮次数: {inputs.recent_turn_count}",
+        f"近期机器人发言数: {inputs.recent_bot_turn_count}",
+        f"连续沉默次数: {inputs.consecutive_silence_count}",
+        f"当前时间: {inputs.current_time.isoformat()}",
     ]
     if inputs.initiative_budget_score is not None:
-        lines.append(f"Initiative budget score: {inputs.initiative_budget_score:.2f}")
+        lines.append(f"主动性预算分: {inputs.initiative_budget_score:.2f}")
     return "\n".join(lines)

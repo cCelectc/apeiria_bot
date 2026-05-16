@@ -19,25 +19,16 @@ if TYPE_CHECKING:
     from apeiria.app.ai.runtime.execution.tool_loop import RuntimeToolLoopInput
 
 
-DEFAULT_TOOL_AWARENESS_CATEGORIES = (
-    "memory",
-    "future_task",
-    "relationship",
-    "plugin_capability",
-)
 _DISPLAY_TIMEZONE = ZoneInfo("Asia/Shanghai")
 _MAX_TOOL_GUIDANCE_DESCRIPTION_CHARS = 160
 
 
 @dataclass(frozen=True, slots=True)
 class ToolExposurePlan:
-    """Provider-neutral plan for awareness and executable tool exposure."""
+    """Provider-neutral plan for executable tool exposure."""
 
-    awareness_text: str = ""
-    category_ids: tuple[str, ...] = ()
     selected_tool_definitions: tuple[AIToolDefinition, ...] = ()
     selected_tools: tuple["AIModelToolDefinition", ...] = ()
-    hidden_reasons: dict[str, str] = field(default_factory=dict)
     unavailable_reasons: dict[str, str] = field(default_factory=dict)
     denied_reasons: dict[str, str] = field(default_factory=dict)
     diagnostics: dict[str, Any] = field(default_factory=dict)
@@ -117,43 +108,13 @@ def build_tool_guidance_text(plan: ToolExposurePlan) -> str | None:
 def build_default_tool_exposure_plan(
     *,
     allowed_tools: tuple[AIToolDefinition, ...],
-    ordinary_ambient_group: bool,
 ) -> ToolExposurePlan:
-    """Build deterministic first-slice tool awareness for one turn."""
-
-    hidden_reasons: dict[str, str] = {}
-    admin_project_tool_count = 0
-    for tool in allowed_tools:
-        if _is_admin_project_tool(tool):
-            admin_project_tool_count += 1
-            if ordinary_ambient_group:
-                hidden_reasons[tool.name] = "excluded_from_ambient_group"
+    """Build deterministic first-slice tool exposure for one turn."""
 
     return ToolExposurePlan(
-        awareness_text=_default_awareness_text(),
-        category_ids=DEFAULT_TOOL_AWARENESS_CATEGORIES,
         selected_tools=(),
-        hidden_reasons=hidden_reasons,
-        diagnostics={
-            "category_count": len(DEFAULT_TOOL_AWARENESS_CATEGORIES),
-            "allowed_tool_count": len(allowed_tools),
-            "admin_project_tool_count": admin_project_tool_count,
-            "ordinary_ambient_group": ordinary_ambient_group,
-        },
+        diagnostics={"allowed_tool_count": len(allowed_tools)},
     )
-
-
-def _default_awareness_text() -> str:
-    return (
-        "External capability categories may exist: memory, future_task, "
-        "relationship, plugin_capability. Executable tools are selected "
-        "separately; do not claim an external action unless a tool result is "
-        "provided."
-    )
-
-
-def _is_admin_project_tool(tool: AIToolDefinition) -> bool:
-    return tool.name.startswith("admin.") or tool.name.startswith("project.")
 
 
 @dataclass(frozen=True, slots=True)
@@ -166,7 +127,6 @@ class ToolOrchestrator:
         allowed_tools: tuple[AIToolDefinition, ...],
         policy: "AIToolPolicy",
         requested_tool_names: tuple[str, ...] = (),
-        ordinary_ambient_group: bool,
         execution_timeout_seconds: float | None,
         current_time: datetime | None = None,
         model_supports_tools: bool = True,
@@ -176,14 +136,10 @@ class ToolOrchestrator:
         del current_time
         base_plan = build_default_tool_exposure_plan(
             allowed_tools=allowed_tools,
-            ordinary_ambient_group=ordinary_ambient_group,
         )
         requested = set(requested_tool_names)
         candidate_tools = tuple(
-            tool
-            for tool in allowed_tools
-            if (not requested or tool.name in requested)
-            and tool.name not in base_plan.hidden_reasons
+            tool for tool in allowed_tools if not requested or tool.name in requested
         )
         exposure_plan = create_tool_exposure_plan(
             tools=candidate_tools,
@@ -193,10 +149,7 @@ class ToolOrchestrator:
         provider_name_map = build_provider_name_map(exposure_plan.visible_tools)
 
         return ToolExposurePlan(
-            awareness_text=base_plan.awareness_text,
-            category_ids=base_plan.category_ids,
             selected_tool_definitions=exposure_plan.visible_tools,
-            hidden_reasons=base_plan.hidden_reasons,
             unavailable_reasons=exposure_plan.unavailable_reasons,
             denied_reasons=exposure_plan.denied_reasons,
             diagnostics={
@@ -296,7 +249,6 @@ def _executable_tool_names(plan: ToolExposurePlan) -> tuple[str, ...]:
 
 
 __all__ = [
-    "DEFAULT_TOOL_AWARENESS_CATEGORIES",
     "ToolExposurePlan",
     "ToolOrchestrator",
     "apply_tool_exposure_allowlist",

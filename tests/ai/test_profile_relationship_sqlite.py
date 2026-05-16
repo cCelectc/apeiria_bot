@@ -73,10 +73,10 @@ def test_profile_and_relationship_boundaries_use_sqlite(
         )
 
         assert private_card is not None
-        assert "- Preferred name: Mika" in private_card.lines
+        assert "- 首选名称: Mika" in private_card.lines
         assert memory.memory_id in private_card.source_refs
         assert group_card is not None
-        assert "- Preferred name: Mika" not in group_card.lines
+        assert "- 首选名称: Mika" not in group_card.lines
         assert not hasattr(profile, "memory_points")
         assert not hasattr(profile, "relationship_score")
 

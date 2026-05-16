@@ -5,8 +5,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal, Protocol, TypeGuard
 
-from apeiria.app.ai.runtime.planning.social import summarize_social_decision
-
 if TYPE_CHECKING:
     from apeiria.ai.knowledge.models import (
         KnowledgeRetrievalDiagnostics,
@@ -15,7 +13,6 @@ if TYPE_CHECKING:
     from apeiria.ai.memory import AIMemoryDefinition, AIMemoryRetrievalDiagnostics
     from apeiria.ai.prompting import ReplyPersonaPromptBundleLike
     from apeiria.app.ai.future_tasks.models import AIFutureTaskDefinition
-    from apeiria.app.ai.reply_strategy.models import ReplyStrategyDecision
     from apeiria.app.ai.runtime.session.context import (
         RuntimeContextMaterials,
         RuntimeTurnInput,
@@ -49,8 +46,6 @@ class RuntimeContextPromptView:
     profile_card: tuple[str, ...]
     profile_card_source_refs: tuple[str, ...]
     conversation_summary: str | None
-    social_policy_summary: str | None
-    capability_awareness: str | None = None
     future_task_context: str | None = None
     skill_activation: str | None = None
     rag_chunks: tuple["KnowledgeRetrievalItem", ...] = ()
@@ -69,7 +64,6 @@ class RuntimeContextPreviewView:
     turns: tuple["ChatContextMessageView", ...]
     profile_card: tuple[str, ...]
     profile_card_source_refs: tuple[str, ...]
-    capability_awareness: str | None = None
     rag_chunks: tuple["KnowledgeRetrievalItem", ...] = ()
     rag_diagnostics: "KnowledgeRetrievalDiagnostics | None" = None
 
@@ -90,7 +84,6 @@ class RuntimeContextDiagnostics:
     profile_card_line_count: int
     has_conversation_summary: bool
     allowed_capability_count: int
-    has_capability_awareness: bool
     has_future_task_context: bool
     rag_enabled: bool
     rag_selected_count: int
@@ -120,7 +113,6 @@ class RuntimeContextDiagnostics:
             "profile_card_line_count": self.profile_card_line_count,
             "has_conversation_summary": self.has_conversation_summary,
             "allowed_capability_count": self.allowed_capability_count,
-            "has_capability_awareness": self.has_capability_awareness,
             "has_future_task_context": self.has_future_task_context,
             "rag_enabled": self.rag_enabled,
             "rag_selected_count": self.rag_selected_count,
@@ -141,14 +133,12 @@ class RuntimeContextProjection:
     diagnostics: RuntimeContextDiagnostics
 
 
-def project_runtime_context(  # noqa: PLR0913
+def project_runtime_context(
     *,
     turn: "RuntimeTurnInput",
     context: "RuntimeContextMaterials",
-    social_decision: "ReplyStrategyDecision | None",
     tool_runtime: RuntimeContextToolRuntimeView,
     skill_activation: str | None = None,
-    capability_awareness: str | None = None,
     projection_mode: RuntimeContextProjectionMode = "runtime",
 ) -> RuntimeContextProjection:
     """Project gathered context materials into prompt, preview, and diagnostics."""
@@ -165,12 +155,6 @@ def project_runtime_context(  # noqa: PLR0913
         profile_card=context.profile_card,
         profile_card_source_refs=context.profile_card_source_refs,
         conversation_summary=context.conversation_summary,
-        social_policy_summary=(
-            summarize_social_decision(social_decision)
-            if social_decision is not None
-            else None
-        ),
-        capability_awareness=capability_awareness,
         future_task_context=future_task_context,
         skill_activation=skill_activation,
         rag_chunks=getattr(context, "rag_chunks", ()),
@@ -185,7 +169,6 @@ def project_runtime_context(  # noqa: PLR0913
         turns=tuple(context.turns),
         profile_card=context.profile_card,
         profile_card_source_refs=context.profile_card_source_refs,
-        capability_awareness=capability_awareness,
         rag_chunks=getattr(context, "rag_chunks", ()),
         rag_diagnostics=getattr(context, "rag_diagnostics", None),
     )
@@ -219,7 +202,6 @@ def project_runtime_context(  # noqa: PLR0913
             profile_card_line_count=len(context.profile_card),
             has_conversation_summary=bool(context.conversation_summary),
             allowed_capability_count=len(context.allowed_tools),
-            has_capability_awareness=capability_awareness is not None,
             has_future_task_context=future_task_context is not None,
             rag_enabled=_rag_enabled(getattr(context, "rag_diagnostics", None)),
             rag_selected_count=len(getattr(context, "rag_chunks", ())),

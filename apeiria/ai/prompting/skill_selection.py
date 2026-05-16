@@ -43,9 +43,7 @@ def build_skill_selection_packet(
             role="system",
             name="Instruction",
             content=(
-                "You are a skill selector. Given the user message and "
-                "available skills, decide which skills (if any) should be "
-                "activated to help generate a good reply."
+                "你是技能选择器。根据用户消息和可用技能，判断是否需要激活某些技能来帮助生成更好的回复。"
             ),
         ),
         PromptSection(
@@ -74,18 +72,18 @@ def build_skill_selection_packet(
                 name="OutputContract",
                 content="\n".join(
                     (
-                        "Rules:",
-                        "- Only select skills that are clearly relevant.",
+                        "规则：",
+                        "- 只选择明显相关的技能。",
                         (
-                            "- Most messages need zero skills - return an empty "
-                            "selected_names list when unsure."
+                            "- 大多数消息不需要任何技能；拿不准时返回空的 "
+                            "selected_names 列表。"
                         ),
                         (
-                            "- Return a JSON object with selected_names, e.g. "
-                            '{"selected_names":["social-observer"]} or '
+                            "- 返回一个包含 selected_names 的 JSON 对象，例如 "
+                            '{"selected_names":["social-observer"]} 或 '
                             '{"selected_names":[]}.'
                         ),
-                        "- Return ONLY the JSON object, nothing else.",
+                        "- 只返回 JSON 对象，不要输出其他内容。",
                     )
                 ),
             ),
@@ -97,7 +95,7 @@ def build_skill_selection_packet(
 def _build_catalog_prompt(
     entries: "Sequence[SkillCatalogEntryLike]",
 ) -> str:
-    lines: list[str] = ["Available skills:"]
+    lines: list[str] = ["可用技能："]
     for entry in entries:
         mode_tag = f"[{entry.entry_mode}]"
         lines.append(f"- **{entry.skill_name}** {mode_tag}: {entry.description}")

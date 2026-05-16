@@ -18,10 +18,10 @@ if TYPE_CHECKING:
     from apeiria.ai.memory.models import AIMemoryDefinition
 
 _PROFILE_MEMORY_LABELS: dict[str, str] = {
-    "preference": "Communication preference",
-    "fact": "Stable fact",
-    "note": "Profile note",
-    "impression": "Impression",
+    "preference": "沟通偏好",
+    "fact": "稳定事实",
+    "note": "档案备注",
+    "impression": "印象",
 }
 _MAX_PROFILE_CARD_MEMORY_LINES = 4
 
@@ -168,9 +168,9 @@ class AIProfileService:
             _name_visible(profile.name_visibility, scene_type)
             and profile.preferred_name
         ):
-            lines.append(f"- Preferred name: {profile.preferred_name}")
+            lines.append(f"- 首选名称: {profile.preferred_name}")
         elif profile.display_name:
-            lines.append(f"- Display name: {profile.display_name}")
+            lines.append(f"- 显示名称: {profile.display_name}")
 
         memory_line_count = 0
         for memory in memories:

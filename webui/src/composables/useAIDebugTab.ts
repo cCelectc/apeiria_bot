@@ -224,22 +224,14 @@ function buildPromptChannelSections(
     }
   }
   append('system_instructions', t('ai.promptChannelSystemInstructions'), channels.system_instructions)
+  append('response_rules', t('ai.promptChannelResponseRules'), channels.response_rules)
+  append('context_priority', t('ai.promptChannelContextPriority'), channels.context_priority)
   append('persona', t('ai.promptChannelPersona'), [channels.persona])
   append('style', t('ai.promptChannelStyle'), channels.style ? [channels.style] : [])
-  append('relationship', t('ai.promptChannelRelationship'), channels.relationship ? [channels.relationship] : [])
-  append('profile_card', t('ai.promptChannelProfile'), channels.profile_card)
-  append('social_policy', t('ai.promptChannelSocialPolicy'), channels.social_policy ? [channels.social_policy] : [])
   append('tool_policy', t('ai.promptChannelToolPolicy'), channels.tool_policy ? [channels.tool_policy] : [])
-  append('future_task', t('ai.promptChannelFutureTask'), channels.future_task ? [channels.future_task] : [])
-  append('tool_results', t('ai.promptChannelToolResults'), channels.tool_results)
-  append('operator_memories', t('ai.promptChannelOperatorMemories'), channels.operator_memories)
-  append('summary_memories', t('ai.promptChannelSummaryMemories'), channels.summary_memories)
-  append('long_term_memories', t('ai.promptChannelLongTermMemories'), channels.long_term_memories)
-  append('knowledge_memories', t('ai.promptChannelKnowledgeMemories'), channels.knowledge_memories)
-  append('conversation_summary', t('ai.promptChannelConversationSummary'), channels.conversation_summary ? [channels.conversation_summary] : [])
-  append('context_priority', t('ai.promptChannelContextPriority'), channels.context_priority)
+  append('expression_context', t('ai.promptChannelExpressionContext'), channels.expression_context)
+  append('evidence_context', t('ai.promptChannelEvidenceContext'), channels.evidence_context)
   append('conversation_messages', t('ai.promptChannelConversationMessages'), channels.conversation_messages)
-  append('response_rules', t('ai.promptChannelResponseRules'), channels.response_rules)
   append('instruction', t('ai.promptChannelInstruction'), [channels.instruction])
   return sections
 }
