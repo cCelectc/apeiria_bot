@@ -20,13 +20,22 @@ export interface RestartPendingEntry {
   updated_at: string
 }
 
+export type ReversibleRestartPendingEntry = RestartPendingEntry & {
+  undo: RestartUndoAction
+}
+
 const STORAGE_KEY = 'apeiria-restart-pending'
 
 export const useRestartStore = defineStore('restart', () => {
   const entries = ref<RestartPendingEntry[]>(readEntries())
 
   const hasPendingRestart = computed(() => entries.value.length > 0)
+  const reversibleEntries = computed<ReversibleRestartPendingEntry[]>(() =>
+    entries.value.filter(hasUndoAction),
+  )
   const pendingCount = computed(() => entries.value.length)
+  const reversibleCount = computed(() => reversibleEntries.value.length)
+  const hasReversiblePending = computed(() => reversibleCount.value > 0)
 
   function markPending(entry: Omit<RestartPendingEntry, 'updated_at'>) {
     const nextEntry: RestartPendingEntry = {
@@ -48,12 +57,21 @@ export const useRestartStore = defineStore('restart', () => {
 
   return {
     entries,
+    hasReversiblePending,
     hasPendingRestart,
     pendingCount,
+    reversibleCount,
+    reversibleEntries,
     markPending,
     clearPending,
   }
 })
+
+function hasUndoAction(
+  entry: RestartPendingEntry,
+): entry is ReversibleRestartPendingEntry {
+  return Boolean(entry.undo)
+}
 
 function persistEntries(entries: RestartPendingEntry[]) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(entries))

@@ -99,6 +99,7 @@ export function usePluginMaintenance(options: {
   )
   const manualInstallTaskRunning = computed(() =>
     manualInstallTask.value?.status === 'pending'
+    || manualInstallTask.value?.status === 'queued'
     || manualInstallTask.value?.status === 'running',
   )
   const manualInstallTaskStatusTone = computed(() =>
@@ -112,6 +113,7 @@ export function usePluginMaintenance(options: {
   )
   const packageUpdateTaskRunning = computed(() =>
     packageUpdateTask.value?.status === 'pending'
+    || packageUpdateTask.value?.status === 'queued'
     || packageUpdateTask.value?.status === 'running',
   )
   const packageUpdateTaskStatusTone = computed(() =>

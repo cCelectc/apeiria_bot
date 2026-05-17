@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import asyncio
+import threading
+from collections import deque
 from dataclasses import replace
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Literal
@@ -13,11 +15,16 @@ from apeiria.app.plugins.store.models import (
     StoreItem,
     StoreItemType,
     StoreTask,
+    StoreTaskStep,
 )
 from apeiria.environment import (
     PackageOperationRequest,
     package_service,
     store_service,
+)
+from apeiria.environment.package_progress import (
+    PackageProgressReporter,
+    use_package_progress_reporter,
 )
 from apeiria.plugins.package_ids import normalize_package_id
 
@@ -27,6 +34,7 @@ if TYPE_CHECKING:
     from apeiria.environment import PackageOperationResult
 
 PackageMutationOperation = Literal["install", "update", "uninstall"]
+MAX_DIAGNOSTICS = 8
 
 
 def _format_task_error(exc: Exception) -> str:
@@ -89,6 +97,11 @@ class PluginStoreTaskService:
         self._tasks: dict[str, StoreTask] = {}
         self._background_tasks: set[asyncio.Task[None]] = set()
         self._active_install_keys: set[tuple[str, ...]] = set()
+        self._queue: deque[
+            tuple[str, Callable[[], Coroutine[object, object, None]]]
+        ] = deque()
+        self._worker_task: asyncio.Task[None] | None = None
+        self._running_task_id: str | None = None
 
     def get_task(self, task_id: str) -> StoreTask | None:
         return self._tasks.get(task_id)
@@ -123,6 +136,10 @@ class PluginStoreTaskService:
         return self._create_store_task(
             task_key=install_key,
             title=f"Install {item.name}",
+            operation="install",
+            resource_kind=request.type,
+            requirement=request.package_name,
+            binding_value=request.module_name,
             runner_factory=lambda task_id: self._run_store_mutation_task(
                 task_id=task_id,
                 item=item,
@@ -162,6 +179,10 @@ class PluginStoreTaskService:
         return self._create_store_task(
             task_key=install_key,
             title=f"Update {item.name}",
+            operation="update",
+            resource_kind=request.type,
+            requirement=request.package_name,
+            binding_value=request.module_name,
             runner_factory=lambda task_id: self._run_store_mutation_task(
                 task_id=task_id,
                 item=item,
@@ -217,6 +238,10 @@ class PluginStoreTaskService:
         return self._create_store_task(
             task_key=install_key,
             title=f"Install {target}",
+            operation="install",
+            resource_kind=resource_kind,
+            requirement=target,
+            binding_value=resolved_module or None,
             runner_factory=lambda task_id: self._run_manual_mutation_task(
                 task_id=task_id,
                 resource_kind=resource_kind,
@@ -270,6 +295,10 @@ class PluginStoreTaskService:
         return self._create_store_task(
             task_key=install_key,
             title=f"Update {resolved_module}",
+            operation="update",
+            resource_kind=resource_kind,
+            requirement=target,
+            binding_value=resolved_module,
             runner_factory=lambda task_id: self._run_manual_mutation_task(
                 task_id=task_id,
                 resource_kind=resource_kind,
@@ -312,6 +341,10 @@ class PluginStoreTaskService:
         return self._create_store_task(
             task_key=install_key,
             title=f"Uninstall {resolved_module}",
+            operation="uninstall",
+            resource_kind=resource_kind,
+            requirement=target,
+            binding_value=resolved_module,
             runner_factory=lambda task_id: self._run_manual_mutation_task(
                 task_id=task_id,
                 resource_kind=resource_kind,
@@ -322,27 +355,76 @@ class PluginStoreTaskService:
             ),
         )
 
-    def _create_store_task(
+    def _create_store_task(  # noqa: PLR0913
         self,
         *,
         task_key: tuple[str, ...],
         title: str,
+        operation: PackageMutationOperation,
+        resource_kind: StoreItemType,
+        requirement: str,
+        binding_value: str | None,
         runner_factory: "Callable[[str], Coroutine[object, object, None]]",
     ) -> StoreTask:
         task_id = uuid4().hex
+        created_at = _now()
+
+        def runner() -> Coroutine[object, object, None]:
+            return runner_factory(task_id)
+
         task = StoreTask(
             task_id=task_id,
             title=title,
-            status="pending",
-            logs="",
-            created_at=_now(),
+            status="queued",
+            logs="queued\n",
+            created_at=created_at,
+            operation=operation,
+            resource_kind=resource_kind,
+            requirement=requirement,
+            binding_value=binding_value,
+            current_phase="queued",
+            current_phase_label="Queued",
+            steps=(
+                StoreTaskStep(
+                    phase="queued",
+                    label="Queued",
+                    status="running",
+                    detail="Waiting for earlier package tasks.",
+                    started_at=created_at,
+                ),
+            ),
         )
         self._tasks[task_id] = task
         self._active_install_keys.add(task_key)
-        background_task = asyncio.create_task(runner_factory(task_id))
-        self._background_tasks.add(background_task)
-        background_task.add_done_callback(self._background_tasks.discard)
+        self._queue.append((task_id, runner))
+        self._refresh_queue_positions()
+        self._ensure_worker()
         return task
+
+    def _ensure_worker(self) -> None:
+        if self._worker_task is not None and not self._worker_task.done():
+            return
+        self._worker_task = asyncio.create_task(self._run_task_queue())
+        self._background_tasks.add(self._worker_task)
+        self._worker_task.add_done_callback(self._background_tasks.discard)
+
+    async def _run_task_queue(self) -> None:
+        while self._queue:
+            task_id, runner = self._queue.popleft()
+            self._running_task_id = task_id
+            self._refresh_queue_positions()
+            try:
+                await runner()
+            finally:
+                self._running_task_id = None
+                self._refresh_queue_positions()
+
+    def _refresh_queue_positions(self) -> None:
+        for position, (task_id, _) in enumerate(self._queue, start=1):
+            task = self._tasks.get(task_id)
+            if task is None or task.status != "queued":
+                continue
+            self._tasks[task_id] = replace(task, queue_position=position)
 
     async def _run_store_mutation_task(
         self,
@@ -355,19 +437,18 @@ class PluginStoreTaskService:
     ) -> None:
         resource_label = _resource_label(request.type)
         try:
-            self._update_task(
+            self._begin_task_execution(
                 task_id,
-                status="running",
-                started_at=_now(),
-                logs=(
+                detail=(
                     f"source: {item.source_name}\n"
                     f"{resource_label}: {item.name}\n"
                     f"package: {request.package_name}\n"
-                    f"{_binding_label(request.type)}: {request.module_name}\n"
+                    f"{_binding_label(request.type)}: {request.module_name}"
                 ),
             )
             result = await asyncio.to_thread(
-                package_service.perform_operation,
+                self._perform_operation_with_progress,
+                task_id,
                 PackageOperationRequest(
                     resource_kind=request.type,
                     operation=operation,
@@ -397,14 +478,12 @@ class PluginStoreTaskService:
         task_key: tuple[str, ...],
     ) -> None:
         try:
-            self._update_task(
+            self._begin_task_execution(
                 task_id,
-                status="running",
-                started_at=_now(),
-                logs=(
+                detail=(
                     f"source: {_manual_source_label(operation)}\n"
                     f"requirement: {requirement}\n"
-                    f"{_binding_label(resource_kind)}: {module_name or 'auto'}\n"
+                    f"{_binding_label(resource_kind)}: {module_name or 'auto'}"
                 ),
             )
             operation_request = PackageOperationRequest(
@@ -414,7 +493,8 @@ class PluginStoreTaskService:
                 binding_value=module_name or None,
             )
             result = await asyncio.to_thread(
-                package_service.perform_operation,
+                self._perform_operation_with_progress,
+                task_id,
                 operation_request,
             )
             self._mark_task_succeeded(
@@ -436,15 +516,33 @@ class PluginStoreTaskService:
         resource_kind: StoreItemType,
         result: "PackageOperationResult",
     ) -> None:
+        self._finish_current_step(task_id, status="succeeded")
+        finished_at = _now()
         self._update_task(
             task_id,
             status="succeeded",
-            finished_at=_now(),
+            finished_at=finished_at,
+            current_phase="succeeded",
+            current_phase_label="Succeeded",
+            progress_percent=100,
+            queue_position=None,
+            restart_required=result.restart_required,
+            steps=(
+                *self._tasks[task_id].steps,
+                StoreTaskStep(
+                    phase="succeeded",
+                    label="Succeeded",
+                    status="succeeded",
+                    detail=f"{operation} succeeded.",
+                    started_at=finished_at,
+                    finished_at=finished_at,
+                ),
+            ),
             result={
                 "requirement": result.requirement,
                 "module_name": result.binding_value or "",
                 "resource_kind": resource_kind,
-                "restart_required": True,
+                "restart_required": result.restart_required,
             },
             logs=f"{self._tasks[task_id].logs}{operation} succeeded\n",
         )
@@ -457,12 +555,152 @@ class PluginStoreTaskService:
         exc: Exception,
     ) -> None:
         error = _format_task_error(exc)
+        self._finish_current_step(task_id, status="failed", detail=error)
+        task = self._tasks[task_id]
         self._update_task(
             task_id,
             status="failed",
             finished_at=_now(),
+            current_phase="failed",
+            current_phase_label="Failed",
+            queue_position=None,
             error=error,
+            diagnostics=(
+                [
+                    *task.diagnostics,
+                    {
+                        "phase": task.current_phase or "failed",
+                        "message": error,
+                    },
+                ]
+            )[-MAX_DIAGNOSTICS:],
             logs=f"{self._tasks[task_id].logs}{operation} failed\n{error}\n",
+        )
+
+    def _begin_task_execution(self, task_id: str, *, detail: str) -> None:
+        started_at = _now()
+        self._finish_step(task_id, "queued", status="succeeded", finished_at=started_at)
+        self._update_task(
+            task_id,
+            status="running",
+            started_at=started_at,
+            queue_position=None,
+            logs=f"{self._tasks[task_id].logs}{detail}\n",
+        )
+        self._start_step(
+            task_id,
+            "waiting_for_lock",
+            "Waiting for package mutation lock",
+            detail="Waiting for project package mutation lock.",
+            started_at=started_at,
+        )
+
+    def _perform_operation_with_progress(
+        self,
+        task_id: str,
+        request: PackageOperationRequest,
+    ) -> "PackageOperationResult":
+        reporter = _TaskProgressReporter(self, task_id)
+        with use_package_progress_reporter(reporter):
+            return package_service.perform_operation(request)
+
+    def _start_step(  # noqa: PLR0913
+        self,
+        task_id: str,
+        phase: str,
+        label: str,
+        *,
+        detail: str | None = None,
+        command: str | None = None,
+        started_at: str | None = None,
+    ) -> None:
+        now = started_at or _now()
+        self._finish_current_step(task_id, status="succeeded", finished_at=now)
+        task = self._tasks[task_id]
+        self._update_task(
+            task_id,
+            current_phase=phase,
+            current_phase_label=label,
+            steps=(
+                *task.steps,
+                StoreTaskStep(
+                    phase=phase,
+                    label=label,
+                    status="running",
+                    detail=detail,
+                    command=command,
+                    started_at=now,
+                ),
+            ),
+            logs=f"{task.logs}{label}\n",
+        )
+
+    def _finish_current_step(
+        self,
+        task_id: str,
+        *,
+        status: str,
+        detail: str | None = None,
+        output_excerpt: str | None = None,
+        finished_at: str | None = None,
+    ) -> None:
+        task = self._tasks[task_id]
+        if task.current_phase is None:
+            return
+        self._finish_step(
+            task_id,
+            task.current_phase,
+            status=status,
+            detail=detail,
+            output_excerpt=output_excerpt,
+            finished_at=finished_at,
+        )
+
+    def _finish_step(  # noqa: PLR0913
+        self,
+        task_id: str,
+        phase: str,
+        *,
+        status: str,
+        detail: str | None = None,
+        output_excerpt: str | None = None,
+        finished_at: str | None = None,
+    ) -> None:
+        task = self._tasks[task_id]
+        if not task.steps:
+            return
+        steps = list(task.steps)
+        for index in range(len(steps) - 1, -1, -1):
+            step = steps[index]
+            if step.phase != phase or step.status != "running":
+                continue
+            steps[index] = replace(
+                step,
+                status=status,
+                detail=detail if detail is not None else step.detail,
+                output_excerpt=(
+                    output_excerpt
+                    if output_excerpt is not None
+                    else step.output_excerpt
+                ),
+                finished_at=finished_at or _now(),
+            )
+            self._update_task(task_id, steps=tuple(steps))
+            return
+
+    def _add_diagnostic(self, task_id: str, phase: str, message: str) -> None:
+        task = self._tasks[task_id]
+        self._update_task(
+            task_id,
+            diagnostics=(
+                [
+                    *task.diagnostics,
+                    {
+                        "phase": phase,
+                        "message": message,
+                    },
+                ]
+            )[-MAX_DIAGNOSTICS:],
         )
 
     def _validate_install_request(
@@ -503,6 +741,91 @@ class PluginStoreTaskService:
             request.package_name,
             request.module_name,
         )
+
+
+class _TaskProgressReporter(PackageProgressReporter):
+    """Bridge package operation progress into one Web UI store task."""
+
+    def __init__(self, service: PluginStoreTaskService, task_id: str) -> None:
+        self._service = service
+        self._task_id = task_id
+        self._lock = threading.Lock()
+
+    def waiting_for_lock(self, lock_path: str) -> None:
+        with self._lock:
+            started_at = _now()
+            task = self._service.get_task(self._task_id)
+            if task is None:
+                return
+            if task.current_phase != "waiting_for_lock":
+                self._service._start_step(
+                    self._task_id,
+                    "waiting_for_lock",
+                    "Waiting for package mutation lock",
+                    detail=lock_path,
+                    started_at=started_at,
+                )
+            self._service._update_task(
+                self._task_id,
+                current_phase="waiting_for_lock",
+                current_phase_label="Waiting for package mutation lock",
+                lock_wait_started_at=task.lock_wait_started_at or started_at,
+            )
+
+    def lock_acquired(self, lock_path: str) -> None:
+        with self._lock:
+            acquired_at = _now()
+            self._service._finish_step(
+                self._task_id,
+                "waiting_for_lock",
+                status="succeeded",
+                detail=lock_path,
+                finished_at=acquired_at,
+            )
+            self._service._update_task(
+                self._task_id,
+                lock_acquired_at=acquired_at,
+                current_phase="mutating",
+                current_phase_label="Mutating package environment",
+            )
+
+    def step_started(
+        self,
+        phase: str,
+        label: str,
+        *,
+        detail: str | None = None,
+        command: str | None = None,
+    ) -> None:
+        with self._lock:
+            self._service._start_step(
+                self._task_id,
+                phase,
+                label,
+                detail=detail,
+                command=command,
+            )
+
+    def step_finished(
+        self,
+        phase: str,
+        *,
+        status: str = "succeeded",
+        detail: str | None = None,
+        output_excerpt: str | None = None,
+    ) -> None:
+        with self._lock:
+            self._service._finish_step(
+                self._task_id,
+                phase,
+                status=status,
+                detail=detail,
+                output_excerpt=output_excerpt,
+            )
+
+    def diagnostic(self, phase: str, message: str) -> None:
+        with self._lock:
+            self._service._add_diagnostic(self._task_id, phase, message)
 
 
 def _manual_source_label(operation: PackageMutationOperation) -> str:

@@ -65,6 +65,36 @@ export interface AdapterStoreTask {
   created_at: string | null
   started_at: string | null
   finished_at: string | null
+  operation: string | null
+  resource_kind: string | null
+  requirement: string | null
+  binding_value: string | null
+  current_phase: string | null
+  current_phase_label: string | null
+  progress_percent: number | null
+  queue_position: number | null
+  lock_wait_started_at: string | null
+  lock_acquired_at: string | null
+  restart_required: boolean
+  steps: AdapterTaskStep[]
+  diagnostics: AdapterTaskDiagnostic[]
+}
+
+export interface AdapterTaskStep {
+  phase: string | null
+  label: string | null
+  status: string | null
+  detail: string | null
+  command: string | null
+  output_excerpt: string | null
+  started_at: string | null
+  finished_at: string | null
+}
+
+export interface AdapterTaskDiagnostic {
+  phase?: string
+  message?: string
+  [key: string]: unknown
 }
 
 export function getAdapterConfig() {

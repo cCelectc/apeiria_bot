@@ -175,7 +175,7 @@ export function manualInstallTaskStatusLabel(
   t: PluginTranslate,
 ) {
   const status = task?.status || ''
-  if (status === 'pending') {
+  if (status === 'pending' || status === 'queued') {
     return t('plugins.manualInstallPending')
   }
   if (status === 'running') {
@@ -195,7 +195,7 @@ export function packageUpdateTaskStatusLabel(
   t: PluginTranslate,
 ) {
   const status = task?.status || ''
-  if (status === 'pending') {
+  if (status === 'pending' || status === 'queued') {
     return t('plugins.packageUpdatePending')
   }
   if (status === 'running') {

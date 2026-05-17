@@ -24,6 +24,8 @@ from apeiria.environment.models import (
     PackageOperationResult,
     ResourceKind,
 )
+from apeiria.environment.package_mutation import package_mutation_lock
+from apeiria.environment.package_progress import current_package_progress_reporter
 from apeiria.plugins.package_ids import normalize_package_id
 
 
@@ -84,6 +86,27 @@ class _PackageResourceAdapter:
 
 def _noop_after_mutation(requirement: str, binding_value: str | None) -> None:
     del requirement, binding_value
+
+
+def _report_config_step_start(label: str, detail: str | None = None) -> None:
+    current_package_progress_reporter().step_started(
+        "config",
+        label,
+        detail=detail,
+    )
+
+
+def _report_config_step_success(detail: str | None = None) -> None:
+    current_package_progress_reporter().step_finished(
+        "config",
+        detail=detail,
+    )
+
+
+def _report_config_step_failure(exc: Exception) -> None:
+    reporter = current_package_progress_reporter()
+    reporter.step_finished("config", status="failed", detail=str(exc))
+    reporter.diagnostic("config", str(exc))
 
 
 def _package_name_required_error() -> StoreInstallError:
@@ -189,6 +212,25 @@ class PackageService:
         self,
         request: PackageOperationRequest,
     ) -> PackageOperationResult:
+        with package_mutation_lock():
+            return self._perform_operation_unlocked(request)
+
+    def install(self, request: PackageOperationRequest) -> PackageOperationResult:
+        with package_mutation_lock():
+            return self._install_unlocked(request)
+
+    def update(self, request: PackageOperationRequest) -> PackageOperationResult:
+        with package_mutation_lock():
+            return self._update_unlocked(request)
+
+    def uninstall(self, request: PackageOperationRequest) -> PackageOperationResult:
+        with package_mutation_lock():
+            return self._uninstall_unlocked(request)
+
+    def _perform_operation_unlocked(
+        self,
+        request: PackageOperationRequest,
+    ) -> PackageOperationResult:
         if request.operation == "install":
             return self.install(request)
         if request.operation == "update":
@@ -198,7 +240,10 @@ class PackageService:
         msg = f"unsupported package operation: {request.operation}"
         raise ValueError(msg)
 
-    def install(self, request: PackageOperationRequest) -> PackageOperationResult:
+    def _install_unlocked(
+        self,
+        request: PackageOperationRequest,
+    ) -> PackageOperationResult:
         target = request.requirement.strip()
         if not target:
             raise _package_name_required_error()
@@ -216,8 +261,14 @@ class PackageService:
         if binding_value:
             self._add_requirement(target, request.extra_args)
             try:
+                _report_config_step_start(
+                    "Bind package to config",
+                    f"{adapter.binding_label}: {binding_value}",
+                )
                 adapter.bind_requirement(target, binding_value)
+                _report_config_step_success("Package binding updated")
             except Exception as exc:
+                _report_config_step_failure(exc)
                 self._rollback_install(target, request.extra_args, exc)
                 raise AssertionError("unreachable") from exc
             adapter.after_install(target, binding_value)
@@ -239,8 +290,14 @@ class PackageService:
                 declared_requirement=declared_requirement,
                 distributions_before=distributions_before,
             )
+            _report_config_step_start(
+                "Bind package to config",
+                f"{adapter.binding_label}: {resolved_binding}",
+            )
             adapter.bind_requirement(declared_requirement, resolved_binding)
+            _report_config_step_success("Package binding updated")
         except Exception as exc:
+            _report_config_step_failure(exc)
             self._rollback_install(declared_requirement, request.extra_args, exc)
             raise AssertionError("unreachable") from exc
         adapter.after_install(declared_requirement, resolved_binding)
@@ -251,7 +308,10 @@ class PackageService:
             binding_values=[resolved_binding],
         )
 
-    def update(self, request: PackageOperationRequest) -> PackageOperationResult:
+    def _update_unlocked(
+        self,
+        request: PackageOperationRequest,
+    ) -> PackageOperationResult:
         target = request.requirement.strip()
         if not target:
             raise _package_name_required_error()
@@ -273,7 +333,9 @@ class PackageService:
             raise StoreInstallError(str(exc)) from exc
 
         if adapter is not None:
+            _report_config_step_start("Finalize package update")
             adapter.after_update(target, binding_value or None)
+            _report_config_step_success("Package update finalized")
 
         return PackageOperationResult(
             resource_kind=request.resource_kind,
@@ -282,7 +344,10 @@ class PackageService:
             binding_values=[binding_value] if binding_value else [],
         )
 
-    def uninstall(self, request: PackageOperationRequest) -> PackageOperationResult:
+    def _uninstall_unlocked(
+        self,
+        request: PackageOperationRequest,
+    ) -> PackageOperationResult:
         target = request.requirement.strip()
         if not target:
             raise _package_name_required_error()
@@ -318,8 +383,14 @@ class PackageService:
                 raise StoreInstallError(str(exc)) from exc
 
         try:
+            _report_config_step_start(
+                "Remove package binding",
+                f"{adapter.binding_label}: {binding_value}",
+            )
             adapter.remove_binding(binding_value)
+            _report_config_step_success("Package binding removed")
         except Exception as exc:
+            _report_config_step_failure(exc)
             self._rollback_uninstall(
                 exc,
                 _UninstallRollbackContext(
@@ -365,6 +436,12 @@ class PackageService:
         extra_args: tuple[str, ...],
         exc: Exception,
     ) -> None:
+        reporter = current_package_progress_reporter()
+        reporter.step_started(
+            "rollback",
+            "Rolling back package install",
+            detail=str(exc),
+        )
         try:
             remove_plugin_requirement(requirement, extra_args)
         except RuntimeError as rollback_exc:
@@ -374,7 +451,14 @@ class PackageService:
                 f"{requirement} is still installed in the extension environment\n"
                 f"{rollback_exc}"
             )
+            reporter.step_finished(
+                "rollback",
+                status="failed",
+                detail=str(rollback_exc),
+            )
+            reporter.diagnostic("rollback", msg)
             raise StoreInstallError(msg) from rollback_exc
+        reporter.step_finished("rollback", detail="Rollback completed.")
         raise StoreInstallError(str(exc)) from exc
 
     def _rollback_uninstall(
@@ -382,6 +466,12 @@ class PackageService:
         exc: Exception,
         context: _UninstallRollbackContext,
     ) -> None:
+        reporter = current_package_progress_reporter()
+        reporter.step_started(
+            "rollback",
+            "Rolling back package uninstall",
+            detail=str(exc),
+        )
         try:
             if context.plan.removed_requirement:
                 add_plugin_requirement(context.requirement, context.extra_args)
@@ -399,7 +489,14 @@ class PackageService:
                 f"{context.requirement} could not be restored to its previous state\n"
                 f"{rollback_exc}"
             )
+            reporter.step_finished(
+                "rollback",
+                status="failed",
+                detail=str(rollback_exc),
+            )
+            reporter.diagnostic("rollback", msg)
             raise StoreInstallError(msg) from rollback_exc
+        reporter.step_finished("rollback", detail="Rollback completed.")
         raise StoreInstallError(str(exc)) from exc
 
 

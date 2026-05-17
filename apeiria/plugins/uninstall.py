@@ -16,6 +16,7 @@ from apeiria.environment.extension_project import (
     enqueue_plugin_requirement_removal,
     resolve_declared_plugin_requirement,
 )
+from apeiria.environment.package_mutation import package_mutation_lock
 from apeiria.exceptions import ProtectedPluginError, ResourceNotFoundError
 from apeiria.plugins.models import PluginUninstallResult
 from apeiria.plugins.package_ids import normalize_package_id
@@ -77,18 +78,19 @@ class PluginUninstallService:
             package_name,
             current_config["packages"],
         )
-        for pending_module in sorted(pending_modules):
-            plugin_config_service.remove_project_plugin_module(pending_module)
-            enqueue_plugin_module_uninstall(pending_module)
-        if remove_config:
+        with package_mutation_lock():
             for pending_module in sorted(pending_modules):
-                if pending_module != module_name:
-                    continue
-                section = get_plugin_declared_configs(pending_module).section
-                project_config_service.remove_project_plugin_section(section)
-        if removal_requirement:
-            enqueue_plugin_requirement_removal(removal_requirement)
-        invalidate_plugin_management_caches()
+                plugin_config_service.remove_project_plugin_module(pending_module)
+                enqueue_plugin_module_uninstall(pending_module)
+            if remove_config:
+                for pending_module in sorted(pending_modules):
+                    if pending_module != module_name:
+                        continue
+                    section = get_plugin_declared_configs(pending_module).section
+                    project_config_service.remove_project_plugin_section(section)
+            if removal_requirement:
+                enqueue_plugin_requirement_removal(removal_requirement)
+            invalidate_plugin_management_caches()
         return PluginUninstallResult(
             requirement=removal_requirement or "",
             module_names=sorted(pending_modules),

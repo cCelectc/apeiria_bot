@@ -125,10 +125,13 @@ const canSubmitManualInstall = computed(() => manualRequirement.value.trim().len
 const actionLocked = computed(() => (
   actionPending.value
   || activeTask.value?.status === 'pending'
+  || activeTask.value?.status === 'queued'
   || activeTask.value?.status === 'running'
 ))
 const taskIsRunning = computed(() =>
-  activeTask.value?.status === 'pending' || activeTask.value?.status === 'running',
+  activeTask.value?.status === 'pending'
+  || activeTask.value?.status === 'queued'
+  || activeTask.value?.status === 'running',
 )
 const taskFailed = computed(() => activeTask.value?.status === 'failed')
 const taskStatusTone = computed(() => {
@@ -158,7 +161,7 @@ const actionDialogConfirmLabel = computed(() => {
 const taskStatusLabel = computed(() => {
   const status = activeTask.value?.status || ''
   const prefix = actionMode.value === 'manual-install' ? 'install' : actionMode.value
-  if (status === 'pending') {
+  if (status === 'pending' || status === 'queued') {
     return t(`adapterStore.${prefix}Pending`)
   }
   if (status === 'running') {
@@ -759,11 +762,21 @@ onBeforeUnmount(() => {
 
     <TaskDialog
       v-model="taskDialogVisible"
+      :binding-value="activeTask?.binding_value"
       :close-label="t('common.close')"
+      :current-phase="activeTask?.current_phase"
+      :current-phase-label="activeTask?.current_phase_label"
+      :diagnostics="activeTask?.diagnostics || []"
       :loading="taskIsRunning"
       :logs="activeTask?.logs || ''"
+      :operation="activeTask?.operation"
+      :queue-position="activeTask?.queue_position"
+      :requirement="activeTask?.requirement"
+      :resource-kind="activeTask?.resource_kind"
+      :restart-required="activeTask?.restart_required"
       :status="taskStatusLabel"
       :status-tone="taskStatusTone"
+      :steps="activeTask?.steps || []"
       :title="activeTask?.title || t('adapterStore.taskTitle')"
       :waiting-text="t('adapterStore.taskWaiting')"
     />

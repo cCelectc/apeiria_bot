@@ -81,6 +81,19 @@ class PluginStoreTaskItem(BaseModel):
     created_at: str | None = None
     started_at: str | None = None
     finished_at: str | None = None
+    operation: str | None = None
+    resource_kind: str | None = None
+    requirement: str | None = None
+    binding_value: str | None = None
+    current_phase: str | None = None
+    current_phase_label: str | None = None
+    progress_percent: int | None = None
+    queue_position: int | None = None
+    lock_wait_started_at: str | None = None
+    lock_acquired_at: str | None = None
+    restart_required: bool = False
+    steps: list[dict[str, object | None]] = []
+    diagnostics: list[dict[str, object]] = []
 
 
 def to_plugin_store_source_item(item: Any) -> PluginStoreSourceItem:
@@ -134,4 +147,30 @@ def to_plugin_store_task_item(task: Any) -> PluginStoreTaskItem:
         created_at=task.created_at,
         started_at=task.started_at,
         finished_at=task.finished_at,
+        operation=getattr(task, "operation", None),
+        resource_kind=getattr(task, "resource_kind", None),
+        requirement=getattr(task, "requirement", None),
+        binding_value=getattr(task, "binding_value", None),
+        current_phase=getattr(task, "current_phase", None),
+        current_phase_label=getattr(task, "current_phase_label", None),
+        progress_percent=getattr(task, "progress_percent", None),
+        queue_position=getattr(task, "queue_position", None),
+        lock_wait_started_at=getattr(task, "lock_wait_started_at", None),
+        lock_acquired_at=getattr(task, "lock_acquired_at", None),
+        restart_required=bool(getattr(task, "restart_required", False)),
+        steps=[_task_step_payload(step) for step in getattr(task, "steps", ())],
+        diagnostics=list(getattr(task, "diagnostics", ())),
     )
+
+
+def _task_step_payload(step: Any) -> dict[str, object | None]:
+    return {
+        "phase": getattr(step, "phase", None),
+        "label": getattr(step, "label", None),
+        "status": getattr(step, "status", None),
+        "detail": getattr(step, "detail", None),
+        "command": getattr(step, "command", None),
+        "output_excerpt": getattr(step, "output_excerpt", None),
+        "started_at": getattr(step, "started_at", None),
+        "finished_at": getattr(step, "finished_at", None),
+    }

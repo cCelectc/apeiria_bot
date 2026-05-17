@@ -158,6 +158,20 @@ class StoreInstallRequest:
 
 
 @dataclass(frozen=True)
+class StoreTaskStep:
+    """One structured package task progress step."""
+
+    phase: str
+    label: str
+    status: str
+    detail: str | None = None
+    command: str | None = None
+    output_excerpt: str | None = None
+    started_at: str | None = None
+    finished_at: str | None = None
+
+
+@dataclass(frozen=True)
 class StoreTask:
     """One in-memory store task."""
 
@@ -170,3 +184,16 @@ class StoreTask:
     created_at: str | None = None
     started_at: str | None = None
     finished_at: str | None = None
+    operation: str | None = None
+    resource_kind: str | None = None
+    requirement: str | None = None
+    binding_value: str | None = None
+    current_phase: str | None = None
+    current_phase_label: str | None = None
+    progress_percent: int | None = None
+    queue_position: int | None = None
+    lock_wait_started_at: str | None = None
+    lock_acquired_at: str | None = None
+    restart_required: bool = False
+    steps: tuple[StoreTaskStep, ...] = ()
+    diagnostics: list[dict[str, object]] = field(default_factory=list)

@@ -45,19 +45,16 @@ export function useRestartController() {
   }
 
   async function revertPendingChanges() {
-    if (reverting.value || restartStore.entries.length === 0) {
+    if (reverting.value || restartStore.reversibleEntries.length === 0) {
       return false
     }
     reverting.value = true
     try {
-      const entries = [...restartStore.entries]
+      const entries = [...restartStore.reversibleEntries]
       for (const entry of entries) {
-        if (!entry.undo) {
-          continue
-        }
         await revertEntry(entry.undo)
+        restartStore.clearPending(entry.id)
       }
-      restartStore.clearPending()
       noticeStore.show(t('restart.reverted'), 'success')
       window.location.reload()
       return true

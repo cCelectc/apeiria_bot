@@ -203,6 +203,9 @@ async function handleRestart() {
 }
 
 async function handleRevertPendingChanges() {
+  if (!restartStore.hasReversiblePending) {
+    return
+  }
   if (!window.confirm(t('restart.revertConfirm'))) {
     return
   }
@@ -428,7 +431,13 @@ function toggleGroup(key: string) {
                 <RefreshCw :size="14" />
                 {{ t('dashboard.restart') }}
               </Button>
-              <Button :disabled="reverting" size="sm" variant="ghost" @click="handleRevertPendingChanges">
+              <Button
+                v-if="restartStore.hasReversiblePending"
+                :disabled="reverting"
+                size="sm"
+                variant="ghost"
+                @click="handleRevertPendingChanges"
+              >
                 <Undo2 :size="14" />
                 {{ t('restart.revert') }}
               </Button>

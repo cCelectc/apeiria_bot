@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import site
 import subprocess
 import sys
@@ -13,6 +14,7 @@ from pathlib import Path
 from shutil import which
 from typing import Final
 
+from apeiria.environment.package_progress import current_package_progress_reporter
 from apeiria.plugins.package_ids import normalize_package_id
 from apeiria.utils.files import atomic_write_text
 from apeiria.utils.project_context import current_project_root
@@ -22,6 +24,8 @@ _PLUGIN_PROJECT_NAME: Final = "apeiria-user-plugins"
 _PYTHON_VERSION_FALLBACK: Final = ">=3.10, <4.0"
 _PENDING_PLUGIN_UNINSTALLS_FILE: Final = "pending_plugin_uninstalls.json"
 _PENDING_PLUGIN_MODULE_UNINSTALLS_FILE: Final = "pending_plugin_module_uninstalls.json"
+_ANSI_RE: Final = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
+_OUTPUT_EXCERPT_LIMIT: Final = 4000
 _logger = logging.getLogger("apeiria.environment.extension_project")
 
 
@@ -132,12 +136,19 @@ def find_uv_executable() -> str:
 
 def _run_uv(args: list[str], *, cwd: Path) -> None:
     executable = find_uv_executable()
+    command_summary = _sanitize_command_summary([Path(executable).name, *args])
+    reporter = current_package_progress_reporter()
     cache_dir = uv_cache_dir()
     cache_dir.mkdir(parents=True, exist_ok=True)
     env = os.environ.copy()
     env["UV_CACHE_DIR"] = str(cache_dir)
     env["UV_PROJECT_ENVIRONMENT"] = str(cwd / ".venv")
     env.pop("VIRTUAL_ENV", None)
+    reporter.step_started(
+        "uv_command",
+        "Running uv command",
+        command=command_summary,
+    )
     result = subprocess.run(
         [executable, *args],
         cwd=cwd,
@@ -146,17 +157,55 @@ def _run_uv(args: list[str], *, cwd: Path) -> None:
         capture_output=True,
         text=True,
     )
+    output = _bounded_output_excerpt(result.stdout, result.stderr)
     if result.returncode != 0:
-        output_parts = [
-            part.strip()
-            for part in (result.stdout, result.stderr)
-            if part and part.strip()
-        ]
-        output = "\n".join(output_parts)
         msg = f"uv command failed: {' '.join(args)}"
         if output:
             msg = f"{msg}\n{output}"
+        reporter.step_finished(
+            "uv_command",
+            status="failed",
+            detail=f"uv exited with status {result.returncode}",
+            output_excerpt=output or None,
+        )
+        reporter.diagnostic("uv_command", msg)
         raise RuntimeError(msg)
+    reporter.step_finished(
+        "uv_command",
+        detail="uv command completed.",
+        output_excerpt=output or None,
+    )
+
+
+def _sanitize_command_summary(command: list[str]) -> str:
+    return " ".join(_sanitize_command_part(part) for part in command)
+
+
+def _sanitize_command_part(part: str) -> str:
+    sanitized = part.strip()
+    if "://" in sanitized and "@" in sanitized:
+        scheme, rest = sanitized.split("://", 1)
+        _, host = rest.rsplit("@", 1)
+        sanitized = f"{scheme}://***@{host}"
+    if any(token in sanitized.lower() for token in ("token=", "password=", "secret=")):
+        return "***"
+    return sanitized
+
+
+def _bounded_output_excerpt(stdout: str | None, stderr: str | None) -> str:
+    output_parts = [
+        _strip_ansi(part).strip()
+        for part in (stdout, stderr)
+        if part and _strip_ansi(part).strip()
+    ]
+    output = "\n".join(output_parts)
+    if len(output) <= _OUTPUT_EXCERPT_LIMIT:
+        return output
+    return output[-_OUTPUT_EXCERPT_LIMIT:]
+
+
+def _strip_ansi(value: str) -> str:
+    return _ANSI_RE.sub("", value)
 
 
 def sync_plugin_project(*, locked: bool = True) -> Path:

@@ -1260,11 +1260,21 @@ onMounted(() => {
 
     <TaskDialog
       v-model="pluginMaintenance.manualInstallTaskDialogVisible.value"
+      :binding-value="pluginMaintenance.manualInstallTask.value?.binding_value"
       :close-label="t('common.close')"
+      :current-phase="pluginMaintenance.manualInstallTask.value?.current_phase"
+      :current-phase-label="pluginMaintenance.manualInstallTask.value?.current_phase_label"
+      :diagnostics="pluginMaintenance.manualInstallTask.value?.diagnostics || []"
       :loading="pluginMaintenance.manualInstallTaskRunning.value"
       :logs="pluginMaintenance.manualInstallTask.value?.logs || ''"
+      :operation="pluginMaintenance.manualInstallTask.value?.operation"
+      :queue-position="pluginMaintenance.manualInstallTask.value?.queue_position"
+      :requirement="pluginMaintenance.manualInstallTask.value?.requirement"
+      :resource-kind="pluginMaintenance.manualInstallTask.value?.resource_kind"
+      :restart-required="pluginMaintenance.manualInstallTask.value?.restart_required"
       :status="pluginMaintenance.manualInstallTaskStatusLabel.value"
       :status-tone="pluginMaintenance.manualInstallTaskStatusTone.value"
+      :steps="pluginMaintenance.manualInstallTask.value?.steps || []"
       :title="pluginMaintenance.manualInstallTask.value?.title || t('plugins.manualInstallTaskTitle')"
       :waiting-text="t('plugins.manualInstallWaiting')"
     >
@@ -1280,11 +1290,21 @@ onMounted(() => {
 
     <TaskDialog
       v-model="pluginMaintenance.packageUpdateTaskDialogVisible.value"
+      :binding-value="pluginMaintenance.packageUpdateTask.value?.binding_value"
       :close-label="t('common.close')"
+      :current-phase="pluginMaintenance.packageUpdateTask.value?.current_phase"
+      :current-phase-label="pluginMaintenance.packageUpdateTask.value?.current_phase_label"
+      :diagnostics="pluginMaintenance.packageUpdateTask.value?.diagnostics || []"
       :loading="pluginMaintenance.packageUpdateTaskRunning.value"
       :logs="pluginMaintenance.packageUpdateTask.value?.logs || ''"
+      :operation="pluginMaintenance.packageUpdateTask.value?.operation"
+      :queue-position="pluginMaintenance.packageUpdateTask.value?.queue_position"
+      :requirement="pluginMaintenance.packageUpdateTask.value?.requirement"
+      :resource-kind="pluginMaintenance.packageUpdateTask.value?.resource_kind"
+      :restart-required="pluginMaintenance.packageUpdateTask.value?.restart_required"
       :status="pluginMaintenance.packageUpdateTaskStatusLabel.value"
       :status-tone="pluginMaintenance.packageUpdateTaskStatusTone.value"
+      :steps="pluginMaintenance.packageUpdateTask.value?.steps || []"
       :title="pluginMaintenance.packageUpdateTask.value?.title || t('plugins.packageUpdateTaskTitle')"
       :waiting-text="t('plugins.packageUpdateWaiting')"
     >
