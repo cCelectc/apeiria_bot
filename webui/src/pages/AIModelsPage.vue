@@ -46,6 +46,7 @@ import { Input } from '@/components/ui/input'
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
   SelectTrigger,
   SelectValue,
@@ -752,6 +753,7 @@ watch(sourceCapabilityTab, () => {
                 >
                   <Input
                     v-model="sourceForm.name"
+                    :aria-invalid="Boolean(displayedSourceErrors.name)"
                     :disabled="savingSource"
                     @blur="touchSourceField('name')"
                   />
@@ -771,14 +773,16 @@ watch(sourceCapabilityTab, () => {
                     <SelectTrigger>
                       <SelectValue :placeholder="t('ai.sourceProtocolNotSelected')" />
                     </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem
-                        v-for="item in sourcePresetOptions"
-                        :key="item.value"
-                        :value="item.value"
-                      >
-                        {{ item.title }}
-                      </SelectItem>
+                      <SelectContent>
+                      <SelectGroup>
+                        <SelectItem
+                          v-for="item in sourcePresetOptions"
+                          :key="item.value"
+                          :value="item.value"
+                        >
+                          {{ item.title }}
+                        </SelectItem>
+                      </SelectGroup>
                     </SelectContent>
                   </Select>
                 </FormField>
@@ -948,6 +952,7 @@ watch(sourceCapabilityTab, () => {
                   >
                     <Input
                       v-model="modelForm.model_identifier"
+                      :aria-invalid="Boolean(displayedModelErrors.model_identifier)"
                       :disabled="savingModel"
                       @blur="touchModelField('model_identifier')"
                     />
@@ -959,6 +964,7 @@ watch(sourceCapabilityTab, () => {
                   >
                     <Input
                       v-model="modelForm.display_name"
+                      :aria-invalid="Boolean(displayedModelErrors.display_name)"
                       :disabled="savingModel"
                       @blur="touchModelField('display_name')"
                     />
@@ -1152,6 +1158,7 @@ watch(sourceCapabilityTab, () => {
                   >
                     <Input
                       v-model="profileForm.name"
+                      :aria-invalid="Boolean(displayedProfileErrors.name)"
                       :disabled="savingProfile"
                       @blur="touchProfileField('name')"
                     />
@@ -1170,13 +1177,15 @@ watch(sourceCapabilityTab, () => {
                         <SelectValue :placeholder="t('ai.modelName')" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem
-                          v-for="item in profileModelOptions"
-                          :key="item.value"
-                          :value="item.value"
-                        >
-                          {{ item.title }}
-                        </SelectItem>
+                        <SelectGroup>
+                          <SelectItem
+                            v-for="item in profileModelOptions"
+                            :key="item.value"
+                            :value="item.value"
+                          >
+                            {{ item.title }}
+                          </SelectItem>
+                        </SelectGroup>
                       </SelectContent>
                     </Select>
                   </FormField>
@@ -1186,13 +1195,15 @@ watch(sourceCapabilityTab, () => {
                         <SelectValue :placeholder="t('ai.modelTaskClass')" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem
-                          v-for="item in taskClassOptions"
-                          :key="item.value"
-                          :value="item.value"
-                        >
-                          {{ item.title }}
-                        </SelectItem>
+                        <SelectGroup>
+                          <SelectItem
+                            v-for="item in taskClassOptions"
+                            :key="item.value"
+                            :value="item.value"
+                          >
+                            {{ item.title }}
+                          </SelectItem>
+                        </SelectGroup>
                       </SelectContent>
                     </Select>
                   </FormField>
@@ -1211,16 +1222,18 @@ watch(sourceCapabilityTab, () => {
                         <SelectValue :placeholder="t('common.none')" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="__none__">
-                          {{ t('common.none') }}
-                        </SelectItem>
-                        <SelectItem
-                          v-for="item in fallbackProfileOptions"
-                          :key="item.value"
-                          :value="item.value"
-                        >
-                          {{ item.title }}
-                        </SelectItem>
+                        <SelectGroup>
+                          <SelectItem value="__none__">
+                            {{ t('common.none') }}
+                          </SelectItem>
+                          <SelectItem
+                            v-for="item in fallbackProfileOptions"
+                            :key="item.value"
+                            :value="item.value"
+                          >
+                            {{ item.title }}
+                          </SelectItem>
+                        </SelectGroup>
                       </SelectContent>
                     </Select>
                   </FormField>
@@ -1367,13 +1380,15 @@ watch(sourceCapabilityTab, () => {
                 <SelectValue :placeholder="t('ai.sourceTtsFormat')" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem
-                  v-for="item in ttsResponseFormatOptions"
-                  :key="item.value"
-                  :value="item.value"
-                >
-                  {{ item.title }}
-                </SelectItem>
+                <SelectGroup>
+                  <SelectItem
+                    v-for="item in ttsResponseFormatOptions"
+                    :key="item.value"
+                    :value="item.value"
+                  >
+                    {{ item.title }}
+                  </SelectItem>
+                </SelectGroup>
               </SelectContent>
             </Select>
           </FormField>

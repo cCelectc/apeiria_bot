@@ -322,8 +322,9 @@ export function resolveAISetupActionRoute(
     testModel: 'validation',
   }
   return {
-    name: 'ai-models',
+    name: 'ai',
     query: {
+      area: 'models',
       capability,
       intent: intentMap[action],
     },

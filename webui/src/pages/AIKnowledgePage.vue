@@ -29,6 +29,7 @@ import { Input } from '@/components/ui/input'
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
   SelectTrigger,
   SelectValue,
@@ -287,13 +288,15 @@ onMounted(() => {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem
-                    v-for="option in limitOptions"
-                    :key="option"
-                    :value="option"
-                  >
-                    {{ option }}
-                  </SelectItem>
+                  <SelectGroup>
+                    <SelectItem
+                      v-for="option in limitOptions"
+                      :key="option"
+                      :value="option"
+                    >
+                      {{ option }}
+                    </SelectItem>
+                  </SelectGroup>
                 </SelectContent>
               </Select>
             </FormField>

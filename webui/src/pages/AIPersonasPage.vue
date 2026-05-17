@@ -172,6 +172,7 @@ onMounted(() => {
           >
             <Input
               v-model="personaForm.name"
+              :aria-invalid="Boolean(displayedPersonaErrors.name)"
               :disabled="savingPersona"
               @blur="touchPersonaField('name')"
             />
@@ -184,6 +185,7 @@ onMounted(() => {
           >
             <Input
               v-model="personaForm.description"
+              :aria-invalid="Boolean(displayedPersonaErrors.description)"
               :disabled="savingPersona"
               @blur="touchPersonaField('description')"
             />
@@ -197,6 +199,7 @@ onMounted(() => {
           >
             <Textarea
               v-model="personaForm.system_prompt"
+              :aria-invalid="Boolean(displayedPersonaErrors.system_prompt)"
               class="min-h-40"
               :disabled="savingPersona"
               @blur="touchPersonaField('system_prompt')"

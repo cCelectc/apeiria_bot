@@ -4,7 +4,6 @@ import type {
   DashboardStatus,
   WebUIBuildStatus,
 } from '@/api/dashboard'
-import type { WorkbenchMetricItem, WorkbenchTone } from '@/components/management'
 import {
   AlertCircle,
   Cable,
@@ -28,7 +27,25 @@ import {
   streamRebuildWebUI,
 } from '@/api/dashboard'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card'
 import {
   Dialog,
   DialogContent,
@@ -38,14 +55,32 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import {
-  EmptyState,
-  MetricStrip,
-  PageScaffold,
-  Panel,
-  StatusBadge,
-} from '@/components/management'
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from '@/components/ui/empty'
+import { Skeleton } from '@/components/ui/skeleton'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
 import { useRestartController } from '@/composables/useRestartController'
 import { useNoticeStore } from '@/stores/notice'
+
+type DashboardTone = 'default' | 'destructive' | 'outline' | 'secondary'
+type DashboardStat = {
+  key: string
+  label: string
+  value: number | string
+  icon: typeof AlertCircle
+  variant?: DashboardTone
+}
 
 const status = ref<DashboardStatus | null>(null)
 const recentEvents = ref<DashboardEventItem[]>([])
@@ -54,6 +89,7 @@ const loading = ref(false)
 const dashboardError = ref('')
 const rebuildingWebUI = ref(false)
 const buildDialogVisible = ref(false)
+const restartConfirmVisible = ref(false)
 const buildLogs = ref('')
 const buildDialogStatus = ref('')
 const buildLogCardRef = ref<HTMLElement | null>(null)
@@ -62,17 +98,17 @@ const noticeStore = useNoticeStore()
 const { restarting, restartAndReload } = useRestartController()
 let refreshTimer: number | null = null
 
-const statusTone = computed<WorkbenchTone>(() =>
-  status.value?.status === 'running' ? 'success' : 'warning',
+const statusBadgeVariant = computed<DashboardTone>(() =>
+  status.value?.status === 'running' ? 'default' : 'secondary',
 )
 
-const dashboardMetrics = computed<WorkbenchMetricItem[]>(() => [
+const primaryStats = computed<DashboardStat[]>(() => [
   {
     key: 'status',
     label: t('dashboard.status'),
     value: status.value?.status || '...',
     icon: status.value?.status === 'running' ? CheckCircle2 : AlertCircle,
-    tone: statusTone.value,
+    variant: statusBadgeVariant.value,
   },
   {
     key: 'uptime',
@@ -91,17 +127,17 @@ const dashboardMetrics = computed<WorkbenchMetricItem[]>(() => [
     label: t('dashboard.adapters'),
     value: status.value?.adapters?.length ?? '...',
     icon: Cable,
-    tone: 'info',
+    variant: 'secondary' satisfies DashboardTone,
   },
 ])
 
-const dashboardSecondaryMetrics = computed<WorkbenchMetricItem[]>(() => [
+const secondaryStats = computed<DashboardStat[]>(() => [
   {
     key: 'disabled-plugins',
     label: t('dashboard.disabledPlugins'),
     value: status.value?.disabled_plugins_count ?? '...',
     icon: Plug,
-    tone: 'warning',
+    variant: 'secondary' satisfies DashboardTone,
   },
   {
     key: 'groups',
@@ -114,14 +150,14 @@ const dashboardSecondaryMetrics = computed<WorkbenchMetricItem[]>(() => [
     label: t('dashboard.disabledGroups'),
     value: status.value?.disabled_groups_count ?? '...',
     icon: Users,
-    tone: 'warning',
+    variant: 'secondary' satisfies DashboardTone,
   },
   {
     key: 'access-rules',
     label: t('dashboard.accessRules'),
     value: status.value?.access_rules_count ?? '...',
     icon: ShieldCheck,
-    tone: 'info',
+    variant: 'outline' satisfies DashboardTone,
   },
 ])
 
@@ -153,6 +189,15 @@ const showWebUIBuildCard = computed(() =>
     && (!webuiBuildStatus.value.is_built || webuiBuildStatus.value.is_stale),
   ),
 )
+
+const eventSummary = computed(() => {
+  const important = recentEvents.value.find(event =>
+    event.level === 'ERROR' || event.level === 'CRITICAL' || event.level === 'WARNING',
+  )
+  return important?.level || (recentEvents.value.length ? recentEvents.value[0].level : t('dashboard.noEvents'))
+})
+
+const hasRuntimeData = computed(() => Boolean(status.value))
 
 async function refreshDashboard(options: { silent?: boolean } = {}) {
   loading.value = true
@@ -253,9 +298,11 @@ async function waitForWebUIBuildRefresh() {
 }
 
 async function handleRestart() {
-  if (!window.confirm(t('dashboard.restartConfirm'))) {
-    return
-  }
+  restartConfirmVisible.value = true
+}
+
+async function confirmRestart() {
+  restartConfirmVisible.value = false
   await restartAndReload()
 }
 
@@ -272,14 +319,14 @@ function formatUptime(seconds?: number): string {
   return `${h}h ${m}m`
 }
 
-function eventTone(level: string): WorkbenchTone {
+function eventBadgeVariant(level: string): DashboardTone {
   if (level === 'ERROR' || level === 'CRITICAL') {
-    return 'error'
+    return 'destructive'
   }
   if (level === 'WARNING') {
-    return 'warning'
+    return 'secondary'
   }
-  return 'info'
+  return 'outline'
 }
 
 function startAutoRefresh() {
@@ -307,91 +354,204 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <PageScaffold
-    :error-message="dashboardError"
-    :kicker="t('layout.brand')"
-    :subtitle="t('dashboard.description')"
-    :title="t('dashboard.title')"
-  >
-    <template #actions>
-      <Button :disabled="restarting" variant="outline" @click="handleRestart">
-        <RefreshCw :size="16" />
-        {{ t('dashboard.restart') }}
-      </Button>
-
-      <Button :disabled="loading" variant="secondary" @click="refreshDashboard()">
-        <RefreshCw :class="{ 'animate-spin': loading }" :size="16" />
-        {{ t('common.refresh') }}
-      </Button>
-    </template>
-
-    <Alert v-if="showWebUIBuildCard" class="dashboard-build-alert">
-      <TerminalSquare :size="18" />
-      <AlertTitle>{{ webuiBuildHeadline }}</AlertTitle>
-      <AlertDescription class="dashboard-build-alert__body">
-        <span>{{ webuiBuildDescription }}</span>
-        <Button
-          :disabled="!webuiBuildStatus?.can_build || rebuildingWebUI"
-          size="sm"
-          variant="secondary"
-          @click="handleRebuildWebUI"
-        >
-          {{ t('dashboard.rebuildWebUI') }}
-        </Button>
-      </AlertDescription>
+  <div class="dashboard-workbench">
+    <Alert v-if="dashboardError" variant="destructive">
+      <AlertCircle />
+      <AlertTitle>{{ t('dashboard.refreshFailed') }}</AlertTitle>
+      <AlertDescription>{{ dashboardError }}</AlertDescription>
     </Alert>
 
-    <MetricStrip :items="dashboardMetrics" />
-
-    <section class="dashboard-grid">
-      <Panel class="dashboard-adapters-panel" :title="t('dashboard.adapterList')">
-        <div v-if="status?.adapters?.length" class="dashboard-adapter-list">
-          <StatusBadge
-            v-for="adapter in status.adapters"
-            :key="adapter"
-            :label="adapter"
-            tone="info"
-          />
+    <section class="dashboard-command-bar">
+      <div class="dashboard-command-bar__title">
+        <Badge :variant="statusBadgeVariant">
+          {{ status?.status || t('common.loading') }}
+        </Badge>
+        <div>
+          <h1>{{ t('dashboard.title') }}</h1>
+          <p>{{ t('dashboard.summary', {
+            plugins: status?.plugins_count ?? '...',
+            adapters: status?.adapters?.length ?? '...',
+            groups: status?.groups_count ?? '...',
+          }) }}</p>
         </div>
-        <EmptyState
-          v-else
-          :text="t('dashboard.noAdaptersText')"
-          :title="t('dashboard.noAdapters')"
-        />
-      </Panel>
+      </div>
 
-      <div class="dashboard-side-metrics">
-        <h2>{{ t('dashboard.extraStats') }}</h2>
-        <MetricStrip compact :items="dashboardSecondaryMetrics" />
+      <div class="dashboard-command-bar__actions">
+        <Button :disabled="restarting" variant="outline" @click="handleRestart">
+          <RefreshCw data-icon="inline-start" />
+          {{ t('dashboard.restart') }}
+        </Button>
+        <Button :disabled="loading" variant="secondary" @click="refreshDashboard()">
+          <RefreshCw :class="{ 'animate-spin': loading }" data-icon="inline-start" />
+          {{ t('common.refresh') }}
+        </Button>
       </div>
     </section>
 
-    <Panel :title="t('dashboard.recentEvents')">
-      <EmptyState
-        v-if="recentEvents.length === 0"
-        :icon="History"
-        :title="t('dashboard.noEvents')"
-      />
-
-      <div v-else class="dashboard-events-list">
-        <article
-          v-for="event in recentEvents"
-          :key="`${event.timestamp}:${event.source}:${event.message}`"
-          class="dashboard-event"
-        >
-          <StatusBadge :label="event.level" :tone="eventTone(event.level)" />
-          <div class="dashboard-event__content">
-            <div class="dashboard-event__title">
-              {{ event.message }}
-            </div>
-            <div class="dashboard-event__meta">
-              <span>{{ event.timestamp }}</span>
-              <span>{{ t('dashboard.eventSource') }}: {{ event.source }}</span>
-            </div>
+    <div class="dashboard-status-strip">
+      <Card v-for="item in primaryStats" :key="item.key" class="dashboard-status-card">
+        <CardContent>
+          <component :is="item.icon" />
+          <div>
+            <span>{{ item.label }}</span>
+            <strong>{{ item.value }}</strong>
           </div>
-        </article>
-      </div>
-    </Panel>
+        </CardContent>
+      </Card>
+      <Card class="dashboard-status-card">
+        <CardContent>
+          <History />
+          <div>
+            <span>{{ t('dashboard.recentEvents') }}</span>
+            <strong>{{ eventSummary }}</strong>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+
+    <section class="dashboard-ops-grid">
+      <Card class="dashboard-runtime-card">
+        <CardHeader>
+          <div>
+            <CardTitle>{{ t('dashboard.adapterList') }}</CardTitle>
+            <CardDescription>{{ t('dashboard.noAdaptersText') }}</CardDescription>
+          </div>
+          <Badge variant="outline">
+            {{ status?.adapters?.length ?? 0 }}
+          </Badge>
+        </CardHeader>
+        <CardContent>
+          <div v-if="loading && !hasRuntimeData" class="dashboard-skeleton-list">
+            <Skeleton v-for="index in 4" :key="index" class="h-8" />
+          </div>
+          <div v-else-if="status?.adapters?.length" class="dashboard-adapter-list">
+            <Badge
+              v-for="adapter in status.adapters"
+              :key="adapter"
+              variant="secondary"
+            >
+              {{ adapter }}
+            </Badge>
+          </div>
+          <Empty v-else class="dashboard-empty">
+            <EmptyHeader>
+              <EmptyMedia variant="icon">
+                <Cable />
+              </EmptyMedia>
+              <EmptyTitle>{{ t('dashboard.noAdapters') }}</EmptyTitle>
+              <EmptyDescription>{{ t('dashboard.noAdaptersText') }}</EmptyDescription>
+            </EmptyHeader>
+          </Empty>
+        </CardContent>
+      </Card>
+
+      <Card class="dashboard-secondary-card">
+        <CardHeader>
+          <CardTitle>{{ t('dashboard.extraStats') }}</CardTitle>
+          <CardDescription>{{ t('dashboard.description') }}</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Table>
+            <TableBody>
+              <TableRow v-for="item in secondaryStats" :key="item.key">
+                <TableCell>
+                  <div class="dashboard-stat-label">
+                    <component :is="item.icon" />
+                    <span>{{ item.label }}</span>
+                  </div>
+                </TableCell>
+                <TableCell class="dashboard-stat-value">
+                  <Badge :variant="item.variant">
+                    {{ item.value }}
+                  </Badge>
+                </TableCell>
+              </TableRow>
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+
+      <Card class="dashboard-events-card">
+        <CardHeader>
+          <div>
+            <CardTitle>{{ t('dashboard.recentEvents') }}</CardTitle>
+            <CardDescription>{{ t('dashboard.openLogs') }}</CardDescription>
+          </div>
+          <Button as-child size="sm" variant="ghost">
+            <RouterLink to="/logs">
+              {{ t('dashboard.openLogs') }}
+            </RouterLink>
+          </Button>
+        </CardHeader>
+        <CardContent>
+          <div v-if="loading && recentEvents.length === 0" class="dashboard-skeleton-list">
+            <Skeleton v-for="index in 3" :key="index" class="h-12" />
+          </div>
+
+          <Empty v-else-if="recentEvents.length === 0" class="dashboard-empty">
+            <EmptyHeader>
+              <EmptyMedia variant="icon">
+                <History />
+              </EmptyMedia>
+              <EmptyTitle>{{ t('dashboard.noEvents') }}</EmptyTitle>
+            </EmptyHeader>
+          </Empty>
+
+          <Table v-else>
+            <TableHeader>
+              <TableRow>
+                <TableHead>{{ t('dashboard.status') }}</TableHead>
+                <TableHead>{{ t('dashboard.eventSource') }}</TableHead>
+                <TableHead>{{ t('logs.message') }}</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              <TableRow
+                v-for="event in recentEvents"
+                :key="`${event.timestamp}:${event.source}:${event.message}`"
+              >
+                <TableCell>
+                  <Badge :variant="eventBadgeVariant(event.level)">
+                    {{ event.level }}
+                  </Badge>
+                </TableCell>
+                <TableCell class="dashboard-event-source">
+                  {{ event.source }}
+                  <span>{{ event.timestamp }}</span>
+                </TableCell>
+                <TableCell class="dashboard-event-message">
+                  {{ event.message }}
+                </TableCell>
+              </TableRow>
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+
+      <Alert v-if="showWebUIBuildCard" class="dashboard-build-alert">
+        <TerminalSquare />
+        <AlertTitle>{{ webuiBuildHeadline }}</AlertTitle>
+        <AlertDescription class="dashboard-build-alert__body">
+          <span>{{ webuiBuildDescription }}</span>
+          <Button
+            :disabled="!webuiBuildStatus?.can_build || rebuildingWebUI"
+            size="sm"
+            variant="secondary"
+            @click="handleRebuildWebUI"
+          >
+            {{ t('dashboard.rebuildWebUI') }}
+          </Button>
+        </AlertDescription>
+      </Alert>
+
+      <Alert v-else class="dashboard-build-alert dashboard-build-alert--quiet">
+        <TerminalSquare />
+        <AlertTitle>{{ t('dashboard.rebuildWebUI') }}</AlertTitle>
+        <AlertDescription>
+          {{ webuiBuildStatus ? t('dashboard.webuiBuildUpdated') : t('common.loading') }}
+        </AlertDescription>
+      </Alert>
+    </section>
 
     <Dialog v-model:open="buildDialogVisible">
       <DialogContent class="dashboard-build-dialog">
@@ -417,5 +577,21 @@ onUnmounted(() => {
         </DialogFooter>
       </DialogContent>
     </Dialog>
-  </PageScaffold>
+
+    <AlertDialog v-model:open="restartConfirmVisible">
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>{{ t('dashboard.restart') }}</AlertDialogTitle>
+          <AlertDialogDescription>{{ t('dashboard.restartConfirm') }}</AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>{{ t('common.cancel') }}</AlertDialogCancel>
+          <AlertDialogAction :disabled="restarting" @click="confirmRestart">
+            <RefreshCw data-icon="inline-start" />
+            {{ t('common.confirm') }}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  </div>
 </template>

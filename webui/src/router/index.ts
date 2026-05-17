@@ -2,9 +2,6 @@ import type { RouteRecordRaw } from 'vue-router'
 import { createRouter, createWebHistory } from 'vue-router'
 import { CAP_ACCOUNT_MANAGE, CAP_CONTROL_PANEL } from '@/constants/access'
 import { useAuthStore } from '@/stores/auth'
-import { aiManagementPageDescriptors } from './aiRoutes'
-
-const PlaceholderPage = () => import('@/pages/PlaceholderPage.vue')
 
 const routes: RouteRecordRaw[] = [
   {
@@ -43,105 +40,17 @@ const routes: RouteRecordRaw[] = [
         component: () => import('@/pages/AdapterStorePage.vue'),
         meta: { titleKey: 'adapterStore.title' },
       },
-      { path: 'ai', name: 'ai', redirect: '/ai/overview', meta: { titleKey: 'ai.title' } },
       {
-        path: 'ai/overview',
-        name: 'ai-overview',
-        component: () => import('@/pages/AIOverviewPage.vue'),
-        meta: { titleKey: 'ai.overviewTitle' },
+        path: 'ai',
+        name: 'ai',
+        component: () => import('@/pages/AIWorkbenchPage.vue'),
+        meta: { titleKey: 'ai.title' },
       },
       {
-        path: 'ai/models',
-        name: 'ai-models',
-        component: () => import('@/pages/AIModelsPage.vue'),
-        meta: { titleKey: 'ai.modelsTitle' },
-      },
-      {
-        path: 'ai/sessions',
-        name: 'ai-sessions',
-        component: () => import('@/pages/AISessionsPage.vue'),
-        meta: { titleKey: 'ai.sessionsTab' },
-      },
-      {
-        path: 'ai/knowledge',
-        name: 'ai-knowledge',
-        component: () => import('@/pages/AIKnowledgePage.vue'),
-        meta: { titleKey: 'ai.knowledgeTab' },
-      },
-      {
-        path: 'ai/personas',
-        name: 'ai-personas',
-        component: () => import('@/pages/AIPersonasPage.vue'),
-        meta: { titleKey: 'ai.personasTab' },
-      },
-      {
-        path: 'ai/memories',
-        name: 'ai-memories',
-        component: () => import('@/pages/AIMemoriesPage.vue'),
-        meta: { titleKey: 'ai.memoryTab' },
-      },
-      {
-        path: 'ai/relationships',
-        name: 'ai-relationships',
-        component: () => import('@/pages/AIRelationshipsPage.vue'),
-        meta: { titleKey: 'ai.relationshipTab' },
-      },
-      {
-        path: 'ai/profiles',
-        name: 'ai-profiles',
-        component: () => import('@/pages/AIProfilesPage.vue'),
-        meta: { titleKey: 'ai.profileTab' },
-      },
-      {
-        path: 'ai/future-tasks',
-        name: 'ai-future-tasks',
-        component: () => import('@/pages/AIFutureTasksPage.vue'),
-        meta: { titleKey: 'ai.futureTaskTab' },
-      },
-      {
-        path: 'ai/skills',
-        name: 'ai-skills',
-        component: () => import('@/pages/AISkillsPage.vue'),
-        meta: { titleKey: 'ai.skillsTab' },
-      },
-      {
-        path: 'ai/debug',
-        name: 'ai-debug',
-        component: () => import('@/pages/AIDebugPage.vue'),
-        meta: { titleKey: 'ai.debugTab' },
-      },
-      ...aiManagementPageDescriptors
-        .filter(item => ![
-          'overview',
-          'sessions',
-          'models',
-          'knowledge',
-          'personas',
-          'memories',
-          'relationships',
-          'profiles',
-          'futureTasks',
-          'skills',
-          'debug',
-        ].includes(item.page))
-        .map(item => ({
-          path: item.path.replace(/^\//, ''),
-          name: item.routeName,
-          component: PlaceholderPage,
-          meta: { titleKey: item.titleKey },
-        })),
-      { path: 'plugins', redirect: '/plugins/config' },
-      {
-        path: 'plugins/config',
+        path: 'plugins',
         name: 'plugins',
-        component: () => import('@/pages/PluginsPage.vue'),
-        meta: { titleKey: 'plugins.title' },
-      },
-      {
-        path: 'plugins/store',
-        name: 'plugins-store',
-        component: () => import('@/pages/PluginStorePage.vue'),
-        meta: { titleKey: 'pluginStore.title' },
+        component: () => import('@/pages/PluginsWorkbenchPage.vue'),
+        meta: { titleKey: 'plugins.workbenchTitle' },
       },
       {
         path: 'permissions',

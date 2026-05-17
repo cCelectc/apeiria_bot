@@ -1,5 +1,10 @@
 <script setup lang="ts">
-import { Label } from '@/components/ui/label'
+import {
+  Field,
+  FieldDescription,
+  FieldError,
+  FieldLabel,
+} from '@/components/ui/field'
 
 withDefaults(defineProps<{
   error?: string
@@ -16,17 +21,20 @@ withDefaults(defineProps<{
 </script>
 
 <template>
-  <div class="workbench-form-field">
-    <Label :for="forId || undefined" class="workbench-form-field__label">
+  <Field
+    class="workbench-form-field"
+    :data-invalid="error ? true : undefined"
+  >
+    <FieldLabel :for="forId || undefined" class="workbench-form-field__label">
       <span>{{ label }}</span>
       <span v-if="required" aria-hidden="true">*</span>
-    </Label>
+    </FieldLabel>
     <slot />
-    <p v-if="error" class="workbench-form-field__error">
+    <FieldError v-if="error" class="workbench-form-field__error">
       {{ error }}
-    </p>
-    <p v-else-if="helper" class="workbench-form-field__helper">
+    </FieldError>
+    <FieldDescription v-else-if="helper" class="workbench-form-field__helper">
       {{ helper }}
-    </p>
-  </div>
+    </FieldDescription>
+  </Field>
 </template>

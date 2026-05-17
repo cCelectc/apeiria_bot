@@ -46,6 +46,7 @@ import { Input } from '@/components/ui/input'
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
   SelectTrigger,
   SelectValue,
@@ -162,8 +163,9 @@ function handlePersonaUpdate(value: unknown) {
 
 async function openPromptPreview() {
   await router.push({
-    name: 'ai-debug',
+    name: 'ai',
     query: {
+      area: 'debug',
       debug: 'conversations',
       session: selectedDetail.value?.prompt_preview_session_id || selectedSessionId.value,
     },
@@ -172,8 +174,9 @@ async function openPromptPreview() {
 
 async function openTrace(trace?: AIManagedSessionTraceItem) {
   await router.push({
-    name: 'ai-debug',
+    name: 'ai',
     query: {
+      area: 'debug',
       debug: 'conversations',
       trace: trace?.trace_id,
       session: selectedSessionId.value,
@@ -282,9 +285,11 @@ onMounted(() => {
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem v-for="option in sessionLimitOptions" :key="option" :value="option">
-                  {{ option }}
-                </SelectItem>
+                <SelectGroup>
+                  <SelectItem v-for="option in sessionLimitOptions" :key="option" :value="option">
+                    {{ option }}
+                  </SelectItem>
+                </SelectGroup>
               </SelectContent>
             </Select>
           </template>
@@ -299,9 +304,11 @@ onMounted(() => {
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem :value="ALL_FILTER">{{ t('common.all') }}</SelectItem>
-                <SelectItem value="enabled">{{ t('ai.sessionEnabled') }}</SelectItem>
-                <SelectItem value="disabled">{{ t('ai.sessionDisabled') }}</SelectItem>
+                <SelectGroup>
+                  <SelectItem :value="ALL_FILTER">{{ t('common.all') }}</SelectItem>
+                  <SelectItem value="enabled">{{ t('ai.sessionEnabled') }}</SelectItem>
+                  <SelectItem value="disabled">{{ t('ai.sessionDisabled') }}</SelectItem>
+                </SelectGroup>
               </SelectContent>
             </Select>
           </div>
@@ -343,9 +350,11 @@ onMounted(() => {
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem v-for="option in messageLimitOptions" :key="option" :value="option">
-                  {{ option }}
-                </SelectItem>
+                <SelectGroup>
+                  <SelectItem v-for="option in messageLimitOptions" :key="option" :value="option">
+                    {{ option }}
+                  </SelectItem>
+                </SelectGroup>
               </SelectContent>
             </Select>
             <Button
@@ -396,14 +405,16 @@ onMounted(() => {
                     <SelectValue :placeholder="t('common.none')" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem :value="UNASSIGNED_PERSONA">{{ t('common.none') }}</SelectItem>
-                    <SelectItem
-                      v-for="item in personas"
-                      :key="item.persona_id"
-                      :value="item.persona_id"
-                    >
-                      {{ item.name }}
-                    </SelectItem>
+                    <SelectGroup>
+                      <SelectItem :value="UNASSIGNED_PERSONA">{{ t('common.none') }}</SelectItem>
+                      <SelectItem
+                        v-for="item in personas"
+                        :key="item.persona_id"
+                        :value="item.persona_id"
+                      >
+                        {{ item.name }}
+                      </SelectItem>
+                    </SelectGroup>
                   </SelectContent>
                 </Select>
               </FormField>

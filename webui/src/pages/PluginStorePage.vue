@@ -49,6 +49,7 @@ import { Input } from '@/components/ui/input'
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
   SelectTrigger,
   SelectValue,
@@ -182,7 +183,7 @@ const taskWaitingText = computed(() =>
 )
 
 function goBack() {
-  void router.push({ name: 'plugins' })
+  void router.push({ name: 'plugins', query: { area: 'installed' } })
 }
 
 function projectUrl(item: PluginStoreItem) {
@@ -486,13 +487,15 @@ onBeforeUnmount(() => {
               <SelectValue :placeholder="t('pluginStore.allSources')" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem
-                v-for="option in sourceOptions"
-                :key="option.value || 'all'"
-                :value="option.value"
-              >
-                {{ option.label }}
-              </SelectItem>
+              <SelectGroup>
+                <SelectItem
+                  v-for="option in sourceOptions"
+                  :key="option.value || 'all'"
+                  :value="option.value"
+                >
+                  {{ option.label }}
+                </SelectItem>
+              </SelectGroup>
             </SelectContent>
           </Select>
 
@@ -501,13 +504,15 @@ onBeforeUnmount(() => {
               <SelectValue :placeholder="t('pluginStore.allCategories')" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem
-                v-for="option in categoryOptions"
-                :key="option.value || 'all'"
-                :value="option.value"
-              >
-                {{ option.label }}
-              </SelectItem>
+              <SelectGroup>
+                <SelectItem
+                  v-for="option in categoryOptions"
+                  :key="option.value || 'all'"
+                  :value="option.value"
+                >
+                  {{ option.label }}
+                </SelectItem>
+              </SelectGroup>
             </SelectContent>
           </Select>
 
@@ -516,13 +521,15 @@ onBeforeUnmount(() => {
               <SelectValue :placeholder="t('pluginStore.sort')" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem
-                v-for="option in sortOptions"
-                :key="option.value"
-                :value="option.value"
-              >
-                {{ option.label }}
-              </SelectItem>
+              <SelectGroup>
+                <SelectItem
+                  v-for="option in sortOptions"
+                  :key="option.value"
+                  :value="option.value"
+                >
+                  {{ option.label }}
+                </SelectItem>
+              </SelectGroup>
             </SelectContent>
           </Select>
 

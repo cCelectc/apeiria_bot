@@ -23,6 +23,7 @@ import { Input } from '@/components/ui/input'
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
   SelectTrigger,
   SelectValue,
@@ -198,13 +199,15 @@ onMounted(() => {
                   <SelectValue :placeholder="t('ai.profileNameVisibility')" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem
-                    v-for="option in visibilityOptions"
-                    :key="option.value"
-                    :value="option.value"
-                  >
-                    {{ option.label }}
-                  </SelectItem>
+                  <SelectGroup>
+                    <SelectItem
+                      v-for="option in visibilityOptions"
+                      :key="option.value"
+                      :value="option.value"
+                    >
+                      {{ option.label }}
+                    </SelectItem>
+                  </SelectGroup>
                 </SelectContent>
               </Select>
             </FormField>

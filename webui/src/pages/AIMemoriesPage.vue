@@ -33,6 +33,7 @@ import { Input } from '@/components/ui/input'
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
   SelectTrigger,
   SelectValue,
@@ -182,7 +183,7 @@ function memorySourceTurn(item: AIMemoryItem) {
 }
 
 function openDebugConversations() {
-  void router.push({ name: 'ai-debug', query: { debug: 'conversations' } })
+  void router.push({ name: 'ai', query: { area: 'debug', debug: 'conversations' } })
 }
 
 function openChatView() {
@@ -250,13 +251,15 @@ onMounted(() => {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem
-                    v-for="option in anchorTypeOptions"
-                    :key="option.value"
-                    :value="option.value"
-                  >
-                    {{ option.label }}
-                  </SelectItem>
+                  <SelectGroup>
+                    <SelectItem
+                      v-for="option in anchorTypeOptions"
+                      :key="option.value"
+                      :value="option.value"
+                    >
+                      {{ option.label }}
+                    </SelectItem>
+                  </SelectGroup>
                 </SelectContent>
               </Select>
             </FormField>
@@ -269,13 +272,15 @@ onMounted(() => {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem
-                    v-for="option in layerFilterOptions"
-                    :key="option.value"
-                    :value="option.value"
-                  >
-                    {{ option.label }}
-                  </SelectItem>
+                  <SelectGroup>
+                    <SelectItem
+                      v-for="option in layerFilterOptions"
+                      :key="option.value"
+                      :value="option.value"
+                    >
+                      {{ option.label }}
+                    </SelectItem>
+                  </SelectGroup>
                 </SelectContent>
               </Select>
             </FormField>
@@ -285,13 +290,15 @@ onMounted(() => {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem
-                    v-for="option in kindFilterOptions"
-                    :key="option.value"
-                    :value="option.value"
-                  >
-                    {{ option.label }}
-                  </SelectItem>
+                  <SelectGroup>
+                    <SelectItem
+                      v-for="option in kindFilterOptions"
+                      :key="option.value"
+                      :value="option.value"
+                    >
+                      {{ option.label }}
+                    </SelectItem>
+                  </SelectGroup>
                 </SelectContent>
               </Select>
             </FormField>
@@ -304,13 +311,15 @@ onMounted(() => {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem
-                    v-for="option in memoryLimitOptions"
-                    :key="option"
-                    :value="option"
-                  >
-                    {{ option }}
-                  </SelectItem>
+                  <SelectGroup>
+                    <SelectItem
+                      v-for="option in memoryLimitOptions"
+                      :key="option"
+                      :value="option"
+                    >
+                      {{ option }}
+                    </SelectItem>
+                  </SelectGroup>
                 </SelectContent>
               </Select>
             </FormField>
@@ -330,13 +339,15 @@ onMounted(() => {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem
-                    v-for="option in draftLayerOptions"
-                    :key="option.value"
-                    :value="option.value"
-                  >
-                    {{ option.label }}
-                  </SelectItem>
+                  <SelectGroup>
+                    <SelectItem
+                      v-for="option in draftLayerOptions"
+                      :key="option.value"
+                      :value="option.value"
+                    >
+                      {{ option.label }}
+                    </SelectItem>
+                  </SelectGroup>
                 </SelectContent>
               </Select>
             </FormField>
@@ -346,13 +357,15 @@ onMounted(() => {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem
-                    v-for="option in kindOptions"
-                    :key="option.value"
-                    :value="option.value"
-                  >
-                    {{ option.label }}
-                  </SelectItem>
+                  <SelectGroup>
+                    <SelectItem
+                      v-for="option in kindOptions"
+                      :key="option.value"
+                      :value="option.value"
+                    >
+                      {{ option.label }}
+                    </SelectItem>
+                  </SelectGroup>
                 </SelectContent>
               </Select>
             </FormField>

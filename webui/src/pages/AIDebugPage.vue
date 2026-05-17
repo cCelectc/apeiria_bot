@@ -32,6 +32,7 @@ import { Input } from '@/components/ui/input'
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
   SelectTrigger,
   SelectValue,
@@ -267,9 +268,11 @@ watch(debugTab, () => {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem v-for="option in limitOptions" :key="option" :value="option">
-                      {{ option }}
-                    </SelectItem>
+                    <SelectGroup>
+                      <SelectItem v-for="option in limitOptions" :key="option" :value="option">
+                        {{ option }}
+                      </SelectItem>
+                    </SelectGroup>
                   </SelectContent>
                 </Select>
               </template>
@@ -310,9 +313,11 @@ watch(debugTab, () => {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem v-for="option in turnLimitOptions" :key="option" :value="option">
-                      {{ option }}
-                    </SelectItem>
+                    <SelectGroup>
+                      <SelectItem v-for="option in turnLimitOptions" :key="option" :value="option">
+                        {{ option }}
+                      </SelectItem>
+                    </SelectGroup>
                   </SelectContent>
                 </Select>
                 <Button
@@ -442,9 +447,11 @@ watch(debugTab, () => {
                   <Select v-model="traceFilter.terminal_status">
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem v-for="option in traceStatusOptions" :key="option" :value="option">
-                        {{ option === '__all__' ? t('common.all') : option }}
-                      </SelectItem>
+                      <SelectGroup>
+                        <SelectItem v-for="option in traceStatusOptions" :key="option" :value="option">
+                          {{ option === '__all__' ? t('common.all') : option }}
+                        </SelectItem>
+                      </SelectGroup>
                     </SelectContent>
                   </Select>
                 </FormField>
@@ -476,9 +483,11 @@ watch(debugTab, () => {
             <Select v-model="futureTaskForm.limit" @update:model-value="loadFutureTasks">
               <SelectTrigger class="w-28"><SelectValue /></SelectTrigger>
               <SelectContent>
-                <SelectItem v-for="option in limitOptions" :key="option" :value="option">
-                  {{ option }}
-                </SelectItem>
+                <SelectGroup>
+                  <SelectItem v-for="option in limitOptions" :key="option" :value="option">
+                    {{ option }}
+                  </SelectItem>
+                </SelectGroup>
               </SelectContent>
             </Select>
           </template>
@@ -533,9 +542,11 @@ watch(debugTab, () => {
                   <Select v-model="bindingForm.scope_type">
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem v-for="option in scopeTypeOptions" :key="option" :value="option">
-                        {{ option }}
-                      </SelectItem>
+                      <SelectGroup>
+                        <SelectItem v-for="option in scopeTypeOptions" :key="option" :value="option">
+                          {{ option }}
+                        </SelectItem>
+                      </SelectGroup>
                     </SelectContent>
                   </Select>
                 </FormField>
@@ -547,9 +558,11 @@ watch(debugTab, () => {
                 <Select v-model="bindingForm.allowed_level">
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem v-for="option in toolLevelOptions" :key="option" :value="option">
-                      {{ option }}
-                    </SelectItem>
+                    <SelectGroup>
+                      <SelectItem v-for="option in toolLevelOptions" :key="option" :value="option">
+                        {{ option }}
+                      </SelectItem>
+                    </SelectGroup>
                   </SelectContent>
                 </Select>
               </FormField>
@@ -598,9 +611,11 @@ watch(debugTab, () => {
                   <Select v-model="previewForm.scope_type">
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem v-for="option in scopeTypeOptions" :key="option" :value="option">
-                        {{ option }}
-                      </SelectItem>
+                      <SelectGroup>
+                        <SelectItem v-for="option in scopeTypeOptions" :key="option" :value="option">
+                          {{ option }}
+                        </SelectItem>
+                      </SelectGroup>
                     </SelectContent>
                   </Select>
                 </FormField>
@@ -608,9 +623,11 @@ watch(debugTab, () => {
                   <Select v-model="previewForm.allowed_level">
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem v-for="option in toolLevelOptions" :key="option" :value="option">
-                        {{ option }}
-                      </SelectItem>
+                      <SelectGroup>
+                        <SelectItem v-for="option in toolLevelOptions" :key="option" :value="option">
+                          {{ option }}
+                        </SelectItem>
+                      </SelectGroup>
                     </SelectContent>
                   </Select>
                 </FormField>

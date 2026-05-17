@@ -39,6 +39,16 @@ import {
   TaskDialog,
 } from '@/components/management'
 import { Alert, AlertDescription } from '@/components/ui/alert'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -50,11 +60,17 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import {
+  Field,
+  FieldDescription,
+  FieldGroup,
+  FieldLabel,
+} from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
   SelectTrigger,
   SelectValue,
@@ -70,6 +86,7 @@ import {
 } from '@/components/ui/table'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { usePluginMaintenance } from '@/composables/usePluginMaintenance'
 import { usePluginReadmeDialog } from '@/composables/usePluginReadmeDialog'
 import { usePluginSettingsDialog } from '@/composables/usePluginSettingsDialog'
@@ -268,6 +285,12 @@ function handleToggleChecked(item: PluginItem, value: boolean) {
   void requestTogglePlugin(item, value)
 }
 
+function setPluginScopeTab(value: unknown) {
+  if (value === 'managed' || value === 'framework') {
+    pluginScopeTab.value = value
+  }
+}
+
 function closeToggleConfirm() {
   toggleConfirmVisible.value = false
   toggleConfirmItem.value = null
@@ -319,7 +342,7 @@ async function confirmToggleAction() {
 }
 
 function openPluginStore() {
-  void router.push({ name: 'plugins-store' })
+  void router.push({ name: 'plugins', query: { area: 'store' } })
 }
 
 function openPluginSettings(item: PluginItem) {
@@ -472,30 +495,22 @@ onMounted(() => {
             />
           </div>
 
-          <div
+          <ToggleGroup
+            :model-value="pluginScopeTab"
             :aria-label="t('plugins.scopeTabs')"
             class="plugins-scope-tabs"
-            role="tablist"
+            size="sm"
+            type="single"
+            variant="outline"
+            @update:model-value="setPluginScopeTab"
           >
-            <Button
-              :aria-selected="pluginScopeTab === 'managed'"
-              :variant="pluginScopeTab === 'managed' ? 'default' : 'ghost'"
-              role="tab"
-              size="sm"
-              @click="pluginScopeTab = 'managed'"
-            >
+            <ToggleGroupItem value="managed">
               {{ t('plugins.tabManaged') }}
-            </Button>
-            <Button
-              :aria-selected="pluginScopeTab === 'framework'"
-              :variant="pluginScopeTab === 'framework' ? 'default' : 'ghost'"
-              role="tab"
-              size="sm"
-              @click="pluginScopeTab = 'framework'"
-            >
+            </ToggleGroupItem>
+            <ToggleGroupItem value="framework">
               {{ t('plugins.tabFramework') }}
-            </Button>
-          </div>
+            </ToggleGroupItem>
+          </ToggleGroup>
         </div>
       </FilterBar>
     </Panel>
@@ -651,12 +666,12 @@ onMounted(() => {
       </article>
     </div>
 
-    <Dialog v-model:open="toggleConfirmVisible">
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>{{ toggleConfirmTitle }}</DialogTitle>
-          <DialogDescription>{{ toggleConfirmSummary }}</DialogDescription>
-        </DialogHeader>
+    <AlertDialog v-model:open="toggleConfirmVisible">
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>{{ toggleConfirmTitle }}</AlertDialogTitle>
+          <AlertDialogDescription>{{ toggleConfirmSummary }}</AlertDialogDescription>
+        </AlertDialogHeader>
 
         <div v-if="toggleConfirmItem" class="plugin-toggle-summary">
           <div>
@@ -679,20 +694,20 @@ onMounted(() => {
           </div>
         </div>
 
-        <DialogFooter>
-          <Button variant="ghost" @click="closeToggleConfirm">
+        <AlertDialogFooter>
+          <AlertDialogCancel @click="closeToggleConfirm">
             {{ t('common.cancel') }}
-          </Button>
-          <Button
+          </AlertDialogCancel>
+          <AlertDialogAction
+            :class="toggleConfirmNextValue ? '' : 'bg-destructive text-destructive-foreground hover:bg-destructive/90'"
             :disabled="!toggleConfirmAllowed"
-            :variant="toggleConfirmNextValue ? 'default' : 'destructive'"
             @click="confirmToggleAction"
           >
             {{ toggleConfirmNextValue ? t('plugins.confirmEnable') : t('plugins.confirmDisable') }}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
 
     <Dialog v-model:open="pluginReadme.readmeDialogVisible.value">
       <DialogContent class="plugin-readme-dialog">
@@ -922,13 +937,15 @@ onMounted(() => {
                           <SelectValue :placeholder="t('common.none')" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem
-                            v-for="choice in pluginSettings.fieldChoiceOptions(field)"
-                            :key="choice.key"
-                            :value="choice.key"
-                          >
-                            {{ choice.title }}
-                          </SelectItem>
+                          <SelectGroup>
+                            <SelectItem
+                              v-for="choice in pluginSettings.fieldChoiceOptions(field)"
+                              :key="choice.key"
+                              :value="choice.key"
+                            >
+                              {{ choice.title }}
+                            </SelectItem>
+                          </SelectGroup>
                         </SelectContent>
                       </Select>
 
@@ -1093,14 +1110,14 @@ onMounted(() => {
       </DialogContent>
     </Dialog>
 
-    <Dialog v-model:open="pluginMaintenance.uninstallConfirmVisible.value">
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>{{ t('plugins.settingsUninstall') }}</DialogTitle>
-          <DialogDescription>
+    <AlertDialog v-model:open="pluginMaintenance.uninstallConfirmVisible.value">
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>{{ t('plugins.settingsUninstall') }}</AlertDialogTitle>
+          <AlertDialogDescription>
             {{ pluginMaintenance.uninstallConfirmSummary.value }}
-          </DialogDescription>
-        </DialogHeader>
+          </AlertDialogDescription>
+        </AlertDialogHeader>
 
         <Alert variant="destructive">
           <AlertCircle :size="16" />
@@ -1115,38 +1132,35 @@ onMounted(() => {
             v-model:checked="pluginMaintenance.uninstallRemoveConfig.value"
           />
           <div>
-            <Label for="plugin-uninstall-remove-config">
+            <FieldLabel for="plugin-uninstall-remove-config">
               {{ t('plugins.settingsUninstallRemoveConfig') }}
-            </Label>
+            </FieldLabel>
             <p>{{ t('plugins.settingsUninstallRemoveConfigHint') }}</p>
           </div>
         </div>
 
-        <DialogFooter>
-          <Button
-            variant="ghost"
-            @click="pluginMaintenance.closeUninstallConfirm"
-          >
+        <AlertDialogFooter>
+          <AlertDialogCancel @click="pluginMaintenance.closeUninstallConfirm">
             {{ t('common.cancel') }}
-          </Button>
-          <Button
+          </AlertDialogCancel>
+          <AlertDialogAction
+            class="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             :disabled="Boolean(pluginMaintenance.uninstallingModule.value)"
-            variant="destructive"
             @click="confirmUninstallPlugin"
           >
-            <Trash2 :size="16" />
+            <Trash2 data-icon="inline-start" />
             {{ t('plugins.settingsUninstall') }}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
 
-    <Dialog v-model:open="pluginMaintenance.orphanConfigDialogVisible.value">
-      <DialogContent class="plugin-maintenance-dialog">
-        <DialogHeader>
-          <DialogTitle>{{ t('plugins.orphanConfigCleanup') }}</DialogTitle>
-          <DialogDescription>{{ t('plugins.orphanConfigCleanupHint') }}</DialogDescription>
-        </DialogHeader>
+    <AlertDialog v-model:open="pluginMaintenance.orphanConfigDialogVisible.value">
+      <AlertDialogContent class="plugin-maintenance-dialog">
+        <AlertDialogHeader>
+          <AlertDialogTitle>{{ t('plugins.orphanConfigCleanup') }}</AlertDialogTitle>
+          <AlertDialogDescription>{{ t('plugins.orphanConfigCleanupHint') }}</AlertDialogDescription>
+        </AlertDialogHeader>
 
         <LoadingSkeleton
           v-if="pluginMaintenance.orphanConfigLoading.value"
@@ -1170,24 +1184,21 @@ onMounted(() => {
           </article>
         </div>
 
-        <DialogFooter>
-          <Button
-            variant="ghost"
-            @click="pluginMaintenance.orphanConfigDialogVisible.value = false"
-          >
+        <AlertDialogFooter>
+          <AlertDialogCancel @click="pluginMaintenance.orphanConfigDialogVisible.value = false">
             {{ t('common.cancel') }}
-          </Button>
-          <Button
+          </AlertDialogCancel>
+          <AlertDialogAction
+            class="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             :disabled="pluginMaintenance.orphanConfigItems.value.length === 0 || pluginMaintenance.orphanConfigCleaning.value"
-            variant="destructive"
             @click="confirmCleanupOrphanConfigs"
           >
-            <Trash2 :size="16" />
+            <Trash2 data-icon="inline-start" />
             {{ t('plugins.orphanConfigCleanupAction') }}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
 
     <Dialog v-model:open="pluginMaintenance.manualInstallDialogVisible.value">
       <DialogContent>
@@ -1196,49 +1207,53 @@ onMounted(() => {
           <DialogDescription>{{ t('plugins.manualInstallHint') }}</DialogDescription>
         </DialogHeader>
 
-        <div class="plugin-maintenance-form">
-          <div class="plugin-maintenance-field">
-            <Label for="plugin-manual-source">
+        <FieldGroup class="plugin-maintenance-form">
+          <Field>
+            <FieldLabel for="plugin-manual-source">
               {{ t('plugins.manualInstallSourceType') }}
-            </Label>
+            </FieldLabel>
             <Select v-model="pluginMaintenance.manualInstallSourceType.value">
               <SelectTrigger id="plugin-manual-source">
                 <SelectValue :placeholder="t('plugins.manualInstallSourceType')" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem
-                  v-for="option in pluginMaintenance.manualInstallSourceOptions.value"
-                  :key="option.value"
-                  :value="option.value"
-                >
-                  {{ option.label }}
-                </SelectItem>
+                <SelectGroup>
+                  <SelectItem
+                    v-for="option in pluginMaintenance.manualInstallSourceOptions.value"
+                    :key="option.value"
+                    :value="option.value"
+                  >
+                    {{ option.label }}
+                  </SelectItem>
+                </SelectGroup>
               </SelectContent>
             </Select>
-          </div>
+          </Field>
 
-          <div class="plugin-maintenance-field">
-            <Label for="plugin-manual-requirement">
+          <Field>
+            <FieldLabel for="plugin-manual-requirement">
               {{ pluginMaintenance.manualInstallRequirementLabel.value }}
-            </Label>
+            </FieldLabel>
             <Input
               id="plugin-manual-requirement"
               v-model.trim="pluginMaintenance.manualInstallRequirement.value"
             />
-            <p>{{ pluginMaintenance.manualInstallRequirementHint.value }}</p>
-          </div>
+            <FieldDescription>
+              {{ pluginMaintenance.manualInstallRequirementHint.value }}
+            </FieldDescription>
+          </Field>
 
-          <div class="plugin-maintenance-field">
-            <Label for="plugin-manual-module">
+          <Field>
+            <FieldLabel for="plugin-manual-module">
               {{ t('plugins.manualInstallModule') }}
-            </Label>
+            </FieldLabel>
             <Input
               id="plugin-manual-module"
               v-model.trim="pluginMaintenance.manualInstallModuleName.value"
             />
-            <p>{{ t('plugins.manualInstallModuleHint') }}</p>
-          </div>
-        </div>
+            <FieldDescription>{{ t('plugins.manualInstallModuleHint') }}</FieldDescription>
+          </Field>
+        </FieldGroup>
 
         <DialogFooter>
           <Button

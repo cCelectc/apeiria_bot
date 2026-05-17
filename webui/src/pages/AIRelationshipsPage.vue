@@ -117,7 +117,7 @@ function formatEventType(value: string) {
 }
 
 function openDebugConversations() {
-  void router.push({ name: 'ai-debug', query: { debug: 'conversations' } })
+  void router.push({ name: 'ai', query: { area: 'debug', debug: 'conversations' } })
 }
 
 function openChatView() {
