@@ -54,6 +54,7 @@ def test_database_ensure_ready_initializes_empty_sqlite_db(tmp_path: Path) -> No
         "ai_affinity",
         "ai_relationship_event",
         "ai_memory_item",
+        "ai_model_usage_event",
         "ai_managed_session",
         "chat_session",
         "chat_session_context_summary",
@@ -171,6 +172,15 @@ def test_database_schema_declares_unique_bindings_and_default_indexes(
             connection,
             "ai_tool_policy",
         )
+        for index_name in (
+            "idx_ai_model_usage_event_trace",
+            "idx_ai_model_usage_event_session",
+            "idx_ai_model_usage_event_source_model",
+            "idx_ai_model_usage_event_response_source",
+            "idx_ai_model_usage_event_operation",
+            "idx_ai_model_usage_event_created_at",
+        ):
+            assert _index_sql(connection, index_name)
         for table_name in SOURCE_MODEL_TABLE_NAMES:
             index_sql = _index_sql(
                 connection,
@@ -269,6 +279,31 @@ def test_database_schema_declares_value_checks(tmp_path: Path) -> None:
             connection,
             "ai_managed_session",
         )
+        usage_table_sql = _table_sql(connection, "ai_model_usage_event")
+        assert "CHECK(usage_available IN (0, 1))" in usage_table_sql
+        assert "measurement_source IN ('provider', 'missing')" in usage_table_sql
+        assert "json_valid(provider_usage_json)" in usage_table_sql
+        assert "FOREIGN KEY" not in usage_table_sql
+
+
+def test_database_ensure_ready_adds_usage_table_to_v1_shape(
+    tmp_path: Path,
+) -> None:
+    database = ApeiriaDatabase(project_root=tmp_path)
+    _create_schema_meta(
+        database,
+        schema_line=CURRENT_SCHEMA_LINE,
+        schema_version=CURRENT_SCHEMA_VERSION,
+    )
+
+    database.ensure_ready()
+
+    with database.connect_sync() as connection:
+        tables = _table_names(connection)
+        index_sql = _index_sql(connection, "idx_ai_model_usage_event_session")
+
+    assert "ai_model_usage_event" in tables
+    assert "ON ai_model_usage_event(session_id, created_at)" in index_sql
 
 
 def test_database_ensure_ready_adds_provider_metadata_columns_to_v1_shape(

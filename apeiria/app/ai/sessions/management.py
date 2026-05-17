@@ -6,6 +6,8 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from apeiria.ai.persona.service import ai_persona_service
+from apeiria.ai.token_usage import AIModelUsageRepository
+from apeiria.app.ai.diagnostics.usage import AIModelUsageTotals
 from apeiria.app.ai.runtime.trace import turn_trace_repository
 from apeiria.app.ai.sessions.models import (
     AISessionDetail,
@@ -20,6 +22,7 @@ from apeiria.app.ai.sessions.repository import AISessionManagementRepository
 from apeiria.conversation.service import chat_session_service
 
 if TYPE_CHECKING:
+    from apeiria.ai.token_usage import AIModelUsageSummary
     from apeiria.conversation.models import ChatMessageDetailView
 
 
@@ -29,6 +32,9 @@ class AISessionManagementReader:
 
     repository: AISessionManagementRepository = field(
         default_factory=AISessionManagementRepository
+    )
+    usage_repository: AIModelUsageRepository = field(
+        default_factory=AIModelUsageRepository
     )
 
     async def list_sessions(
@@ -83,6 +89,12 @@ class AISessionManagementReader:
             _detail_message(message, record=record) for message in messages
         )
         latest_trace = traces[0] if traces else None
+        usage = _session_usage_totals(
+            self.usage_repository.summarize_usage(
+                group_by="session",
+                session_id=session_id,
+            )
+        )
         return AISessionDetail(
             session_id=record.session_id,
             source_identity=record.source_identity,
@@ -122,6 +134,7 @@ class AISessionManagementReader:
                     else None
                 ),
             },
+            usage=usage,
         )
 
 
@@ -166,6 +179,37 @@ def _last_model_name(messages: tuple[AISessionDetailMessage, ...]) -> str | None
         if message.model_name:
             return message.model_name
     return None
+
+
+def _session_usage_totals(
+    summaries: "list[AIModelUsageSummary]",
+) -> AIModelUsageTotals:
+    if not summaries:
+        return AIModelUsageTotals()
+    return AIModelUsageTotals(
+        call_count=sum(getattr(item, "call_count", 0) for item in summaries),
+        measured_call_count=sum(
+            getattr(item, "measured_call_count", 0) for item in summaries
+        ),
+        missing_usage_count=sum(
+            getattr(item, "missing_usage_count", 0) for item in summaries
+        ),
+        input_tokens=sum(getattr(item, "input_tokens", 0) for item in summaries),
+        output_tokens=sum(getattr(item, "output_tokens", 0) for item in summaries),
+        total_tokens=sum(getattr(item, "total_tokens", 0) for item in summaries),
+        cached_input_tokens=sum(
+            getattr(item, "cached_input_tokens", 0) for item in summaries
+        ),
+        reasoning_tokens=sum(
+            getattr(item, "reasoning_tokens", 0) for item in summaries
+        ),
+        audio_input_tokens=sum(
+            getattr(item, "audio_input_tokens", 0) for item in summaries
+        ),
+        audio_output_tokens=sum(
+            getattr(item, "audio_output_tokens", 0) for item in summaries
+        ),
+    )
 
 
 __all__ = ["AISessionManagementReader"]

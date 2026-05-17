@@ -7,6 +7,10 @@ from typing import TYPE_CHECKING
 from pydantic import BaseModel, Field
 
 from .memories_schemas import AIMemoryItem, to_ai_memory_item
+from .usage_schemas import (
+    AIModelUsageTotalsItem,
+    to_ai_model_usage_totals_item,
+)
 
 if TYPE_CHECKING:
     from apeiria.app.ai.sessions.models import (
@@ -102,6 +106,7 @@ class AIManagedSessionDetailItem(BaseModel):
     reset_boundary_at: str | None = None
     prompt_preview_session_id: str
     trace_entries: list[AIManagedSessionTraceItem] = Field(default_factory=list)
+    usage: AIModelUsageTotalsItem = AIModelUsageTotalsItem()
     model_summary: dict[str, str | None] = Field(default_factory=dict)
     strategy_summary: dict[str, str | None] = Field(default_factory=dict)
     tool_summary: dict[str, int] = Field(default_factory=dict)
@@ -336,6 +341,11 @@ def to_ai_managed_session_detail_item(
         trace_entries=[
             to_ai_managed_session_trace_item(trace) for trace in item.trace_entries
         ],
+        usage=(
+            to_ai_model_usage_totals_item(item.usage)
+            if item.usage is not None
+            else AIModelUsageTotalsItem()
+        ),
         model_summary=item.model_summary,
         strategy_summary=item.strategy_summary,
         tool_summary=item.tool_summary,

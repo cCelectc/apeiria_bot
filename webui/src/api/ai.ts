@@ -134,6 +134,60 @@ export interface AIManagedSessionTraceItem {
   created_at: string
 }
 
+export interface AIModelUsageTotalsItem {
+  usage_available: boolean
+  call_count: number
+  measured_call_count: number
+  missing_usage_count: number
+  input_tokens: number
+  output_tokens: number
+  total_tokens: number
+  cached_input_tokens: number
+  reasoning_tokens: number
+  audio_input_tokens: number
+  audio_output_tokens: number
+}
+
+export interface AIModelUsageEventItem {
+  usage_event_id: string
+  trace_id: string
+  session_id: string
+  runtime_mode: string
+  response_source: string
+  source_id: string
+  model_name: string
+  operation: string
+  attempt_index: number
+  status: string
+  usage_available: boolean
+  measurement_source: string
+  input_tokens: number | null
+  output_tokens: number | null
+  total_tokens: number | null
+  cached_input_tokens: number | null
+  reasoning_tokens: number | null
+  audio_input_tokens: number | null
+  audio_output_tokens: number | null
+  provider_usage: Record<string, unknown> | null
+  provider_response_id: string | null
+  finish_reason: string | null
+  created_at: string
+}
+
+export interface AIModelUsageSummaryItem {
+  group_key: string
+  call_count: number
+  measured_call_count: number
+  missing_usage_count: number
+  input_tokens: number
+  output_tokens: number
+  total_tokens: number
+  cached_input_tokens: number
+  reasoning_tokens: number
+  audio_input_tokens: number
+  audio_output_tokens: number
+}
+
 export interface AIManagedSessionDetailItem {
   session_id: string
   platform_id: string
@@ -147,6 +201,7 @@ export interface AIManagedSessionDetailItem {
   reset_boundary_at: string | null
   prompt_preview_session_id: string
   trace_entries: AIManagedSessionTraceItem[]
+  usage: AIModelUsageTotalsItem
   model_summary: Record<string, string | null>
   strategy_summary: Record<string, string | null>
   tool_summary: Record<string, number>
@@ -507,6 +562,8 @@ export interface AITurnTraceItem {
   skip_reason: string | null
   delivery_status: string | null
   commit_status: string | null
+  usage: AIModelUsageTotalsItem
+  usage_events: AIModelUsageEventItem[]
   diagnostics: Record<string, unknown>
   created_at: string
 }
@@ -960,4 +1017,32 @@ export function getAITurnTraces(params?: {
   commit_status?: string
 }) {
   return client.get<AITurnTraceItem[]>('/ai/traces', { params })
+}
+
+export function getAIUsageEvents(params?: {
+  limit?: number
+  trace_id?: string
+  session_id?: string
+  source_id?: string
+  model_name?: string
+  response_source?: string
+  operation?: string
+  created_from?: string
+  created_to?: string
+}) {
+  return client.get<AIModelUsageEventItem[]>('/ai/usage-events', { params })
+}
+
+export function getAIUsageSummary(params?: {
+  group_by?: 'trace' | 'session' | 'source' | 'model' | 'response_source' | 'operation'
+  trace_id?: string
+  session_id?: string
+  source_id?: string
+  model_name?: string
+  response_source?: string
+  operation?: string
+  created_from?: string
+  created_to?: string
+}) {
+  return client.get<AIModelUsageSummaryItem[]>('/ai/usage-summary', { params })
 }

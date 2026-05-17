@@ -224,8 +224,23 @@ function messageText(item: AIManagedSessionMessageItem) {
   return item.text_content.trim() || t('common.noData')
 }
 
+function tokenLabel(value: number | null | undefined) {
+  return value == null ? t('common.none') : value.toLocaleString()
+}
+
 function buildSummaryItems(detail: AIManagedSessionDetailItem) {
   return [
+    {
+      key: 'usage',
+      rows: summaryRows({
+        call_count: detail.usage.call_count,
+        input_tokens: detail.usage.input_tokens,
+        missing_usage_count: detail.usage.missing_usage_count,
+        output_tokens: detail.usage.output_tokens,
+        total_tokens: detail.usage.total_tokens,
+      }),
+      title: t('ai.sessionUsageSummary'),
+    },
     {
       key: 'model',
       rows: summaryRows(detail.model_summary),
@@ -380,6 +395,8 @@ onMounted(() => {
               <Badge variant="secondary">{{ t('ai.sessionId') }}: {{ selectedDetail.session_id }}</Badge>
               <Badge variant="outline">{{ t('ai.sessionSubject') }}: {{ selectedDetail.subject_id }}</Badge>
               <Badge variant="outline">{{ t('ai.sessionResetBoundary') }}: {{ formatTime(selectedDetail.reset_boundary_at) }}</Badge>
+              <Badge variant="outline">{{ t('ai.usageTotalTokens') }}: {{ tokenLabel(selectedDetail.usage.total_tokens) }}</Badge>
+              <Badge variant="outline">{{ t('ai.usageMissing') }}: {{ selectedDetail.usage.missing_usage_count }}</Badge>
             </div>
 
             <div class="ai-data-grid-2">

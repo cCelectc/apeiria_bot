@@ -137,6 +137,7 @@ class OpenAICompatibleProvider:
             options=request.options or request.extra or {},
         )
         payload["stream"] = True
+        payload["stream_options"] = {"include_usage": True}
         client = _build_openai_client(
             api_key=api_key,
             api_base=api_base,
@@ -148,10 +149,11 @@ class OpenAICompatibleProvider:
         visible_content_parts: list[str] = []
         finish_reason: str | None = None
         response_id: str | None = None
+        usage: dict[str, Any] | None = None
         think_filter = _ThinkTagStreamFilter()
 
         async def _stream() -> "AsyncIterator[AIModelStreamEvent]":
-            nonlocal finish_reason, response_id
+            nonlocal finish_reason, response_id, usage
             try:
                 stream = await client.chat.completions.create(**payload)
                 yield AIModelStreamEvent.start(
@@ -178,6 +180,7 @@ class OpenAICompatibleProvider:
                     finish_reason = (
                         _extract_openai_stream_finish_reason(chunk) or finish_reason
                     )
+                    usage = _extract_openai_stream_usage(chunk) or usage
             except Exception as exc:  # noqa: BLE001
                 yield AIModelStreamEvent.failure(
                     source_id=request.source_id,
@@ -195,6 +198,7 @@ class OpenAICompatibleProvider:
                 source_id=request.source_id,
                 model_name=request.model_name,
                 content=content,
+                usage=usage,
                 finish_reason=finish_reason,
                 response_id=response_id,
             ).with_sanitized_visible_text()
@@ -271,6 +275,7 @@ class OpenAICompatibleProvider:
             model_name=request.model_name,
             vectors=tuple(_extract_openai_embeddings(response)),
             raw=raw,
+            usage=raw.get("usage") if isinstance(raw.get("usage"), dict) else None,
         )
 
     async def transcribe_audio(
@@ -310,6 +315,11 @@ class OpenAICompatibleProvider:
             model_name=request.model_name,
             text=_extract_openai_transcription_text(response),
             raw=raw,
+            usage=(
+                raw.get("usage")
+                if isinstance(raw, dict) and isinstance(raw.get("usage"), dict)
+                else None
+            ),
         )
 
     async def synthesize_speech(
@@ -642,6 +652,16 @@ def _extract_openai_stream_finish_reason(chunk: Any) -> str | None:
         return None
     reason = getattr(choices[0], "finish_reason", None)
     return reason if isinstance(reason, str) else None
+
+
+def _extract_openai_stream_usage(chunk: Any) -> dict[str, Any] | None:
+    usage = getattr(chunk, "usage", None)
+    if isinstance(usage, dict):
+        return usage
+    if usage is not None and hasattr(usage, "model_dump"):
+        raw_usage = usage.model_dump(mode="json")
+        return raw_usage if isinstance(raw_usage, dict) else None
+    return None
 
 
 def _parse_tool_arguments(arguments: Any) -> dict[str, Any]:

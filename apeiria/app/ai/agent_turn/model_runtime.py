@@ -18,17 +18,33 @@ from apeiria.app.ai.agent_turn.models import (
     AgentTurnResult,
     ModelAttempt,
 )
+from apeiria.app.ai.usage_recording import (
+    AIModelUsageRecordContext,
+    record_model_usage_safely,
+)
 
 
 class AgentTurnModelRuntime:
     """Run model attempts for one agent turn and record their outcomes."""
 
-    def __init__(self, *, model_invoker: Any | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        model_invoker: Any | None = None,
+        usage_recorder: Any | None = None,
+    ) -> None:
         if model_invoker is None:
             from apeiria.ai.model import model_invoker as default_model_invoker
 
             model_invoker = default_model_invoker
+        if usage_recorder is None:
+            from apeiria.app.ai.usage_recording import (
+                ai_model_usage_recorder as default_usage_recorder,
+            )
+
+            usage_recorder = default_usage_recorder
         self._model_invoker = model_invoker
+        self._usage_recorder = usage_recorder
 
     async def generate(
         self,
@@ -51,6 +67,14 @@ class AgentTurnModelRuntime:
                     if response is None:
                         _raise_empty_stream_response()
                     assert response is not None
+                    _record_usage(
+                        recorder=self._usage_recorder,
+                        request=request,
+                        selected=selected,
+                        response=response,
+                        attempt_index=index,
+                        status="success",
+                    )
                     attempts.append(
                         build_success_attempt(
                             attempt_index=index,
@@ -119,6 +143,14 @@ class AgentTurnModelRuntime:
                 continue
 
             if is_empty_model_response(response):
+                _record_usage(
+                    recorder=self._usage_recorder,
+                    request=request,
+                    selected=selected,
+                    response=response,
+                    attempt_index=index,
+                    status="empty_response",
+                )
                 attempts.append(
                     build_empty_response_attempt(
                         attempt_index=index,
@@ -130,6 +162,14 @@ class AgentTurnModelRuntime:
                 last_diagnostic = "model returned empty response"
                 continue
 
+            _record_usage(
+                recorder=self._usage_recorder,
+                request=request,
+                selected=selected,
+                response=response,
+                attempt_index=index,
+                status="success",
+            )
             attempts.append(
                 build_success_attempt(
                     attempt_index=index,
@@ -202,6 +242,31 @@ def _completed_finish_reason(response_source: str) -> str:
     if response_source == "direct":
         return "direct_model_completed"
     return f"{response_source}_model_completed"
+
+
+def _record_usage(  # noqa: PLR0913
+    *,
+    recorder: Any | None,
+    request: AgentModelGenerationRequest,
+    selected: Any,
+    response: Any,
+    attempt_index: int,
+    status: str,
+) -> None:
+    record_model_usage_safely(
+        recorder=recorder,
+        context=AIModelUsageRecordContext(
+            trace_id=request.trace_id,
+            session_id=request.session_id,
+            runtime_mode=request.runtime_mode,
+            response_source=request.response_source,
+            selected=selected,
+            operation="chat_generation",
+            attempt_index=attempt_index,
+            status=status,
+        ),
+        response=response,
+    )
 
 
 def _raise_empty_stream_response() -> None:

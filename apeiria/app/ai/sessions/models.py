@@ -10,6 +10,7 @@ if TYPE_CHECKING:
     from datetime import datetime
 
     from apeiria.ai.memory import AIMemoryDefinition
+    from apeiria.app.ai.diagnostics.usage import AIModelUsageTotals
 
 AISessionMessageType = Literal["group", "private", "web_chat"]
 
@@ -195,6 +196,7 @@ class AISessionDetail:
     strategy_summary: dict[str, str | None]
     tool_summary: dict[str, int]
     diagnostics: dict[str, str | None]
+    usage: "AIModelUsageTotals | None" = None
 
 
 @dataclass(frozen=True)

@@ -22,6 +22,11 @@ from apeiria.ai.model.runtime.client import ai_model_client
 from apeiria.ai.model.runtime.factory import build_source_adapter
 from apeiria.ai.model.runtime.planning import plan_model_call
 from apeiria.ai.model.sources.service import ai_source_service
+from apeiria.app.ai.usage_recording import (
+    AIModelUsageRecorder,
+    ai_model_usage_recorder,
+    record_source_usage_safely,
+)
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
@@ -43,6 +48,15 @@ if TYPE_CHECKING:
 
 class ModelInvoker:
     """Provider invocation boundary for selected or explicit model calls."""
+
+    def __init__(
+        self,
+        *,
+        usage_recorder: AIModelUsageRecorder | None = None,
+    ) -> None:
+        self._usage_recorder: AIModelUsageRecorder | None = (
+            usage_recorder or ai_model_usage_recorder
+        )
 
     async def list_source_models(
         self,
@@ -192,13 +206,20 @@ class ModelInvoker:
         texts: tuple[str, ...],
     ) -> "AIModelEmbeddingResponse":
         self._register_source(source, api_key=api_key)
-        return await ai_model_client.embed_texts(
+        response = await ai_model_client.embed_texts(
             AIModelEmbeddingRequest(
                 source_id=source.source_id,
                 model_name=model_name,
                 texts=texts,
             )
         )
+        self._record_source_usage(
+            source=source,
+            model_name=model_name,
+            operation="embedding",
+            response=response,
+        )
+        return response
 
     async def transcribe_audio_for_source(  # noqa: PLR0913
         self,
@@ -212,7 +233,7 @@ class ModelInvoker:
         language: str | None = None,
     ) -> "AIModelTranscriptionResponse":
         self._register_source(source, api_key=api_key)
-        return await ai_model_client.transcribe_audio(
+        response = await ai_model_client.transcribe_audio(
             AIModelTranscriptionRequest(
                 source_id=source.source_id,
                 model_name=model_name,
@@ -222,6 +243,13 @@ class ModelInvoker:
                 language=language,
             )
         )
+        self._record_source_usage(
+            source=source,
+            model_name=model_name,
+            operation="speech_to_text",
+            response=response,
+        )
+        return response
 
     async def transcribe_audio(
         self,
@@ -253,7 +281,7 @@ class ModelInvoker:
             raise AIModelCapabilityPlanningError(plan)
 
         self._register_source(selected.source, api_key=api_key)
-        return await ai_model_client.transcribe_audio(
+        response = await ai_model_client.transcribe_audio(
             AIModelTranscriptionRequest(
                 source_id=selected.source.source_id,
                 model_name=model_name,
@@ -264,6 +292,13 @@ class ModelInvoker:
                 extra=plan.options,
             )
         )
+        self._record_source_usage(
+            source=selected.source,
+            model_name=model_name,
+            operation="speech_to_text",
+            response=response,
+        )
+        return response
 
     async def synthesize_speech_for_source(  # noqa: PLR0913
         self,
@@ -276,7 +311,7 @@ class ModelInvoker:
         response_format: Literal["mp3", "opus", "aac", "flac", "wav", "pcm"] = "wav",
     ) -> "AIModelSpeechResponse":
         self._register_source(source, api_key=api_key)
-        return await ai_model_client.synthesize_speech(
+        response = await ai_model_client.synthesize_speech(
             AIModelSpeechRequest(
                 source_id=source.source_id,
                 model_name=model_name,
@@ -285,6 +320,13 @@ class ModelInvoker:
                 response_format=response_format,
             )
         )
+        self._record_source_usage(
+            source=source,
+            model_name=model_name,
+            operation="text_to_speech",
+            response=response,
+        )
+        return response
 
     async def synthesize_speech(
         self,
@@ -318,7 +360,7 @@ class ModelInvoker:
         self._register_source(selected.source, api_key=api_key)
         planned_voice = str(plan.options.get("voice") or voice)
         planned_format = plan.options.get("response_format") or response_format
-        return await ai_model_client.synthesize_speech(
+        response = await ai_model_client.synthesize_speech(
             AIModelSpeechRequest(
                 source_id=selected.source.source_id,
                 model_name=model_name,
@@ -328,6 +370,13 @@ class ModelInvoker:
                 extra=plan.options,
             )
         )
+        self._record_source_usage(
+            source=selected.source,
+            model_name=model_name,
+            operation="text_to_speech",
+            response=response,
+        )
+        return response
 
     async def rerank_documents_for_source(  # noqa: PLR0913
         self,
@@ -340,7 +389,7 @@ class ModelInvoker:
         top_n: int = 3,
     ) -> "AIModelRerankResponse":
         self._register_source(source, api_key=api_key)
-        return await ai_model_client.rerank_documents(
+        response = await ai_model_client.rerank_documents(
             AIModelRerankRequest(
                 source_id=source.source_id,
                 model_name=model_name,
@@ -349,6 +398,13 @@ class ModelInvoker:
                 top_n=top_n,
             )
         )
+        self._record_source_usage(
+            source=source,
+            model_name=model_name,
+            operation="rerank",
+            response=response,
+        )
+        return response
 
     @staticmethod
     def resolve_model_name(selected: "AISelectedModel") -> str | None:
@@ -368,6 +424,22 @@ class ModelInvoker:
         ai_model_client.registry.register(
             source.source_id,
             build_source_adapter(source, api_key=api_key),
+        )
+
+    def _record_source_usage(
+        self,
+        *,
+        source: "AISourceDefinition",
+        model_name: str,
+        operation: str,
+        response: object,
+    ) -> None:
+        record_source_usage_safely(
+            recorder=self._usage_recorder,
+            source=source,
+            model_name=model_name,
+            operation=operation,
+            response=response,
         )
 
 

@@ -1,5 +1,6 @@
 import type {
   AIChatMessageItem,
+  AIModelUsageSummaryItem,
   AISessionItem,
   AISessionPromptChannelsItem,
   AISessionPromptPreviewItem,
@@ -11,6 +12,7 @@ import {
   getAIScenePromptPreview,
   getAIScenes,
   getAISceneTurns,
+  getAIUsageSummary,
   getAIToolExecutions,
   getAITurnTraces,
 } from '@/api/ai'
@@ -34,6 +36,7 @@ export function useAIDebugTab(t: (key: string) => string) {
   const toolExecutions = ref<AIToolExecutionItem[]>([])
   const promptPreview = ref<AISessionPromptPreviewItem | null>(null)
   const traces = ref<AITurnTraceItem[]>([])
+  const usageByResponseSource = ref<AIModelUsageSummaryItem[]>([])
   const selectedSceneId = ref('')
   const debugForm = reactive({
     limit: 20,
@@ -134,15 +137,24 @@ export function useAIDebugTab(t: (key: string) => string) {
   async function loadTraces() {
     loadingTraces.value = true
     try {
-      const response = await getAITurnTraces({
+      const params = {
         commit_status: optionalTraceFilter(traceFilter.commit_status),
         limit: traceFilter.limit,
         runtime_mode: optionalTraceFilter(traceFilter.runtime_mode),
         session_id: traceFilter.session_id.trim() || undefined,
         terminal_status: optionalTraceFilter(traceFilter.terminal_status),
         trace_id: traceFilter.trace_id.trim() || undefined,
-      })
-      traces.value = response.data
+      }
+      const [traceResponse, usageResponse] = await Promise.all([
+        getAITurnTraces(params),
+        getAIUsageSummary({
+          group_by: 'response_source',
+          session_id: params.session_id,
+          trace_id: params.trace_id,
+        }),
+      ])
+      traces.value = traceResponse.data
+      usageByResponseSource.value = usageResponse.data
     } catch (error) {
       noticeStore.show(getErrorMessage(error, t('ai.workbenchLoadFailed')), 'error')
     } finally {
@@ -202,6 +214,7 @@ export function useAIDebugTab(t: (key: string) => string) {
     traceIds,
     traces,
     turns,
+    usageByResponseSource,
   }
 }
 

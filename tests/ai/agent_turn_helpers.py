@@ -68,18 +68,26 @@ def selected_model(
     )
 
 
-def model_response(
+def model_response(  # noqa: PLR0913
     selected: AISelectedModel,
     content: str,
     *,
     tool_calls: tuple[AIModelToolCall, ...] = (),
+    usage: dict[str, Any] | None = None,
+    finish_reason: str | None = None,
+    response_id: str | None = None,
 ) -> AIModelGenerateResponse:
+    if usage is None:
+        usage = {"prompt_tokens": 12}
     return AIModelGenerateResponse(
         source_id=selected.source.source_id,
         model_name=selected.resolved_model_name or "",
         content=content,
         tool_calls=tool_calls,
-        raw={"usage": {"prompt_tokens": 12}},
+        raw={"usage": usage},
+        usage=usage,
+        finish_reason=finish_reason,
+        response_id=response_id,
     )
 
 

@@ -16,8 +16,10 @@ from .readiness import (
     AIRuntimeStatusDiagnostics,
 )
 from .traces import TraceInspectionAdminMixin
+from .usage import AIModelUsageTotals, UsageDiagnosticsAdminMixin
 
 if TYPE_CHECKING:
+    from apeiria.ai.token_usage import AIModelUsageRepository
     from apeiria.app.ai.diagnostics.readiness import (
         AIModelSelector,
         RuntimeReadinessProbe,
@@ -25,17 +27,19 @@ if TYPE_CHECKING:
     from apeiria.app.ai.runtime.trace import TurnTraceRepository
 
 
-class AIDiagnosticsEntry(TraceInspectionAdminMixin):
+class AIDiagnosticsEntry(UsageDiagnosticsAdminMixin, TraceInspectionAdminMixin):
     """Application entry for AI read-only diagnostics."""
 
     def __init__(
         self,
         *,
         trace_repository: "TurnTraceRepository | None" = None,
+        usage_repository: "AIModelUsageRepository | None" = None,
         model_selector: "AIModelSelector | None" = None,
         runtime_readiness_probe: "RuntimeReadinessProbe | None" = None,
     ) -> None:
-        super().__init__(trace_repository=trace_repository)
+        TraceInspectionAdminMixin.__init__(self, trace_repository=trace_repository)
+        UsageDiagnosticsAdminMixin.__init__(self, usage_repository=usage_repository)
         self._runtime_status = AIRuntimeStatusDiagnostics(
             model_selector=model_selector,
             runtime_readiness_probe=runtime_readiness_probe,
@@ -51,6 +55,7 @@ ai_diagnostics = AIDiagnosticsEntry()
 
 __all__ = [
     "AIDiagnosticsEntry",
+    "AIModelUsageTotals",
     "AIRuntimeReadinessProbe",
     "AIRuntimeStatus",
     "AIRuntimeStatusDiagnostics",

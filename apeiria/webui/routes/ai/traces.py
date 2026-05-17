@@ -32,7 +32,15 @@ async def list_ai_turn_traces(  # noqa: PLR0913
         terminal_status=terminal_status,
         commit_status=commit_status,
     )
-    return [to_ai_turn_trace_item(record) for record in records]
+    return [
+        to_ai_turn_trace_item(
+            record,
+            usage=await ai_application.diagnostics.usage_totals_for_trace(
+                trace_id=record.trace_id
+            ),
+        )
+        for record in records
+    ]
 
 
 @router.get("/traces/{trace_id}", response_model=AITurnTraceItem)
@@ -43,7 +51,16 @@ async def get_ai_turn_trace(
     record = await ai_application.diagnostics.get_turn_trace(trace_id=trace_id)
     if record is None:
         raise HTTPException(status_code=404, detail="trace_not_found")
-    return to_ai_turn_trace_item(record)
+    usage = await ai_application.diagnostics.usage_totals_for_trace(trace_id=trace_id)
+    usage_events = await ai_application.diagnostics.list_usage_events(
+        limit=100,
+        trace_id=trace_id,
+    )
+    return to_ai_turn_trace_item(
+        record,
+        usage=usage,
+        usage_events=usage_events,
+    )
 
 
 __all__ = ["router"]

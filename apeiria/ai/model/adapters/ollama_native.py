@@ -174,6 +174,7 @@ class OllamaNativeProvider:
             model_name=request.model_name,
             vectors=tuple(_extract_ollama_embeddings(raw)),
             raw=raw if isinstance(raw, dict) else None,
+            usage=_extract_ollama_usage(raw),
         )
 
     async def transcribe_audio(

@@ -229,6 +229,8 @@ def _ensure_current_schema_shape(  # noqa: C901, PLR0912
         _create_delivery_attempt_tables(connection)
     if "ai_turn_trace" not in existing_tables:
         _create_turn_trace_tables(connection)
+    if "ai_model_usage_event" not in existing_tables:
+        _create_model_usage_tables(connection)
     if "ai_knowledge_document" not in existing_tables:
         _create_knowledge_tables(connection)
     if "ai_managed_session" not in existing_tables:
@@ -473,6 +475,7 @@ def _create_current_schema(connection: sqlite3.Connection) -> None:
     _create_future_task_tables(connection)
     _create_delivery_attempt_tables(connection)
     _create_turn_trace_tables(connection)
+    _create_model_usage_tables(connection)
     _create_ai_session_management_tables(connection)
 
 
@@ -1559,5 +1562,81 @@ def _create_turn_trace_tables(connection: sqlite3.Connection) -> None:
         """
         CREATE INDEX idx_ai_turn_trace_created_at
         ON ai_turn_trace(created_at)
+        """
+    )
+
+
+def _create_model_usage_tables(connection: sqlite3.Connection) -> None:
+    provider_usage_check = _optional_json_check(connection, "provider_usage_json")
+    connection.execute(
+        f"""
+        CREATE TABLE ai_model_usage_event (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            usage_event_id TEXT NOT NULL UNIQUE,
+            trace_id TEXT NOT NULL,
+            session_id TEXT NOT NULL,
+            runtime_mode TEXT NOT NULL,
+            response_source TEXT NOT NULL,
+            source_id TEXT NOT NULL,
+            model_name TEXT NOT NULL,
+            operation TEXT NOT NULL,
+            attempt_index INTEGER NOT NULL CHECK(attempt_index >= 1),
+            status TEXT NOT NULL,
+            usage_available INTEGER NOT NULL CHECK(usage_available IN (0, 1)),
+            measurement_source TEXT NOT NULL CHECK(
+                measurement_source IN ('provider', 'missing')
+            ),
+            input_tokens INTEGER CHECK(input_tokens IS NULL OR input_tokens >= 0),
+            output_tokens INTEGER CHECK(output_tokens IS NULL OR output_tokens >= 0),
+            total_tokens INTEGER CHECK(total_tokens IS NULL OR total_tokens >= 0),
+            cached_input_tokens INTEGER
+                CHECK(cached_input_tokens IS NULL OR cached_input_tokens >= 0),
+            reasoning_tokens INTEGER
+                CHECK(reasoning_tokens IS NULL OR reasoning_tokens >= 0),
+            audio_input_tokens INTEGER
+                CHECK(audio_input_tokens IS NULL OR audio_input_tokens >= 0),
+            audio_output_tokens INTEGER
+                CHECK(audio_output_tokens IS NULL OR audio_output_tokens >= 0),
+            provider_usage_json TEXT CHECK({provider_usage_check}),
+            provider_response_id TEXT,
+            finish_reason TEXT,
+            created_at TEXT NOT NULL
+        )
+        """
+    )
+    connection.execute(
+        """
+        CREATE INDEX idx_ai_model_usage_event_trace
+        ON ai_model_usage_event(trace_id, created_at)
+        """
+    )
+    connection.execute(
+        """
+        CREATE INDEX idx_ai_model_usage_event_session
+        ON ai_model_usage_event(session_id, created_at)
+        """
+    )
+    connection.execute(
+        """
+        CREATE INDEX idx_ai_model_usage_event_source_model
+        ON ai_model_usage_event(source_id, model_name, created_at)
+        """
+    )
+    connection.execute(
+        """
+        CREATE INDEX idx_ai_model_usage_event_response_source
+        ON ai_model_usage_event(response_source, created_at)
+        """
+    )
+    connection.execute(
+        """
+        CREATE INDEX idx_ai_model_usage_event_operation
+        ON ai_model_usage_event(operation, created_at)
+        """
+    )
+    connection.execute(
+        """
+        CREATE INDEX idx_ai_model_usage_event_created_at
+        ON ai_model_usage_event(created_at)
         """
     )

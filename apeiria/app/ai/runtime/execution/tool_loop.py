@@ -48,6 +48,10 @@ from apeiria.app.ai.agent_turn.attempts import (
     build_exception_failure_attempt,
     build_success_attempt,
 )
+from apeiria.app.ai.usage_recording import (
+    AIModelUsageRecordContext,
+    record_model_usage_safely,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -129,6 +133,7 @@ class RuntimeToolLoopRunner:
         *,
         model_invoker: Any | None = None,
         tool_service: "AIToolService | None" = None,
+        usage_recorder: Any | None = None,
     ) -> None:
         if model_invoker is None:
             from apeiria.ai.model import model_invoker as default_model_invoker
@@ -138,8 +143,15 @@ class RuntimeToolLoopRunner:
             from apeiria.ai.tools.service import ai_tool_service
 
             tool_service = ai_tool_service
+        if usage_recorder is None:
+            from apeiria.app.ai.usage_recording import (
+                ai_model_usage_recorder as default_usage_recorder,
+            )
+
+            usage_recorder = default_usage_recorder
         self._model_invoker = model_invoker
         self._tool_service = tool_service
+        self._usage_recorder = usage_recorder
 
     def prepare(
         self,
@@ -189,6 +201,7 @@ class RuntimeToolLoopRunner:
             )
 
             model_result = await self._generate_tool_loop_model(
+                loop_input=loop_input,
                 selected=current_selected,
                 messages=current_messages,
                 tools=loop_input.tools,
@@ -296,6 +309,7 @@ class RuntimeToolLoopRunner:
                 finalization = await self._finalize_after_max_rounds(
                     selected=current_selected,
                     messages=(*loop_input.messages, *tool_message_history),
+                    loop_input=loop_input,
                     fallback_models=_dedupe_fallbacks(
                         current_selected,
                         loop_input.fallback_models,
@@ -432,6 +446,7 @@ class RuntimeToolLoopRunner:
     async def _generate_tool_loop_model(  # noqa: C901, PLR0913
         self,
         *,
+        loop_input: RuntimeToolLoopInput,
         selected: "AISelectedModel",
         messages: tuple[AIModelMessage, ...],
         tools: tuple["AIModelToolDefinition", ...],
@@ -513,9 +528,19 @@ class RuntimeToolLoopRunner:
                     break
 
                 if is_empty_model_response(response):
+                    attempt_index = loop_state.next_model_attempt_index()
+                    _record_tool_loop_usage(
+                        recorder=self._usage_recorder,
+                        loop_input=loop_input,
+                        selected=candidate,
+                        response=response,
+                        response_source=response_source,
+                        attempt_index=attempt_index,
+                        status="empty_response",
+                    )
                     attempts.append(
                         build_empty_response_attempt(
-                            attempt_index=loop_state.next_model_attempt_index(),
+                            attempt_index=attempt_index,
                             selected=candidate,
                             response_source=response_source,
                         )
@@ -525,9 +550,19 @@ class RuntimeToolLoopRunner:
                         loop_state.context_recovery_failed = True
                     break
 
+                attempt_index = loop_state.next_model_attempt_index()
+                _record_tool_loop_usage(
+                    recorder=self._usage_recorder,
+                    loop_input=loop_input,
+                    selected=candidate,
+                    response=response,
+                    response_source=response_source,
+                    attempt_index=attempt_index,
+                    status="success",
+                )
                 attempts.append(
                     build_success_attempt(
-                        attempt_index=loop_state.next_model_attempt_index(),
+                        attempt_index=attempt_index,
                         selected=candidate,
                         response_source=response_source,
                         response=response,
@@ -553,9 +588,10 @@ class RuntimeToolLoopRunner:
             finish_reason=last_finish_reason,
         )
 
-    async def _finalize_after_max_rounds(
+    async def _finalize_after_max_rounds(  # noqa: PLR0913
         self,
         *,
+        loop_input: RuntimeToolLoopInput,
         selected: "AISelectedModel",
         messages: tuple[AIModelMessage, ...],
         fallback_models: tuple["AISelectedModel", ...],
@@ -572,6 +608,7 @@ class RuntimeToolLoopRunner:
             loop_state=loop_state,
         )
         result = await self._generate_tool_loop_model(
+            loop_input=loop_input,
             selected=selected,
             messages=finalization_messages,
             tools=(),
@@ -629,6 +666,32 @@ def _record_response_degradations(
     for item in degradations:
         if isinstance(item, dict):
             loop_state.capability_degradations.append(dict(item))
+
+
+def _record_tool_loop_usage(  # noqa: PLR0913
+    *,
+    recorder: Any | None,
+    loop_input: RuntimeToolLoopInput,
+    selected: "AISelectedModel",
+    response: "AIModelGenerateResponse",
+    response_source: str,
+    attempt_index: int,
+    status: str,
+) -> None:
+    record_model_usage_safely(
+        recorder=recorder,
+        context=AIModelUsageRecordContext(
+            trace_id=loop_input.trace_id,
+            session_id=loop_input.session_id,
+            runtime_mode=loop_input.runtime_mode,
+            response_source=response_source,
+            selected=selected,
+            operation="chat_generation",
+            attempt_index=attempt_index,
+            status=status,
+        ),
+        response=response,
+    )
 
 
 def _planned_feature_for_tool_loop(

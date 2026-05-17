@@ -4040,6 +4040,47 @@
   margin-bottom: 12px;
 }
 
+.ai-usage-breakdown {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.ai-usage-breakdown__item {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-muted);
+}
+
+.ai-usage-breakdown__item strong,
+.ai-usage-breakdown__item span,
+.ai-debug-trace__usage-events span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  line-height: 1.35;
+}
+
+.ai-usage-breakdown__item strong {
+  font-size: 0.86rem;
+}
+
+.ai-usage-breakdown__item span,
+.ai-debug-trace__usage-events span {
+  color: var(--muted-foreground);
+  font-size: 0.78rem;
+}
+
+.ai-debug-trace__usage-events {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px 12px;
+}
+
 .permission-page {
   gap: 10px;
 }

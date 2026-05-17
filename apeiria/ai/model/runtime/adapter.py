@@ -293,6 +293,7 @@ class AIModelEmbeddingResponse:
     model_name: str
     vectors: tuple[tuple[float, ...], ...]
     raw: dict[str, Any] | None = None
+    usage: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True)
@@ -316,6 +317,7 @@ class AIModelTranscriptionResponse:
     model_name: str
     text: str
     raw: dict[str, Any] | None = None
+    usage: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True)
@@ -339,6 +341,7 @@ class AIModelSpeechResponse:
     audio_bytes: bytes
     response_format: str
     raw: dict[str, Any] | None = None
+    usage: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True)
@@ -370,6 +373,7 @@ class AIModelRerankResponse:
     model_name: str
     results: tuple[AIModelRerankResultItem, ...]
     raw: dict[str, Any] | None = None
+    usage: dict[str, Any] | None = None
 
 
 class AIModelAdapter(Protocol):

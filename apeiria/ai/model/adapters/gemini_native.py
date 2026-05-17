@@ -198,6 +198,7 @@ class GeminiNativeProvider:
             model_name=request.model_name,
             vectors=tuple(vectors),
             raw={"items": raw_items},
+            usage=_extract_last_gemini_usage(raw_items),
         )
 
     async def transcribe_audio(
@@ -450,6 +451,14 @@ def _extract_gemini_provider_data(payload: dict[str, Any]) -> dict[str, Any] | N
         if key in payload and payload[key] is not None
     }
     return data or None
+
+
+def _extract_last_gemini_usage(payloads: list[dict[str, Any]]) -> dict[str, Any] | None:
+    for payload in reversed(payloads):
+        usage = payload.get("usageMetadata")
+        if isinstance(usage, dict):
+            return usage
+    return None
 
 
 def _extract_gemini_embedding(payload: Any) -> tuple[float, ...]:

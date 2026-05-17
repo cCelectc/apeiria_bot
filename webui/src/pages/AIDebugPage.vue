@@ -74,6 +74,7 @@ const {
   traceIds,
   traces,
   turns,
+  usageByResponseSource,
 } = useAIDebugTab(t)
 const {
   bindingForm,
@@ -212,6 +213,26 @@ function formatJson(value: unknown) {
     return t('common.none')
   }
   return JSON.stringify(value, null, 2)
+}
+
+function tokenLabel(value: number | null | undefined) {
+  return value == null ? t('common.none') : value.toLocaleString()
+}
+
+function usageStatus(trace: { usage: { usage_available: boolean, missing_usage_count: number } }) {
+  if (trace.usage.usage_available) {
+    return t('ai.usageMeasured')
+  }
+  return trace.usage.missing_usage_count > 0
+    ? t('ai.usageMissing')
+    : t('ai.usageNoData')
+}
+
+function usageTone(trace: { usage: { usage_available: boolean, missing_usage_count: number } }): WorkbenchTone {
+  if (trace.usage.usage_available) {
+    return trace.usage.missing_usage_count > 0 ? 'warning' : 'success'
+  }
+  return trace.usage.missing_usage_count > 0 ? 'warning' : 'default'
 }
 
 function routeQueryString(value: unknown) {
@@ -456,6 +477,17 @@ watch(debugTab, () => {
                   </Select>
                 </FormField>
               </div>
+              <div v-if="usageByResponseSource.length > 0" class="ai-usage-breakdown">
+                <article
+                  v-for="item in usageByResponseSource"
+                  :key="item.group_key"
+                  class="ai-usage-breakdown__item"
+                >
+                  <strong>{{ item.group_key }}</strong>
+                  <span>{{ t('ai.usageTotalTokens') }}: {{ tokenLabel(item.total_tokens) }}</span>
+                  <span>{{ t('ai.usageMissing') }}: {{ item.missing_usage_count }}</span>
+                </article>
+              </div>
               <LoadingSkeleton v-if="loadingTraces" :rows="4" />
               <div v-else class="ai-debug-trace-list">
                 <article
@@ -467,8 +499,20 @@ watch(debugTab, () => {
                     <Badge variant="secondary">{{ trace.trace_id }}</Badge>
                     <StatusBadge :label="trace.terminal_status" :tone="statusTone(trace.terminal_status)" />
                     <Badge variant="outline">{{ trace.runtime_mode }}</Badge>
+                    <StatusBadge :label="usageStatus(trace)" :tone="usageTone(trace)" />
+                    <Badge variant="outline">{{ t('ai.usageTotalTokens') }}: {{ tokenLabel(trace.usage.total_tokens) }}</Badge>
+                    <Badge variant="outline">{{ t('ai.usageCalls') }}: {{ trace.usage.call_count }}</Badge>
                   </div>
                   <p>{{ trace.strategy_action }} / {{ trace.strategy_reason_codes.join(', ') || t('common.none') }}</p>
+                  <div v-if="trace.usage_events.length > 0" class="ai-debug-trace__usage-events">
+                    <span
+                      v-for="event in trace.usage_events"
+                      :key="event.usage_event_id"
+                    >
+                      {{ event.response_source }} #{{ event.attempt_index }}:
+                      {{ event.usage_available ? tokenLabel(event.total_tokens) : t('ai.usageMissing') }}
+                    </span>
+                  </div>
                   <pre>{{ formatJson(trace.diagnostics) }}</pre>
                 </article>
               </div>

@@ -155,41 +155,55 @@ class GenericRerankProvider:
             )
             or "/rerank"
         )
-        async with httpx.AsyncClient(
-            base_url=self.api_base,
-            headers=_build_headers(
-                api_key,
-                custom_headers=(
-                    _coerce_custom_headers(request.extra)
-                    or _coerce_custom_headers(self.extra_config)
+        request_func = self._request_func
+        if request_func is None:
+            async with httpx.AsyncClient(
+                base_url=self.api_base,
+                headers=_build_headers(
+                    api_key,
+                    custom_headers=(
+                        _coerce_custom_headers(request.extra)
+                        or _coerce_custom_headers(self.extra_config)
+                    ),
                 ),
-            ),
-            timeout=float(self.timeout_seconds or 20),
-            proxy=_coerce_str(request.extra, "proxy")
-            or _coerce_str(self.extra_config, "proxy"),
-        ) as client:
-            response = await _request_with_retries(
-                client.post,
+                timeout=float(self.timeout_seconds or 20),
+                proxy=_coerce_str(request.extra, "proxy")
+                or _coerce_str(self.extra_config, "proxy"),
+            ) as client:
+                response = await _request_with_retries(
+                    client.post,
+                    _normalize_api_suffix(api_suffix),
+                    json=payload,
+                    max_retries=(
+                        _coerce_int(request.extra, "max_retries")
+                        or _coerce_int(self.extra_config, "max_retries")
+                        or 1
+                    ),
+                    backoff_seconds=(
+                        _coerce_float(request.extra, "retry_backoff_seconds")
+                        or _coerce_float(self.extra_config, "retry_backoff_seconds")
+                        or 0.25
+                    ),
+                )
+        else:
+            response = await request_func(
                 _normalize_api_suffix(api_suffix),
                 json=payload,
-                max_retries=(
-                    _coerce_int(request.extra, "max_retries")
-                    or _coerce_int(self.extra_config, "max_retries")
-                    or 1
-                ),
-                backoff_seconds=(
-                    _coerce_float(request.extra, "retry_backoff_seconds")
-                    or _coerce_float(self.extra_config, "retry_backoff_seconds")
-                    or 0.25
-                ),
             )
-            response.raise_for_status()
-            raw = response.json()
+        response.raise_for_status()
+        raw = response.json()
+        raw_payload = raw if isinstance(raw, dict) else None
         return AIModelRerankResponse(
             source_id=request.source_id,
             model_name=request.model_name,
             results=tuple(_extract_rerank_results(raw, request.documents)),
-            raw=raw if isinstance(raw, dict) else None,
+            raw=raw_payload,
+            usage=(
+                raw_payload.get("usage")
+                if raw_payload is not None
+                and isinstance(raw_payload.get("usage"), dict)
+                else None
+            ),
         )
 
 

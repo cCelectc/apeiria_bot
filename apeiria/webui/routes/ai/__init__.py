@@ -26,6 +26,7 @@ from .sources import router as _sources_router
 from .sources_schemas import AIBootstrapResponse, to_ai_source_preset_item
 from .tools import router as _tools_router
 from .traces import router as _traces_router
+from .usage import router as _usage_router
 
 router = APIRouter()
 
@@ -63,5 +64,6 @@ router.include_router(_skills_router)
 router.include_router(_sources_router)
 router.include_router(_tools_router)
 router.include_router(_traces_router)
+router.include_router(_usage_router)
 
 __all__ = ["router"]
