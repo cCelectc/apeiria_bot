@@ -589,7 +589,7 @@ watch(sourceCapabilityTab, () => {
     :subtitle="t('ai.pageSubtitle.models')"
     :title="t('ai.modelsTitle')"
   >
-    <template #actions>
+    <div class="ai-model-local-toolbar">
       <ToggleGroup
         :aria-label="t('ai.sourceCapabilitySwitcherLabel')"
         class="ai-model-capability-switcher"
@@ -607,11 +607,16 @@ watch(sourceCapabilityTab, () => {
           {{ item.title }}
         </ToggleGroupItem>
       </ToggleGroup>
-      <Button :disabled="loading" variant="secondary" @click="loadData">
+      <Button
+        class="ai-model-local-toolbar__refresh"
+        :disabled="loading"
+        variant="secondary"
+        @click="loadData"
+      >
         <RefreshCw :class="{ 'animate-spin': loading }" :size="16" />
         {{ t('common.refresh') }}
       </Button>
-    </template>
+    </div>
 
     <LoadingSkeleton v-if="loading && loadingSources" rows="8" />
 

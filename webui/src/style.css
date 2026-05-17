@@ -2005,9 +2005,23 @@
   min-width: 0;
 }
 
+.ai-model-local-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+  margin-bottom: 4px;
+}
+
 .ai-model-capability-switcher {
-  max-width: min(54vw, 540px);
+  justify-content: flex-start;
+  max-width: 100%;
   overflow-x: auto;
+}
+
+.ai-model-local-toolbar__refresh {
+  flex: 0 0 auto;
 }
 
 .ai-model-toolbar span,
@@ -5641,8 +5655,14 @@
     flex-wrap: nowrap;
   }
 
-  .ai-model-capability-switcher {
-    max-width: 100%;
+  .ai-model-local-toolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .ai-model-local-toolbar__refresh {
+    justify-content: center;
+    width: 100%;
   }
 
   .ai-api-key-row,
