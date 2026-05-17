@@ -25,10 +25,10 @@ def evaluate_wake(context: WakeContext) -> WakeSignal:
         should_process = False
         engagement: WakeEngagement = "drop"
         reason = "ignore_self_message"
-    elif not context.message_text.strip():
+    elif not context.message_text.strip() and not context.has_media:
         should_process = False
         engagement = "drop"
-        reason = "empty_plaintext"
+        reason = "empty_input"
     elif context.is_future_task:
         should_process = True
         engagement = "direct"
@@ -95,4 +95,25 @@ def build_wake_context(
         is_private=is_private_like_event(event, user_id),
         is_future_task=False,
         allow_group_initiative=allow_group_initiative,
+        has_media=_event_has_media(event),
     )
+
+
+def _event_has_media(event: "Event") -> bool:
+    try:
+        message = event.get_message()
+    except Exception:  # noqa: BLE001
+        return False
+    for segment in message:
+        seg_type = getattr(segment, "type", None)
+        if isinstance(seg_type, str) and seg_type in {
+            "image",
+            "img",
+            "audio",
+            "voice",
+            "record",
+            "video",
+            "file",
+        }:
+            return True
+    return False

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 from http import HTTPStatus
 from typing import TYPE_CHECKING, Any
 
@@ -337,17 +338,49 @@ def _build_ollama_chat_payload(payload_input: _ChatPayloadInput) -> dict[str, An
 
 def _build_ollama_messages(
     messages: tuple[AIModelMessage, ...],
-) -> list[dict[str, str]]:
-    items: list[dict[str, str]] = []
+) -> list[dict[str, Any]]:
+    items: list[dict[str, Any]] = []
     for message in messages:
-        text = message.text_content
-        if not text:
+        text = _ollama_message_text(message)
+        images = _ollama_message_images(message)
+        if not text and not images:
             continue
         role = message.role
         if role == "tool":
             role = "user"
-        items.append({"role": role, "content": text})
+        item: dict[str, Any] = {"role": role, "content": text}
+        if images:
+            item["images"] = images
+        items.append(item)
     return items
+
+
+def _ollama_message_text(message: AIModelMessage) -> str:
+    text_items: list[str] = []
+    if message.text_content:
+        text_items.append(message.text_content)
+    for part in getattr(message, "parts", ()):
+        kind = getattr(part, "kind", None)
+        if kind == "image" and not getattr(part, "data", None):
+            text_items.append(_unsupported_part_text("image"))
+        elif kind in {"audio", "file"}:
+            text_items.append(_unsupported_part_text(str(kind)))
+    return "\n".join(dict.fromkeys(item for item in text_items if item))
+
+
+def _ollama_message_images(message: AIModelMessage) -> list[str]:
+    images: list[str] = []
+    for part in getattr(message, "parts", ()):
+        if getattr(part, "kind", None) != "image":
+            continue
+        data = getattr(part, "data", None)
+        if isinstance(data, bytes) and data:
+            images.append(base64.b64encode(data).decode("ascii"))
+    return images
+
+
+def _unsupported_part_text(kind: str) -> str:
+    return f"[{kind} omitted: unsupported content representation]"
 
 
 def _extract_ollama_text(payload: Any) -> str:

@@ -479,14 +479,6 @@ def extract_runtime_media(
     )
 
 
-def extract_runtime_media_parts(
-    content_json: str | None,
-) -> tuple[RuntimeSourceMediaPart, ...]:
-    """Compatibility helper returning only extracted runtime media parts."""
-
-    return extract_runtime_media(content_json).parts
-
-
 def _runtime_media_part_from_segment(
     segment: object,
 ) -> RuntimeSourceMediaPart | None:
@@ -501,7 +493,15 @@ def _runtime_media_part_from_segment(
 
     url = _string_value(segment.get("url"))
     asset_id = _string_value(segment.get("asset_id"))
-    if not url and not asset_id:
+    file_ref = _string_value(
+        segment.get("file") or segment.get("platform_file_id") or segment.get("file_id")
+    )
+    path_ref = _string_value(segment.get("path"))
+    base64_data = _string_value(segment.get("base64"))
+    if file_ref and file_ref.startswith("base64://") and not base64_data:
+        base64_data = file_ref
+        file_ref = None
+    if not any((url, asset_id, file_ref, path_ref, base64_data)):
         return None
 
     return RuntimeSourceMediaPart(
@@ -509,8 +509,11 @@ def _runtime_media_part_from_segment(
         fallback_text=_media_fallback_text(kind=kind, segment=segment),
         url=url,
         asset_id=asset_id,
+        file_ref=file_ref,
+        path_ref=path_ref,
+        base64_data=base64_data,
         file_name=_string_value(
-            segment.get("file_name") or segment.get("name") or segment.get("file")
+            segment.get("file_name") or segment.get("name") or file_ref or path_ref
         ),
         mime_type=_string_value(segment.get("mime_type") or segment.get("mime")),
         size_bytes=_int_value(segment.get("size")),
@@ -544,7 +547,7 @@ def _runtime_media_diagnostic_from_segment(
 def _runtime_media_kind(seg_type: str) -> RuntimeSourceMediaKind | None:
     if seg_type in {"image", "img"}:
         return "image"
-    if seg_type in {"audio", "record"}:
+    if seg_type in {"audio", "voice", "record"}:
         return "audio"
     if seg_type in {"file", "video"}:
         return "file"
@@ -577,5 +580,4 @@ __all__ = [
     "DefaultAILiveRuntimeEntry",
     "RuntimeMediaExtractionResult",
     "extract_runtime_media",
-    "extract_runtime_media_parts",
 ]

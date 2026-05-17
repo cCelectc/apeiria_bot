@@ -259,6 +259,7 @@ def _build_preview_hard_rule_decision(
         is_tome=turn.is_tome,
         is_private=turn.source.is_private,
         is_future_task=False,
+        has_media=bool(turn.source.media_parts or turn.source.media_diagnostics),
     )
     return decide_runtime_hard_rule(
         wake_context=wake_context,

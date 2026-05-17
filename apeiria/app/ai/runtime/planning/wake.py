@@ -53,6 +53,7 @@ def build_fallback_wake_context(
         is_tome=turn.is_tome,
         is_private=identity.scene_type == "private",
         is_future_task=turn.runtime_mode == "future_task",
+        has_media=bool(turn.source.media_parts or turn.source.media_diagnostics),
     )
 
 

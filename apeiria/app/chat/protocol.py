@@ -90,6 +90,31 @@ class ImageSegment(BaseModel):
     height: int | None = None
 
 
+class AudioSegment(BaseModel):
+    type: Literal["record"] = "record"
+    url: str | None = None
+    asset_id: str | None = None
+    base64: str | None = None
+    file: str | None = None
+    path: str | None = None
+    mime: str | None = None
+    name: str | None = None
+    size: int | None = None
+    duration: float | None = None
+
+
+class FileSegment(BaseModel):
+    type: Literal["file"] = "file"
+    url: str | None = None
+    asset_id: str | None = None
+    base64: str | None = None
+    file: str | None = None
+    path: str | None = None
+    mime: str | None = None
+    name: str | None = None
+    size: int | None = None
+
+
 class MentionSegment(BaseModel):
     type: Literal["mention"] = "mention"
     target: str
@@ -110,7 +135,13 @@ class RawSegment(BaseModel):
 
 
 ChatSegment = Annotated[
-    TextSegment | ImageSegment | MentionSegment | ReplySegment | RawSegment,
+    TextSegment
+    | ImageSegment
+    | AudioSegment
+    | FileSegment
+    | MentionSegment
+    | ReplySegment
+    | RawSegment,
     Field(discriminator="type"),
 ]
 

@@ -65,11 +65,17 @@ def decide_runtime_hard_rule(  # noqa: C901, PLR0911
             should_reply=False,
         )
 
-    if not source.message_text.strip() or not wake_context.message_text.strip():
+    if (
+        not source.message_text.strip()
+        and not wake_context.message_text.strip()
+        and not (
+            wake_context.has_media or source.media_parts or source.media_diagnostics
+        )
+    ):
         return _decision(
             action="drop",
             reason_code="empty_input",
-            reason_text="Message has no usable text content.",
+            reason_text="Message has no usable text or media content.",
             wake_context=wake_context,
             source=source,
             should_observe=False,

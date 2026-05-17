@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 from typing import TYPE_CHECKING, Any
 
 from anthropic import AsyncAnthropic
@@ -401,7 +402,7 @@ def _build_anthropic_payload(
             continue
 
         if msg.role == "user":
-            _append_anthropic_user(chat, msg.text_content)
+            _append_anthropic_user(chat, _build_anthropic_user_content(msg))
 
         elif msg.role == "assistant":
             content: list[dict[str, Any]] = []
@@ -452,7 +453,7 @@ def _build_anthropic_payload(
 
 def _append_anthropic_user(
     chat: list[dict[str, Any]],
-    content: str,
+    content: str | list[dict[str, Any]],
 ) -> None:
     """Append a user message, merging with the previous user message if needed.
 
@@ -463,9 +464,74 @@ def _append_anthropic_user(
     if chat and chat[-1]["role"] == "user":
         prev = chat[-1]["content"]
         if isinstance(prev, str):
-            chat[-1]["content"] = f"{prev}\n{content}"
+            if isinstance(content, str):
+                chat[-1]["content"] = f"{prev}\n{content}"
+            else:
+                chat[-1]["content"] = [{"type": "text", "text": prev}, *content]
         elif isinstance(prev, list):
-            # Previous user message has tool_result blocks — append text block
-            prev.append({"type": "text", "text": content})
+            if isinstance(content, str):
+                prev.append({"type": "text", "text": content})
+            else:
+                prev.extend(content)
     else:
         chat.append({"role": "user", "content": content})
+
+
+def _build_anthropic_user_content(
+    msg: AIModelMessage,
+) -> str | list[dict[str, Any]]:
+    if not msg.parts:
+        return msg.text_content
+
+    blocks: list[dict[str, Any]] = []
+    for part in msg.parts:
+        if part.kind == "text" and part.text:
+            blocks.append({"type": "text", "text": part.text})
+        elif part.kind == "image" and part.data:
+            blocks.append(
+                {
+                    "type": "image",
+                    "source": {
+                        "type": "base64",
+                        "media_type": part.mime_type or "image/png",
+                        "data": base64.b64encode(part.data).decode("ascii"),
+                    },
+                }
+            )
+        elif part.kind == "image" and part.url:
+            blocks.append(
+                {
+                    "type": "image",
+                    "source": {"type": "url", "url": part.url},
+                }
+            )
+        elif part.kind == "file" and part.data and _is_anthropic_document(part):
+            blocks.append(
+                {
+                    "type": "document",
+                    "source": {
+                        "type": "base64",
+                        "media_type": part.mime_type or "application/pdf",
+                        "data": base64.b64encode(part.data).decode("ascii"),
+                    },
+                }
+            )
+        elif part.kind in {"image", "audio", "file"}:
+            blocks.append(
+                {
+                    "type": "text",
+                    "text": _unsupported_part_text(part.kind),
+                }
+            )
+    if blocks:
+        return blocks
+    return msg.text_content
+
+
+def _unsupported_part_text(kind: str) -> str:
+    return f"[{kind} omitted: unsupported content representation]"
+
+
+def _is_anthropic_document(part: object) -> bool:
+    mime_type = getattr(part, "mime_type", None)
+    return mime_type in {"application/pdf", "text/plain", "text/markdown"}

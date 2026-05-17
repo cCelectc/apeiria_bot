@@ -27,6 +27,7 @@ class WakeContext:
     is_private: bool
     is_future_task: bool
     allow_group_initiative: bool = True
+    has_media: bool = False
 
 
 @dataclass(frozen=True)

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import json
 import re
 from typing import TYPE_CHECKING, Any
@@ -711,7 +712,72 @@ def _build_openai_content_parts(msg: AIModelMessage) -> list[dict[str, Any]] | s
             parts.append({"type": "text", "text": part.text})
         elif part.kind == "image" and part.url:
             parts.append({"type": "image_url", "image_url": {"url": part.url}})
+        elif part.kind == "image" and part.data:
+            parts.append(
+                {
+                    "type": "image_url",
+                    "image_url": {"url": _data_url(part.mime_type, part.data)},
+                }
+            )
+        elif part.kind == "audio" and part.data:
+            parts.append(
+                {
+                    "type": "input_audio",
+                    "input_audio": {
+                        "data": base64.b64encode(part.data).decode("ascii"),
+                        "format": _openai_audio_format(part.mime_type),
+                    },
+                }
+            )
+        elif part.kind == "file" and part.data:
+            parts.append(
+                {
+                    "type": "file",
+                    "file": {
+                        "filename": _metadata_str(part.metadata, "file_name")
+                        or "attachment",
+                        "file_data": _data_url(part.mime_type, part.data),
+                    },
+                }
+            )
+        elif part.kind == "file" and part.url:
+            parts.append(
+                {
+                    "type": "file",
+                    "file": {
+                        "filename": _metadata_str(part.metadata, "file_name")
+                        or "attachment",
+                        "file_url": part.url,
+                    },
+                }
+            )
+        elif part.kind in {"image", "audio", "file"}:
+            parts.append({"type": "text", "text": _unsupported_part_text(part.kind)})
     return parts or msg.text_content
+
+
+def _unsupported_part_text(kind: str) -> str:
+    return f"[{kind} omitted: unsupported content representation]"
+
+
+def _data_url(mime_type: str | None, data: bytes) -> str:
+    media_type = mime_type or "application/octet-stream"
+    encoded = base64.b64encode(data).decode("ascii")
+    return f"data:{media_type};base64,{encoded}"
+
+
+def _openai_audio_format(mime_type: str | None) -> str:
+    if not mime_type:
+        return "wav"
+    subtype = mime_type.split("/", 1)[-1].split(";", 1)[0].strip().lower()
+    return subtype or "wav"
+
+
+def _metadata_str(metadata: dict[str, Any] | None, key: str) -> str | None:
+    if not isinstance(metadata, dict):
+        return None
+    value = metadata.get(key)
+    return value if isinstance(value, str) and value.strip() else None
 
 
 class _ThinkTagStreamFilter:

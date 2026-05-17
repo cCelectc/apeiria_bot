@@ -10,8 +10,11 @@ from apeiria.access.principal import AuthSession, Principal, PrincipalRole
 from apeiria.app.chat.connection import WebChatConnection
 from apeiria.app.chat.gateway import ChatGatewayService
 from apeiria.app.chat.protocol import (
+    AudioSegment,
     ChatEnvelope,
     ChatSessionState,
+    FileSegment,
+    ImageSegment,
     MessageReceivePayload,
     PartialReplyDeltaPayload,
     PartialReplyStartPayload,
@@ -161,6 +164,34 @@ def test_append_history_trims_to_latest_100_messages() -> None:
     assert len(history) == HISTORY_LIMIT
     assert history[0].message_id == "msg-5"
     assert history[-1].message_id == "msg-104"
+
+
+def test_webchat_capabilities_and_summary_include_typed_media() -> None:
+    from apeiria.app.chat.assets import AssetManager
+    from apeiria.app.chat.emitter import WebChatEmitter
+
+    emitter = WebChatEmitter(WebChatStateManager(store=_StoreStub()), AssetManager())
+
+    assert emitter.get_capabilities().segment_types == [
+        "text",
+        "image",
+        "record",
+        "file",
+        "mention",
+        "reply",
+        "raw",
+    ]
+    assert (
+        emitter.summarize_segments(
+            [
+                TextSegment(text="see"),
+                ImageSegment(url="https://example.test/cat.png"),
+                AudioSegment(file="voice.wav", mime="audio/wav"),
+                FileSegment(name="notes.pdf", file="notes.pdf"),
+            ]
+        )
+        == "see [image] [audio] [file:notes.pdf]"
+    )
 
 
 def test_partial_reply_frames_do_not_append_session_history() -> None:

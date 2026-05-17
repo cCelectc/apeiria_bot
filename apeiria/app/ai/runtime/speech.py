@@ -5,7 +5,7 @@ from __future__ import annotations
 import urllib.request
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import TYPE_CHECKING, Protocol, cast
+from typing import TYPE_CHECKING, Any, Protocol, cast
 
 from apeiria.ai.diagnostics import sanitize_runtime_diagnostic
 from apeiria.ai.model.catalog.models import AISourceModelDefinition
@@ -19,6 +19,7 @@ from apeiria.ai.model.runtime.capabilities import (
     merge_model_capabilities,
     parse_model_capabilities,
 )
+from apeiria.app.ai.runtime.media import resolve_runtime_media_part
 
 if TYPE_CHECKING:
     from apeiria.ai.config import AIPluginConfig
@@ -110,8 +111,6 @@ class DefaultSpeechAudioResolver:
         self,
         media: "RuntimeSourceMediaPart",
     ) -> ResolvedSpeechAudio | None:
-        if media.asset_id:
-            return None
         if media.url and _is_safe_http_url(media.url):
             try:
                 with urllib.request.urlopen(media.url, timeout=10) as response:
@@ -126,8 +125,9 @@ class DefaultSpeechAudioResolver:
                 mime_type=media.mime_type or "application/octet-stream",
                 source_kind="url",
             )
-        if media.url:
-            path = Path(media.url)
+        file_value = media.url or media.path_ref or media.file_ref
+        if file_value:
+            path = Path(file_value)
             if path.is_file():
                 return ResolvedSpeechAudio(
                     audio_bytes=path.read_bytes(),
@@ -135,6 +135,16 @@ class DefaultSpeechAudioResolver:
                     mime_type=media.mime_type or "application/octet-stream",
                     source_kind="local_file",
                 )
+        part, _diagnostic = resolve_runtime_media_part(media)
+        if part is not None and part.data:
+            return ResolvedSpeechAudio(
+                audio_bytes=part.data,
+                file_name=_media_file_name(media),
+                mime_type=part.mime_type
+                or media.mime_type
+                or "application/octet-stream",
+                source_kind=_media_source_kind(part.metadata),
+            )
         return None
 
 
@@ -256,6 +266,9 @@ async def prepare_speech_input(  # noqa: PLR0911
             "selected_model": _selected_model_ref(runtime_selected),
             "transcript_length": len(transcript),
         }
+        remaining_media = tuple(
+            media_part for media_part in turn.source.media_parts if media_part != audio
+        )
         return _with_diagnostics(
             replace(
                 turn,
@@ -265,6 +278,7 @@ async def prepare_speech_input(  # noqa: PLR0911
                         typed_text=turn.message_text,
                         transcript=transcript,
                     ),
+                    media_parts=remaining_media,
                 ),
             ),
             diagnostics,
@@ -320,6 +334,18 @@ def _compose_text(*, typed_text: str, transcript: str) -> str:
     if not typed:
         return transcript
     return f"{typed}\n[transcribed speech] {transcript}"
+
+
+def _media_file_name(media: "RuntimeSourceMediaPart") -> str:
+    return media.file_name or media.file_ref or media.path_ref or _DEFAULT_AUDIO_NAME
+
+
+def _media_source_kind(metadata: dict[str, Any] | None) -> str:
+    if isinstance(metadata, dict):
+        source_kind = metadata.get("source_kind")
+        if isinstance(source_kind, str) and source_kind:
+            return source_kind
+    return "prepared_media"
 
 
 def _with_diagnostics(

@@ -19,7 +19,6 @@ if TYPE_CHECKING:
     )
     from apeiria.ai.model import (
         AIModelBindingTarget,
-        AIModelContentPart,
         AIModelMessage,
     )
     from apeiria.ai.prompting import ReplyPersonaPromptBundleLike
@@ -45,32 +44,14 @@ class RuntimeSourceMediaPart:
     fallback_text: str | None = None
     url: str | None = None
     asset_id: str | None = None
+    file_ref: str | None = None
+    path_ref: str | None = None
+    base64_data: str | None = None
     file_name: str | None = None
     mime_type: str | None = None
     size_bytes: int | None = None
     required: bool = True
     metadata: dict[str, Any] = field(default_factory=dict)
-
-    def to_model_content_part(self) -> "AIModelContentPart | None":
-        """Convert this runtime media part to model-visible content."""
-
-        from apeiria.ai.model import AIModelContentPart
-
-        if self.kind == "image" and self.url:
-            return AIModelContentPart.image(
-                url=self.url,
-                mime_type=self.mime_type,
-                required=self.required,
-            )
-        if self.kind in {"audio", "file"} and (self.url or self.asset_id):
-            return AIModelContentPart(
-                kind=self.kind,
-                url=self.url,
-                mime_type=self.mime_type,
-                metadata=self.safe_metadata(),
-                required=self.required,
-            )
-        return None
 
     def safe_metadata(self) -> dict[str, object]:
         """Return bounded metadata safe for diagnostics and adapter edges."""
@@ -82,6 +63,10 @@ class RuntimeSourceMediaPart:
                 metadata[key] = value
         if self.asset_id:
             metadata["asset_id"] = self.asset_id
+        if self.file_ref:
+            metadata["file_ref"] = self.file_ref
+        if self.path_ref:
+            metadata["path_ref"] = self.path_ref
         if self.file_name:
             metadata["file_name"] = self.file_name
         if self.size_bytes is not None:

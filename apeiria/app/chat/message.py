@@ -24,15 +24,23 @@ class WebChatMessageSegment(MessageSegment):
 
     def __str__(self) -> str:
         if self.type == "text":
-            return str(self.data.get("text", ""))
-        if self.type == "image":
-            return "[image]"
-        if self.type == "mention":
-            return f"@{self.data.get('display') or self.data.get('target') or 'user'}"
-        if self.type == "reply":
+            rendered = str(self.data.get("text", ""))
+        elif self.type == "image":
+            rendered = "[image]"
+        elif self.type in {"record", "audio"}:
+            rendered = "[audio]"
+        elif self.type == "file":
+            file_name = self.data.get("name") or self.data.get("file") or "file"
+            rendered = f"[file:{file_name}]"
+        elif self.type == "mention":
+            mention_name = self.data.get("display") or self.data.get("target") or "user"
+            rendered = f"@{mention_name}"
+        elif self.type == "reply":
             reply_id = self.data.get("message_id") or self.data.get("id") or "message"
-            return f"[reply:{reply_id}]"
-        return f"[{self.type}]"
+            rendered = f"[reply:{reply_id}]"
+        else:
+            rendered = f"[{self.type}]"
+        return rendered
 
     def is_text(self) -> bool:
         return self.type == "text"
@@ -65,6 +73,63 @@ class WebChatMessageSegment(MessageSegment):
         return cls(type="image", data=data)
 
     @classmethod
+    def audio(  # noqa: PLR0913
+        cls,
+        *,
+        url: str | None = None,
+        base64_data: str | None = None,
+        mime: str | None = None,
+        asset_id: str | None = None,
+        file: str | None = None,
+        path: str | None = None,
+        name: str | None = None,
+        size: int | None = None,
+        duration: float | None = None,
+    ) -> "WebChatMessageSegment":
+        data = _media_segment_data(
+            {
+                "url": url,
+                "base64": base64_data,
+                "mime": mime,
+                "asset_id": asset_id,
+                "file": file,
+                "path": path,
+                "name": name,
+                "size": size,
+            }
+        )
+        if duration is not None:
+            data["duration"] = duration
+        return cls(type="record", data=data)
+
+    @classmethod
+    def file(  # noqa: PLR0913
+        cls,
+        *,
+        url: str | None = None,
+        base64_data: str | None = None,
+        mime: str | None = None,
+        asset_id: str | None = None,
+        file: str | None = None,
+        path: str | None = None,
+        name: str | None = None,
+        size: int | None = None,
+    ) -> "WebChatMessageSegment":
+        data = _media_segment_data(
+            {
+                "url": url,
+                "base64": base64_data,
+                "mime": mime,
+                "asset_id": asset_id,
+                "file": file,
+                "path": path,
+                "name": name,
+                "size": size,
+            }
+        )
+        return cls(type="file", data=data)
+
+    @classmethod
     def mention(
         cls,
         target: str,
@@ -91,3 +156,14 @@ class WebChatMessageSegment(MessageSegment):
         if text:
             data["text"] = text
         return cls(type="reply", data=data)
+
+
+def _media_segment_data(values: dict[str, Any]) -> dict[str, Any]:
+    data: dict[str, Any] = {}
+    for key, value in values.items():
+        if value is None:
+            continue
+        if isinstance(value, str) and not value:
+            continue
+        data[key] = value
+    return data

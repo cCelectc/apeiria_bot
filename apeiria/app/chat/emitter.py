@@ -6,10 +6,12 @@ from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 
 from .protocol import (
+    AudioSegment,
     AuthOkPayload,
     CapabilitiesResponsePayload,
     ChatCapabilities,
     ErrorPayload,
+    FileSegment,
     ImageSegment,
     MentionSegment,
     MessageReceivePayload,
@@ -51,7 +53,15 @@ class WebChatEmitter:
 
     def get_capabilities(self) -> ChatCapabilities:
         return ChatCapabilities(
-            segment_types=["text", "image", "mention", "reply", "raw"],
+            segment_types=[
+                "text",
+                "image",
+                "record",
+                "file",
+                "mention",
+                "reply",
+                "raw",
+            ],
             mock_apis=[],
         )
 
@@ -201,6 +211,10 @@ class WebChatEmitter:
                 parts.append(segment.text)
             elif isinstance(segment, ImageSegment):
                 parts.append("[image]")
+            elif isinstance(segment, AudioSegment):
+                parts.append("[audio]")
+            elif isinstance(segment, FileSegment):
+                parts.append(f"[file:{segment.name or segment.file or 'file'}]")
             elif isinstance(segment, MentionSegment):
                 parts.append(f"@{segment.display or segment.target}")
             elif isinstance(segment, ReplySegment):

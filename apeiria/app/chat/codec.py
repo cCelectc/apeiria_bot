@@ -10,7 +10,9 @@ from urllib.parse import unquote, urlparse
 
 from .message import WebChatMessage, WebChatMessageSegment
 from .protocol import (
+    AudioSegment,
     ChatSegment,
+    FileSegment,
     ImageSegment,
     MentionSegment,
     RawSegment,
@@ -39,6 +41,33 @@ class MessageCodec:
                         mime=segment.mime,
                         asset_id=segment.asset_id,
                         alt=segment.alt,
+                    )
+                )
+            elif isinstance(segment, AudioSegment):
+                built.append(
+                    WebChatMessageSegment.audio(
+                        url=segment.url,
+                        base64_data=segment.base64,
+                        mime=segment.mime,
+                        asset_id=segment.asset_id,
+                        file=segment.file,
+                        path=segment.path,
+                        name=segment.name,
+                        size=segment.size,
+                        duration=segment.duration,
+                    )
+                )
+            elif isinstance(segment, FileSegment):
+                built.append(
+                    WebChatMessageSegment.file(
+                        url=segment.url,
+                        base64_data=segment.base64,
+                        mime=segment.mime,
+                        asset_id=segment.asset_id,
+                        file=segment.file,
+                        path=segment.path,
+                        name=segment.name,
+                        size=segment.size,
                     )
                 )
             elif isinstance(segment, MentionSegment):
@@ -77,7 +106,7 @@ class MessageCodec:
         encoded = [await self._encode_segment(segment) for segment in message]
         return encoded or [TextSegment(text=str(message))]
 
-    async def _encode_segment(  # noqa: C901, PLR0911
+    async def _encode_segment(  # noqa: C901, PLR0911, PLR0912
         self,
         segment: WebChatMessageSegment,
     ) -> ChatSegment:
@@ -133,6 +162,33 @@ class MessageCodec:
                 )
 
             return RawSegment(segment_type="image", data=dict(data))
+
+        if segment.type in {"record", "audio"}:
+            data = cast("dict[str, Any]", segment.data)
+            return AudioSegment(
+                url=cast("str | None", data.get("url")),
+                asset_id=cast("str | None", data.get("asset_id")),
+                base64=cast("str | None", data.get("base64")),
+                file=cast("str | None", data.get("file")),
+                path=cast("str | None", data.get("path")),
+                mime=cast("str | None", data.get("mime")),
+                name=cast("str | None", data.get("name")),
+                size=cast("int | None", data.get("size")),
+                duration=cast("float | None", data.get("duration")),
+            )
+
+        if segment.type == "file":
+            data = cast("dict[str, Any]", segment.data)
+            return FileSegment(
+                url=cast("str | None", data.get("url")),
+                asset_id=cast("str | None", data.get("asset_id")),
+                base64=cast("str | None", data.get("base64")),
+                file=cast("str | None", data.get("file")),
+                path=cast("str | None", data.get("path")),
+                mime=cast("str | None", data.get("mime")),
+                name=cast("str | None", data.get("name")),
+                size=cast("int | None", data.get("size")),
+            )
 
         if segment.type == "mention":
             data = cast("dict[str, Any]", segment.data)

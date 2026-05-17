@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 from http import HTTPStatus
 from typing import TYPE_CHECKING, Any
 from urllib.parse import quote
@@ -372,12 +373,48 @@ def _build_gemini_contents(
     for message in messages:
         if message.role == "system":
             continue
-        text = message.text_content
-        if not text:
+        parts = _build_gemini_parts(message)
+        if not parts:
             continue
         role = "model" if message.role == "assistant" else "user"
-        contents.append({"role": role, "parts": [{"text": text}]})
+        contents.append({"role": role, "parts": parts})
     return contents or [{"role": "user", "parts": [{"text": prompt}]}]
+
+
+def _build_gemini_parts(message: AIModelMessage) -> list[dict[str, Any]]:
+    if not message.parts:
+        text = message.text_content
+        return [{"text": text}] if text else []
+
+    parts: list[dict[str, Any]] = []
+    for part in message.parts:
+        if part.kind == "text" and part.text:
+            parts.append({"text": part.text})
+        elif part.kind in {"image", "audio", "file"} and part.data:
+            parts.append(
+                {
+                    "inlineData": {
+                        "mimeType": part.mime_type or "application/octet-stream",
+                        "data": base64.b64encode(part.data).decode("ascii"),
+                    }
+                }
+            )
+        elif part.kind in {"image", "audio", "file"} and part.url:
+            parts.append(
+                {
+                    "fileData": {
+                        "mimeType": part.mime_type or "application/octet-stream",
+                        "fileUri": part.url,
+                    }
+                }
+            )
+        elif part.kind in {"image", "audio", "file"}:
+            parts.append({"text": _unsupported_part_text(part.kind)})
+    return parts
+
+
+def _unsupported_part_text(kind: str) -> str:
+    return f"[{kind} omitted: unsupported content representation]"
 
 
 def _extract_gemini_text(payload: Any) -> str:

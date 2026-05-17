@@ -11,7 +11,16 @@ from nonebot.adapters import Bot, Event, Message
 from nonebot_plugin_alconna.uniseg.builder import MessageBuilder, build
 from nonebot_plugin_alconna.uniseg.constraint import SupportAdapter, SupportScope
 from nonebot_plugin_alconna.uniseg.exporter import MessageExporter, Target, export
-from nonebot_plugin_alconna.uniseg.segment import At, Emoji, Image, Reply, Segment, Text
+from nonebot_plugin_alconna.uniseg.segment import (
+    At,
+    Audio,
+    Emoji,
+    File,
+    Image,
+    Reply,
+    Segment,
+    Text,
+)
 
 from .event import WebChatMessageEvent
 from .message import WebChatMessage, WebChatMessageSegment
@@ -30,6 +39,31 @@ class WebChatMessageBuilder(MessageBuilder[WebChatMessageSegment]):
             url=data.get("url"),
             raw=base64.b64decode(data["base64"]) if data.get("base64") else None,
             mimetype=data.get("mime"),
+        )
+
+    @build("record")
+    def record(self, seg: WebChatMessageSegment) -> Audio:
+        data = seg.data
+        return Audio(
+            id=data.get("asset_id"),
+            url=data.get("url"),
+            path=data.get("path") or data.get("file"),
+            raw=base64.b64decode(data["base64"]) if data.get("base64") else None,
+            mimetype=data.get("mime"),
+            name=data.get("name") or "audio-input",
+            duration=data.get("duration"),
+        )
+
+    @build("file")
+    def file(self, seg: WebChatMessageSegment) -> File:
+        data = seg.data
+        return File(
+            id=data.get("asset_id"),
+            url=data.get("url"),
+            path=data.get("path") or data.get("file"),
+            raw=base64.b64decode(data["base64"]) if data.get("base64") else None,
+            mimetype=data.get("mime"),
+            name=data.get("name") or data.get("file") or "attachment",
         )
 
     @build("mention")
@@ -92,6 +126,40 @@ class WebChatMessageExporter(MessageExporter[WebChatMessage]):
             url=seg.url,
             asset_id=seg.id,
             mime=seg.mimetype,
+        )
+
+    @export
+    async def audio(self, seg: Audio, _bot: Bot | None) -> WebChatMessageSegment:
+        if seg.raw:
+            return WebChatMessageSegment.audio(
+                base64_data=base64.b64encode(seg.raw_bytes).decode("ascii"),
+                mime=seg.mimetype,
+                name=seg.name,
+                duration=seg.duration,
+            )
+        return WebChatMessageSegment.audio(
+            url=seg.url,
+            asset_id=seg.id,
+            path=str(seg.path) if seg.path else None,
+            mime=seg.mimetype,
+            name=seg.name,
+            duration=seg.duration,
+        )
+
+    @export
+    async def file(self, seg: File, _bot: Bot | None) -> WebChatMessageSegment:
+        if seg.raw:
+            return WebChatMessageSegment.file(
+                base64_data=base64.b64encode(seg.raw_bytes).decode("ascii"),
+                mime=seg.mimetype,
+                name=seg.name,
+            )
+        return WebChatMessageSegment.file(
+            url=seg.url,
+            asset_id=seg.id,
+            path=str(seg.path) if seg.path else None,
+            mime=seg.mimetype,
+            name=seg.name,
         )
 
     @export

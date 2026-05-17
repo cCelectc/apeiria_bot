@@ -10,11 +10,14 @@ if TYPE_CHECKING:
 
     from apeiria.conversation.models import MessageKind
 
-_MEDIA_TYPES = {"image", "img", "audio", "record", "video", "file"}
+_MEDIA_TYPES = {"image", "img", "audio", "voice", "record", "video", "file"}
 _SAFE_MEDIA_KEYS = (
     "url",
     "asset_id",
+    "base64",
     "file",
+    "file_id",
+    "platform_file_id",
     "path",
     "mime",
     "mime_type",
@@ -262,7 +265,14 @@ def _build_media_segment(
         value = data.get(key)
         if isinstance(value, (str, int, float, bool)) and str(value).strip():
             segment[key] = value
-    if adapter and seg_type in {"audio", "record"}:
+    if "platform_file_id" not in segment and isinstance(
+        data.get("file_id"),
+        (str, int, float, bool),
+    ):
+        platform_file_id = str(data.get("file_id")).strip()
+        if platform_file_id:
+            segment["platform_file_id"] = platform_file_id
+    if adapter and seg_type in {"audio", "voice", "record"}:
         segment["adapter"] = adapter
         if not _has_safe_media_reference(segment):
             segment["unsupported_reason"] = "missing_safe_reference"
@@ -272,7 +282,15 @@ def _build_media_segment(
 def _has_safe_media_reference(segment: Mapping[str, Any]) -> bool:
     return any(
         isinstance(segment.get(key), str) and str(segment.get(key)).strip()
-        for key in ("url", "asset_id", "file", "path")
+        for key in (
+            "url",
+            "asset_id",
+            "base64",
+            "file",
+            "file_id",
+            "platform_file_id",
+            "path",
+        )
     )
 
 
