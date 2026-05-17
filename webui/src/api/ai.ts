@@ -18,6 +18,18 @@ export interface AIBootstrapResponse {
   task_classes: string[]
 }
 
+export interface AIRuntimeStatusResponse {
+  configuration_api_available: boolean
+  runtime_plugin_module: string
+  runtime_plugin_enabled: boolean
+  runtime_plugin_loaded: boolean
+  lifecycle_initialized: boolean
+  lifecycle_source: string
+  runtime_ready: boolean
+  runtime_phase: string
+  runtime_summary: string
+}
+
 export interface AISourceItem {
   source_id: string
   name: string
@@ -570,6 +582,10 @@ export interface AITurnTraceItem {
 
 export function getAIBootstrap() {
   return client.get<AIBootstrapResponse>('/ai/bootstrap')
+}
+
+export function getAIRuntimeStatus() {
+  return client.get<AIRuntimeStatusResponse>('/ai/runtime-status')
 }
 
 export function getAISources() {

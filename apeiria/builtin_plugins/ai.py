@@ -4,12 +4,10 @@ This module is intentionally thin. It:
 
 - Declares AI's PluginMetadata (config, commands, UI metadata)
 - Subscribes AI's message pipeline to NoneBot's `on_message` event
-- Publishes AI's HTTP routes into the Web UI host via the plugin-router
-  registry — so disabling this plugin also removes `/api/ai/*`
 
 Stable AI capabilities live under :mod:`apeiria.ai`, orchestration lives
-under :mod:`apeiria.app.ai`, and HTTP route ownership lives under
-:mod:`apeiria.webui.routes.ai`.
+under :mod:`apeiria.app.ai`, and HTTP route ownership lives under the Web UI
+control plane so configuration remains editable while runtime execution is off.
 """
 
 from nonebot import get_driver, require
@@ -29,8 +27,6 @@ from apeiria.plugins.metadata.api import (
     UiExtra,
 )
 from apeiria.runtime.entries import build_ai_trace_entry
-from apeiria.webui.plugin_routers import register_plugin_router
-from apeiria.webui.routes.ai import router as ai_webui_router
 
 require("nonebot_plugin_alconna")
 
@@ -154,11 +150,6 @@ __plugin_meta__ = PluginMetadata(
 
 ai_status = on_command("ai-status", permission=SUPERUSER, block=True)
 ai_message = on_message(priority=50, block=False)
-
-# Publish AI's HTTP router into the Web UI host. Registration happens at
-# plugin import time — when this plugin is disabled, the registration never
-# runs and `/api/ai/*` stays off.
-register_plugin_router("/ai", ai_webui_router, tags=("ai",))
 
 
 async def _run_ai_lifecycle_startup() -> None:

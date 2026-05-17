@@ -28,6 +28,18 @@ class AIBootstrapResponse(BaseModel):
     task_classes: list[str] = []
 
 
+class AIRuntimeStatusResponse(BaseModel):
+    configuration_api_available: bool = True
+    runtime_plugin_module: str
+    runtime_plugin_enabled: bool
+    runtime_plugin_loaded: bool
+    lifecycle_initialized: bool
+    lifecycle_source: str
+    runtime_ready: bool
+    runtime_phase: str
+    runtime_summary: str
+
+
 class AISourceItem(BaseModel):
     source_id: str
     name: str

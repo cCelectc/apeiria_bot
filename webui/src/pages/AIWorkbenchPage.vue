@@ -6,15 +6,19 @@ import {
   CalendarClock,
   ContactRound,
   DatabaseZap,
+  Info,
   MessagesSquare,
   Network,
   Settings2,
   Wrench,
 } from 'lucide-vue-next'
-import { computed } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
+import { getErrorMessage } from '@/api/client'
+import { getAIRuntimeStatus, type AIRuntimeStatusResponse } from '@/api/ai'
 import { PageScaffold } from '@/components/management'
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -44,6 +48,8 @@ type WorkbenchAreaOption = {
 const { t } = useI18n()
 const route = useRoute()
 const router = useRouter()
+const runtimeStatus = ref<AIRuntimeStatusResponse | null>(null)
+const runtimeStatusError = ref('')
 
 const areas: WorkbenchAreaOption[] = [
   {
@@ -133,6 +139,52 @@ const groupedAreas = computed(() => [
   areas: areas.filter(area => area.group === group.key),
 })))
 const activeGroup = computed(() => activeAreaMeta.value.group)
+const runtimeExecutionDisabled = computed(() => {
+  const status = runtimeStatus.value
+  return Boolean(status && !status.runtime_plugin_loaded)
+})
+const runtimeStatusMismatch = computed(() => {
+  const status = runtimeStatus.value
+  return Boolean(
+    status && status.runtime_plugin_enabled !== status.runtime_plugin_loaded,
+  )
+})
+const runtimeStatusTone = computed(() => {
+  if (!runtimeStatus.value) {
+    return 'outline'
+  }
+  return runtimeExecutionDisabled.value || runtimeStatusMismatch.value
+    ? 'secondary'
+    : 'outline'
+})
+const disabledRuntimeDescription = computed(() => {
+  const status = runtimeStatus.value
+  if (!status) {
+    return ''
+  }
+  return status.runtime_plugin_enabled
+    ? t('ai.runtimeNotLoadedDescription')
+    : t('ai.runtimeDisabledDescription')
+})
+const runtimeBadgeText = computed(() => {
+  const status = runtimeStatus.value
+  if (!status) {
+    return t('common.loading')
+  }
+  if (!status.runtime_plugin_loaded && !status.runtime_plugin_enabled) {
+    return t('ai.runtimePluginDisabled')
+  }
+  if (!status.runtime_plugin_loaded) {
+    return t('ai.runtimePluginNotLoaded')
+  }
+  if (!status.runtime_plugin_enabled) {
+    return t('ai.runtimeLoadedUntilRestart')
+  }
+  return status.runtime_ready ? t('ai.runtimeReady') : t('ai.runtimeDegraded')
+})
+const activeAreaRuntimeOnly = computed(() => (
+  runtimeExecutionDisabled.value && ['futureTasks'].includes(activeArea.value)
+))
 
 function setActiveArea(value: AIWorkbenchRouteArea) {
   if (value === activeArea.value) {
@@ -142,6 +194,20 @@ function setActiveArea(value: AIWorkbenchRouteArea) {
     query: buildAIWorkbenchAreaQuery(value, route.query),
   })
 }
+
+async function loadRuntimeStatus() {
+  runtimeStatusError.value = ''
+  try {
+    const response = await getAIRuntimeStatus()
+    runtimeStatus.value = response.data
+  } catch (error) {
+    runtimeStatusError.value = getErrorMessage(error, t('ai.runtimeStatusLoadFailed'))
+  }
+}
+
+onMounted(() => {
+  void loadRuntimeStatus()
+})
 </script>
 
 <template>
@@ -157,6 +223,23 @@ function setActiveArea(value: AIWorkbenchRouteArea) {
     </template>
 
     <template #before>
+      <Alert v-if="runtimeExecutionDisabled" class="ai-runtime-status-alert">
+        <Info />
+        <AlertTitle>{{ t('ai.runtimeDisabledTitle') }}</AlertTitle>
+        <AlertDescription>
+          {{ disabledRuntimeDescription }}
+        </AlertDescription>
+      </Alert>
+      <Alert v-else-if="runtimeStatusError" variant="destructive">
+        <AlertTitle>{{ t('ai.runtimeStatusUnavailableTitle') }}</AlertTitle>
+        <AlertDescription>{{ runtimeStatusError }}</AlertDescription>
+      </Alert>
+      <div v-else class="ai-runtime-status-row">
+        <span>{{ t('ai.runtimeStatusLabel') }}</span>
+        <Badge :variant="runtimeStatusTone">
+          {{ runtimeBadgeText }}
+        </Badge>
+      </div>
       <nav class="ai-workbench-frame" :aria-label="t('layout.aiWorkbench')">
         <section
           v-for="group in groupedAreas"
@@ -176,10 +259,21 @@ function setActiveArea(value: AIWorkbenchRouteArea) {
             >
               <component :is="area.icon" :size="15" />
               {{ t(area.label) }}
+              <Badge
+                v-if="runtimeExecutionDisabled && area.value === 'futureTasks'"
+                variant="outline"
+              >
+                {{ t('ai.runtimeUnavailableBadge') }}
+              </Badge>
             </Button>
           </div>
         </section>
       </nav>
+      <Alert v-if="activeAreaRuntimeOnly" class="ai-runtime-status-alert">
+        <Info />
+        <AlertTitle>{{ t('ai.runtimeOnlyControlTitle') }}</AlertTitle>
+        <AlertDescription>{{ t('ai.futureTasksRuntimeDisabledHint') }}</AlertDescription>
+      </Alert>
     </template>
 
     <AIModelsPage v-if="activeArea === 'models'" embedded />

@@ -734,6 +734,28 @@
   box-shadow: 0 1px 0 color-mix(in oklch, var(--primary) 18%, transparent);
 }
 
+.ai-runtime-status-alert {
+  border-color: color-mix(in oklch, var(--primary) 18%, var(--border));
+  background: color-mix(in oklch, var(--primary) 5%, var(--card));
+}
+
+.ai-runtime-status-row {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  color: var(--muted-foreground);
+  font-size: 0.78rem;
+  font-weight: 720;
+  line-height: 1.4;
+}
+
+.ai-runtime-status-row__detail {
+  min-width: 0;
+  font-weight: 520;
+}
+
 .workbench-hub {
   display: flex;
   min-width: 0;

@@ -154,6 +154,32 @@ def test_lifecycle_applies_plugin_contributions_before_skill_sync(
     assert len(tool_service.registry.tools) == EXPECTED_REGISTERED_TOOL_COUNT
 
 
+def test_admin_fallback_initialization_does_not_recover_future_tasks() -> None:
+    from apeiria.ai.contributions import AIContributionRegistry
+    from apeiria.app.ai.lifecycle import AIPluginLifecycleCoordinator
+
+    order: list[str] = []
+    tool_service = _FakeToolService(order)
+    skill_service = _FakeSkillService(order, tool_service)
+    future_service = _FakeFutureTaskService(order)
+
+    coordinator = AIPluginLifecycleCoordinator(
+        contribution_registry=AIContributionRegistry(),
+        tool_service=tool_service,
+        skill_service=skill_service,
+        future_task_service=future_service,
+    )
+
+    snapshot = coordinator.ensure_runtime_support_initialized(source="admin_fallback")
+
+    assert snapshot.initialized is True
+    assert snapshot.initialization_source == "admin_fallback"
+    assert "skills" in order
+    assert "future_recovery" not in order
+    assert future_service.calls == 0
+    assert snapshot.recovery is None
+
+
 def test_public_plugin_ai_tool_decorator_registers_plugin_tool(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

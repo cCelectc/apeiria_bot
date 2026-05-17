@@ -1,7 +1,7 @@
 """AI admin routes — thin aggregator over per-domain sub-routers.
 
 Each `/api/ai` endpoint family lives in its own module. This file just
-composes them into a single `router` that the AI plugin mounts.
+composes them into a single `router` that the Web UI control plane mounts.
 """
 
 from __future__ import annotations
@@ -23,12 +23,18 @@ from .relationships import router as _relationships_router
 from .sessions import router as _sessions_router
 from .skills import router as _skills_router
 from .sources import router as _sources_router
-from .sources_schemas import AIBootstrapResponse, to_ai_source_preset_item
+from .sources_schemas import (
+    AIBootstrapResponse,
+    AIRuntimeStatusResponse,
+    to_ai_source_preset_item,
+)
 from .tools import router as _tools_router
 from .traces import router as _traces_router
 from .usage import router as _usage_router
 
 router = APIRouter()
+
+AI_RUNTIME_PLUGIN_MODULE = "apeiria.builtin_plugins.ai"
 
 
 @router.get("/bootstrap", response_model=AIBootstrapResponse)
@@ -50,6 +56,40 @@ async def get_ai_bootstrap(
             "reasoning_heavy",
         ],
     )
+
+
+@router.get("/runtime-status", response_model=AIRuntimeStatusResponse)
+async def get_ai_runtime_status(
+    _: Annotated[Any, Depends(require_control_panel)],
+) -> AIRuntimeStatusResponse:
+    from apeiria.plugins.repository import plugin_catalog_repository
+
+    lifecycle = ai_application.lifecycle.inspect()
+    runtime_status = await ai_application.diagnostics.get_runtime_status()
+    return AIRuntimeStatusResponse(
+        configuration_api_available=True,
+        runtime_plugin_module=AI_RUNTIME_PLUGIN_MODULE,
+        runtime_plugin_enabled=(
+            await plugin_catalog_repository.get_plugin_enabled(AI_RUNTIME_PLUGIN_MODULE)
+        ),
+        runtime_plugin_loaded=_is_ai_runtime_plugin_loaded(),
+        lifecycle_initialized=bool(getattr(lifecycle, "initialized", False)),
+        lifecycle_source=str(
+            getattr(lifecycle, "initialization_source", "not_initialized")
+        ),
+        runtime_ready=runtime_status.ready,
+        runtime_phase=runtime_status.phase,
+        runtime_summary=runtime_status.summary,
+    )
+
+
+def _is_ai_runtime_plugin_loaded() -> bool:
+    from apeiria.utils.plugin_introspection import find_loaded_plugin
+
+    try:
+        return find_loaded_plugin(AI_RUNTIME_PLUGIN_MODULE) is not None
+    except ValueError:
+        return False
 
 
 router.include_router(_future_tasks_router)

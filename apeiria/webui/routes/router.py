@@ -4,6 +4,7 @@ from fastapi import APIRouter
 
 from apeiria.webui.routes.access import router as permission_router
 from apeiria.webui.routes.adapter_store import router as adapter_store_router
+from apeiria.webui.routes.ai import router as ai_router
 from apeiria.webui.routes.auth import router as auth_router
 from apeiria.webui.routes.chat import router as chat_router
 from apeiria.webui.routes.dashboard import router as dashboard_router
@@ -32,5 +33,6 @@ router.include_router(plugin_management_router, prefix="/plugins", tags=["plugin
 router.include_router(permission_router, prefix="/permissions", tags=["permissions"])
 router.include_router(log_router, prefix="/logs", tags=["logs"])
 router.include_router(chat_router, prefix="/chat", tags=["chat"])
+router.include_router(ai_router, prefix="/ai", tags=["ai"])
 
 __all__ = ["router"]
