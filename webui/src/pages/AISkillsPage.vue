@@ -17,6 +17,9 @@ import { Input } from '@/components/ui/input'
 import { useAISkillsTab } from '@/composables/useAISkillsTab'
 
 const { t } = useI18n()
+defineProps<{
+  embedded?: boolean
+}>()
 const errorMessage = ref('')
 const search = ref('')
 const { loadSkillsData, loadingSkills, skills } = useAISkillsTab(t)
@@ -57,6 +60,7 @@ onMounted(() => {
 
 <template>
   <PageScaffold
+    :embedded="embedded"
     :error-message="errorMessage"
     :subtitle="t('ai.pageSubtitle.skills')"
     :title="t('ai.skillsTab')"

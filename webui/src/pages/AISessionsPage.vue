@@ -55,6 +55,9 @@ import { Switch } from '@/components/ui/switch'
 import { useAISessionsTab } from '@/composables/useAISessionsTab'
 
 const { t } = useI18n()
+defineProps<{
+  embedded?: boolean
+}>()
 const router = useRouter()
 const errorMessage = ref('')
 const resetDialogVisible = ref(false)
@@ -278,6 +281,7 @@ onMounted(() => {
 
 <template>
   <PageScaffold
+    :embedded="embedded"
     :error-message="errorMessage"
     :subtitle="t('ai.pageSubtitle.sessions')"
     :title="t('ai.sessionsTab')"

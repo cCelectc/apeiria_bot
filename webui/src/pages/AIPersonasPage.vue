@@ -24,6 +24,9 @@ import { Textarea } from '@/components/ui/textarea'
 import { useAIPersonasTab } from '@/composables/useAIPersonasTab'
 
 const { t } = useI18n()
+defineProps<{
+  embedded?: boolean
+}>()
 const errorMessage = ref('')
 const search = ref('')
 const {
@@ -91,6 +94,7 @@ onMounted(() => {
 
 <template>
   <PageScaffold
+    :embedded="embedded"
     :error-message="errorMessage"
     :subtitle="t('ai.pageSubtitle.personas')"
     :title="t('ai.personasTab')"

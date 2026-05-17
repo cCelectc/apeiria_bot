@@ -37,7 +37,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Tabs, TabsContent } from '@/components/ui/tabs'
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { Textarea } from '@/components/ui/textarea'
 import { useAIDebugTab } from '@/composables/useAIDebugTab'
 import { useAIDebugToolsTab } from '@/composables/useAIDebugToolsTab'
@@ -45,6 +46,9 @@ import { useAIFutureTasksTab } from '@/composables/useAIFutureTasksTab'
 import { normalizeAIDebugRouteValue } from '@/utils/aiRouteState'
 
 const { t } = useI18n()
+defineProps<{
+  embedded?: boolean
+}>()
 const route = useRoute()
 const router = useRouter()
 const errorMessage = ref('')
@@ -256,6 +260,7 @@ watch(debugTab, () => {
 
 <template>
   <PageScaffold
+    :embedded="embedded"
     :error-message="errorMessage"
     :subtitle="t('ai.pageSubtitle.debug')"
     :title="t('ai.debugTab')"
@@ -272,13 +277,21 @@ watch(debugTab, () => {
 
     <MetricStrip :items="metrics" compact />
 
-    <Tabs v-model="debugTab" class="ai-debug-tabs">
-      <TabsList class="ai-debug-tabs__list">
-        <TabsTrigger value="conversations">{{ t('ai.debugConversationTitle') }}</TabsTrigger>
-        <TabsTrigger value="futureTasks">{{ t('ai.futureTaskTab') }}</TabsTrigger>
-        <TabsTrigger value="tools">{{ t('ai.debugToolsTab') }}</TabsTrigger>
-      </TabsList>
+    <div class="ai-debug-mode-row">
+      <ToggleGroup
+        v-model="debugTab"
+        :aria-label="t('ai.debugTab')"
+        size="sm"
+        type="single"
+        variant="outline"
+      >
+        <ToggleGroupItem value="conversations">{{ t('ai.debugConversationTitle') }}</ToggleGroupItem>
+        <ToggleGroupItem value="futureTasks">{{ t('ai.futureTaskTab') }}</ToggleGroupItem>
+        <ToggleGroupItem value="tools">{{ t('ai.debugToolsTab') }}</ToggleGroupItem>
+      </ToggleGroup>
+    </div>
 
+    <Tabs v-model="debugTab" class="ai-debug-tabs">
       <TabsContent value="conversations">
         <SplitPane wide-sidebar>
           <template #sidebar>

@@ -4,7 +4,6 @@ import type {
   AIModelProfileItem,
   AISourceModelItem,
 } from '@/api/ai'
-import type { AISetupNextActionKind } from '@/utils/aiSetupWorkflow'
 import {
   Brain,
   CheckCircle2,
@@ -30,7 +29,6 @@ import {
   SelectableList,
   SelectableListItem,
   SplitPane,
-  StatusBadge,
 } from '@/components/management'
 import { Badge, type BadgeVariants } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -53,6 +51,7 @@ import {
 } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { useAIModelsTab } from '@/composables/useAIModelsTab'
 import {
   normalizeAICapabilityRouteValue,
@@ -61,7 +60,6 @@ import {
   type AISourceCapabilityRouteValue,
   type AISetupRouteIntent,
 } from '@/utils/aiRouteState'
-import { resolveAISetupActionRoute } from '@/utils/aiSetupWorkflow'
 
 type SourceAdvancedField =
   | 'capability_metadata_json'
@@ -88,6 +86,9 @@ interface UnifiedImportableSourceModel {
 }
 
 const { t } = useI18n()
+defineProps<{
+  embedded?: boolean
+}>()
 const route = useRoute()
 const router = useRouter()
 const loading = ref(false)
@@ -172,10 +173,6 @@ const sourceCapabilityOptions = computed(() => [
   { title: t('ai.sourceCapabilityEmbedding'), value: 'embedding' as const },
   { title: t('ai.sourceCapabilityRerank'), value: 'rerank' as const },
 ])
-const activeSourceCapabilityOption = computed(() => (
-  sourceCapabilityOptions.value.find(item => item.value === sourceCapabilityTab.value)
-  ?? sourceCapabilityOptions.value[0]
-))
 const modelFlowFocus = computed(() => resolveAIModelFlowFocus({
   intent: currentSetupRouteIntent(),
   workflowDependency: setupWorkflow.value.dependency,
@@ -387,25 +384,24 @@ function applyRouteState() {
   applyingRouteState = false
 }
 
+function handleCapabilityUpdate(value: unknown) {
+  if (typeof value === 'string') {
+    sourceCapabilityTab.value = normalizeAICapabilityRouteValue(value)
+  }
+}
+
 function syncRouteQuery() {
   const nextQuery: Record<string, string> = {
+    ...stringQuery(route.query),
     capability: sourceCapabilityTab.value,
   }
   if (typeof route.query.intent === 'string' && route.query.intent) {
     nextQuery.intent = route.query.intent
   }
-  if (
-    route.query.capability === nextQuery.capability
-    && route.query.intent === nextQuery.intent
-  ) {
+  if (route.query.capability === nextQuery.capability) {
     return
   }
   void router.replace({ query: nextQuery })
-}
-
-async function handleModelPrimaryAction(kind: AISetupNextActionKind) {
-  await router.push(resolveAISetupActionRoute(kind, sourceCapabilityTab.value))
-  applySetupRouteIntent()
 }
 
 function applySetupRouteIntent() {
@@ -553,6 +549,16 @@ function connectionIssueLabel(issue: string) {
   return t(`ai.connectionIssue.${issue}`)
 }
 
+function stringQuery(query: Record<string, unknown>) {
+  const result: Record<string, string> = {}
+  for (const [key, value] of Object.entries(query)) {
+    if (typeof value === 'string' && value) {
+      result[key] = value
+    }
+  }
+  return result
+}
+
 applyRouteState()
 
 onMounted(() => {
@@ -578,11 +584,29 @@ watch(sourceCapabilityTab, () => {
 
 <template>
   <PageScaffold
+    :embedded="embedded"
     :error-message="errorMessage"
     :subtitle="t('ai.pageSubtitle.models')"
     :title="t('ai.modelsTitle')"
   >
     <template #actions>
+      <ToggleGroup
+        :aria-label="t('ai.sourceCapabilitySwitcherLabel')"
+        class="ai-model-capability-switcher"
+        :model-value="sourceCapabilityTab"
+        size="sm"
+        type="single"
+        variant="outline"
+        @update:model-value="handleCapabilityUpdate"
+      >
+        <ToggleGroupItem
+          v-for="item in sourceCapabilityOptions"
+          :key="item.value"
+          :value="item.value"
+        >
+          {{ item.title }}
+        </ToggleGroupItem>
+      </ToggleGroup>
       <Button :disabled="loading" variant="secondary" @click="loadData">
         <RefreshCw :class="{ 'animate-spin': loading }" :size="16" />
         {{ t('common.refresh') }}
@@ -592,57 +616,9 @@ watch(sourceCapabilityTab, () => {
     <LoadingSkeleton v-if="loading && loadingSources" rows="8" />
 
     <div v-else class="ai-model-page">
-      <Panel>
-        <div class="ai-model-context">
-          <div class="ai-model-context__body">
-            <StatusBadge :label="t('ai.sourceCapabilityContext')" tone="info" />
-            <h2>{{ activeSourceCapabilityOption.title }}</h2>
-            <p>{{ t(`ai.modelFlowStepHint.${modelFlowFocus.step}`) }}</p>
-            <div class="ai-model-context__steps">
-              <Badge
-                v-for="step in setupWorkflow.steps"
-                :key="step.key"
-                :variant="step.state === 'complete' ? 'default' : 'secondary'"
-              >
-                {{ t(`ai.setupStep.${step.key}`) }}
-              </Badge>
-            </div>
-          </div>
-
-          <div class="ai-model-context__next">
-            <span>{{ t('ai.setupNextAction') }}</span>
-            <strong>{{ t(`ai.setupAction.${setupWorkflow.nextAction.kind}`) }}</strong>
-            <Button @click="handleModelPrimaryAction(setupWorkflow.nextAction.kind)">
-              {{ t('ai.modelFocusNextAction') }}
-            </Button>
-          </div>
-        </div>
-      </Panel>
-
-      <div
-        :aria-label="t('ai.sourceCapabilitySwitcherLabel')"
-        class="ai-source-capability-switcher"
-        role="group"
-      >
-        <button
-          v-for="item in sourceCapabilityOptions"
-          :key="item.value"
-          :aria-pressed="sourceCapabilityTab === item.value"
-          class="ai-source-capability-option"
-          :class="{ 'ai-source-capability-option--active': sourceCapabilityTab === item.value }"
-          type="button"
-          @click="sourceCapabilityTab = item.value"
-        >
-          {{ item.title }}
-        </button>
-      </div>
-
       <SplitPane class="ai-model-workbench" wide-sidebar>
         <template #sidebar>
-          <Panel
-            :subtitle="t('ai.sourceListHint')"
-            :title="t('ai.sourcesTitle')"
-          >
+          <Panel :title="t('ai.sourcesTitle')">
             <template #actions>
               <Button size="sm" @click="startCreateSource()">
                 <Plus :size="15" />
@@ -694,224 +670,220 @@ watch(sourceCapabilityTab, () => {
         </template>
 
         <div class="ai-model-workbench__main">
-          <Panel
-            :subtitle="providerDetailText"
-            :title="providerDetailTitle"
+          <div
+            class="ai-model-primary-grid"
+            :class="{ 'ai-model-primary-grid--with-models': providerDetailMode !== 'empty' && sourceForm.source_id }"
           >
-            <template #actions>
-              <Badge
-                v-if="setupWorkflow.connectionIssues.length === 0 && sourceForm.source_id"
-                variant="default"
-              >
-                {{ t('ai.setupStep.connection') }}
-              </Badge>
-              <Badge
-                v-for="issue in setupWorkflow.connectionIssues"
-                :key="issue"
-                variant="secondary"
-              >
-                {{ connectionIssueLabel(issue) }}
-              </Badge>
-            </template>
-
-            <EmptyState
-              v-if="providerDetailMode === 'empty'"
-              :action-label="t('ai.createSource')"
-              :icon="ServerCog"
-              :text="t('ai.sourceProviderEmptyText')"
-              :title="t('ai.sourceProviderEmptyTitle')"
-              @action="startCreateSource()"
-            />
-
-            <div v-else class="ai-provider-form">
-              <div
-                v-if="isCreatingSource"
-                class="ai-source-protocol-grid"
-                :class="{ 'ai-source-protocol-grid--focused': modelFlowFocus.highlight === 'provider' }"
-              >
-                <button
-                  v-for="preset in sourcePresets"
-                  :key="preset.preset_type"
-                  :aria-pressed="sourceForm.preset_type === preset.preset_type"
-                  class="ai-source-protocol"
-                  :class="{ 'ai-source-protocol--active': sourceForm.preset_type === preset.preset_type }"
-                  type="button"
-                  @click="selectSourceProtocol(preset.preset_type)"
+            <Panel
+              :subtitle="providerDetailText"
+              :title="providerDetailTitle"
+            >
+              <template #actions>
+                <Badge
+                  v-if="setupWorkflow.connectionIssues.length === 0 && sourceForm.source_id"
+                  variant="default"
                 >
-                  <span>{{ sourcePresetInitial(preset.preset_type) }}</span>
-                  <strong>{{ preset.display_name }}</strong>
-                  <small>{{ preset.description || t('ai.sourceProtocolDefaultHint') }}</small>
-                </button>
-              </div>
-
-              <div class="ai-form-grid">
-                <FormField
-                  :error="displayedSourceErrors.name"
-                  :helper="t('ai.sourceConfigNameHint')"
-                  :label="t('ai.sourceName')"
-                  required
-                >
-                  <Input
-                    v-model="sourceForm.name"
-                    :aria-invalid="Boolean(displayedSourceErrors.name)"
-                    :disabled="savingSource"
-                    @blur="touchSourceField('name')"
-                  />
-                </FormField>
-
-                <FormField
-                  :error="displayedSourceErrors.preset_type"
-                  :helper="t('ai.sourceConfigPresetHint')"
-                  :label="t('ai.sourcePreset')"
-                  required
-                >
-                  <Select
-                    v-model="sourceForm.preset_type"
-                    :disabled="savingSource || isCreatingSource"
-                    @update:model-value="() => touchSourceField('preset_type')"
-                  >
-                    <SelectTrigger>
-                      <SelectValue :placeholder="t('ai.sourceProtocolNotSelected')" />
-                    </SelectTrigger>
-                      <SelectContent>
-                      <SelectGroup>
-                        <SelectItem
-                          v-for="item in sourcePresetOptions"
-                          :key="item.value"
-                          :value="item.value"
-                        >
-                          {{ item.title }}
-                        </SelectItem>
-                      </SelectGroup>
-                    </SelectContent>
-                  </Select>
-                </FormField>
-
-                <FormField
-                  :helper="t('ai.sourceConfigApiBaseHint')"
-                  :label="t('ai.sourceApiBase')"
-                >
-                  <Input v-model="sourceForm.api_base" :disabled="savingSource" />
-                </FormField>
-
-                <FormField
-                  :helper="t('ai.sourceConfigApiKeyHint')"
-                  :label="t('ai.sourceApiKey')"
-                >
-                  <form
-                    autocomplete="off"
-                    class="ai-api-key-row"
-                    @submit.prevent
-                  >
-                    <input
-                      autocomplete="username"
-                      hidden
-                      name="username"
-                      readonly
-                      type="text"
-                      value="api-key"
-                    >
-                    <Input
-                      v-model="sourcePrimaryApiKey"
-                      autocomplete="off"
-                      type="password"
-                    />
-                    <Button
-                      :class="{ 'ai-highlight-button': modelFlowFocus.highlight === 'connection' }"
-                      type="button"
-                      variant="secondary"
-                      @click="openSourceApiKeysEditor"
-                    >
-                      <KeyRound :size="15" />
-                      {{ t('ai.sourceApiKeyManage') }}
-                    </Button>
-                  </form>
-                  <div v-if="extraSourceApiKeys.length > 0" class="ai-inline-chips">
-                    <Badge
-                      v-for="(item, index) in extraSourceApiKeys"
-                      :key="`${index}-${item}`"
-                      variant="secondary"
-                    >
-                      {{ item }}
-                      <button
-                        :aria-label="t('common.delete')"
-                        class="ai-chip-button"
-                        type="button"
-                        @click="removeExtraSourceApiKey(index)"
-                      >
-                        ×
-                      </button>
-                    </Badge>
-                  </div>
-                </FormField>
-              </div>
-
-              <div class="ai-provider-switches">
-                <label>
-                  <Switch v-model:checked="sourceForm.enabled" :disabled="savingSource" />
-                  <span>{{ t('ai.sourceEnabled') }}</span>
-                </label>
-                <span v-if="providerSaveDisabledReason" class="ai-disabled-reason">
-                  {{ providerSaveDisabledReason }}
-                </span>
-              </div>
-
-              <div v-if="workflowResults.provider" class="ai-workflow-result">
-                <Badge :variant="workflowTone(workflowResults.provider.status)">
-                  {{ workflowResults.provider.message }}
+                  {{ t('ai.setupStep.connection') }}
                 </Badge>
-              </div>
-
-              <div class="ai-form-actions">
-                <Button variant="secondary" @click="sourceAdvancedDialog = true">
-                  <Settings :size="15" />
-                  {{ t('ai.sourceAdvancedConfigAction') }}
-                </Button>
-                <Button
-                  v-if="sourceForm.source_id"
-                  :disabled="deletingSource"
-                  variant="destructive"
-                  @click="removeSource"
+                <Badge
+                  v-for="issue in setupWorkflow.connectionIssues"
+                  :key="issue"
+                  variant="secondary"
                 >
-                  <Trash2 :size="15" />
-                  {{ t('common.delete') }}
-                </Button>
-                <Button :disabled="!canSaveSource" @click="saveSource">
-                  {{ t('ai.saveSourceConfig') }}
-                </Button>
-              </div>
-            </div>
-          </Panel>
+                  {{ connectionIssueLabel(issue) }}
+                </Badge>
+              </template>
 
-          <Panel
-            :subtitle="t('ai.modelDiscoveryWorkflowHint')"
-            :title="t('ai.sourceModelsTitle')"
-          >
-            <template #actions>
-              <Button
-                :class="{ 'ai-highlight-button': modelFlowFocus.highlight === 'fetch' }"
-                :disabled="!canFetchSourceModels"
-                variant="secondary"
-                @click="pullSourceModels"
-              >
-                <RefreshCw :class="{ 'animate-spin': fetchingSourceModels }" :size="15" />
-                {{ t('ai.fetchModels') }}
-              </Button>
-              <Button :disabled="!sourceForm.source_id" @click="openCreateSourceModel">
-                <Plus :size="15" />
-                {{ t('ai.customModel') }}
-              </Button>
-            </template>
-
-            <template v-if="!sourceForm.source_id">
               <EmptyState
-                :icon="Brain"
-                :text="t('ai.selectSourceFirstHint')"
-                :title="t('ai.selectSourceFirst')"
+                v-if="providerDetailMode === 'empty'"
+                :action-label="t('ai.createSource')"
+                :icon="ServerCog"
+                :text="t('ai.sourceProviderEmptyText')"
+                :title="t('ai.sourceProviderEmptyTitle')"
+                @action="startCreateSource()"
               />
-            </template>
 
-            <template v-else>
+              <div v-else class="ai-provider-form">
+                <div
+                  v-if="isCreatingSource"
+                  class="ai-source-protocol-grid"
+                  :class="{ 'ai-source-protocol-grid--focused': modelFlowFocus.highlight === 'provider' }"
+                >
+                  <button
+                    v-for="preset in sourcePresets"
+                    :key="preset.preset_type"
+                    :aria-pressed="sourceForm.preset_type === preset.preset_type"
+                    class="ai-source-protocol"
+                    :class="{ 'ai-source-protocol--active': sourceForm.preset_type === preset.preset_type }"
+                    type="button"
+                    @click="selectSourceProtocol(preset.preset_type)"
+                  >
+                    <span>{{ sourcePresetInitial(preset.preset_type) }}</span>
+                    <strong>{{ preset.display_name }}</strong>
+                    <small>{{ preset.description || t('ai.sourceProtocolDefaultHint') }}</small>
+                  </button>
+                </div>
+
+                <div class="ai-form-grid">
+                  <FormField
+                    :error="displayedSourceErrors.name"
+                    :helper="t('ai.sourceConfigNameHint')"
+                    :label="t('ai.sourceName')"
+                    required
+                  >
+                    <Input
+                      v-model="sourceForm.name"
+                      :aria-invalid="Boolean(displayedSourceErrors.name)"
+                      :disabled="savingSource"
+                      @blur="touchSourceField('name')"
+                    />
+                  </FormField>
+
+                  <FormField
+                    :error="displayedSourceErrors.preset_type"
+                    :helper="t('ai.sourceConfigPresetHint')"
+                    :label="t('ai.sourcePreset')"
+                    required
+                  >
+                    <Select
+                      v-model="sourceForm.preset_type"
+                      :disabled="savingSource || isCreatingSource"
+                      @update:model-value="() => touchSourceField('preset_type')"
+                    >
+                      <SelectTrigger>
+                        <SelectValue :placeholder="t('ai.sourceProtocolNotSelected')" />
+                      </SelectTrigger>
+                        <SelectContent>
+                        <SelectGroup>
+                          <SelectItem
+                            v-for="item in sourcePresetOptions"
+                            :key="item.value"
+                            :value="item.value"
+                          >
+                            {{ item.title }}
+                          </SelectItem>
+                        </SelectGroup>
+                      </SelectContent>
+                    </Select>
+                  </FormField>
+
+                  <FormField
+                    :helper="t('ai.sourceConfigApiBaseHint')"
+                    :label="t('ai.sourceApiBase')"
+                  >
+                    <Input v-model="sourceForm.api_base" :disabled="savingSource" />
+                  </FormField>
+
+                  <FormField
+                    :helper="t('ai.sourceConfigApiKeyHint')"
+                    :label="t('ai.sourceApiKey')"
+                  >
+                    <form
+                      autocomplete="off"
+                      class="ai-api-key-row"
+                      @submit.prevent
+                    >
+                      <input
+                        autocomplete="username"
+                        hidden
+                        name="username"
+                        readonly
+                        type="text"
+                        value="api-key"
+                      >
+                      <Input
+                        v-model="sourcePrimaryApiKey"
+                        autocomplete="off"
+                        type="password"
+                      />
+                      <Button
+                        :class="{ 'ai-highlight-button': modelFlowFocus.highlight === 'connection' }"
+                        type="button"
+                        variant="secondary"
+                        @click="openSourceApiKeysEditor"
+                      >
+                        <KeyRound :size="15" />
+                        {{ t('ai.sourceApiKeyManage') }}
+                      </Button>
+                    </form>
+                    <div v-if="extraSourceApiKeys.length > 0" class="ai-inline-chips">
+                      <Badge
+                        v-for="(item, index) in extraSourceApiKeys"
+                        :key="`${index}-${item}`"
+                        variant="secondary"
+                      >
+                        {{ item }}
+                        <button
+                          :aria-label="t('common.delete')"
+                          class="ai-chip-button"
+                          type="button"
+                          @click="removeExtraSourceApiKey(index)"
+                        >
+                          ×
+                        </button>
+                      </Badge>
+                    </div>
+                  </FormField>
+                </div>
+
+                <div class="ai-provider-switches">
+                  <label>
+                    <Switch v-model:checked="sourceForm.enabled" :disabled="savingSource" />
+                    <span>{{ t('ai.sourceEnabled') }}</span>
+                  </label>
+                  <span v-if="providerSaveDisabledReason" class="ai-disabled-reason">
+                    {{ providerSaveDisabledReason }}
+                  </span>
+                </div>
+
+                <div v-if="workflowResults.provider" class="ai-workflow-result">
+                  <Badge :variant="workflowTone(workflowResults.provider.status)">
+                    {{ workflowResults.provider.message }}
+                  </Badge>
+                </div>
+
+                <div class="ai-form-actions">
+                  <Button variant="secondary" @click="sourceAdvancedDialog = true">
+                    <Settings :size="15" />
+                    {{ t('ai.sourceAdvancedConfigAction') }}
+                  </Button>
+                  <Button
+                    v-if="sourceForm.source_id"
+                    :disabled="deletingSource"
+                    variant="destructive"
+                    @click="removeSource"
+                  >
+                    <Trash2 :size="15" />
+                    {{ t('common.delete') }}
+                  </Button>
+                  <Button :disabled="!canSaveSource" @click="saveSource">
+                    {{ t('ai.saveSourceConfig') }}
+                  </Button>
+                </div>
+              </div>
+            </Panel>
+
+            <Panel
+              v-if="sourceForm.source_id"
+              :title="t('ai.sourceModelsTitle')"
+            >
+              <template #actions>
+                <Button
+                  :class="{ 'ai-highlight-button': modelFlowFocus.highlight === 'fetch' }"
+                  :disabled="!canFetchSourceModels"
+                  size="sm"
+                  variant="secondary"
+                  @click="pullSourceModels"
+                >
+                  <RefreshCw :class="{ 'animate-spin': fetchingSourceModels }" :size="15" />
+                  {{ t('ai.fetchModels') }}
+                </Button>
+                <Button :disabled="!sourceForm.source_id" size="sm" @click="openCreateSourceModel">
+                  <Plus :size="15" />
+                  {{ t('ai.customModel') }}
+                </Button>
+              </template>
+
               <div class="ai-model-toolbar">
                 <div class="ai-source-search">
                   <Search :size="16" />
@@ -929,76 +901,9 @@ watch(sourceCapabilityTab, () => {
                 </Badge>
               </div>
 
-              <div
-                class="ai-model-editor"
-                :class="{ 'ai-model-editor--focused': modelFlowFocus.step === 'model' || modelFlowFocus.step === 'defaultModel' }"
-              >
-                <div class="ai-model-editor__header">
-                  <div>
-                    <strong>{{ isCreatingModel ? t('ai.createModel') : t('ai.editModel') }}</strong>
-                    <p>{{ t(`ai.modelFlowStepHint.${modelFlowFocus.step}`) }}</p>
-                  </div>
-                  <Button variant="secondary" @click="modelAdvancedDialog = true">
-                    <Settings :size="15" />
-                    {{ t('ai.modelAdvancedConfigAction') }}
-                  </Button>
-                </div>
-
-                <div class="ai-form-grid">
-                  <FormField
-                    :error="displayedModelErrors.model_identifier"
-                    :label="t('ai.modelIdentifier')"
-                    required
-                  >
-                    <Input
-                      v-model="modelForm.model_identifier"
-                      :aria-invalid="Boolean(displayedModelErrors.model_identifier)"
-                      :disabled="savingModel"
-                      @blur="touchModelField('model_identifier')"
-                    />
-                  </FormField>
-                  <FormField
-                    :error="displayedModelErrors.display_name"
-                    :label="t('ai.modelDisplayName')"
-                    required
-                  >
-                    <Input
-                      v-model="modelForm.display_name"
-                      :aria-invalid="Boolean(displayedModelErrors.display_name)"
-                      :disabled="savingModel"
-                      @blur="touchModelField('display_name')"
-                    />
-                  </FormField>
-                </div>
-
-                <div class="ai-provider-switches">
-                  <label>
-                    <Switch v-model:checked="modelForm.enabled" :disabled="savingModel" />
-                    <span>{{ t('ai.modelEnabled') }}</span>
-                  </label>
-                  <label>
-                    <Switch v-model:checked="modelForm.is_default" :disabled="savingModel" />
-                    <span>{{ t('ai.modelDefault') }}</span>
-                  </label>
-                </div>
-                <div v-if="modelSaveDisabledReason" class="ai-disabled-reason">
-                  {{ modelSaveDisabledReason }}
-                </div>
-                <div v-if="workflowResults.model" class="ai-workflow-result">
-                  <Badge :variant="workflowTone(workflowResults.model.status)">
-                    {{ workflowResults.model.message }}
-                  </Badge>
-                </div>
-                <div class="ai-form-actions">
-                  <Button :disabled="!canSaveModel" @click="saveSourceModel">
-                    {{ t('common.save') }}
-                  </Button>
-                </div>
-              </div>
-
               <LoadingSkeleton v-if="loadingSourceModels" rows="4" />
 
-              <div v-else-if="unifiedSourceModels.length > 0" class="ai-source-model-list">
+              <div v-else-if="unifiedSourceModels.length > 0" class="ai-source-model-list ai-source-model-list--compact">
                 <article
                   v-for="item in unifiedSourceModels"
                   :key="item.key"
@@ -1087,6 +992,79 @@ watch(sourceCapabilityTab, () => {
                 :title="t('ai.modelEmptyTitle')"
                 @action="openCreateSourceModel"
               />
+            </Panel>
+          </div>
+
+          <Panel v-if="sourceForm.source_id" :title="isCreatingModel ? t('ai.createModel') : t('ai.editModel')">
+            <template #actions>
+              <Button variant="secondary" @click="modelAdvancedDialog = true">
+                <Settings :size="15" />
+                {{ t('ai.modelAdvancedConfigAction') }}
+              </Button>
+            </template>
+            <template v-if="sourceForm.source_id">
+              <div
+                class="ai-model-editor"
+                :class="{ 'ai-model-editor--focused': modelFlowFocus.step === 'model' || modelFlowFocus.step === 'defaultModel' }"
+              >
+                <div class="ai-model-editor__header">
+                  <div>
+                    <strong>{{ isCreatingModel ? t('ai.createModel') : t('ai.editModel') }}</strong>
+                    <p>{{ t(`ai.modelFlowStepHint.${modelFlowFocus.step}`) }}</p>
+                  </div>
+                </div>
+
+                <div class="ai-form-grid">
+                  <FormField
+                    :error="displayedModelErrors.model_identifier"
+                    :label="t('ai.modelIdentifier')"
+                    required
+                  >
+                    <Input
+                      v-model="modelForm.model_identifier"
+                      :aria-invalid="Boolean(displayedModelErrors.model_identifier)"
+                      :disabled="savingModel"
+                      @blur="touchModelField('model_identifier')"
+                    />
+                  </FormField>
+                  <FormField
+                    :error="displayedModelErrors.display_name"
+                    :label="t('ai.modelDisplayName')"
+                    required
+                  >
+                    <Input
+                      v-model="modelForm.display_name"
+                      :aria-invalid="Boolean(displayedModelErrors.display_name)"
+                      :disabled="savingModel"
+                      @blur="touchModelField('display_name')"
+                    />
+                  </FormField>
+                </div>
+
+                <div class="ai-provider-switches">
+                  <label>
+                    <Switch v-model:checked="modelForm.enabled" :disabled="savingModel" />
+                    <span>{{ t('ai.modelEnabled') }}</span>
+                  </label>
+                  <label>
+                    <Switch v-model:checked="modelForm.is_default" :disabled="savingModel" />
+                    <span>{{ t('ai.modelDefault') }}</span>
+                  </label>
+                </div>
+                <div v-if="modelSaveDisabledReason" class="ai-disabled-reason">
+                  {{ modelSaveDisabledReason }}
+                </div>
+                <div v-if="workflowResults.model" class="ai-workflow-result">
+                  <Badge :variant="workflowTone(workflowResults.model.status)">
+                    {{ workflowResults.model.message }}
+                  </Badge>
+                </div>
+                <div class="ai-form-actions">
+                  <Button :disabled="!canSaveModel" @click="saveSourceModel">
+                    {{ t('common.save') }}
+                  </Button>
+                </div>
+              </div>
             </template>
           </Panel>
 

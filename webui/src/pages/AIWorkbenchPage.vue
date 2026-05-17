@@ -1,24 +1,27 @@
 <script setup lang="ts">
 import type { Component } from 'vue'
 import {
-  Bot,
   BrainCircuit,
   Bug,
+  CalendarClock,
+  ContactRound,
   DatabaseZap,
   MessagesSquare,
+  Network,
   Settings2,
+  Wrench,
 } from 'lucide-vue-next'
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
+import { PageScaffold } from '@/components/management'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import {
-  Card,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+  buildAIWorkbenchAreaQuery,
+  normalizeAIWorkbenchRouteState,
+  type AIWorkbenchRouteArea,
+} from '@/utils/aiRouteState'
 import AIDebugPage from './AIDebugPage.vue'
 import AIFutureTasksPage from './AIFutureTasksPage.vue'
 import AIKnowledgePage from './AIKnowledgePage.vue'
@@ -30,170 +33,164 @@ import AIRelationshipsPage from './AIRelationshipsPage.vue'
 import AISessionsPage from './AISessionsPage.vue'
 import AISkillsPage from './AISkillsPage.vue'
 
-type AIWorkbenchArea = 'models' | 'sessions' | 'context' | 'behavior' | 'debug'
-type AIContextArea = 'knowledge' | 'memories' | 'relationships' | 'profiles'
-type AIBehaviorArea = 'personas' | 'skills' | 'futureTasks'
-type WorkbenchAreaOption<T extends string> = {
+type WorkbenchAreaOption = {
   description: string
+  group: 'connection' | 'runtime' | 'context' | 'behavior'
   icon: Component
   label: string
-  value: T
+  value: AIWorkbenchRouteArea
 }
 
 const { t } = useI18n()
 const route = useRoute()
 const router = useRouter()
 
-const areas: Array<WorkbenchAreaOption<AIWorkbenchArea>> = [
-  { description: 'ai.pageSubtitle.models', icon: Settings2, label: 'ai.modelsTitle', value: 'models' },
-  { description: 'ai.pageSubtitle.sessions', icon: MessagesSquare, label: 'ai.sessionsTab', value: 'sessions' },
-  { description: 'ai.pageSubtitle.knowledge', icon: DatabaseZap, label: 'ai.workbenchContext', value: 'context' },
-  { description: 'ai.pageSubtitle.personas', icon: BrainCircuit, label: 'ai.workbenchBehavior', value: 'behavior' },
-  { description: 'ai.pageSubtitle.debug', icon: Bug, label: 'ai.debugTab', value: 'debug' },
-]
-const contextAreas: Array<WorkbenchAreaOption<AIContextArea>> = [
-  { description: 'ai.pageSubtitle.knowledge', icon: DatabaseZap, label: 'ai.knowledgeTab', value: 'knowledge' },
-  { description: 'ai.pageSubtitle.memories', icon: DatabaseZap, label: 'ai.memoryTab', value: 'memories' },
-  { description: 'ai.pageSubtitle.relationships', icon: DatabaseZap, label: 'ai.relationshipTab', value: 'relationships' },
-  { description: 'ai.pageSubtitle.profiles', icon: DatabaseZap, label: 'ai.profileTab', value: 'profiles' },
-]
-const behaviorAreas: Array<WorkbenchAreaOption<AIBehaviorArea>> = [
-  { description: 'ai.pageSubtitle.personas', icon: BrainCircuit, label: 'ai.personasTab', value: 'personas' },
-  { description: 'ai.pageSubtitle.skills', icon: BrainCircuit, label: 'ai.skillsTab', value: 'skills' },
-  { description: 'ai.pageSubtitle.futureTasks', icon: BrainCircuit, label: 'ai.futureTaskTab', value: 'futureTasks' },
+const areas: WorkbenchAreaOption[] = [
+  {
+    description: 'ai.pageSubtitle.models',
+    group: 'connection',
+    icon: Settings2,
+    label: 'ai.modelsTitle',
+    value: 'models',
+  },
+  {
+    description: 'ai.pageSubtitle.sessions',
+    group: 'runtime',
+    icon: MessagesSquare,
+    label: 'ai.sessionsTab',
+    value: 'sessions',
+  },
+  {
+    description: 'ai.pageSubtitle.debug',
+    group: 'runtime',
+    icon: Bug,
+    label: 'ai.debugTab',
+    value: 'debug',
+  },
+  {
+    description: 'ai.pageSubtitle.knowledge',
+    group: 'context',
+    icon: DatabaseZap,
+    label: 'ai.knowledgeTab',
+    value: 'knowledge',
+  },
+  {
+    description: 'ai.pageSubtitle.memories',
+    group: 'context',
+    icon: BrainCircuit,
+    label: 'ai.memoryTab',
+    value: 'memories',
+  },
+  {
+    description: 'ai.pageSubtitle.relationships',
+    group: 'context',
+    icon: Network,
+    label: 'ai.relationshipTab',
+    value: 'relationships',
+  },
+  {
+    description: 'ai.pageSubtitle.profiles',
+    group: 'context',
+    icon: ContactRound,
+    label: 'ai.profileTab',
+    value: 'profiles',
+  },
+  {
+    description: 'ai.pageSubtitle.personas',
+    group: 'behavior',
+    icon: BrainCircuit,
+    label: 'ai.personasTab',
+    value: 'personas',
+  },
+  {
+    description: 'ai.pageSubtitle.skills',
+    group: 'behavior',
+    icon: Wrench,
+    label: 'ai.skillsTab',
+    value: 'skills',
+  },
+  {
+    description: 'ai.pageSubtitle.futureTasks',
+    group: 'behavior',
+    icon: CalendarClock,
+    label: 'ai.futureTaskTab',
+    value: 'futureTasks',
+  },
 ]
 
-const activeAreaMeta = computed(() =>
-  areas.find(area => area.value === activeArea.value) ?? areas[0],
-)
+const routeState = computed(() => normalizeAIWorkbenchRouteState(route.query))
+const activeArea = computed(() => routeState.value.area)
+const activeAreaMeta = computed(() => (
+  areas.find(area => area.value === activeArea.value) ?? areas[0]
+))
+const groupedAreas = computed(() => [
+  { key: 'connection', label: t('ai.workbenchGroup.connection') },
+  { key: 'runtime', label: t('ai.workbenchGroup.runtime') },
+  { key: 'context', label: t('ai.workbenchGroup.context') },
+  { key: 'behavior', label: t('ai.workbenchGroup.behavior') },
+].map(group => ({
+  ...group,
+  areas: areas.filter(area => area.group === group.key),
+})))
+const activeGroup = computed(() => activeAreaMeta.value.group)
 
-const activeArea = computed({
-  get: () => normalizeArea(route.query.area),
-  set: value => {
-    updateQuery({ area: normalizeArea(value) })
-  },
-})
-const activeContextArea = computed({
-  get: () => normalizeContextArea(route.query.context),
-  set: value => {
-    updateQuery({ area: 'context', context: normalizeContextArea(value) })
-  },
-})
-const activeBehaviorArea = computed({
-  get: () => normalizeBehaviorArea(route.query.behavior),
-  set: value => {
-    updateQuery({ area: 'behavior', behavior: normalizeBehaviorArea(value) })
-  },
-})
-
-function updateQuery(next: Record<string, string>) {
+function setActiveArea(value: AIWorkbenchRouteArea) {
+  if (value === activeArea.value) {
+    return
+  }
   void router.replace({
-    query: {
-      ...route.query,
-      ...next,
-    },
+    query: buildAIWorkbenchAreaQuery(value, route.query),
   })
-}
-
-function normalizeArea(value: unknown): AIWorkbenchArea {
-  return ['models', 'sessions', 'context', 'behavior', 'debug'].includes(String(value))
-    ? value as AIWorkbenchArea
-    : 'models'
-}
-
-function normalizeContextArea(value: unknown): AIContextArea {
-  return ['knowledge', 'memories', 'relationships', 'profiles'].includes(String(value))
-    ? value as AIContextArea
-    : 'knowledge'
-}
-
-function normalizeBehaviorArea(value: unknown): AIBehaviorArea {
-  return ['personas', 'skills', 'futureTasks'].includes(String(value))
-    ? value as AIBehaviorArea
-    : 'personas'
 }
 </script>
 
 <template>
-  <section class="workbench-hub">
-    <Card class="workbench-hub__summary">
-      <CardHeader>
-        <div class="workbench-hub__summary-title">
-          <Bot />
-          <div>
-            <CardTitle>{{ t('layout.aiWorkbench') }}</CardTitle>
-            <CardDescription>{{ t(activeAreaMeta.description) }}</CardDescription>
+  <PageScaffold
+    dense
+    :subtitle="t(activeAreaMeta.description)"
+    :title="t(activeAreaMeta.label)"
+  >
+    <template #actions>
+      <Badge variant="secondary">
+        {{ t('layout.aiWorkbench') }}
+      </Badge>
+    </template>
+
+    <template #before>
+      <nav class="ai-workbench-frame" :aria-label="t('layout.aiWorkbench')">
+        <section
+          v-for="group in groupedAreas"
+          :key="group.key"
+          class="ai-workbench-frame__group"
+          :class="{ 'ai-workbench-frame__group--active': activeGroup === group.key }"
+        >
+          <span class="ai-workbench-frame__label">{{ group.label }}</span>
+          <div class="ai-workbench-frame__items">
+            <Button
+              v-for="area in group.areas"
+              :key="area.value"
+              :aria-current="activeArea === area.value ? 'page' : undefined"
+              :variant="activeArea === area.value ? 'default' : 'ghost'"
+              size="sm"
+              @click="setActiveArea(area.value)"
+            >
+              <component :is="area.icon" :size="15" />
+              {{ t(area.label) }}
+            </Button>
           </div>
-        </div>
-        <Badge variant="secondary">
-          {{ t(activeAreaMeta.label) }}
-        </Badge>
-      </CardHeader>
-    </Card>
+        </section>
+      </nav>
+    </template>
 
-    <Tabs v-model="activeArea" class="workbench-hub__tabs">
-      <div class="workbench-hub__bar">
-        <TabsList class="workbench-hub__tabs-list">
-          <TabsTrigger v-for="area in areas" :key="area.value" :value="area.value">
-            {{ t(area.label) }}
-          </TabsTrigger>
-        </TabsList>
-      </div>
-
-      <TabsContent v-if="activeArea === 'models'" value="models">
-        <AIModelsPage />
-      </TabsContent>
-
-      <TabsContent v-if="activeArea === 'sessions'" value="sessions">
-        <AISessionsPage />
-      </TabsContent>
-
-      <TabsContent v-if="activeArea === 'context'" value="context">
-        <Tabs v-model="activeContextArea" class="workbench-hub__nested-tabs">
-          <TabsList class="workbench-hub__nested-tabs-list">
-            <TabsTrigger v-for="area in contextAreas" :key="area.value" :value="area.value">
-              {{ t(area.label) }}
-            </TabsTrigger>
-          </TabsList>
-
-          <TabsContent v-if="activeContextArea === 'knowledge'" value="knowledge">
-            <AIKnowledgePage />
-          </TabsContent>
-          <TabsContent v-if="activeContextArea === 'memories'" value="memories">
-            <AIMemoriesPage />
-          </TabsContent>
-          <TabsContent v-if="activeContextArea === 'relationships'" value="relationships">
-            <AIRelationshipsPage />
-          </TabsContent>
-          <TabsContent v-if="activeContextArea === 'profiles'" value="profiles">
-            <AIProfilesPage />
-          </TabsContent>
-        </Tabs>
-      </TabsContent>
-
-      <TabsContent v-if="activeArea === 'behavior'" value="behavior">
-        <Tabs v-model="activeBehaviorArea" class="workbench-hub__nested-tabs">
-          <TabsList class="workbench-hub__nested-tabs-list">
-            <TabsTrigger v-for="area in behaviorAreas" :key="area.value" :value="area.value">
-              {{ t(area.label) }}
-            </TabsTrigger>
-          </TabsList>
-
-          <TabsContent v-if="activeBehaviorArea === 'personas'" value="personas">
-            <AIPersonasPage />
-          </TabsContent>
-          <TabsContent v-if="activeBehaviorArea === 'skills'" value="skills">
-            <AISkillsPage />
-          </TabsContent>
-          <TabsContent v-if="activeBehaviorArea === 'futureTasks'" value="futureTasks">
-            <AIFutureTasksPage />
-          </TabsContent>
-        </Tabs>
-      </TabsContent>
-
-      <TabsContent v-if="activeArea === 'debug'" value="debug">
-        <AIDebugPage />
-      </TabsContent>
-    </Tabs>
-  </section>
+    <AIModelsPage v-if="activeArea === 'models'" embedded />
+    <AISessionsPage v-else-if="activeArea === 'sessions'" embedded />
+    <AIDebugPage v-else-if="activeArea === 'debug'" embedded />
+    <AIKnowledgePage v-else-if="activeArea === 'knowledge'" embedded />
+    <AIMemoriesPage v-else-if="activeArea === 'memories'" embedded />
+    <AIRelationshipsPage v-else-if="activeArea === 'relationships'" embedded />
+    <AIProfilesPage v-else-if="activeArea === 'profiles'" embedded />
+    <AIPersonasPage v-else-if="activeArea === 'personas'" embedded />
+    <AISkillsPage v-else-if="activeArea === 'skills'" embedded />
+    <AIFutureTasksPage v-else embedded />
+  </PageScaffold>
 </template>

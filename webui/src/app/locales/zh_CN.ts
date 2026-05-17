@@ -74,6 +74,12 @@ const zhCN = {
     title: 'AI 管理',
     workbenchContext: '上下文',
     workbenchBehavior: '行为配置',
+    workbenchGroup: {
+      connection: '连接',
+      runtime: '运行',
+      context: '上下文',
+      behavior: '行为',
+    },
     overviewTitle: '总览',
     modelsTitle: '模型连接',
     navigationLabel: 'AI 管理分页',

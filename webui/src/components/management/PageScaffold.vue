@@ -3,6 +3,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 
 withDefaults(defineProps<{
   dense?: boolean
+  embedded?: boolean
   errorMessage?: string
   fullHeight?: boolean
   kicker?: string
@@ -10,6 +11,7 @@ withDefaults(defineProps<{
   title: string
 }>(), {
   dense: false,
+  embedded: false,
   errorMessage: '',
   fullHeight: false,
   kicker: '',
@@ -22,10 +24,11 @@ withDefaults(defineProps<{
     class="workbench-page"
     :class="{
       'workbench-page--dense': dense,
+      'workbench-page--embedded': embedded,
       'workbench-page--full-height': fullHeight,
     }"
   >
-    <header class="workbench-page__header">
+    <header v-if="!embedded" class="workbench-page__header">
       <div class="workbench-page__heading">
         <div v-if="kicker" class="workbench-page__kicker">
           {{ kicker }}
@@ -44,6 +47,15 @@ withDefaults(defineProps<{
       </div>
     </header>
 
+    <div v-else-if="$slots.actions || $slots.meta" class="workbench-page__embedded-bar">
+      <div v-if="$slots.meta" class="workbench-page__embedded-meta">
+        <slot name="meta" />
+      </div>
+      <div v-if="$slots.actions" class="workbench-page__actions">
+        <slot name="actions" />
+      </div>
+    </div>
+
     <slot name="before" />
 
     <Alert v-if="errorMessage" variant="destructive">
@@ -52,8 +64,8 @@ withDefaults(defineProps<{
 
     <slot name="alerts" />
 
-    <main class="workbench-page__body">
+    <component :is="embedded ? 'div' : 'main'" class="workbench-page__body">
       <slot />
-    </main>
+    </component>
   </section>
 </template>

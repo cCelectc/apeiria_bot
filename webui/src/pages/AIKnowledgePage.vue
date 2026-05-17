@@ -39,6 +39,9 @@ import { Textarea } from '@/components/ui/textarea'
 import { useAIKnowledgeTab } from '@/composables/useAIKnowledgeTab'
 
 const { t } = useI18n()
+defineProps<{
+  embedded?: boolean
+}>()
 const errorMessage = ref('')
 const {
   canPreview,
@@ -132,6 +135,7 @@ onMounted(() => {
 
 <template>
   <PageScaffold
+    :embedded="embedded"
     :error-message="errorMessage"
     :subtitle="t('ai.pageSubtitle.knowledge')"
     :title="t('ai.knowledgeTab')"

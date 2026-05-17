@@ -33,6 +33,34 @@ export type AIModelFlowHighlight =
   | 'test'
 
 export type AIDebugRouteValue = 'conversations' | 'futureTasks' | 'tools'
+export type AIWorkbenchRouteArea =
+  | 'debug'
+  | 'futureTasks'
+  | 'knowledge'
+  | 'memories'
+  | 'models'
+  | 'personas'
+  | 'profiles'
+  | 'relationships'
+  | 'sessions'
+  | 'skills'
+
+export type AIWorkbenchLegacyArea = 'behavior' | 'context'
+
+export interface AIWorkbenchRouteState {
+  area: AIWorkbenchRouteArea
+  localMode: {
+    capability: AISourceCapabilityRouteValue
+    debug: AIDebugRouteValue
+  }
+  selectedIds: {
+    model: string
+    profile: string
+    session: string
+    source: string
+    trace: string
+  }
+}
 
 export interface AIModelFlowFocus {
   step: AISetupStepKey
@@ -64,6 +92,32 @@ const supportedDebugRouteValues = new Set<AIDebugRouteValue>([
   'conversations',
   'futureTasks',
   'tools',
+])
+
+const supportedWorkbenchAreas = new Set<AIWorkbenchRouteArea>([
+  'debug',
+  'futureTasks',
+  'knowledge',
+  'memories',
+  'models',
+  'personas',
+  'profiles',
+  'relationships',
+  'sessions',
+  'skills',
+])
+
+const supportedLegacyContextAreas = new Set<AIWorkbenchRouteArea>([
+  'knowledge',
+  'memories',
+  'profiles',
+  'relationships',
+])
+
+const supportedLegacyBehaviorAreas = new Set<AIWorkbenchRouteArea>([
+  'futureTasks',
+  'personas',
+  'skills',
 ])
 
 const intentFocusMap: Record<AISetupRouteIntent, AIModelFlowFocus> = {
@@ -170,6 +224,67 @@ export function normalizeAIDebugRouteValue(value: unknown): AIDebugRouteValue {
   return supportedDebugRouteValues.has(rawValue as AIDebugRouteValue)
     ? rawValue as AIDebugRouteValue
     : 'conversations'
+}
+
+export function normalizeAIWorkbenchArea(
+  value: unknown,
+  legacyContext?: unknown,
+  legacyBehavior?: unknown,
+): AIWorkbenchRouteArea {
+  const rawValue = firstString(value)
+  if (supportedWorkbenchAreas.has(rawValue as AIWorkbenchRouteArea)) {
+    return rawValue as AIWorkbenchRouteArea
+  }
+  if (rawValue === 'context') {
+    const contextArea = firstString(legacyContext)
+    return supportedLegacyContextAreas.has(contextArea as AIWorkbenchRouteArea)
+      ? contextArea as AIWorkbenchRouteArea
+      : 'knowledge'
+  }
+  if (rawValue === 'behavior') {
+    const behaviorArea = firstString(legacyBehavior)
+    return supportedLegacyBehaviorAreas.has(behaviorArea as AIWorkbenchRouteArea)
+      ? behaviorArea as AIWorkbenchRouteArea
+      : 'personas'
+  }
+  return 'models'
+}
+
+export function normalizeAIWorkbenchRouteState(
+  query: Record<string, unknown>,
+): AIWorkbenchRouteState {
+  return {
+    area: normalizeAIWorkbenchArea(query.area, query.context, query.behavior),
+    localMode: {
+      capability: normalizeAICapabilityRouteValue(query.capability),
+      debug: normalizeAIDebugRouteValue(query.debug),
+    },
+    selectedIds: {
+      model: firstString(query.model),
+      profile: firstString(query.profile),
+      session: firstString(query.session),
+      source: firstString(query.source),
+      trace: firstString(query.trace),
+    },
+  }
+}
+
+export function buildAIWorkbenchAreaQuery(
+  area: AIWorkbenchRouteArea,
+  currentQuery: Record<string, unknown>,
+): Record<string, string> {
+  const nextQuery: Record<string, string> = {}
+  for (const [key, value] of Object.entries(currentQuery)) {
+    if (key === 'area' || key === 'context' || key === 'behavior') {
+      continue
+    }
+    const stringValue = firstString(value)
+    if (stringValue) {
+      nextQuery[key] = stringValue
+    }
+  }
+  nextQuery.area = area
+  return nextQuery
 }
 
 export function resolveAIModelFlowFocus(input: {

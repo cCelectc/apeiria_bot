@@ -29,6 +29,9 @@ import { useAIMemoryTab } from '@/composables/useAIMemoryTab'
 import { useAIRelationshipTab } from '@/composables/useAIRelationshipTab'
 
 const { t } = useI18n()
+defineProps<{
+  embedded?: boolean
+}>()
 const router = useRouter()
 const errorMessage = ref('')
 const {
@@ -131,6 +134,7 @@ onMounted(() => {
 
 <template>
   <PageScaffold
+    :embedded="embedded"
     :error-message="errorMessage"
     :subtitle="t('ai.pageSubtitle.relationships')"
     :title="t('ai.relationshipTab')"

@@ -42,6 +42,9 @@ import { Textarea } from '@/components/ui/textarea'
 import { useAIMemoryTab } from '@/composables/useAIMemoryTab'
 
 const { t } = useI18n()
+defineProps<{
+  embedded?: boolean
+}>()
 const router = useRouter()
 const errorMessage = ref('')
 const {
@@ -197,6 +200,7 @@ onMounted(() => {
 
 <template>
   <PageScaffold
+    :embedded="embedded"
     :error-message="errorMessage"
     :subtitle="t('ai.pageSubtitle.memories')"
     :title="t('ai.memoryTab')"

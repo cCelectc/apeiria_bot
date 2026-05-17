@@ -31,6 +31,9 @@ import {
 import { useAIProfilesTab } from '@/composables/useAIProfilesTab'
 
 const { t } = useI18n()
+defineProps<{
+  embedded?: boolean
+}>()
 const errorMessage = ref('')
 const search = ref('')
 const {
@@ -117,6 +120,7 @@ onMounted(() => {
 
 <template>
   <PageScaffold
+    :embedded="embedded"
     :error-message="errorMessage"
     :subtitle="t('ai.pageSubtitle.profiles')"
     :title="t('ai.profileTab')"

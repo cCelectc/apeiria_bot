@@ -74,6 +74,12 @@ const enUS = {
     title: 'AI Management',
     workbenchContext: 'Context',
     workbenchBehavior: 'Behavior',
+    workbenchGroup: {
+      connection: 'Connection',
+      runtime: 'Runtime',
+      context: 'Context',
+      behavior: 'Behavior',
+    },
     overviewTitle: 'Overview',
     modelsTitle: 'Model Setup',
     navigationLabel: 'AI management pages',

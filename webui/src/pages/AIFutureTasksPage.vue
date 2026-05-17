@@ -25,6 +25,9 @@ import {
 import { useAIFutureTasksTab } from '@/composables/useAIFutureTasksTab'
 
 const { t } = useI18n()
+defineProps<{
+  embedded?: boolean
+}>()
 const errorMessage = ref('')
 const {
   cancelFutureTask,
@@ -79,6 +82,7 @@ onMounted(() => {
 
 <template>
   <PageScaffold
+    :embedded="embedded"
     :error-message="errorMessage"
     :subtitle="t('ai.pageSubtitle.futureTasks')"
     :title="t('ai.futureTaskTab')"
