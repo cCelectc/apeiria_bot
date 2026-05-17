@@ -13,8 +13,6 @@ from apeiria.ai.model.runtime.capabilities import (
     AIModelCallRequirements,
     AIModelCapabilityPlanningError,
 )
-from apeiria.ai.model.runtime.capability_sources import classify_capability_mismatch
-from apeiria.ai.model.runtime.failures import classify_model_failure
 from apeiria.ai.tools.function_calling import (
     build_intents_from_tool_calls,
     function_name_to_tool_name,
@@ -43,8 +41,12 @@ from apeiria.ai.turn_records import (
     ModelAttempt,
     ToolAttempt,
     is_empty_model_response,
-    model_ref,
-    sanitize_model_diagnostic,
+)
+from apeiria.app.ai.agent_turn.attempts import (
+    build_capability_failure_attempt,
+    build_empty_response_attempt,
+    build_exception_failure_attempt,
+    build_success_attempt,
 )
 
 if TYPE_CHECKING:
@@ -460,52 +462,37 @@ class RuntimeToolLoopRunner:
                         options=reasoning_options,
                     )
                 except AIModelCapabilityPlanningError as exc:
-                    diagnostic = sanitize_model_diagnostic(str(exc))
                     attempts.append(
-                        ModelAttempt(
+                        build_capability_failure_attempt(
                             attempt_index=loop_state.next_model_attempt_index(),
-                            model_ref=model_ref(candidate),
-                            status="failed",
+                            selected=candidate,
                             response_source=response_source,
-                            reason="capability_unavailable",
-                            diagnostic=diagnostic,
+                            exc=exc,
                         )
                     )
                     last_finish_reason = "capability_unavailable"
                     break
                 except Exception as exc:  # noqa: BLE001
-                    diagnostic = sanitize_model_diagnostic(str(exc))
+                    attempt_index = loop_state.next_model_attempt_index()
+                    diagnostic = str(exc)
                     is_context_pressure = is_context_pressure_error(diagnostic)
-                    reason = (
-                        "context_pressure"
-                        if is_context_pressure
-                        else classify_model_failure(exc)
-                    )
-                    observation = (
-                        None
-                        if is_context_pressure
-                        else classify_capability_mismatch(
-                            exc,
+                    reason = "context_pressure" if is_context_pressure else None
+                    attempts.append(
+                        build_exception_failure_attempt(
+                            attempt_index=attempt_index,
+                            selected=candidate,
+                            response_source=response_source,
+                            exc=exc,
                             planned_feature=_planned_feature_for_tool_loop(
                                 tools=tools,
                                 tool_calling_requirement=tool_calling_requirement,
                                 messages=messages_for_call,
                             ),
-                            model_ref=model_ref(candidate),
-                        )
-                    )
-                    attempts.append(
-                        ModelAttempt(
-                            attempt_index=loop_state.next_model_attempt_index(),
-                            model_ref=model_ref(candidate),
-                            status="failed",
-                            response_source=response_source,
+                            classify_capability=not is_context_pressure,
                             reason=reason,
-                            diagnostic=diagnostic,
-                            capability_observation=observation,
                         )
                     )
-                    last_finish_reason = reason
+                    last_finish_reason = attempts[-1].reason or "model_error"
                     if (
                         is_context_pressure
                         and allow_context_recovery
@@ -527,12 +514,10 @@ class RuntimeToolLoopRunner:
 
                 if is_empty_model_response(response):
                     attempts.append(
-                        ModelAttempt(
+                        build_empty_response_attempt(
                             attempt_index=loop_state.next_model_attempt_index(),
-                            model_ref=model_ref(candidate),
-                            status="failed",
+                            selected=candidate,
                             response_source=response_source,
-                            reason="empty_response",
                         )
                     )
                     last_finish_reason = "empty_response"
@@ -541,15 +526,12 @@ class RuntimeToolLoopRunner:
                     break
 
                 attempts.append(
-                    ModelAttempt(
+                    build_success_attempt(
                         attempt_index=loop_state.next_model_attempt_index(),
-                        model_ref=model_ref(candidate),
-                        status="success",
+                        selected=candidate,
                         response_source=response_source,
-                        reasoning_diagnostics=_reasoning_diagnostics(
-                            response,
-                            reasoning_options=reasoning_options,
-                        ),
+                        response=response,
+                        reasoning_options=reasoning_options,
                     )
                 )
                 _record_response_degradations(response, loop_state)
@@ -647,34 +629,6 @@ def _record_response_degradations(
     for item in degradations:
         if isinstance(item, dict):
             loop_state.capability_degradations.append(dict(item))
-
-
-def _reasoning_diagnostics(
-    response: "AIModelGenerateResponse",
-    *,
-    reasoning_options: AIModelCallOptions | None,
-) -> dict[str, object]:
-    diagnostics: dict[str, object] = {}
-    options = getattr(reasoning_options, "values", None)
-    if isinstance(options, dict):
-        requested_effort = options.get("reasoning_effort")
-        if isinstance(requested_effort, str):
-            diagnostics["requested_effort"] = requested_effort
-            diagnostics["required"] = "reasoning_effort" in getattr(
-                reasoning_options,
-                "required",
-                frozenset(),
-            )
-    provider_data = response.provider_data or {}
-    for key in ("visible_reasoning_stripped", "stripped_reasoning_blocks"):
-        field = provider_data.get(key)
-        if isinstance(field, bool | int):
-            diagnostics[key] = field
-    if response.reasoning_content or response.reasoning_signature:
-        diagnostics["provider_reasoning_present"] = True
-    if diagnostics.get("requested_effort"):
-        diagnostics["applied_effort"] = diagnostics["requested_effort"]
-    return diagnostics
 
 
 def _planned_feature_for_tool_loop(

@@ -18,7 +18,6 @@ class AISkillFileDefinition:
     description: str
     version: int
     triggers: tuple[str, ...]
-    permissions: tuple[str, ...]
     entry_mode: SkillEntryMode
     body_markdown: str
     file_path: str
@@ -56,8 +55,6 @@ def parse_skill_file(
         triggers:
           - keyword1
           - keyword2
-        permissions:
-          - read_memory
         entry_mode: prompt_only
         ---
 
@@ -98,7 +95,6 @@ def parse_skill_file(
         description=str(meta["description"]),
         version=int(meta.get("version", 1)),
         triggers=_to_str_tuple(meta.get("triggers", [])),
-        permissions=_to_str_tuple(meta.get("permissions", [])),
         entry_mode=entry_mode,  # type: ignore[arg-type]
         body_markdown=body.strip(),
         file_path=file_path,

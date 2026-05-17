@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING
 
 from nonebot.log import logger
@@ -36,6 +36,7 @@ from apeiria.app.ai.runtime.planning.reply_decision import (
 )
 from apeiria.app.ai.runtime.planning.skills import select_runtime_skills
 from apeiria.app.ai.runtime.planning.tool_exposure import (
+    ToolExposurePlan,
     ToolOrchestrator,
     build_tool_guidance_text,
     compile_tool_exposure_provider_schema,
@@ -46,13 +47,30 @@ from apeiria.app.ai.runtime.stages import (
 )
 
 if TYPE_CHECKING:
-    from apeiria.ai.model import AIModelMessage
+    from datetime import datetime
+
+    from apeiria.ai.model import AIModelMessage, AIModelTaskClass
+    from apeiria.ai.model.routing.selection import AISelectedModel
     from apeiria.ai.prompting import PromptPacket
+    from apeiria.ai.tools.models import AIToolDefinition
     from apeiria.app.ai.runtime.planning.prompts import RuntimePromptComposeInput
     from apeiria.app.ai.runtime.session.context import (
         RuntimeContextMaterials,
         RuntimeTurnInput,
     )
+
+
+@dataclass(frozen=True, slots=True)
+class RuntimeReplyPlanningSelection:
+    """Shared model/tool exposure selection for runtime reply planning."""
+
+    selected: "AISelectedModel"
+    tool_exposure_plan: ToolExposurePlan
+    pre_tool_task_class: "AIModelTaskClass"
+
+    @property
+    def has_executable_tools(self) -> bool:
+        return self.tool_exposure_plan.has_executable_tools
 
 
 async def plan_runtime_turn(
@@ -74,37 +92,24 @@ async def plan_runtime_turn(
     allowed_tool_specs = (
         () if social_decision.tool_mode == "avoid" else tuple(context.allowed_tools)
     )
-    tool_orchestrator = ToolOrchestrator()
-    initial_tool_exposure_plan = tool_orchestrator.plan_exposure(
-        allowed_tools=allowed_tool_specs,
-        policy=context.tool_policy,
-        execution_timeout_seconds=tool_execution_timeout_seconds,
+    planning_selection = await select_runtime_reply_planning(
+        context=context,
+        allowed_tool_specs=allowed_tool_specs,
+        tool_execution_timeout_seconds=tool_execution_timeout_seconds,
         current_time=current_time,
     )
-    pre_tool_task_class = select_pre_tool_reply_task_class(
-        has_tools=initial_tool_exposure_plan.has_executable_tools,
-    )
-    selected = await select_model(
-        task_class=pre_tool_task_class,
-        target=context.model_target,
-    )
-    if selected is None:
+    if planning_selection is None:
         logger.debug(
             build_no_model_diagnostic(
                 trace_id=trace_id,
                 session_id=identity.session_id,
-                task_class=pre_tool_task_class,
+                task_class=select_pre_tool_reply_task_class(has_tools=False),
             )
         )
         return None
-
-    tool_exposure_plan = tool_orchestrator.plan_exposure(
-        allowed_tools=allowed_tool_specs,
-        policy=context.tool_policy,
-        execution_timeout_seconds=tool_execution_timeout_seconds,
-        current_time=current_time,
-        model_supports_tools=selected.resolved_capabilities.supports_tool_calling,
-    )
+    selected = planning_selection.selected
+    tool_exposure_plan = planning_selection.tool_exposure_plan
+    pre_tool_task_class = planning_selection.pre_tool_task_class
 
     tool_runtime = RuntimeToolLoopResult(
         policy_text=summarize_tool_policy(
@@ -178,6 +183,88 @@ async def plan_runtime_turn(
         prompt_packet=prompt_packet,
         tool_mode=social_decision.tool_mode,
         tool_execution_timeout_seconds=tool_execution_timeout_seconds,
+    )
+
+
+async def select_runtime_reply_planning(
+    *,
+    context: "RuntimeContextMaterials",
+    allowed_tool_specs: tuple["AIToolDefinition", ...],
+    tool_execution_timeout_seconds: float | None,
+    current_time: "datetime | None" = None,
+) -> RuntimeReplyPlanningSelection | None:
+    """Select reply model and model-aware tool exposure once for runtime/preview."""
+
+    tool_orchestrator = ToolOrchestrator()
+    initial_tool_exposure_plan = tool_orchestrator.plan_exposure(
+        allowed_tools=allowed_tool_specs,
+        policy=context.tool_policy,
+        execution_timeout_seconds=tool_execution_timeout_seconds,
+        current_time=current_time,
+    )
+    initial_task_class = select_pre_tool_reply_task_class(
+        has_tools=initial_tool_exposure_plan.has_executable_tools,
+    )
+    initial_selected = await select_model(
+        task_class=initial_task_class,
+        target=context.model_target,
+    )
+    if initial_selected is None:
+        fallback_task_class = select_pre_tool_reply_task_class(has_tools=False)
+        if fallback_task_class == initial_task_class:
+            return None
+        selected = await select_model(
+            task_class=fallback_task_class,
+            target=context.model_target,
+        )
+        if selected is None:
+            return None
+        tool_exposure_plan = tool_orchestrator.plan_exposure(
+            allowed_tools=allowed_tool_specs,
+            policy=context.tool_policy,
+            execution_timeout_seconds=tool_execution_timeout_seconds,
+            current_time=current_time,
+            model_supports_tools=False,
+        )
+        return RuntimeReplyPlanningSelection(
+            selected=selected,
+            tool_exposure_plan=tool_exposure_plan,
+            pre_tool_task_class=fallback_task_class,
+        )
+
+    tool_exposure_plan = tool_orchestrator.plan_exposure(
+        allowed_tools=allowed_tool_specs,
+        policy=context.tool_policy,
+        execution_timeout_seconds=tool_execution_timeout_seconds,
+        current_time=current_time,
+        model_supports_tools=(
+            initial_selected.resolved_capabilities.supports_tool_calling
+        ),
+    )
+    final_task_class = select_pre_tool_reply_task_class(
+        has_tools=tool_exposure_plan.has_executable_tools,
+    )
+    if final_task_class == initial_task_class:
+        return RuntimeReplyPlanningSelection(
+            selected=initial_selected,
+            tool_exposure_plan=tool_exposure_plan,
+            pre_tool_task_class=final_task_class,
+        )
+
+    final_selected = await select_model(
+        task_class=final_task_class,
+        target=context.model_target,
+    )
+    if final_selected is None:
+        return RuntimeReplyPlanningSelection(
+            selected=initial_selected,
+            tool_exposure_plan=tool_exposure_plan,
+            pre_tool_task_class=initial_task_class,
+        )
+    return RuntimeReplyPlanningSelection(
+        selected=final_selected,
+        tool_exposure_plan=tool_exposure_plan,
+        pre_tool_task_class=final_task_class,
     )
 
 
@@ -327,9 +414,11 @@ def _rag_diagnostics_summary(
 __all__ = [
     "RuntimePlanningInput",
     "RuntimePromptPlanningInput",
+    "RuntimeReplyPlanningSelection",
     "build_initial_prompt_compose_input",
     "build_initial_runtime_reply_prompt_diagnostics",
     "build_initial_runtime_reply_prompt_messages",
     "build_initial_runtime_reply_prompt_packet",
     "plan_runtime_turn",
+    "select_runtime_reply_planning",
 ]

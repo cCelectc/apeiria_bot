@@ -5,14 +5,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
-SkillSideEffectLevel = Literal["read_only", "low_risk", "high_risk"]
-SkillPermissionSource = Literal[
-    "global",
-    "group",
-    "conversation",
-    "persona",
-]
-
 
 @dataclass(frozen=True)
 class AISkillMetadata:
@@ -20,10 +12,6 @@ class AISkillMetadata:
 
     name: str
     description: str
-    side_effect_level: SkillSideEffectLevel
-    permission_source: SkillPermissionSource
-    idempotent: bool
-    fallback_behavior: str
     origin: Literal["file"] = "file"
     entry_mode: str = "prompt_only"
     tags: tuple[str, ...] = ()

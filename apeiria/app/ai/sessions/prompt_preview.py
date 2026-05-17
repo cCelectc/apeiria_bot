@@ -55,10 +55,10 @@ from apeiria.app.ai.runtime.planning.reply_decision import (
     select_pre_tool_reply_task_class,
 )
 from apeiria.app.ai.runtime.planning.tool_exposure import (
-    ToolOrchestrator,
     build_tool_guidance_text,
     compile_tool_exposure_provider_schema,
 )
+from apeiria.app.ai.runtime.planning.turn import select_runtime_reply_planning
 from apeiria.app.ai.runtime.session.context import (
     RuntimeContextMaterials,
     RuntimeTurnInput,
@@ -593,30 +593,32 @@ class PromptPreviewReader:
             if social_decision is not None and social_decision.tool_mode == "avoid"
             else tuple(context.allowed_tools)
         )
-        tool_orchestrator = ToolOrchestrator()
-        initial_exposure_plan = tool_orchestrator.plan_exposure(
-            allowed_tools=allowed_tool_specs,
-            policy=context.tool_policy,
-            execution_timeout_seconds=get_ai_plugin_config().tool_execution_timeout_seconds,
-        )
-        has_tools = initial_exposure_plan.has_executable_tools
-        pre_tool_task_class = select_pre_tool_reply_task_class(has_tools=has_tools)
-        selected = await ai_model_profile_service.select_model(
-            query=AIModelRouteQuery(task_class=pre_tool_task_class),
-            target=build_model_binding_target(identity, resolved_user_id),
-        )
-        preview_exposure_plan = tool_orchestrator.plan_exposure(
-            allowed_tools=allowed_tool_specs,
-            policy=context.tool_policy,
-            execution_timeout_seconds=get_ai_plugin_config().tool_execution_timeout_seconds,
-            model_supports_tools=(
-                selected.resolved_capabilities.supports_tool_calling
-                if selected is not None
-                else False
+        planning_selection = await select_runtime_reply_planning(
+            context=context,
+            allowed_tool_specs=allowed_tool_specs,
+            tool_execution_timeout_seconds=(
+                get_ai_plugin_config().tool_execution_timeout_seconds
             ),
+            current_time=prompt_time,
         )
-        has_tools = preview_exposure_plan.has_executable_tools
-        pre_tool_task_class = select_pre_tool_reply_task_class(has_tools=has_tools)
+        selected = (
+            planning_selection.selected if planning_selection is not None else None
+        )
+        preview_exposure_plan = (
+            planning_selection.tool_exposure_plan
+            if planning_selection is not None
+            else None
+        )
+        has_tools = (
+            preview_exposure_plan.has_executable_tools
+            if preview_exposure_plan is not None
+            else False
+        )
+        pre_tool_task_class = (
+            planning_selection.pre_tool_task_class
+            if planning_selection is not None
+            else select_pre_tool_reply_task_class(has_tools=False)
+        )
         roleplay_selected = (
             await ai_model_profile_service.select_model(
                 query=AIModelRouteQuery(task_class=select_post_tool_reply_task_class()),
@@ -625,15 +627,28 @@ class PromptPreviewReader:
             if has_tools
             else None
         )
+        tool_guidance = (
+            build_tool_guidance_text(preview_exposure_plan)
+            if preview_exposure_plan is not None
+            else None
+        )
         tool_runtime = RuntimeToolLoopResult(
             policy_text=tool_policy_text,
             result_lines=tool_results,
             turns=(),
-            available_tools=compile_tool_exposure_provider_schema(
-                preview_exposure_plan,
-                current_time=prompt_time,
+            available_tools=(
+                compile_tool_exposure_provider_schema(
+                    preview_exposure_plan,
+                    current_time=prompt_time,
+                )
+                if preview_exposure_plan is not None
+                else ()
             ),
-            diagnostics=dict(preview_exposure_plan.diagnostics),
+            diagnostics=(
+                dict(preview_exposure_plan.diagnostics)
+                if preview_exposure_plan is not None
+                else {"selected_tool_count": 0, "model_selected": False}
+            ),
         )
         projected_context = _project_preview_context(
             turn=preview_turn,
@@ -651,7 +666,7 @@ class PromptPreviewReader:
         ) = _build_preview_prompt_outputs(
             context_projection=projected_context,
             has_tools=has_tools,
-            tool_guidance=build_tool_guidance_text(preview_exposure_plan),
+            tool_guidance=tool_guidance,
             hard_rule_decision=hard_rule_decision,
             social_decision=social_decision,
         )

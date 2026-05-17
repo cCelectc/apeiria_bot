@@ -5,12 +5,12 @@ from __future__ import annotations
 from typing import Any
 
 from apeiria.ai.model.runtime.capabilities import AIModelCapabilityPlanningError
-from apeiria.ai.model.runtime.capability_sources import classify_capability_mismatch
-from apeiria.ai.model.runtime.failures import classify_model_failure
-from apeiria.ai.turn_records import (
-    is_empty_model_response,
-    model_ref,
-    sanitize_model_diagnostic,
+from apeiria.ai.turn_records import is_empty_model_response
+from apeiria.app.ai.agent_turn.attempts import (
+    build_capability_failure_attempt,
+    build_empty_response_attempt,
+    build_exception_failure_attempt,
+    build_success_attempt,
 )
 from apeiria.app.ai.agent_turn.models import (
     AgentModelGenerationRequest,
@@ -50,16 +50,14 @@ class AgentTurnModelRuntime:
                     )
                     if response is None:
                         _raise_empty_stream_response()
+                    assert response is not None
                     attempts.append(
-                        ModelAttempt(
+                        build_success_attempt(
                             attempt_index=index,
-                            model_ref=model_ref(selected),
-                            status="success",
+                            selected=selected,
                             response_source=request.response_source,
-                            reasoning_diagnostics=_reasoning_diagnostics(
-                                response,
-                                request=request,
-                            ),
+                            response=response,
+                            reasoning_options=request.reasoning_options,
                         )
                     )
                     metadata = _turn_metadata_from_response(response)
@@ -95,51 +93,37 @@ class AgentTurnModelRuntime:
                     options=request.reasoning_options,
                 )
             except AIModelCapabilityPlanningError as exc:
-                diagnostic = sanitize_model_diagnostic(str(exc))
                 attempts.append(
-                    ModelAttempt(
+                    build_capability_failure_attempt(
                         attempt_index=index,
-                        model_ref=model_ref(selected),
-                        status="failed",
+                        selected=selected,
                         response_source=request.response_source,
-                        reason="capability_unavailable",
-                        diagnostic=diagnostic,
+                        exc=exc,
                     )
                 )
                 last_finish_reason = "capability_unavailable"
-                last_diagnostic = diagnostic
+                last_diagnostic = attempts[-1].diagnostic
                 continue
             except Exception as exc:  # noqa: BLE001
-                diagnostic = sanitize_model_diagnostic(str(exc))
-                reason = classify_model_failure(exc)
-                observation = classify_capability_mismatch(
-                    exc,
-                    planned_feature=_planned_feature_for_request(request),
-                    model_ref=model_ref(selected),
-                )
                 attempts.append(
-                    ModelAttempt(
+                    build_exception_failure_attempt(
                         attempt_index=index,
-                        model_ref=model_ref(selected),
-                        status="failed",
+                        selected=selected,
                         response_source=request.response_source,
-                        reason=reason,
-                        diagnostic=diagnostic,
-                        capability_observation=observation,
+                        exc=exc,
+                        planned_feature=_planned_feature_for_request(request),
                     )
                 )
-                last_finish_reason = reason
-                last_diagnostic = diagnostic
+                last_finish_reason = attempts[-1].reason or "model_error"
+                last_diagnostic = attempts[-1].diagnostic
                 continue
 
             if is_empty_model_response(response):
                 attempts.append(
-                    ModelAttempt(
+                    build_empty_response_attempt(
                         attempt_index=index,
-                        model_ref=model_ref(selected),
-                        status="failed",
+                        selected=selected,
                         response_source=request.response_source,
-                        reason="empty_response",
                     )
                 )
                 last_finish_reason = "empty_response"
@@ -147,15 +131,12 @@ class AgentTurnModelRuntime:
                 continue
 
             attempts.append(
-                ModelAttempt(
+                build_success_attempt(
                     attempt_index=index,
-                    model_ref=model_ref(selected),
-                    status="success",
+                    selected=selected,
                     response_source=request.response_source,
-                    reasoning_diagnostics=_reasoning_diagnostics(
-                        response,
-                        request=request,
-                    ),
+                    response=response,
+                    reasoning_options=request.reasoning_options,
                 )
             )
             metadata = _turn_metadata_from_response(response)
@@ -254,79 +235,6 @@ def _turn_metadata_from_response(response: Any) -> dict[str, object]:
     if not degradations:
         return {}
     return {"capability_degradations": degradations}
-
-
-def _reasoning_diagnostics(
-    response: Any,
-    *,
-    request: AgentModelGenerationRequest,
-) -> dict[str, object]:
-    diagnostics = _reasoning_request_diagnostics(request)
-    diagnostics.update(_reasoning_provider_diagnostics(response))
-    if _has_provider_reasoning(response):
-        diagnostics["provider_reasoning_present"] = True
-    if diagnostics.get("requested_effort") and "degradation_reason" not in diagnostics:
-        diagnostics["applied_effort"] = diagnostics["requested_effort"]
-    return diagnostics
-
-
-def _reasoning_request_diagnostics(
-    request: AgentModelGenerationRequest,
-) -> dict[str, object]:
-    diagnostics: dict[str, object] = {}
-    options = getattr(request.reasoning_options, "values", None)
-    if isinstance(options, dict):
-        requested_effort = options.get("reasoning_effort")
-        if isinstance(requested_effort, str):
-            diagnostics["requested_effort"] = requested_effort
-            diagnostics["required"] = "reasoning_effort" in getattr(
-                request.reasoning_options,
-                "required",
-                frozenset(),
-            )
-    return diagnostics
-
-
-def _reasoning_provider_diagnostics(response: Any) -> dict[str, object]:
-    diagnostics: dict[str, object] = {}
-    provider_data = getattr(response, "provider_data", None)
-    if not isinstance(provider_data, dict):
-        return diagnostics
-    for key in (
-        "visible_reasoning_stripped",
-        "stripped_reasoning_blocks",
-    ):
-        field = provider_data.get(key)
-        if isinstance(field, bool | int):
-            diagnostics[key] = field
-    degradations = provider_data.get("apeiria_degradations")
-    if isinstance(degradations, list):
-        degradation_reason = _reasoning_degradation_reason(degradations)
-        if degradation_reason is not None:
-            diagnostics["degradation_reason"] = degradation_reason
-    return diagnostics
-
-
-def _reasoning_degradation_reason(degradations: list[object]) -> str | None:
-    reasoning_degradation = next(
-        (
-            item
-            for item in degradations
-            if isinstance(item, dict) and item.get("kind") == "reasoning_omitted"
-        ),
-        None,
-    )
-    if not isinstance(reasoning_degradation, dict):
-        return None
-    reason = reasoning_degradation.get("reason")
-    return reason if isinstance(reason, str) else None
-
-
-def _has_provider_reasoning(response: Any) -> bool:
-    return bool(
-        getattr(response, "reasoning_content", None)
-        or getattr(response, "reasoning_signature", None)
-    )
 
 
 def _stream_metadata(
