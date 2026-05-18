@@ -1,15 +1,12 @@
-import type { AccessRuleItem, UserLevelItem } from '@/api/access'
+import type { AccessRuleItem } from '@/api/access'
 import type { PluginItem } from '@/api/plugins'
 import { computed, reactive, ref } from 'vue'
 import {
   createAccessRule,
   deleteAccessRule,
   getAccessRules,
-  getUsers,
   normalizeAccessRulesResponse,
-  normalizeUserLevelsResponse,
   updatePluginAccessMode,
-  updateUserLevel,
 } from '@/api/access'
 import { getErrorMessage } from '@/api/client'
 import { getPlugins, normalizePluginsResponse } from '@/api/plugins'
@@ -21,9 +18,7 @@ import {
   pluginRuleCount as countPluginRules,
   ruleKey,
   type RuleEffectFilter,
-  userEntries as buildUserEntries,
   visiblePlugins as filterVisiblePlugins,
-  visibleUserEntries as filterVisibleUserEntries,
 } from '@/utils/permissions'
 
 export function usePermissionsPage(t: (key: string, params?: Record<string, unknown>) => string) {
@@ -32,24 +27,15 @@ export function usePermissionsPage(t: (key: string, params?: Record<string, unkn
   const errorMessage = ref('')
   const plugins = ref<PluginItem[]>([])
   const rules = ref<AccessRuleItem[]>([])
-  const users = ref<UserLevelItem[]>([])
   const creatingRule = ref(false)
   const pendingPluginAccessMode = ref(false)
-  const pendingUserKey = ref('')
   const pluginSearch = ref('')
-  const userSearch = ref('')
   const ruleSearch = ref('')
   const ruleEffectFilter = ref<RuleEffectFilter>('__all__')
   const selectedPluginModule = ref('')
-  const selectedUserId = ref('')
   const pluginRuleForm = reactive({
     subject_type: 'user',
     subject_id: '',
-    effect: 'allow',
-    note: '',
-  })
-  const userRuleForm = reactive({
-    plugin_module: '',
     effect: 'allow',
     note: '',
   })
@@ -87,18 +73,6 @@ export function usePermissionsPage(t: (key: string, params?: Record<string, unkn
       rule => rule.subject_type === 'group' && rule.effect === 'deny',
     ),
   )
-  const userEntryItems = computed(() => buildUserEntries(users.value, rules.value))
-  const visibleUserEntryItems = computed(() =>
-    filterVisibleUserEntries(userEntryItems.value, userSearch.value),
-  )
-  const selectedUserRules = computed(() =>
-    rules.value.filter(
-      rule => rule.subject_type === 'user' && rule.subject_id === selectedUserId.value,
-    ),
-  )
-  const selectedUserLevels = computed(() =>
-    users.value.filter(item => item.user_id === selectedUserId.value),
-  )
   const filteredRuleItems = computed(() =>
     filteredRules(rules.value, {
       effect: ruleEffectFilter.value,
@@ -118,15 +92,6 @@ export function usePermissionsPage(t: (key: string, params?: Record<string, unkn
     ) {
       selectedPluginModule.value = manageablePluginItems.value[0]?.module_name || ''
     }
-    if (!selectedUserId.value && userEntryItems.value.length > 0) {
-      selectedUserId.value = userEntryItems.value[0].user_id
-    }
-    if (
-      selectedUserId.value
-      && !userEntryItems.value.some(item => item.user_id === selectedUserId.value)
-    ) {
-      selectedUserId.value = userEntryItems.value[0]?.user_id || ''
-    }
   }
 
   function pluginRuleCount(moduleName: string) {
@@ -137,14 +102,12 @@ export function usePermissionsPage(t: (key: string, params?: Record<string, unkn
     loading.value = true
     errorMessage.value = ''
     try {
-      const [pluginsResponse, rulesResponse, usersResponse] = await Promise.all([
+      const [pluginsResponse, rulesResponse] = await Promise.all([
         getPlugins(),
         getAccessRules(),
-        getUsers(),
       ])
       plugins.value = normalizePluginsResponse(pluginsResponse.data)
       rules.value = normalizeAccessRulesResponse(rulesResponse.data)
-      users.value = normalizeUserLevelsResponse(usersResponse.data)
       ensureSelections()
     } catch (error) {
       errorMessage.value = getErrorMessage(error, t('permissions.loadFailed'))
@@ -202,24 +165,6 @@ export function usePermissionsPage(t: (key: string, params?: Record<string, unkn
     }
   }
 
-  async function createRuleForUser() {
-    if (!selectedUserId.value) {
-      return
-    }
-    const created = await createRule({
-      subject_type: 'user',
-      subject_id: selectedUserId.value,
-      plugin_module: userRuleForm.plugin_module.trim(),
-      effect: userRuleForm.effect,
-      note: userRuleForm.note.trim() || null,
-    })
-    if (created) {
-      userRuleForm.plugin_module = ''
-      userRuleForm.note = ''
-      userRuleForm.effect = 'allow'
-    }
-  }
-
   async function handleDeleteRule(rule: AccessRuleItem) {
     errorMessage.value = ''
     try {
@@ -264,37 +209,8 @@ export function usePermissionsPage(t: (key: string, params?: Record<string, unkn
     }
   }
 
-  async function updateLevel(item: UserLevelItem, nextValue: unknown) {
-    const level = Number(nextValue)
-    if (Number.isNaN(level) || item.level === level) {
-      return
-    }
-    const previous = item.level
-    const key = `${item.user_id}:${item.group_id}`
-    item.level = level
-    pendingUserKey.value = key
-    errorMessage.value = ''
-    try {
-      await updateUserLevel(item.user_id, item.group_id, level)
-      noticeStore.show(
-        t('permissions.levelUpdated', {
-          groupId: item.group_id,
-          userId: item.user_id,
-        }),
-        'success',
-      )
-    } catch (error) {
-      item.level = previous
-      errorMessage.value = getErrorMessage(error, t('permissions.levelUpdateFailed'))
-      noticeStore.show(errorMessage.value, 'error')
-    } finally {
-      pendingUserKey.value = ''
-    }
-  }
-
   return {
     createRuleForPlugin,
-    createRuleForUser,
     creatingRule,
     errorMessage,
     filteredRuleItems,
@@ -304,7 +220,6 @@ export function usePermissionsPage(t: (key: string, params?: Record<string, unkn
     manageablePluginItems,
     moduleOptions,
     pendingPluginAccessMode,
-    pendingUserKey,
     pluginRuleCount,
     pluginRuleForm,
     pluginSearch,
@@ -319,16 +234,7 @@ export function usePermissionsPage(t: (key: string, params?: Record<string, unkn
     selectedPluginRules,
     selectedPluginUserAllowRules,
     selectedPluginUserDenyRules,
-    selectedUserId,
-    selectedUserLevels,
-    selectedUserRules,
-    updateLevel,
     updateSelectedPluginAccessMode,
-    userEntryItems,
-    userRuleForm,
-    userSearch,
-    users,
     visiblePluginItems,
-    visibleUserEntryItems,
   }
 }

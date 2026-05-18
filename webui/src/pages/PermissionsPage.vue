@@ -7,7 +7,6 @@ import {
   Search,
   Shield,
   Trash2,
-  Users,
 } from 'lucide-vue-next'
 import { computed, onMounted, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -49,7 +48,6 @@ import {
   effectValues,
   ruleKey,
   subjectTypeValues,
-  userLevelValues,
 } from '@/utils/permissions'
 
 const route = useRoute()
@@ -64,12 +62,6 @@ const perspectiveItems = computed(() => [
     title: t('permissions.pluginsTab'),
     meta: String(permissions.manageablePluginItems.value.length),
     summary: t('permissions.pluginsSummary'),
-  },
-  {
-    value: 'users',
-    title: t('permissions.usersTab'),
-    meta: String(permissions.userEntryItems.value.length),
-    summary: t('permissions.usersSummary'),
   },
   {
     value: 'rules',
@@ -107,10 +99,6 @@ function effectTone(effect: string): WorkbenchTone {
 
 function ruleNote(rule: AccessRuleItem) {
   return rule.note || t('permissions.noNote')
-}
-
-function userLevelPending(userId: string, groupId: string) {
-  return permissions.pendingUserKey.value === `${userId}:${groupId}`
 }
 
 watch(() => route.query, () => {
@@ -428,195 +416,6 @@ onMounted(async () => {
               </Button>
             </div>
           </div>
-        </Panel>
-      </section>
-    </SplitPane>
-
-    <SplitPane
-      v-else-if="perspective === 'users'"
-      class="permission-layout"
-      wide-sidebar
-    >
-      <template #sidebar>
-        <Panel :title="t('permissions.usersTab')">
-          <div class="permission-search">
-            <Search :size="16" />
-            <Input
-              v-model="permissions.userSearch.value"
-              :aria-label="t('permissions.searchUsers')"
-              :placeholder="t('permissions.searchUsers')"
-            />
-          </div>
-
-          <LoadingSkeleton
-            v-if="permissions.loading.value && permissions.userEntryItems.value.length === 0"
-            :rows="6"
-          />
-          <EmptyState
-            v-else-if="permissions.visibleUserEntryItems.value.length === 0"
-            :icon="Users"
-            :title="t('permissions.noUsers')"
-          />
-          <SelectableList v-else class="permission-scroll-list">
-            <SelectableListItem
-              v-for="item in permissions.visibleUserEntryItems.value"
-              :key="item.user_id"
-              :active="item.user_id === permissions.selectedUserId.value"
-              @click="permissions.selectedUserId.value = item.user_id"
-            >
-              <div class="permission-list-row">
-                <div>
-                  <strong>{{ item.user_id }}</strong>
-                  <span>{{ t('permissions.userGroupsMeta', { count: item.groups }) }}</span>
-                </div>
-                <Badge v-if="item.rules > 0" variant="secondary">
-                  {{ item.rules }}
-                </Badge>
-              </div>
-            </SelectableListItem>
-          </SelectableList>
-        </Panel>
-      </template>
-
-      <section v-if="permissions.selectedUserId.value" class="permission-main">
-        <Panel
-          :subtitle="t('permissions.userRulesAndLevels')"
-          :title="permissions.selectedUserId.value"
-        >
-          <div class="permission-state-grid">
-            <div>
-              <span>{{ t('permissions.userRules') }}</span>
-              <strong>{{ permissions.selectedUserRules.value.length }}</strong>
-            </div>
-            <div>
-              <span>{{ t('permissions.userLevels') }}</span>
-              <strong>{{ permissions.selectedUserLevels.value.length }}</strong>
-            </div>
-            <div>
-              <span>{{ t('permissions.userView') }}</span>
-              <strong>{{ t('permissions.usersTab') }}</strong>
-            </div>
-          </div>
-        </Panel>
-
-        <div class="permission-rule-columns">
-          <Panel :title="t('permissions.createRuleTitle')">
-            <div class="permission-form-grid permission-form-grid--single">
-              <div class="permission-field">
-                <Label>{{ t('permissions.effect') }}</Label>
-                <Select v-model="permissions.userRuleForm.effect">
-                  <SelectTrigger class="permission-select">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem
-                      v-for="option in effectValues"
-                      :key="option"
-                      :value="option"
-                    >
-                      {{ effectLabel(option) }}
-                    </SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div class="permission-field">
-                <Label>{{ t('permissions.pluginModule') }}</Label>
-                <Select v-model="permissions.userRuleForm.plugin_module">
-                  <SelectTrigger class="permission-select">
-                    <SelectValue :placeholder="t('permissions.pluginModule')" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem
-                      v-for="option in permissions.moduleOptions.value"
-                      :key="option.value"
-                      :value="option.value"
-                    >
-                      {{ option.label }}
-                    </SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div class="permission-field">
-                <Label>{{ t('permissions.note') }}</Label>
-                <Textarea v-model="permissions.userRuleForm.note" />
-              </div>
-
-              <div class="permission-form-actions">
-                <Button
-                  :disabled="permissions.creatingRule.value || !permissions.userRuleForm.plugin_module.trim()"
-                  @click="permissions.createRuleForUser"
-                >
-                  {{ t('permissions.createRule') }}
-                </Button>
-              </div>
-            </div>
-          </Panel>
-
-          <Panel :title="t('permissions.userRules')">
-            <div
-              v-if="permissions.selectedUserRules.value.length > 0"
-              class="permission-rule-list"
-            >
-              <article
-                v-for="rule in permissions.selectedUserRules.value"
-                :key="ruleKey(rule)"
-                class="permission-rule-row"
-              >
-                <div>
-                  <strong>{{ rule.plugin_module }}</strong>
-                  <span>{{ effectLabel(rule.effect) }} · {{ ruleNote(rule) }}</span>
-                </div>
-                <Button size="icon" variant="ghost" @click="permissions.handleDeleteRule(rule)">
-                  <Trash2 :size="15" />
-                </Button>
-              </article>
-            </div>
-            <EmptyState
-              v-else
-              :icon="KeyRound"
-              :title="t('permissions.noRules')"
-            />
-          </Panel>
-        </div>
-
-        <Panel :title="t('permissions.userLevels')">
-          <div v-if="permissions.selectedUserLevels.value.length > 0" class="permission-rule-list">
-            <article
-              v-for="entry in permissions.selectedUserLevels.value"
-              :key="`${entry.user_id}:${entry.group_id}`"
-              class="permission-level-row"
-            >
-              <div>
-                <strong>{{ entry.group_id }}</strong>
-                <span>{{ t('permissions.groupLabel') }}</span>
-              </div>
-              <Select
-                :disabled="userLevelPending(entry.user_id, entry.group_id)"
-                :model-value="String(entry.level)"
-                @update:model-value="permissions.updateLevel(entry, $event)"
-              >
-                <SelectTrigger class="permission-level-select">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem
-                    v-for="option in userLevelValues"
-                    :key="option"
-                    :value="String(option)"
-                  >
-                    {{ option }}
-                  </SelectItem>
-                </SelectContent>
-              </Select>
-            </article>
-          </div>
-          <EmptyState
-            v-else
-            :icon="Users"
-            :title="t('permissions.noUsers')"
-          />
         </Panel>
       </section>
     </SplitPane>

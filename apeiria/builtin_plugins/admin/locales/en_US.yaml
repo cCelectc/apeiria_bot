@@ -2,7 +2,7 @@ admin:
   meta:
     name: "Owner Admin"
     description: "Owner-only management commands for status, plugins, access, tasks, and restart"
-    usage: "{prefix}admin - View overview\n{prefix}status | {prefix}sid - View runtime and session status\n{prefix}plugins | {prefix}plugin info|enable|disable|configs <plugin> - Manage plugins\n{prefix}config core|plugin ... - View config summary\n{prefix}access plugin|rule|remove|level ... - Manage access control\n{prefix}tasks | {prefix}task info|pause|resume <task_id> - Manage scheduler tasks\n{prefix}restart - Restart the bot\n{prefix}adapters | {prefix}drivers - View runtime environment"
+    usage: "{prefix}admin - View overview\n{prefix}status | {prefix}sid - View runtime and session status\n{prefix}plugins | {prefix}plugin info|enable|disable|configs <plugin> - Manage plugins\n{prefix}config core|plugin ... - View config summary\n{prefix}access plugin|rule|remove ... - Manage access control\n{prefix}tasks | {prefix}task info|pause|resume <task_id> - Manage scheduler tasks\n{prefix}restart - Restart the bot\n{prefix}adapters | {prefix}drivers - View runtime environment"
   command:
     admin: "View owner admin overview"
     status: "View current bot runtime summary"
@@ -26,7 +26,7 @@ admin:
     command_plugins: "- {prefix}plugins"
     command_plugin: "- {prefix}plugin info|enable|disable|configs <plugin>"
     command_config: "- {prefix}config core|plugin ..."
-    command_access: "- {prefix}access plugin|rule|remove|level ..."
+    command_access: "- {prefix}access plugin|rule|remove ..."
     command_tasks: "- {prefix}tasks | {prefix}task info|pause|resume ..."
     command_restart: "- {prefix}restart"
   common:
@@ -59,8 +59,8 @@ admin:
     field_group: "Group ID"
     field_session: "Session ID"
     field_type: "Conversation type"
-    group_footer: "To grant admin in this group, use user_id={user_id} with group_id={group_id}"
-    private_footer: "This is not a group context. Run this command inside the target group first. Current user_id={user_id}"
+    group_footer: "Use user_id={user_id} and group_id={group_id} for access rules in this group"
+    private_footer: "This is not a group context. Run this command inside the target group before adding group access rules. Current user_id={user_id}"
   adapters:
     title: "Owner Admin · Adapters"
     summary: "{configured} configured adapters, {loaded} loaded at runtime"
@@ -123,14 +123,12 @@ admin:
     source_plugin_section: "plugin section"
     source_builtin: "built-in"
   access:
-    invalid_action: "Access action only supports plugin, rule, remove, level"
+    invalid_action: "Access action only supports plugin, rule, remove"
     plugin_usage: "Usage: {prefix}access plugin <plugin>"
     rule_usage: "Usage: {prefix}access rule <allow|deny> <user|group> <subject_id> <plugin>"
     remove_usage: "Usage: {prefix}access remove <user|group> <subject_id> <plugin>"
-    level_usage: "Usage: {prefix}access level <user_id> <group_id> <level>"
     plugin_title: "Owner Admin · Plugin Access · {name}"
     field_access_mode: "Default access"
-    field_required_level: "Required level"
     field_user_allow: "User allows"
     field_user_deny: "User denies"
     field_group_allow: "Group allows"
@@ -140,7 +138,6 @@ admin:
     rule_updated: "Rule updated: {effect} {subject_type} {subject_id} -> {plugin}"
     rule_removed: "Rule removed: {subject_type} {subject_id} -> {plugin}"
     rule_not_found: "Rule not found"
-    level_updated: "Level updated: user={user_id} group={group_id} level={level}"
   restart:
     scheduled: "Restart scheduled, bot process will relaunch shortly"
   tasks:

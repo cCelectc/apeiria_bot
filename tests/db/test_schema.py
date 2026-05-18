@@ -30,13 +30,15 @@ def test_database_ensure_ready_initializes_empty_sqlite_db(tmp_path: Path) -> No
             "SELECT schema_line, schema_version FROM apeiria_schema_meta WHERE id = 1"
         ).fetchone()
         tables = _table_names(connection)
+        plugin_state_sql = _table_sql(connection, "plugin_state")
     assert row == (CURRENT_SCHEMA_LINE, CURRENT_SCHEMA_VERSION)
+    assert "user_level" not in tables
+    assert "required_level" not in plugin_state_sql
     assert {
         "apeiria_schema_meta",
         "plugin_state",
         "access_rule",
         "group_state",
-        "user_level",
         "ai_source",
         "ai_chat_model",
         "ai_embedding_model",
@@ -60,6 +62,100 @@ def test_database_ensure_ready_initializes_empty_sqlite_db(tmp_path: Path) -> No
         "chat_session_context_summary",
         "chat_message",
     } <= tables
+
+
+def test_database_ensure_ready_removes_legacy_access_level_storage(
+    tmp_path: Path,
+) -> None:
+    database = ApeiriaDatabase(project_root=tmp_path)
+    timestamp = "2026-04-25T00:00:00"
+
+    with database.connect_sync() as connection:
+        _create_schema_meta_in_connection(
+            connection,
+            schema_line=CURRENT_SCHEMA_LINE,
+            schema_version=CURRENT_SCHEMA_VERSION,
+        )
+        connection.execute(
+            """
+            CREATE TABLE plugin_state (
+                plugin_id TEXT PRIMARY KEY,
+                enabled INTEGER NOT NULL DEFAULT 1 CHECK(enabled IN (0, 1)),
+                access_mode TEXT NOT NULL DEFAULT 'default_allow'
+                    CHECK(access_mode IN ('default_allow', 'default_deny')),
+                required_level INTEGER NOT NULL DEFAULT 0,
+                protection_mode TEXT NOT NULL DEFAULT 'normal'
+                    CHECK(protection_mode IN ('normal', 'required')),
+                ui_hidden_override INTEGER CHECK(
+                    ui_hidden_override IS NULL OR ui_hidden_override IN (0, 1)
+                ),
+                updated_at TEXT NOT NULL
+            )
+            """
+        )
+        connection.execute(
+            """
+            INSERT INTO plugin_state (
+                plugin_id,
+                enabled,
+                access_mode,
+                required_level,
+                protection_mode,
+                ui_hidden_override,
+                updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "plugins.alpha",
+                0,
+                "default_deny",
+                6,
+                "required",
+                1,
+                timestamp,
+            ),
+        )
+        connection.execute(
+            """
+            CREATE TABLE user_level (
+                user_id TEXT NOT NULL,
+                group_id TEXT,
+                level INTEGER NOT NULL,
+                updated_at TEXT NOT NULL,
+                PRIMARY KEY(user_id, group_id)
+            )
+            """
+        )
+        connection.execute(
+            """
+            INSERT INTO user_level (user_id, group_id, level, updated_at)
+            VALUES (?, ?, ?, ?)
+            """,
+            ("user-1", "group-1", 6, timestamp),
+        )
+
+    database.ensure_ready()
+
+    with database.connect_sync() as connection:
+        tables = _table_names(connection)
+        assert "user_level" not in tables
+        assert "required_level" not in _table_sql(connection, "plugin_state")
+        row = connection.execute(
+            """
+            SELECT
+                plugin_id,
+                enabled,
+                access_mode,
+                protection_mode,
+                ui_hidden_override,
+                updated_at
+            FROM plugin_state
+            WHERE plugin_id = ?
+            """,
+            ("plugins.alpha",),
+        ).fetchone()
+
+    assert row == ("plugins.alpha", 0, "default_deny", "required", 1, timestamp)
 
 
 def test_database_ensure_ready_rejects_non_apeiria_v1_database(tmp_path: Path) -> None:

@@ -22,7 +22,6 @@ help:
   view_owner: "Owner 视图"
   detail_view: "视图"
   detail_type: "类型"
-  detail_permission: "权限"
   detail_source: "来源"
   detail_category: "分类"
   detail_description: "描述"

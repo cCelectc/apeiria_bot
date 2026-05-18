@@ -39,7 +39,6 @@ web_ui:
     fields_not_editable: "Fields not editable: {fields}"
     table_users: "Users"
     table_groups: "Groups"
-    table_levels: "User Levels"
     table_access_rules: "Access Rules"
     table_plugins: "Plugins"
     table_plugin_policies: "Plugin Policies"

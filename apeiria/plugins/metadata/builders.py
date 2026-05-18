@@ -30,7 +30,6 @@ class PluginDescriptorBuilder:
             homepage=meta.homepage if meta else None,
             source=self._resolve_plugin_source(plugin),
             plugin_type=extra.plugin_type.value if extra else "normal",
-            admin_level=extra.admin_level if extra else 0,
             author=extra.author if extra else None,
             version=extra.version if extra else None,
             is_ui_hidden=extra.ui.hidden if extra is not None else False,

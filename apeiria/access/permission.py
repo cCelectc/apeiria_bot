@@ -6,7 +6,6 @@ from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING, TypeAlias
 
 from nonebot.exception import IgnoredException
-from nonebot.log import logger
 
 from apeiria.access.audit import AuditActor
 from apeiria.access.audit_service import audit_service
@@ -46,9 +45,6 @@ class PermissionService:
         if decision is not None:
             return decision
 
-        if context.is_superuser:
-            return self._allow()
-
         decision = await self._check_access_rules(
             context,
             plugin_module,
@@ -56,28 +52,7 @@ class PermissionService:
         )
         if decision is not None:
             return decision
-
-        effective_level = await access_service.get_effective_level(context)
-        if effective_level >= policy.required_level:
-            return self._allow()
-
-        logger.debug(
-            "Access denied by level: user={} plugin={} need={} have={}",
-            context.user_id,
-            plugin_module,
-            policy.required_level,
-            effective_level,
-        )
-        return PermissionDecision(
-            allowed=False,
-            code="insufficient_level",
-            reason=t("auth.permission_denied", need=f"Lv.{policy.required_level}"),
-            source="required_level",
-            details={
-                "required_level": policy.required_level,
-                "effective_level": effective_level,
-            },
-        )
+        return self._allow()
 
     async def assert_plugin_allowed(
         self,

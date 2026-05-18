@@ -1,4 +1,4 @@
-"""Access control routes — user levels and explicit access rules."""
+"""Access control routes for plugin admission policy and explicit rules."""
 
 from __future__ import annotations
 
@@ -16,8 +16,6 @@ from apeiria.webui.schemas.models import (
     AccessRuleDeleteRequest,
     AccessRuleItem,
     PluginAccessModeUpdateRequest,
-    UpdateLevelRequest,
-    UserLevelItem,
 )
 
 router = APIRouter()
@@ -29,35 +27,6 @@ def _require_runtime_control_plane() -> Any:
     if runtime is None or runtime.control_plane is None:
         raise HTTPException(status_code=503, detail=_RUNTIME_UNAVAILABLE_DETAIL)
     return runtime.control_plane
-
-
-@router.get("/users", response_model=list[UserLevelItem])
-async def list_users(
-    _: Annotated[Any, Depends(require_control_panel)],
-) -> list[UserLevelItem]:
-    rows = await _require_runtime_control_plane().list_access_user_levels()
-    return [
-        UserLevelItem(user_id=user_id, group_id=group_id, level=level)
-        for r in rows
-        for user_id, group_id, level in [r]
-    ]
-
-
-@router.patch("/users/{user_id}")
-async def update_user_level(
-    user_id: str,
-    body: UpdateLevelRequest,
-    _: Annotated[Any, Depends(require_control_panel)],
-    group_id: str = "",
-) -> dict[str, str]:
-    if not group_id:
-        raise HTTPException(
-            status_code=400,
-            detail=t("web_ui.permissions.group_id_required"),
-        )
-
-    await access_management_service.set_user_level(user_id, group_id, body.level)
-    return {"status": "ok"}
 
 
 @router.get("/rules", response_model=list[AccessRuleItem])

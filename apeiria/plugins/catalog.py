@@ -387,7 +387,6 @@ class PluginGovernanceService:
                     if persisted
                     else "normal"
                 ),
-                admin_level=persisted.admin_level if persisted else 0,
                 author=persisted.author if persisted else None,
                 version=persisted.version if persisted else None,
                 is_ui_hidden=bool(getattr(persisted, "is_ui_hidden", False)),

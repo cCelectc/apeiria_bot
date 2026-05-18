@@ -17,7 +17,6 @@ export interface PluginItem {
   is_protected: boolean
   protected_reason: string | null
   plugin_type: string
-  admin_level: number
   author: string | null
   version: string | null
   is_loaded: boolean

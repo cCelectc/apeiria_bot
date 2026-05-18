@@ -119,7 +119,6 @@ __plugin_meta__ = PluginMetadata(
         author="apeiria",
         version="0.1.0",
         plugin_type=PluginType.NORMAL,
-        admin_level=0,
         help=HelpExtra(
             category=t("help.meta.help_category"),
             introduction=t("help.meta.help_introduction"),

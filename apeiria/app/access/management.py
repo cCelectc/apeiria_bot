@@ -19,7 +19,6 @@ if TYPE_CHECKING:
 @dataclass(frozen=True, slots=True)
 class PluginAccessSummary:
     access_mode: str
-    required_level: int
     user_allow_count: int
     user_deny_count: int
     group_allow_count: int
@@ -29,12 +28,6 @@ class PluginAccessSummary:
 
 class AccessManagementService:
     """Compose access and plugin governance for owner-facing management flows."""
-
-    async def list_user_levels(self) -> list[tuple[str, str, int]]:
-        return await access_service.list_user_levels()
-
-    async def set_user_level(self, user_id: str, group_id: str, level: int) -> None:
-        await access_service.set_user_level(user_id, group_id, level)
 
     async def list_access_rules(self) -> list["AccessPolicyRule"]:
         return await access_service.list_access_rules()
@@ -98,7 +91,7 @@ class AccessManagementService:
         if plugin is None:
             raise ResourceNotFoundError(module_name)
 
-        spec = await plugin_policy_service.get_policy(module_name)
+        policy = await plugin_policy_service.get_policy(module_name)
         rules = [
             rule
             for rule in await access_service.list_access_rules()
@@ -110,8 +103,7 @@ class AccessManagementService:
         ]
 
         return PluginAccessSummary(
-            access_mode=spec.access_mode,
-            required_level=spec.required_level,
+            access_mode=policy.access_mode,
             user_allow_count=sum(
                 1
                 for rule in rules

@@ -555,9 +555,6 @@ onMounted(() => {
         </p>
 
         <div class="plugin-card__relations">
-          <Badge v-if="item.admin_level > 0" variant="secondary">
-            Lv.{{ item.admin_level }}
-          </Badge>
           <Badge variant="outline">
             {{ item.plugin_type }}
           </Badge>
@@ -764,12 +761,6 @@ onMounted(() => {
             </Badge>
             <Badge v-if="pluginSettings.settingsState.value" variant="outline">
               {{ pluginSettingsSourceLabel(pluginSettings.settingsState.value.config_source) }}
-            </Badge>
-            <Badge
-              v-if="pluginSettings.settingsPlugin.value.admin_level > 0"
-              variant="secondary"
-            >
-              Lv.{{ pluginSettings.settingsPlugin.value.admin_level }}
             </Badge>
             <Badge variant="outline">
               {{ pluginSettings.settingsPlugin.value.plugin_type }}

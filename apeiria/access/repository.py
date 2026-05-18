@@ -27,50 +27,6 @@ class AccessRuleRow:
 class AccessRepository:
     """Own access persistence without relying on NoneBot ORM."""
 
-    async def get_user_level(self, user_id: str, group_id: str) -> int:
-        return self._get_user_level_sync(user_id, group_id)
-
-    def _get_user_level_sync(self, user_id: str, group_id: str) -> int:
-        with database_runtime.connect_sync() as connection:
-            row = connection.execute(
-                """
-                SELECT level
-                FROM user_level
-                WHERE user_id = ? AND group_id = ?
-                """,
-                (user_id, group_id),
-            ).fetchone()
-        return int(row[0]) if row is not None else 0
-
-    async def list_user_levels(self) -> list[tuple[str, str, int]]:
-        return self._list_user_levels_sync()
-
-    def _list_user_levels_sync(self) -> list[tuple[str, str, int]]:
-        with database_runtime.connect_sync() as connection:
-            rows = connection.execute(
-                """
-                SELECT user_id, group_id, level
-                FROM user_level
-                ORDER BY user_id ASC, group_id ASC
-                """
-            ).fetchall()
-        return [(str(row[0]), str(row[1]), int(row[2])) for row in rows]
-
-    async def set_user_level(self, user_id: str, group_id: str, level: int) -> None:
-        self._set_user_level_sync(user_id, group_id, level)
-
-    def _set_user_level_sync(self, user_id: str, group_id: str, level: int) -> None:
-        with database_runtime.connect_sync() as connection:
-            connection.execute(
-                """
-                INSERT INTO user_level (user_id, group_id, level, updated_at)
-                VALUES (?, ?, ?, ?)
-                ON CONFLICT(user_id, group_id)
-                DO UPDATE SET level = excluded.level, updated_at = excluded.updated_at
-                """,
-                (user_id, group_id, level, _utcnow_text()),
-            )
-
     async def get_group_bot_enabled(self, group_id: str) -> bool:
         return self._get_group_bot_enabled_sync(group_id)
 

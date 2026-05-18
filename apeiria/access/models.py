@@ -19,7 +19,6 @@ class AccessContext:
     group_id: str | None
     conversation_type: ConversationType
     is_superuser: bool
-    adapter_role_level: int
 
 
 @dataclass(frozen=True)
@@ -49,7 +48,6 @@ class PluginPolicy:
 
     plugin_module: str
     access_mode: Literal["default_allow", "default_deny"]
-    required_level: int
     protection_mode: Literal["normal", "required"]
     visibility: Literal["normal", "hidden"] = "normal"
     labels: tuple[str, ...] = ()

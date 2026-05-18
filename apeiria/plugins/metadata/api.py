@@ -94,7 +94,6 @@ class PluginExtraData:
     author: str = "apeiria"
     version: str = "0.1.0"
     plugin_type: PluginType = PluginType.NORMAL
-    admin_level: int = 0
     help: HelpExtra = field(default_factory=HelpExtra)
     ui: UiExtra = field(default_factory=UiExtra)
     config: ConfigExtra = field(default_factory=ConfigExtra)
@@ -161,7 +160,6 @@ class PluginExtraData:
                 author=extra.get("author", "unknown"),
                 version=extra.get("version", "0.0.0"),
                 plugin_type=plugin_type,
-                admin_level=extra.get("admin_level", 0),
                 help=HelpExtra(
                     category=str(
                         help_raw.get("category", extra.get("menu_category", ""))

@@ -8,7 +8,6 @@ from nonebot.log import logger
 from nonebot.rule import Rule
 
 from apeiria.access.level import extract_group_id
-from apeiria.access.service import access_service
 from apeiria.i18n import t
 
 
@@ -29,32 +28,6 @@ def owner_check() -> Rule:
             await bot.send(event, t("admin.owner_only"))
         logger.debug("Owner check failed for user {}", user_id)
         return False
-
-    return Rule(_check)
-
-
-def admin_check(level: int = 5) -> Rule:
-    """Rule that requires minimum permission level."""
-
-    async def _check(bot: Bot, event: Event) -> bool:
-        context = await access_service.build_context(bot, event)
-        if context is None:
-            return False
-
-        if context.is_superuser:
-            return True
-
-        if context.group_id is None:
-            return False
-
-        if context.adapter_role_level >= level:
-            return True
-
-        user_level = await access_service.get_user_level(
-            context.user_id,
-            context.group_id,
-        )
-        return user_level >= level
 
     return Rule(_check)
 

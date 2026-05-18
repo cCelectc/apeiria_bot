@@ -22,7 +22,6 @@ async def sync_plugins() -> None:
         module_name = descriptor.module_name
         await plugin_catalog_repository.ensure_plugin_policy(
             module_name,
-            required_level=descriptor.admin_level,
             protection_mode=get_default_protection_mode(module_name),
         )
 

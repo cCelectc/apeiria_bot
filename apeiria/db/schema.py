@@ -217,11 +217,13 @@ def _table_sql(connection: sqlite3.Connection, table_name: str) -> str:
     return str(row[0]) if row else ""
 
 
-def _ensure_current_schema_shape(  # noqa: C901, PLR0912
+def _ensure_current_schema_shape(  # noqa: C901, PLR0912, PLR0915
     connection: sqlite3.Connection,
 ) -> None:
     """Apply additive JSON metadata columns for in-development v1 databases."""
 
+    existing_tables = _table_names(connection)
+    _ensure_governance_shape(connection, existing_tables)
     existing_tables = _table_names(connection)
     if "ai_future_task" not in existing_tables:
         _create_future_task_tables(connection)
@@ -344,6 +346,61 @@ def _ensure_current_schema_shape(  # noqa: C901, PLR0912
     if "ai_memory_belief_action" not in existing_tables:
         _create_memory_belief_action_table(connection)
     _ensure_profile_relationship_shape(connection)
+
+
+def _ensure_governance_shape(
+    connection: sqlite3.Connection,
+    existing_tables: set[str],
+) -> None:
+    if "plugin_state" in existing_tables:
+        plugin_state_columns = _column_names(connection, "plugin_state")
+        if "required_level" in plugin_state_columns:
+            _replace_plugin_state_without_required_level(connection)
+    if "user_level" in existing_tables:
+        connection.execute("DROP TABLE user_level")
+
+
+def _replace_plugin_state_without_required_level(
+    connection: sqlite3.Connection,
+) -> None:
+    connection.execute("ALTER TABLE plugin_state RENAME TO plugin_state_legacy")
+    connection.execute(
+        """
+        CREATE TABLE plugin_state (
+            plugin_id TEXT PRIMARY KEY,
+            enabled INTEGER NOT NULL DEFAULT 1 CHECK(enabled IN (0, 1)),
+            access_mode TEXT NOT NULL DEFAULT 'default_allow'
+                CHECK(access_mode IN ('default_allow', 'default_deny')),
+            protection_mode TEXT NOT NULL DEFAULT 'normal'
+                CHECK(protection_mode IN ('normal', 'required')),
+            ui_hidden_override INTEGER CHECK(
+                ui_hidden_override IS NULL OR ui_hidden_override IN (0, 1)
+            ),
+            updated_at TEXT NOT NULL
+        )
+        """
+    )
+    connection.execute(
+        """
+        INSERT INTO plugin_state (
+            plugin_id,
+            enabled,
+            access_mode,
+            protection_mode,
+            ui_hidden_override,
+            updated_at
+        )
+        SELECT
+            plugin_id,
+            enabled,
+            access_mode,
+            protection_mode,
+            ui_hidden_override,
+            updated_at
+        FROM plugin_state_legacy
+        """
+    )
+    connection.execute("DROP TABLE plugin_state_legacy")
 
 
 def _ensure_context_summary_shape(
@@ -488,7 +545,6 @@ def _create_governance_tables(connection: sqlite3.Connection) -> None:
             enabled INTEGER NOT NULL DEFAULT 1 CHECK(enabled IN (0, 1)),
             access_mode TEXT NOT NULL DEFAULT 'default_allow'
                 CHECK(access_mode IN ('default_allow', 'default_deny')),
-            required_level INTEGER NOT NULL DEFAULT 0 CHECK(required_level >= 0),
             protection_mode TEXT NOT NULL DEFAULT 'normal'
                 CHECK(protection_mode IN ('normal', 'required')),
             ui_hidden_override INTEGER CHECK(
@@ -522,18 +578,6 @@ def _create_governance_tables(connection: sqlite3.Connection) -> None:
             disabled_plugins_json TEXT NOT NULL DEFAULT '[]'
                 CHECK({disabled_plugins_check}),
             updated_at TEXT NOT NULL
-        )
-        """
-    )
-    connection.execute(
-        """
-        CREATE TABLE user_level (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id TEXT NOT NULL,
-            group_id TEXT NOT NULL,
-            level INTEGER NOT NULL DEFAULT 0 CHECK(level >= 0),
-            updated_at TEXT NOT NULL,
-            UNIQUE(user_id, group_id)
         )
         """
     )

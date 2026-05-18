@@ -15,7 +15,6 @@ class PluginDescriptor:
     homepage: str | None
     source: str
     plugin_type: str
-    admin_level: int = 0
     author: str | None = None
     version: str | None = None
     is_ui_hidden: bool = False

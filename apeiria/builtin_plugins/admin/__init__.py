@@ -25,7 +25,6 @@ __plugin_meta__ = PluginMetadata(
         author="apeiria",
         version="0.1.0",
         plugin_type=PluginType.SUPERUSER,
-        admin_level=6,
         ui=UiExtra(order=10),
         commands=[
             "admin",

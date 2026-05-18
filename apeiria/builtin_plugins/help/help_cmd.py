@@ -9,7 +9,6 @@ from nonebot.log import logger
 from nonebot_plugin_alconna import Alconna, Match, on_alconna
 from nonebot_plugin_alconna.uniseg import UniMessage
 
-from apeiria.access.service import access_service
 from apeiria.builtin_plugins.help.config import HelpConfig, get_help_config
 from apeiria.builtin_plugins.help.generator import (
     HelpViewRole,
@@ -42,38 +41,31 @@ def _is_console(bot: Bot) -> bool:
 def _is_superuser(event: Event) -> bool:
     user_id = event.get_user_id()
     superusers = getattr(nonebot.get_driver().config, "superusers", set())
-    return user_id in superusers
+    return str(user_id) in {str(item) for item in superusers}
 
 
 async def _resolve_help_role(
-    bot: Bot,
+    _bot: Bot,
     event: Event,
     *,
     config: HelpConfig,
     force_admin: bool,
     force_owner: bool,
 ) -> HelpViewRole:
-    context = await access_service.build_context(bot, event)
-    is_owner = _is_superuser(event) or bool(context and context.is_superuser)
-    effective_level = (
-        await access_service.get_effective_level(context) if context else 0
-    )
-    is_admin = effective_level > 0
+    is_owner = _is_superuser(event)
 
     if force_owner:
         if not is_owner:
             await _help.finish(t("help.owner_forbidden"))
         return "owner"
     if force_admin:
-        if not (is_admin or is_owner):
+        if not is_owner:
             await _help.finish(t("help.admin_forbidden"))
         return "admin"
     if not config.enable_role_views or config.role_view_mode == "manual_only":
         return "owner" if is_owner and config.admin_show_all else "user"
     if is_owner:
         return "owner"
-    if is_admin:
-        return "admin"
     return "user"
 
 
@@ -86,9 +78,8 @@ def _format_help_list_text(
 ) -> str:
     lines = [t("help.list_title"), t(f"help.view_{role}"), ""]
     for plugin in plugins:
-        level = f" [Lv.{plugin.admin_level}]" if plugin.admin_level > 0 else ""
         lines.append(
-            f"【{plugin.display_name}】{level} "
+            f"【{plugin.display_name}】 "
             f"{plugin.description or t('help.no_description')}"
         )
         if plugin.menu_category:
@@ -123,7 +114,6 @@ def _format_plugin_detail_text(  # noqa: C901
         f"【{plugin_info.display_name}】 v{plugin_info.version or 'unknown'}",
         f"{t('help.detail_view')}: {t(f'help.view_{role}')}",
         f"{t('help.detail_type')}: {plugin_info.plugin_type}",
-        f"{t('help.detail_permission')}: Lv.{plugin_info.admin_level}",
         f"{t('help.detail_source')}: {plugin_info.source}",
         f"{t('help.detail_description')}: "
         f"{plugin_info.description or t('help.no_description')}",

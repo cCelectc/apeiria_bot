@@ -24,13 +24,11 @@ class PluginStateRow:
     module_name: str
     is_global_enabled: bool = True
     access_mode: str = "default_allow"
-    required_level: int = 0
     protection_mode: str = "normal"
     ui_hidden_override: bool | None = None
     name: str | None = None
     description: str | None = None
     plugin_type: str = "normal"
-    admin_level: int = 0
     author: str | None = None
     version: str | None = None
 
@@ -71,7 +69,6 @@ class PluginCatalogRepository:
                     plugin_id,
                     enabled,
                     access_mode,
-                    required_level,
                     protection_mode,
                     ui_hidden_override
                 FROM plugin_state
@@ -82,9 +79,8 @@ class PluginCatalogRepository:
                 module_name=str(row[0]),
                 is_global_enabled=bool(row[1]),
                 access_mode=str(row[2]),
-                required_level=int(row[3]),
-                protection_mode=str(row[4]),
-                ui_hidden_override=(None if row[5] is None else bool(row[5])),
+                protection_mode=str(row[3]),
+                ui_hidden_override=(None if row[4] is None else bool(row[4])),
             )
             for row in rows
         }
@@ -127,10 +123,9 @@ class PluginCatalogRepository:
                     plugin_id,
                     enabled,
                     access_mode,
-                    required_level,
                     protection_mode,
                     updated_at
-                ) VALUES (?, 1, 'default_allow', 0, 'normal', ?)
+                ) VALUES (?, 1, 'default_allow', 'normal', ?)
                 ON CONFLICT(plugin_id) DO NOTHING
                 """,
                 (module_name, _utcnow_text()),
@@ -153,7 +148,6 @@ class PluginCatalogRepository:
                     plugin_id,
                     enabled,
                     access_mode,
-                    required_level,
                     protection_mode,
                     ui_hidden_override
                 FROM plugin_state
@@ -167,9 +161,8 @@ class PluginCatalogRepository:
             module_name=str(row[0]),
             is_global_enabled=bool(row[1]),
             access_mode=str(row[2]),
-            required_level=int(row[3]),
-            protection_mode=str(row[4]),
-            ui_hidden_override=None if row[5] is None else bool(row[5]),
+            protection_mode=str(row[3]),
+            ui_hidden_override=None if row[4] is None else bool(row[4]),
         )
 
     async def ensure_plugin_policy(
@@ -177,13 +170,11 @@ class PluginCatalogRepository:
         module_name: str,
         *,
         access_mode: str = "default_allow",
-        required_level: int = 0,
         protection_mode: str = "normal",
     ) -> None:
         self._ensure_plugin_policy_sync(
             module_name,
             access_mode,
-            required_level,
             protection_mode,
         )
 
@@ -191,13 +182,12 @@ class PluginCatalogRepository:
         self,
         module_name: str,
         access_mode: str,
-        required_level: int,
         protection_mode: str,
     ) -> None:
         with database_runtime.connect_sync() as connection:
             existing = connection.execute(
                 """
-                SELECT access_mode, required_level, protection_mode
+                SELECT access_mode, protection_mode
                 FROM plugin_state
                 WHERE plugin_id = ?
                 """,
@@ -210,15 +200,13 @@ class PluginCatalogRepository:
                         plugin_id,
                         enabled,
                         access_mode,
-                        required_level,
                         protection_mode,
                         updated_at
-                    ) VALUES (?, 1, ?, ?, ?, ?)
+                    ) VALUES (?, 1, ?, ?, ?)
                     """,
                     (
                         module_name,
                         access_mode,
-                        required_level,
                         protection_mode,
                         _utcnow_text(),
                     ),
@@ -232,29 +220,22 @@ class PluginCatalogRepository:
                 )
                 else str(existing[0])
             )
-            next_required_level = (
-                required_level
-                if int(existing[1]) == 0 and required_level > 0
-                else int(existing[1])
-            )
             next_protection_mode = (
                 protection_mode
-                if str(existing[2]) == "normal" and protection_mode != "normal"
-                else str(existing[2])
+                if str(existing[1]) == "normal" and protection_mode != "normal"
+                else str(existing[1])
             )
             connection.execute(
                 """
                 UPDATE plugin_state
                 SET
                     access_mode = ?,
-                    required_level = ?,
                     protection_mode = ?,
                     updated_at = ?
                 WHERE plugin_id = ?
                 """,
                 (
                     next_access_mode,
-                    next_required_level,
                     next_protection_mode,
                     _utcnow_text(),
                     module_name,
@@ -266,13 +247,11 @@ class PluginCatalogRepository:
         module_name: str,
         *,
         access_mode: str | None = None,
-        required_level: int | None = None,
         protection_mode: str | None = None,
     ) -> None:
         self._update_plugin_policy_sync(
             module_name,
             access_mode,
-            required_level,
             protection_mode,
         )
 
@@ -280,7 +259,6 @@ class PluginCatalogRepository:
         self,
         module_name: str,
         access_mode: str | None,
-        required_level: int | None,
         protection_mode: str | None,
     ) -> None:
         existing = self._get_plugin_state_sync(module_name)
@@ -288,7 +266,6 @@ class PluginCatalogRepository:
             self._ensure_plugin_policy_sync(
                 module_name,
                 access_mode or "default_allow",
-                required_level or 0,
                 protection_mode or "normal",
             )
             return
@@ -297,18 +274,12 @@ class PluginCatalogRepository:
                 """
                 UPDATE plugin_state
                 SET access_mode = ?,
-                    required_level = ?,
                     protection_mode = ?,
                     updated_at = ?
                 WHERE plugin_id = ?
                 """,
                 (
                     access_mode if access_mode is not None else existing.access_mode,
-                    (
-                        required_level
-                        if required_level is not None
-                        else existing.required_level
-                    ),
                     (
                         protection_mode
                         if protection_mode is not None

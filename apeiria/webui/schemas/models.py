@@ -205,15 +205,5 @@ class PluginAccessModeUpdateRequest(BaseModel):
     access_mode: str = Field(min_length=1, max_length=16)
 
 
-class UserLevelItem(BaseModel):
-    user_id: str
-    group_id: str
-    level: int
-
-
-class UpdateLevelRequest(BaseModel):
-    level: int = Field(ge=0, le=4)
-
-
 class DataUpdateRequest(BaseModel):
     values: dict[str, object | None]

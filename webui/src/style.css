@@ -4508,7 +4508,6 @@
 .permission-perspective small,
 .permission-list-row span,
 .permission-rule-row span,
-.permission-level-row span,
 .permission-state-grid span,
 .permission-rule-card__line span,
 .permission-rule-card__header span,
@@ -4585,7 +4584,6 @@
 
 .permission-list-row strong,
 .permission-rule-row strong,
-.permission-level-row strong,
 .permission-rule-card__header strong,
 .permission-rule-card__line strong {
   min-width: 0;
@@ -4606,8 +4604,7 @@
   min-width: 190px;
 }
 
-.permission-select,
-.permission-level-select {
+.permission-select {
   width: 100%;
 }
 
@@ -4666,8 +4663,7 @@
   gap: 8px;
 }
 
-.permission-rule-row,
-.permission-level-row {
+.permission-rule-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 10px;
@@ -4677,13 +4673,11 @@
   border-bottom: 1px solid var(--border);
 }
 
-.permission-rule-row:last-child,
-.permission-level-row:last-child {
+.permission-rule-row:last-child {
   border-bottom: 0;
 }
 
-.permission-rule-row > div,
-.permission-level-row > div {
+.permission-rule-row > div {
   display: grid;
   min-width: 0;
   gap: 3px;

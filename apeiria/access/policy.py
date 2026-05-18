@@ -39,11 +39,6 @@ def resolve_explicit_rule(
     return None
 
 
-def effective_level(context: AccessContext, db_level: int) -> int:
-    """Return effective access level combining adapter and persisted level."""
-    return max(context.adapter_role_level, db_level)
-
-
 def _pick_rule(rules: list[AccessPolicyRule]) -> AccessPolicyRule:
     denied = [rule for rule in rules if rule.effect == "deny"]
     if denied:

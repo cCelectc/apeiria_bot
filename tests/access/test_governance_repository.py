@@ -11,9 +11,6 @@ if TYPE_CHECKING:
     from pytest import MonkeyPatch
 
 
-EXPECTED_LEVEL = 4
-
-
 def test_access_and_group_repositories_use_new_database(
     tmp_path: Path,
     monkeypatch: MonkeyPatch,
@@ -25,15 +22,6 @@ def test_access_and_group_repositories_use_new_database(
     database_runtime.ensure_ready()
 
     async def run() -> None:
-        await access_repository.set_user_level("user-1", "group-1", EXPECTED_LEVEL)
-        assert (
-            await access_repository.get_user_level("user-1", "group-1")
-            == EXPECTED_LEVEL
-        )
-        assert await access_repository.list_user_levels() == [
-            ("user-1", "group-1", EXPECTED_LEVEL)
-        ]
-
         await access_repository.upsert_access_rule(
             subject_type="group",
             subject_id="group-1",

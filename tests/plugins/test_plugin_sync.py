@@ -9,20 +9,19 @@ def test_plugin_sync_uses_sqlite_plugin_state_repository(monkeypatch: Any) -> No
     from apeiria.bot.hooks import plugin_sync
     from apeiria.plugins import protection, repository
 
-    calls: list[tuple[str, int, str]] = []
+    calls: list[tuple[str, str]] = []
 
     class FakeRepository:
         async def ensure_plugin_policy(
             self,
             module_name: str,
             *,
-            required_level: int = 0,
             protection_mode: str = "normal",
         ) -> None:
-            calls.append((module_name, required_level, protection_mode))
+            calls.append((module_name, protection_mode))
 
     plugin = object()
-    descriptor = SimpleNamespace(module_name="example.plugin", admin_level=3)
+    descriptor = SimpleNamespace(module_name="example.plugin")
 
     monkeypatch.setattr(plugin_sync.nonebot, "get_loaded_plugins", lambda: [plugin])
     monkeypatch.setattr(
@@ -39,4 +38,4 @@ def test_plugin_sync_uses_sqlite_plugin_state_repository(monkeypatch: Any) -> No
 
     asyncio.run(plugin_sync.sync_plugins())
 
-    assert calls == [("example.plugin", 3, "protected")]
+    assert calls == [("example.plugin", "protected")]

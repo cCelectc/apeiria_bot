@@ -8,18 +8,8 @@ export interface AccessRuleItem {
   note: string | null
 }
 
-export interface UserLevelItem {
-  user_id: string
-  group_id: string
-  level: number
-}
-
 export interface AccessRulesResponse {
   items: AccessRuleItem[]
-}
-
-export interface UserLevelsResponse {
-  items: UserLevelItem[]
 }
 
 export interface AccessRulePayload {
@@ -53,10 +43,6 @@ export function updatePluginAccessMode(moduleName: string, accessMode: string) {
   )
 }
 
-export function getUsers() {
-  return client.get<UserLevelItem[] | UserLevelsResponse>('/permissions/users')
-}
-
 export function normalizeAccessRulesResponse(data: unknown): AccessRuleItem[] {
   if (Array.isArray(data)) {
     return data as AccessRuleItem[]
@@ -65,22 +51,4 @@ export function normalizeAccessRulesResponse(data: unknown): AccessRuleItem[] {
     return (data as AccessRulesResponse).items
   }
   return []
-}
-
-export function normalizeUserLevelsResponse(data: unknown): UserLevelItem[] {
-  if (Array.isArray(data)) {
-    return data as UserLevelItem[]
-  }
-  if (data && typeof data === 'object' && Array.isArray((data as UserLevelsResponse).items)) {
-    return (data as UserLevelsResponse).items
-  }
-  return []
-}
-
-export function updateUserLevel(userId: string, groupId: string, level: number) {
-  return client.patch<{ status: string }>(
-    `/permissions/users/${encodeURIComponent(userId)}`,
-    { level },
-    { params: { group_id: groupId } },
-  )
 }

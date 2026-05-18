@@ -2,7 +2,7 @@ admin:
   meta:
     name: "主人管理"
     description: "主人专用的管理命令集：状态、插件、访问、任务、重启"
-    usage: "{prefix}admin - 查看总览\n{prefix}status | {prefix}sid - 查看运行与会话状态\n{prefix}plugins | {prefix}plugin info|enable|disable|configs <插件名> - 管理插件\n{prefix}config core|plugin ... - 查看配置摘要\n{prefix}access plugin|rule|remove|level ... - 管理访问控制\n{prefix}tasks | {prefix}task info|pause|resume <任务ID> - 管理任务\n{prefix}restart - 重启 Bot\n{prefix}adapters | {prefix}drivers - 查看运行环境"
+    usage: "{prefix}admin - 查看总览\n{prefix}status | {prefix}sid - 查看运行与会话状态\n{prefix}plugins | {prefix}plugin info|enable|disable|configs <插件名> - 管理插件\n{prefix}config core|plugin ... - 查看配置摘要\n{prefix}access plugin|rule|remove ... - 管理访问控制\n{prefix}tasks | {prefix}task info|pause|resume <任务ID> - 管理任务\n{prefix}restart - 重启 Bot\n{prefix}adapters | {prefix}drivers - 查看运行环境"
   command:
     admin: "查看主人管理总览"
     status: "查看当前 bot 运行状态摘要"
@@ -26,7 +26,7 @@ admin:
     command_plugins: "- {prefix}plugins"
     command_plugin: "- {prefix}plugin info|enable|disable|configs <插件名>"
     command_config: "- {prefix}config core|plugin ..."
-    command_access: "- {prefix}access plugin|rule|remove|level ..."
+    command_access: "- {prefix}access plugin|rule|remove ..."
     command_tasks: "- {prefix}tasks | {prefix}task info|pause|resume ..."
     command_restart: "- {prefix}restart"
   common:
@@ -59,8 +59,8 @@ admin:
     field_group: "群组 ID"
     field_session: "会话 ID"
     field_type: "会话类型"
-    group_footer: "给当前群加管理员时，使用 user_id={user_id} 与 group_id={group_id}"
-    private_footer: "当前不在群上下文；若要加群管理员，请先在目标群内执行本命令。当前 user_id={user_id}"
+    group_footer: "当前 user_id={user_id} group_id={group_id} 可用于访问规则"
+    private_footer: "当前不在群上下文；若要设置群访问规则，请先在目标群内执行本命令。当前 user_id={user_id}"
   adapters:
     title: "主人管理 · 适配器"
     summary: "已配置 {configured} 个适配器，运行中加载 {loaded} 个"
@@ -123,14 +123,12 @@ admin:
     source_plugin_section: "插件配置段"
     source_builtin: "内建配置"
   access:
-    invalid_action: "访问控制命令只支持 plugin、rule、remove、level"
+    invalid_action: "访问控制命令只支持 plugin、rule、remove"
     plugin_usage: "用法：{prefix}access plugin <插件名>"
     rule_usage: "用法：{prefix}access rule <allow|deny> <user|group> <主体ID> <插件名>"
     remove_usage: "用法：{prefix}access remove <user|group> <主体ID> <插件名>"
-    level_usage: "用法：{prefix}access level <用户ID> <群ID> <等级>"
     plugin_title: "主人管理 · 插件访问 · {name}"
     field_access_mode: "默认准入"
-    field_required_level: "最低等级"
     field_user_allow: "用户允许"
     field_user_deny: "用户拒绝"
     field_group_allow: "群组允许"
@@ -140,7 +138,6 @@ admin:
     rule_updated: "已更新规则：{effect} {subject_type} {subject_id} -> {plugin}"
     rule_removed: "已删除规则：{subject_type} {subject_id} -> {plugin}"
     rule_not_found: "未找到对应规则"
-    level_updated: "已设置等级：user={user_id} group={group_id} level={level}"
   restart:
     scheduled: "已安排重启，Bot 即将重新拉起"
   tasks:

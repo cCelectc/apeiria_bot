@@ -40,11 +40,6 @@ class ApeiriaControlPlane:
 
         return plugin_management_service.can_package_update(plugin)
 
-    async def list_access_user_levels(self) -> list[tuple[str, str, int]]:
-        from apeiria.app.access.management import access_management_service
-
-        return await access_management_service.list_user_levels()
-
     async def list_access_rules(self) -> list[Any]:
         from apeiria.app.access.management import access_management_service
 

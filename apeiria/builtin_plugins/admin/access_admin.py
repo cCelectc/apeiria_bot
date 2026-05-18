@@ -73,17 +73,6 @@ async def handle_access(  # noqa: PLR0913
             )
         )
 
-    if selected_action == "level":
-        if not (arg1.available and arg2.available and arg3.available):
-            await _access.finish(t("admin.access.level_usage"))
-        await _access.finish(
-            await _set_level(
-                user_id=arg1.result,
-                group_id=arg2.result,
-                level=arg3.result,
-            )
-        )
-
     await _access.finish(t("admin.access.invalid_action"))
 
 
@@ -113,7 +102,6 @@ async def _render_plugin_access(plugin_query: str) -> str:
             (t("admin.plugin.field_module"), module_name),
             (t("admin.plugin.field_kind"), item.governance_state.kind),
             (t("admin.access.field_access_mode"), summary.access_mode),
-            (t("admin.access.field_required_level"), summary.required_level),
             (t("admin.access.field_user_allow"), summary.user_allow_count),
             (t("admin.access.field_user_deny"), summary.user_deny_count),
             (t("admin.access.field_group_allow"), summary.group_allow_count),
@@ -211,30 +199,4 @@ async def _delete_rule(
         subject_type=normalized_subject_type,
         subject_id=subject_id.strip(),
         plugin=item.descriptor.name,
-    )
-
-
-async def _set_level(
-    *,
-    user_id: str,
-    group_id: str,
-    level: str,
-) -> str:
-    try:
-        parsed_level = int(level)
-    except ValueError:
-        return t("admin.access.level_usage")
-    if parsed_level < 0:
-        return t("admin.access.level_usage")
-
-    await access_management_service.set_user_level(
-        user_id.strip(),
-        group_id.strip(),
-        parsed_level,
-    )
-    return t(
-        "admin.access.level_updated",
-        user_id=user_id.strip(),
-        group_id=group_id.strip(),
-        level=parsed_level,
     )

@@ -1,25 +1,17 @@
-import type { AccessRuleItem, UserLevelItem } from '@/api/access'
+import type { AccessRuleItem } from '@/api/access'
 import type { PluginItem } from '@/api/plugins'
 
-export type PermissionPerspective = 'plugins' | 'users' | 'rules'
+export type PermissionPerspective = 'plugins' | 'rules'
 export type RuleEffectFilter = '__all__' | 'allow' | 'deny'
-
-export interface UserPermissionEntry {
-  user_id: string
-  groups: number
-  rules: number
-}
 
 export const permissionPerspectives: PermissionPerspective[] = [
   'plugins',
-  'users',
   'rules',
 ]
 
 export const subjectTypeValues = ['user', 'group'] as const
 export const effectValues = ['allow', 'deny'] as const
 export const accessModeValues = ['default_allow', 'default_deny'] as const
-export const userLevelValues = [0, 1, 2, 3, 4] as const
 
 export function normalizePermissionPerspective(
   value: unknown,
@@ -90,41 +82,4 @@ export function filteredRules(
     const matchEffect = options.effect === '__all__' || item.effect === options.effect
     return matchKeyword && matchEffect
   })
-}
-
-export function userEntries(
-  users: UserLevelItem[],
-  rules: AccessRuleItem[],
-): UserPermissionEntry[] {
-  const ids = new Set<string>()
-  for (const item of users) {
-    if (item.user_id) {
-      ids.add(item.user_id)
-    }
-  }
-  for (const item of rules) {
-    if (item.subject_type === 'user' && item.subject_id) {
-      ids.add(item.subject_id)
-    }
-  }
-  return [...ids]
-    .sort((left, right) => left.localeCompare(right))
-    .map(userId => ({
-      user_id: userId,
-      groups: users.filter(item => item.user_id === userId).length,
-      rules: rules.filter(
-        item => item.subject_type === 'user' && item.subject_id === userId,
-      ).length,
-    }))
-}
-
-export function visibleUserEntries(
-  entries: UserPermissionEntry[],
-  search: string,
-) {
-  const keyword = search.trim().toLowerCase()
-  if (!keyword) {
-    return entries
-  }
-  return entries.filter(item => item.user_id.toLowerCase().includes(keyword))
 }

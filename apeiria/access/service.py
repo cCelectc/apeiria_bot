@@ -4,23 +4,14 @@ from __future__ import annotations
 
 from apeiria.access.context import build_access_context
 from apeiria.access.models import AccessContext, AccessPolicyRule
-from apeiria.access.policy import effective_level, resolve_explicit_rule
+from apeiria.access.policy import resolve_explicit_rule
 from apeiria.access.repository import access_repository
 
 
 class AccessService:
-    """Facade for access context, group state, levels, and explicit rules."""
+    """Facade for access context, group state, and explicit rules."""
 
     build_context = staticmethod(build_access_context)
-
-    async def get_user_level(self, user_id: str, group_id: str) -> int:
-        return await access_repository.get_user_level(user_id, group_id)
-
-    async def list_user_levels(self) -> list[tuple[str, str, int]]:
-        return await access_repository.list_user_levels()
-
-    async def set_user_level(self, user_id: str, group_id: str, level: int) -> None:
-        await access_repository.set_user_level(user_id, group_id, level)
 
     async def is_group_bot_enabled(self, group_id: str) -> bool:
         return await access_repository.get_group_bot_enabled(group_id)
@@ -50,12 +41,6 @@ class AccessService:
             for row in rows
         ]
         return resolve_explicit_rule(context, plugin_module, rules)
-
-    async def get_effective_level(self, context: AccessContext) -> int:
-        if context.group_id is None:
-            return context.adapter_role_level
-        db_level = await self.get_user_level(context.user_id, context.group_id)
-        return effective_level(context, db_level)
 
     async def list_access_rules(self) -> list[AccessPolicyRule]:
         rows = await access_repository.list_access_rules()

@@ -23,13 +23,11 @@ class PluginPolicyService:
             return PluginPolicy(
                 plugin_module=module_name,
                 access_mode="default_allow",
-                required_level=0,
                 protection_mode=get_default_protection_mode(module_name),  # type: ignore[arg-type]
             )
         return PluginPolicy(
             plugin_module=module_name,
             access_mode=policy.access_mode,  # type: ignore[arg-type]
-            required_level=policy.required_level,
             protection_mode=policy.protection_mode,  # type: ignore[arg-type]
         )
 
@@ -43,12 +41,10 @@ class PluginPolicyService:
         module_name: str,
         *,
         access_mode: str = "default_allow",
-        required_level: int = 0,
     ) -> None:
         await plugin_catalog_repository.ensure_plugin_policy(
             module_name,
             access_mode=access_mode,
-            required_level=required_level,
             protection_mode=get_default_protection_mode(module_name),
         )
 

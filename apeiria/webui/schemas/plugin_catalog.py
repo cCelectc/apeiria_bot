@@ -28,7 +28,6 @@ class PluginItem(BaseModel):
     is_protected: bool = False
     protected_reason: str | None = None
     plugin_type: str = "normal"
-    admin_level: int = 0
     author: str | None = None
     version: str | None = None
     is_loaded: bool = True
@@ -119,7 +118,6 @@ def to_plugin_item_response(
         is_protected=plugin.governance_state.is_protected,
         protected_reason=plugin.governance_state.protected_reason,
         plugin_type=plugin.descriptor.plugin_type,
-        admin_level=plugin.descriptor.admin_level,
         author=plugin.descriptor.author,
         version=plugin.descriptor.version,
         is_loaded=plugin.runtime_state.is_loaded,

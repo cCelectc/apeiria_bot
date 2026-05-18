@@ -11,9 +11,6 @@ if TYPE_CHECKING:
     from pytest import MonkeyPatch
 
 
-REQUIRED_LEVEL = 3
-
-
 def test_plugin_repository_persists_enabled_state_and_policy(
     tmp_path: Path,
     monkeypatch: MonkeyPatch,
@@ -43,7 +40,6 @@ def test_plugin_repository_persists_enabled_state_and_policy(
         await plugin_catalog_repository.ensure_plugin_policy(
             "plugins.alpha",
             access_mode="default_deny",
-            required_level=REQUIRED_LEVEL,
             protection_mode="required",
         )
         policy = await plugin_catalog_repository.get_plugin_policy("plugins.alpha")
@@ -53,7 +49,6 @@ def test_plugin_repository_persists_enabled_state_and_policy(
         assert policy is not None
         assert policy.plugin_module == "plugins.alpha"
         assert policy.access_mode == "default_deny"
-        assert policy.required_level == REQUIRED_LEVEL
         assert policy.protection_mode == "required"
         assert enabled_map == {"plugins.alpha": False}
         assert info_map["plugins.alpha"].module_name == "plugins.alpha"

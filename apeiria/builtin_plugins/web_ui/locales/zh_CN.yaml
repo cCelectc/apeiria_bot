@@ -39,7 +39,6 @@ web_ui:
     fields_not_editable: "以下字段不可编辑：{fields}"
     table_users: "用户"
     table_groups: "群组"
-    table_levels: "用户等级"
     table_access_rules: "访问规则"
     table_plugins: "插件"
     table_plugin_policies: "插件策略"

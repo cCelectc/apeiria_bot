@@ -22,7 +22,6 @@ help:
   view_owner: "Owner View"
   detail_view: "View"
   detail_type: "Type"
-  detail_permission: "Permission"
   detail_source: "Source"
   detail_category: "Category"
   detail_description: "Description"

@@ -57,7 +57,6 @@ class PluginHelpInfo:
     description: str
     usage: str
     plugin_type: str
-    admin_level: int
     version: str
     source: str
     icon_url: str
@@ -185,7 +184,6 @@ def _discover_plugins(
             continue
         if extra and not _plugin_visible_in_role(
             extra.plugin_type,
-            extra.admin_level,
             role,
         ):
             continue
@@ -206,7 +204,6 @@ def _discover_plugins(
             description=meta.description or "",
             usage=meta.usage or "",
             plugin_type=extra.plugin_type.value if extra else "normal",
-            admin_level=extra.admin_level if extra else 0,
             version=extra.version if extra else "",
             source=source,
             icon_url=icon_url,
@@ -300,7 +297,7 @@ def _extract_alconna_matcher_command(
         description=description,
         aliases=aliases,
         usage=usage,
-        admin_only=plugin.admin_level > 0,
+        admin_only=plugin.plugin_type == PluginType.SUPERUSER.value,
     )
 
 
@@ -321,7 +318,7 @@ def _extract_standard_matcher_command(
         name=display_name,
         aliases=aliases,
         usage=prefix + display_name,
-        admin_only=plugin.admin_level > 0,
+        admin_only=plugin.plugin_type == PluginType.SUPERUSER.value,
     )
 
 
@@ -427,7 +424,6 @@ def _apply_overrides(
                 description="",
                 usage="",
                 plugin_type="custom",
-                admin_level=0,
                 version="",
                 source="custom",
                 icon_url=find_plugin_icon(None, seed=module_name),
@@ -462,14 +458,13 @@ def _apply_overrides(
 
 def _plugin_visible_in_role(
     plugin_type: PluginType,
-    admin_level: int,
     role: HelpViewRole,
 ) -> bool:
     if role == "owner":
         return True
     if role == "admin":
         return plugin_type == PluginType.NORMAL
-    return plugin_type == PluginType.NORMAL and admin_level <= 0
+    return plugin_type == PluginType.NORMAL
 
 
 def _parse_pipe_command(raw: str) -> CommandHelpInfo | None:
