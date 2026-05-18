@@ -833,7 +833,7 @@ watch(sourceCapabilityTab, () => {
 
                 <div class="ai-provider-switches">
                   <label>
-                    <Switch v-model:checked="sourceForm.enabled" :disabled="savingSource" />
+                    <Switch v-model="sourceForm.enabled" :disabled="savingSource" />
                     <span>{{ t('ai.sourceEnabled') }}</span>
                   </label>
                   <span v-if="providerSaveDisabledReason" class="ai-disabled-reason">
@@ -1048,11 +1048,11 @@ watch(sourceCapabilityTab, () => {
 
                 <div class="ai-provider-switches">
                   <label>
-                    <Switch v-model:checked="modelForm.enabled" :disabled="savingModel" />
+                    <Switch v-model="modelForm.enabled" :disabled="savingModel" />
                     <span>{{ t('ai.modelEnabled') }}</span>
                   </label>
                   <label>
-                    <Switch v-model:checked="modelForm.is_default" :disabled="savingModel" />
+                    <Switch v-model="modelForm.is_default" :disabled="savingModel" />
                     <span>{{ t('ai.modelDefault') }}</span>
                   </label>
                 </div>
@@ -1221,7 +1221,7 @@ watch(sourceCapabilityTab, () => {
                     </Select>
                   </FormField>
                   <label class="ai-switch-field">
-                    <Switch v-model:checked="profileForm.enabled" :disabled="savingProfile" />
+                    <Switch v-model="profileForm.enabled" :disabled="savingProfile" />
                     <span>{{ t('ai.modelProfileEnabled') }}</span>
                   </label>
                 </div>

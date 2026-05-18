@@ -27,6 +27,14 @@ class ApeiriaControlPlane:
 
         return await plugin_management_service.list_plugins()
 
+    async def get_plugin_workbench(self) -> Any:
+        from apeiria.app.plugins.management import plugin_management_service
+
+        return await plugin_management_service.build_plugin_workbench(
+            plugins=await self.list_plugin_catalog_entries(),
+            can_package_update=self.can_plugin_package_update,
+        )
+
     def can_plugin_package_update(self, plugin: Any) -> bool:
         from apeiria.app.plugins.management import plugin_management_service
 

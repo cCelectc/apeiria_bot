@@ -4,15 +4,11 @@ from __future__ import annotations
 
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 
 from apeiria.app.plugins.management import plugin_management_service
 from apeiria.webui.auth import require_control_panel
 from apeiria.webui.schemas.plugin_config import (
-    AdapterConfigRequest,
-    AdapterConfigResponse,
-    DriverConfigRequest,
-    DriverConfigResponse,
     PluginConfigRequest,
     PluginConfigResponse,
     PluginRawSettingsResponse,
@@ -21,8 +17,6 @@ from apeiria.webui.schemas.plugin_config import (
     PluginSettingsResponse,
     PluginSettingsUpdateRequest,
     run_settings_action,
-    to_adapter_config_response,
-    to_driver_config_response,
     to_plugin_config_response,
     to_plugin_raw_settings_response,
     to_plugin_settings_response,
@@ -30,51 +24,25 @@ from apeiria.webui.schemas.plugin_config import (
 )
 
 router = APIRouter()
+_RESERVED_PLUGIN_MODULE_PATH_SEGMENTS = frozenset(
+    {"core", "adapters", "drivers", "config"}
+)
 
 
-@router.get("/adapters/config", response_model=AdapterConfigResponse)
-async def get_adapter_config(
-    _: Annotated[Any, Depends(require_control_panel)],
-) -> AdapterConfigResponse:
-    return to_adapter_config_response(plugin_management_service.get_adapter_config())
+def _ensure_plugin_settings_module_name(module_name: str) -> None:
+    if module_name in _RESERVED_PLUGIN_MODULE_PATH_SEGMENTS:
+        raise HTTPException(status_code=404, detail="plugin settings not found")
 
 
-@router.patch("/adapters/config", response_model=AdapterConfigResponse)
-async def update_adapter_config(
-    payload: AdapterConfigRequest,
-    _: Annotated[Any, Depends(require_control_panel)],
-) -> AdapterConfigResponse:
-    return to_adapter_config_response(
-        plugin_management_service.update_adapter_config(payload.modules)
-    )
-
-
-@router.get("/drivers/config", response_model=DriverConfigResponse)
-async def get_driver_config(
-    _: Annotated[Any, Depends(require_control_panel)],
-) -> DriverConfigResponse:
-    return to_driver_config_response(plugin_management_service.get_driver_config())
-
-
-@router.patch("/drivers/config", response_model=DriverConfigResponse)
-async def update_driver_config(
-    payload: DriverConfigRequest,
-    _: Annotated[Any, Depends(require_control_panel)],
-) -> DriverConfigResponse:
-    return to_driver_config_response(
-        plugin_management_service.update_driver_config(payload.builtin)
-    )
-
-
-@router.get("/config", response_model=PluginConfigResponse)
-async def get_plugin_config(
+@router.get("/local-sources", response_model=PluginConfigResponse)
+async def get_plugin_local_sources(
     _: Annotated[Any, Depends(require_control_panel)],
 ) -> PluginConfigResponse:
     return to_plugin_config_response(plugin_management_service.get_plugin_config())
 
 
-@router.patch("/config", response_model=PluginConfigResponse)
-async def update_plugin_config(
+@router.patch("/local-sources", response_model=PluginConfigResponse)
+async def update_plugin_local_sources(
     payload: PluginConfigRequest,
     _: Annotated[Any, Depends(require_control_panel)],
 ) -> PluginConfigResponse:
@@ -86,63 +54,12 @@ async def update_plugin_config(
     )
 
 
-@router.get("/core/settings", response_model=PluginSettingsResponse)
-async def get_core_settings(
-    _: Annotated[Any, Depends(require_control_panel)],
-) -> PluginSettingsResponse:
-    return to_plugin_settings_response(plugin_management_service.get_core_view())
-
-
-@router.get("/core/settings/raw", response_model=PluginRawSettingsResponse)
-async def get_core_settings_raw(
-    _: Annotated[Any, Depends(require_control_panel)],
-) -> PluginRawSettingsResponse:
-    return to_plugin_raw_settings_response(plugin_management_service.get_core_text())
-
-
-@router.patch("/core/settings", response_model=PluginSettingsResponse)
-async def update_core_settings(
-    payload: PluginSettingsUpdateRequest,
-    _: Annotated[Any, Depends(require_control_panel)],
-) -> PluginSettingsResponse:
-    state = run_settings_action(
-        plugin_management_service.update_core_view,
-        payload.values,
-        payload.clear,
-    )
-    return to_plugin_settings_response(state)
-
-
-@router.patch("/core/settings/raw", response_model=PluginRawSettingsResponse)
-async def update_core_settings_raw(
-    payload: PluginSettingsRawUpdateRequest,
-    _: Annotated[Any, Depends(require_control_panel)],
-) -> PluginRawSettingsResponse:
-    state = run_settings_action(
-        plugin_management_service.update_core_text,
-        payload.text,
-    )
-    return to_plugin_raw_settings_response(state)
-
-
-@router.post(
-    "/core/settings/raw/validate",
-    response_model=PluginSettingsRawValidationResponse,
-)
-async def validate_core_settings_raw(
-    payload: PluginSettingsRawUpdateRequest,
-    _: Annotated[Any, Depends(require_control_panel)],
-) -> PluginSettingsRawValidationResponse:
-    return to_raw_validation_response(
-        plugin_management_service.validate_core_text(payload.text)
-    )
-
-
 @router.get("/{module_name}/settings", response_model=PluginSettingsResponse)
 async def get_plugin_settings(
     module_name: str,
     _: Annotated[Any, Depends(require_control_panel)],
 ) -> PluginSettingsResponse:
+    _ensure_plugin_settings_module_name(module_name)
     state = run_settings_action(plugin_management_service.get_plugin_view, module_name)
     return to_plugin_settings_response(state)
 
@@ -152,6 +69,7 @@ async def get_plugin_settings_raw(
     module_name: str,
     _: Annotated[Any, Depends(require_control_panel)],
 ) -> PluginRawSettingsResponse:
+    _ensure_plugin_settings_module_name(module_name)
     state = run_settings_action(plugin_management_service.get_plugin_text, module_name)
     return to_plugin_raw_settings_response(state)
 
@@ -162,6 +80,7 @@ async def update_plugin_settings(
     payload: PluginSettingsUpdateRequest,
     _: Annotated[Any, Depends(require_control_panel)],
 ) -> PluginSettingsResponse:
+    _ensure_plugin_settings_module_name(module_name)
     state = run_settings_action(
         plugin_management_service.update_plugin_view,
         module_name,
@@ -177,6 +96,7 @@ async def update_plugin_settings_raw(
     payload: PluginSettingsRawUpdateRequest,
     _: Annotated[Any, Depends(require_control_panel)],
 ) -> PluginRawSettingsResponse:
+    _ensure_plugin_settings_module_name(module_name)
     state = run_settings_action(
         plugin_management_service.update_plugin_text,
         module_name,
@@ -194,6 +114,7 @@ async def validate_plugin_settings_raw(
     payload: PluginSettingsRawUpdateRequest,
     _: Annotated[Any, Depends(require_control_panel)],
 ) -> PluginSettingsRawValidationResponse:
+    _ensure_plugin_settings_module_name(module_name)
     state = run_settings_action(
         plugin_management_service.validate_plugin_text,
         module_name,

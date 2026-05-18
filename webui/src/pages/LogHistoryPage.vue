@@ -456,7 +456,7 @@ onBeforeUnmount(() => {
         </div>
 
         <label class="logs-switch">
-          <Switch v-model:checked="showAccessLogs" />
+          <Switch v-model="showAccessLogs" />
           <span>{{ t('logs.showAccessLogs') }}</span>
         </label>
       </div>

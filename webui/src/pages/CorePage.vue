@@ -587,8 +587,11 @@ onMounted(() => {
                       class="settings-field-editor__switch"
                     >
                       <Switch
-                        v-model:checked="coreEditor.form.value[field.key]"
                         :disabled="!coreEditor.isFieldEditing(field)"
+                        :model-value="Boolean(coreEditor.form.value[field.key])"
+                        @update:model-value="value => {
+                          coreEditor.form.value[field.key] = Boolean(value)
+                        }"
                       />
                       <span>{{ coreEditor.form.value[field.key] ? t('ai.enabled') : t('ai.disabled') }}</span>
                     </label>

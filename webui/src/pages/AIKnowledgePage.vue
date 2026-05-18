@@ -144,9 +144,9 @@ onMounted(() => {
       <div class="ai-data-switch-inline">
         <span>{{ t('ai.knowledgeRagEnabled') }}</span>
         <Switch
-          :checked="state.rag_enabled"
           :disabled="stateSaving"
-          @update:checked="handleRagToggle"
+          :model-value="state.rag_enabled"
+          @update:model-value="value => handleRagToggle(Boolean(value))"
         />
       </div>
       <Button :disabled="loadingKnowledge" variant="secondary" @click="loadData">

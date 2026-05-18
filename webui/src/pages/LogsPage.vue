@@ -293,12 +293,12 @@ onUnmounted(disconnect)
         </div>
 
         <label class="logs-switch">
-          <Switch v-model:checked="autoScroll" />
+          <Switch v-model="autoScroll" />
           <span>{{ t('logs.autoScroll') }}</span>
         </label>
 
         <label class="logs-switch">
-          <Switch v-model:checked="showAccessLogs" />
+          <Switch v-model="showAccessLogs" />
           <span>{{ t('logs.showAccessLogs') }}</span>
         </label>
       </div>

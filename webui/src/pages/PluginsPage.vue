@@ -657,9 +657,9 @@ onMounted(() => {
             :title="pluginToggleHint(item, (key, params) => t(key, params || {}))"
           >
             <Switch
-              :checked="item.is_global_enabled"
               :disabled="!item.can_enable_disable || item.is_protected || item.is_pending_uninstall || pendingModule === item.module_name"
-              @update:checked="(value: boolean) => handleToggleChecked(item, value)"
+              :model-value="item.is_global_enabled"
+              @update:model-value="value => handleToggleChecked(item, Boolean(value))"
             />
           </label>
         </div>
@@ -954,8 +954,11 @@ onMounted(() => {
                         class="settings-field-editor__switch"
                       >
                         <Switch
-                          v-model:checked="pluginSettings.settingsForm.value[field.key]"
                           :disabled="!pluginSettings.pluginEditor.isFieldEditing(field)"
+                          :model-value="Boolean(pluginSettings.settingsForm.value[field.key])"
+                          @update:model-value="value => {
+                            pluginSettings.settingsForm.value[field.key] = Boolean(value)
+                          }"
                         />
                         <span>
                           {{

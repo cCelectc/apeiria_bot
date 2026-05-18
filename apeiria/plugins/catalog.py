@@ -298,12 +298,10 @@ class PluginGovernanceService:
             context.package_bindings,
             context.top_level_packages,
         )
-        protected_reason = self._compose_protection_reason(
-            plugin.module_name,
-            facts.dependent_plugins,
-        )
+        protected_reason = self._compose_protection_reason(plugin.module_name)
         can_enable_disable = (
             plugin.module_name not in context.pending_uninstall_modules
+            and protected_reason is None
             and not is_framework_dependency_plugin_module(plugin.module_name)
         )
         uninstall_block_reason = self._get_uninstall_block_reason(plugin.module_name)
@@ -370,10 +368,7 @@ class PluginGovernanceService:
             context.package_bindings,
             context.top_level_packages,
         )
-        protected_reason = self._compose_protection_reason(
-            module_name,
-            facts.dependent_plugins,
-        )
+        protected_reason = self._compose_protection_reason(module_name)
         is_importable = is_module_importable(module_name)
         can_enable_disable = (
             is_importable
@@ -435,19 +430,8 @@ class PluginGovernanceService:
             ui_order=99,
         )
 
-    def _compose_protection_reason(
-        self,
-        module_name: str,
-        dependent_plugins: list[str],
-    ) -> str | None:
+    def _compose_protection_reason(self, module_name: str) -> str | None:
         reasons = self._collect_core_block_reasons(module_name)
-        if dependent_plugins:
-            reasons.append(
-                t(
-                    "common.required_by_plugins",
-                    plugins=", ".join(dependent_plugins),
-                )
-            )
         return "；".join(reasons) if reasons else None
 
     def _get_uninstall_block_reason(self, module_name: str) -> str | None:

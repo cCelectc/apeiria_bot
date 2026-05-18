@@ -42,11 +42,42 @@ class PluginWorkspaceState:
     settings: "ConfigView | None" = None
 
 
+@dataclass(frozen=True, slots=True)
+class PluginWorkbenchState:
+    plugin_rows: list[tuple["PluginCatalogEntry", bool]]
+    orphan_config_count: int = 0
+    active_package_task: object | None = None
+
+
 class PluginManagementService:
     """Compose plugin governance and settings for owner-facing surfaces."""
 
     async def list_plugins(self) -> list["PluginCatalogEntry"]:
         return await plugin_governance_service.list_plugins()
+
+    async def build_plugin_workbench(
+        self,
+        *,
+        plugins: list["PluginCatalogEntry"] | None = None,
+        can_package_update: object | None = None,
+    ) -> PluginWorkbenchState:
+        from apeiria.app.plugins.store.tasks import plugin_store_task_service
+
+        plugin_items = plugins if plugins is not None else await self.list_plugins()
+        can_update = (
+            can_package_update
+            if callable(can_package_update)
+            else self.can_package_update
+        )
+        orphan_configs = await self.list_orphan_plugin_configs()
+        return PluginWorkbenchState(
+            plugin_rows=[
+                (plugin, bool(can_update(plugin)))  # type: ignore[misc]
+                for plugin in plugin_items
+            ],
+            orphan_config_count=len(orphan_configs),
+            active_package_task=plugin_store_task_service.get_active_task(),
+        )
 
     async def get_plugin(self, module_name: str) -> "PluginCatalogEntry | None":
         return await plugin_governance_service.get_plugin(module_name)
@@ -235,6 +266,7 @@ plugin_management_service = PluginManagementService()
 
 __all__ = [
     "PluginManagementService",
+    "PluginWorkbenchState",
     "PluginWorkspaceState",
     "plugin_management_service",
 ]

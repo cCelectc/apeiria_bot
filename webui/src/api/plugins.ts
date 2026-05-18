@@ -36,10 +36,88 @@ export interface PluginItem {
   installed_module_names: string[]
 }
 
+export type PluginEffectiveState =
+  | 'active'
+  | 'execution_blocked'
+  | 'disabled'
+  | 'not_loaded'
+  | 'pending_uninstall'
+
+export interface PluginWorkbenchPolicyState {
+  enabled: boolean
+  can_change: boolean
+  locked_reason: string | null
+}
+
+export interface PluginWorkbenchRuntimeState {
+  loaded: boolean
+  execution_blocked: boolean
+}
+
+export interface PluginWorkbenchStartupState {
+  will_load: boolean
+  requires_restart_to_apply_fully: boolean
+}
+
+export interface PluginWorkbenchCapabilities {
+  can_edit_settings: boolean
+  can_view_readme: boolean
+  can_enable_disable: boolean
+  can_uninstall: boolean
+  can_update_package: boolean
+}
+
+export interface PluginWorkbenchItem extends PluginItem {
+  display_name: string
+  policy: PluginWorkbenchPolicyState
+  runtime: PluginWorkbenchRuntimeState
+  startup: PluginWorkbenchStartupState
+  effective_state: PluginEffectiveState
+  capabilities: PluginWorkbenchCapabilities
+}
+
+export interface PluginWorkbenchSummary {
+  total: number
+  enabled: number
+  disabled: number
+  blocked: number
+  not_loaded: number
+  pending_restart: number
+  protected: number
+}
+
+export interface PluginWorkbenchMaintenance {
+  orphan_config_count: number
+  active_package_task: {
+    task_id: string
+    title: string
+    status: string
+    operation: string | null
+    resource_kind: string | null
+  } | null
+}
+
+export interface PluginWorkbenchResponse {
+  plugins: PluginWorkbenchItem[]
+  summary: PluginWorkbenchSummary
+  maintenance: PluginWorkbenchMaintenance
+}
+
 export interface PluginToggleResult {
   module_name: string
   enabled: boolean
   affected_modules: string[]
+}
+
+export interface PluginPolicyUpdateResult {
+  module_name: string
+  policy: {
+    enabled: boolean
+  }
+  affected_modules: string[]
+  runtime_effect: string
+  startup_effect: string
+  restart_required: boolean
 }
 
 export interface PluginTogglePreview {
@@ -104,6 +182,45 @@ export interface PluginStoreTask {
   restart_required: boolean
   steps: PackageTaskStep[]
   diagnostics: PackageTaskDiagnostic[]
+}
+
+export type PluginInstallSourceKind = 'store_item' | 'requirement' | 'local_path'
+export type PluginInstallResolutionStatus =
+  | 'resolved'
+  | 'ambiguous'
+  | 'unresolved'
+  | 'invalid'
+  | 'installed'
+
+export interface PluginInstallSource {
+  kind: PluginInstallSourceKind
+  value?: string | null
+  source_id?: string | null
+  item_id?: string | null
+}
+
+export interface PluginInstallCandidate {
+  module_name: string
+  kind: 'module' | 'directory'
+  confidence: 'high' | 'medium' | 'low'
+  reason: string
+  already_registered: boolean
+  already_loaded: boolean
+}
+
+export interface PluginInstallAction {
+  kind: 'install_package' | 'register_local_module' | 'register_local_directory'
+  requirement?: string | null
+  module_name?: string | null
+  path?: string | null
+}
+
+export interface PluginInstallResolution {
+  source: PluginInstallSource
+  status: PluginInstallResolutionStatus
+  candidates: PluginInstallCandidate[]
+  default_action: PluginInstallAction | null
+  warnings: string[]
 }
 
 export interface PackageTaskStep {
@@ -180,6 +297,10 @@ export function getPlugins() {
   return client.get<PluginItem[] | PluginsResponse>('/plugins/')
 }
 
+export function getPluginWorkbench() {
+  return client.get<PluginWorkbenchResponse>('/plugins/workbench')
+}
+
 export function normalizePluginsResponse(data: unknown): PluginItem[] {
   if (Array.isArray(data)) {
     return data as PluginItem[]
@@ -212,6 +333,19 @@ export function installManualPlugin(payload: {
   module_name?: string
 }) {
   return client.post<PluginStoreTask>('/plugins/install/manual', payload)
+}
+
+export function resolvePluginInstallSource(payload: {
+  source: PluginInstallSource
+}) {
+  return client.post<PluginInstallResolution>('/plugins/install/resolve', payload)
+}
+
+export function confirmPluginInstall(payload: {
+  source: PluginInstallSource
+  action: PluginInstallAction
+}) {
+  return client.post<PluginStoreTask>('/plugins/install/confirm', payload)
 }
 
 export function getPluginInstallTask(taskId: string) {
@@ -340,9 +474,10 @@ export function updatePlugin(
   enabled: boolean,
   cascade = false,
 ) {
-  return client.patch<PluginToggleResult>(`/plugins/${moduleName}`, null, {
-    params: { enabled, cascade },
-  })
+  return client.patch<PluginPolicyUpdateResult>(
+    `/plugins/${moduleName}/policy`,
+    { enabled, cascade },
+  )
 }
 
 export function getPluginTogglePreview(moduleName: string, enabled: boolean) {

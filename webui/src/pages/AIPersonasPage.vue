@@ -226,7 +226,7 @@ onMounted(() => {
               <strong>{{ t('ai.personaEnabled') }}</strong>
               <span>{{ personaForm.enabled ? t('ai.enabled') : t('ai.disabled') }}</span>
             </div>
-            <Switch v-model:checked="personaForm.enabled" :disabled="savingPersona" />
+            <Switch v-model="personaForm.enabled" :disabled="savingPersona" />
           </div>
 
           <div class="ai-data-actions">

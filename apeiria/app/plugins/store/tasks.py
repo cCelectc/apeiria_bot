@@ -106,6 +106,17 @@ class PluginStoreTaskService:
     def get_task(self, task_id: str) -> StoreTask | None:
         return self._tasks.get(task_id)
 
+    def get_active_task(self) -> StoreTask | None:
+        if self._running_task_id is not None:
+            task = self._tasks.get(self._running_task_id)
+            if task is not None and task.status in {"queued", "pending", "running"}:
+                return task
+        for task_id, _ in self._queue:
+            task = self._tasks.get(task_id)
+            if task is not None and task.status in {"queued", "pending", "running"}:
+                return task
+        return None
+
     async def create_plugin_install_task(
         self,
         request: StoreInstallRequest,

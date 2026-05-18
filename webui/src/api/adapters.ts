@@ -98,12 +98,12 @@ export interface AdapterTaskDiagnostic {
 }
 
 export function getAdapterConfig() {
-  return client.get<{ modules: AdapterConfigItem[] }>('/plugins/adapters/config')
+  return client.get<{ modules: AdapterConfigItem[] }>('/adapters/config')
 }
 
 export function updateAdapterConfig(payload: { modules: string[] }) {
   return client.patch<{ modules: AdapterConfigItem[] }>(
-    '/plugins/adapters/config',
+    '/adapters/config',
     payload,
   )
 }

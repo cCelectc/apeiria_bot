@@ -23,27 +23,27 @@ export interface DriverConfigItem {
 }
 
 export function getCoreSettings() {
-  return client.get<SettingsResponse>('/plugins/core/settings')
+  return client.get<SettingsResponse>('/core/settings')
 }
 
 export function getCoreSettingsRaw() {
-  return client.get<RawSettingsResponse>('/plugins/core/settings/raw')
+  return client.get<RawSettingsResponse>('/core/settings/raw')
 }
 
 export function updateCoreSettings(payload: {
   values: Record<string, unknown>
   clear?: string[]
 }) {
-  return client.patch<SettingsResponse>('/plugins/core/settings', payload)
+  return client.patch<SettingsResponse>('/core/settings', payload)
 }
 
 export function updateCoreSettingsRaw(payload: { text: string }) {
-  return client.patch<RawSettingsResponse>('/plugins/core/settings/raw', payload)
+  return client.patch<RawSettingsResponse>('/core/settings/raw', payload)
 }
 
 export function validateCoreSettingsRaw(payload: { text: string }) {
   return client.post<RawSettingsValidationResponse>(
-    '/plugins/core/settings/raw/validate',
+    '/core/settings/raw/validate',
     payload,
   )
 }
@@ -52,11 +52,11 @@ export function getPluginConfig() {
   return client.get<{
     modules: ModuleConfigItem[]
     dirs: DirConfigItem[]
-  }>('/plugins/config')
+  }>('/plugins/local-sources')
 }
 
 export function getDriverConfig() {
-  return client.get<{ builtin: DriverConfigItem[] }>('/plugins/drivers/config')
+  return client.get<{ builtin: DriverConfigItem[] }>('/drivers/config')
 }
 
 export function updatePluginConfig(payload: {
@@ -66,5 +66,5 @@ export function updatePluginConfig(payload: {
   return client.patch<{
     modules: ModuleConfigItem[]
     dirs: Array<{ path: string, exists: boolean, is_loaded: boolean }>
-  }>('/plugins/config', payload)
+  }>('/plugins/local-sources', payload)
 }

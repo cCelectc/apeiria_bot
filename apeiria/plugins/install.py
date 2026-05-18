@@ -538,6 +538,21 @@ def _infer_binding(
     raise _automatic_resolution_error(adapter)
 
 
+def resolve_plugin_module_candidates_from_requirement(requirement: str) -> list[str]:
+    """Return possible plugin modules inferred from one package requirement."""
+    target = requirement.strip()
+    if not target:
+        return []
+    distributions_before: dict[str, Distribution] = {}
+    candidates = _collect_candidates(
+        package_service._resource_adapters["plugin"],
+        raw_requirement=target,
+        declared_requirement=target,
+        distributions_before=distributions_before,
+    )
+    return sorted({value.strip() for value in candidates if value.strip()})
+
+
 def _collect_candidates(
     adapter: _PackageResourceAdapter,
     *,

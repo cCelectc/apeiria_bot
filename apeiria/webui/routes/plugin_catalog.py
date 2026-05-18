@@ -27,6 +27,10 @@ from apeiria.webui.schemas.plugin_catalog import (
 )
 from apeiria.webui.schemas.plugin_config import to_plugin_workspace_settings_summary
 from apeiria.webui.schemas.plugin_management import to_plugin_toggle_preview_response
+from apeiria.webui.schemas.plugin_workbench import (
+    PluginWorkbenchResponse,
+    to_plugin_workbench_response,
+)
 
 router = APIRouter()
 _RUNTIME_UNAVAILABLE_DETAIL = "Apeiria runtime control plane is unavailable."
@@ -109,6 +113,15 @@ async def list_plugins(
         )
         for plugin in plugins
     ]
+
+
+@router.get("/workbench", response_model=PluginWorkbenchResponse)
+async def get_plugin_workbench(
+    _: Annotated[Any, Depends(require_control_panel)],
+) -> PluginWorkbenchResponse:
+    control_plane = _require_runtime_control_plane()
+    workspace = await control_plane.get_plugin_workbench()
+    return to_plugin_workbench_response(workspace)
 
 
 @router.get("/{module_name}/workspace", response_model=PluginWorkspaceResponse)

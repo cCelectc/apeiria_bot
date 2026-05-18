@@ -534,7 +534,7 @@ onBeforeUnmount(() => {
           </Select>
 
           <label class="plugin-store-filter__switch">
-            <Switch v-model:checked="uninstalledOnly" />
+            <Switch v-model="uninstalledOnly" />
             <span>{{ t('pluginStore.uninstalledOnly') }}</span>
           </label>
         </div>

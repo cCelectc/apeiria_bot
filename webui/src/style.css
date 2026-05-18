@@ -2994,6 +2994,128 @@
   margin-left: auto;
 }
 
+.plugins-workbench-toolbar {
+  display: flex;
+  max-width: min(760px, 100%);
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.plugins-workbench-search {
+  display: flex;
+  min-width: min(280px, 100%);
+  align-items: center;
+  gap: 8px;
+}
+
+.plugins-workbench-search > svg {
+  color: var(--muted-foreground);
+}
+
+.plugins-workbench-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.plugin-install-dialog {
+  display: grid;
+  width: min(680px, calc(100vw - 32px));
+  max-width: min(680px, calc(100vw - 32px));
+  gap: 16px;
+}
+
+.plugin-install-resolution {
+  display: grid;
+  min-width: 0;
+  gap: 12px;
+}
+
+.plugin-install-resolution__candidates {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.plugin-install-store-search {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+}
+
+.plugin-uninstall-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-muted);
+}
+
+.plugin-uninstall-option span {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.plugin-uninstall-option small {
+  color: var(--muted-foreground);
+  line-height: 1.45;
+}
+
+.plugin-detail-dialog {
+  display: grid;
+  width: min(820px, calc(100vw - 32px));
+  max-width: min(820px, calc(100vw - 32px));
+  gap: 16px;
+}
+
+.plugin-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.plugin-detail-grid section {
+  display: grid;
+  min-width: 0;
+  align-content: start;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-muted);
+}
+
+.plugin-detail-grid h3,
+.plugin-detail-grid p {
+  margin: 0;
+}
+
+.plugin-detail-grid h3 {
+  font-size: 0.86rem;
+  font-weight: 760;
+}
+
+.plugin-detail-grid p {
+  color: var(--muted-foreground);
+  font-size: 0.84rem;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.plugin-detail-badges {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
 .plugin-toggle-summary {
   display: grid;
   gap: 12px;
@@ -5618,8 +5740,10 @@
   .plugin-store-filter,
   .plugin-store-grid,
   .plugin-store-detail__grid,
+  .plugin-detail-grid,
   .plugin-loading-rules-grid,
   .plugins-grid,
+  .plugins-workbench-grid,
   .adapter-preview-grid,
   .settings-raw-preview-grid {
     grid-template-columns: minmax(0, 1fr);
