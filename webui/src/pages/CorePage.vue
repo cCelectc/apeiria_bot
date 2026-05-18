@@ -39,6 +39,7 @@ import {
   StatusBadge,
 } from '@/components/management'
 import type { WorkbenchMetricItem, WorkbenchTone } from '@/components/management'
+import { SettingsFieldEditor } from '@/components/settings'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -53,14 +54,6 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
-import { Switch } from '@/components/ui/switch'
-import {
   Table,
   TableBody,
   TableCell,
@@ -69,7 +62,6 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Textarea } from '@/components/ui/textarea'
 import { useAdapterManagement } from '@/composables/useAdapterManagement'
 import { useRawTomlValidation } from '@/composables/useRawTomlValidation'
 import { useSettingsEditor } from '@/composables/useSettingsEditor'
@@ -77,22 +69,12 @@ import { useNoticeStore } from '@/stores/notice'
 import { useRestartStore } from '@/stores/restart'
 import {
   buildRevertValues,
-  cloneSettingValue,
   buildSettingsPreviewItems,
   displayChoiceTitle,
   displayFieldValue,
-  isNullableBoolField,
-  isSequenceChipField,
-  textInputType,
 } from '@/utils/settingsEditor'
 
 type CoreTab = 'core' | 'adapters' | 'drivers'
-
-interface FieldChoiceOption {
-  key: string
-  title: string
-  value: unknown
-}
 
 const { t } = useI18n()
 const router = useRouter()
@@ -367,41 +349,6 @@ function formatFieldChoices(field: SettingField) {
   return `${normalized.slice(0, 4).join(' / ')} +${normalized.length - 4}`
 }
 
-function buildNullableBoolOptions(field: SettingField): FieldChoiceOption[] {
-  return [
-    { key: `${field.key}:nullable:null`, title: 'null', value: null },
-    { key: `${field.key}:nullable:true`, title: 'true', value: true },
-    { key: `${field.key}:nullable:false`, title: 'false', value: false },
-  ]
-}
-
-function fieldChoiceOptions(field: SettingField): FieldChoiceOption[] {
-  if (field.choices.length > 0) {
-    return field.choices.map((choice, index) => ({
-      key: `${field.key}:choice:${index}`,
-      title: displayChoiceTitle(choice),
-      value: choice.value,
-    }))
-  }
-  return isNullableBoolField(field) ? buildNullableBoolOptions(field) : []
-}
-
-function selectedFieldChoiceKey(field: SettingField) {
-  const options = fieldChoiceOptions(field)
-  const value = coreEditor.form.value[field.key]
-  const option = options.find(item =>
-    JSON.stringify(item.value) === JSON.stringify(value),
-  )
-  return option?.key
-}
-
-function updateFieldChoice(field: SettingField, key: string | number) {
-  const option = fieldChoiceOptions(field).find(item => item.key === String(key))
-  if (option) {
-    coreEditor.form.value[field.key] = cloneSettingValue(option.value)
-  }
-}
-
 function formatModuleList(modules: string[]) {
   return modules.length > 0 ? modules.join('\n') : t('common.none')
 }
@@ -561,57 +508,13 @@ onMounted(() => {
                     </Button>
                   </div>
 
-                  <div class="settings-field-editor">
-                    <Select
-                      v-if="fieldChoiceOptions(field).length > 0"
-                      :model-value="selectedFieldChoiceKey(field)"
-                      :disabled="!coreEditor.isFieldEditing(field)"
-                      @update:model-value="value => updateFieldChoice(field, value as string | number)"
-                    >
-                      <SelectTrigger class="settings-field-editor__control">
-                        <SelectValue :placeholder="t('common.none')" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem
-                          v-for="choice in fieldChoiceOptions(field)"
-                          :key="choice.key"
-                          :value="choice.key"
-                        >
-                          {{ choice.title }}
-                        </SelectItem>
-                      </SelectContent>
-                    </Select>
-
-                    <label
-                      v-else-if="field.type === 'bool' && !isNullableBoolField(field)"
-                      class="settings-field-editor__switch"
-                    >
-                      <Switch
-                        :disabled="!coreEditor.isFieldEditing(field)"
-                        :model-value="Boolean(coreEditor.form.value[field.key])"
-                        @update:model-value="value => {
-                          coreEditor.form.value[field.key] = Boolean(value)
-                        }"
-                      />
-                      <span>{{ coreEditor.form.value[field.key] ? t('ai.enabled') : t('ai.disabled') }}</span>
-                    </label>
-
-                    <Textarea
-                      v-else-if="field.type_category === 'mapping' || (field.type_category === 'sequence' && !isSequenceChipField(field)) || field.editor.startsWith('nested_')"
-                      v-model="coreEditor.form.value[field.key] as string"
-                      class="settings-field-editor__code"
-                      :disabled="!coreEditor.isFieldEditing(field)"
-                      spellcheck="false"
-                    />
-
-                    <Input
-                      v-else
-                      v-model="coreEditor.form.value[field.key] as string | number"
-                      class="settings-field-editor__control"
-                      :disabled="!coreEditor.isFieldEditing(field)"
-                      :type="textInputType(field)"
-                    />
-                  </div>
+                  <SettingsFieldEditor
+                    v-model="coreEditor.form.value[field.key]"
+                    :array-hint="t('plugins.settingsArrayHint')"
+                    :editing="coreEditor.isFieldEditing(field)"
+                    :field="field"
+                    :json-hint="t('plugins.settingsJsonHint')"
+                  />
                 </div>
               </div>
 

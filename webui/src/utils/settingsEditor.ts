@@ -1,12 +1,14 @@
 import type {
   SettingsChoiceItem,
   SettingsFieldItem,
+  SettingsFieldSchemaFieldItem,
   SettingsFieldSchemaItem,
   SettingsResponse,
 } from '@/api/settings'
 
 export type SettingField = SettingsFieldItem
 export type SettingSchema = SettingsFieldSchemaItem
+export type SettingSchemaField = SettingsFieldSchemaFieldItem
 export type SettingChoice = SettingsChoiceItem
 export type SettingsState = SettingsResponse
 
@@ -84,6 +86,15 @@ export function buildSchemaDefaultValue(schema: SettingSchema | null): unknown {
     )
   }
   return ''
+}
+
+export function buildSchemaFieldDefaultValue(field: SettingSchemaField | null): unknown {
+  if (!field) {
+    return ''
+  }
+  return field.default == null
+    ? buildSchemaDefaultValue(field.schema)
+    : cloneSettingValue(field.default)
 }
 
 export function toEditorValue(field: SettingField, sourceValue: unknown) {

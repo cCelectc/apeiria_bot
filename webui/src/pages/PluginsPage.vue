@@ -38,6 +38,7 @@ import {
   StatusBadge,
   TaskDialog,
 } from '@/components/management'
+import { SettingsFieldEditor } from '@/components/settings'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import {
   AlertDialog,
@@ -85,7 +86,6 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Textarea } from '@/components/ui/textarea'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { usePluginMaintenance } from '@/composables/usePluginMaintenance'
 import { usePluginReadmeDialog } from '@/composables/usePluginReadmeDialog'
@@ -926,67 +926,13 @@ onMounted(() => {
                       </Button>
                     </div>
 
-                    <div class="settings-field-editor">
-                      <Select
-                        v-if="pluginSettings.fieldChoiceOptions(field).length > 0"
-                        :model-value="pluginSettings.selectedFieldChoiceKey(field)"
-                        :disabled="!pluginSettings.pluginEditor.isFieldEditing(field)"
-                        @update:model-value="value => pluginSettings.updateFieldChoice(field, value as string | number)"
-                      >
-                        <SelectTrigger class="settings-field-editor__control">
-                          <SelectValue :placeholder="t('common.none')" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectGroup>
-                            <SelectItem
-                              v-for="choice in pluginSettings.fieldChoiceOptions(field)"
-                              :key="choice.key"
-                              :value="choice.key"
-                            >
-                              {{ choice.title }}
-                            </SelectItem>
-                          </SelectGroup>
-                        </SelectContent>
-                      </Select>
-
-                      <label
-                        v-else-if="field.type === 'bool' && !pluginSettings.isNullableBoolField(field)"
-                        class="settings-field-editor__switch"
-                      >
-                        <Switch
-                          :disabled="!pluginSettings.pluginEditor.isFieldEditing(field)"
-                          :model-value="Boolean(pluginSettings.settingsForm.value[field.key])"
-                          @update:model-value="value => {
-                            pluginSettings.settingsForm.value[field.key] = Boolean(value)
-                          }"
-                        />
-                        <span>
-                          {{
-                            pluginSettings.settingsForm.value[field.key]
-                              ? t('ai.enabled')
-                              : t('ai.disabled')
-                          }}
-                        </span>
-                      </label>
-
-                      <Textarea
-                        v-else-if="field.type_category === 'mapping'
-                          || (field.type_category === 'sequence' && !pluginSettings.isSequenceChipField(field))
-                          || field.editor.startsWith('nested_')"
-                        v-model="pluginSettings.settingsForm.value[field.key] as string"
-                        class="settings-field-editor__code"
-                        :disabled="!pluginSettings.pluginEditor.isFieldEditing(field)"
-                        spellcheck="false"
-                      />
-
-                      <Input
-                        v-else
-                        v-model="pluginSettings.settingsForm.value[field.key] as string | number"
-                        class="settings-field-editor__control"
-                        :disabled="!pluginSettings.pluginEditor.isFieldEditing(field)"
-                        :type="pluginSettings.textInputType(field)"
-                      />
-                    </div>
+                    <SettingsFieldEditor
+                      v-model="pluginSettings.settingsForm.value[field.key]"
+                      :array-hint="t('plugins.settingsArrayHint')"
+                      :editing="pluginSettings.pluginEditor.isFieldEditing(field)"
+                      :field="field"
+                      :json-hint="t('plugins.settingsJsonHint')"
+                    />
                   </div>
                 </div>
 

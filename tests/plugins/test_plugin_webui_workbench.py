@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 from types import ModuleType
 from typing import TYPE_CHECKING, Any
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from pydantic import BaseModel, Field
 
 from apeiria.plugins.models import (
     PluginCatalogEntry,
@@ -29,6 +31,25 @@ class _ToggleResult:
     module_name: str
     enabled: bool
     affected_modules: list[str]
+
+
+class _StructuredAppearanceConfig(BaseModel):
+    title: str = "Default title"
+    enabled: bool = True
+
+
+class _StructuredRuleConfig(BaseModel):
+    name: str = ""
+    priority: int = 1
+
+
+class _StructuredPluginConfig(BaseModel):
+    appearance: _StructuredAppearanceConfig = Field(
+        default_factory=_StructuredAppearanceConfig
+    )
+    rules: list[_StructuredRuleConfig] = Field(default_factory=list)
+    aliases: dict[str, _StructuredRuleConfig] = Field(default_factory=dict)
+    raw_payload: dict[str, object] = Field(default_factory=dict)
 
 
 class _ControlPlane:
@@ -400,6 +421,122 @@ def test_install_resolve_requirement_uses_module_candidates(
     assert payload["default_action"]["kind"] == "install_package"
 
 
+def test_plugin_settings_route_exposes_nested_basic_editor_schema(
+    monkeypatch: "pytest.MonkeyPatch",
+) -> None:
+    from apeiria.plugins.metadata.registry import (
+        RegisterPluginConfigOptions,
+        register_plugin_config,
+    )
+
+    module_name = "tests.structured_settings_schema"
+    section_name = "structured_settings_schema"
+    register_plugin_config(
+        module_name,
+        options=RegisterPluginConfigOptions(
+            section=section_name,
+            model=_StructuredPluginConfig,
+            source="test",
+        ),
+    )
+
+    _patch_project_plugin_config(monkeypatch, section_name, {})
+
+    response = _client().get(f"/api/plugins/{module_name}/settings")
+
+    assert response.status_code == HTTP_OK
+    payload = response.json()
+    fields = {item["key"]: item for item in payload["fields"]}
+    assert payload["has_config_model"] is True
+    assert fields["appearance"]["editor"] == "nested_object"
+    assert fields["appearance"]["editable"] is True
+    assert [item["key"] for item in fields["appearance"]["schema"]["fields"]] == [
+        "title",
+        "enabled",
+    ]
+    assert fields["rules"]["editor"] == "nested_sequence"
+    assert fields["rules"]["schema"]["item_schema"]["schema"]["fields"][0]["key"] == (
+        "name"
+    )
+    assert fields["aliases"]["editor"] == "nested_mapping"
+    assert (
+        fields["aliases"]["schema"]["value_schema"]["schema"]["fields"][1]["key"]
+        == "priority"
+    )
+    assert fields["raw_payload"]["editable"] is False
+
+
+def test_plugin_settings_route_accepts_structured_nested_patch(
+    monkeypatch: "pytest.MonkeyPatch",
+) -> None:
+    from apeiria.plugins.metadata.registry import (
+        RegisterPluginConfigOptions,
+        register_plugin_config,
+    )
+
+    module_name = "tests.structured_settings_patch"
+    section_name = "structured_settings_patch"
+    register_plugin_config(
+        module_name,
+        options=RegisterPluginConfigOptions(
+            section=section_name,
+            model=_StructuredPluginConfig,
+            source="test",
+        ),
+    )
+
+    expected_rule_priority = 2
+    store = _patch_project_plugin_config(monkeypatch, section_name, {})
+
+    response = _client().patch(
+        f"/api/plugins/{module_name}/settings",
+        json={
+            "values": {
+                "appearance": {
+                    "title": "Custom title",
+                    "enabled": False,
+                },
+                "rules": [
+                    {
+                        "name": "quiet",
+                        "priority": expected_rule_priority,
+                    }
+                ],
+                "aliases": {
+                    "primary": {
+                        "name": "main",
+                        "priority": 5,
+                    }
+                },
+            },
+            "clear": [],
+        },
+    )
+
+    assert response.status_code == HTTP_OK
+    assert store["appearance"] == {
+        "title": "Custom title",
+        "enabled": False,
+    }
+    assert store["rules"] == [
+        {
+            "name": "quiet",
+            "priority": expected_rule_priority,
+        }
+    ]
+    assert store["aliases"] == {
+        "primary": {
+            "name": "main",
+            "priority": 5,
+        }
+    }
+    payload = response.json()
+    fields = {item["key"]: item for item in payload["fields"]}
+    assert fields["appearance"]["current_value"]["title"] == "Custom title"
+    assert fields["rules"]["current_value"][0]["priority"] == expected_rule_priority
+    assert fields["aliases"]["current_value"]["primary"]["name"] == "main"
+
+
 def test_new_config_namespaces_are_routed(
     monkeypatch: "pytest.MonkeyPatch",
 ) -> None:
@@ -479,3 +616,45 @@ def test_legacy_plugin_config_namespaces_are_not_routed(
     assert client.get("/api/plugins/drivers/config").status_code == HTTP_NOT_FOUND
     assert client.get("/api/plugins/config").status_code == HTTP_NOT_FOUND
     assert client.get("/api/plugins/local-sources").status_code == HTTP_OK
+
+
+def _patch_project_plugin_config(
+    monkeypatch: "pytest.MonkeyPatch",
+    section_name: str,
+    initial: dict[str, object],
+) -> dict[str, object]:
+    store = dict(initial)
+
+    def _read_project_plugin_config(plugin_name: str) -> dict[str, object]:
+        assert plugin_name == section_name
+        return dict(store)
+
+    def _write_project_plugin_section_config(
+        plugin_name: str,
+        values: dict[str, object | None],
+        *_: object,
+        module_name: str | None = None,
+        **__: object,
+    ) -> Path:
+        assert plugin_name == section_name
+        assert module_name
+        for key, value in values.items():
+            if value is None:
+                store.pop(key, None)
+            else:
+                store[key] = value
+        return Path("apeiria.config.toml")
+
+    monkeypatch.setattr(
+        "apeiria.plugins.settings_view.project_config_service.read_project_plugin_config",
+        _read_project_plugin_config,
+    )
+    monkeypatch.setattr(
+        "apeiria.plugins.settings_view.project_config_service.read_env_config",
+        dict,
+    )
+    monkeypatch.setattr(
+        "apeiria.plugins.settings.project_config_service.write_project_plugin_section_config",
+        _write_project_plugin_section_config,
+    )
+    return store

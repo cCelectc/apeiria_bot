@@ -14,12 +14,8 @@ import type { PluginTranslate } from '@/utils/pluginDisplay'
 import {
   buildRevertValues,
   buildSettingsPreviewItems,
-  cloneSettingValue,
   displayChoiceTitle,
   displayFieldValue,
-  isNullableBoolField,
-  isSequenceChipField,
-  textInputType,
   type SettingField,
 } from '@/utils/settingsEditor'
 import { useSettingsEditor } from '@/composables/useSettingsEditor'
@@ -33,12 +29,6 @@ interface NoticeStoreLike {
 
 interface RestartStoreLike {
   markPending: (entry: Omit<RestartPendingEntry, 'updated_at'>) => void
-}
-
-interface FieldChoiceOption {
-  key: string
-  title: string
-  value: unknown
 }
 
 export function usePluginSettingsDialog(options: {
@@ -155,41 +145,6 @@ export function usePluginSettingsDialog(options: {
       return normalized.join(' / ')
     }
     return `${normalized.slice(0, 4).join(' / ')} +${normalized.length - 4}`
-  }
-
-  function buildNullableBoolOptions(field: SettingField): FieldChoiceOption[] {
-    return [
-      { key: `${field.key}:nullable:null`, title: 'null', value: null },
-      { key: `${field.key}:nullable:true`, title: 'true', value: true },
-      { key: `${field.key}:nullable:false`, title: 'false', value: false },
-    ]
-  }
-
-  function fieldChoiceOptions(field: SettingField): FieldChoiceOption[] {
-    if (field.choices.length > 0) {
-      return field.choices.map((choice, index) => ({
-        key: `${field.key}:choice:${index}`,
-        title: displayChoiceTitle(choice),
-        value: choice.value,
-      }))
-    }
-    return isNullableBoolField(field) ? buildNullableBoolOptions(field) : []
-  }
-
-  function selectedFieldChoiceKey(field: SettingField) {
-    const options = fieldChoiceOptions(field)
-    const value = settingsForm.value[field.key]
-    const option = options.find(item =>
-      JSON.stringify(item.value) === JSON.stringify(value),
-    )
-    return option?.key
-  }
-
-  function updateFieldChoice(field: SettingField, key: string | number) {
-    const option = fieldChoiceOptions(field).find(item => item.key === String(key))
-    if (option) {
-      settingsForm.value[field.key] = cloneSettingValue(option.value)
-    }
   }
 
   async function loadPluginRawSettings(moduleName: string) {
@@ -350,7 +305,6 @@ export function usePluginSettingsDialog(options: {
     clearPluginField,
     closeSettingsDialog,
     confirmPreviewSave,
-    fieldChoiceOptions,
     fieldSourceLabel,
     formatFieldChoices,
     hasPendingPluginChanges,
@@ -371,7 +325,6 @@ export function usePluginSettingsDialog(options: {
     previewNextText,
     previewSaving,
     previewTitle,
-    selectedFieldChoiceKey,
     settingsDialogLoading,
     settingsDialogVisible,
     settingsEditorMode,
@@ -387,11 +340,7 @@ export function usePluginSettingsDialog(options: {
     settingsRawText,
     settingsSaving,
     settingsState,
-    updateFieldChoice,
     validatePluginRawNow,
-    isNullableBoolField,
-    isSequenceChipField,
-    textInputType,
     displayFieldValue,
     displayChoiceTitle,
   }
