@@ -53,13 +53,18 @@ type AIRuntimeSettingGroupMeta = {
   labelKey: string
 }
 
+type AIRuntimeSettingGroupView = AIRuntimeSettingGroupMeta & {
+  advancedFields: AIRuntimeSettingFieldItem[]
+  defaultFields: AIRuntimeSettingFieldItem[]
+}
+
 const props = withDefaults(defineProps<{
   embedded?: boolean
 }>(), {
   embedded: false,
 })
 
-const { t } = useI18n()
+const { t, te } = useI18n()
 const noticeStore = useNoticeStore()
 const settings = ref<AIRuntimeSettingsResponse | null>(null)
 const form = reactive<Record<string, AIRuntimeSettingValue>>({})
@@ -96,11 +101,19 @@ const groupMeta: AIRuntimeSettingGroupMeta[] = [
   },
 ]
 
-const groupedFields = computed(() =>
-  groupMeta.map(group => ({
-    ...group,
-    fields: (settings.value?.fields || []).filter(field => field.group === group.key),
-  })).filter(group => group.fields.length > 0),
+const groupedFields = computed<AIRuntimeSettingGroupView[]>(() =>
+  groupMeta.map(group => {
+    const fields = (settings.value?.fields || [])
+      .filter(field => field.group === group.key && field.visibility !== 'hidden')
+      .sort(compareSettingFields)
+    return {
+      ...group,
+      advancedFields: fields.filter(field => field.visibility === 'advanced'),
+      defaultFields: fields.filter(field => field.visibility !== 'advanced'),
+    }
+  }).filter(group => (
+    group.defaultFields.length > 0 || group.advancedFields.length > 0
+  )),
 )
 
 const hasSettings = computed(() => Boolean(settings.value))
@@ -118,6 +131,13 @@ function isBooleanField(field: AIRuntimeSettingFieldItem) {
 
 function isNumericField(field: AIRuntimeSettingFieldItem) {
   return field.value_type === 'integer' || field.value_type === 'float'
+}
+
+function compareSettingFields(
+  left: AIRuntimeSettingFieldItem,
+  right: AIRuntimeSettingFieldItem,
+) {
+  return left.order - right.order || left.key.localeCompare(right.key)
 }
 
 function cloneFieldValue(value: AIRuntimeSettingValue): AIRuntimeSettingValue {
@@ -190,7 +210,7 @@ async function saveSettings() {
   const invalid = findInvalidField()
   if (invalid) {
     validationMessage.value = t('ai.runtimeSettingsInvalidField', {
-      field: invalid.label || invalid.key,
+      field: fieldLabel(invalid),
     })
     return
   }
@@ -241,6 +261,18 @@ function displayValue(value: AIRuntimeSettingValue) {
 function inputValue(field: AIRuntimeSettingFieldItem): string | number {
   const value = form[field.key]
   return typeof value === 'number' || typeof value === 'string' ? value : ''
+}
+
+function localizedText(key: string, fallback: string) {
+  return te(key) ? t(key) : fallback
+}
+
+function fieldLabel(field: AIRuntimeSettingFieldItem) {
+  return localizedText(field.label_key, field.label || field.key)
+}
+
+function fieldHelp(field: AIRuntimeSettingFieldItem) {
+  return localizedText(field.help_key, field.help || '')
 }
 
 onMounted(() => {
@@ -315,21 +347,21 @@ onMounted(() => {
 
         <FieldGroup class="ai-runtime-settings-list">
           <Field
-            v-for="field in group.fields"
+            v-for="field in group.defaultFields"
             :key="field.key"
             class="ai-runtime-settings-field"
           >
             <div class="ai-runtime-settings-field__main">
               <div class="ai-runtime-settings-field__copy">
                 <div class="ai-runtime-settings-field__title-row">
-                  <FieldLabel>{{ field.label || field.key }}</FieldLabel>
+                  <FieldLabel>{{ fieldLabel(field) }}</FieldLabel>
                   <StatusBadge
                     v-if="field.has_local_override"
                     :label="t('plugins.settingsLocalShort')"
                     tone="info"
                   />
                 </div>
-                <FieldDescription>{{ field.help }}</FieldDescription>
+                <FieldDescription>{{ fieldHelp(field) }}</FieldDescription>
               </div>
 
               <div class="ai-runtime-settings-field__control">
@@ -400,6 +432,105 @@ onMounted(() => {
             </div>
             <Separator />
           </Field>
+
+          <details
+            v-if="group.advancedFields.length > 0"
+            class="ai-runtime-settings-advanced"
+          >
+            <summary class="ai-runtime-settings-advanced__summary">
+              <span>{{ t('ai.runtimeSettingsAdvanced') }}</span>
+              <Badge variant="outline">
+                {{ t('ai.runtimeSettingsAdvancedCount', { count: group.advancedFields.length }) }}
+              </Badge>
+            </summary>
+
+            <Field
+              v-for="field in group.advancedFields"
+              :key="field.key"
+              class="ai-runtime-settings-field"
+            >
+              <div class="ai-runtime-settings-field__main">
+                <div class="ai-runtime-settings-field__copy">
+                  <div class="ai-runtime-settings-field__title-row">
+                    <FieldLabel>{{ fieldLabel(field) }}</FieldLabel>
+                    <StatusBadge
+                      v-if="field.has_local_override"
+                      :label="t('plugins.settingsLocalShort')"
+                      tone="info"
+                    />
+                  </div>
+                  <FieldDescription>{{ fieldHelp(field) }}</FieldDescription>
+                </div>
+
+                <div class="ai-runtime-settings-field__control">
+                  <label
+                    v-if="isBooleanField(field)"
+                    class="ai-runtime-settings-switch"
+                  >
+                    <Switch
+                      :disabled="saving"
+                      :model-value="Boolean(form[field.key])"
+                      @update:model-value="value => updateBooleanField(field, Boolean(value))"
+                    />
+                    <span>
+                      {{ form[field.key] ? t('ai.enabled') : t('ai.disabled') }}
+                    </span>
+                  </label>
+
+                  <Input
+                    v-else
+                    :aria-invalid="field === findInvalidField()"
+                    :disabled="saving"
+                    :min="field.minimum ?? undefined"
+                    :model-value="inputValue(field)"
+                    :step="field.value_type === 'float' ? '0.1' : '1'"
+                    class="ai-runtime-settings-input"
+                    type="number"
+                    @update:model-value="value => updateNumericField(field, value)"
+                  />
+                </div>
+              </div>
+
+              <div class="ai-runtime-settings-field__meta">
+                <Badge variant="outline">
+                  {{ t('plugins.settingsCurrent') }}:
+                  {{ displayValue(form[field.key]) }}
+                </Badge>
+                <Badge variant="outline">
+                  {{ t('plugins.settingsDefault') }}:
+                  {{ displayValue(field.default_value) }}
+                </Badge>
+                <Badge v-if="field.minimum !== null" variant="outline">
+                  {{ t('ai.runtimeSettingsMinimum', { value: field.minimum }) }}
+                </Badge>
+              </div>
+
+              <div
+                v-if="dirtyKeys.has(field.key) || field.has_local_override"
+                class="ai-runtime-settings-field__actions"
+              >
+                <Button
+                  v-if="dirtyKeys.has(field.key)"
+                  :disabled="saving"
+                  size="sm"
+                  variant="ghost"
+                  @click="cancelField(field)"
+                >
+                  {{ t('common.cancel') }}
+                </Button>
+                <Button
+                  v-if="field.has_local_override"
+                  :disabled="saving"
+                  size="sm"
+                  variant="ghost"
+                  @click="clearField(field)"
+                >
+                  {{ t('plugins.settingsClear') }}
+                </Button>
+              </div>
+              <Separator />
+            </Field>
+          </details>
         </FieldGroup>
       </Panel>
     </div>

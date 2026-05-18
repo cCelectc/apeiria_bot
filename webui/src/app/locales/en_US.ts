@@ -143,15 +143,81 @@ const enUS = {
     runtimeSettingsOverrides: '{count} custom',
     runtimeSettingsUpdatedAt: 'Updated {value}',
     runtimeSettingsMinimum: 'Minimum {value}',
+    runtimeSettingsAdvanced: 'Advanced settings',
+    runtimeSettingsAdvancedCount: '{count} items',
     runtimeSettingsGroup: {
       replyPolicy: 'Reply Policy',
-      replyPolicyDescription: 'Control group initiative, ambient message merging, cooldowns, and duplicate event protection.',
+      replyPolicyDescription: 'Control group initiative, ambient message merging, cooldowns, and reply budgets.',
       ingressMedia: 'Ingress and Media',
       ingressMediaDescription: 'Control speech input preparation and debug raw event persistence.',
       runtimeLimits: 'Runtime Limits',
       runtimeLimitsDescription: 'Limit runtime cost such as per-tool execution time.',
       retention: 'Retention Policy',
       retentionDescription: 'Control cleanup windows for AI sessions, raw events, tool executions, and suppressed memories.',
+    },
+    runtimeSettings: {
+      fields: {
+        allowGroupInitiative: {
+          label: 'Group initiative',
+          help: 'Allow group messages that do not directly mention the bot to become ambient reply candidates.',
+        },
+        ambientMergeWindowMs: {
+          label: 'Ambient merge window',
+          help: 'Milliseconds used to merge short bursts of ambient group messages into one candidate turn.',
+        },
+        maxPendingMessages: {
+          label: 'Pending message limit',
+          help: 'Maximum pending ambient messages retained for one AI turn.',
+        },
+        groupReplyCooldownSeconds: {
+          label: 'Group reply cooldown',
+          help: 'Minimum seconds between default ambient group-chat replies.',
+        },
+        maxConsecutiveAmbientReplies: {
+          label: 'Consecutive ambient replies',
+          help: 'Maximum consecutive AI replies to ambient group messages.',
+        },
+        directBypassAmbientBudget: {
+          label: 'Direct signal bypass',
+          help: 'Let direct mentions, private messages, and future tasks bypass the ambient reply budget.',
+        },
+        duplicateEventTtlSeconds: {
+          label: 'Duplicate event TTL',
+          help: 'Seconds to keep local duplicate event protection entries.',
+        },
+        sttInputEnabled: {
+          label: 'Speech-to-text input',
+          help: 'Enable speech-to-text preparation for incoming audio media.',
+        },
+        persistRawEventPayloads: {
+          label: 'Persist raw event payloads',
+          help: 'Persist reduced raw event payloads for AI debugging and inspection.',
+        },
+        toolExecutionTimeoutSeconds: {
+          label: 'Tool execution timeout',
+          help: 'Maximum seconds allowed for one AI tool execution.',
+        },
+        cleanupIntervalMinutes: {
+          label: 'Cleanup interval',
+          help: 'Minimum minutes between automatic AI retention cleanup runs.',
+        },
+        conversationRetentionDays: {
+          label: 'Conversation retention',
+          help: 'Retention window for persisted AI chat messages.',
+        },
+        rawEventRetentionDays: {
+          label: 'Raw event retention',
+          help: 'Retention window for reduced persisted raw event payloads.',
+        },
+        toolExecutionRetentionDays: {
+          label: 'Tool execution retention',
+          help: 'Retention window for AI tool execution audit rows.',
+        },
+        suppressedMemoryRetentionDays: {
+          label: 'Suppressed memory retention',
+          help: 'Retention window for suppressed AI memory rows.',
+        },
+      },
     },
     tools: 'Tool Count',
     skills: 'Skill Count',

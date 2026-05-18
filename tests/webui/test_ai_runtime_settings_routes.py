@@ -43,6 +43,14 @@ def test_ai_runtime_settings_routes_read_and_update(
         assert any(
             item.key == "tool_execution_timeout_seconds"
             and item.default_value == DEFAULT_TOOL_TIMEOUT_SECONDS
+            and item.label_key.endswith(".toolExecutionTimeoutSeconds.label")
+            and item.help_key.endswith(".toolExecutionTimeoutSeconds.help")
+            and item.visibility == "default"
+            and item.order > 0
+            for item in initial.fields
+        )
+        assert any(
+            item.key == "duplicate_event_ttl_seconds" and item.visibility == "hidden"
             for item in initial.fields
         )
 

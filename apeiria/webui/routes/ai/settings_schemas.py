@@ -17,9 +17,13 @@ class AIRuntimeSettingFieldItem(BaseModel):
     key: str
     label: str
     help: str
+    label_key: str
+    help_key: str
     group: str
     value_type: str
     application: str
+    visibility: str
+    order: int
     minimum: float | None = None
     default_value: object | None = None
     current_value: object | None = None
@@ -75,9 +79,13 @@ def _to_setting_field_item(
         key=key,
         label=item.label,
         help=item.help,
+        label_key=item.label_key,
+        help_key=item.help_key,
         group=item.group,
         value_type=item.value_type,
         application=item.application,
+        visibility=item.visibility,
+        order=item.order,
         minimum=item.minimum,
         default_value=defaults.get(key),
         current_value=effective.get(key),

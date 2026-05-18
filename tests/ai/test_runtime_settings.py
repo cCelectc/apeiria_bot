@@ -12,7 +12,9 @@ if TYPE_CHECKING:
 
 DEFAULT_TOOL_TIMEOUT_SECONDS = 8.0
 DEFAULT_CONVERSATION_RETENTION_DAYS = 30
+DEFAULT_DUPLICATE_EVENT_TTL_SECONDS = 30
 UPDATED_AMBIENT_MERGE_WINDOW_MS = 250
+UPDATED_DUPLICATE_EVENT_TTL_SECONDS = 45
 UPDATED_TOOL_TIMEOUT_SECONDS = 3.5
 
 
@@ -33,6 +35,32 @@ def test_ai_runtime_settings_defaults_without_saved_row(
     assert view.defaults == view.effective
     assert view.overrides == {}
     assert view.updated_at is None
+
+
+def test_ai_runtime_settings_metadata_classifies_operator_visibility(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setattr(database_runtime, "_project_root", tmp_path)
+    database_runtime.ensure_ready()
+
+    from apeiria.ai.runtime_settings import AIRuntimeSettingsService
+
+    fields = {
+        field.key: field for field in AIRuntimeSettingsService().get_view().fields
+    }
+
+    assert fields["allow_group_initiative"].visibility == "default"
+    assert fields["allow_group_initiative"].label_key.endswith(
+        ".allowGroupInitiative.label"
+    )
+    assert fields["allow_group_initiative"].help_key.endswith(
+        ".allowGroupInitiative.help"
+    )
+    assert fields["ambient_merge_window_ms"].visibility == "advanced"
+    assert fields["cleanup_interval_minutes"].visibility == "advanced"
+    assert fields["duplicate_event_ttl_seconds"].visibility == "hidden"
+    assert fields["duplicate_event_ttl_seconds"].order > 0
 
 
 def test_ai_runtime_settings_persist_across_service_recreation(
@@ -86,6 +114,40 @@ def test_ai_runtime_settings_can_clear_override(
 
     assert cleared.effective.allow_group_initiative is False
     assert cleared.overrides == {}
+
+
+def test_hidden_ai_runtime_settings_still_persist_and_apply(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setattr(database_runtime, "_project_root", tmp_path)
+    database_runtime.ensure_ready()
+
+    from apeiria.ai.runtime_settings import AIRuntimeSettingsService
+
+    service = AIRuntimeSettingsService()
+    updated = service.update_settings(
+        {"duplicate_event_ttl_seconds": UPDATED_DUPLICATE_EVENT_TTL_SECONDS}
+    )
+
+    assert (
+        updated.effective.duplicate_event_ttl_seconds
+        == UPDATED_DUPLICATE_EVENT_TTL_SECONDS
+    )
+    assert updated.overrides == {
+        "duplicate_event_ttl_seconds": UPDATED_DUPLICATE_EVENT_TTL_SECONDS,
+    }
+    assert (
+        AIRuntimeSettingsService().get_settings().duplicate_event_ttl_seconds
+        == UPDATED_DUPLICATE_EVENT_TTL_SECONDS
+    )
+
+    cleared = service.update_settings({}, clear=["duplicate_event_ttl_seconds"])
+
+    assert (
+        cleared.effective.duplicate_event_ttl_seconds
+        == DEFAULT_DUPLICATE_EVENT_TTL_SECONDS
+    )
 
 
 def test_ai_runtime_settings_reject_invalid_values(

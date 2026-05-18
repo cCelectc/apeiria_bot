@@ -36,9 +36,13 @@ export interface AIRuntimeSettingFieldItem {
   key: string
   label: string
   help: string
+  label_key: string
+  help_key: string
   group: string
   value_type: 'boolean' | 'integer' | 'float' | string
   application: string
+  visibility: 'default' | 'advanced' | 'hidden' | string
+  order: number
   minimum: number | null
   default_value: AIRuntimeSettingValue
   current_value: AIRuntimeSettingValue

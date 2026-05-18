@@ -38,6 +38,11 @@ AIRuntimeSettingApplication = Literal[
     "next_session_runtime",
     "next_cleanup",
 ]
+AIRuntimeSettingVisibility = Literal[
+    "default",
+    "advanced",
+    "hidden",
+]
 
 AI_RUNTIME_SETTING_KEYS: tuple[AIRuntimeSettingKey, ...] = get_args(AIRuntimeSettingKey)
 _BOOLEAN_SETTING_KEYS: frozenset[AIRuntimeSettingKey] = frozenset(
@@ -82,7 +87,17 @@ class AIRuntimeSettingField:
     group: AIRuntimeSettingGroup
     value_type: str
     application: AIRuntimeSettingApplication
+    visibility: AIRuntimeSettingVisibility = "default"
+    order: int = 0
     minimum: float | None = None
+
+    @property
+    def label_key(self) -> str:
+        return f"ai.runtimeSettings.fields.{_locale_key(self.key)}.label"
+
+    @property
+    def help_key(self) -> str:
+        return f"ai.runtimeSettings.fields.{_locale_key(self.key)}.help"
 
 
 @dataclass(frozen=True, slots=True)
@@ -104,6 +119,7 @@ AI_RUNTIME_SETTING_FIELDS: tuple[AIRuntimeSettingField, ...] = (
         group="reply_policy",
         value_type="boolean",
         application="next_turn",
+        order=10,
     ),
     AIRuntimeSettingField(
         key="ambient_merge_window_ms",
@@ -112,6 +128,8 @@ AI_RUNTIME_SETTING_FIELDS: tuple[AIRuntimeSettingField, ...] = (
         group="reply_policy",
         value_type="integer",
         application="next_session_runtime",
+        visibility="advanced",
+        order=20,
         minimum=0,
     ),
     AIRuntimeSettingField(
@@ -121,6 +139,8 @@ AI_RUNTIME_SETTING_FIELDS: tuple[AIRuntimeSettingField, ...] = (
         group="reply_policy",
         value_type="integer",
         application="next_session_runtime",
+        visibility="advanced",
+        order=30,
         minimum=1,
     ),
     AIRuntimeSettingField(
@@ -130,6 +150,8 @@ AI_RUNTIME_SETTING_FIELDS: tuple[AIRuntimeSettingField, ...] = (
         group="reply_policy",
         value_type="integer",
         application="next_session_runtime",
+        visibility="advanced",
+        order=40,
         minimum=0,
     ),
     AIRuntimeSettingField(
@@ -139,6 +161,8 @@ AI_RUNTIME_SETTING_FIELDS: tuple[AIRuntimeSettingField, ...] = (
         group="reply_policy",
         value_type="integer",
         application="next_session_runtime",
+        visibility="advanced",
+        order=50,
         minimum=0,
     ),
     AIRuntimeSettingField(
@@ -151,6 +175,8 @@ AI_RUNTIME_SETTING_FIELDS: tuple[AIRuntimeSettingField, ...] = (
         group="reply_policy",
         value_type="boolean",
         application="next_session_runtime",
+        visibility="advanced",
+        order=60,
     ),
     AIRuntimeSettingField(
         key="duplicate_event_ttl_seconds",
@@ -159,6 +185,8 @@ AI_RUNTIME_SETTING_FIELDS: tuple[AIRuntimeSettingField, ...] = (
         group="reply_policy",
         value_type="integer",
         application="next_session_runtime",
+        visibility="hidden",
+        order=70,
         minimum=1,
     ),
     AIRuntimeSettingField(
@@ -168,6 +196,7 @@ AI_RUNTIME_SETTING_FIELDS: tuple[AIRuntimeSettingField, ...] = (
         group="ingress_media",
         value_type="boolean",
         application="next_turn",
+        order=10,
     ),
     AIRuntimeSettingField(
         key="persist_raw_event_payloads",
@@ -176,6 +205,7 @@ AI_RUNTIME_SETTING_FIELDS: tuple[AIRuntimeSettingField, ...] = (
         group="ingress_media",
         value_type="boolean",
         application="next_turn",
+        order=20,
     ),
     AIRuntimeSettingField(
         key="tool_execution_timeout_seconds",
@@ -184,6 +214,7 @@ AI_RUNTIME_SETTING_FIELDS: tuple[AIRuntimeSettingField, ...] = (
         group="runtime_limits",
         value_type="float",
         application="next_turn",
+        order=10,
         minimum=0.001,
     ),
     AIRuntimeSettingField(
@@ -193,6 +224,8 @@ AI_RUNTIME_SETTING_FIELDS: tuple[AIRuntimeSettingField, ...] = (
         group="retention",
         value_type="integer",
         application="next_cleanup",
+        visibility="advanced",
+        order=10,
         minimum=1,
     ),
     AIRuntimeSettingField(
@@ -202,6 +235,8 @@ AI_RUNTIME_SETTING_FIELDS: tuple[AIRuntimeSettingField, ...] = (
         group="retention",
         value_type="integer",
         application="next_cleanup",
+        visibility="advanced",
+        order=20,
         minimum=1,
     ),
     AIRuntimeSettingField(
@@ -211,6 +246,8 @@ AI_RUNTIME_SETTING_FIELDS: tuple[AIRuntimeSettingField, ...] = (
         group="retention",
         value_type="integer",
         application="next_cleanup",
+        visibility="advanced",
+        order=30,
         minimum=1,
     ),
     AIRuntimeSettingField(
@@ -220,6 +257,8 @@ AI_RUNTIME_SETTING_FIELDS: tuple[AIRuntimeSettingField, ...] = (
         group="retention",
         value_type="integer",
         application="next_cleanup",
+        visibility="advanced",
+        order=40,
         minimum=1,
     ),
     AIRuntimeSettingField(
@@ -229,6 +268,8 @@ AI_RUNTIME_SETTING_FIELDS: tuple[AIRuntimeSettingField, ...] = (
         group="retention",
         value_type="integer",
         application="next_cleanup",
+        visibility="advanced",
+        order=50,
         minimum=1,
     ),
 )
@@ -395,6 +436,11 @@ def _decode_storage_value(key: AIRuntimeSettingKey, value: object) -> object:
     return value
 
 
+def _locale_key(key: AIRuntimeSettingKey) -> str:
+    parts = str(key).split("_")
+    return parts[0] + "".join(part.capitalize() for part in parts[1:])
+
+
 def _utcnow_text() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
@@ -406,6 +452,7 @@ __all__ = [
     "AI_RUNTIME_SETTING_KEYS",
     "AIRuntimeSettingField",
     "AIRuntimeSettingKey",
+    "AIRuntimeSettingVisibility",
     "AIRuntimeSettings",
     "AIRuntimeSettingsRepository",
     "AIRuntimeSettingsService",

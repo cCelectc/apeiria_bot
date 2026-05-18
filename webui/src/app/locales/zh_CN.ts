@@ -143,15 +143,81 @@ const zhCN = {
     runtimeSettingsOverrides: '{count} 项自定义',
     runtimeSettingsUpdatedAt: '更新于 {value}',
     runtimeSettingsMinimum: '最小值 {value}',
+    runtimeSettingsAdvanced: '高级配置',
+    runtimeSettingsAdvancedCount: '{count} 项',
     runtimeSettingsGroup: {
       replyPolicy: '回复策略',
-      replyPolicyDescription: '控制群聊主动性、环境消息合并、冷却和重复事件保护。',
+      replyPolicyDescription: '控制群聊主动性、环境消息合并、冷却和主动回复预算。',
       ingressMedia: '输入与媒体',
       ingressMediaDescription: '控制语音输入准备和调试用原始事件保存。',
       runtimeLimits: '运行限制',
       runtimeLimitsDescription: '限制单次工具执行等运行时成本。',
       retention: '保留策略',
       retentionDescription: '控制 AI 会话、原始事件、工具执行和被抑制记忆的清理窗口。',
+    },
+    runtimeSettings: {
+      fields: {
+        allowGroupInitiative: {
+          label: '群聊主动回复',
+          help: '允许未直接提及机器人的群聊消息进入环境回复候选。',
+        },
+        ambientMergeWindowMs: {
+          label: '环境消息合并窗口',
+          help: '将短时间内连续出现的群聊环境消息合并为同一轮候选的毫秒数。',
+        },
+        maxPendingMessages: {
+          label: '待处理消息上限',
+          help: '单个 AI 轮次最多保留多少条待处理环境消息。',
+        },
+        groupReplyCooldownSeconds: {
+          label: '群聊回复冷却',
+          help: '默认环境群聊回复之间的最短间隔秒数。',
+        },
+        maxConsecutiveAmbientReplies: {
+          label: '连续主动回复上限',
+          help: 'AI 对环境群聊消息连续主动回复的最大次数。',
+        },
+        directBypassAmbientBudget: {
+          label: '直接信号绕过预算',
+          help: '允许直接提及、私聊和未来任务绕过环境回复预算。',
+        },
+        duplicateEventTtlSeconds: {
+          label: '重复事件保护 TTL',
+          help: '本地重复事件保护条目的保留秒数。',
+        },
+        sttInputEnabled: {
+          label: '语音转文本输入',
+          help: '为收到的音频媒体启用语音转文本准备。',
+        },
+        persistRawEventPayloads: {
+          label: '保存原始事件载荷',
+          help: '保存裁剪后的原始事件载荷，用于 AI 调试和排查。',
+        },
+        toolExecutionTimeoutSeconds: {
+          label: '工具执行超时',
+          help: '单次 AI 工具执行允许使用的最大秒数。',
+        },
+        cleanupIntervalMinutes: {
+          label: '清理间隔',
+          help: '自动执行 AI 保留清理的最短间隔分钟数。',
+        },
+        conversationRetentionDays: {
+          label: '会话保留天数',
+          help: '已持久化 AI 聊天消息的保留窗口。',
+        },
+        rawEventRetentionDays: {
+          label: '原始事件保留天数',
+          help: '已保存裁剪原始事件载荷的保留窗口。',
+        },
+        toolExecutionRetentionDays: {
+          label: '工具执行记录保留天数',
+          help: 'AI 工具执行审计记录的保留窗口。',
+        },
+        suppressedMemoryRetentionDays: {
+          label: '被抑制记忆保留天数',
+          help: '被抑制 AI 记忆记录的保留窗口。',
+        },
+      },
     },
     tools: '工具数量',
     skills: '技能数量',
