@@ -342,7 +342,7 @@ async function confirmToggleAction() {
 }
 
 function openPluginStore() {
-  void router.push({ name: 'plugins', query: { area: 'store' } })
+  void router.push({ name: 'plugin-store' })
 }
 
 function openPluginSettings(item: PluginItem) {

@@ -31,7 +31,6 @@ import {
   FilterBar,
   LoadingSkeleton,
   PageScaffold,
-  Panel,
   StatusBadge,
   TaskDialog,
 } from '@/components/management'
@@ -183,7 +182,7 @@ const taskWaitingText = computed(() =>
 )
 
 function goBack() {
-  void router.push({ name: 'plugins', query: { area: 'installed' } })
+  void router.push({ name: 'plugins' })
 }
 
 function projectUrl(item: PluginStoreItem) {
@@ -470,88 +469,86 @@ onBeforeUnmount(() => {
       </Button>
     </template>
 
-    <Panel>
-      <FilterBar compact>
-        <div class="plugin-store-filter">
-          <div class="plugin-store-search">
-            <Search :size="16" />
-            <Input
-              v-model.trim="search"
-              :aria-label="t('pluginStore.search')"
-              :placeholder="t('pluginStore.search')"
-            />
-          </div>
-
-          <Select v-model="selectedSource">
-            <SelectTrigger class="plugin-store-filter__select">
-              <SelectValue :placeholder="t('pluginStore.allSources')" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectGroup>
-                <SelectItem
-                  v-for="option in sourceOptions"
-                  :key="option.value || 'all'"
-                  :value="option.value"
-                >
-                  {{ option.label }}
-                </SelectItem>
-              </SelectGroup>
-            </SelectContent>
-          </Select>
-
-          <Select v-model="selectedCategory">
-            <SelectTrigger class="plugin-store-filter__select">
-              <SelectValue :placeholder="t('pluginStore.allCategories')" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectGroup>
-                <SelectItem
-                  v-for="option in categoryOptions"
-                  :key="option.value || 'all'"
-                  :value="option.value"
-                >
-                  {{ option.label }}
-                </SelectItem>
-              </SelectGroup>
-            </SelectContent>
-          </Select>
-
-          <Select v-model="sortMode">
-            <SelectTrigger class="plugin-store-filter__select">
-              <SelectValue :placeholder="t('pluginStore.sort')" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectGroup>
-                <SelectItem
-                  v-for="option in sortOptions"
-                  :key="option.value"
-                  :value="option.value"
-                >
-                  {{ option.label }}
-                </SelectItem>
-              </SelectGroup>
-            </SelectContent>
-          </Select>
-
-          <label class="plugin-store-filter__switch">
-            <Switch v-model="uninstalledOnly" />
-            <span>{{ t('pluginStore.uninstalledOnly') }}</span>
-          </label>
+    <FilterBar compact>
+      <div class="plugin-store-filter">
+        <div class="plugin-store-search">
+          <Search :size="16" />
+          <Input
+            v-model.trim="search"
+            :aria-label="t('pluginStore.search')"
+            :placeholder="t('pluginStore.search')"
+          />
         </div>
 
-        <div class="plugin-store-filter-summary">
-          <Badge variant="secondary">
-            {{ currentSourceLabel }}
-          </Badge>
-          <Badge v-if="selectedCategory" variant="outline">
-            {{ selectedCategory }}
-          </Badge>
-          <Badge variant="outline">
-            {{ t('pluginStore.totalCount', { count: totalItems }) }}
-          </Badge>
-        </div>
-      </FilterBar>
-    </Panel>
+        <Select v-model="selectedSource">
+          <SelectTrigger class="plugin-store-filter__select">
+            <SelectValue :placeholder="t('pluginStore.allSources')" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectGroup>
+              <SelectItem
+                v-for="option in sourceOptions"
+                :key="option.value || 'all'"
+                :value="option.value"
+              >
+                {{ option.label }}
+              </SelectItem>
+            </SelectGroup>
+          </SelectContent>
+        </Select>
+
+        <Select v-model="selectedCategory">
+          <SelectTrigger class="plugin-store-filter__select">
+            <SelectValue :placeholder="t('pluginStore.allCategories')" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectGroup>
+              <SelectItem
+                v-for="option in categoryOptions"
+                :key="option.value || 'all'"
+                :value="option.value"
+              >
+                {{ option.label }}
+              </SelectItem>
+            </SelectGroup>
+          </SelectContent>
+        </Select>
+
+        <Select v-model="sortMode">
+          <SelectTrigger class="plugin-store-filter__select">
+            <SelectValue :placeholder="t('pluginStore.sort')" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectGroup>
+              <SelectItem
+                v-for="option in sortOptions"
+                :key="option.value"
+                :value="option.value"
+              >
+                {{ option.label }}
+              </SelectItem>
+            </SelectGroup>
+          </SelectContent>
+        </Select>
+
+        <label class="plugin-store-filter__switch">
+          <Switch v-model="uninstalledOnly" />
+          <span>{{ t('pluginStore.uninstalledOnly') }}</span>
+        </label>
+      </div>
+
+      <div class="plugin-store-filter-summary">
+        <Badge variant="secondary">
+          {{ currentSourceLabel }}
+        </Badge>
+        <Badge v-if="selectedCategory" variant="outline">
+          {{ selectedCategory }}
+        </Badge>
+        <Badge variant="outline">
+          {{ t('pluginStore.totalCount', { count: totalItems }) }}
+        </Badge>
+      </div>
+    </FilterBar>
 
     <LoadingSkeleton v-if="loading && items.length === 0" rows="8" />
     <EmptyState

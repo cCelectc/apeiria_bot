@@ -426,7 +426,7 @@ function driverStatusText(item: DriverConfigItem) {
 }
 
 function openPackageManager() {
-  void router.push({ name: 'adapters-store' })
+  void router.push({ name: 'adapter-store' })
 }
 
 onMounted(() => {

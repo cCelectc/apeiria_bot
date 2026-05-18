@@ -35,8 +35,14 @@ const routes: RouteRecordRaw[] = [
         meta: { titleKey: 'core.title' },
       },
       {
-        path: 'core/adapters/store',
-        name: 'adapters-store',
+        path: 'store/plugins',
+        name: 'plugin-store',
+        component: () => import('@/pages/PluginStorePage.vue'),
+        meta: { titleKey: 'pluginStore.title' },
+      },
+      {
+        path: 'store/adapters',
+        name: 'adapter-store',
         component: () => import('@/pages/AdapterStorePage.vue'),
         meta: { titleKey: 'adapterStore.title' },
       },

@@ -33,7 +33,6 @@ import {
   FilterBar,
   LoadingSkeleton,
   PageScaffold,
-  Panel,
   StatusBadge,
   TaskDialog,
 } from '@/components/management'
@@ -487,82 +486,80 @@ onBeforeUnmount(() => {
       </Button>
     </template>
 
-    <Panel>
-      <FilterBar compact>
-        <div class="adapter-store-filter">
-          <div class="adapter-store-search">
-            <Search :size="16" />
-            <Input
-              v-model.trim="search"
-              :aria-label="t('adapterStore.search')"
-              :placeholder="t('adapterStore.search')"
-            />
-          </div>
-
-          <Select v-model="selectedSource">
-            <SelectTrigger class="adapter-store-filter__select">
-              <SelectValue :placeholder="t('adapterStore.allSources')" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem
-                v-for="option in sourceOptions"
-                :key="option.value || 'all'"
-                :value="option.value"
-              >
-                {{ option.label }}
-              </SelectItem>
-            </SelectContent>
-          </Select>
-
-          <Select v-model="selectedCategory">
-            <SelectTrigger class="adapter-store-filter__select">
-              <SelectValue :placeholder="t('adapterStore.allCategories')" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem
-                v-for="option in categoryOptions"
-                :key="option.value || 'all'"
-                :value="option.value"
-              >
-                {{ option.label }}
-              </SelectItem>
-            </SelectContent>
-          </Select>
-
-          <Select v-model="sortMode">
-            <SelectTrigger class="adapter-store-filter__select">
-              <SelectValue :placeholder="t('adapterStore.sort')" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem
-                v-for="option in sortOptions"
-                :key="option.value"
-                :value="option.value"
-              >
-                {{ option.label }}
-              </SelectItem>
-            </SelectContent>
-          </Select>
-
-          <label class="adapter-store-filter__switch">
-            <Switch v-model="uninstalledOnly" />
-            <span>{{ t('adapterStore.uninstalledOnly') }}</span>
-          </label>
+    <FilterBar compact>
+      <div class="adapter-store-filter">
+        <div class="adapter-store-search">
+          <Search :size="16" />
+          <Input
+            v-model.trim="search"
+            :aria-label="t('adapterStore.search')"
+            :placeholder="t('adapterStore.search')"
+          />
         </div>
 
-        <div class="adapter-store-filter-summary">
-          <Badge variant="secondary">
-            {{ currentSourceLabel }}
-          </Badge>
-          <Badge v-if="selectedCategory" variant="outline">
-            {{ selectedCategory }}
-          </Badge>
-          <Badge variant="outline">
-            {{ t('adapterStore.totalCount', { count: totalItems }) }}
-          </Badge>
-        </div>
-      </FilterBar>
-    </Panel>
+        <Select v-model="selectedSource">
+          <SelectTrigger class="adapter-store-filter__select">
+            <SelectValue :placeholder="t('adapterStore.allSources')" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem
+              v-for="option in sourceOptions"
+              :key="option.value || 'all'"
+              :value="option.value"
+            >
+              {{ option.label }}
+            </SelectItem>
+          </SelectContent>
+        </Select>
+
+        <Select v-model="selectedCategory">
+          <SelectTrigger class="adapter-store-filter__select">
+            <SelectValue :placeholder="t('adapterStore.allCategories')" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem
+              v-for="option in categoryOptions"
+              :key="option.value || 'all'"
+              :value="option.value"
+            >
+              {{ option.label }}
+            </SelectItem>
+          </SelectContent>
+        </Select>
+
+        <Select v-model="sortMode">
+          <SelectTrigger class="adapter-store-filter__select">
+            <SelectValue :placeholder="t('adapterStore.sort')" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem
+              v-for="option in sortOptions"
+              :key="option.value"
+              :value="option.value"
+            >
+              {{ option.label }}
+            </SelectItem>
+          </SelectContent>
+        </Select>
+
+        <label class="adapter-store-filter__switch">
+          <Switch v-model="uninstalledOnly" />
+          <span>{{ t('adapterStore.uninstalledOnly') }}</span>
+        </label>
+      </div>
+
+      <div class="adapter-store-filter-summary">
+        <Badge variant="secondary">
+          {{ currentSourceLabel }}
+        </Badge>
+        <Badge v-if="selectedCategory" variant="outline">
+          {{ selectedCategory }}
+        </Badge>
+        <Badge variant="outline">
+          {{ t('adapterStore.totalCount', { count: totalItems }) }}
+        </Badge>
+      </div>
+    </FilterBar>
 
     <LoadingSkeleton v-if="loading && items.length === 0" rows="8" />
     <EmptyState

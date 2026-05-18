@@ -409,6 +409,19 @@
   flex: 0 0 auto;
 }
 
+.app-shell-store-caret {
+  margin-left: auto;
+  transition: transform 160ms ease;
+}
+
+.app-shell-store-caret--open {
+  transform: rotate(180deg);
+}
+
+.app-shell-store-item {
+  padding-left: 18px;
+}
+
 [data-collapsible="icon"] .app-shell-brand,
 [data-collapsible="icon"] .app-shell-user {
   justify-content: center;
@@ -432,6 +445,11 @@
 [data-collapsible="icon"] .app-shell-controls {
   flex-direction: column;
   padding-inline: 0;
+}
+
+[data-collapsible="icon"] .app-shell-store-caret,
+[data-collapsible="icon"] .app-shell-store-item {
+  display: none;
 }
 
 .app-shell-content {

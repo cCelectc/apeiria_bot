@@ -4,6 +4,8 @@ import type { SupportedLocale } from '@/app/i18n'
 import {
   Bot,
   Brain,
+  Cable,
+  ChevronDown,
   Languages,
   LayoutDashboard,
   LogOut,
@@ -14,6 +16,7 @@ import {
   ScrollText,
   Settings,
   Shield,
+  ShoppingBag,
   Sun,
   Undo2,
   UserCog,
@@ -75,6 +78,8 @@ interface NavItem {
 type PendingConfirmAction = 'restart' | 'revert' | null
 
 const pendingConfirmAction = ref<PendingConfirmAction>(null)
+const sidebarOpen = ref(true)
+const storeNavExpanded = ref(false)
 const { t, locale } = useI18n()
 const router = useRouter()
 const route = useRoute()
@@ -134,6 +139,19 @@ function routeMatches(to: string) {
   return currentPath === targetPath || currentPath.startsWith(`${targetPath}/`)
 }
 
+const storeNavItems = computed<NavItem[]>(() => [
+  { key: 'plugin-store', icon: ShoppingBag, title: t('layout.pluginStore'), to: '/store/plugins' },
+  { key: 'adapter-store', icon: Cable, title: t('layout.adapterStore'), to: '/store/adapters' },
+])
+
+const storeRouteActive = computed(() =>
+  storeNavItems.value.some(item => routeMatches(item.to)),
+)
+
+function toggleStoreNav() {
+  storeNavExpanded.value = !storeNavExpanded.value
+}
+
 function setLocale(nextLocale: SupportedLocale) {
   if (locale.value === nextLocale) {
     return
@@ -175,7 +193,7 @@ async function runConfirmedAction() {
 </script>
 
 <template>
-  <SidebarProvider>
+  <SidebarProvider v-model:open="sidebarOpen">
     <Sidebar collapsible="icon">
       <SidebarHeader>
         <div class="app-shell-brand">
@@ -200,6 +218,63 @@ async function runConfirmedAction() {
           <SidebarGroupContent>
             <SidebarMenu>
               <SidebarMenuItem v-for="item in navItems" :key="item.key">
+                <SidebarMenuButton
+                  as-child
+                  :is-active="routeMatches(item.to)"
+                  :tooltip="item.title"
+                >
+                  <RouterLink :to="item.to">
+                    <component :is="item.icon" />
+                    <span>{{ item.title }}</span>
+                  </RouterLink>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                <DropdownMenu v-if="!sidebarOpen">
+                  <DropdownMenuTrigger as-child>
+                    <SidebarMenuButton
+                      :is-active="storeRouteActive"
+                      :tooltip="t('layout.store')"
+                    >
+                      <ShoppingBag />
+                      <span>{{ t('layout.store') }}</span>
+                    </SidebarMenuButton>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start" side="right">
+                    <DropdownMenuLabel>{{ t('layout.store') }}</DropdownMenuLabel>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuGroup>
+                      <DropdownMenuItem
+                        v-for="item in storeNavItems"
+                        :key="item.key"
+                        @click="router.push(item.to)"
+                      >
+                        <component :is="item.icon" />
+                        <span>{{ item.title }}</span>
+                      </DropdownMenuItem>
+                    </DropdownMenuGroup>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+                <SidebarMenuButton
+                  v-else
+                  :is-active="storeRouteActive"
+                  :tooltip="t('layout.store')"
+                  @click="toggleStoreNav"
+                >
+                  <ShoppingBag />
+                  <span>{{ t('layout.store') }}</span>
+                  <ChevronDown
+                    class="app-shell-store-caret"
+                    :class="{ 'app-shell-store-caret--open': storeNavExpanded }"
+                  />
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              <SidebarMenuItem
+                v-for="item in storeNavItems"
+                v-show="storeNavExpanded"
+                :key="item.key"
+                class="app-shell-store-item"
+              >
                 <SidebarMenuButton
                   as-child
                   :is-active="routeMatches(item.to)"
