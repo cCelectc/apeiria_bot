@@ -100,7 +100,6 @@ export function usePluginSettingsDialog(options: {
     buildSettingsPreviewItems(
       settingsFields.value,
       settingsForm.value,
-      pluginEditor.draftOverrides.value,
       pluginEditor.draftClears.value,
       options.t('plugins.settingsInvalidJson'),
     ),

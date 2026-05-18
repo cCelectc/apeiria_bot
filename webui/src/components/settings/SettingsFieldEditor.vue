@@ -27,6 +27,7 @@ import {
   isNestedEditorField,
   isNullableBoolField,
   isSequenceChipField,
+  textInputMode,
   textInputType,
   type SettingField,
 } from '@/utils/settingsEditor'
@@ -38,7 +39,7 @@ defineOptions({
 
 const props = withDefaults(defineProps<{
   arrayHint?: string
-  editing: boolean
+  editable: boolean
   field: SettingField
   jsonHint?: string
   modelValue: unknown
@@ -58,7 +59,7 @@ const emit = defineEmits<{
 const { t } = useI18n()
 const chipDraft = ref('')
 
-const canEdit = computed(() => props.editing && props.field.editable)
+const canEdit = computed(() => props.editable && props.field.editable)
 
 const choiceOptions = computed(() => {
   if (props.field.choices.length > 0) {
@@ -235,6 +236,7 @@ function useReadonlyTextarea(field: SettingField) {
       :model-value="modelValue == null ? '' : String(modelValue)"
       class="settings-field-editor__control"
       :type="textInputType(field)"
+      :inputmode="textInputMode(field)"
       @update:model-value="updateText"
     />
 

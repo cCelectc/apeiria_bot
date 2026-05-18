@@ -6,9 +6,10 @@ import { useNoticeStore } from '@/stores/notice'
 import {
   buildClearedFieldValue,
   buildFieldFormValue,
-  buildOverrideInitialValue,
+  buildPendingSettingsFields,
   buildSettingsForm,
   buildSettingsUpdate,
+  hasFieldPendingChange,
   hasPendingChanges,
 } from '@/utils/settingsEditor'
 
@@ -44,7 +45,6 @@ export function useSettingsEditor(options: UseSettingsEditorOptions) {
   const errorMessage = ref('')
   const state = ref<SettingsState | null>(null)
   const form = ref<Record<string, unknown>>({})
-  const draftOverrides = ref<Record<string, boolean>>({})
   const draftClears = ref<Record<string, boolean>>({})
 
   const fields = computed(() =>
@@ -58,7 +58,7 @@ export function useSettingsEditor(options: UseSettingsEditorOptions) {
   )
   const hasPendingChangesState = computed(() =>
     hasPendingChanges(
-      fields.value.filter(field => isFieldEditing(field)),
+      buildPendingSettingsFields(fields.value),
       form.value,
       draftClears.value,
       options.messages.invalidJson,
@@ -68,35 +68,23 @@ export function useSettingsEditor(options: UseSettingsEditorOptions) {
   function applyState(nextState: SettingsState) {
     state.value = nextState
     form.value = buildSettingsForm(nextState.fields)
-    draftOverrides.value = {}
     draftClears.value = {}
   }
 
   function reset() {
     state.value = null
     form.value = {}
-    draftOverrides.value = {}
     draftClears.value = {}
     errorMessage.value = ''
   }
 
-  function isFieldEditing(field: SettingField) {
-    return (
-      field.has_local_override
-      || Boolean(draftOverrides.value[field.key])
-      || Boolean(draftClears.value[field.key])
+  function hasFieldPending(field: SettingField) {
+    return hasFieldPendingChange(
+      field,
+      form.value,
+      draftClears.value,
+      options.messages.invalidJson,
     )
-  }
-
-  function startOverride(field: SettingField) {
-    const nextDraftClears = { ...draftClears.value }
-    delete nextDraftClears[field.key]
-    draftClears.value = nextDraftClears
-    draftOverrides.value = {
-      ...draftOverrides.value,
-      [field.key]: true,
-    }
-    form.value[field.key] = buildOverrideInitialValue(field)
   }
 
   async function reload() {
@@ -116,7 +104,7 @@ export function useSettingsEditor(options: UseSettingsEditorOptions) {
   }
 
   async function submit() {
-    const editingFields = fields.value.filter(field => isFieldEditing(field))
+    const editingFields = buildPendingSettingsFields(fields.value)
     let payload: { values: Record<string, unknown>, clear: string[] }
     try {
       payload = buildSettingsUpdate(
@@ -162,9 +150,6 @@ export function useSettingsEditor(options: UseSettingsEditorOptions) {
   }
 
   function clearField(field: SettingField) {
-    const nextDraftOverrides = { ...draftOverrides.value }
-    delete nextDraftOverrides[field.key]
-    draftOverrides.value = nextDraftOverrides
     draftClears.value = {
       ...draftClears.value,
       [field.key]: true,
@@ -174,13 +159,18 @@ export function useSettingsEditor(options: UseSettingsEditorOptions) {
   }
 
   function cancelField(field: SettingField) {
-    const nextDraftOverrides = { ...draftOverrides.value }
-    delete nextDraftOverrides[field.key]
-    draftOverrides.value = nextDraftOverrides
     const nextDraftClears = { ...draftClears.value }
     delete nextDraftClears[field.key]
     draftClears.value = nextDraftClears
     form.value[field.key] = buildFieldFormValue(field)
+    errorMessage.value = ''
+  }
+
+  function updateFieldValue(field: SettingField, value: unknown) {
+    const nextDraftClears = { ...draftClears.value }
+    delete nextDraftClears[field.key]
+    draftClears.value = nextDraftClears
+    form.value[field.key] = value
     errorMessage.value = ''
   }
 
@@ -189,18 +179,17 @@ export function useSettingsEditor(options: UseSettingsEditorOptions) {
     cancelField,
     clearField,
     draftClears,
-    draftOverrides,
     errorMessage,
     fields,
     form,
+    hasFieldPending,
     hasPendingChanges: hasPendingChangesState,
-    isFieldEditing,
     loading,
     reload,
     reset,
     saving,
-    startOverride,
     state,
     submit,
+    updateFieldValue,
   }
 }

@@ -882,7 +882,7 @@ onMounted(() => {
                     </div>
                     <div class="settings-list-row__status">
                       <StatusBadge
-                        v-if="field.has_local_override || pluginSettings.pluginEditor.isFieldEditing(field)"
+                        v-if="field.has_local_override"
                         :label="t('plugins.settingsLocalShort')"
                         tone="info"
                       />
@@ -901,15 +901,7 @@ onMounted(() => {
                   <div class="settings-list-row__control">
                     <div class="settings-list-row__actions">
                       <Button
-                        v-if="!pluginSettings.pluginEditor.isFieldEditing(field) && field.editable"
-                        size="sm"
-                        variant="secondary"
-                        @click="pluginSettings.pluginEditor.startOverride(field)"
-                      >
-                        {{ t('plugins.settingsAddOverride') }}
-                      </Button>
-                      <Button
-                        v-if="pluginSettings.pluginEditor.isFieldEditing(field)"
+                        v-if="pluginSettings.pluginEditor.hasFieldPending(field)"
                         size="sm"
                         variant="ghost"
                         @click="pluginSettings.pluginEditor.cancelField(field)"
@@ -927,11 +919,12 @@ onMounted(() => {
                     </div>
 
                     <SettingsFieldEditor
-                      v-model="pluginSettings.settingsForm.value[field.key]"
+                      :model-value="pluginSettings.settingsForm.value[field.key]"
                       :array-hint="t('plugins.settingsArrayHint')"
-                      :editing="pluginSettings.pluginEditor.isFieldEditing(field)"
+                      :editable="field.editable"
                       :field="field"
                       :json-hint="t('plugins.settingsJsonHint')"
+                      @update:model-value="value => pluginSettings.pluginEditor.updateFieldValue(field, value)"
                     />
                   </div>
                 </div>

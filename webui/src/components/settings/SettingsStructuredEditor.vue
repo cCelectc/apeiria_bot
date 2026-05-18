@@ -210,8 +210,14 @@ function buildNextMappingKey(existingKeys: string[]) {
   return `key_${index}`
 }
 
-function inputType(schema: SettingSchema) {
-  return schema.type === 'int' || schema.type === 'float' ? 'number' : 'text'
+function inputMode(schema: SettingSchema) {
+  if (schema.type === 'int') {
+    return 'numeric'
+  }
+  if (schema.type === 'float') {
+    return 'decimal'
+  }
+  return undefined
 }
 
 function isSameChoiceValue(left: unknown, right: unknown) {
@@ -288,7 +294,8 @@ function clonePlainObject(value: Record<string, unknown>) {
       v-else-if="isScalarSchema"
       :model-value="modelValue == null ? '' : String(modelValue)"
       :disabled="readonly"
-      :type="inputType(schema)"
+      type="text"
+      :inputmode="inputMode(schema)"
       class="settings-field-editor__control"
       @update:model-value="value => emit('update:modelValue', value)"
     />

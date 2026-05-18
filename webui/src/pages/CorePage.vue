@@ -127,7 +127,6 @@ const corePreviewItems = computed(() =>
   buildSettingsPreviewItems(
     coreEditor.fields.value,
     coreEditor.form.value,
-    coreEditor.draftOverrides.value,
     coreEditor.draftClears.value,
     t('plugins.settingsInvalidJson'),
   ),
@@ -464,7 +463,7 @@ onMounted(() => {
                   </div>
                   <div class="settings-list-row__status">
                     <StatusBadge
-                      v-if="field.has_local_override || coreEditor.isFieldEditing(field)"
+                      v-if="field.has_local_override"
                       :label="t('plugins.settingsLocalShort')"
                       tone="info"
                     />
@@ -483,15 +482,7 @@ onMounted(() => {
                 <div class="settings-list-row__control">
                   <div class="settings-list-row__actions">
                     <Button
-                      v-if="!coreEditor.isFieldEditing(field) && field.editable"
-                      size="sm"
-                      variant="secondary"
-                      @click="coreEditor.startOverride(field)"
-                    >
-                      {{ t('plugins.settingsAddOverride') }}
-                    </Button>
-                    <Button
-                      v-if="coreEditor.isFieldEditing(field)"
+                      v-if="coreEditor.hasFieldPending(field)"
                       size="sm"
                       variant="ghost"
                       @click="coreEditor.cancelField(field)"
@@ -509,11 +500,12 @@ onMounted(() => {
                   </div>
 
                   <SettingsFieldEditor
-                    v-model="coreEditor.form.value[field.key]"
+                    :model-value="coreEditor.form.value[field.key]"
                     :array-hint="t('plugins.settingsArrayHint')"
-                    :editing="coreEditor.isFieldEditing(field)"
+                    :editable="field.editable"
                     :field="field"
                     :json-hint="t('plugins.settingsJsonHint')"
+                    @update:model-value="value => coreEditor.updateFieldValue(field, value)"
                   />
                 </div>
               </div>

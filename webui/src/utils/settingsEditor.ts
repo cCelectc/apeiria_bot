@@ -129,12 +129,7 @@ export function buildSettingsForm(fields: SettingField[]) {
 }
 
 export function buildFieldFormValue(field: SettingField) {
-  const sourceValue = field.has_local_override ? field.local_value : null
-  return toEditorValue(field, sourceValue)
-}
-
-export function buildOverrideInitialValue(field: SettingField) {
-  return toEditorValue(field, field.current_value ?? field.default)
+  return toEditorValue(field, field.current_value)
 }
 
 export function buildClearedFieldValue(field: SettingField) {
@@ -159,7 +154,17 @@ export function textInputType(field: SettingField) {
   if (field.secret) {
     return 'password'
   }
-  return field.type === 'int' || field.type === 'float' ? 'number' : 'text'
+  return 'text'
+}
+
+export function textInputMode(field: SettingField) {
+  if (field.type === 'int') {
+    return 'numeric'
+  }
+  if (field.type === 'float') {
+    return 'decimal'
+  }
+  return undefined
 }
 
 export function buildSettingsUpdate(
@@ -180,6 +185,9 @@ export function buildSettingsUpdate(
     }
 
     let value = form[field.key]
+    if (!draftClears[field.key] && isSameSettingValue(value, buildFieldFormValue(field))) {
+      continue
+    }
     try {
       value = normalizeFieldValueForSave(field, value)
     } catch (error) {
@@ -187,30 +195,27 @@ export function buildSettingsUpdate(
       throw new Error(`${field.key}: ${message}`, { cause: error })
     }
     value = resolveNullableFieldValue(field, value)
+    const comparableValue = normalizeComparableFieldValue(field, value)
     const currentValue = normalizeComparableFieldValue(field, field.current_value)
-    if (!isSameSettingValue(value, currentValue)) {
+    if (!isSameSettingValue(comparableValue, currentValue)) {
       values[field.key] = value
     }
   }
   return { values, clear }
 }
 
+export function buildPendingSettingsFields(fields: SettingField[]) {
+  return fields.filter(field => field.editable)
+}
+
 export function buildSettingsPreviewItems(
   fields: SettingField[],
   form: Record<string, unknown>,
-  draftOverrides: Record<string, boolean>,
   draftClears: Record<string, boolean>,
   invalidJsonMessage: string,
 ) {
   try {
-    const editableFields = fields.filter(field =>
-      field.editable
-      && (
-        field.has_local_override
-        || Boolean(draftOverrides[field.key])
-        || Boolean(draftClears[field.key])
-      ),
-    )
+    const editableFields = buildPendingSettingsFields(fields)
     const payload = buildSettingsUpdate(
       editableFields,
       form,
@@ -265,6 +270,15 @@ export function hasPendingChanges(
   } catch {
     return fields.length > 0
   }
+}
+
+export function hasFieldPendingChange(
+  field: SettingField,
+  form: Record<string, unknown>,
+  draftClears: Record<string, boolean>,
+  invalidJsonMessage: string,
+) {
+  return hasPendingChanges([field], form, draftClears, invalidJsonMessage)
 }
 
 export function normalizeFieldValueForSave(field: SettingField, rawValue: unknown) {
@@ -461,7 +475,7 @@ function normalizeComparableFieldValue(field: SettingField, value: unknown) {
   if (field.schema) {
     return comparableBySchema(field.schema, value)
   }
-  if (field.type === 'float') {
+  if (field.type === 'int' || field.type === 'float') {
     return Number(value)
   }
   if (field.type_category === 'sequence') {
@@ -476,7 +490,7 @@ function comparableBySchema(schema: SettingSchema, value: unknown): unknown {
   if (value == null) {
     return null
   }
-  if (schema.type === 'float') {
+  if (schema.type === 'int' || schema.type === 'float') {
     return Number(value)
   }
   if ((schema.type === 'list' || schema.type === 'set') && Array.isArray(value)) {
