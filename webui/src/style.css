@@ -318,9 +318,17 @@
 .app-shell-brand {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   min-width: 0;
   gap: 10px;
   padding: 4px 6px;
+}
+
+.app-shell-brand__identity {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  gap: 10px;
 }
 
 .app-shell-brand__mark {
@@ -397,10 +405,23 @@
   padding: 0 6px;
 }
 
+.app-shell-brand__toggle {
+  flex: 0 0 auto;
+}
+
 [data-collapsible="icon"] .app-shell-brand,
 [data-collapsible="icon"] .app-shell-user {
   justify-content: center;
   padding-inline: 0;
+}
+
+[data-collapsible="icon"] .app-shell-brand {
+  flex-direction: column;
+  gap: 6px;
+}
+
+[data-collapsible="icon"] .app-shell-brand__identity {
+  justify-content: center;
 }
 
 [data-collapsible="icon"] .app-shell-brand__text,
@@ -411,27 +432,6 @@
 [data-collapsible="icon"] .app-shell-controls {
   flex-direction: column;
   padding-inline: 0;
-}
-
-.app-shell-topbar {
-  position: sticky;
-  top: 0;
-  z-index: 20;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  min-height: 64px;
-  gap: 12px;
-  padding: 10px 20px;
-  border-bottom: 1px solid var(--border);
-  background: var(--background);
-}
-
-.app-shell-topbar__left {
-  display: flex;
-  align-items: center;
-  min-width: 0;
-  gap: 10px;
 }
 
 .app-shell-content {

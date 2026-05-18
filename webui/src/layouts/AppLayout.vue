@@ -33,13 +33,6 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
-import { Badge } from '@/components/ui/badge'
-import {
-  Breadcrumb,
-  BreadcrumbItem,
-  BreadcrumbList,
-  BreadcrumbPage,
-} from '@/components/ui/breadcrumb'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -50,7 +43,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { Separator } from '@/components/ui/separator'
 import {
   Sidebar,
   SidebarContent,
@@ -110,10 +102,6 @@ const themeToggleLabel = computed(() =>
 const currentLocaleLabel = computed(() =>
   locale.value === 'zh_CN' ? t('layout.chinese') : t('layout.english'),
 )
-const currentRouteTitle = computed(() => {
-  const titleKey = typeof route.meta.titleKey === 'string' ? route.meta.titleKey : ''
-  return titleKey ? t(titleKey) : t('layout.defaultTitle')
-})
 const currentRoleLabel = computed(() => {
   if (authStore.role === 'owner') {
     return t('accounts.roles.owner')
@@ -191,13 +179,16 @@ async function runConfirmedAction() {
     <Sidebar collapsible="icon">
       <SidebarHeader>
         <div class="app-shell-brand">
-          <div class="app-shell-brand__mark">
-            <Bot />
+          <div class="app-shell-brand__identity">
+            <div class="app-shell-brand__mark">
+              <Bot />
+            </div>
+            <div class="app-shell-brand__text">
+              <strong>{{ t('layout.brand') }}</strong>
+              <span>{{ t('layout.subtitle') }}</span>
+            </div>
           </div>
-          <div class="app-shell-brand__text">
-            <strong>{{ t('layout.brand') }}</strong>
-            <span>{{ t('layout.subtitle') }}</span>
-          </div>
+          <SidebarTrigger class="app-shell-brand__toggle" />
         </div>
       </SidebarHeader>
 
@@ -272,24 +263,6 @@ async function runConfirmedAction() {
     </Sidebar>
 
     <SidebarInset>
-      <header class="app-shell-topbar">
-        <div class="app-shell-topbar__left">
-          <SidebarTrigger />
-          <Separator class="h-5" orientation="vertical" />
-          <Breadcrumb>
-            <BreadcrumbList>
-              <BreadcrumbItem>
-                <BreadcrumbPage>{{ currentRouteTitle }}</BreadcrumbPage>
-              </BreadcrumbItem>
-            </BreadcrumbList>
-          </Breadcrumb>
-        </div>
-
-        <Badge variant="secondary">
-          {{ currentLocaleLabel }}
-        </Badge>
-      </header>
-
       <main class="app-shell-content">
         <Alert v-if="restartStore.hasPendingRestart" class="restart-banner">
           <RefreshCw />
