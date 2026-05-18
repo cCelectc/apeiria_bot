@@ -31,6 +31,7 @@ import {
 } from 'lucide-vue-next'
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useRouter } from 'vue-router'
 import { getErrorMessage } from '@/api/client'
 import {
   checkPluginUpdates,
@@ -118,8 +119,10 @@ type PluginFilter = 'all' | 'enabled' | 'disabled' | 'attention'
 type InstallMode = 'store_item' | 'requirement' | 'local_path'
 
 const { t } = useI18n()
+const router = useRouter()
 const noticeStore = useNoticeStore()
 const restartStore = useRestartStore()
+const AI_RUNTIME_PLUGIN_MODULE = 'apeiria.builtin_plugins.ai'
 
 const workbench = ref<PluginWorkbenchResponse | null>(null)
 const loading = ref(false)
@@ -155,6 +158,9 @@ let installTaskPollTimer: number | null = null
 
 const detailDialogVisible = ref(false)
 const detailItem = ref<PluginWorkbenchItem | null>(null)
+const settingsDialogPluginIsAI = computed(() =>
+  pluginSettings.settingsPlugin.value?.module_name === AI_RUNTIME_PLUGIN_MODULE,
+)
 
 const uninstallConfirmVisible = ref(false)
 const uninstallConfirmItem = ref<PluginWorkbenchItem | null>(null)
@@ -732,6 +738,11 @@ async function runUpdateCheck() {
 
 function openPluginSettings(item: PluginWorkbenchItem) {
   void pluginSettings.openSettings(item)
+}
+
+function openAIRuntimeSettings() {
+  pluginSettings.closeSettingsDialog()
+  void router.push({ name: 'ai', query: { area: 'runtimeSettings' } })
 }
 
 function openPluginReadme(item: PluginWorkbenchItem) {
@@ -1466,8 +1477,16 @@ onBeforeUnmount(() => {
             <EmptyState
               v-if="!pluginSettings.settingsState.value?.has_config_model
                 || pluginSettings.settingsFields.value.length === 0"
+              :text="settingsDialogPluginIsAI ? t('plugins.settingsEmptyAIPlugin') : ''"
               :title="t('plugins.settingsEmpty')"
-            />
+            >
+              <template v-if="settingsDialogPluginIsAI" #actions>
+                <Button variant="secondary" @click="openAIRuntimeSettings">
+                  <SlidersHorizontal data-icon="inline-start" />
+                  {{ t('plugins.settingsOpenAIRuntimeSettings') }}
+                </Button>
+              </template>
+            </EmptyState>
 
             <div v-else class="settings-list-panel plugin-settings-list">
               <article

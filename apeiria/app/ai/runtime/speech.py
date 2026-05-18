@@ -22,8 +22,8 @@ from apeiria.ai.model.runtime.capabilities import (
 from apeiria.app.ai.runtime.media import resolve_runtime_media_part
 
 if TYPE_CHECKING:
-    from apeiria.ai.config import AIPluginConfig
     from apeiria.ai.model.runtime.adapter import AIModelTranscriptionResponse
+    from apeiria.ai.runtime_settings import AIRuntimeSettings
     from apeiria.app.ai.runtime.session.context import (
         RuntimeSourceMediaPart,
         RuntimeTurnInput,
@@ -93,11 +93,11 @@ class RuntimeSpeechInputPreparer:
         self,
         turn: "RuntimeTurnInput",
         *,
-        config: "AIPluginConfig",
+        settings: "AIRuntimeSettings",
     ) -> SpeechPreparationResult:
         return await prepare_speech_input(
             turn,
-            stt_input_enabled=config.stt_input_enabled,
+            stt_input_enabled=settings.stt_input_enabled,
             audio_resolver=self._audio_resolver,
             model_selector=self._model_selector,
             transcriber=self._transcriber,

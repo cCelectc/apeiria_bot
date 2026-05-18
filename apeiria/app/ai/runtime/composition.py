@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from apeiria.ai.config import get_ai_plugin_config
+from apeiria.ai.runtime_settings import ai_runtime_settings_service
 from apeiria.app.ai.reply_strategy.service import reply_strategy_service
 from apeiria.app.ai.runtime.commit import RuntimeCommitEffectsStage
 from apeiria.app.ai.runtime.commit.delivery import deliver_generated_reply
@@ -35,7 +35,9 @@ def create_session_runtime_resolver() -> InMemoryAISessionRuntimeResolver:
     """Build the default process-local session runtime resolver."""
 
     return InMemoryAISessionRuntimeResolver(
-        policy=SessionRuntimePolicy.from_config(get_ai_plugin_config())
+        policy=SessionRuntimePolicy.from_settings(
+            ai_runtime_settings_service.get_settings()
+        )
     )
 
 

@@ -7,8 +7,8 @@ from typing import TYPE_CHECKING
 
 from nonebot.log import logger
 
-from apeiria.ai.config import get_ai_plugin_config
 from apeiria.ai.prompting import render_messages
+from apeiria.ai.runtime_settings import ai_runtime_settings_service
 from apeiria.ai.tools import (
     ai_tool_service,
     summarize_tool_policy,
@@ -87,7 +87,7 @@ async def plan_runtime_turn(
 
     identity = turn.identity
     tool_execution_timeout_seconds = (
-        get_ai_plugin_config().tool_execution_timeout_seconds
+        ai_runtime_settings_service.get_settings().tool_execution_timeout_seconds
     )
     allowed_tool_specs = (
         () if social_decision.tool_mode == "avoid" else tuple(context.allowed_tools)

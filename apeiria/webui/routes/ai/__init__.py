@@ -21,6 +21,7 @@ from .personas import router as _personas_router
 from .profiles import router as _profiles_router
 from .relationships import router as _relationships_router
 from .sessions import router as _sessions_router
+from .settings import router as _settings_router
 from .skills import router as _skills_router
 from .sources import router as _sources_router
 from .sources_schemas import (
@@ -100,6 +101,7 @@ router.include_router(_personas_router)
 router.include_router(_profiles_router)
 router.include_router(_relationships_router)
 router.include_router(_sessions_router)
+router.include_router(_settings_router)
 router.include_router(_skills_router)
 router.include_router(_sources_router)
 router.include_router(_tools_router)

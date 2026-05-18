@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import replace
 from typing import TYPE_CHECKING, Any, Literal
 
-from apeiria.ai.config import get_ai_plugin_config
+from apeiria.ai.runtime_settings import ai_runtime_settings_service
 from apeiria.app.ai.agent_turn import AgentTurnResult
 from apeiria.app.ai.runtime.execution.tool_loop import (
     RuntimeToolLoopInput,
@@ -175,6 +175,7 @@ async def _run_tool_loop(
         plan.reply_compose_input.memories if plan.reply_compose_input else ()
     )
     exposure_plan = plan.tool_exposure_plan
+    runtime_settings = ai_runtime_settings_service.get_settings()
     return await runtime_tool_loop_runner.run(
         RuntimeToolLoopInput(
             session_id=turn_context.session_id,
@@ -200,8 +201,10 @@ async def _run_tool_loop(
             current_time=turn_context.current_time,
             runtime_mode=turn_context.runtime_mode,
             tool_mode=plan.tool_mode,
-            execution_timeout_seconds=plan.tool_execution_timeout_seconds
-            or get_ai_plugin_config().tool_execution_timeout_seconds,
+            execution_timeout_seconds=(
+                plan.tool_execution_timeout_seconds
+                or runtime_settings.tool_execution_timeout_seconds
+            ),
             executable_tool_names=frozenset(exposure_plan.selected_tool_names),
             provider_name_map=exposure_plan.provider_name_map,
             messages=turn_context.prompt_messages,

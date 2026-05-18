@@ -8,8 +8,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol
 
-from apeiria.ai.config import get_ai_plugin_config
 from apeiria.ai.model.routing.models import AIModelRouteQuery
+from apeiria.ai.runtime_settings import ai_runtime_settings_service
 from apeiria.db.inspection import inspect_database
 from apeiria.db.runtime import database_runtime
 
@@ -229,8 +229,8 @@ class AIRuntimeReadinessProbe:
         )
 
     def _speech_conversation_status(self) -> AIRuntimeDependencyStatus:
-        config = get_ai_plugin_config()
-        if not config.stt_input_enabled:
+        settings = ai_runtime_settings_service.get_settings()
+        if not settings.stt_input_enabled:
             return AIRuntimeDependencyStatus(
                 key="speech_conversation",
                 available=True,

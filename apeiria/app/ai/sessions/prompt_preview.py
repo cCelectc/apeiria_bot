@@ -7,7 +7,6 @@ from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
 from apeiria.access.groups import group_service
-from apeiria.ai.config import get_ai_plugin_config
 from apeiria.ai.model import AIModelRouteQuery
 from apeiria.ai.model.routing.profile import ai_model_profile_service
 from apeiria.ai.persona import (
@@ -15,6 +14,7 @@ from apeiria.ai.persona import (
     build_persona_render_context,
 )
 from apeiria.ai.prompting import render_flat
+from apeiria.ai.runtime_settings import ai_runtime_settings_service
 from apeiria.ai.tools import (
     AIToolPolicyBindingTarget,
     AIToolSceneContext,
@@ -597,7 +597,7 @@ class PromptPreviewReader:
             context=context,
             allowed_tool_specs=allowed_tool_specs,
             tool_execution_timeout_seconds=(
-                get_ai_plugin_config().tool_execution_timeout_seconds
+                ai_runtime_settings_service.get_settings().tool_execution_timeout_seconds
             ),
             current_time=prompt_time,
         )

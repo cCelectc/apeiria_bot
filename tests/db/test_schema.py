@@ -58,6 +58,7 @@ def test_database_ensure_ready_initializes_empty_sqlite_db(tmp_path: Path) -> No
         "ai_memory_item",
         "ai_model_usage_event",
         "ai_managed_session",
+        "ai_runtime_settings",
         "chat_session",
         "chat_session_context_summary",
         "chat_message",
@@ -374,6 +375,12 @@ def test_database_schema_declares_value_checks(tmp_path: Path) -> None:
         assert "measurement_source IN ('provider', 'missing')" in usage_table_sql
         assert "json_valid(provider_usage_json)" in usage_table_sql
         assert "FOREIGN KEY" not in usage_table_sql
+        settings_table_sql = _table_sql(connection, "ai_runtime_settings")
+        assert "CHECK(id = 1)" in settings_table_sql
+        assert "allow_group_initiative IN (0, 1)" in settings_table_sql
+        assert "ambient_merge_window_ms >= 0" in settings_table_sql
+        assert "tool_execution_timeout_seconds > 0" in settings_table_sql
+        assert "conversation_retention_days >= 1" in settings_table_sql
 
 
 def _create_schema_meta(

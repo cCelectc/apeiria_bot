@@ -11,8 +11,8 @@ from uuid import uuid4
 
 from nonebot.log import logger
 
-from apeiria.ai.config import get_ai_plugin_config
 from apeiria.ai.retention import ai_retention_service
+from apeiria.ai.runtime_settings import ai_runtime_settings_service
 from apeiria.app.ai.lifecycle import ensure_ai_runtime_support_initialized
 from apeiria.app.ai.reply_strategy.wake_gate import build_wake_context, evaluate_wake
 from apeiria.app.ai.runtime.composition import (
@@ -116,22 +116,22 @@ class DefaultAILiveRuntimeEntry:
         """Handle one runtime message and optionally return a reply."""
 
         ensure_ai_runtime_support_initialized(source="runtime_fallback")
-        config = get_ai_plugin_config()
+        settings = ai_runtime_settings_service.get_settings()
         wake_context = build_wake_context(
             bot,
             event,
-            allow_group_initiative=config.allow_group_initiative,
+            allow_group_initiative=settings.allow_group_initiative,
         )
         if wake_context is None:
             return None
         if not evaluate_wake(wake_context).should_process:
             return None
 
-        ai_retention_service.maybe_schedule_cleanup(config=config)
+        ai_retention_service.maybe_schedule_cleanup(settings=settings)
         ingested = await chat_session_service.ingest_event(
             bot,
             event,
-            persist_raw_data=config.persist_raw_event_payloads,
+            persist_raw_data=settings.persist_raw_event_payloads,
         )
         if ingested is None:
             return None
@@ -197,7 +197,9 @@ class DefaultAILiveRuntimeEntry:
         from apeiria.app.ai.future_tasks import ai_future_task_service
 
         ensure_ai_runtime_support_initialized(source="runtime_fallback")
-        ai_retention_service.maybe_schedule_cleanup(config=get_ai_plugin_config())
+        ai_retention_service.maybe_schedule_cleanup(
+            settings=ai_runtime_settings_service.get_settings()
+        )
         task = await ai_future_task_service.get_task(task_id=task_id)
         if task is None or task.status != "running":
             return None
@@ -259,9 +261,9 @@ class DefaultAILiveRuntimeEntry:
                 ),
             )
         turn = request.to_runtime_turn_input()
-        config = get_ai_plugin_config()
-        if config.stt_input_enabled:
-            speech = await speech_input_preparer.prepare(turn, config=config)
+        settings = ai_runtime_settings_service.get_settings()
+        if settings.stt_input_enabled:
+            speech = await speech_input_preparer.prepare(turn, settings=settings)
             turn = speech.turn
         return await self._resolve_turn_engine().run_reply_turn(
             trace_id=trace_id,

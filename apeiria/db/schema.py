@@ -237,6 +237,8 @@ def _ensure_current_schema_shape(  # noqa: C901, PLR0912, PLR0915
         _create_knowledge_tables(connection)
     if "ai_managed_session" not in existing_tables:
         _create_ai_session_management_tables(connection)
+    if "ai_runtime_settings" not in existing_tables:
+        _create_ai_runtime_settings_table(connection)
     _ensure_context_summary_shape(connection, existing_tables)
     if "ai_tool_policy" in existing_tables:
         _replace_ai_tool_policy_if_legacy(connection)
@@ -534,6 +536,7 @@ def _create_current_schema(connection: sqlite3.Connection) -> None:
     _create_turn_trace_tables(connection)
     _create_model_usage_tables(connection)
     _create_ai_session_management_tables(connection)
+    _create_ai_runtime_settings_table(connection)
 
 
 def _create_governance_tables(connection: sqlite3.Connection) -> None:
@@ -689,6 +692,72 @@ def _create_ai_control_plane_tables(connection: sqlite3.Connection) -> None:
         """
     )
     _create_tool_policy_table(connection)
+
+
+def _create_ai_runtime_settings_table(connection: sqlite3.Connection) -> None:
+    connection.execute(
+        """
+        CREATE TABLE ai_runtime_settings (
+            id INTEGER PRIMARY KEY CHECK(id = 1),
+            allow_group_initiative INTEGER CHECK(
+                allow_group_initiative IS NULL
+                    OR allow_group_initiative IN (0, 1)
+            ),
+            stt_input_enabled INTEGER CHECK(
+                stt_input_enabled IS NULL OR stt_input_enabled IN (0, 1)
+            ),
+            persist_raw_event_payloads INTEGER CHECK(
+                persist_raw_event_payloads IS NULL
+                    OR persist_raw_event_payloads IN (0, 1)
+            ),
+            ambient_merge_window_ms INTEGER CHECK(
+                ambient_merge_window_ms IS NULL OR ambient_merge_window_ms >= 0
+            ),
+            max_pending_messages INTEGER CHECK(
+                max_pending_messages IS NULL OR max_pending_messages >= 1
+            ),
+            group_reply_cooldown_seconds INTEGER CHECK(
+                group_reply_cooldown_seconds IS NULL
+                    OR group_reply_cooldown_seconds >= 0
+            ),
+            max_consecutive_ambient_replies INTEGER CHECK(
+                max_consecutive_ambient_replies IS NULL
+                    OR max_consecutive_ambient_replies >= 0
+            ),
+            direct_bypass_ambient_budget INTEGER CHECK(
+                direct_bypass_ambient_budget IS NULL
+                    OR direct_bypass_ambient_budget IN (0, 1)
+            ),
+            duplicate_event_ttl_seconds INTEGER CHECK(
+                duplicate_event_ttl_seconds IS NULL
+                    OR duplicate_event_ttl_seconds >= 1
+            ),
+            tool_execution_timeout_seconds REAL CHECK(
+                tool_execution_timeout_seconds IS NULL
+                    OR tool_execution_timeout_seconds > 0
+            ),
+            cleanup_interval_minutes INTEGER CHECK(
+                cleanup_interval_minutes IS NULL OR cleanup_interval_minutes >= 1
+            ),
+            conversation_retention_days INTEGER CHECK(
+                conversation_retention_days IS NULL
+                    OR conversation_retention_days >= 1
+            ),
+            raw_event_retention_days INTEGER CHECK(
+                raw_event_retention_days IS NULL OR raw_event_retention_days >= 1
+            ),
+            tool_execution_retention_days INTEGER CHECK(
+                tool_execution_retention_days IS NULL
+                    OR tool_execution_retention_days >= 1
+            ),
+            suppressed_memory_retention_days INTEGER CHECK(
+                suppressed_memory_retention_days IS NULL
+                    OR suppressed_memory_retention_days >= 1
+            ),
+            updated_at TEXT NOT NULL
+        )
+        """
+    )
 
 
 def _create_source_model_tables(connection: sqlite3.Connection) -> None:

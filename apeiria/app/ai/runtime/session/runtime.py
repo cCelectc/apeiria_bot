@@ -13,7 +13,7 @@ from apeiria.app.ai.agent_turn import AgentTurnResult
 from .context import MergeMetadata, RuntimeTurnSource, TurnContext
 
 if TYPE_CHECKING:
-    from apeiria.ai.config import AIPluginConfig
+    from apeiria.ai.runtime_settings import AIRuntimeSettings
     from apeiria.app.ai.runtime.execution.runner import AgentRunner
     from apeiria.app.ai.runtime.stages import (
         RuntimeExecutionOutcome,
@@ -63,16 +63,20 @@ class SessionRuntimePolicy:
     idle_ttl: timedelta = timedelta(minutes=5)
 
     @classmethod
-    def from_config(cls, config: "AIPluginConfig") -> "SessionRuntimePolicy":
-        """Build runtime policy from project AI plugin configuration."""
+    def from_settings(cls, settings: "AIRuntimeSettings") -> "SessionRuntimePolicy":
+        """Build runtime policy from AI-owned runtime settings."""
 
         return cls(
-            ambient_merge_window=timedelta(milliseconds=config.ambient_merge_window_ms),
-            max_pending_messages=config.max_pending_messages,
-            group_reply_cooldown=timedelta(seconds=config.group_reply_cooldown_seconds),
-            max_consecutive_ambient_replies=config.max_consecutive_ambient_replies,
-            direct_bypass_ambient_budget=config.direct_bypass_ambient_budget,
-            duplicate_event_ttl=timedelta(seconds=config.duplicate_event_ttl_seconds),
+            ambient_merge_window=timedelta(
+                milliseconds=settings.ambient_merge_window_ms
+            ),
+            max_pending_messages=settings.max_pending_messages,
+            group_reply_cooldown=timedelta(
+                seconds=settings.group_reply_cooldown_seconds
+            ),
+            max_consecutive_ambient_replies=(settings.max_consecutive_ambient_replies),
+            direct_bypass_ambient_budget=settings.direct_bypass_ambient_budget,
+            duplicate_event_ttl=timedelta(seconds=settings.duplicate_event_ttl_seconds),
         )
 
 

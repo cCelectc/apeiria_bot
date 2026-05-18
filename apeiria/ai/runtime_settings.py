@@ -1,0 +1,415 @@
+"""AI-owned runtime behavior settings."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from datetime import datetime, timezone
+from typing import Literal, get_args
+
+from pydantic import BaseModel, ConfigDict, Field
+
+from apeiria.db.runtime import database_runtime
+
+AIRuntimeSettingKey = Literal[
+    "allow_group_initiative",
+    "stt_input_enabled",
+    "persist_raw_event_payloads",
+    "ambient_merge_window_ms",
+    "max_pending_messages",
+    "group_reply_cooldown_seconds",
+    "max_consecutive_ambient_replies",
+    "direct_bypass_ambient_budget",
+    "duplicate_event_ttl_seconds",
+    "tool_execution_timeout_seconds",
+    "cleanup_interval_minutes",
+    "conversation_retention_days",
+    "raw_event_retention_days",
+    "tool_execution_retention_days",
+    "suppressed_memory_retention_days",
+]
+AIRuntimeSettingGroup = Literal[
+    "reply_policy",
+    "ingress_media",
+    "runtime_limits",
+    "retention",
+]
+AIRuntimeSettingApplication = Literal[
+    "next_turn",
+    "next_session_runtime",
+    "next_cleanup",
+]
+
+AI_RUNTIME_SETTING_KEYS: tuple[AIRuntimeSettingKey, ...] = get_args(AIRuntimeSettingKey)
+_BOOLEAN_SETTING_KEYS: frozenset[AIRuntimeSettingKey] = frozenset(
+    {
+        "allow_group_initiative",
+        "stt_input_enabled",
+        "persist_raw_event_payloads",
+        "direct_bypass_ambient_budget",
+    }
+)
+
+
+class AIRuntimeSettings(BaseModel):
+    """Effective AI runtime behavior settings."""
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    allow_group_initiative: bool = False
+    stt_input_enabled: bool = False
+    persist_raw_event_payloads: bool = False
+    ambient_merge_window_ms: int = Field(default=1500, ge=0)
+    max_pending_messages: int = Field(default=12, ge=1)
+    group_reply_cooldown_seconds: int = Field(default=180, ge=0)
+    max_consecutive_ambient_replies: int = Field(default=1, ge=0)
+    direct_bypass_ambient_budget: bool = True
+    duplicate_event_ttl_seconds: int = Field(default=30, ge=1)
+    tool_execution_timeout_seconds: float = Field(default=8.0, gt=0)
+    cleanup_interval_minutes: int = Field(default=30, ge=1)
+    conversation_retention_days: int = Field(default=30, ge=1)
+    raw_event_retention_days: int = Field(default=7, ge=1)
+    tool_execution_retention_days: int = Field(default=30, ge=1)
+    suppressed_memory_retention_days: int = Field(default=30, ge=1)
+
+
+@dataclass(frozen=True, slots=True)
+class AIRuntimeSettingField:
+    """Metadata for one operator-facing AI runtime setting."""
+
+    key: AIRuntimeSettingKey
+    label: str
+    help: str
+    group: AIRuntimeSettingGroup
+    value_type: str
+    application: AIRuntimeSettingApplication
+    minimum: float | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class AIRuntimeSettingsView:
+    """Effective settings plus default and override metadata."""
+
+    effective: AIRuntimeSettings
+    defaults: AIRuntimeSettings
+    overrides: dict[AIRuntimeSettingKey, object]
+    fields: tuple[AIRuntimeSettingField, ...]
+    updated_at: str | None = None
+
+
+AI_RUNTIME_SETTING_FIELDS: tuple[AIRuntimeSettingField, ...] = (
+    AIRuntimeSettingField(
+        key="allow_group_initiative",
+        label="Group initiative",
+        help="Allow non-mention group messages to become ambient reply candidates.",
+        group="reply_policy",
+        value_type="boolean",
+        application="next_turn",
+    ),
+    AIRuntimeSettingField(
+        key="ambient_merge_window_ms",
+        label="Ambient merge window",
+        help="Milliseconds used to merge short ambient group-message bursts.",
+        group="reply_policy",
+        value_type="integer",
+        application="next_session_runtime",
+        minimum=0,
+    ),
+    AIRuntimeSettingField(
+        key="max_pending_messages",
+        label="Pending message limit",
+        help="Maximum pending ambient messages retained for one AI turn.",
+        group="reply_policy",
+        value_type="integer",
+        application="next_session_runtime",
+        minimum=1,
+    ),
+    AIRuntimeSettingField(
+        key="group_reply_cooldown_seconds",
+        label="Group reply cooldown",
+        help="Cooldown for default ambient group-chat AI replies.",
+        group="reply_policy",
+        value_type="integer",
+        application="next_session_runtime",
+        minimum=0,
+    ),
+    AIRuntimeSettingField(
+        key="max_consecutive_ambient_replies",
+        label="Consecutive ambient replies",
+        help="Maximum consecutive AI replies to ambient group messages.",
+        group="reply_policy",
+        value_type="integer",
+        application="next_session_runtime",
+        minimum=0,
+    ),
+    AIRuntimeSettingField(
+        key="direct_bypass_ambient_budget",
+        label="Direct signal bypass",
+        help=(
+            "Let direct mentions, private messages, and future tasks bypass "
+            "ambient budget."
+        ),
+        group="reply_policy",
+        value_type="boolean",
+        application="next_session_runtime",
+    ),
+    AIRuntimeSettingField(
+        key="duplicate_event_ttl_seconds",
+        label="Duplicate event TTL",
+        help="Seconds to keep local duplicate event protection entries.",
+        group="reply_policy",
+        value_type="integer",
+        application="next_session_runtime",
+        minimum=1,
+    ),
+    AIRuntimeSettingField(
+        key="stt_input_enabled",
+        label="Speech-to-text input",
+        help="Enable speech-to-text preparation for incoming audio media.",
+        group="ingress_media",
+        value_type="boolean",
+        application="next_turn",
+    ),
+    AIRuntimeSettingField(
+        key="persist_raw_event_payloads",
+        label="Persist raw event payloads",
+        help="Persist reduced raw event payloads for AI debugging and inspection.",
+        group="ingress_media",
+        value_type="boolean",
+        application="next_turn",
+    ),
+    AIRuntimeSettingField(
+        key="tool_execution_timeout_seconds",
+        label="Tool execution timeout",
+        help="Maximum seconds allowed for one AI tool execution.",
+        group="runtime_limits",
+        value_type="float",
+        application="next_turn",
+        minimum=0.001,
+    ),
+    AIRuntimeSettingField(
+        key="cleanup_interval_minutes",
+        label="Cleanup interval",
+        help="Minimum interval between automatic AI retention cleanup runs.",
+        group="retention",
+        value_type="integer",
+        application="next_cleanup",
+        minimum=1,
+    ),
+    AIRuntimeSettingField(
+        key="conversation_retention_days",
+        label="Conversation retention",
+        help="Retention window for persisted AI chat messages.",
+        group="retention",
+        value_type="integer",
+        application="next_cleanup",
+        minimum=1,
+    ),
+    AIRuntimeSettingField(
+        key="raw_event_retention_days",
+        label="Raw event retention",
+        help="Retention window for reduced persisted raw event payloads.",
+        group="retention",
+        value_type="integer",
+        application="next_cleanup",
+        minimum=1,
+    ),
+    AIRuntimeSettingField(
+        key="tool_execution_retention_days",
+        label="Tool execution retention",
+        help="Retention window for AI tool execution audit rows.",
+        group="retention",
+        value_type="integer",
+        application="next_cleanup",
+        minimum=1,
+    ),
+    AIRuntimeSettingField(
+        key="suppressed_memory_retention_days",
+        label="Suppressed memory retention",
+        help="Retention window for suppressed AI memory rows.",
+        group="retention",
+        value_type="integer",
+        application="next_cleanup",
+        minimum=1,
+    ),
+)
+
+
+def default_ai_runtime_settings() -> AIRuntimeSettings:
+    """Return the default effective AI runtime settings."""
+
+    return AIRuntimeSettings()
+
+
+class AIRuntimeSettingsRepository:
+    """SQLite persistence for AI-owned runtime settings overrides."""
+
+    def get_overrides(self) -> tuple[dict[AIRuntimeSettingKey, object], str | None]:
+        with database_runtime.connect_sync() as connection:
+            row = connection.execute(
+                f"""
+                SELECT
+                    {", ".join(AI_RUNTIME_SETTING_KEYS)},
+                    updated_at
+                FROM ai_runtime_settings
+                WHERE id = 1
+                """
+            ).fetchone()
+        if row is None:
+            return {}, None
+
+        overrides: dict[AIRuntimeSettingKey, object] = {}
+        for index, key in enumerate(AI_RUNTIME_SETTING_KEYS):
+            value = row[index]
+            if value is None:
+                continue
+            overrides[key] = _decode_storage_value(key, value)
+        return overrides, str(row[-1])
+
+    def update_overrides(
+        self,
+        values: dict[AIRuntimeSettingKey, object],
+        *,
+        clear: list[AIRuntimeSettingKey] | None = None,
+    ) -> tuple[dict[AIRuntimeSettingKey, object], str | None]:
+        updates = dict(values)
+        for key in clear or []:
+            updates[key] = None
+        if not updates:
+            return self.get_overrides()
+
+        timestamp = _utcnow_text()
+        columns = [*AI_RUNTIME_SETTING_KEYS, "updated_at"]
+        assignments = ", ".join(f"{key} = excluded.{key}" for key in updates)
+        if assignments:
+            assignments = f"{assignments}, updated_at = excluded.updated_at"
+        else:
+            assignments = "updated_at = excluded.updated_at"
+        insert_values = [
+            _encode_storage_value(key, updates.get(key))
+            for key in AI_RUNTIME_SETTING_KEYS
+        ]
+        insert_values.append(timestamp)
+        with database_runtime.connect_sync() as connection:
+            connection.execute(
+                f"""
+                INSERT INTO ai_runtime_settings (
+                    id,
+                    {", ".join(columns)}
+                ) VALUES (
+                    1,
+                    {", ".join("?" for _ in columns)}
+                )
+                ON CONFLICT(id) DO UPDATE SET {assignments}
+                """,
+                tuple(insert_values),
+            )
+        return self.get_overrides()
+
+
+class AIRuntimeSettingsService:
+    """Domain service for effective AI runtime behavior settings."""
+
+    def __init__(
+        self,
+        repository: AIRuntimeSettingsRepository | None = None,
+    ) -> None:
+        self._repository = repository or AIRuntimeSettingsRepository()
+
+    def get_view(self) -> AIRuntimeSettingsView:
+        defaults = default_ai_runtime_settings()
+        overrides, updated_at = self._repository.get_overrides()
+        effective = _build_effective_settings(defaults, overrides)
+        return AIRuntimeSettingsView(
+            effective=effective,
+            defaults=defaults,
+            overrides=overrides,
+            fields=AI_RUNTIME_SETTING_FIELDS,
+            updated_at=updated_at,
+        )
+
+    def get_settings(self) -> AIRuntimeSettings:
+        """Return effective runtime settings for runtime callers."""
+
+        return self.get_view().effective
+
+    def update_settings(
+        self,
+        values: dict[str, object],
+        *,
+        clear: list[str] | None = None,
+    ) -> AIRuntimeSettingsView:
+        normalized_values: dict[AIRuntimeSettingKey, object] = {
+            _coerce_setting_key(key): value for key, value in values.items()
+        }
+        normalized_clear: list[AIRuntimeSettingKey] = [
+            _coerce_setting_key(key) for key in clear or []
+        ]
+        next_overrides: dict[AIRuntimeSettingKey, object | None] = {
+            **self._repository.get_overrides()[0],
+            **normalized_values,
+            **dict.fromkeys(normalized_clear, None),
+        }
+        _build_effective_settings(
+            default_ai_runtime_settings(),
+            next_overrides,
+        )
+        self._repository.update_overrides(
+            normalized_values,
+            clear=normalized_clear,
+        )
+        return self.get_view()
+
+
+def _build_effective_settings(
+    defaults: AIRuntimeSettings,
+    overrides: dict[AIRuntimeSettingKey, object | None],
+) -> AIRuntimeSettings:
+    payload: dict[str, object] = {
+        **defaults.model_dump(mode="python"),
+        **{key: value for key, value in overrides.items() if value is not None},
+    }
+    return AIRuntimeSettings.model_validate(payload)
+
+
+def _coerce_setting_key(key: str) -> AIRuntimeSettingKey:
+    if key not in AI_RUNTIME_SETTING_KEYS:
+        msg = f"unknown AI runtime setting {key}"
+        raise ValueError(msg)
+    return key  # type: ignore[return-value]
+
+
+def _encode_storage_value(
+    key: AIRuntimeSettingKey,
+    value: object | None,
+) -> object | None:
+    if value is None:
+        return None
+    if key in _BOOLEAN_SETTING_KEYS:
+        return 1 if bool(value) else 0
+    return value
+
+
+def _decode_storage_value(key: AIRuntimeSettingKey, value: object) -> object:
+    if key in _BOOLEAN_SETTING_KEYS:
+        return bool(value)
+    return value
+
+
+def _utcnow_text() -> str:
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+ai_runtime_settings_service = AIRuntimeSettingsService()
+
+__all__ = [
+    "AI_RUNTIME_SETTING_FIELDS",
+    "AI_RUNTIME_SETTING_KEYS",
+    "AIRuntimeSettingField",
+    "AIRuntimeSettingKey",
+    "AIRuntimeSettings",
+    "AIRuntimeSettingsRepository",
+    "AIRuntimeSettingsService",
+    "AIRuntimeSettingsView",
+    "ai_runtime_settings_service",
+    "default_ai_runtime_settings",
+]

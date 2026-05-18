@@ -10,6 +10,7 @@ import {
   MessagesSquare,
   Network,
   Settings2,
+  SlidersHorizontal,
   Wrench,
 } from 'lucide-vue-next'
 import { computed, onMounted, ref } from 'vue'
@@ -34,12 +35,13 @@ import AIModelsPage from './AIModelsPage.vue'
 import AIPersonasPage from './AIPersonasPage.vue'
 import AIProfilesPage from './AIProfilesPage.vue'
 import AIRelationshipsPage from './AIRelationshipsPage.vue'
+import AIRuntimeSettingsPage from './AIRuntimeSettingsPage.vue'
 import AISessionsPage from './AISessionsPage.vue'
 import AISkillsPage from './AISkillsPage.vue'
 
 type WorkbenchAreaOption = {
   description: string
-  group: 'connection' | 'runtime' | 'context' | 'behavior'
+  group: 'connection' | 'runtime' | 'context' | 'behavior' | 'configuration'
   icon: Component
   label: string
   value: AIWorkbenchRouteArea
@@ -122,6 +124,13 @@ const areas: WorkbenchAreaOption[] = [
     label: 'ai.futureTaskTab',
     value: 'futureTasks',
   },
+  {
+    description: 'ai.pageSubtitle.runtimeSettings',
+    group: 'configuration',
+    icon: SlidersHorizontal,
+    label: 'ai.runtimeSettingsTab',
+    value: 'runtimeSettings',
+  },
 ]
 
 const routeState = computed(() => normalizeAIWorkbenchRouteState(route.query))
@@ -134,6 +143,7 @@ const groupedAreas = computed(() => [
   { key: 'runtime', label: t('ai.workbenchGroup.runtime') },
   { key: 'context', label: t('ai.workbenchGroup.context') },
   { key: 'behavior', label: t('ai.workbenchGroup.behavior') },
+  { key: 'configuration', label: t('ai.workbenchGroup.configuration') },
 ].map(group => ({
   ...group,
   areas: areas.filter(area => area.group === group.key),
@@ -285,6 +295,7 @@ onMounted(() => {
     <AIProfilesPage v-else-if="activeArea === 'profiles'" embedded />
     <AIPersonasPage v-else-if="activeArea === 'personas'" embedded />
     <AISkillsPage v-else-if="activeArea === 'skills'" embedded />
+    <AIRuntimeSettingsPage v-else-if="activeArea === 'runtimeSettings'" embedded />
     <AIFutureTasksPage v-else embedded />
   </PageScaffold>
 </template>

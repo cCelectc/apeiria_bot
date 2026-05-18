@@ -42,6 +42,7 @@ export type AIWorkbenchRouteArea =
   | 'personas'
   | 'profiles'
   | 'relationships'
+  | 'runtimeSettings'
   | 'sessions'
   | 'skills'
 
@@ -103,6 +104,7 @@ const supportedWorkbenchAreas = new Set<AIWorkbenchRouteArea>([
   'personas',
   'profiles',
   'relationships',
+  'runtimeSettings',
   'sessions',
   'skills',
 ])

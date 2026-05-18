@@ -30,6 +30,35 @@ export interface AIRuntimeStatusResponse {
   runtime_summary: string
 }
 
+export type AIRuntimeSettingValue = boolean | number | string | null
+
+export interface AIRuntimeSettingFieldItem {
+  key: string
+  label: string
+  help: string
+  group: string
+  value_type: 'boolean' | 'integer' | 'float' | string
+  application: string
+  minimum: number | null
+  default_value: AIRuntimeSettingValue
+  current_value: AIRuntimeSettingValue
+  local_value: AIRuntimeSettingValue
+  has_local_override: boolean
+}
+
+export interface AIRuntimeSettingsResponse {
+  effective: Record<string, AIRuntimeSettingValue>
+  defaults: Record<string, AIRuntimeSettingValue>
+  overrides: Record<string, AIRuntimeSettingValue>
+  fields: AIRuntimeSettingFieldItem[]
+  updated_at: string | null
+}
+
+export interface AIRuntimeSettingsUpdateRequest {
+  values?: Record<string, AIRuntimeSettingValue>
+  clear?: string[]
+}
+
 export interface AISourceItem {
   source_id: string
   name: string
@@ -586,6 +615,14 @@ export function getAIBootstrap() {
 
 export function getAIRuntimeStatus() {
   return client.get<AIRuntimeStatusResponse>('/ai/runtime-status')
+}
+
+export function getAIRuntimeSettings() {
+  return client.get<AIRuntimeSettingsResponse>('/ai/runtime-settings')
+}
+
+export function updateAIRuntimeSettings(payload: AIRuntimeSettingsUpdateRequest) {
+  return client.patch<AIRuntimeSettingsResponse>('/ai/runtime-settings', payload)
 }
 
 export function getAISources() {

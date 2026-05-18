@@ -13,7 +13,7 @@ from nonebot.log import logger
 from apeiria.db.runtime import database_runtime
 
 if TYPE_CHECKING:
-    from apeiria.ai.config import AIPluginConfig
+    from apeiria.ai.runtime_settings import AIRuntimeSettings
 
 
 def _iso_cutoff(days: int) -> str:
@@ -53,11 +53,11 @@ class AIRetentionService:
     def maybe_schedule_cleanup(
         self,
         *,
-        config: "AIPluginConfig",
+        settings: "AIRuntimeSettings",
     ) -> bool:
         """Schedule cleanup in the background when the interval has elapsed."""
 
-        interval_seconds = max(int(config.cleanup_interval_minutes), 1) * 60
+        interval_seconds = max(int(settings.cleanup_interval_minutes), 1) * 60
         now = time.time()
         if self._cleanup_task is not None and not self._cleanup_task.done():
             return False
@@ -65,16 +65,16 @@ class AIRetentionService:
             return False
 
         self._last_cleanup_at = now
-        self._cleanup_task = asyncio.create_task(self._run_cleanup(config=config))
+        self._cleanup_task = asyncio.create_task(self._run_cleanup(settings=settings))
         return True
 
     async def _run_cleanup(
         self,
         *,
-        config: "AIPluginConfig",
+        settings: "AIRuntimeSettings",
     ) -> None:
         try:
-            result = await self.cleanup(config=config)
+            result = await self.cleanup(settings=settings)
             if result.total_changes > 0:
                 logger.info(
                     "AI retention cleanup changed messages={} sessions={} "
@@ -93,17 +93,17 @@ class AIRetentionService:
     async def cleanup(
         self,
         *,
-        config: "AIPluginConfig",
+        settings: "AIRuntimeSettings",
     ) -> AIRetentionCleanupResult:
         conversation_result = self.cleanup_conversations(
-            conversation_retention_days=config.conversation_retention_days,
-            raw_event_retention_days=config.raw_event_retention_days,
+            conversation_retention_days=settings.conversation_retention_days,
+            raw_event_retention_days=settings.raw_event_retention_days,
         )
         deleted_tool_execution_count = self.cleanup_tool_executions(
-            retention_days=config.tool_execution_retention_days
+            retention_days=settings.tool_execution_retention_days
         )
         deleted_memory_count = self.cleanup_suppressed_memories(
-            retention_days=config.suppressed_memory_retention_days
+            retention_days=settings.suppressed_memory_retention_days
         )
         return AIRetentionCleanupResult(
             deleted_messages=conversation_result.deleted_messages,
