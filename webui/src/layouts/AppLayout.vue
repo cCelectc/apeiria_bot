@@ -80,6 +80,7 @@ type PendingConfirmAction = 'restart' | 'revert' | null
 const pendingConfirmAction = ref<PendingConfirmAction>(null)
 const sidebarOpen = ref(true)
 const storeNavExpanded = ref(false)
+const logsNavExpanded = ref(false)
 const { t, locale } = useI18n()
 const router = useRouter()
 const route = useRoute()
@@ -94,7 +95,6 @@ const navItems = computed<NavItem[]>(() => [
   { key: 'ai', icon: Brain, title: t('layout.aiWorkbench'), to: '/ai' },
   { key: 'plugins', icon: Plug, title: t('layout.pluginsWorkbench'), to: '/plugins' },
   { key: 'permissions', icon: Shield, title: t('layout.permissions'), to: '/permissions' },
-  { key: 'logs', icon: ScrollText, title: t('layout.logs'), to: '/logs' },
   { key: 'chat', icon: MessageSquare, title: t('layout.chat'), to: '/chat' },
   ...(authStore.isOwner
     ? [{ key: 'accounts', icon: UserCog, title: t('layout.accounts'), to: '/accounts' }]
@@ -148,8 +148,21 @@ const storeRouteActive = computed(() =>
   storeNavItems.value.some(item => routeMatches(item.to)),
 )
 
+const logsNavItems = computed<NavItem[]>(() => [
+  { key: 'logs-live', icon: ScrollText, title: t('layout.logs'), to: '/logs/live' },
+  { key: 'logs-history', icon: ScrollText, title: t('layout.logsHistory'), to: '/logs/history' },
+])
+
+const logsRouteActive = computed(() =>
+  logsNavItems.value.some(item => routeMatches(item.to)),
+)
+
 function toggleStoreNav() {
   storeNavExpanded.value = !storeNavExpanded.value
+}
+
+function toggleLogsNav() {
+  logsNavExpanded.value = !logsNavExpanded.value
 }
 
 function setLocale(nextLocale: SupportedLocale) {
@@ -272,6 +285,63 @@ async function runConfirmedAction() {
               <SidebarMenuItem
                 v-for="item in storeNavItems"
                 v-show="storeNavExpanded"
+                :key="item.key"
+                class="app-shell-store-item"
+              >
+                <SidebarMenuButton
+                  as-child
+                  :is-active="routeMatches(item.to)"
+                  :tooltip="item.title"
+                >
+                  <RouterLink :to="item.to">
+                    <component :is="item.icon" />
+                    <span>{{ item.title }}</span>
+                  </RouterLink>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                <DropdownMenu v-if="!sidebarOpen">
+                  <DropdownMenuTrigger as-child>
+                    <SidebarMenuButton
+                      :is-active="logsRouteActive"
+                      :tooltip="t('layout.logsGroup')"
+                    >
+                      <ScrollText />
+                      <span>{{ t('layout.logsGroup') }}</span>
+                    </SidebarMenuButton>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start" side="right">
+                    <DropdownMenuLabel>{{ t('layout.logsGroup') }}</DropdownMenuLabel>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuGroup>
+                      <DropdownMenuItem
+                        v-for="item in logsNavItems"
+                        :key="item.key"
+                        @click="router.push(item.to)"
+                      >
+                        <component :is="item.icon" />
+                        <span>{{ item.title }}</span>
+                      </DropdownMenuItem>
+                    </DropdownMenuGroup>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+                <SidebarMenuButton
+                  v-else
+                  :is-active="logsRouteActive"
+                  :tooltip="t('layout.logsGroup')"
+                  @click="toggleLogsNav"
+                >
+                  <ScrollText />
+                  <span>{{ t('layout.logsGroup') }}</span>
+                  <ChevronDown
+                    class="app-shell-store-caret"
+                    :class="{ 'app-shell-store-caret--open': logsNavExpanded }"
+                  />
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              <SidebarMenuItem
+                v-for="item in logsNavItems"
+                v-show="logsNavExpanded"
                 :key="item.key"
                 class="app-shell-store-item"
               >

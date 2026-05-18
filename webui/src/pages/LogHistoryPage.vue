@@ -1,14 +1,16 @@
 <script setup lang="ts">
 import type { LogHistoryQuery } from '@/api/logs'
-import type { WorkbenchMetricItem } from '@/components/management'
 import axios from 'axios'
 import {
   AlertTriangle,
+  ChevronDown,
+  Clock,
   Database,
   Download,
   Eye,
   History,
   Search,
+  SlidersHorizontal,
 } from 'lucide-vue-next'
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -18,7 +20,6 @@ import { getLogHistory, getLogSources } from '@/api/logs'
 import {
   EmptyState,
   LoadingSkeleton,
-  MetricStrip,
   PageScaffold,
   Panel,
   StatusBadge,
@@ -31,6 +32,7 @@ import { Label } from '@/components/ui/label'
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
   SelectTrigger,
   SelectValue,
@@ -78,6 +80,7 @@ const entries = ref<LogEntry[]>([])
 const sourceOptions = ref<string[]>([])
 const showAccessLogs = ref(false)
 const appliedShowAccessLogs = ref(false)
+const advancedFiltersOpen = ref(false)
 const loading = ref(false)
 const beforeOffset = ref(0)
 const total = ref(0)
@@ -103,10 +106,10 @@ const validationMessage = computed(() => {
 const hasAnyFilter = computed(() =>
   Boolean(
     draftFilters.search
-    || draftFilters.source
     || draftFilters.start
     || draftFilters.end
     || draftFilters.level !== ALL_LEVELS
+    || (draftFilters.source && draftFilters.source !== ALL_SOURCES)
     || showAccessLogs.value,
   ),
 )
@@ -117,33 +120,11 @@ const hasPendingChanges = computed(() =>
 const visibleSourceOptions = computed(() =>
   sourceOptions.value.filter(item => showAccessLogs.value || item !== 'uvicorn.access'),
 )
-const historyMetrics = computed<WorkbenchMetricItem[]>(() => [
-  {
-    icon: Database,
-    key: 'total',
-    label: t('logs.totalRecords'),
-    value: total.value,
-  },
-  {
-    icon: Eye,
-    key: 'visible',
-    label: t('logs.visibleCount'),
-    tone: 'info',
-    value: entries.value.length,
-  },
-  {
-    icon: AlertTriangle,
-    key: 'signal',
-    label: t('logs.errorCount'),
-    tone: highSignalCount.value > 0 ? 'warning' : 'success',
-    value: highSignalCount.value,
-  },
-  {
-    icon: History,
-    key: 'page',
-    label: t('logs.currentPage'),
-    value: `${currentPage.value} / ${totalPages.value}`,
-  },
+const historySummary = computed(() => [
+  { icon: Database, key: 'total', label: t('logs.totalRecords'), value: total.value },
+  { icon: Eye, key: 'visible', label: t('logs.visibleCount'), value: entries.value.length },
+  { icon: AlertTriangle, key: 'signal', label: t('logs.errorCount'), value: highSignalCount.value },
+  { icon: History, key: 'page', label: t('logs.currentPage'), value: `${currentPage.value} / ${totalPages.value}` },
 ])
 const activeFilterChips = computed(() => {
   const chips: Array<{ key: string, label: string }> = []
@@ -162,7 +143,20 @@ const activeFilterChips = computed(() => {
   if (appliedFilters.value.end) {
     chips.push({ key: 'end', label: `${t('logs.endTime')}: ${formatDateTimeLabel(appliedFilters.value.end)}` })
   }
+  if (appliedShowAccessLogs.value) {
+    chips.push({ key: 'access', label: t('logs.showAccessLogs') })
+  }
   return chips
+})
+const advancedFilterCount = computed(() => {
+  let count = 0
+  if (draftFilters.start || draftFilters.end) {
+    count += 1
+  }
+  if (showAccessLogs.value) {
+    count += 1
+  }
+  return count
 })
 const resultsLabel = computed(() => {
   if (loading.value && entries.value.length === 0) {
@@ -301,6 +295,10 @@ function clearTimeRange() {
   draftFilters.end = ''
 }
 
+function syncAdvancedFiltersOpen(event: Event) {
+  advancedFiltersOpen.value = Boolean((event.currentTarget as HTMLDetailsElement | null)?.open)
+}
+
 function formatDateTimeLabel(value: string) {
   return value.replace('T', ' ')
 }
@@ -365,11 +363,18 @@ watch(showAccessLogs, enabled => {
   scheduleAutoQuery()
 })
 
+watch(validationMessage, message => {
+  if (message) {
+    advancedFiltersOpen.value = true
+  }
+})
+
 onMounted(() => {
   const initialFilters = readFiltersFromRoute()
   Object.assign(draftFilters, initialFilters)
   appliedFilters.value = cloneFilters(initialFilters)
   appliedShowAccessLogs.value = showAccessLogs.value
+  advancedFiltersOpen.value = Boolean(initialFilters.start || initialFilters.end)
   void getLogSources().then(response => {
     sourceOptions.value = response.data.items
   }).catch(() => {
@@ -386,9 +391,9 @@ onBeforeUnmount(() => {
 
 <template>
   <PageScaffold
+    class="logs-history-page"
     dense
     :error-message="errorMessage"
-    full-height
     :subtitle="t('logs.historyDescription')"
     :title="t('logs.historyTitle')"
   >
@@ -399,121 +404,20 @@ onBeforeUnmount(() => {
       </Button>
     </template>
 
-    <MetricStrip :items="historyMetrics" compact />
-
-    <Panel :title="t('logs.queryHistory')">
-      <div class="logs-history-filter">
-        <div class="logs-search">
-          <Search :size="16" />
-          <Input
-            v-model.trim="draftFilters.search"
-            :aria-label="t('logs.search')"
-            :placeholder="t('logs.search')"
-            @keydown.enter.prevent="runQuery"
-          />
-        </div>
-
-        <div class="logs-field">
-          <Label>{{ t('logs.level') }}</Label>
-          <Select v-model="draftFilters.level">
-            <SelectTrigger class="logs-select">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem :value="ALL_LEVELS">
-                {{ t('common.all') }}
-              </SelectItem>
-              <SelectItem
-                v-for="level in levelOptions"
-                :key="level"
-                :value="level"
-              >
-                {{ level }}
-              </SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-
-        <div class="logs-field">
-          <Label>{{ t('logs.source') }}</Label>
-          <Select v-model="draftFilters.source">
-            <SelectTrigger class="logs-select">
-              <SelectValue :placeholder="t('logs.sourceHint')" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem :value="ALL_SOURCES">
-                {{ t('common.all') }}
-              </SelectItem>
-              <SelectItem
-                v-for="source in visibleSourceOptions"
-                :key="source"
-                :value="source"
-              >
-                {{ source }}
-              </SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-
-        <label class="logs-switch">
-          <Switch v-model="showAccessLogs" />
-          <span>{{ t('logs.showAccessLogs') }}</span>
-        </label>
-      </div>
-
-      <div class="logs-history-filter logs-history-filter--time">
-        <div class="logs-field">
-          <Label>{{ t('logs.startTime') }}</Label>
-          <Input v-model="draftFilters.start" type="datetime-local" />
-        </div>
-        <div class="logs-field">
-          <Label>{{ t('logs.endTime') }}</Label>
-          <Input v-model="draftFilters.end" type="datetime-local" />
-        </div>
-        <div class="logs-presets">
+    <Panel class="logs-toolbar-panel logs-history-query-panel" :title="t('logs.queryHistory')">
+      <div class="logs-history-query">
+        <div class="logs-history-query__primary">
+          <div class="logs-search">
+            <Search :size="16" />
+            <Input
+              v-model.trim="draftFilters.search"
+              :aria-label="t('logs.search')"
+              :placeholder="t('logs.search')"
+              @keydown.enter.prevent="runQuery"
+            />
+          </div>
           <Button
-            v-for="preset in timePresets"
-            :key="preset.key"
-            size="sm"
-            variant="secondary"
-            @click="applyTimePreset(preset.hours)"
-          >
-            {{ t(preset.labelKey) }}
-          </Button>
-          <Button
-            v-if="draftFilters.start || draftFilters.end"
-            size="sm"
-            variant="ghost"
-            @click="clearTimeRange"
-          >
-            {{ t('logs.clearTimeRange') }}
-          </Button>
-        </div>
-      </div>
-
-      <Alert v-if="validationMessage" variant="default">
-        <AlertDescription>{{ validationMessage }}</AlertDescription>
-      </Alert>
-
-      <div class="logs-query-actions">
-        <div class="logs-active-filters">
-          <Badge
-            v-for="chip in activeFilterChips"
-            :key="chip.key"
-            variant="secondary"
-          >
-            {{ chip.label }}
-          </Badge>
-        </div>
-        <div>
-          <Button
-            :disabled="!hasAnyFilter || loading"
-            variant="ghost"
-            @click="resetFilters"
-          >
-            {{ t('logs.resetFilters') }}
-          </Button>
-          <Button
+            class="logs-history-query__submit"
             :disabled="Boolean(validationMessage) || loading"
             @click="runQuery"
           >
@@ -521,14 +425,166 @@ onBeforeUnmount(() => {
             {{ t('logs.query') }}
           </Button>
         </div>
+
+        <div class="logs-history-basic-filter">
+          <div class="logs-field">
+            <Label>{{ t('logs.level') }}</Label>
+            <Select v-model="draftFilters.level">
+              <SelectTrigger class="logs-select">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectGroup>
+                  <SelectItem :value="ALL_LEVELS">
+                    {{ t('common.all') }}
+                  </SelectItem>
+                  <SelectItem
+                    v-for="level in levelOptions"
+                    :key="level"
+                    :value="level"
+                  >
+                    {{ level }}
+                  </SelectItem>
+                </SelectGroup>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div class="logs-field">
+            <Label>{{ t('logs.source') }}</Label>
+            <Select v-model="draftFilters.source">
+              <SelectTrigger class="logs-select">
+                <SelectValue :placeholder="t('logs.sourceHint')" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectGroup>
+                  <SelectItem :value="ALL_SOURCES">
+                    {{ t('common.all') }}
+                  </SelectItem>
+                  <SelectItem
+                    v-for="source in visibleSourceOptions"
+                    :key="source"
+                    :value="source"
+                  >
+                    {{ source }}
+                  </SelectItem>
+                </SelectGroup>
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+
+        <details
+          class="logs-advanced-filters"
+          :open="advancedFiltersOpen"
+          @toggle="syncAdvancedFiltersOpen"
+        >
+          <summary class="logs-advanced-filters__summary">
+            <span class="logs-advanced-filters__title">
+              <SlidersHorizontal :size="15" />
+              {{ t('logs.advancedFilters') }}
+            </span>
+            <span class="logs-advanced-filters__meta">
+              <Badge v-if="advancedFilterCount > 0" variant="secondary">
+                {{ t('logs.activeFilterCount', { count: advancedFilterCount }) }}
+              </Badge>
+              <ChevronDown class="logs-advanced-filters__chevron" :size="16" />
+            </span>
+          </summary>
+
+          <div class="logs-advanced-filters__content">
+            <label class="logs-switch logs-access-filter">
+              <Switch v-model="showAccessLogs" />
+              <span>{{ t('logs.showAccessLogs') }}</span>
+            </label>
+
+            <div class="logs-time-presets">
+              <span class="logs-time-presets__label">
+                <Clock :size="14" />
+                {{ t('logs.timePresets') }}
+              </span>
+              <div class="logs-presets">
+                <Button
+                  v-for="preset in timePresets"
+                  :key="preset.key"
+                  size="sm"
+                  variant="secondary"
+                  @click="applyTimePreset(preset.hours)"
+                >
+                  {{ t(preset.labelKey) }}
+                </Button>
+              </div>
+            </div>
+
+            <div class="logs-history-time-grid">
+              <div class="logs-field">
+                <Label>{{ t('logs.startTime') }}</Label>
+                <Input v-model="draftFilters.start" type="datetime-local" />
+              </div>
+              <div class="logs-field">
+                <Label>{{ t('logs.endTime') }}</Label>
+                <Input v-model="draftFilters.end" type="datetime-local" />
+              </div>
+              <div class="logs-history-time-grid__actions">
+                <Button
+                  :disabled="!draftFilters.start && !draftFilters.end"
+                  size="sm"
+                  variant="ghost"
+                  @click="clearTimeRange"
+                >
+                  {{ t('logs.clearTimeRange') }}
+                </Button>
+              </div>
+            </div>
+          </div>
+        </details>
+
+        <Alert v-if="validationMessage" variant="default">
+          <AlertDescription>{{ validationMessage }}</AlertDescription>
+        </Alert>
+
+        <div class="logs-query-footer">
+          <div class="logs-active-filters">
+            <span v-if="activeFilterChips.length === 0" class="logs-active-filters__empty">
+              {{ t('logs.noActiveFilters') }}
+            </span>
+            <Badge
+              v-for="chip in activeFilterChips"
+              :key="chip.key"
+              variant="secondary"
+            >
+              {{ chip.label }}
+            </Badge>
+          </div>
+          <div class="logs-query-footer__actions">
+            <Button
+              :disabled="!hasAnyFilter || loading"
+              variant="ghost"
+              @click="resetFilters"
+            >
+              {{ t('logs.resetFilters') }}
+            </Button>
+          </div>
+        </div>
       </div>
     </Panel>
 
     <Panel class="logs-history-panel">
+      <template #actions>
+        <div class="logs-status-strip logs-status-strip--panel">
+          <StatusBadge
+            v-for="item in historySummary"
+            :key="item.key"
+            :label="`${item.label} ${item.value}`"
+            :tone="item.key === 'signal' && highSignalCount > 0 ? 'warning' : 'default'"
+          />
+        </div>
+      </template>
+
       <div class="logs-history-result-bar">
         <span>{{ resultsLabel }}</span>
         <Badge v-if="hasPendingChanges" variant="outline">
-          {{ t('logs.queryStatePartial') }}
+          {{ t('logs.queryPendingChanges') }}
         </Badge>
       </div>
 

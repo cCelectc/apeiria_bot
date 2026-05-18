@@ -478,7 +478,7 @@ onUnmounted(() => {
             <CardDescription>{{ t('dashboard.openLogs') }}</CardDescription>
           </div>
           <Button as-child size="sm" variant="ghost">
-            <RouterLink to="/logs">
+            <RouterLink to="/logs/live">
               {{ t('dashboard.openLogs') }}
             </RouterLink>
           </Button>

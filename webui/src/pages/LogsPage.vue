@@ -1,6 +1,14 @@
 <script setup lang="ts">
-import type { WorkbenchMetricItem } from '@/components/management'
-import { Download, Plug, RefreshCw, Search, Trash2, Unplug } from 'lucide-vue-next'
+import {
+  ChevronDown,
+  Download,
+  Plug,
+  RefreshCw,
+  Search,
+  SlidersHorizontal,
+  Trash2,
+  Unplug,
+} from 'lucide-vue-next'
 import { computed, nextTick, onActivated, onDeactivated, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { getErrorMessage } from '@/api/client'
@@ -8,12 +16,12 @@ import { getLogHistory, type LogItem } from '@/api/logs'
 import {
   EmptyState,
   LoadingSkeleton,
-  MetricStrip,
   PageScaffold,
   Panel,
   StatusBadge,
 } from '@/components/management'
 import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
@@ -37,6 +45,8 @@ const search = ref('')
 const selectedLevels = ref<string[]>([])
 const selectedSources = ref<string[]>([])
 const showAccessLogs = ref(false)
+const showRawRecords = ref(false)
+const advancedFiltersOpen = ref(false)
 const loadingHistory = ref(false)
 const bootstrapError = ref('')
 const recentHistoryCount = ref(0)
@@ -45,6 +55,7 @@ const pendingLiveLogs: LogEntry[] = []
 const MAX_LIVE_LOGS = 500
 let ws: WebSocket | null = null
 let primingHistory = false
+let recentHistoryRequestSeq = 0
 
 const levelOptions = computed(() =>
   Array.from(new Set(logs.value.map(item => item.level))).sort(),
@@ -69,30 +80,47 @@ const filteredLogs = computed(() =>
 const highSignalCount = computed(() =>
   filteredLogs.value.filter(item => ['WARNING', 'ERROR', 'CRITICAL'].includes(item.level)).length,
 )
-const metrics = computed<WorkbenchMetricItem[]>(() => [
-  {
-    key: 'total',
-    label: t('logs.totalCount'),
-    value: logs.value.length,
-  },
-  {
-    key: 'visible',
-    label: t('logs.visibleCount'),
-    tone: 'info',
-    value: filteredLogs.value.length,
-  },
-  {
-    key: 'signal',
-    label: t('logs.errorCount'),
-    tone: highSignalCount.value > 0 ? 'warning' : 'success',
-    value: highSignalCount.value,
-  },
-  {
-    key: 'recent',
-    label: t('logs.recentCount'),
-    value: recentHistoryCount.value,
-  },
+const statusSummary = computed(() => [
+  { key: 'total', label: t('logs.totalCount'), value: logs.value.length },
+  { key: 'visible', label: t('logs.visibleCount'), value: filteredLogs.value.length },
+  { key: 'signal', label: t('logs.errorCount'), value: highSignalCount.value },
+  { key: 'recent', label: t('logs.recentCount'), value: recentHistoryCount.value },
 ])
+const liveAdvancedFilterCount = computed(() =>
+  selectedLevels.value.length
+  + selectedSources.value.length
+  + (showAccessLogs.value ? 1 : 0),
+)
+const hasLiveFilters = computed(() =>
+  Boolean(
+    search.value
+    || selectedLevels.value.length
+    || selectedSources.value.length
+    || showAccessLogs.value,
+  ),
+)
+const liveFilterChips = computed(() => {
+  const chips: Array<{ key: string, label: string }> = []
+  if (search.value) {
+    chips.push({ key: 'search', label: `${t('logs.search')}: ${search.value}` })
+  }
+  if (selectedLevels.value.length) {
+    chips.push({
+      key: 'levels',
+      label: `${t('logs.level')}: ${selectedLevels.value.join(', ')}`,
+    })
+  }
+  if (selectedSources.value.length) {
+    chips.push({
+      key: 'sources',
+      label: `${t('logs.source')}: ${selectedSources.value.join(', ')}`,
+    })
+  }
+  if (showAccessLogs.value) {
+    chips.push({ key: 'access', label: t('logs.showAccessLogs') })
+  }
+  return chips
+})
 
 function connect() {
   disconnect()
@@ -139,6 +167,7 @@ function resetLogsView() {
   selectedLevels.value = []
   selectedSources.value = []
   showAccessLogs.value = false
+  showRawRecords.value = false
   search.value = ''
   bootstrapError.value = ''
   recentHistoryCount.value = 0
@@ -146,7 +175,11 @@ function resetLogsView() {
   primingHistory = false
 }
 
-async function loadRecentHistory() {
+async function loadRecentHistory(options: { preserveLiveLogs?: boolean } = {}) {
+  const requestSeq = ++recentHistoryRequestSeq
+  const preservedLiveLogs = options.preserveLiveLogs
+    ? logs.value.slice(recentHistoryCount.value)
+    : []
   loadingHistory.value = true
   bootstrapError.value = ''
   try {
@@ -155,14 +188,33 @@ async function loadRecentHistory() {
       include_access: showAccessLogs.value,
       limit: 50,
     })
-    logs.value = response.data.items.slice().reverse().map((item: LogItem) => toLogEntry(item))
-    recentHistoryCount.value = logs.value.length
+    if (requestSeq !== recentHistoryRequestSeq) {
+      return
+    }
+    const historyLogs = response.data.items.slice().reverse().map((item: LogItem) => toLogEntry(item))
+    const existingKeys = new Set(historyLogs.map(item => logEntryKey(item)))
+    const mergedLogs = historyLogs.slice()
+    for (const entry of preservedLiveLogs) {
+      const entryKey = logEntryKey(entry)
+      if (existingKeys.has(entryKey)) {
+        continue
+      }
+      existingKeys.add(entryKey)
+      mergedLogs.push(entry)
+    }
+    logs.value = mergedLogs
+    recentHistoryCount.value = historyLogs.length
     await nextTick()
     logContainer.value?.scrollTo({ top: logContainer.value.scrollHeight })
   } catch (error) {
+    if (requestSeq !== recentHistoryRequestSeq) {
+      return
+    }
     bootstrapError.value = getErrorMessage(error, t('logs.historyLoadFailed'))
   } finally {
-    loadingHistory.value = false
+    if (requestSeq === recentHistoryRequestSeq) {
+      loadingHistory.value = false
+    }
   }
 }
 
@@ -236,9 +288,23 @@ function toggleSource(source: string, checked: boolean | 'indeterminate') {
     : selectedSources.value.filter(item => item !== source)
 }
 
+function resetLiveFilters() {
+  search.value = ''
+  selectedLevels.value = []
+  selectedSources.value = []
+  showAccessLogs.value = false
+}
+
+function syncAdvancedFiltersOpen(event: Event) {
+  advancedFiltersOpen.value = Boolean((event.currentTarget as HTMLDetailsElement | null)?.open)
+}
+
 watch(showAccessLogs, enabled => {
   if (!enabled) {
     selectedSources.value = selectedSources.value.filter(source => source !== 'uvicorn.access')
+  }
+  if (!primingHistory && logs.value.length > 0) {
+    void loadRecentHistory({ preserveLiveLogs: true })
   }
 })
 
@@ -255,7 +321,7 @@ onUnmounted(disconnect)
 </script>
 
 <template>
-  <PageScaffold dense full-height :title="t('logs.liveTitle')">
+  <PageScaffold class="logs-page" dense :title="t('logs.liveTitle')">
     <template #actions>
       <StatusBadge
         :label="connected ? t('logs.connected') : t('logs.disconnected')"
@@ -279,62 +345,115 @@ onUnmounted(disconnect)
       </Button>
     </template>
 
-    <MetricStrip :items="metrics" compact />
+    <Panel class="logs-toolbar-panel logs-live-filter-panel">
+      <div class="logs-live-filter">
+        <div class="logs-live-filter__primary">
+          <div class="logs-search">
+            <Search :size="16" />
+            <Input
+              v-model.trim="search"
+              :aria-label="t('logs.search')"
+              :placeholder="t('logs.search')"
+            />
+          </div>
 
-    <Panel>
-      <div class="logs-filter-grid">
-        <div class="logs-search">
-          <Search :size="16" />
-          <Input
-            v-model.trim="search"
-            :aria-label="t('logs.search')"
-            :placeholder="t('logs.search')"
-          />
-        </div>
+          <div class="logs-view-switches">
+            <label class="logs-switch">
+              <Switch v-model="autoScroll" />
+              <span>{{ t('logs.autoScroll') }}</span>
+            </label>
 
-        <label class="logs-switch">
-          <Switch v-model="autoScroll" />
-          <span>{{ t('logs.autoScroll') }}</span>
-        </label>
-
-        <label class="logs-switch">
-          <Switch v-model="showAccessLogs" />
-          <span>{{ t('logs.showAccessLogs') }}</span>
-        </label>
-      </div>
-
-      <div class="logs-chip-filter">
-        <div>
-          <Label>{{ t('logs.level') }}</Label>
-          <div class="logs-chip-list">
-            <label
-              v-for="level in levelOptions"
-              :key="level"
-              class="logs-check-chip"
-            >
-              <Checkbox
-                :checked="selectedLevels.includes(level)"
-                @update:checked="toggleLevel(level, $event)"
-              />
-              <span>{{ level }}</span>
+            <label class="logs-switch">
+              <Switch v-model="showRawRecords" />
+              <span>{{ t('logs.showRawRecords') }}</span>
             </label>
           </div>
         </div>
 
-        <div>
-          <Label>{{ t('logs.source') }}</Label>
-          <div class="logs-chip-list">
-            <label
-              v-for="source in sourceOptions"
-              :key="source"
-              class="logs-check-chip"
-            >
-              <Checkbox
-                :checked="selectedSources.includes(source)"
-                @update:checked="toggleSource(source, $event)"
-              />
-              <span>{{ source }}</span>
+        <details
+          class="logs-advanced-filters"
+          :open="advancedFiltersOpen"
+          @toggle="syncAdvancedFiltersOpen"
+        >
+          <summary class="logs-advanced-filters__summary">
+            <span class="logs-advanced-filters__title">
+              <SlidersHorizontal :size="15" />
+              {{ t('logs.advancedFilters') }}
+            </span>
+            <span class="logs-advanced-filters__meta">
+              <Badge v-if="liveAdvancedFilterCount > 0" variant="secondary">
+                {{ t('logs.activeFilterCount', { count: liveAdvancedFilterCount }) }}
+              </Badge>
+              <ChevronDown class="logs-advanced-filters__chevron" :size="16" />
+            </span>
+          </summary>
+
+          <div class="logs-advanced-filters__content">
+            <label class="logs-switch logs-access-filter">
+              <Switch v-model="showAccessLogs" />
+              <span>{{ t('logs.showAccessLogs') }}</span>
             </label>
+
+            <div class="logs-chip-filter logs-chip-filter--inline">
+              <div>
+                <Label>{{ t('logs.level') }}</Label>
+                <div class="logs-chip-list">
+                  <label
+                    v-for="level in levelOptions"
+                    :key="level"
+                    class="logs-check-chip"
+                  >
+                    <Checkbox
+                      :checked="selectedLevels.includes(level)"
+                      @update:checked="toggleLevel(level, $event)"
+                    />
+                    <span>{{ level }}</span>
+                  </label>
+                </div>
+              </div>
+
+              <div>
+                <Label>{{ t('logs.source') }}</Label>
+                <div class="logs-chip-list">
+                  <label
+                    v-for="source in sourceOptions"
+                    :key="source"
+                    class="logs-check-chip"
+                  >
+                    <Checkbox
+                      :checked="selectedSources.includes(source)"
+                      @update:checked="toggleSource(source, $event)"
+                    />
+                    <span>{{ source }}</span>
+                  </label>
+                </div>
+              </div>
+            </div>
+          </div>
+        </details>
+
+        <div class="logs-query-footer">
+          <div class="logs-active-filters">
+            <span v-if="liveFilterChips.length === 0" class="logs-active-filters__empty">
+              {{ t('logs.noActiveFilters') }}
+            </span>
+            <Badge
+              v-for="chip in liveFilterChips"
+              :key="chip.key"
+              variant="secondary"
+            >
+              {{ chip.label }}
+            </Badge>
+          </div>
+          <div class="logs-query-footer__actions">
+            <Button
+              :disabled="!hasLiveFilters"
+              variant="ghost"
+              @click="resetLiveFilters"
+            >
+              <RefreshCw :size="16" />
+              {{ t('logs.resetFilters') }}
+            </Button>
           </div>
         </div>
       </div>
@@ -345,6 +464,17 @@ onUnmounted(disconnect)
     </Alert>
 
     <Panel class="logs-stream-panel" title="logs://live">
+      <template #actions>
+        <div class="logs-status-strip logs-status-strip--panel">
+          <StatusBadge
+            v-for="item in statusSummary"
+            :key="item.key"
+            :label="`${item.label} ${item.value}`"
+            :tone="item.key === 'signal' && highSignalCount > 0 ? 'warning' : 'default'"
+          />
+        </div>
+      </template>
+
       <LoadingSkeleton v-if="loadingHistory && logs.length === 0" :rows="8" />
       <EmptyState
         v-else-if="filteredLogs.length === 0"
@@ -355,12 +485,17 @@ onUnmounted(disconnect)
         <article
           v-for="entry in filteredLogs"
           :key="entry.id"
-          class="logs-live-row"
+          :class="showRawRecords ? 'logs-live-row logs-live-row--raw' : 'logs-live-row'"
         >
-          <span class="logs-live-row__time">[{{ entry.timestamp.slice(11, 19) }}]</span>
-          <StatusBadge :label="entry.level" :tone="logLevelTone(entry.level)" />
-          <span class="logs-live-row__source">{{ entry.source }}</span>
-          <span class="logs-live-row__message">{{ entry.message }}</span>
+          <template v-if="showRawRecords">
+            <span class="logs-live-row__raw">{{ entry.raw }}</span>
+          </template>
+          <template v-else>
+            <span class="logs-live-row__time">[{{ entry.timestamp.slice(11, 19) }}]</span>
+            <StatusBadge :label="entry.level" :tone="logLevelTone(entry.level)" />
+            <span class="logs-live-row__source">{{ entry.source }}</span>
+            <span class="logs-live-row__message">{{ entry.message }}</span>
+          </template>
         </article>
       </div>
     </Panel>

@@ -65,8 +65,8 @@ const routes: RouteRecordRaw[] = [
         meta: { titleKey: 'permissions.title' },
       },
       {
-        path: 'logs',
-        name: 'logs',
+        path: 'logs/live',
+        name: 'logs-live',
         component: () => import('@/pages/LogsPage.vue'),
         meta: { titleKey: 'logs.liveTitle' },
       },
