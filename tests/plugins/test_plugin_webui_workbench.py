@@ -310,6 +310,50 @@ def test_policy_route_returns_runtime_and_startup_effects(
     }
 
 
+def test_toggle_preview_leaves_generic_summary_to_frontend_fallback(
+    monkeypatch: "pytest.MonkeyPatch",
+) -> None:
+    import nonebot
+
+    try:
+        nonebot.get_driver()
+    except ValueError:
+        nonebot.init()
+
+    async def fake_preview(module_name: str, *, enabled: bool):
+        from apeiria.plugins.toggle import plugin_toggle_service
+
+        async def _list_plugins() -> list[PluginCatalogEntry]:
+            return [_plugin(module_name)]
+
+        return await plugin_toggle_service.preview_toggle_plugin(
+            module_name,
+            enabled=enabled,
+            list_plugins=_list_plugins,
+        )
+
+    monkeypatch.setattr(
+        "apeiria.webui.routes.plugin_management.plugin_management_service.preview_toggle_plugin",
+        fake_preview,
+    )
+
+    client = _client()
+
+    disable_response = client.get(
+        "/api/plugins/plugins.sample/toggle-preview",
+        params={"enabled": False},
+    )
+    enable_response = client.get(
+        "/api/plugins/plugins.sample/toggle-preview",
+        params={"enabled": True},
+    )
+
+    assert disable_response.status_code == HTTP_OK
+    assert enable_response.status_code == HTTP_OK
+    assert disable_response.json()["summary"] == ""
+    assert enable_response.json()["summary"] == ""
+
+
 def test_install_resolve_requirement_uses_module_candidates(
     monkeypatch: "pytest.MonkeyPatch",
 ) -> None:

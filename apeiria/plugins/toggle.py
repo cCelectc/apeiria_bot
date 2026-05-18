@@ -139,7 +139,7 @@ class PluginToggleService:
             else None
         )
         summary = (
-            t("plugins.enabledAction")
+            ""
             if not requires_enable
             else t(
                 "common.enable_required_plugins",
@@ -203,7 +203,7 @@ class PluginToggleService:
                 plugins=", ".join(protected_dependents),
             )
         summary = (
-            t("plugins.disabledAction")
+            ""
             if not requires_disable_names
             else t(
                 "common.required_by_plugins",
