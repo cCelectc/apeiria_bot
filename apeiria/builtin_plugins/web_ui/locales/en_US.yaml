@@ -56,6 +56,7 @@ web_ui:
     not_found: "Plugin not found"
     not_configurable: "Plugin has no configurable fields"
     update_not_allowed: "Plugin package update is not allowed"
+    update_not_available: "No update is available for this plugin package"
     store_not_found: "Store plugin not found"
     readme_not_found: "Plugin README not found"
     readme_asset_forbidden: "README relative paths cannot escape the current directory"

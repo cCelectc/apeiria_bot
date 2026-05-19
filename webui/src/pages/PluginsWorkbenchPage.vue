@@ -7,6 +7,7 @@ import type {
   PluginStoreSource,
   PluginStoreTask,
   PluginTogglePreview,
+  PluginUpdateCheckItem,
   PluginWorkbenchItem,
   PluginWorkbenchResponse,
 } from '@/api/plugins'
@@ -110,9 +111,11 @@ import { usePluginSettingsDialog } from '@/composables/usePluginSettingsDialog'
 import { useNoticeStore } from '@/stores/notice'
 import { useRestartStore } from '@/stores/restart'
 import {
+  hasPluginUpdate as hasPluginUpdateForChecks,
   pluginProjectUrl,
   pluginSourceLabel,
   pluginSourceTone,
+  updateButtonTooltip as buildUpdateButtonTooltip,
 } from '@/utils/pluginDisplay'
 
 type PluginFilter = 'all' | 'enabled' | 'disabled' | 'attention'
@@ -131,6 +134,7 @@ const searchQuery = ref('')
 const filter = ref<PluginFilter>('all')
 const pendingModule = ref('')
 const checkingUpdates = ref(false)
+const pluginUpdateChecks = ref<Record<string, PluginUpdateCheckItem>>({})
 
 const toggleConfirmVisible = ref(false)
 const toggleConfirmLoading = ref(false)
@@ -352,6 +356,9 @@ const packageTaskRunning = computed(() =>
   || packageTask.value?.status === 'queued'
   || packageTask.value?.status === 'running',
 )
+const pluginUpdateAvailableCount = computed(() =>
+  Object.values(pluginUpdateChecks.value).filter(item => item.has_update).length,
+)
 const canResolveInstall = computed(() =>
   installMode.value === 'store_item'
     ? Boolean(installStoreSourceId.value && installStoreItemId.value)
@@ -363,6 +370,7 @@ async function loadWorkbench() {
   errorMessage.value = ''
   try {
     workbench.value = (await getPluginWorkbench()).data
+    await runUpdateCheck({ forceRefresh: false, showNotice: false })
   } catch (error) {
     errorMessage.value = getErrorMessage(error, t('plugins.loadFailed'))
   } finally {
@@ -721,14 +729,28 @@ async function confirmToggleAction() {
   }
 }
 
-async function runUpdateCheck() {
+async function runUpdateCheck(
+  options: { forceRefresh?: boolean, showNotice?: boolean } = {},
+) {
   if (checkingUpdates.value) {
     return
   }
+  const forceRefresh = options.forceRefresh ?? true
+  const showNotice = options.showNotice ?? true
   checkingUpdates.value = true
   try {
-    await checkPluginUpdates({ force_refresh: true })
-    noticeStore.show(t('plugins.updateLatest'), 'success')
+    const response = await checkPluginUpdates({ force_refresh: forceRefresh })
+    pluginUpdateChecks.value = Object.fromEntries(
+      response.data.map(item => [item.module_name, item]),
+    )
+    if (showNotice) {
+      noticeStore.show(
+        pluginUpdateAvailableCount.value > 0
+          ? t('plugins.updateAvailable')
+          : t('plugins.updateLatest'),
+        'success',
+      )
+    }
   } catch (error) {
     noticeStore.show(getErrorMessage(error, t('plugins.updateCheckFailed')), 'error')
   } finally {
@@ -785,6 +807,19 @@ function sourceLabel(item: PluginWorkbenchItem) {
 
 function sourceTone(item: PluginWorkbenchItem): WorkbenchTone {
   return pluginSourceTone(item.source)
+}
+
+function hasPluginUpdate(item: PluginWorkbenchItem) {
+  return hasPluginUpdateForChecks(pluginUpdateChecks.value, item)
+}
+
+function updateButtonTooltip(item: PluginWorkbenchItem) {
+  return buildUpdateButtonTooltip(
+    pluginUpdateChecks.value,
+    item,
+    checkingUpdates.value,
+    (key, params) => t(key, params || {}),
+  )
 }
 
 function handleToggleChecked(item: PluginWorkbenchItem, value: boolean) {
@@ -942,8 +977,15 @@ onBeforeUnmount(() => {
               </a>
             </Button>
             <Button
-              :disabled="!item.capabilities.can_update_package || !item.installed_package || packageTaskModule === item.module_name"
+              :disabled="
+                !item.capabilities.can_update_package
+                  || !item.installed_package
+                  || checkingUpdates
+                  || !hasPluginUpdate(item)
+                  || packageTaskModule === item.module_name
+              "
               size="sm"
+              :title="updateButtonTooltip(item)"
               variant="ghost"
               @click="updatePluginItem(item)"
             >

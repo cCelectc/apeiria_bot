@@ -56,6 +56,7 @@ web_ui:
     not_found: "插件不存在"
     not_configurable: "插件没有可配置字段"
     update_not_allowed: "当前不允许更新该插件包"
+    update_not_available: "当前插件包没有可用更新"
     store_not_found: "插件商店资源不存在"
     readme_not_found: "未找到插件 README"
     readme_asset_forbidden: "README 相对路径不能越过所在目录"

@@ -14,7 +14,10 @@ from apeiria.app.plugins.install_resolution import (
 )
 from apeiria.app.plugins.management import plugin_management_service
 from apeiria.app.plugins.store.tasks import plugin_store_task_service
-from apeiria.app.plugins.store.update_check import supports_plugin_update_check
+from apeiria.app.plugins.store.update_check import (
+    plugin_update_check_service,
+    supports_plugin_update_check,
+)
 from apeiria.config.plugins import plugin_config_service
 from apeiria.exceptions import ProtectedPluginError, ResourceNotFoundError
 from apeiria.i18n import t
@@ -272,6 +275,17 @@ async def update_plugin_package_task(
         raise HTTPException(
             status_code=400,
             detail=t("web_ui.plugins.update_not_allowed"),
+        ) from None
+
+    update_check = await plugin_update_check_service.check_plugin(
+        module_name,
+        payload.package_name,
+        force_refresh=True,
+    )
+    if not update_check.has_update:
+        raise HTTPException(
+            status_code=400,
+            detail=t("web_ui.plugins.update_not_available"),
         ) from None
 
     try:
