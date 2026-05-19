@@ -1203,7 +1203,7 @@ const enUS = {
     settingsAdvancedTab: 'Advanced',
     settingsAdvancedAction: 'Advanced Editor',
     settingsEmpty: 'No settings available.',
-    settingsEmptyAIPlugin: 'The built-in AI plugin only owns startup and execution boundaries. Configure detailed AI behavior in the AI workbench.',
+    settingsEmptyAIPlugin: 'The built-in AI plugin is the system-level behavior switch. Configure detailed AI behavior in the AI workbench.',
     settingsOpenAIRuntimeSettings: 'Open AI Settings',
     settingsAdvancedDescription: 'Edit the current config section as raw TOML. Save validates syntax and section scope.',
     settingsSource: 'Definition',

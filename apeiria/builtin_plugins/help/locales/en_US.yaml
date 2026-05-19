@@ -1,10 +1,10 @@
 help:
   meta:
-    name: "Help System"
-    description: "Rendered help menu and plugin details"
+    name: "Help Menu"
+    description: "User-facing help and menu entry."
     usage: "{prefix}help - View help menu\n{prefix}help <plugin> - View plugin details\n{prefix}help --admin - View admin help\n{prefix}help --all - Owner view for complete help\n{prefix}帮助 / {prefix}菜单 / {prefix}功能 - Help command aliases"
     help_category: "Help and Menu"
-    help_introduction: "Unified help system for plugin features, commands, and descriptions."
+    help_introduction: "User-facing menu for plugin features and commands."
   command:
     help: "View the help menu or details for a specific plugin"
   list_title: "Help Menu"

@@ -28,17 +28,17 @@ from apeiria.runtime.entries import build_ai_trace_entry
 require("nonebot_plugin_alconna")
 
 __plugin_meta__ = PluginMetadata(
-    name="AI Plugin",
-    description="Apeiria AI runtime and admin surfaces",
+    name="AI",
+    description="System-level AI behavior switch and message runtime.",
     homepage="https://github.com/Cccc-owo/apeiria_bot",
-    usage="Use /ai-status to inspect the loaded AI runtime.",
+    usage="Use /ai-status to view the current AI runtime state.",
     type="application",
     supported_adapters=inherit_supported_adapters("nonebot_plugin_alconna"),
     extra=PluginExtraData(
         author="apeiria",
         version="0.1.0",
         plugin_type=PluginType.NORMAL,
-        ui=UiExtra(order=0),
+        ui=UiExtra(label="AI", order=0),
         commands=["ai-status"],
         required_plugins=["nonebot_plugin_alconna"],
     ).to_dict(),

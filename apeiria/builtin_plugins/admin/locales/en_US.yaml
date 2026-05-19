@@ -1,8 +1,8 @@
 admin:
   meta:
-    name: "Owner Admin"
-    description: "Owner-only management commands for status, plugins, access, tasks, and restart"
-    usage: "{prefix}admin - View overview\n{prefix}status | {prefix}sid - View runtime and session status\n{prefix}plugins | {prefix}plugin info|enable|disable|configs <plugin> - Manage plugins\n{prefix}config core|plugin ... - View config summary\n{prefix}access plugin|rule|remove ... - Manage access control\n{prefix}tasks | {prefix}task info|pause|resume <task_id> - Manage scheduler tasks\n{prefix}restart - Restart the bot\n{prefix}adapters | {prefix}drivers - View runtime environment"
+    name: "Admin Commands"
+    description: "Owner-facing chat management commands."
+    usage: "{prefix}admin - View overview\n{prefix}status | {prefix}sid - View runtime and session status\n{prefix}plugins | {prefix}plugin info|enable|disable|configs <plugin> - Manage plugins\n{prefix}config core|plugin ... - View config summary\n{prefix}access plugin|rule|remove ... - Manage access control\n{prefix}tasks | {prefix}task info|pause|resume <task_id> - Manage scheduler tasks\n{prefix}restart - Restart the bot"
   command:
     admin: "View owner admin overview"
     status: "View current bot runtime summary"

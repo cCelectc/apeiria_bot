@@ -1,8 +1,8 @@
 web_ui:
   meta:
-    name: "Web Admin Panel"
-    description: "Web UI management panel API"
-    usage: "Open the management panel at http://host:port/"
+    name: "Web UI"
+    description: "Protected Web UI control panel."
+    usage: "Open the protected control panel at http://host:port/"
     config_token_expire_days: "JWT token expiration time in days for the Web UI"
   auth:
     token_expired: "Login expired. Please sign in again."

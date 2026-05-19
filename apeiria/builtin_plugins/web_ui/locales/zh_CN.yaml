@@ -1,8 +1,8 @@
 web_ui:
   meta:
-    name: "Web管理面板"
-    description: "Web UI 管理面板 API"
-    usage: "访问 http://host:port/ 打开管理面板"
+    name: "Web UI"
+    description: "受保护的 Web UI 控制面板。"
+    usage: "访问 http://host:port/ 打开受保护的控制面板"
     config_token_expire_days: "Web UI 的 JWT 令牌有效期（天）"
   auth:
     token_expired: "登录已过期，请重新登录"

@@ -1,8 +1,8 @@
 admin:
   meta:
-    name: "主人管理"
-    description: "主人专用的管理命令集：状态、插件、访问、任务、重启"
-    usage: "{prefix}admin - 查看总览\n{prefix}status | {prefix}sid - 查看运行与会话状态\n{prefix}plugins | {prefix}plugin info|enable|disable|configs <插件名> - 管理插件\n{prefix}config core|plugin ... - 查看配置摘要\n{prefix}access plugin|rule|remove ... - 管理访问控制\n{prefix}tasks | {prefix}task info|pause|resume <任务ID> - 管理任务\n{prefix}restart - 重启 Bot\n{prefix}adapters | {prefix}drivers - 查看运行环境"
+    name: "管理命令"
+    description: "面向主人的聊天管理命令。"
+    usage: "{prefix}admin - 查看总览\n{prefix}status | {prefix}sid - 查看运行与会话状态\n{prefix}plugins | {prefix}plugin info|enable|disable|configs <插件名> - 管理插件\n{prefix}config core|plugin ... - 查看配置摘要\n{prefix}access plugin|rule|remove ... - 管理访问控制\n{prefix}tasks | {prefix}task info|pause|resume <任务ID> - 管理任务\n{prefix}restart - 重启 Bot"
   command:
     admin: "查看主人管理总览"
     status: "查看当前 bot 运行状态摘要"

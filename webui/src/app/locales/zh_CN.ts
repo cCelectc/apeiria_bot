@@ -1203,7 +1203,7 @@ const zhCN = {
     settingsAdvancedTab: '高级',
     settingsAdvancedAction: '高级编辑',
     settingsEmpty: '暂无可用配置。',
-    settingsEmptyAIPlugin: '内置 AI 插件只负责启动与执行边界。详细 AI 行为设置请在 AI 工作台配置。',
+    settingsEmptyAIPlugin: '内置 AI 插件是系统级行为开关。详细 AI 行为设置请在 AI 工作台配置。',
     settingsOpenAIRuntimeSettings: '打开 AI 配置',
     settingsAdvancedDescription: '直接编辑当前配置分段的 TOML 源文本。保存前会做语法和分段校验。',
     settingsSource: '定义来源',
