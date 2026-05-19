@@ -22,7 +22,7 @@ import {
   UserCog,
   X,
 } from 'lucide-vue-next'
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { RouterLink, RouterView, useRoute, useRouter } from 'vue-router'
 import {
@@ -80,6 +80,8 @@ const pendingConfirmAction = ref<PendingConfirmAction>(null)
 const sidebarOpen = ref(true)
 const storeNavExpanded = ref(false)
 const logsNavExpanded = ref(false)
+const storeNavUserCollapsed = ref(false)
+const logsNavUserCollapsed = ref(false)
 const { t, locale } = useI18n()
 const router = useRouter()
 const route = useRoute()
@@ -155,6 +157,9 @@ const storeNavItems = computed<NavItem[]>(() => [
 const storeRouteActive = computed(() =>
   storeNavItems.value.some(item => routeMatches(item.to)),
 )
+const storeNavVisible = computed(() =>
+  storeRouteActive.value ? !storeNavUserCollapsed.value : storeNavExpanded.value,
+)
 
 const logsNavItems = computed<NavItem[]>(() => [
   { key: 'logs-live', icon: ScrollText, title: t('layout.logs'), to: '/logs/live' },
@@ -164,12 +169,23 @@ const logsNavItems = computed<NavItem[]>(() => [
 const logsRouteActive = computed(() =>
   logsNavItems.value.some(item => routeMatches(item.to)),
 )
+const logsNavVisible = computed(() =>
+  logsRouteActive.value ? !logsNavUserCollapsed.value : logsNavExpanded.value,
+)
 
 function toggleStoreNav() {
+  if (storeRouteActive.value) {
+    storeNavUserCollapsed.value = !storeNavUserCollapsed.value
+    return
+  }
   storeNavExpanded.value = !storeNavExpanded.value
 }
 
 function toggleLogsNav() {
+  if (logsRouteActive.value) {
+    logsNavUserCollapsed.value = !logsNavUserCollapsed.value
+    return
+  }
   logsNavExpanded.value = !logsNavExpanded.value
 }
 
@@ -211,10 +227,25 @@ async function runConfirmedAction() {
     await revertPendingChanges()
   }
 }
+
+watch(storeRouteActive, active => {
+  if (!active) {
+    storeNavUserCollapsed.value = false
+  }
+})
+
+watch(logsRouteActive, active => {
+  if (!active) {
+    logsNavUserCollapsed.value = false
+  }
+})
 </script>
 
 <template>
   <SidebarProvider v-model:open="sidebarOpen">
+    <a class="app-shell-skip-link" href="#app-main-content">
+      {{ t('layout.skipToContent') }}
+    </a>
     <Sidebar collapsible="icon">
       <SidebarHeader>
         <div class="app-shell-brand">
@@ -286,13 +317,13 @@ async function runConfirmedAction() {
                   <span>{{ t('layout.store') }}</span>
                   <ChevronDown
                     class="app-shell-store-caret"
-                    :class="{ 'app-shell-store-caret--open': storeNavExpanded }"
+                    :class="{ 'app-shell-store-caret--open': storeNavVisible }"
                   />
                 </SidebarMenuButton>
               </SidebarMenuItem>
               <SidebarMenuItem
                 v-for="item in storeNavItems"
-                v-show="storeNavExpanded"
+                v-show="storeNavVisible"
                 :key="item.key"
                 class="app-shell-store-item"
               >
@@ -343,13 +374,13 @@ async function runConfirmedAction() {
                   <span>{{ t('layout.logsGroup') }}</span>
                   <ChevronDown
                     class="app-shell-store-caret"
-                    :class="{ 'app-shell-store-caret--open': logsNavExpanded }"
+                    :class="{ 'app-shell-store-caret--open': logsNavVisible }"
                   />
                 </SidebarMenuButton>
               </SidebarMenuItem>
               <SidebarMenuItem
                 v-for="item in logsNavItems"
-                v-show="logsNavExpanded"
+                v-show="logsNavVisible"
                 :key="item.key"
                 class="app-shell-store-item"
               >
@@ -416,7 +447,7 @@ async function runConfirmedAction() {
     </Sidebar>
 
     <SidebarInset>
-      <main class="app-shell-content">
+      <main id="app-main-content" class="app-shell-content" tabindex="-1">
         <Alert v-if="restartStore.hasPendingRestart" class="restart-banner">
           <RefreshCw />
           <AlertTitle>{{ t('restart.bannerTitle', { count: restartStore.pendingCount }) }}</AlertTitle>

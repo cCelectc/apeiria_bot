@@ -64,8 +64,8 @@ withDefaults(defineProps<{
 
     <slot name="alerts" />
 
-    <component :is="embedded ? 'div' : 'main'" class="workbench-page__body">
+    <div class="workbench-page__body">
       <slot />
-    </component>
+    </div>
   </section>
 </template>

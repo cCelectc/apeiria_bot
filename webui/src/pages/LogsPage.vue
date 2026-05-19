@@ -11,6 +11,7 @@ import {
 } from 'lucide-vue-next'
 import { computed, nextTick, onActivated, onDeactivated, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useRoute, useRouter } from 'vue-router'
 import { getErrorMessage } from '@/api/client'
 import { getLogHistory, type LogItem } from '@/api/logs'
 import {
@@ -36,8 +37,16 @@ import {
   normalizeLogFrame,
   toLogEntry,
 } from '@/composables/useLogUtils'
+import {
+  buildLiveLogRouteQuery,
+  liveLogRouteStateEquals,
+  normalizeLiveLogRouteState,
+  type LiveLogRouteState,
+} from '@/utils/liveLogRouteState'
 
 const { t } = useI18n()
+const route = useRoute()
+const router = useRouter()
 const logs = ref<LogEntry[]>([])
 const connected = ref(false)
 const autoScroll = ref(true)
@@ -56,6 +65,7 @@ const MAX_LIVE_LOGS = 500
 let ws: WebSocket | null = null
 let primingHistory = false
 let recentHistoryRequestSeq = 0
+let syncingRouteState = false
 
 const levelOptions = computed(() =>
   Array.from(new Set(logs.value.map(item => item.level))).sort(),
@@ -164,11 +174,6 @@ function clearLogs() {
 function resetLogsView() {
   disconnect()
   logs.value = []
-  selectedLevels.value = []
-  selectedSources.value = []
-  showAccessLogs.value = false
-  showRawRecords.value = false
-  search.value = ''
   bootstrapError.value = ''
   recentHistoryCount.value = 0
   pendingLiveLogs.length = 0
@@ -299,16 +304,78 @@ function syncAdvancedFiltersOpen(event: Event) {
   advancedFiltersOpen.value = Boolean((event.currentTarget as HTMLDetailsElement | null)?.open)
 }
 
+function currentLiveLogRouteState(): LiveLogRouteState {
+  return normalizeLiveLogRouteState(buildLiveLogRouteQuery({
+    advanced: advancedFiltersOpen.value,
+    levels: selectedLevels.value,
+    search: search.value,
+    showAccessLogs: showAccessLogs.value,
+    showRawRecords: showRawRecords.value,
+    sources: selectedSources.value,
+  }))
+}
+
+async function syncLiveLogRouteQuery() {
+  const nextQuery = buildLiveLogRouteQuery(currentLiveLogRouteState())
+  const currentQuery = buildLiveLogRouteQuery(normalizeLiveLogRouteState(route.query))
+  if (JSON.stringify(nextQuery) === JSON.stringify(currentQuery)) {
+    return
+  }
+  await router.replace({ query: nextQuery })
+}
+
+function applyLiveLogRouteState(state: LiveLogRouteState) {
+  syncingRouteState = true
+  search.value = state.search
+  selectedLevels.value = state.levels
+  showAccessLogs.value = state.showAccessLogs
+  showRawRecords.value = state.showRawRecords
+  advancedFiltersOpen.value = state.advanced
+  selectedSources.value = state.showAccessLogs
+    ? state.sources
+    : state.sources.filter(source => source !== 'uvicorn.access')
+  void nextTick(() => {
+    syncingRouteState = false
+  })
+}
+
 watch(showAccessLogs, enabled => {
   if (!enabled) {
     selectedSources.value = selectedSources.value.filter(source => source !== 'uvicorn.access')
+  }
+  if (syncingRouteState) {
+    return
   }
   if (!primingHistory && logs.value.length > 0) {
     void loadRecentHistory({ preserveLiveLogs: true })
   }
 })
 
+watch(
+  [search, selectedLevels, selectedSources, showAccessLogs, showRawRecords, advancedFiltersOpen],
+  () => {
+    if (syncingRouteState) {
+      return
+    }
+    void syncLiveLogRouteQuery()
+  },
+)
+
+watch(() => route.query, query => {
+  const nextState = normalizeLiveLogRouteState(query)
+  const currentState = currentLiveLogRouteState()
+  if (liveLogRouteStateEquals(nextState, currentState)) {
+    return
+  }
+  const accessVisibilityChanged = nextState.showAccessLogs !== currentState.showAccessLogs
+  applyLiveLogRouteState(nextState)
+  if (accessVisibilityChanged && !primingHistory && logs.value.length > 0) {
+    void loadRecentHistory({ preserveLiveLogs: true })
+  }
+})
+
 onMounted(() => {
+  applyLiveLogRouteState(normalizeLiveLogRouteState(route.query))
   void initializeLogsView()
 })
 onActivated(() => {

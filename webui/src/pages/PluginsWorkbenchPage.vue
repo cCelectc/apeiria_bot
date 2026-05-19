@@ -48,6 +48,7 @@ import {
   updatePlugin,
 } from '@/api/plugins'
 import {
+  ActionWithReason,
   EmptyState,
   LoadingSkeleton,
   MetricStrip,
@@ -822,6 +823,53 @@ function updateButtonTooltip(item: PluginWorkbenchItem) {
   )
 }
 
+function settingsActionReason(item: PluginWorkbenchItem) {
+  return item.capabilities.can_edit_settings
+    ? ''
+    : t('plugins.settingsActionUnavailable')
+}
+
+function readmeActionReason(item: PluginWorkbenchItem) {
+  return item.capabilities.can_view_readme
+    ? ''
+    : t('plugins.readmeActionUnavailable')
+}
+
+function packageUpdateActionReason(item: PluginWorkbenchItem) {
+  if (!item.capabilities.can_update_package) {
+    return t('plugins.packageUpdateActionUnavailable')
+  }
+  if (!item.installed_package) {
+    return t('plugins.packageUpdatePackageMissing')
+  }
+  if (packageTaskModule.value === item.module_name) {
+    return t('plugins.packageUpdateTaskRunning')
+  }
+  if (checkingUpdates.value) {
+    return t('plugins.checkingUpdates')
+  }
+  if (!hasPluginUpdate(item)) {
+    return updateButtonTooltip(item)
+  }
+  return ''
+}
+
+function uninstallActionReason(item: PluginWorkbenchItem) {
+  if (uninstallingModule.value === item.module_name) {
+    return t('plugins.settingsUninstallRunning')
+  }
+  if (!item.capabilities.can_uninstall) {
+    if (item.is_pending_uninstall) {
+      return t('plugins.pendingUninstallHint')
+    }
+    if (item.is_protected && item.protected_reason) {
+      return item.protected_reason
+    }
+    return t('plugins.settingsUninstallUnavailable')
+  }
+  return ''
+}
+
 function handleToggleChecked(item: PluginWorkbenchItem, value: boolean) {
   void requestTogglePlugin(item, value)
 }
@@ -947,24 +995,24 @@ onBeforeUnmount(() => {
               <Info data-icon="inline-start" />
               {{ t('plugins.detail') }}
             </Button>
-            <Button
+            <ActionWithReason
               :disabled="!item.capabilities.can_edit_settings"
+              :icon="FileCog"
+              :label="t('plugins.settings')"
+              :reason="settingsActionReason(item)"
               size="sm"
               variant="ghost"
-              @click="openPluginSettings(item)"
-            >
-              <FileCog data-icon="inline-start" />
-              {{ t('plugins.settings') }}
-            </Button>
-            <Button
+              @activate="openPluginSettings(item)"
+            />
+            <ActionWithReason
               :disabled="!item.capabilities.can_view_readme"
+              :icon="FileText"
+              :label="t('plugins.readme')"
+              :reason="readmeActionReason(item)"
               size="sm"
               variant="ghost"
-              @click="openPluginReadme(item)"
-            >
-              <FileText data-icon="inline-start" />
-              {{ t('plugins.readme') }}
-            </Button>
+              @activate="openPluginReadme(item)"
+            />
             <Button
               v-if="projectUrl(item)"
               as-child
@@ -976,7 +1024,7 @@ onBeforeUnmount(() => {
                 {{ t('plugins.projectPage') }}
               </a>
             </Button>
-            <Button
+            <ActionWithReason
               :disabled="
                 !item.capabilities.can_update_package
                   || !item.installed_package
@@ -984,23 +1032,22 @@ onBeforeUnmount(() => {
                   || !hasPluginUpdate(item)
                   || packageTaskModule === item.module_name
               "
+              :icon="UploadCloud"
+              :label="t('plugins.packageUpdate')"
+              :reason="packageUpdateActionReason(item)"
               size="sm"
-              :title="updateButtonTooltip(item)"
               variant="ghost"
-              @click="updatePluginItem(item)"
-            >
-              <UploadCloud data-icon="inline-start" />
-              {{ t('plugins.packageUpdate') }}
-            </Button>
-            <Button
+              @activate="updatePluginItem(item)"
+            />
+            <ActionWithReason
               :disabled="!item.capabilities.can_uninstall || uninstallingModule === item.module_name"
+              :icon="Trash2"
+              :label="t('plugins.settingsUninstall')"
+              :reason="uninstallActionReason(item)"
               size="sm"
               variant="ghost"
-              @click="openUninstallConfirm(item)"
-            >
-              <Trash2 data-icon="inline-start" />
-              {{ t('plugins.settingsUninstall') }}
-            </Button>
+              @activate="openUninstallConfirm(item)"
+            />
           </div>
         </article>
       </div>

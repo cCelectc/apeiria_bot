@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import {
   AlertCircle,
   ArrowRight,
@@ -16,8 +16,10 @@ import { Label } from '@/components/ui/label'
 import { login } from '@/api/auth'
 import { getErrorMessage } from '@/api/client'
 import { useAuthStore } from '@/stores/auth'
+import { normalizeAuthRedirect } from '@/utils/routeRedirect'
 
 const { t } = useI18n()
+const route = useRoute()
 const router = useRouter()
 const authStore = useAuthStore()
 const username = ref('')
@@ -64,7 +66,7 @@ async function submitLogin() {
     })
     authStore.acceptSession(response.data.token, response.data.principal)
     if (authStore.isAuthenticated) {
-      await router.push('/dashboard')
+      await router.push(normalizeAuthRedirect(route.query.redirect))
       return
     }
     authStore.handleForbidden()

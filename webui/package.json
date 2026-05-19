@@ -8,6 +8,7 @@
     "build": "pnpm build-assets && pnpm write-build-meta",
     "build-assets": "pnpm type-check && pnpm build-only",
     "build-only": "vite build",
+    "test:route-state": "node scripts/route-state-tests.mjs",
     "type-check": "vue-tsc --build --force",
     "write-build-meta": "APEIRIA_WEBUI_FRONTEND_DIR=webui python ../scripts/write-webui-build-meta.py --project-root ..",
     "preview": "vite preview"

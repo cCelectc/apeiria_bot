@@ -20,8 +20,8 @@ withDefaults(defineProps<{
       <slot name="sidebar" />
     </aside>
 
-    <main class="workbench-split-pane__main">
+    <section class="workbench-split-pane__main">
       <slot />
-    </main>
+    </section>
   </section>
 </template>

@@ -13,9 +13,9 @@ import {
   Search,
   Store,
 } from 'lucide-vue-next'
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { getErrorMessage } from '@/api/client'
 import {
   getPluginStoreItem,
@@ -57,11 +57,19 @@ import { Switch } from '@/components/ui/switch'
 import { useAuthStore } from '@/stores/auth'
 import { useNoticeStore } from '@/stores/notice'
 import { useRestartStore } from '@/stores/restart'
+import {
+  buildStoreRouteQuery,
+  normalizeStoreRouteState,
+  storeRouteStateEquals,
+  type StoreRouteState,
+  type StoreSortMode,
+} from '@/utils/storeRouteState'
 
 type PluginStoreActionMode = 'install' | 'update'
 
 const ALL_STORE_OPTIONS = '__all__'
 const { t, locale } = useI18n()
+const route = useRoute()
 const router = useRouter()
 const authStore = useAuthStore()
 const noticeStore = useNoticeStore()
@@ -76,7 +84,7 @@ const categories = ref<PluginStoreCategoryItem[]>([])
 const totalItems = ref(0)
 const selectedSource = ref('')
 const selectedCategory = ref('')
-const sortMode = ref<'default' | 'name' | 'updated'>('default')
+const sortMode = ref<StoreSortMode>('default')
 const currentPage = ref(1)
 const search = ref('')
 const uninstalledOnly = ref(true)
@@ -89,6 +97,7 @@ const activeItem = ref<PluginStoreItem | null>(null)
 const actionMode = ref<PluginStoreActionMode>('install')
 let taskPollTimer: number | null = null
 let searchTimer: number | null = null
+let syncingRouteState = false
 
 const pageSize = 16
 const isOwnerRole = computed(() => authStore.role === 'owner')
@@ -277,6 +286,43 @@ function storeFilterValue(value: string) {
   return value && value !== ALL_STORE_OPTIONS ? value : undefined
 }
 
+function allOptionValue(value: string) {
+  return value || ALL_STORE_OPTIONS
+}
+
+function currentStoreRouteState(): StoreRouteState {
+  return {
+    category: storeFilterValue(selectedCategory.value) || '',
+    installedOnly: uninstalledOnly.value,
+    page: currentPage.value,
+    search: search.value.trim(),
+    sort: sortMode.value,
+    source: storeFilterValue(selectedSource.value) || '',
+  }
+}
+
+async function syncStoreRouteQuery() {
+  const nextQuery = buildStoreRouteQuery(currentStoreRouteState())
+  const currentQuery = buildStoreRouteQuery(normalizeStoreRouteState(route.query))
+  if (JSON.stringify(nextQuery) === JSON.stringify(currentQuery)) {
+    return
+  }
+  await router.replace({ query: nextQuery })
+}
+
+function applyStoreRouteState(state: StoreRouteState) {
+  syncingRouteState = true
+  selectedSource.value = allOptionValue(state.source)
+  selectedCategory.value = allOptionValue(state.category)
+  sortMode.value = state.sort
+  currentPage.value = state.page
+  search.value = state.search
+  uninstalledOnly.value = state.installedOnly
+  void nextTick(() => {
+    syncingRouteState = false
+  })
+}
+
 async function startAction() {
   if (!selectedItem.value || !canActOnItem(selectedItem.value)) {
     return
@@ -422,18 +468,36 @@ function scheduleReload() {
 }
 
 watch([selectedSource, search, selectedCategory, sortMode, uninstalledOnly], () => {
+  if (syncingRouteState) {
+    return
+  }
   currentPage.value = 1
+  void syncStoreRouteQuery()
   scheduleReload()
 })
 
 watch(currentPage, (nextPage, previousPage) => {
+  if (syncingRouteState) {
+    return
+  }
   if (nextPage === previousPage) {
     return
   }
+  void syncStoreRouteQuery()
+  void loadStore()
+})
+
+watch(() => route.query, query => {
+  const nextState = normalizeStoreRouteState(query)
+  if (storeRouteStateEquals(nextState, currentStoreRouteState())) {
+    return
+  }
+  applyStoreRouteState(nextState)
   void loadStore()
 })
 
 onMounted(() => {
+  applyStoreRouteState(normalizeStoreRouteState(route.query))
   void loadStore()
 })
 
@@ -541,8 +605,8 @@ onBeforeUnmount(() => {
         <Badge variant="secondary">
           {{ currentSourceLabel }}
         </Badge>
-        <Badge v-if="selectedCategory" variant="outline">
-          {{ selectedCategory }}
+        <Badge v-if="storeFilterValue(selectedCategory)" variant="outline">
+          {{ storeFilterValue(selectedCategory) }}
         </Badge>
         <Badge variant="outline">
           {{ t('pluginStore.totalCount', { count: totalItems }) }}

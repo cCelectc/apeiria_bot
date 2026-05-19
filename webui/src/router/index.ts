@@ -2,6 +2,7 @@ import type { RouteRecordRaw } from 'vue-router'
 import { createRouter, createWebHistory } from 'vue-router'
 import { CAP_ACCOUNT_MANAGE, CAP_CONTROL_PANEL } from '@/constants/access'
 import { useAuthStore } from '@/stores/auth'
+import { buildAuthRedirect } from '@/utils/routeRedirect'
 
 const routes: RouteRecordRaw[] = [
   {
@@ -103,7 +104,10 @@ router.beforeEach(async to => {
   const isPublicRoute = to.meta.requiresAuth === false
 
   if (!isPublicRoute && !token) {
-    return { name: 'login' }
+    return {
+      name: 'login',
+      query: { redirect: buildAuthRedirect(to.fullPath) },
+    }
   }
 
   if (token && !authStore.isAuthenticated) {
@@ -111,7 +115,10 @@ router.beforeEach(async to => {
   }
 
   if (!isPublicRoute && !authStore.isAuthenticated) {
-    return { name: 'login' }
+    return {
+      name: 'login',
+      query: { redirect: buildAuthRedirect(to.fullPath) },
+    }
   }
 
   const requiredCapability = typeof to.meta.requiredCapability === 'string'

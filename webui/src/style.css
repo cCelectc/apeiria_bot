@@ -315,6 +315,39 @@
   }
 }
 
+.app-shell-skip-link {
+  position: fixed;
+  z-index: 50;
+  top: 12px;
+  left: 12px;
+  transform: translateY(-150%);
+  border-radius: 6px;
+  background: var(--primary);
+  color: var(--primary-foreground);
+  font-size: 0.86rem;
+  font-weight: 700;
+  padding: 8px 12px;
+  text-decoration: none;
+  transition: transform 120ms ease;
+}
+
+.app-shell-skip-link:focus-visible {
+  transform: translateY(0);
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+.management-action-with-reason {
+  display: inline-flex;
+  width: fit-content;
+  border-radius: calc(var(--radius) - 2px);
+  outline: none;
+}
+
+.management-action-with-reason:focus-visible {
+  box-shadow: var(--focus-ring);
+}
+
 .app-shell-brand {
   display: flex;
   align-items: center;

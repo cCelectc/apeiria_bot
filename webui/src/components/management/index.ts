@@ -1,4 +1,5 @@
 export { default as ActionCluster } from './ActionCluster.vue'
+export { default as ActionWithReason } from './ActionWithReason.vue'
 export { default as DataTablePanel } from './DataTablePanel.vue'
 export { default as DenseList } from './DenseList.vue'
 export { default as DetailPanel } from './DetailPanel.vue'

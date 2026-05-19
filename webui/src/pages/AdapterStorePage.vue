@@ -13,9 +13,9 @@ import {
   Search,
   UploadCloud,
 } from 'lucide-vue-next'
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import {
   getAdapterStoreItem,
   getAdapterStoreItems,
@@ -51,6 +51,7 @@ import { Label } from '@/components/ui/label'
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
   SelectTrigger,
   SelectValue,
@@ -59,11 +60,19 @@ import { Switch } from '@/components/ui/switch'
 import { useAuthStore } from '@/stores/auth'
 import { useNoticeStore } from '@/stores/notice'
 import { useRestartStore } from '@/stores/restart'
+import {
+  buildStoreRouteQuery,
+  normalizeStoreRouteState,
+  storeRouteStateEquals,
+  type StoreRouteState,
+  type StoreSortMode,
+} from '@/utils/storeRouteState'
 
 type AdapterActionMode = 'install' | 'manual-install' | 'update' | 'uninstall'
 
 const ALL_STORE_OPTIONS = '__all__'
 const { t } = useI18n()
+const route = useRoute()
 const router = useRouter()
 const authStore = useAuthStore()
 const noticeStore = useNoticeStore()
@@ -78,7 +87,7 @@ const categories = ref<AdapterStoreCategoryItem[]>([])
 const totalItems = ref(0)
 const selectedSource = ref('')
 const selectedCategory = ref('')
-const sortMode = ref<'default' | 'name' | 'updated'>('default')
+const sortMode = ref<StoreSortMode>('default')
 const currentPage = ref(1)
 const search = ref('')
 const uninstalledOnly = ref(true)
@@ -94,6 +103,7 @@ const manualRequirement = ref('')
 const manualModuleName = ref('')
 let taskPollTimer: number | null = null
 let searchTimer: number | null = null
+let syncingRouteState = false
 
 const pageSize = 16
 const pageCount = computed(() => Math.max(1, Math.ceil(totalItems.value / pageSize)))
@@ -236,6 +246,43 @@ async function refreshSources() {
 
 function storeFilterValue(value: string) {
   return value && value !== ALL_STORE_OPTIONS ? value : undefined
+}
+
+function allOptionValue(value: string) {
+  return value || ALL_STORE_OPTIONS
+}
+
+function currentStoreRouteState(): StoreRouteState {
+  return {
+    category: storeFilterValue(selectedCategory.value) || '',
+    installedOnly: uninstalledOnly.value,
+    page: currentPage.value,
+    search: search.value.trim(),
+    sort: sortMode.value,
+    source: storeFilterValue(selectedSource.value) || '',
+  }
+}
+
+async function syncStoreRouteQuery() {
+  const nextQuery = buildStoreRouteQuery(currentStoreRouteState())
+  const currentQuery = buildStoreRouteQuery(normalizeStoreRouteState(route.query))
+  if (JSON.stringify(nextQuery) === JSON.stringify(currentQuery)) {
+    return
+  }
+  await router.replace({ query: nextQuery })
+}
+
+function applyStoreRouteState(state: StoreRouteState) {
+  syncingRouteState = true
+  selectedSource.value = allOptionValue(state.source)
+  selectedCategory.value = allOptionValue(state.category)
+  sortMode.value = state.sort
+  currentPage.value = state.page
+  search.value = state.search
+  uninstalledOnly.value = state.installedOnly
+  void nextTick(() => {
+    syncingRouteState = false
+  })
 }
 
 async function submitManualInstall() {
@@ -432,18 +479,36 @@ function scheduleReload() {
 }
 
 watch([selectedSource, search, selectedCategory, sortMode, uninstalledOnly], () => {
+  if (syncingRouteState) {
+    return
+  }
   currentPage.value = 1
+  void syncStoreRouteQuery()
   scheduleReload()
 })
 
 watch(currentPage, (nextPage, previousPage) => {
+  if (syncingRouteState) {
+    return
+  }
   if (nextPage === previousPage) {
     return
   }
+  void syncStoreRouteQuery()
+  void loadStore()
+})
+
+watch(() => route.query, query => {
+  const nextState = normalizeStoreRouteState(query)
+  if (storeRouteStateEquals(nextState, currentStoreRouteState())) {
+    return
+  }
+  applyStoreRouteState(nextState)
   void loadStore()
 })
 
 onMounted(() => {
+  applyStoreRouteState(normalizeStoreRouteState(route.query))
   void loadStore()
 })
 
@@ -502,13 +567,15 @@ onBeforeUnmount(() => {
             <SelectValue :placeholder="t('adapterStore.allSources')" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem
-              v-for="option in sourceOptions"
-              :key="option.value || 'all'"
-              :value="option.value"
-            >
-              {{ option.label }}
-            </SelectItem>
+            <SelectGroup>
+              <SelectItem
+                v-for="option in sourceOptions"
+                :key="option.value || 'all'"
+                :value="option.value"
+              >
+                {{ option.label }}
+              </SelectItem>
+            </SelectGroup>
           </SelectContent>
         </Select>
 
@@ -517,13 +584,15 @@ onBeforeUnmount(() => {
             <SelectValue :placeholder="t('adapterStore.allCategories')" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem
-              v-for="option in categoryOptions"
-              :key="option.value || 'all'"
-              :value="option.value"
-            >
-              {{ option.label }}
-            </SelectItem>
+            <SelectGroup>
+              <SelectItem
+                v-for="option in categoryOptions"
+                :key="option.value || 'all'"
+                :value="option.value"
+              >
+                {{ option.label }}
+              </SelectItem>
+            </SelectGroup>
           </SelectContent>
         </Select>
 
@@ -532,13 +601,15 @@ onBeforeUnmount(() => {
             <SelectValue :placeholder="t('adapterStore.sort')" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem
-              v-for="option in sortOptions"
-              :key="option.value"
-              :value="option.value"
-            >
-              {{ option.label }}
-            </SelectItem>
+            <SelectGroup>
+              <SelectItem
+                v-for="option in sortOptions"
+                :key="option.value"
+                :value="option.value"
+              >
+                {{ option.label }}
+              </SelectItem>
+            </SelectGroup>
           </SelectContent>
         </Select>
 
@@ -552,8 +623,8 @@ onBeforeUnmount(() => {
         <Badge variant="secondary">
           {{ currentSourceLabel }}
         </Badge>
-        <Badge v-if="selectedCategory" variant="outline">
-          {{ selectedCategory }}
+        <Badge v-if="storeFilterValue(selectedCategory)" variant="outline">
+          {{ storeFilterValue(selectedCategory) }}
         </Badge>
         <Badge variant="outline">
           {{ t('adapterStore.totalCount', { count: totalItems }) }}
