@@ -180,6 +180,8 @@ const uninstallingModule = ref('')
 const packageTaskDialogVisible = ref(false)
 const packageTask = ref<PluginStoreTask | null>(null)
 const packageTaskModule = ref('')
+const packageUpdateConfirmVisible = ref(false)
+const packageUpdateConfirmItem = ref<PluginWorkbenchItem | null>(null)
 let packageTaskPollTimer: number | null = null
 
 const pluginSettings = usePluginSettingsDialog({
@@ -379,6 +381,22 @@ const packageTaskRunning = computed(() =>
 )
 const pluginUpdateAvailableCount = computed(() =>
   Object.values(pluginUpdateChecks.value).filter(item => item.has_update).length,
+)
+const packageUpdateConfirmCheck = computed(() => {
+  const item = packageUpdateConfirmItem.value
+  if (!item) {
+    return null
+  }
+  return pluginUpdateChecks.value[item.module_name] || null
+})
+const packageUpdateCurrentVersion = computed(() =>
+  packageUpdateConfirmCheck.value?.current_version
+  || packageUpdateConfirmItem.value?.version
+  || t('plugins.packageUpdateUnknownVersion'),
+)
+const packageUpdateLatestVersion = computed(() =>
+  packageUpdateConfirmCheck.value?.latest_version
+  || t('plugins.packageUpdateUnknownVersion'),
 )
 const canResolveInstall = computed(() =>
   installMode.value === 'store_item'
@@ -589,6 +607,33 @@ function stopInstallTaskPolling() {
     window.clearInterval(installTaskPollTimer)
     installTaskPollTimer = null
   }
+}
+
+function openPackageUpdateConfirm(item: PluginWorkbenchItem) {
+  if (
+    !item.installed_package
+    || packageTaskModule.value
+    || checkingUpdates.value
+    || !hasPluginUpdate(item)
+  ) {
+    return
+  }
+  packageUpdateConfirmItem.value = item
+  packageUpdateConfirmVisible.value = true
+}
+
+function closePackageUpdateConfirm() {
+  packageUpdateConfirmVisible.value = false
+  packageUpdateConfirmItem.value = null
+}
+
+function confirmPackageUpdateAction() {
+  const item = packageUpdateConfirmItem.value
+  if (!item) {
+    return
+  }
+  closePackageUpdateConfirm()
+  void updatePluginItem(item)
 }
 
 async function updatePluginItem(item: PluginWorkbenchItem) {
@@ -1076,7 +1121,7 @@ onBeforeUnmount(() => {
               :reason="packageUpdateActionReason(item)"
               size="sm"
               variant="ghost"
-              @activate="updatePluginItem(item)"
+              @activate="openPackageUpdateConfirm(item)"
             />
             <ActionWithReason
               :disabled="!item.capabilities.can_uninstall || uninstallingModule === item.module_name"
@@ -1091,6 +1136,53 @@ onBeforeUnmount(() => {
         </article>
       </div>
     </Panel>
+
+    <AlertDialog v-model:open="packageUpdateConfirmVisible">
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>{{ t('plugins.packageUpdateConfirmTitle') }}</AlertDialogTitle>
+          <AlertDialogDescription>
+            {{ t('plugins.packageUpdateConfirmDescription') }}
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+
+        <div v-if="packageUpdateConfirmItem" class="plugin-toggle-summary">
+          <div>
+            <strong>{{ packageUpdateConfirmItem.display_name }}</strong>
+            <span>{{ packageUpdateConfirmItem.module_name }}</span>
+          </div>
+          <div class="plugin-toggle-summary__relations">
+            <Badge
+              v-if="packageUpdateConfirmItem.installed_package"
+              variant="outline"
+            >
+              {{ packageUpdateConfirmItem.installed_package }}
+            </Badge>
+            <Badge variant="secondary">
+              {{
+                t('plugins.packageUpdateVersionChange', {
+                  current: packageUpdateCurrentVersion,
+                  latest: packageUpdateLatestVersion,
+                })
+              }}
+            </Badge>
+          </div>
+        </div>
+
+        <AlertDialogFooter>
+          <AlertDialogCancel @click="closePackageUpdateConfirm">
+            {{ t('common.cancel') }}
+          </AlertDialogCancel>
+          <AlertDialogAction
+            :disabled="packageTaskModule !== ''"
+            @click="confirmPackageUpdateAction"
+          >
+            <UploadCloud data-icon="inline-start" />
+            {{ t('plugins.packageUpdateConfirmAction') }}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
 
     <AlertDialog v-model:open="toggleConfirmVisible">
       <AlertDialogContent>
