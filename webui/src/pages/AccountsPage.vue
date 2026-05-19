@@ -38,6 +38,7 @@ import {
 } from '@/components/ui/table'
 import { useAuthStore } from '@/stores/auth'
 import { useNoticeStore } from '@/stores/notice'
+import { resolveCollectionFeedback } from '@/utils/feedbackState'
 
 const { t } = useI18n()
 const authStore = useAuthStore()
@@ -95,6 +96,15 @@ const passwordSubmitDisabled = computed(() =>
   || !passwordForm.new_password
   || !confirmPassword.value,
 )
+const accountFeedback = computed(() =>
+  resolveCollectionFeedback({
+    errorMessage: errorMessage.value,
+    hasFilters: false,
+    loading: loading.value,
+    totalCount: currentAccount.value || auditEvents.value.length > 0 ? 1 : 0,
+    visibleCount: currentAccount.value || auditEvents.value.length > 0 ? 1 : 0,
+  }),
+)
 
 function roleLabel(role: string) {
   if (role === 'owner') {
@@ -131,7 +141,9 @@ function auditKey(event: SecurityAuditEventItem) {
 
 async function loadData() {
   loading.value = true
-  errorMessage.value = ''
+  if (!currentAccount.value && auditEvents.value.length === 0) {
+    errorMessage.value = ''
+  }
   try {
     const [accountResponse, auditResponse] = await Promise.all([
       getCurrentAccount(),
@@ -193,9 +205,12 @@ onMounted(loadData)
 
 <template>
   <PageScaffold
+    :aria-busy="accountFeedback.ariaBusy"
     :error-message="errorMessage"
+    :retry-label="t('feedback.retry')"
     :subtitle="t('accounts.description')"
     :title="t('accounts.title')"
+    @retry="loadData"
   >
     <template #actions>
       <Button
@@ -339,7 +354,7 @@ onMounted(loadData)
       :title="t('accounts.auditTitle')"
     >
       <template v-if="auditEvents.length === 0 && !loading" #actions>
-        <Button variant="secondary" @click="loadData">
+        <Button :disabled="loading" variant="secondary" @click="loadData">
           <RefreshCw :size="16" />
           {{ t('common.refresh') }}
         </Button>
@@ -369,7 +384,14 @@ onMounted(loadData)
         v-if="auditEvents.length === 0 && !loading"
         :icon="History"
         :title="t('accounts.noAuditEvents')"
-      />
+      >
+        <template #actions>
+          <Button :disabled="loading" variant="secondary" @click="loadData">
+            <RefreshCw data-icon="inline-start" />
+            {{ t('common.refresh') }}
+          </Button>
+        </template>
+      </EmptyState>
       <article
         v-for="event in auditEvents"
         :key="`card:${auditKey(event)}`"

@@ -1,5 +1,12 @@
 <script setup lang="ts">
-import { CheckCircle2, Circle, CircleAlert, CircleDashed, Clock3 } from 'lucide-vue-next'
+import {
+  CheckCircle2,
+  Circle,
+  CircleAlert,
+  CircleDashed,
+  Clock3,
+  RefreshCw,
+} from 'lucide-vue-next'
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Button } from '@/components/ui/button'
@@ -42,9 +49,11 @@ const props = withDefaults(defineProps<{
   modelValue: boolean
   operation?: string | null
   queuePosition?: number | null
+  rawStatus?: string
   requirement?: string | null
   resourceKind?: string | null
   restartRequired?: boolean
+  retryLabel?: string
   status?: string
   statusTone?: 'default' | 'success' | 'warning' | 'error' | 'info'
   steps?: TaskStep[]
@@ -60,15 +69,18 @@ const props = withDefaults(defineProps<{
   logs: '',
   operation: null,
   queuePosition: null,
+  rawStatus: '',
   requirement: null,
   resourceKind: null,
   restartRequired: false,
+  retryLabel: '',
   status: '',
   statusTone: 'default',
   steps: () => [],
 })
 
 const emit = defineEmits<{
+  retry: []
   'update:modelValue': [value: boolean]
 }>()
 
@@ -93,7 +105,22 @@ const metadata = computed(() => [
   { key: 'binding', label: t('taskDialog.binding'), value: props.bindingValue },
 ].filter(item => item.value && String(item.value).trim()))
 
+const normalizedStatus = computed(() => props.rawStatus || props.status)
+const isTerminal = computed(() =>
+  normalizedStatus.value === 'succeeded' || normalizedStatus.value === 'failed',
+)
+const hasFailed = computed(() => normalizedStatus.value === 'failed')
+
 const bannerText = computed(() => {
+  if (normalizedStatus.value === 'succeeded' && props.restartRequired) {
+    return t('taskDialog.succeededRestartRequired')
+  }
+  if (normalizedStatus.value === 'succeeded') {
+    return t('taskDialog.succeeded')
+  }
+  if (normalizedStatus.value === 'failed') {
+    return t('taskDialog.failed')
+  }
   if (props.queuePosition !== null && props.queuePosition !== undefined) {
     return t('taskDialog.queuePosition', {
       label: localizedPhase(
@@ -183,10 +210,16 @@ function localizedStepStatus(step: TaskStep) {
 
       <div v-if="loading" class="workbench-progress" />
 
-      <section v-if="hasStructuredProgress" class="workbench-task-progress">
+      <section
+        v-if="hasStructuredProgress"
+        :aria-busy="loading ? 'true' : undefined"
+        aria-live="polite"
+        class="workbench-task-progress"
+      >
         <div
           class="workbench-task-progress__banner"
           :class="`workbench-task-progress__banner--${statusTone}`"
+          :data-terminal="isTerminal ? true : undefined"
         >
           <strong>{{ bannerText }}</strong>
           <span v-if="restartRequired">
@@ -231,6 +264,14 @@ function localizedStepStatus(step: TaskStep) {
       </div>
 
       <DialogFooter>
+        <Button
+          v-if="hasFailed && retryLabel"
+          variant="secondary"
+          @click="emit('retry')"
+        >
+          <RefreshCw data-icon="inline-start" />
+          {{ retryLabel }}
+        </Button>
         <Button :disabled="closeDisabled" variant="secondary" @click="visible = false">
           {{ closeLabel }}
         </Button>

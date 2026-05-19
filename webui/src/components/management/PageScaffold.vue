@@ -1,26 +1,36 @@
 <script setup lang="ts">
-import { Alert, AlertDescription } from '@/components/ui/alert'
+import FeedbackAlert from './FeedbackAlert.vue'
 
 withDefaults(defineProps<{
+  ariaBusy?: boolean
   dense?: boolean
   embedded?: boolean
   errorMessage?: string
   fullHeight?: boolean
   kicker?: string
+  retryLabel?: string
   subtitle?: string
   title: string
 }>(), {
+  ariaBusy: false,
   dense: false,
   embedded: false,
   errorMessage: '',
   fullHeight: false,
   kicker: '',
+  retryLabel: '',
   subtitle: '',
 })
+
+const emit = defineEmits<{
+  retry: []
+}>()
+
 </script>
 
 <template>
   <section
+    :aria-busy="ariaBusy ? 'true' : undefined"
     class="workbench-page"
     :class="{
       'workbench-page--dense': dense,
@@ -58,9 +68,12 @@ withDefaults(defineProps<{
 
     <slot name="before" />
 
-    <Alert v-if="errorMessage" variant="destructive">
-      <AlertDescription>{{ errorMessage }}</AlertDescription>
-    </Alert>
+    <FeedbackAlert
+      v-if="errorMessage"
+      :message="errorMessage"
+      :retry-label="retryLabel"
+      @retry="emit('retry')"
+    />
 
     <slot name="alerts" />
 

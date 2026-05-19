@@ -16,12 +16,12 @@ import { getErrorMessage } from '@/api/client'
 import { getLogHistory, type LogItem } from '@/api/logs'
 import {
   EmptyState,
+  FeedbackAlert,
   LoadingSkeleton,
   PageScaffold,
   Panel,
   StatusBadge,
 } from '@/components/management'
-import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -43,6 +43,7 @@ import {
   normalizeLiveLogRouteState,
   type LiveLogRouteState,
 } from '@/utils/liveLogRouteState'
+import { resolveCollectionFeedback } from '@/utils/feedbackState'
 
 const { t } = useI18n()
 const route = useRoute()
@@ -131,6 +132,15 @@ const liveFilterChips = computed(() => {
   }
   return chips
 })
+const liveFeedback = computed(() =>
+  resolveCollectionFeedback({
+    errorMessage: bootstrapError.value,
+    hasFilters: hasLiveFilters.value,
+    loading: loadingHistory.value,
+    totalCount: logs.value.length,
+    visibleCount: filteredLogs.value.length,
+  }),
+)
 
 function connect() {
   disconnect()
@@ -388,7 +398,12 @@ onUnmounted(disconnect)
 </script>
 
 <template>
-  <PageScaffold class="logs-page" dense :title="t('logs.liveTitle')">
+  <PageScaffold
+    :aria-busy="liveFeedback.ariaBusy"
+    class="logs-page"
+    dense
+    :title="t('logs.liveTitle')"
+  >
     <template #actions>
       <StatusBadge
         :label="connected ? t('logs.connected') : t('logs.disconnected')"
@@ -526,9 +541,13 @@ onUnmounted(disconnect)
       </div>
     </Panel>
 
-    <Alert v-if="bootstrapError" variant="default">
-      <AlertDescription>{{ bootstrapError }}</AlertDescription>
-    </Alert>
+    <FeedbackAlert
+      v-if="bootstrapError"
+      :message="bootstrapError"
+      :retry-label="t('feedback.retry')"
+      :stale="logs.length > 0"
+      @retry="loadRecentHistory({ preserveLiveLogs: true })"
+    />
 
     <Panel class="logs-stream-panel" title="logs://live">
       <template #actions>
@@ -542,11 +561,14 @@ onUnmounted(disconnect)
         </div>
       </template>
 
-      <LoadingSkeleton v-if="loadingHistory && logs.length === 0" :rows="8" />
+      <LoadingSkeleton v-if="liveFeedback.isInitialLoading" :busy-label="t('common.loading')" :rows="8" />
       <EmptyState
-        v-else-if="filteredLogs.length === 0"
+        v-else-if="liveFeedback.showEmpty"
+        :action-label="liveFeedback.emptyCause === 'filtered' ? t('feedback.clearFilters') : ''"
+        :cause="liveFeedback.emptyCause || 'pending'"
         :icon="RefreshCw"
-        :title="t('logs.waiting')"
+        :title="liveFeedback.emptyCause === 'filtered' ? '' : t('logs.waiting')"
+        @action="resetLiveFilters"
       />
       <div v-else ref="logContainer" class="logs-live-stream">
         <article

@@ -58,6 +58,11 @@ import { useAuthStore } from '@/stores/auth'
 import { useNoticeStore } from '@/stores/notice'
 import { useRestartStore } from '@/stores/restart'
 import {
+  hasActiveFeedbackFilters,
+  resolveCollectionFeedback,
+  taskStatusTone as resolveTaskStatusTone,
+} from '@/utils/feedbackState'
+import {
   buildStoreRouteQuery,
   normalizeStoreRouteState,
   storeRouteStateEquals,
@@ -137,12 +142,7 @@ const taskIsRunning = computed(() =>
   || activeTask.value?.status === 'running',
 )
 const taskFailed = computed(() => activeTask.value?.status === 'failed')
-const taskStatusTone = computed(() => {
-  if (taskFailed.value) {
-    return 'error'
-  }
-  return activeTask.value?.status === 'succeeded' ? 'success' : 'info'
-})
+const taskStatusTone = computed(() => resolveTaskStatusTone(activeTask.value?.status))
 const detailActionLabel = computed(() =>
   selectedItem.value ? actionLabel(selectedItem.value) : t('pluginStore.install'),
 )
@@ -188,6 +188,24 @@ const taskWaitingText = computed(() =>
   actionMode.value === 'update'
     ? t('pluginStore.updateWaiting')
     : t('pluginStore.installWaiting'),
+)
+const hasStoreFilters = computed(() =>
+  hasActiveFeedbackFilters([
+    search.value,
+    storeFilterValue(selectedSource.value),
+    storeFilterValue(selectedCategory.value),
+    sortMode.value !== 'default',
+    !uninstalledOnly.value,
+  ]),
+)
+const storeFeedback = computed(() =>
+  resolveCollectionFeedback({
+    errorMessage: errorMessage.value,
+    hasFilters: hasStoreFilters.value,
+    loading: loading.value,
+    totalCount: totalItems.value || items.value.length,
+    visibleCount: items.value.length,
+  }),
 )
 
 function goBack() {
@@ -323,6 +341,15 @@ function applyStoreRouteState(state: StoreRouteState) {
   })
 }
 
+function clearStoreFilters() {
+  selectedSource.value = ALL_STORE_OPTIONS
+  selectedCategory.value = ALL_STORE_OPTIONS
+  sortMode.value = 'default'
+  currentPage.value = 1
+  search.value = ''
+  uninstalledOnly.value = true
+}
+
 async function startAction() {
   if (!selectedItem.value || !canActOnItem(selectedItem.value)) {
     return
@@ -373,11 +400,12 @@ function startTaskPolling(taskId: string) {
             'error',
           )
         }
-        activeItem.value = null
+        if (response.data.status === 'succeeded') {
+          activeItem.value = null
+        }
       }
     } catch (error) {
       stopTaskPolling()
-      activeItem.value = null
       noticeStore.show(
         getErrorMessage(error, t(`pluginStore.${actionMode.value}Failed`)),
         'error',
@@ -426,7 +454,9 @@ function stopTaskPolling() {
 
 async function loadStore() {
   loading.value = true
-  errorMessage.value = ''
+  if (items.value.length === 0) {
+    errorMessage.value = ''
+  }
   try {
     const [sourcesResponse, itemsResponse] = await Promise.all([
       getPluginStoreSources(),
@@ -513,10 +543,13 @@ onBeforeUnmount(() => {
 <template>
   <PageScaffold
     class="store-page store-page--plugins"
+    :aria-busy="storeFeedback.ariaBusy"
     :error-message="errorMessage"
     :kicker="currentSourceLabel"
+    :retry-label="t('feedback.retry')"
     :subtitle="t('pluginStore.warning')"
     :title="t('pluginStore.title')"
+    @retry="loadStore"
   >
     <template #actions>
       <Button variant="ghost" @click="goBack">
@@ -534,6 +567,11 @@ onBeforeUnmount(() => {
     </template>
 
     <FilterBar compact>
+      <div v-if="storeFeedback.isRefreshing" class="workbench-refresh-status">
+        <RefreshCw class="animate-spin" data-icon="inline-start" />
+        {{ t('feedback.refreshing') }}
+      </div>
+
       <div class="plugin-store-filter">
         <div class="plugin-store-search">
           <Search :size="16" />
@@ -614,12 +652,19 @@ onBeforeUnmount(() => {
       </div>
     </FilterBar>
 
-    <LoadingSkeleton v-if="loading && items.length === 0" rows="8" />
+    <LoadingSkeleton
+      v-if="storeFeedback.isInitialLoading"
+      :busy-label="t('common.loading')"
+      rows="8"
+    />
     <EmptyState
-      v-else-if="items.length === 0"
+      v-else-if="storeFeedback.showEmpty"
+      :action-label="storeFeedback.emptyCause === 'filtered' ? t('feedback.clearFilters') : ''"
+      :cause="storeFeedback.emptyCause || 'no-data'"
       :icon="Store"
-      :text="t('pluginStore.emptyHint')"
-      :title="t('pluginStore.empty')"
+      :text="storeFeedback.emptyCause === 'filtered' ? '' : t('pluginStore.emptyHint')"
+      :title="storeFeedback.emptyCause === 'filtered' ? '' : t('pluginStore.empty')"
+      @action="clearStoreFilters"
     />
 
     <div v-else class="plugin-store-grid">
@@ -848,14 +893,17 @@ onBeforeUnmount(() => {
       :logs="activeTask?.logs || ''"
       :operation="activeTask?.operation"
       :queue-position="activeTask?.queue_position"
+      :raw-status="activeTask?.status"
       :requirement="activeTask?.requirement"
       :resource-kind="activeTask?.resource_kind"
       :restart-required="activeTask?.restart_required"
+      :retry-label="taskFailed ? t('taskDialog.retry') : ''"
       :status="taskStatusLabel"
       :status-tone="taskStatusTone"
       :steps="activeTask?.steps || []"
       :title="taskTitle"
       :waiting-text="taskWaitingText"
+      @retry="activeItem && openDetailDialog(activeItem)"
     />
   </PageScaffold>
 </template>

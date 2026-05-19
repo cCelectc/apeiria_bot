@@ -45,6 +45,10 @@ import {
   logLevelTone,
   toLogEntry,
 } from '@/composables/useLogUtils'
+import {
+  hasActiveFeedbackFilters,
+  resolveCollectionFeedback,
+} from '@/utils/feedbackState'
 
 interface FiltersState {
   end: string
@@ -167,6 +171,25 @@ const resultsLabel = computed(() => {
   }
   return t('logs.resultsLoaded', { count: entries.value.length })
 })
+const hasAppliedFilters = computed(() =>
+  hasActiveFeedbackFilters([
+    appliedFilters.value.search,
+    appliedFilters.value.start,
+    appliedFilters.value.end,
+    appliedFilters.value.level !== ALL_LEVELS,
+    appliedFilters.value.source !== ALL_SOURCES,
+    appliedShowAccessLogs.value,
+  ]),
+)
+const historyFeedback = computed(() =>
+  resolveCollectionFeedback({
+    errorMessage: errorMessage.value,
+    hasFilters: hasAppliedFilters.value,
+    loading: loading.value,
+    totalCount: total.value || entries.value.length,
+    visibleCount: entries.value.length,
+  }),
+)
 
 function cloneFilters(filters: FiltersState): FiltersState {
   return {
@@ -221,7 +244,9 @@ async function fetchHistory(before = 0) {
   activeHistoryRequest = new AbortController()
   const currentRequest = activeHistoryRequest
   loading.value = true
-  errorMessage.value = ''
+  if (entries.value.length === 0) {
+    errorMessage.value = ''
+  }
 
   try {
     const response = await getLogHistory(buildQuery(before), currentRequest.signal)
@@ -393,9 +418,12 @@ onBeforeUnmount(() => {
   <PageScaffold
     class="logs-history-page"
     dense
+    :aria-busy="historyFeedback.ariaBusy"
     :error-message="errorMessage"
+    :retry-label="t('feedback.retry')"
     :subtitle="t('logs.historyDescription')"
     :title="t('logs.historyTitle')"
+    @retry="fetchHistory(beforeOffset)"
   >
     <template #actions>
       <Button :disabled="entries.length === 0" variant="ghost" @click="exportLogs">
@@ -588,11 +616,14 @@ onBeforeUnmount(() => {
         </Badge>
       </div>
 
-      <LoadingSkeleton v-if="loading && entries.length === 0" :rows="8" />
+      <LoadingSkeleton v-if="historyFeedback.isInitialLoading" :busy-label="t('common.loading')" :rows="8" />
       <EmptyState
-        v-else-if="entries.length === 0"
+        v-else-if="historyFeedback.showEmpty"
+        :action-label="historyFeedback.emptyCause === 'filtered' ? t('feedback.clearFilters') : ''"
+        :cause="historyFeedback.emptyCause || 'no-data'"
         :icon="History"
-        :title="t('logs.noHistory')"
+        :title="historyFeedback.emptyCause === 'filtered' ? '' : t('logs.noHistory')"
+        @action="resetFilters"
       />
       <div v-else ref="listContainer" class="logs-history-list">
         <article

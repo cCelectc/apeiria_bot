@@ -4,6 +4,7 @@ export { default as DataTablePanel } from './DataTablePanel.vue'
 export { default as DenseList } from './DenseList.vue'
 export { default as DetailPanel } from './DetailPanel.vue'
 export { default as EmptyState } from './EmptyState.vue'
+export { default as FeedbackAlert } from './FeedbackAlert.vue'
 export { default as FilterBar } from './FilterBar.vue'
 export { default as FormField } from './FormField.vue'
 export { default as LoadingSkeleton } from './LoadingSkeleton.vue'
@@ -18,6 +19,7 @@ export { default as SplitPane } from './SplitPane.vue'
 export { default as StatusBadge } from './StatusBadge.vue'
 export { default as TaskDialog } from './TaskDialog.vue'
 export type {
+  WorkbenchEmptyCause,
   WorkbenchMetricItem,
   WorkbenchTableColumn,
   WorkbenchTone,

@@ -61,6 +61,11 @@ import { useAuthStore } from '@/stores/auth'
 import { useNoticeStore } from '@/stores/notice'
 import { useRestartStore } from '@/stores/restart'
 import {
+  hasActiveFeedbackFilters,
+  resolveCollectionFeedback,
+  taskStatusTone as resolveTaskStatusTone,
+} from '@/utils/feedbackState'
+import {
   buildStoreRouteQuery,
   normalizeStoreRouteState,
   storeRouteStateEquals,
@@ -143,12 +148,7 @@ const taskIsRunning = computed(() =>
   || activeTask.value?.status === 'running',
 )
 const taskFailed = computed(() => activeTask.value?.status === 'failed')
-const taskStatusTone = computed(() => {
-  if (taskFailed.value) {
-    return 'error'
-  }
-  return activeTask.value?.status === 'succeeded' ? 'success' : 'info'
-})
+const taskStatusTone = computed(() => resolveTaskStatusTone(activeTask.value?.status))
 const actionDialogTitle = computed(() => {
   if (actionMode.value === 'update') {
     return t('adapterStore.updateConfirmTitle')
@@ -184,6 +184,24 @@ const taskStatusLabel = computed(() => {
   }
   return ''
 })
+const hasStoreFilters = computed(() =>
+  hasActiveFeedbackFilters([
+    search.value,
+    storeFilterValue(selectedSource.value),
+    storeFilterValue(selectedCategory.value),
+    sortMode.value !== 'default',
+    !uninstalledOnly.value,
+  ]),
+)
+const storeFeedback = computed(() =>
+  resolveCollectionFeedback({
+    errorMessage: errorMessage.value,
+    hasFilters: hasStoreFilters.value,
+    loading: loading.value,
+    totalCount: totalItems.value || items.value.length,
+    visibleCount: items.value.length,
+  }),
+)
 
 function goBack() {
   void router.push({ name: 'core' })
@@ -285,6 +303,15 @@ function applyStoreRouteState(state: StoreRouteState) {
   })
 }
 
+function clearStoreFilters() {
+  selectedSource.value = ALL_STORE_OPTIONS
+  selectedCategory.value = ALL_STORE_OPTIONS
+  sortMode.value = 'default'
+  currentPage.value = 1
+  search.value = ''
+  uninstalledOnly.value = true
+}
+
 async function submitManualInstall() {
   const requirement = manualRequirement.value.trim()
   if (!requirement) {
@@ -370,11 +397,12 @@ function startTaskPolling(taskId: string, manualContext?: { requirement: string 
             'error',
           )
         }
-        activeItem.value = null
+        if (response.data.status === 'succeeded') {
+          activeItem.value = null
+        }
       }
     } catch (error) {
       stopTaskPolling()
-      activeItem.value = null
       noticeStore.show(
         getErrorMessage(error, t(`adapterStore.${taskMessagePrefix()}Failed`)),
         'error',
@@ -437,7 +465,9 @@ function stopTaskPolling() {
 
 async function loadStore() {
   loading.value = true
-  errorMessage.value = ''
+  if (items.value.length === 0) {
+    errorMessage.value = ''
+  }
   try {
     const [sourcesResponse, itemsResponse] = await Promise.all([
       getAdapterStoreSources(),
@@ -524,10 +554,13 @@ onBeforeUnmount(() => {
 <template>
   <PageScaffold
     class="store-page store-page--adapters"
+    :aria-busy="storeFeedback.ariaBusy"
     :error-message="errorMessage"
     :kicker="t('layout.systemSection')"
+    :retry-label="t('feedback.retry')"
     :subtitle="t('adapterStore.description')"
     :title="t('adapterStore.title')"
+    @retry="loadStore"
   >
     <template #actions>
       <Button variant="ghost" @click="goBack">
@@ -552,6 +585,11 @@ onBeforeUnmount(() => {
     </template>
 
     <FilterBar compact>
+      <div v-if="storeFeedback.isRefreshing" class="workbench-refresh-status">
+        <RefreshCw class="animate-spin" data-icon="inline-start" />
+        {{ t('feedback.refreshing') }}
+      </div>
+
       <div class="adapter-store-filter">
         <div class="adapter-store-search">
           <Search :size="16" />
@@ -632,12 +670,19 @@ onBeforeUnmount(() => {
       </div>
     </FilterBar>
 
-    <LoadingSkeleton v-if="loading && items.length === 0" rows="8" />
+    <LoadingSkeleton
+      v-if="storeFeedback.isInitialLoading"
+      :busy-label="t('common.loading')"
+      rows="8"
+    />
     <EmptyState
-      v-else-if="items.length === 0"
+      v-else-if="storeFeedback.showEmpty"
+      :action-label="storeFeedback.emptyCause === 'filtered' ? t('feedback.clearFilters') : ''"
+      :cause="storeFeedback.emptyCause || 'no-data'"
       :icon="PackageOpen"
-      :text="t('adapterStore.emptyHint')"
-      :title="t('adapterStore.empty')"
+      :text="storeFeedback.emptyCause === 'filtered' ? '' : t('adapterStore.emptyHint')"
+      :title="storeFeedback.emptyCause === 'filtered' ? '' : t('adapterStore.empty')"
+      @action="clearStoreFilters"
     />
 
     <div v-else class="adapter-store-grid">
@@ -839,14 +884,17 @@ onBeforeUnmount(() => {
       :logs="activeTask?.logs || ''"
       :operation="activeTask?.operation"
       :queue-position="activeTask?.queue_position"
+      :raw-status="activeTask?.status"
       :requirement="activeTask?.requirement"
       :resource-kind="activeTask?.resource_kind"
       :restart-required="activeTask?.restart_required"
+      :retry-label="taskFailed && activeItem ? t('taskDialog.retry') : ''"
       :status="taskStatusLabel"
       :status-tone="taskStatusTone"
       :steps="activeTask?.steps || []"
       :title="activeTask?.title || t('adapterStore.taskTitle')"
       :waiting-text="t('adapterStore.taskWaiting')"
+      @retry="activeItem && openActionDialog(activeItem, actionMode === 'uninstall' ? 'uninstall' : actionMode === 'update' ? 'update' : 'install')"
     />
   </PageScaffold>
 </template>

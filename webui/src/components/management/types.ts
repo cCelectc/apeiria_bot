@@ -1,6 +1,7 @@
 import type { Component } from 'vue'
 
 export type WorkbenchTone = 'default' | 'success' | 'warning' | 'error' | 'info'
+export type WorkbenchEmptyCause = 'no-data' | 'filtered' | 'selection-required' | 'pending'
 
 export interface WorkbenchMetricItem {
   key: string

@@ -39,6 +39,13 @@ const {
   liveLogRouteStateEquals,
   normalizeLiveLogRouteState,
 } = await loadTsModule('src/utils/liveLogRouteState.ts')
+const {
+  hasActiveFeedbackFilters,
+  isTaskActive,
+  isTaskTerminal,
+  resolveCollectionFeedback,
+  taskStatusTone,
+} = await loadTsModule('src/utils/feedbackState.ts')
 
 assert.equal(
   normalizeAuthRedirect('/plugins?filter=attention', 'http://localhost'),
@@ -112,4 +119,54 @@ assert.equal(
   true,
 )
 
-console.log('route-state helper tests passed')
+assert.deepEqual(resolveCollectionFeedback({
+  loading: true,
+  totalCount: 0,
+  visibleCount: 0,
+}), {
+  ariaBusy: true,
+  canRetry: false,
+  emptyCause: '',
+  hasError: false,
+  isInitialLoading: true,
+  isRefreshing: false,
+  showEmpty: false,
+  showStaleError: false,
+})
+assert.deepEqual(resolveCollectionFeedback({
+  errorMessage: 'network failed',
+  loading: true,
+  totalCount: 3,
+  visibleCount: 3,
+}), {
+  ariaBusy: true,
+  canRetry: true,
+  emptyCause: '',
+  hasError: true,
+  isInitialLoading: false,
+  isRefreshing: true,
+  showEmpty: false,
+  showStaleError: true,
+})
+assert.deepEqual(resolveCollectionFeedback({
+  hasFilters: true,
+  loading: false,
+  totalCount: 10,
+  visibleCount: 0,
+}).emptyCause, 'filtered')
+assert.deepEqual(resolveCollectionFeedback({
+  hasFilters: false,
+  loading: false,
+  totalCount: 0,
+  visibleCount: 0,
+}).emptyCause, 'no-data')
+assert.equal(hasActiveFeedbackFilters(['', [], false, ' value ']), true)
+assert.equal(hasActiveFeedbackFilters(['', [], false, null]), false)
+assert.equal(isTaskActive('running'), true)
+assert.equal(isTaskTerminal('failed'), true)
+assert.equal(taskStatusTone('succeeded'), 'success')
+assert.equal(taskStatusTone('failed'), 'error')
+assert.equal(taskStatusTone('queued'), 'info')
+assert.equal(taskStatusTone('idle'), 'default')
+
+console.log('route-state and feedback-state helper tests passed')

@@ -53,6 +53,10 @@ import {
 } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { useAISessionsTab } from '@/composables/useAISessionsTab'
+import {
+  hasActiveFeedbackFilters,
+  resolveCollectionFeedback,
+} from '@/utils/feedbackState'
 
 const { t } = useI18n()
 defineProps<{
@@ -141,9 +145,26 @@ const sortedTraces = computed(() => (
     (left, right) => right.created_at.localeCompare(left.created_at),
   )
 ))
+const hasSessionFilters = computed(() =>
+  hasActiveFeedbackFilters([
+    filters.query,
+    filters.enabled !== ALL_FILTER,
+  ]),
+)
+const sessionFeedback = computed(() =>
+  resolveCollectionFeedback({
+    errorMessage: errorMessage.value,
+    hasFilters: hasSessionFilters.value,
+    loading: loadingSessions.value,
+    totalCount: sessions.value.length,
+    visibleCount: filteredSessions.value.length,
+  }),
+)
 
 async function loadData() {
-  errorMessage.value = ''
+  if (sessions.value.length === 0) {
+    errorMessage.value = ''
+  }
   try {
     await loadSessions()
   } catch (error) {
@@ -154,6 +175,11 @@ async function loadData() {
 async function confirmResetContext() {
   await resetContext()
   resetDialogVisible.value = false
+}
+
+function clearSessionFilters() {
+  filters.query = ''
+  filters.enabled = ALL_FILTER
 }
 
 function handleAIEnabledUpdate(value: unknown) {
@@ -281,10 +307,13 @@ onMounted(() => {
 
 <template>
   <PageScaffold
+    :aria-busy="sessionFeedback.ariaBusy"
     :embedded="embedded"
     :error-message="errorMessage"
+    :retry-label="t('feedback.retry')"
     :subtitle="t('ai.pageSubtitle.sessions')"
     :title="t('ai.sessionsTab')"
+    @retry="loadData"
   >
     <template #actions>
       <Button :disabled="loadingSessions" variant="secondary" @click="loadData">
@@ -332,12 +361,15 @@ onMounted(() => {
             </Select>
           </div>
 
-          <LoadingSkeleton v-if="loadingSessions && sessions.length === 0" :rows="5" />
+          <LoadingSkeleton v-if="sessionFeedback.isInitialLoading" :busy-label="t('common.loading')" :rows="5" />
           <EmptyState
-            v-else-if="filteredSessions.length === 0"
+            v-else-if="sessionFeedback.showEmpty"
+            :action-label="sessionFeedback.emptyCause === 'filtered' ? t('feedback.clearFilters') : ''"
+            :cause="sessionFeedback.emptyCause || 'no-data'"
             :icon="MessageSquare"
-            :text="t('ai.noManagedSessionHint')"
-            :title="t('ai.noManagedSessions')"
+            :text="sessionFeedback.emptyCause === 'filtered' ? '' : t('ai.noManagedSessionHint')"
+            :title="sessionFeedback.emptyCause === 'filtered' ? '' : t('ai.noManagedSessions')"
+            @action="clearSessionFilters"
           />
           <SelectableList v-else>
             <SelectableListItem
@@ -390,6 +422,7 @@ onMounted(() => {
           <LoadingSkeleton v-if="loadingDetail && !selectedDetail" :rows="4" />
           <EmptyState
             v-else-if="!selectedDetail"
+            cause="selection-required"
             :icon="MessageSquare"
             :text="t('ai.noManagedSessionHint')"
             :title="t('ai.noManagedSessionSelected')"

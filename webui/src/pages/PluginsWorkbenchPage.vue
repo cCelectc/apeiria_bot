@@ -112,6 +112,11 @@ import { usePluginSettingsDialog } from '@/composables/usePluginSettingsDialog'
 import { useNoticeStore } from '@/stores/notice'
 import { useRestartStore } from '@/stores/restart'
 import {
+  hasActiveFeedbackFilters,
+  resolveCollectionFeedback,
+  taskStatusTone,
+} from '@/utils/feedbackState'
+import {
   hasPluginUpdate as hasPluginUpdateForChecks,
   pluginProjectUrl,
   pluginSourceLabel,
@@ -257,6 +262,21 @@ const visiblePlugins = computed(() => {
       ].some(value => String(value || '').toLowerCase().includes(query))
     })
 })
+const hasWorkbenchFilters = computed(() =>
+  hasActiveFeedbackFilters([
+    searchQuery.value,
+    filter.value !== 'all',
+  ]),
+)
+const pluginListFeedback = computed(() =>
+  resolveCollectionFeedback({
+    errorMessage: errorMessage.value,
+    hasFilters: hasWorkbenchFilters.value,
+    loading: loading.value,
+    totalCount: plugins.value.length,
+    visibleCount: visiblePlugins.value.length,
+  }),
+)
 
 const toggleConfirmTitle = computed(() =>
   toggleConfirmNextValue.value
@@ -439,6 +459,11 @@ function openInstallDialog() {
   installManualModule.value = ''
   installSelectedModule.value = ''
   installDialogVisible.value = true
+}
+
+function clearWorkbenchFilters() {
+  searchQuery.value = ''
+  filter.value = 'all'
 }
 
 async function resolveInstall() {
@@ -886,9 +911,12 @@ onBeforeUnmount(() => {
 
 <template>
   <PageScaffold
+    :aria-busy="pluginListFeedback.ariaBusy"
     :error-message="errorMessage"
+    :retry-label="t('feedback.retry')"
     :subtitle="t('plugins.workbenchDescription')"
     :title="t('plugins.workbenchTitle')"
+    @retry="loadWorkbench"
   >
     <template #actions>
       <Button variant="secondary" :disabled="loading" @click="loadWorkbench">
@@ -917,6 +945,10 @@ onBeforeUnmount(() => {
     <Panel :title="t('plugins.title')" :subtitle="t('plugins.workbenchListDescription')">
       <template #actions>
         <div class="plugins-workbench-toolbar">
+          <span v-if="pluginListFeedback.isRefreshing" class="workbench-refresh-status">
+            <RefreshCw class="animate-spin" data-icon="inline-start" />
+            {{ t('feedback.refreshing') }}
+          </span>
           <div class="plugins-workbench-search">
             <Search data-icon="inline-start" />
             <Input v-model="searchQuery" :placeholder="t('plugins.search')" />
@@ -937,10 +969,17 @@ onBeforeUnmount(() => {
         </div>
       </template>
 
-      <LoadingSkeleton v-if="loading && plugins.length === 0" rows="8" />
+      <LoadingSkeleton
+        v-if="pluginListFeedback.isInitialLoading"
+        :busy-label="t('common.loading')"
+        rows="8"
+      />
       <EmptyState
-        v-else-if="visiblePlugins.length === 0"
-        :title="t('plugins.noVisiblePlugins')"
+        v-else-if="pluginListFeedback.showEmpty"
+        :action-label="pluginListFeedback.emptyCause === 'filtered' ? t('feedback.clearFilters') : ''"
+        :cause="pluginListFeedback.emptyCause || 'no-data'"
+        :title="pluginListFeedback.emptyCause === 'filtered' ? '' : t('plugins.noVisiblePlugins')"
+        @action="clearWorkbenchFilters"
       />
 
       <div v-else class="plugins-workbench-grid">
@@ -1314,11 +1353,12 @@ onBeforeUnmount(() => {
       :logs="installTask?.logs || ''"
       :operation="installTask?.operation"
       :queue-position="installTask?.queue_position"
+      :raw-status="installTask?.status"
       :requirement="installTask?.requirement"
       :resource-kind="installTask?.resource_kind"
       :restart-required="installTask?.restart_required"
       :status="installTask?.status || ''"
-      :status-tone="installTask?.status === 'failed' ? 'error' : installTask?.status === 'succeeded' ? 'success' : 'info'"
+      :status-tone="taskStatusTone(installTask?.status)"
       :steps="installTask?.steps || []"
       :title="installTask?.title || t('plugins.manualInstallTaskTitle')"
       :waiting-text="t('plugins.manualInstallWaiting')"
@@ -1335,11 +1375,12 @@ onBeforeUnmount(() => {
       :logs="packageTask?.logs || ''"
       :operation="packageTask?.operation"
       :queue-position="packageTask?.queue_position"
+      :raw-status="packageTask?.status"
       :requirement="packageTask?.requirement"
       :resource-kind="packageTask?.resource_kind"
       :restart-required="packageTask?.restart_required"
       :status="packageTask?.status || ''"
-      :status-tone="packageTask?.status === 'failed' ? 'error' : packageTask?.status === 'succeeded' ? 'success' : 'info'"
+      :status-tone="taskStatusTone(packageTask?.status)"
       :steps="packageTask?.steps || []"
       :title="packageTask?.title || t('plugins.packageUpdateTaskTitle')"
       :waiting-text="t('plugins.packageUpdateWaiting')"
