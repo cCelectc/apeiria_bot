@@ -853,11 +853,6 @@ const enUS = {
     passwordHelper: 'Set the password for this Web UI account.',
     confirmPasswordHelper: 'Re-enter the password to avoid mistakes.',
   },
-  webuiMigration: {
-    placeholderTitle: 'Workflow port pending',
-    placeholderDescription: 'This route is registered in the new shell and will be replaced by the matching management workflow during the port.',
-    placeholderBody: 'The current slice establishes routing, authentication, theme, locale, and notification behavior so feature pages can move over without changing backend contracts.',
-  },
   accounts: {
     title: 'Account Settings',
     description: 'Manage the signed-in Web UI account, active credentials, and recent security events.',

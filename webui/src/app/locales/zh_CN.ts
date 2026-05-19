@@ -853,11 +853,6 @@ const zhCN = {
     passwordHelper: '请设置后台账号密码。',
     confirmPasswordHelper: '再次输入密码以避免误填。',
   },
-  webuiMigration: {
-    placeholderTitle: '工作流迁移待完成',
-    placeholderDescription: '该路由已接入新外壳，后续迁移会替换为对应的管理工作流。',
-    placeholderBody: '当前切片先建立路由、认证、主题、语言和通知行为，后续页面迁移无需改变后端契约。',
-  },
   accounts: {
     title: '账号设置',
     description: '管理当前 Web UI 账号、有效凭证和最近安全事件。',

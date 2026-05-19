@@ -604,16 +604,10 @@
   background: var(--surface-raised);
 }
 
-.placeholder-panel,
 .form-stack,
 .field-stack {
   display: flex;
   flex-direction: column;
-}
-
-.placeholder-panel {
-  gap: 12px;
-  color: var(--muted-foreground);
 }
 
 .form-stack {
@@ -699,8 +693,7 @@
 }
 
 .workbench-page__actions,
-.workbench-panel__actions,
-.workbench-action-cluster {
+.workbench-panel__actions {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
@@ -708,21 +701,8 @@
 }
 
 .workbench-page__actions,
-.workbench-panel__actions,
-.workbench-action-cluster--end {
+.workbench-panel__actions {
   justify-content: flex-end;
-}
-
-.workbench-action-cluster--start {
-  justify-content: flex-start;
-}
-
-.workbench-action-cluster--between {
-  justify-content: space-between;
-}
-
-.workbench-action-cluster--nowrap {
-  flex-wrap: nowrap;
 }
 
 .workbench-page__body {
@@ -1311,8 +1291,7 @@
   min-height: 0;
 }
 
-.workbench-selectable-list,
-.workbench-dense-list {
+.workbench-selectable-list {
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -1353,7 +1332,6 @@
   opacity: 0.56;
 }
 
-.workbench-log-panel pre,
 .workbench-task-dialog__log pre {
   margin: 0;
   font-family: var(--font-family-mono);
@@ -1363,7 +1341,6 @@
   word-break: break-word;
 }
 
-.workbench-log-panel pre,
 .workbench-task-dialog__log {
   max-height: 48vh;
   overflow: auto;
