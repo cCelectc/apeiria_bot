@@ -27,7 +27,6 @@ import { useI18n } from 'vue-i18n'
 import { RouterLink, RouterView, useRoute, useRouter } from 'vue-router'
 import {
   AlertDialog,
-  AlertDialogAction,
   AlertDialogCancel,
   AlertDialogContent,
   AlertDialogDescription,
@@ -132,6 +131,15 @@ const confirmDescription = computed(() =>
     ? t('restart.revertConfirm')
     : t('dashboard.restartConfirm'),
 )
+const confirmActionBusy = computed(() => {
+  if (pendingConfirmAction.value === 'restart') {
+    return restarting.value
+  }
+  if (pendingConfirmAction.value === 'revert') {
+    return reverting.value
+  }
+  return false
+})
 
 function routeMatches(to: string) {
   const targetPath = to.replace(/\/+$/, '') || '/'
@@ -454,9 +462,9 @@ async function runConfirmedAction() {
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel>{{ t('common.cancel') }}</AlertDialogCancel>
-          <AlertDialogAction @click="runConfirmedAction">
+          <Button :disabled="confirmActionBusy" @click="runConfirmedAction">
             {{ t('common.confirm') }}
-          </AlertDialogAction>
+          </Button>
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>
