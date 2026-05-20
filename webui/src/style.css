@@ -460,6 +460,10 @@
   min-width: 0;
 }
 
+.app-shell-user__text {
+  flex: 1 1 auto;
+}
+
 .app-shell-brand__text strong,
 .app-shell-user__text strong {
   display: block;
@@ -490,6 +494,25 @@
   min-width: 0;
   gap: 10px;
   padding: 4px 6px;
+}
+
+.app-shell-update-notice {
+  overflow: hidden;
+  min-width: fit-content;
+  max-width: 148px;
+  margin-left: auto;
+  border: 1px solid color-mix(in oklch, var(--primary) 34%, var(--border));
+  border-radius: 6px;
+  background: color-mix(in oklch, var(--primary) 8%, var(--card));
+  color: var(--primary);
+  cursor: pointer;
+  line-height: 1.15;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.app-shell-update-notice:hover {
+  background: color-mix(in oklch, var(--primary) 12%, var(--card));
 }
 
 .app-shell-user__avatar {
@@ -546,7 +569,8 @@
 }
 
 [data-collapsible="icon"] .app-shell-brand__text,
-[data-collapsible="icon"] .app-shell-user__text {
+[data-collapsible="icon"] .app-shell-user__text,
+[data-collapsible="icon"] .app-shell-update-notice {
   display: none;
 }
 
@@ -1821,6 +1845,190 @@
   line-height: 1.45;
   white-space: pre-wrap;
   word-break: break-word;
+}
+
+.project-update-compact {
+  display: grid;
+  grid-template-columns: minmax(0, 0.82fr) minmax(360px, 1.18fr);
+  gap: 12px;
+  align-items: start;
+}
+
+.project-update-facts,
+.project-update-plan-summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.project-update-fact,
+.project-update-plan-summary > div {
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: color-mix(in oklch, var(--surface-muted) 58%, transparent);
+}
+
+.project-update-fact span,
+.project-update-plan-summary span,
+.project-update-control-row span,
+.project-update-select-row label,
+.project-update-target-box span {
+  display: block;
+  color: var(--muted-foreground);
+  font-size: 0.76rem;
+  font-weight: 650;
+  line-height: 1.25;
+}
+
+.project-update-fact strong,
+.project-update-plan-summary strong,
+.project-update-control-row strong,
+.project-update-target-box strong {
+  display: block;
+  overflow: hidden;
+  margin-top: 6px;
+  font-size: 0.9rem;
+  font-weight: 740;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.project-update-remote-state {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-width: 0;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  color: var(--muted-foreground);
+  font-size: 0.82rem;
+}
+
+.project-update-remote-state span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.project-update-control-stack,
+.project-update-channel-panel,
+.project-update-message-stack,
+.project-update-message-list,
+.project-update-skeleton-list {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.project-update-control-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-width: 0;
+  gap: 12px;
+}
+
+.project-update-control-row--top {
+  align-items: flex-start;
+}
+
+.project-update-control-row [data-slot="toggle-group"] {
+  flex: 0 1 auto;
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.project-update-control-row [data-slot="toggle-group-item"] svg {
+  margin-right: 6px;
+}
+
+.project-update-alert-body {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-width: 0;
+  gap: 12px;
+}
+
+.project-update-target-box {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--card);
+}
+
+.project-update-target-box > svg {
+  width: 18px;
+  height: 18px;
+  color: var(--primary);
+}
+
+.project-update-select-row {
+  display: grid;
+  grid-template-columns: minmax(100px, 0.25fr) minmax(0, 0.75fr);
+  gap: 10px;
+  align-items: center;
+}
+
+.project-update-select {
+  width: 100%;
+}
+
+.project-update-message {
+  align-items: flex-start;
+}
+
+.project-update-message--warning {
+  border-color: color-mix(in oklch, var(--warning) 38%, var(--border));
+  background: color-mix(in oklch, var(--warning) 8%, var(--card));
+}
+
+.project-update-message--error {
+  border-color: color-mix(in oklch, var(--destructive) 38%, var(--border));
+  background: color-mix(in oklch, var(--destructive) 7%, var(--card));
+}
+
+.project-update-message-list code {
+  width: fit-content;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  padding: 3px 6px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--surface-muted);
+  font-size: 0.76rem;
+}
+
+.project-update-restart-alert {
+  border-color: color-mix(in oklch, var(--success) 38%, var(--border));
+  background: color-mix(in oklch, var(--success) 8%, var(--card));
+}
+
+.project-update-rollback-summary {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid color-mix(in oklch, var(--destructive) 32%, var(--border));
+  border-radius: 7px;
+  background: color-mix(in oklch, var(--destructive) 7%, var(--card));
+}
+
+.project-update-rollback-summary strong,
+.project-update-rollback-summary span {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .core-workbench {
@@ -6351,6 +6559,11 @@
   .dashboard-command-bar__actions,
   .dashboard-status-strip,
   .dashboard-ops-grid,
+  .project-update-compact,
+  .project-update-facts,
+  .project-update-plan-summary,
+  .project-update-remote-state,
+  .project-update-select-row,
   .ai-runtime-settings-grid,
   .ai-runtime-settings-field__main,
   .ai-model-primary-grid--with-models,
@@ -6370,6 +6583,16 @@
   .adapter-preview-grid,
   .settings-raw-preview-grid {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .project-update-control-row,
+  .project-update-alert-body {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .project-update-target-box {
+    grid-template-columns: 28px minmax(0, 1fr);
   }
 
   .adapter-overview-strip__item {

@@ -89,6 +89,12 @@ const routes: RouteRecordRaw[] = [
         component: () => import('@/pages/AccountsPage.vue'),
         meta: { titleKey: 'accounts.title', requiredCapability: CAP_ACCOUNT_MANAGE },
       },
+      {
+        path: 'update',
+        name: 'update',
+        component: () => import('@/pages/UpdatePage.vue'),
+        meta: { titleKey: 'update.title' },
+      },
     ],
   },
 ]

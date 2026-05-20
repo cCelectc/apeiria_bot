@@ -54,6 +54,11 @@ class ApeiriaControlPlane:
     def get_web_ui_build_status(self) -> Any:
         return system_management_service.get_web_ui_build_status()
 
+    def get_project_update_status(self) -> Any:
+        from apeiria.app.system.project_update import project_update_service
+
+        return project_update_service.inspect()
+
     async def list_ai_managed_sessions(self, *, limit: int = 50) -> list[Any]:
         from apeiria.app.ai import ai_application
 

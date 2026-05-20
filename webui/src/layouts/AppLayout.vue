@@ -19,6 +19,7 @@ import {
   ShoppingBag,
   Sun,
   Undo2,
+  UploadCloud,
   UserCog,
   X,
 } from 'lucide-vue-next'
@@ -35,6 +36,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -63,10 +65,15 @@ import {
   SidebarTrigger,
 } from '@/components/ui/sidebar'
 import { logout as logoutSession } from '@/api/auth'
+import { getProjectUpdateStatus, refreshProjectUpdateStatus } from '@/api/projectUpdate'
 import { useRestartController } from '@/composables/useRestartController'
 import { useAuthStore } from '@/stores/auth'
 import { useRestartStore } from '@/stores/restart'
 import { useThemeStore } from '@/stores/theme'
+import {
+  hasProjectUpdateReleaseUpdate,
+  shouldRefreshProjectUpdateRemote,
+} from '@/utils/projectUpdateState'
 
 interface NavItem {
   icon: Component
@@ -83,6 +90,7 @@ const storeNavExpanded = ref(false)
 const logsNavExpanded = ref(false)
 const storeNavUserCollapsed = ref(false)
 const logsNavUserCollapsed = ref(false)
+const hasProjectReleaseUpdate = ref(false)
 const { t, locale } = useI18n()
 const router = useRouter()
 const route = useRoute()
@@ -143,6 +151,9 @@ const confirmActionBusy = computed(() => {
   }
   return false
 })
+const showProjectUpdateNotice = computed(() =>
+  authStore.isOwner && hasProjectReleaseUpdate.value,
+)
 
 function routeMatches(to: string) {
   const targetPath = to.replace(/\/+$/, '') || '/'
@@ -220,6 +231,25 @@ function requestRevertPendingChanges() {
   }
 }
 
+async function refreshProjectUpdateNotice() {
+  if (!authStore.isOwner) {
+    hasProjectReleaseUpdate.value = false
+    return
+  }
+
+  try {
+    const response = await getProjectUpdateStatus()
+    let nextStatus = response.data
+    if (shouldRefreshProjectUpdateRemote(response.data.remote_refresh)) {
+      const refreshResponse = await refreshProjectUpdateStatus()
+      nextStatus = refreshResponse.data
+    }
+    hasProjectReleaseUpdate.value = hasProjectUpdateReleaseUpdate(nextStatus)
+  } catch {
+    hasProjectReleaseUpdate.value = false
+  }
+}
+
 async function runConfirmedAction() {
   const action = pendingConfirmAction.value
   pendingConfirmAction.value = null
@@ -245,6 +275,14 @@ watch(logsRouteActive, active => {
     logsNavUserCollapsed.value = false
   }
 })
+
+watch(
+  () => authStore.isOwner,
+  () => {
+    void refreshProjectUpdateNotice()
+  },
+  { immediate: true },
+)
 </script>
 
 <template>
@@ -417,6 +455,16 @@ watch(logsRouteActive, active => {
             <strong>{{ authStore.principal?.username || t('layout.unknownUser') }}</strong>
             <span>{{ currentRoleLabel }}</span>
           </div>
+          <Badge
+            v-if="showProjectUpdateNotice"
+            as="button"
+            class="app-shell-update-notice"
+            type="button"
+            variant="outline"
+            @click="router.push('/update')"
+          >
+            {{ t('layout.projectUpdateAvailable') }}
+          </Badge>
         </div>
 
         <div class="app-shell-controls">
@@ -439,6 +487,15 @@ watch(logsRouteActive, active => {
               </DropdownMenuGroup>
             </DropdownMenuContent>
           </DropdownMenu>
+          <Button
+            v-if="authStore.isOwner"
+            size="icon"
+            :title="t('layout.projectUpdate')"
+            variant="ghost"
+            @click="router.push('/update')"
+          >
+            <UploadCloud data-icon="inline-start" />
+          </Button>
           <Button size="icon" :title="themeToggleLabel" variant="ghost" @click="themeStore.toggleTheme()">
             <Sun v-if="themeStore.isDark" data-icon="inline-start" />
             <Moon v-else data-icon="inline-start" />

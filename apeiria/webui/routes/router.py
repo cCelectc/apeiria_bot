@@ -16,6 +16,7 @@ from apeiria.webui.routes.plugin_catalog import router as plugin_catalog_router
 from apeiria.webui.routes.plugin_config import router as plugin_config_router
 from apeiria.webui.routes.plugin_management import router as plugin_management_router
 from apeiria.webui.routes.plugin_store import router as plugin_store_router
+from apeiria.webui.routes.project_update import router as project_update_router
 
 router = APIRouter()
 router.include_router(auth_router, prefix="/auth", tags=["auth"])
@@ -48,5 +49,6 @@ router.include_router(permission_router, prefix="/permissions", tags=["permissio
 router.include_router(log_router, prefix="/logs", tags=["logs"])
 router.include_router(chat_router, prefix="/chat", tags=["chat"])
 router.include_router(ai_router, prefix="/ai", tags=["ai"])
+router.include_router(project_update_router, prefix="/update", tags=["update"])
 
 __all__ = ["router"]
