@@ -198,6 +198,7 @@ def _migrate_schema_to_current(
 
 def _migrate_v1_to_v2(connection: sqlite3.Connection) -> None:
     _ensure_current_schema_shape(connection)
+    _ensure_webui_auth_tables(connection)
     _set_schema_version(connection, CURRENT_SCHEMA_VERSION)
 
 
@@ -298,6 +299,7 @@ def _ensure_current_schema_shape(  # noqa: C901, PLR0912, PLR0915
         _create_ai_session_management_tables(connection)
     if "ai_runtime_settings" not in existing_tables:
         _create_ai_runtime_settings_table(connection)
+    _ensure_webui_auth_tables(connection)
     _ensure_context_summary_shape(connection, existing_tables)
     if "ai_tool_policy" in existing_tables:
         _replace_ai_tool_policy_if_legacy(connection)
@@ -596,6 +598,74 @@ def _create_current_schema(connection: sqlite3.Connection) -> None:
     _create_model_usage_tables(connection)
     _create_ai_session_management_tables(connection)
     _create_ai_runtime_settings_table(connection)
+    _create_webui_auth_tables(connection)
+
+
+def _ensure_webui_auth_tables(connection: sqlite3.Connection) -> None:
+    _create_webui_auth_tables(connection)
+
+
+def _create_webui_auth_tables(connection: sqlite3.Connection) -> None:
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS webui_auth_secret (
+            id INTEGER PRIMARY KEY CHECK(id = 1),
+            token_secret TEXT NOT NULL CHECK(length(token_secret) > 0),
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+        """
+    )
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS webui_account (
+            user_id TEXT PRIMARY KEY,
+            username TEXT NOT NULL UNIQUE CHECK(length(username) > 0),
+            password_hash TEXT NOT NULL CHECK(length(password_hash) > 0),
+            role TEXT NOT NULL CHECK(length(role) > 0),
+            is_disabled INTEGER NOT NULL DEFAULT 0 CHECK(is_disabled IN (0, 1)),
+            last_login_at TEXT,
+            password_changed_at TEXT,
+            session_version INTEGER NOT NULL DEFAULT 0 CHECK(session_version >= 0),
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+        """
+    )
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS webui_registration_code (
+            code TEXT PRIMARY KEY,
+            role TEXT NOT NULL CHECK(length(role) > 0),
+            created_at TEXT NOT NULL,
+            created_by TEXT NOT NULL CHECK(length(created_by) > 0)
+        )
+        """
+    )
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS webui_security_audit_event (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            event_type TEXT NOT NULL CHECK(length(event_type) > 0),
+            occurred_at TEXT NOT NULL,
+            actor_username TEXT,
+            target_username TEXT,
+            detail TEXT
+        )
+        """
+    )
+    connection.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_webui_account_username
+        ON webui_account(username)
+        """
+    )
+    connection.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_webui_security_audit_event_occurred_at
+        ON webui_security_audit_event(occurred_at)
+        """
+    )
 
 
 def _create_governance_tables(connection: sqlite3.Connection) -> None:

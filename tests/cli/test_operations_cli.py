@@ -368,4 +368,5 @@ def test_webui_accounts_command_uses_selected_project_root(tmp_path: Path) -> No
     )
 
     assert result.exit_code == 0
-    assert (tmp_path / "data" / "web_ui" / "secret.json").is_file()
+    assert ApeiriaDatabase(project_root=tmp_path).database_path().is_file()
+    assert not (tmp_path / "data" / "web_ui" / "secret.json").exists()
