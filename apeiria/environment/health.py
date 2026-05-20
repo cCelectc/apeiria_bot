@@ -54,6 +54,10 @@ _CHECK_MESSAGES: dict[tuple[str, str], tuple[str, str | None]] = {
         "Run `apeiria check` or start Apeiria once to create it.",
     ),
     ("database", "current"): ("Apeiria database schema is current.", None),
+    ("database", "upgrade_required"): (
+        "Apeiria database schema will be upgraded on next startup or repair.",
+        "Run `apeiria db repair` to apply the migration now.",
+    ),
     ("database", "unsupported"): (
         "Apeiria database schema version is not supported by this build.",
         "Move the current local database aside, then run `apeiria check` "
@@ -219,7 +223,7 @@ class HealthService:
     def _build_database_check(self) -> HealthCheck:
         inspection = inspect_database(self._environment.project_root)
         detail = inspection.schema.status
-        ok = inspection.ready or detail == "missing"
+        ok = inspection.ready or detail in {"missing", "upgrade_required"}
         return self._build_check(key="database", ok=ok, detail=detail)
 
 

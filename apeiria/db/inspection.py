@@ -7,7 +7,11 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, cast
 
 from apeiria.db.runtime import ApeiriaDatabase
-from apeiria.db.schema import CURRENT_SCHEMA_LINE, CURRENT_SCHEMA_VERSION
+from apeiria.db.schema import (
+    CURRENT_SCHEMA_LINE,
+    CURRENT_SCHEMA_VERSION,
+    SUPPORTED_MIGRATION_SOURCE_VERSIONS,
+)
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -128,16 +132,23 @@ def _schema_from_row(row: tuple[object, object] | None) -> DatabaseSchemaInspect
             schema_line=schema_line,
             schema_version=schema_version,
         )
-    if schema_version != CURRENT_SCHEMA_VERSION:
+    if schema_version == CURRENT_SCHEMA_VERSION:
         return _schema_result(
-            status="unsupported",
+            status="current",
+            ready=True,
+            schema_line=schema_line,
+            schema_version=schema_version,
+        )
+    if schema_version in SUPPORTED_MIGRATION_SOURCE_VERSIONS:
+        return _schema_result(
+            status="upgrade_required",
             ready=False,
             schema_line=schema_line,
             schema_version=schema_version,
         )
     return _schema_result(
-        status="current",
-        ready=True,
+        status="unsupported",
+        ready=False,
         schema_line=schema_line,
         schema_version=schema_version,
     )

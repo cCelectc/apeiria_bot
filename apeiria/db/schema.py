@@ -11,7 +11,8 @@ if TYPE_CHECKING:
     from apeiria.db.runtime import ApeiriaDatabase
 
 CURRENT_SCHEMA_LINE = "apeiria_v1"
-CURRENT_SCHEMA_VERSION = 1
+CURRENT_SCHEMA_VERSION = 2
+SUPPORTED_MIGRATION_SOURCE_VERSIONS = frozenset({1})
 
 TOOL_LEVEL_VALUES: tuple[str, ...] = ("none", "read", "write", "host", "admin")
 TOOL_LEVEL_CHECK = "allowed_level IN ('none', 'read', 'write', 'host', 'admin')"
@@ -98,7 +99,7 @@ class DatabaseSchemaError(RuntimeError):
 
 
 class IncompatibleDatabaseError(DatabaseSchemaError):
-    """Raised when the on-disk database is not compatible with apeiria_v1."""
+    """Raised when the on-disk database is not compatible with Apeiria SQLite."""
 
     @classmethod
     def missing_schema_meta(cls) -> "IncompatibleDatabaseError":
@@ -110,7 +111,7 @@ class IncompatibleDatabaseError(DatabaseSchemaError):
 
 
 class UnsupportedDatabaseVersionError(DatabaseSchemaError):
-    """Raised when an old in-development SQLite schema is encountered."""
+    """Raised when an unsupported SQLite schema version is encountered."""
 
     @classmethod
     def unsupported_schema_version(
@@ -122,7 +123,20 @@ class UnsupportedDatabaseVersionError(DatabaseSchemaError):
         return cls(
             "database schema version "
             f"{observed} is not supported by this Apeiria build; "
-            f"recreate the local database at apeiria_v1/{expected}"
+            f"expected {CURRENT_SCHEMA_LINE}/{expected}"
+        )
+
+    @classmethod
+    def future_schema_version(
+        cls,
+        *,
+        observed: int,
+        expected: int,
+    ) -> "UnsupportedDatabaseVersionError":
+        return cls(
+            "database schema version "
+            f"{observed} is newer than this Apeiria build supports; "
+            f"use a newer build or restore a {CURRENT_SCHEMA_LINE}/{expected} backup"
         )
 
 
@@ -152,12 +166,57 @@ def ensure_database_ready_sync(database: "ApeiriaDatabase | None" = None) -> Non
         meta = _read_schema_meta(connection)
         if meta is None or meta.schema_line != CURRENT_SCHEMA_LINE:
             raise IncompatibleDatabaseError.wrong_schema_line()
-        if meta.schema_version != CURRENT_SCHEMA_VERSION:
-            raise UnsupportedDatabaseVersionError.unsupported_schema_version(
+        if meta.schema_version == CURRENT_SCHEMA_VERSION:
+            _ensure_current_schema_shape(connection)
+            return
+        if meta.schema_version in SUPPORTED_MIGRATION_SOURCE_VERSIONS:
+            _migrate_schema_to_current(connection, meta)
+            return
+        if meta.schema_version > CURRENT_SCHEMA_VERSION:
+            raise UnsupportedDatabaseVersionError.future_schema_version(
                 observed=meta.schema_version,
                 expected=CURRENT_SCHEMA_VERSION,
             )
-        _ensure_current_schema_shape(connection)
+        raise UnsupportedDatabaseVersionError.unsupported_schema_version(
+            observed=meta.schema_version,
+            expected=CURRENT_SCHEMA_VERSION,
+        )
+
+
+def _migrate_schema_to_current(
+    connection: sqlite3.Connection,
+    meta: SchemaMetaRecord,
+) -> None:
+    if meta.schema_version == 1:
+        _migrate_v1_to_v2(connection)
+        return
+    raise UnsupportedDatabaseVersionError.unsupported_schema_version(
+        observed=meta.schema_version,
+        expected=CURRENT_SCHEMA_VERSION,
+    )
+
+
+def _migrate_v1_to_v2(connection: sqlite3.Connection) -> None:
+    _ensure_current_schema_shape(connection)
+    _set_schema_version(connection, CURRENT_SCHEMA_VERSION)
+
+
+def _set_schema_version(connection: sqlite3.Connection, schema_version: int) -> None:
+    connection.execute(
+        """
+        UPDATE apeiria_schema_meta
+        SET schema_version = ?, updated_at = ?
+        WHERE id = 1
+        """,
+        (schema_version, _utcnow_text()),
+    )
+    row = connection.execute(
+        """
+        SELECT changes()
+        """
+    ).fetchone()
+    if row is None or int(row[0]) != 1:
+        raise IncompatibleDatabaseError.missing_schema_meta()
 
 
 async def ensure_database_ready(database: "ApeiriaDatabase | None" = None) -> None:
