@@ -54,7 +54,6 @@ export function rebuildWebUI() {
 }
 
 function clearSessionAndRedirect() {
-  localStorage.removeItem('token')
   localStorage.removeItem('apeiria-principal')
   window.location.href = '/login'
 }
@@ -62,10 +61,9 @@ function clearSessionAndRedirect() {
 export async function streamRebuildWebUI(
   onEvent: (event: WebUIBuildStreamEvent) => void | Promise<void>,
 ) {
-  const token = localStorage.getItem('token')
   const response = await fetch('/api/dashboard/webui-build/stream', {
+    credentials: 'same-origin',
     method: 'POST',
-    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
   })
 
   if (response.status === 401 || response.status === 403) {

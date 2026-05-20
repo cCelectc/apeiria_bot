@@ -5,7 +5,6 @@ import { ChatClient } from '@/api/chat'
 interface ChatTransportOptions {
   onClose: () => void
   onMessage: (event: ChatEnvelope) => void
-  onOpen: (client: ChatClient) => void
 }
 
 export function useChatTransport(options: ChatTransportOptions) {
@@ -58,7 +57,6 @@ export function useChatTransport(options: ChatTransportOptions) {
     reconnectAttempts = 0
     reconnecting.value = false
     socketConnected.value = true
-    options.onOpen(client)
   })
   const unsubscribeClose = client.onClose(() => {
     socketConnected.value = false

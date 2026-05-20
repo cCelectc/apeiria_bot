@@ -7,6 +7,7 @@ from typing import Annotated, Any
 from fastapi import (
     APIRouter,
     Depends,
+    HTTPException,
     Query,
     WebSocket,
     WebSocketDisconnect,
@@ -14,8 +15,8 @@ from fastapi import (
 
 from apeiria.access.principal_roles import CAP_CONTROL_PANEL
 from apeiria.webui.auth import (
+    require_connection_auth,
     require_control_panel,
-    verify_auth_session_token,
 )
 from apeiria.webui.schemas.models import (
     LogHistoryQuery,
@@ -27,11 +28,11 @@ from apeiria.webui.schemas.models import (
 router = APIRouter()
 
 
-def _require_log_stream_claims(token: str) -> None:
-    session = verify_auth_session_token(token)
-    if not session.has_capability(CAP_CONTROL_PANEL):
-        msg = "forbidden"
-        raise ValueError(msg)
+def _ensure_log_stream_session(session: Any) -> None:
+    if session.has_capability(CAP_CONTROL_PANEL):
+        return
+    msg = "forbidden"
+    raise ValueError(msg)
 
 
 @router.get("/history", response_model=LogHistoryResponse)
@@ -80,19 +81,14 @@ async def get_log_sources(
 async def log_websocket(websocket: WebSocket) -> None:
     """WebSocket endpoint for real-time log streaming.
 
-    Client sends JWT token as first message for auth.
+    Browser sessions authenticate through the HttpOnly session cookie.
     """
     await websocket.accept()
 
-    # Auth: first message must be JWT token
     try:
-        token = await websocket.receive_text()
-    except WebSocketDisconnect:
-        return
-
-    try:
-        _require_log_stream_claims(token)
-    except ValueError:
+        session = await require_connection_auth(websocket)
+        _ensure_log_stream_session(session)
+    except (HTTPException, ValueError):
         await websocket.close(code=4001, reason="Unauthorized")
         return
 

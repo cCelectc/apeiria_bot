@@ -28,7 +28,11 @@ export function login(payload: {
   username: string
   password: string
 }) {
-  return client.post<{ token: string, principal: WebUIPrincipal }>('/auth/login', payload)
+  return client.post<{ principal: WebUIPrincipal }>('/auth/login', payload)
+}
+
+export function logout() {
+  return client.post<{ status: string, detail?: string | null }>('/auth/logout')
 }
 
 export function register(payload: {
@@ -54,7 +58,6 @@ export function changePassword(payload: {
   return client.post<{
     status: string
     detail?: string | null
-    token: string
     principal: WebUIPrincipal
   }>('/auth/password', payload)
 }
@@ -67,7 +70,6 @@ export function revokeOtherSessions() {
   return client.post<{
     status: string
     detail?: string | null
-    token: string
     principal: WebUIPrincipal
   }>('/auth/sessions/revoke-others')
 }

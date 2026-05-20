@@ -54,12 +54,6 @@ const messagesContainer = ref<{ getElement: () => HTMLElement | null }>()
 const transport = useChatTransport({
   onClose: resetConnectionState,
   onMessage: handleEnvelope,
-  onOpen: client => {
-    const token = localStorage.getItem('token')
-    if (token) {
-      client.authenticate(token)
-    }
-  },
 })
 const client = transport.client
 const reconnect = transport.reconnect
@@ -203,7 +197,6 @@ function handleEnvelope(event: ChatEnvelope) {
     case 'message.ack':
       break
     case 'message.error':
-    case 'auth.error':
     case 'system.error': {
       const payload = event.payload as { message?: string, code?: string }
       appendSimpleMessage('error', payload.message || payload.code || t('common.unknownError'))

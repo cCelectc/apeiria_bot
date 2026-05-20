@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING, Annotated, Any
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 
 from apeiria.access.principal_roles import can_access_control_panel
 from apeiria.app.access.webui_auth.secrets import (
@@ -23,9 +23,10 @@ from apeiria.app.access.webui_auth.service import (
 )
 from apeiria.i18n import t
 from apeiria.webui.auth import (
-    create_auth_session_token,
+    clear_auth_session_cookie,
     require_auth,
     require_control_panel,
+    set_auth_session_cookie,
 )
 from apeiria.webui.frontend_build import frontend_workspace_name
 from apeiria.webui.login_guard import (
@@ -69,8 +70,12 @@ def _to_webui_principal_response(principal: Principal) -> WebUIPrincipalResponse
 
 
 @router.post("/login")
-async def login(body: LoginRequest, request: Request) -> LoginResponse:
-    """Authenticate a Web UI account and return a JWT token."""
+async def login(
+    body: LoginRequest,
+    request: Request,
+    response: Response,
+) -> LoginResponse:
+    """Authenticate a Web UI account and establish a browser session."""
     client_ip = request.client.host if request.client else ""
     if not is_login_allowed(body.username, client_ip):
         raise HTTPException(
@@ -96,10 +101,17 @@ async def login(body: LoginRequest, request: Request) -> LoginResponse:
         auth_method="password",
         context=AuthSessionContext(client_ip=client_ip),
     )
+    set_auth_session_cookie(response, session, request=request)
     return LoginResponse(
-        token=create_auth_session_token(session),
         principal=_to_webui_principal_response(session.principal),
     )
+
+
+@router.post("/logout")
+async def logout(response: Response) -> RegisterResponse:
+    """Clear the current browser-managed Web UI session."""
+    clear_auth_session_cookie(response)
+    return RegisterResponse(detail=t("web_ui.auth.logout_success"))
 
 
 @router.post("/register")
@@ -205,6 +217,8 @@ async def get_security_audit_events(
 @router.post("/password")
 async def change_password(
     body: PasswordChangeRequest,
+    request: Request,
+    response: Response,
     session: Annotated[AuthSession, Depends(require_control_panel)],
 ) -> SessionRefreshResponse:
     """Change the current account password."""
@@ -231,18 +245,20 @@ async def change_password(
         updated_account,
         auth_method="session_refresh",
     )
+    set_auth_session_cookie(response, updated_session, request=request)
     return SessionRefreshResponse(
         detail=t("web_ui.auth.password_changed"),
-        token=create_auth_session_token(updated_session),
         principal=_to_webui_principal_response(updated_session.principal),
     )
 
 
 @router.post("/sessions/revoke-others")
 async def revoke_other_sessions(
+    request: Request,
+    response: Response,
     session: Annotated[AuthSession, Depends(require_control_panel)],
 ) -> SessionRefreshResponse:
-    """Invalidate previous sessions and return a fresh token for the current account."""
+    """Invalidate previous sessions and rotate the current account session."""
     user_id = session.user_id
     actor_username = session.username
     updated_account = rotate_account_session_version(
@@ -258,8 +274,8 @@ async def revoke_other_sessions(
         updated_account,
         auth_method="session_refresh",
     )
+    set_auth_session_cookie(response, updated_session, request=request)
     return SessionRefreshResponse(
         detail=t("web_ui.auth.sessions_revoked"),
-        token=create_auth_session_token(updated_session),
         principal=_to_webui_principal_response(updated_session.principal),
     )

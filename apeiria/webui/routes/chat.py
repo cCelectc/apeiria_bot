@@ -17,11 +17,17 @@ from apeiria.app.chat import (
 from apeiria.app.chat.transport import serve_chat_websocket
 from apeiria.i18n import t
 from apeiria.webui.auth import (
+    require_connection_auth,
     require_control_panel,
-    verify_auth_session_token,
 )
 
 router = APIRouter()
+
+
+def _ensure_chat_session(session: Any) -> None:
+    if session.has_capability(CAP_CONTROL_PANEL):
+        return
+    raise ChatAuthError(t("web_ui.auth.permission_denied"))
 
 
 @router.get("/assets/{asset_id}", response_model=None)
@@ -58,10 +64,10 @@ async def get_chat_asset(
 
 @router.websocket("/ws")
 async def chat_websocket(websocket: WebSocket) -> None:
-    def _verify_admin_token(token: str):
-        session = verify_auth_session_token(token)
-        if not session.has_capability(CAP_CONTROL_PANEL):
-            raise ChatAuthError(t("web_ui.auth.permission_denied"))
-        return session
-
-    await serve_chat_websocket(websocket, _verify_admin_token)
+    try:
+        session = await require_connection_auth(websocket)
+        _ensure_chat_session(session)
+    except (ChatAuthError, HTTPException):
+        await websocket.close(code=4001, reason="Unauthorized")
+        return
+    await serve_chat_websocket(websocket, session)

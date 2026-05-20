@@ -1539,7 +1539,6 @@ const enUS = {
     sessionDeleted: 'Session deleted.',
     sessionReady: 'Session ready.',
     systemFallback: 'System message',
-    tokenMissing: 'Login token not found. Please sign in again.',
     connectionClosed: 'Connection closed.',
     sendUnavailable: 'Connection is not ready. Reconnect and try again.',
   },

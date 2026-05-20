@@ -39,15 +39,10 @@ export function useProtectedChatAssets(options: {
     if (protectedAssetUrls.value[rawUrl] || loadingProtectedAssets.has(rawUrl)) {
       return
     }
-    const token = localStorage.getItem('token')
-    if (!token) {
-      return
-    }
-
     loadingProtectedAssets.add(rawUrl)
     try {
       const response = await fetch(rawUrl, {
-        headers: { Authorization: `Bearer ${token}` },
+        credentials: 'same-origin',
       })
       if (!response.ok) {
         throw new Error(`Failed to load asset: ${response.status}`)

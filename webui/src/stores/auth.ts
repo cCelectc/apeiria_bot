@@ -11,9 +11,8 @@ export type AuthStatus =
   | 'expired'
 
 export const useAuthStore = defineStore('auth', () => {
-  const token = ref(readToken())
   const principal = ref<WebUIPrincipal | null>(readPrincipal())
-  const status = ref<AuthStatus>(token.value ? 'restoring' : 'anonymous')
+  const status = ref<AuthStatus>(principal.value ? 'restoring' : 'anonymous')
   const restorePromise = ref<Promise<void> | null>(null)
 
   const isReady = computed(() => status.value !== 'restoring')
@@ -22,21 +21,18 @@ export const useAuthStore = defineStore('auth', () => {
   const capabilities = computed(() => principal.value?.capabilities ?? [])
   const isOwner = computed(() => hasControlPanelAccess(principal.value))
 
-  function acceptSession(nextToken: string, nextPrincipal: WebUIPrincipal) {
-    token.value = nextToken
+  function acceptSession(nextPrincipal: WebUIPrincipal) {
     principal.value = nextPrincipal
-    persistSession(nextToken, nextPrincipal)
+    persistPrincipal(nextPrincipal)
     status.value = hasControlPanelAccess(nextPrincipal)
       ? 'authenticated'
       : 'forbidden'
   }
 
   function clearSession(nextStatus: AuthStatus = 'anonymous') {
-    token.value = ''
     principal.value = null
     status.value = nextStatus
     restorePromise.value = null
-    localStorage.removeItem('token')
     localStorage.removeItem('apeiria-principal')
   }
 
@@ -53,10 +49,6 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   async function initialize() {
-    if (!token.value) {
-      status.value = 'anonymous'
-      return
-    }
     if (status.value === 'authenticated' && principal.value) {
       return
     }
@@ -71,15 +63,9 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   async function restoreCurrentUser() {
-    const currentToken = token.value
-    if (!currentToken) {
-      status.value = 'anonymous'
-      return
-    }
-
     try {
       const response = await fetch('/api/auth/me', {
-        headers: { Authorization: `Bearer ${currentToken}` },
+        credentials: 'same-origin',
       })
       if (response.status === 401) {
         handleUnauthorized()
@@ -118,7 +104,6 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   return {
-    token,
     principal,
     status,
     role,
@@ -146,15 +131,6 @@ function normalizeRole(role: string | undefined) {
 
 function persistPrincipal(principal: WebUIPrincipal) {
   localStorage.setItem('apeiria-principal', JSON.stringify(principal))
-}
-
-function persistSession(token: string, principal: WebUIPrincipal) {
-  localStorage.setItem('token', token)
-  persistPrincipal(principal)
-}
-
-function readToken() {
-  return localStorage.getItem('token') || ''
 }
 
 function readPrincipal(): WebUIPrincipal | null {

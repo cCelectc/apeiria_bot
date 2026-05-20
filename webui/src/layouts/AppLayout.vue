@@ -62,6 +62,7 @@ import {
   SidebarSeparator,
   SidebarTrigger,
 } from '@/components/ui/sidebar'
+import { logout as logoutSession } from '@/api/auth'
 import { useRestartController } from '@/composables/useRestartController'
 import { useAuthStore } from '@/stores/auth'
 import { useRestartStore } from '@/stores/restart'
@@ -198,10 +199,15 @@ function setLocale(nextLocale: SupportedLocale) {
   document.documentElement.lang = nextLocale === 'zh_CN' ? 'zh-CN' : 'en-US'
 }
 
-function handleLogout() {
+async function handleLogout() {
   restartStore.clearPending()
+  try {
+    await logoutSession()
+  } catch {
+    // Local logout still clears browser state when the server is unreachable.
+  }
   authStore.logout()
-  router.push('/login')
+  await router.push('/login')
 }
 
 function requestRestart() {

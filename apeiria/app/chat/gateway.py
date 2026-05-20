@@ -4,10 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from fastapi import HTTPException
-
 from apeiria.app.chat.gateway_protocol import (
-    AuthHelloPayload,
     ChatEnvelope,
     MessageSendPayload,
     SessionCreatePayload,
@@ -18,8 +15,6 @@ from apeiria.app.chat.service import web_chat_service
 from apeiria.i18n import t
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
-
     from apeiria.access.principal import AuthSession
     from apeiria.app.chat.assets import ChatAsset
     from apeiria.app.chat.connection import WebChatConnection
@@ -58,9 +53,8 @@ class ChatGatewayService:
         self,
         connection: WebChatConnection,
         frame: ChatEnvelope,
-        token_verifier: Callable[[str], "AuthSession"],
     ) -> None:
-        if frame.type != "auth.hello" and connection.principal is None:
+        if connection.principal is None:
             await web_chat_service.emit_error(
                 connection,
                 code="AUTH_REQUIRED",
@@ -69,13 +63,6 @@ class ChatGatewayService:
             )
             return
 
-        if frame.type == "auth.hello":
-            await self._handle_auth_hello(
-                connection,
-                frame,
-                token_verifier,
-            )
-            return
         if frame.type == "capabilities.request":
             await web_chat_service.emit_capabilities(
                 connection,
@@ -181,46 +168,27 @@ class ChatGatewayService:
         payload = MessageSendPayload.model_validate(frame.payload)
         await web_chat_service.handle_message(connection, payload)
 
-    async def _handle_auth_hello(
+    async def authenticate_session(
         self,
         connection: WebChatConnection,
-        frame: ChatEnvelope,
-        token_verifier: Callable[[str], "AuthSession"],
+        session: "AuthSession",
+        request_id: str | None = None,
     ) -> None:
-        try:
-            payload = AuthHelloPayload.model_validate(frame.payload)
-            session = token_verifier(payload.token)
-            principal = web_chat_service.build_principal(session)
-            connection.active_session_id = None
-            await web_chat_service.emit_auth_ok(
-                connection,
-                principal,
-                request_id=frame.request_id,
-            )
-            await web_chat_service.emit_system_info(
-                connection,
-                t("web_ui.chat.auth_connected"),
-            )
-            await web_chat_service.emit_session_snapshot(
-                connection,
-                request_id=frame.request_id,
-            )
-        except ChatAuthError as exc:
-            await web_chat_service.emit_error(
-                connection,
-                code="AUTH_FAILED",
-                message=str(exc),
-                request_id=frame.request_id,
-                type_="auth.error",
-            )
-        except HTTPException as exc:
-            await web_chat_service.emit_error(
-                connection,
-                code="AUTH_FAILED",
-                message=str(exc.detail),
-                request_id=frame.request_id,
-                type_="auth.error",
-            )
+        principal = web_chat_service.build_principal(session)
+        connection.active_session_id = None
+        await web_chat_service.emit_auth_ok(
+            connection,
+            principal,
+            request_id=request_id,
+        )
+        await web_chat_service.emit_system_info(
+            connection,
+            t("web_ui.chat.auth_connected"),
+        )
+        await web_chat_service.emit_session_snapshot(
+            connection,
+            request_id=request_id,
+        )
 
     async def _handle_session_close(
         self,

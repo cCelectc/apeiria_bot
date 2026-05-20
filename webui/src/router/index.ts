@@ -100,17 +100,9 @@ const router = createRouter({
 
 router.beforeEach(async to => {
   const authStore = useAuthStore()
-  const token = authStore.token || localStorage.getItem('token')
   const isPublicRoute = to.meta.requiresAuth === false
 
-  if (!isPublicRoute && !token) {
-    return {
-      name: 'login',
-      query: { redirect: buildAuthRedirect(to.fullPath) },
-    }
-  }
-
-  if (token && !authStore.isAuthenticated) {
+  if (!isPublicRoute && !authStore.isAuthenticated) {
     await authStore.ensureInitialized()
   }
 

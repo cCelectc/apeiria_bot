@@ -148,10 +148,6 @@ function connect() {
   ws = new WebSocket(`${proto}//${location.host}/api/logs/ws`)
 
   ws.addEventListener('open', () => {
-    const token = localStorage.getItem('token')
-    if (token) {
-      ws?.send(token)
-    }
     connected.value = true
   })
 

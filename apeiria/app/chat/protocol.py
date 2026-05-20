@@ -10,9 +10,7 @@ from typing import Annotated, Final, Literal
 
 from pydantic import BaseModel, Field, model_validator
 
-FRAME_AUTH_HELLO: Final = "auth.hello"
 FRAME_AUTH_OK: Final = "auth.ok"
-FRAME_AUTH_ERROR: Final = "auth.error"
 FRAME_CAPABILITIES_REQUEST: Final = "capabilities.request"
 FRAME_CAPABILITIES_RESPONSE: Final = "capabilities.response"
 FRAME_SESSION_CREATE: Final = "session.create"
@@ -35,7 +33,6 @@ FRAME_SYSTEM_WARNING: Final = "system.warning"
 FRAME_SYSTEM_ERROR: Final = "system.error"
 
 CLIENT_FRAME_TYPES: Final[tuple[str, ...]] = (
-    FRAME_AUTH_HELLO,
     FRAME_CAPABILITIES_REQUEST,
     FRAME_SESSION_CREATE,
     FRAME_SESSION_SELECT,
@@ -48,7 +45,6 @@ CLIENT_FRAME_TYPES: Final[tuple[str, ...]] = (
 
 SERVER_FRAME_TYPES: Final[tuple[str, ...]] = (
     FRAME_AUTH_OK,
-    FRAME_AUTH_ERROR,
     FRAME_CAPABILITIES_RESPONSE,
     FRAME_SESSION_SNAPSHOT,
     FRAME_MESSAGE_ACK,
@@ -164,10 +160,6 @@ class ChatSessionState(BaseModel):
 class ChatCapabilities(BaseModel):
     segment_types: list[str]
     mock_apis: list[str]
-
-
-class AuthHelloPayload(BaseModel):
-    token: str
 
 
 class AuthOkPayload(BaseModel):

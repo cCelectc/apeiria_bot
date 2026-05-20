@@ -37,7 +37,6 @@ class WebUIBootstrapResponse(BaseModel):
 class LoginResponse(BaseModel):
     """Successful login response."""
 
-    token: str
     principal: WebUIPrincipalResponse
 
 
@@ -85,7 +84,6 @@ class SessionRefreshResponse(BaseModel):
 
     status: str = "ok"
     detail: str | None = None
-    token: str
     principal: WebUIPrincipalResponse
 
 

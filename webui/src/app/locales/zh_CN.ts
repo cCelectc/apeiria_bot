@@ -1539,7 +1539,6 @@ const zhCN = {
     sessionDeleted: '会话已删除。',
     sessionReady: '会话已就绪。',
     systemFallback: '系统消息',
-    tokenMissing: '未找到登录令牌，请重新登录。',
     connectionClosed: '连接已断开。',
     sendUnavailable: '连接尚未就绪，请重连后再试。',
   },

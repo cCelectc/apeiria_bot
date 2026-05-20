@@ -16,7 +16,7 @@ PrincipalKind = Literal[
 ]
 AuthMethod = Literal[
     "password",
-    "bearer_token",
+    "session_cookie",
     "session_refresh",
     "registration_code",
     "host_recovery",

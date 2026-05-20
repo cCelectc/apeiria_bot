@@ -1,5 +1,4 @@
 import type {
-  AuthHelloPayload,
   ChatEnvelope,
   MessageSendPayload,
   SessionCreatePayload,
@@ -103,11 +102,6 @@ export class ChatClient {
       requestId,
       sent: true,
     }
-  }
-
-  authenticate(token: string) {
-    const payload: AuthHelloPayload = { token }
-    return this.send('auth.hello', payload)
   }
 
   requestCapabilities() {

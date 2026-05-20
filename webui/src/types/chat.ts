@@ -71,10 +71,6 @@ export interface ChatCapabilities {
   mock_apis: string[]
 }
 
-export interface AuthHelloPayload {
-  token: string
-}
-
 export interface AuthOkPayload {
   principal: WebUIPrincipal
 }

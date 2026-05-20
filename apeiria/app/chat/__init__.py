@@ -10,7 +10,6 @@ from apeiria.app.chat.gateway import (
     chat_gateway_service,
 )
 from apeiria.app.chat.gateway_protocol import (
-    AuthHelloPayload,
     AuthOkPayload,
     CapabilitiesResponsePayload,
     ChatCapabilities,
@@ -42,7 +41,6 @@ register_webchat_uniseg()
 register_webchat_uninfo()
 
 __all__ = [
-    "AuthHelloPayload",
     "AuthOkPayload",
     "CapabilitiesResponsePayload",
     "ChatAssetFileMissingError",

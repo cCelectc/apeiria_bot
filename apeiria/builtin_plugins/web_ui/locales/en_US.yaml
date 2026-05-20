@@ -21,6 +21,7 @@ web_ui:
     account_not_found: "Account not found"
     owner_self_demotion_forbidden: "Owner account cannot demote itself"
     sessions_revoked: "Other sessions revoked"
+    logout_success: "Logged out"
     register_failed: "Registration failed"
     register_success: "Registration succeeded. Please sign in."
   chat:

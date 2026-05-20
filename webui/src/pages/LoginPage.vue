@@ -64,7 +64,7 @@ async function submitLogin() {
       username: username.value.trim(),
       password: password.value,
     })
-    authStore.acceptSession(response.data.token, response.data.principal)
+    authStore.acceptSession(response.data.principal)
     if (authStore.isAuthenticated) {
       await router.push(normalizeAuthRedirect(route.query.redirect))
       return

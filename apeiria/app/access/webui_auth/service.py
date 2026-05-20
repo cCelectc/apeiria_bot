@@ -86,7 +86,7 @@ class AuthSessionService:
 
         return self.create_session(
             account,
-            auth_method="bearer_token",
+            auth_method="session_cookie",
             context=AuthSessionContext(
                 client_ip=self._coerce_string(claims.get("client_ip")),
                 token_subject=str(claims.get("sub") or account.username),

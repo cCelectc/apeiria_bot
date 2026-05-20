@@ -1,7 +1,6 @@
 """Application-facing re-export of WebChat protocol schemas."""
 
 from apeiria.app.chat.protocol import (
-    AuthHelloPayload,
     AuthOkPayload,
     CapabilitiesResponsePayload,
     ChatCapabilities,
@@ -29,7 +28,6 @@ from apeiria.app.chat.protocol import (
 )
 
 __all__ = [
-    "AuthHelloPayload",
     "AuthOkPayload",
     "CapabilitiesResponsePayload",
     "ChatCapabilities",

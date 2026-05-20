@@ -14,18 +14,17 @@ from apeiria.app.chat.service import web_chat_service
 from apeiria.i18n import t
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
-
     from apeiria.access.principal import AuthSession
 
 
 async def serve_chat_websocket(
     websocket: WebSocket,
-    token_verifier: Callable[[str], "AuthSession"],
+    session: "AuthSession",
 ) -> None:
     """Run the full websocket session loop for one browser connection."""
     await websocket.accept()
     connection = WebChatConnection(websocket)
+    await chat_gateway_service.authenticate_session(connection, session)
 
     try:
         while True:
@@ -42,7 +41,6 @@ async def serve_chat_websocket(
             await chat_gateway_service.handle_frame(
                 connection,
                 frame,
-                token_verifier,
             )
     except WebSocketDisconnect:
         if connection.active_session_id:

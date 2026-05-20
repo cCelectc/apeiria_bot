@@ -172,7 +172,7 @@ async function submitPassword() {
   passwordError.value = ''
   try {
     const response = await changePassword(passwordForm)
-    authStore.acceptSession(response.data.token, response.data.principal)
+    authStore.acceptSession(response.data.principal)
     noticeStore.show(response.data.detail || t('accounts.passwordChanged'), 'success')
     passwordForm.current_password = ''
     passwordForm.new_password = ''
@@ -190,7 +190,7 @@ async function handleRevokeOtherSessions() {
   errorMessage.value = ''
   try {
     const response = await revokeOtherSessions()
-    authStore.acceptSession(response.data.token, response.data.principal)
+    authStore.acceptSession(response.data.principal)
     noticeStore.show(response.data.detail || t('accounts.otherSessionsRevoked'), 'success')
     await loadData()
   } catch (error) {

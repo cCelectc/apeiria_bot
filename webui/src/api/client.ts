@@ -3,15 +3,8 @@ import { useAuthStore } from '@/stores/auth'
 
 const client = axios.create({
   baseURL: '/api',
+  withCredentials: true,
   timeout: 10_000,
-})
-
-client.interceptors.request.use(config => {
-  const token = localStorage.getItem('token')
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`
-  }
-  return config
 })
 
 client.interceptors.response.use(
@@ -22,11 +15,15 @@ client.interceptors.response.use(
       ? error.config.url
       : ''
     const authStore = useAuthStore()
-    if (status === 401 && authStore.token) {
+    if (status === 401 && authStore.status !== 'anonymous') {
       authStore.handleUnauthorized()
       window.location.href = '/login'
     }
-    if (status === 403 && authStore.token && requestUrl.includes('/auth/me')) {
+    if (
+      status === 403
+      && authStore.status !== 'anonymous'
+      && requestUrl.includes('/auth/me')
+    ) {
       authStore.handleForbidden()
       window.location.href = '/login'
     }
