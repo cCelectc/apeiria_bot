@@ -1,11 +1,14 @@
-FROM node:22.12.0-bookworm-slim AS web-builder
+FROM node:24-bookworm-slim AS web-builder
 
 WORKDIR /frontend
 
-RUN npm install -g pnpm \
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends python-is-python3 \
+    && npm install -g pnpm \
+    && rm -rf /var/lib/apt/lists/* \
     && rm -rf /root/.npm
 
-COPY webui/package.json webui/pnpm-lock.yaml ./webui/
+COPY webui/package.json webui/pnpm-lock.yaml webui/pnpm-workspace.yaml ./webui/
 COPY scripts ./scripts
 COPY apeiria ./apeiria
 WORKDIR /frontend/webui
@@ -21,6 +24,7 @@ ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 ENV UV_LINK_MODE=copy
 ENV UV_PROJECT_ENVIRONMENT=/app/.venv
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 
 WORKDIR /app
 
@@ -39,6 +43,8 @@ COPY apeiria ./apeiria
 COPY --from=web-builder /frontend/webui/dist ./webui/dist
 
 RUN uv sync --locked --no-dev
+RUN .venv/bin/python -m playwright install --with-deps chromium \
+    && rm -rf /var/lib/apt/lists/*
 
 RUN mkdir -p /app/.apeiria /app/data
 
