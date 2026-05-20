@@ -10,6 +10,10 @@ export type AuthStatus =
   | 'forbidden'
   | 'expired'
 
+interface RestoreOptions {
+  unauthorizedStatus?: Extract<AuthStatus, 'anonymous' | 'expired'>
+}
+
 export const useAuthStore = defineStore('auth', () => {
   const principal = ref<WebUIPrincipal | null>(null)
   const status = ref<AuthStatus>('anonymous')
@@ -46,7 +50,7 @@ export const useAuthStore = defineStore('auth', () => {
     clearSession('forbidden')
   }
 
-  async function initialize() {
+  async function initialize(options: RestoreOptions = {}) {
     if (status.value === 'authenticated' && principal.value) {
       return
     }
@@ -56,17 +60,21 @@ export const useAuthStore = defineStore('auth', () => {
     }
 
     status.value = 'restoring'
-    restorePromise.value = restoreCurrentUser()
+    restorePromise.value = restoreCurrentUser(
+      options.unauthorizedStatus ?? 'anonymous',
+    )
     await restorePromise.value
   }
 
-  async function restoreCurrentUser() {
+  async function restoreCurrentUser(
+    unauthorizedStatus: Extract<AuthStatus, 'anonymous' | 'expired'>,
+  ) {
     try {
       const response = await fetch('/api/auth/me', {
         credentials: 'same-origin',
       })
       if (response.status === 401) {
-        handleUnauthorized()
+        clearSession(unauthorizedStatus)
         return
       }
       if (response.status === 403) {
@@ -87,17 +95,17 @@ export const useAuthStore = defineStore('auth', () => {
         clearSession('forbidden')
       }
     } catch {
-      handleUnauthorized()
+      clearSession(unauthorizedStatus)
     } finally {
       restorePromise.value = null
     }
   }
 
-  async function ensureInitialized() {
+  async function ensureInitialized(options: RestoreOptions = {}) {
     if (status.value === 'authenticated' && principal.value) {
       return
     }
-    await initialize()
+    await initialize(options)
   }
 
   return {

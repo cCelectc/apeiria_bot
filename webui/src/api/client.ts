@@ -15,7 +15,11 @@ client.interceptors.response.use(
       ? error.config.url
       : ''
     const authStore = useAuthStore()
-    if (status === 401 && authStore.status !== 'anonymous') {
+    if (
+      status === 401
+      && authStore.status !== 'anonymous'
+      && !isCredentialRequest(requestUrl)
+    ) {
       authStore.handleUnauthorized()
       window.location.href = '/login'
     }
@@ -77,6 +81,12 @@ export function getErrorMessage(error: unknown, fallback: string) {
     return error.message
   }
   return fallback
+}
+
+function isCredentialRequest(requestUrl: string) {
+  return requestUrl.includes('/auth/login')
+    || requestUrl.includes('/auth/register')
+    || requestUrl.includes('/auth/password')
 }
 
 export default client

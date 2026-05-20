@@ -102,8 +102,8 @@ router.beforeEach(async to => {
   const authStore = useAuthStore()
   const isPublicRoute = to.meta.requiresAuth === false
 
-  if (!isPublicRoute && !authStore.isAuthenticated) {
-    await authStore.ensureInitialized()
+  if (!authStore.isAuthenticated) {
+    await authStore.ensureInitialized({ unauthorizedStatus: 'anonymous' })
   }
 
   if (!isPublicRoute && !authStore.isAuthenticated) {
