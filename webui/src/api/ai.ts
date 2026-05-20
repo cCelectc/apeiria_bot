@@ -12,6 +12,13 @@ export interface AISourcePresetItem {
   capability_provenance: Record<string, unknown>
 }
 
+export interface AISourceApiKeyMetadata {
+  index: number
+  masked: string
+}
+
+export type AISourceApiKeyAction = 'clear' | 'keep' | 'replace'
+
 export interface AIBootstrapResponse {
   source_presets: AISourcePresetItem[]
   scope_types: string[]
@@ -78,6 +85,7 @@ export interface AISourceItem {
   capability_metadata: Record<string, unknown>
   default_options: Record<string, unknown>
   capability_provenance: Record<string, unknown>
+  api_key_metadata: AISourceApiKeyMetadata[]
 }
 
 export interface AISourceModelItem {
@@ -650,6 +658,8 @@ export function createAISource(payload: {
   capability_metadata?: Record<string, unknown>
   default_options?: Record<string, unknown>
   capability_provenance?: Record<string, unknown>
+  api_key_action?: AISourceApiKeyAction | null
+  api_keys?: string[]
 }) {
   return client.post<AISourceItem>('/ai/sources', payload)
 }
@@ -668,6 +678,8 @@ export function updateAISource(payload: {
   capability_metadata?: Record<string, unknown>
   default_options?: Record<string, unknown>
   capability_provenance?: Record<string, unknown>
+  api_key_action?: AISourceApiKeyAction | null
+  api_keys?: string[]
 }) {
   return client.put<AISourceItem | null>('/ai/sources', payload)
 }

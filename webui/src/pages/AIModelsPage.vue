@@ -242,13 +242,28 @@ const sourcePrimaryApiKey = computed({
     const nextKeys = [...sourceForm.api_keys]
     if (nextValue) {
       nextKeys[0] = nextValue
+      sourceForm.api_key_action = 'replace'
     } else {
       nextKeys.splice(0, 1)
+      if (sourceForm.api_key_action === 'replace') {
+        sourceForm.api_key_action = sourceForm.api_key_metadata.length > 0
+          ? 'clear'
+          : 'replace'
+      }
     }
     sourceForm.api_keys = nextKeys
   },
 })
-const extraSourceApiKeys = computed(() => sourceForm.api_keys.slice(1))
+const sourceApiKeyPlaceholder = computed(() => (
+  sourceForm.api_key_action === 'keep'
+    ? sourceForm.api_key_metadata[0]?.masked ?? ''
+    : ''
+))
+const extraSourceApiKeys = computed(() => (
+  sourceForm.api_key_action === 'replace'
+    ? sourceForm.api_keys.slice(1)
+    : sourceForm.api_key_metadata.slice(1).map(item => item.masked)
+))
 const providerDetailTitle = computed(() => {
   if (providerDetailMode.value === 'creating') {
     return t('ai.creatingSource')
@@ -441,7 +456,9 @@ function applySetupRouteIntent() {
 }
 
 function openSourceApiKeysEditor() {
-  sourceApiKeyDraft.value = [...sourceForm.api_keys]
+  sourceApiKeyDraft.value = sourceForm.api_key_action === 'replace'
+    ? [...sourceForm.api_keys]
+    : []
   sourceApiKeyDraftInput.value = ''
   sourceApiKeysDialog.value = true
 }
@@ -462,14 +479,26 @@ function removeSourceApiKeyDraft(index: number) {
 }
 
 function removeExtraSourceApiKey(index: number) {
+  if (sourceForm.api_key_action !== 'replace') {
+    return
+  }
   sourceForm.api_keys = sourceForm.api_keys.filter((_, itemIndex) => (
     itemIndex !== index + 1
   ))
 }
 
 function applySourceApiKeyDraft() {
-  sourceForm.api_keys = [...sourceApiKeyDraft.value]
+  const nextKeys = sourceApiKeyDraft.value.map(item => item.trim()).filter(Boolean)
+  if (nextKeys.length > 0) {
+    sourceForm.api_key_action = 'replace'
+    sourceForm.api_keys = nextKeys
+  }
   sourceApiKeysDialog.value = false
+}
+
+function clearSourceApiKeys() {
+  sourceForm.api_key_action = 'clear'
+  sourceForm.api_keys = []
 }
 
 function openCreateSourceModel() {
@@ -799,8 +828,18 @@ watch(sourceCapabilityTab, () => {
                       <Input
                         v-model="sourcePrimaryApiKey"
                         autocomplete="off"
+                        :placeholder="sourceApiKeyPlaceholder"
                         type="password"
                       />
+                      <Button
+                        v-if="sourceForm.api_key_action !== 'clear' && (sourceForm.api_key_metadata.length > 0 || sourceForm.api_keys.length > 0)"
+                        type="button"
+                        variant="ghost"
+                        @click="clearSourceApiKeys"
+                      >
+                        <Trash2 :size="15" />
+                        {{ t('ai.sourceApiKeyClear') }}
+                      </Button>
                       <Button
                         :class="{ 'ai-highlight-button': modelFlowFocus.highlight === 'connection' }"
                         type="button"
@@ -821,6 +860,7 @@ watch(sourceCapabilityTab, () => {
                         <button
                           :aria-label="t('common.delete')"
                           class="ai-chip-button"
+                          :disabled="sourceForm.api_key_action !== 'replace'"
                           type="button"
                           @click="removeExtraSourceApiKey(index)"
                         >
@@ -1286,6 +1326,7 @@ watch(sourceCapabilityTab, () => {
             <Input
               v-model="sourceApiKeyDraftInput"
               :placeholder="t('ai.sourceApiKeyNew')"
+              type="password"
               @keydown.enter.prevent="appendSourceApiKeyDraft"
             />
             <Button type="button" variant="secondary" @click="appendSourceApiKeyDraft">

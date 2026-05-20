@@ -55,17 +55,18 @@ async def fetch_source_model_catalog(
 ) -> list["AIModelCatalogItem"]:
     stored_source = None
     if source_id:
-        sources = await ai_source_service.list_sources()
-        stored_source = next(
-            (item for item in sources if item.source_id == source_id),
-        )
+        stored_source = await ai_source_service.get_source(source_id=source_id)
     source = _resolve_source_for_model_fetch(
         stored_source=stored_source,
         preset_type=preset_type,
         api_base=api_base,
         extra_config=extra_config,
     )
-    resolved_api_key = api_key or ai_source_service.get_source_api_key(source)
+    resolved_api_key = (
+        api_key
+        or _stored_source_api_key(stored_source)
+        or ai_source_service.get_source_api_key(source)
+    )
     if not resolved_api_key:
         raise AISourceModelFetchConfigError
     try:
@@ -117,17 +118,18 @@ async def test_source_model_connectivity(  # noqa: PLR0913
 
     stored_source = None
     if source_id:
-        sources = await ai_source_service.list_sources()
-        stored_source = next(
-            (item for item in sources if item.source_id == source_id),
-        )
+        stored_source = await ai_source_service.get_source(source_id=source_id)
     source = _resolve_source_for_model_fetch(
         stored_source=stored_source,
         preset_type=preset_type,
         api_base=api_base,
         extra_config=extra_config,
     )
-    resolved_api_key = api_key or ai_source_service.get_source_api_key(source)
+    resolved_api_key = (
+        api_key
+        or _stored_source_api_key(stored_source)
+        or ai_source_service.get_source_api_key(source)
+    )
     if not resolved_api_key:
         raise AISourceModelTestConfigError(
             AISourceModelFetchConfigError.MISSING_API_KEY
@@ -300,6 +302,12 @@ def _resolve_source_for_model_fetch(
             else None
         ),
     )
+
+
+def _stored_source_api_key(source: "AISourceDefinition | None") -> str | None:
+    if source is None:
+        return None
+    return ai_source_service.get_source_api_key(source)
 
 
 def _sanitize_upstream_error_detail(

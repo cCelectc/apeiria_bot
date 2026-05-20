@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import sqlite3
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Literal, cast
 
 from apeiria.ai.model import (
     AISourceCreateInput,
@@ -22,6 +22,8 @@ if TYPE_CHECKING:
         AISourceDefinition,
         AISourcePresetDefinition,
     )
+
+ApiKeyAction = Literal["keep", "replace", "clear"]
 
 
 def coerce_source_preset_type(
@@ -55,6 +57,8 @@ class SourcesAdminMixin:
         timeout_seconds: int | None,
         custom_headers: dict[str, str],
         extra_config: dict[str, object],
+        api_key_action: ApiKeyAction | None = None,
+        api_keys: list[str] | None = None,
         adapter_kind: str | None = None,
         capability_metadata: dict[str, object] | None = None,
         default_options: dict[str, object] | None = None,
@@ -73,7 +77,11 @@ class SourcesAdminMixin:
                 enabled=enabled,
                 timeout_seconds=timeout_seconds,
                 custom_headers=custom_headers,
-                extra_config=extra_config,
+                extra_config=_resolve_create_extra_config(
+                    extra_config,
+                    api_key_action=api_key_action,
+                    api_keys=api_keys,
+                ),
                 adapter_kind=adapter_kind
                 or resolve_adapter_kind_for_preset(coerced_preset_type),
                 capability_metadata=capability_metadata,
@@ -100,6 +108,8 @@ class SourcesAdminMixin:
         timeout_seconds: int | None,
         custom_headers: dict[str, str],
         extra_config: dict[str, object],
+        api_key_action: ApiKeyAction | None = None,
+        api_keys: list[str] | None = None,
         adapter_kind: str | None = None,
         capability_metadata: dict[str, object] | None = None,
         default_options: dict[str, object] | None = None,
@@ -108,6 +118,7 @@ class SourcesAdminMixin:
     ) -> "AISourceDefinition | None":
         _ = capability_type
         coerced_preset_type = coerce_source_preset_type(preset_type)
+        existing = await ai_source_service.get_source(source_id=source_id)
         updated = await ai_source_service.update_source(
             source_id=source_id,
             create_input=AISourceCreateInput(
@@ -119,7 +130,12 @@ class SourcesAdminMixin:
                 enabled=enabled,
                 timeout_seconds=timeout_seconds,
                 custom_headers=custom_headers,
-                extra_config=extra_config,
+                extra_config=_resolve_update_extra_config(
+                    existing,
+                    extra_config,
+                    api_key_action=api_key_action,
+                    api_keys=api_keys,
+                ),
                 adapter_kind=adapter_kind
                 or resolve_adapter_kind_for_preset(coerced_preset_type),
                 capability_metadata=capability_metadata,
@@ -182,3 +198,61 @@ class SourcesAdminMixin:
 
 
 __all__ = ["SourcesAdminMixin", "coerce_source_preset_type"]
+
+
+def _resolve_create_extra_config(
+    extra_config: dict[str, object],
+    *,
+    api_key_action: ApiKeyAction | None,
+    api_keys: list[str] | None,
+) -> dict[str, object]:
+    if api_key_action == "clear":
+        return _without_api_keys(extra_config)
+    return _with_api_keys(extra_config, _normalize_api_keys(api_keys))
+
+
+def _resolve_update_extra_config(
+    existing: "AISourceDefinition | None",
+    extra_config: dict[str, object],
+    *,
+    api_key_action: ApiKeyAction | None,
+    api_keys: list[str] | None,
+) -> dict[str, object]:
+    if api_key_action == "replace":
+        return _with_api_keys(extra_config, _normalize_api_keys(api_keys))
+    if api_key_action == "clear":
+        return _without_api_keys(extra_config)
+    return _with_api_keys(extra_config, _existing_api_keys(existing))
+
+
+def _without_api_keys(extra_config: dict[str, object]) -> dict[str, object]:
+    next_config = dict(extra_config or {})
+    next_config.pop("api_keys", None)
+    return next_config
+
+
+def _with_api_keys(
+    extra_config: dict[str, object],
+    api_keys: list[str],
+) -> dict[str, object]:
+    next_config = _without_api_keys(extra_config)
+    if api_keys:
+        next_config["api_keys"] = api_keys
+    return next_config
+
+
+def _existing_api_keys(existing: "AISourceDefinition | None") -> list[str]:
+    if existing is None:
+        return []
+    raw_values = (existing.extra_config or {}).get("api_keys")
+    if not isinstance(raw_values, list):
+        return []
+    return _normalize_api_keys(raw_values)
+
+
+def _normalize_api_keys(values: list[object] | None) -> list[str]:
+    if not values:
+        return []
+    return [
+        value.strip() for value in values if isinstance(value, str) and value.strip()
+    ]

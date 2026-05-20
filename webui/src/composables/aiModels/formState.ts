@@ -1,4 +1,4 @@
-import type { AISourceItem } from '@/api/ai'
+import type { AISourceApiKeyAction, AISourceApiKeyMetadata, AISourceItem } from '@/api/ai'
 
 export interface SourceFormState {
   source_id: string
@@ -8,6 +8,8 @@ export interface SourceFormState {
   adapter_kind: string
   api_base: string
   api_keys: string[]
+  api_key_action: AISourceApiKeyAction
+  api_key_metadata: AISourceApiKeyMetadata[]
   proxy: string
   enabled: boolean
   timeout_seconds: number | null
@@ -48,7 +50,10 @@ export function buildSourceSnapshot(form: SourceFormState) {
   return JSON.stringify({
     adapter_kind: form.adapter_kind.trim(),
     api_base: form.api_base.trim(),
-    api_keys: normalizeApiKeys(form.api_keys),
+    api_key_action: form.api_key_action,
+    api_keys: form.api_key_action === 'replace'
+      ? normalizeApiKeys(form.api_keys)
+      : [],
     capability_metadata_json: form.capability_metadata_json.trim(),
     capability_provenance_json: form.capability_provenance_json.trim(),
     capability_type: form.capability_type,
@@ -117,9 +122,7 @@ export function normalizeApiKeys(values: string[]) {
 }
 
 export function buildSourceExtraConfig(form: SourceFormState) {
-  const extraConfig: Record<string, unknown> = {
-    api_keys: normalizeApiKeys(form.api_keys),
-  }
+  const extraConfig: Record<string, unknown> = {}
   if (form.capability_type === 'embedding' && form.embedding_dimensions) {
     extraConfig.embedding_dimensions = form.embedding_dimensions
   }
@@ -164,14 +167,8 @@ export function extractOptionalInt(value: unknown) {
 }
 
 export function extractSourceApiKeys(item: AISourceItem) {
-  const raw = item.extra_config?.api_keys
-  if (!Array.isArray(raw)) {
-    return []
-  }
-  return raw
-    .filter((value): value is string => typeof value === 'string')
-    .map(value => value.trim())
-    .filter(Boolean)
+  void item
+  return []
 }
 
 export function stringifyJsonObject(value: unknown) {

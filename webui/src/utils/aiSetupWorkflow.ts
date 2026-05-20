@@ -53,6 +53,7 @@ export interface AISetupSourceSummary {
   enabled: boolean
   preset_type: string
   api_base: string | null
+  api_key_configured?: boolean
   api_keys?: string[]
 }
 
@@ -120,7 +121,8 @@ function hasText(value: string | null | undefined) {
 }
 
 function hasApiKey(source: AISetupSourceSummary) {
-  return (source.api_keys ?? []).some(value => hasText(value))
+  return source.api_key_configured === true
+    || (source.api_keys ?? []).some(value => hasText(value))
 }
 
 function resolveConnectionIssues(source: AISetupSourceSummary | null) {

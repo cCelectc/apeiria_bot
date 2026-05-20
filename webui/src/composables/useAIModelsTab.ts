@@ -118,6 +118,8 @@ export function useAIModelsTab(
   const sourceForm = reactive<SourceFormState>({
     adapter_kind: 'openai_compatible',
     api_base: '',
+    api_key_action: 'replace',
+    api_key_metadata: [],
     api_keys: [],
     capability_metadata_json: '{}',
     capability_provenance_json: '{}',
@@ -213,11 +215,18 @@ export function useAIModelsTab(
     sourceValid.value && sourceDirty.value && !savingSource.value
   ))
   const normalizedSourceApiKeys = computed(() => normalizeApiKeys(sourceForm.api_keys))
+  const sourceHasApiKey = computed(() => (
+    sourceForm.api_key_action !== 'clear'
+    && (
+      normalizedSourceApiKeys.value.length > 0
+      || sourceForm.api_key_metadata.length > 0
+    )
+  ))
   const normalizedSourceExtraConfig = computed(() => buildSourceExtraConfig(sourceForm))
   const canFetchSourceModels = computed(() => (
     sourceForm.preset_type.trim().length > 0
     && sourceForm.api_base.trim().length > 0
-    && normalizedSourceApiKeys.value.length > 0
+    && sourceHasApiKey.value
     && !fetchingSourceModels.value
   ))
 
@@ -307,6 +316,7 @@ export function useAIModelsTab(
     selectedSource: sourceForm.source_id
       ? {
           api_base: sourceForm.api_base,
+          api_key_configured: sourceHasApiKey.value,
           api_keys: normalizedSourceApiKeys.value,
           enabled: sourceForm.enabled,
           name: sourceForm.name,
@@ -411,6 +421,8 @@ export function useAIModelsTab(
     Object.assign(sourceForm, {
       adapter_kind: 'openai_compatible',
       api_base: '',
+      api_key_action: 'replace',
+      api_key_metadata: [],
       api_keys: [],
       capability_metadata_json: '{}',
       capability_provenance_json: '{}',
@@ -442,6 +454,8 @@ export function useAIModelsTab(
     Object.assign(sourceForm, {
       adapter_kind: item.adapter_kind ?? '',
       api_base: item.api_base ?? '',
+      api_key_action: 'keep',
+      api_key_metadata: item.api_key_metadata,
       api_keys: extractSourceApiKeys(item),
       capability_metadata_json: stringifyJsonObject(item.capability_metadata),
       capability_provenance_json: stringifyJsonObject(item.capability_provenance),
@@ -471,6 +485,8 @@ export function useAIModelsTab(
     Object.assign(sourceForm, {
       adapter_kind: 'openai_compatible',
       api_base: '',
+      api_key_action: 'replace',
+      api_key_metadata: [],
       api_keys: [],
       capability_metadata_json: '{}',
       capability_provenance_json: '{}',
@@ -666,6 +682,10 @@ export function useAIModelsTab(
         default_options: parseJsonObject(sourceForm.default_options_json),
         enabled: sourceForm.enabled,
         extra_config: normalizedSourceExtraConfig.value,
+        api_key_action: sourceForm.api_key_action,
+        api_keys: sourceForm.api_key_action === 'replace'
+          ? normalizedSourceApiKeys.value
+          : [],
         name: sourceForm.name.trim(),
         preset_type: sourceForm.preset_type,
         timeout_seconds: sourceForm.timeout_seconds,
