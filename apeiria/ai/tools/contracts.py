@@ -21,7 +21,3 @@ class AIToolObservationCreateInput:
     reason: str | None = None
     input_payload: Any | None = None
     output_payload: Any | None = None
-
-
-# Temporary alias while callers move to observation terminology.
-AIToolExecutionCreateInput = AIToolObservationCreateInput

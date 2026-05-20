@@ -78,8 +78,6 @@ const zhCN = {
   },
   ai: {
     title: 'AI 管理',
-    workbenchContext: '上下文',
-    workbenchBehavior: '行为配置',
     workbenchGroup: {
       connection: '连接',
       runtime: '运行',

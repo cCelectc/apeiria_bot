@@ -78,8 +78,6 @@ const enUS = {
   },
   ai: {
     title: 'AI Management',
-    workbenchContext: 'Context',
-    workbenchBehavior: 'Behavior',
     workbenchGroup: {
       connection: 'Connection',
       runtime: 'Runtime',

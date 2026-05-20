@@ -46,8 +46,6 @@ export type AIWorkbenchRouteArea =
   | 'sessions'
   | 'skills'
 
-export type AIWorkbenchLegacyArea = 'behavior' | 'context'
-
 export interface AIWorkbenchRouteState {
   area: AIWorkbenchRouteArea
   localMode: {
@@ -109,17 +107,15 @@ const supportedWorkbenchAreas = new Set<AIWorkbenchRouteArea>([
   'skills',
 ])
 
-const supportedLegacyContextAreas = new Set<AIWorkbenchRouteArea>([
-  'knowledge',
-  'memories',
-  'profiles',
-  'relationships',
-])
-
-const supportedLegacyBehaviorAreas = new Set<AIWorkbenchRouteArea>([
-  'futureTasks',
-  'personas',
-  'skills',
+const supportedWorkbenchQueryKeys = new Set([
+  'area',
+  'capability',
+  'debug',
+  'model',
+  'profile',
+  'session',
+  'source',
+  'trace',
 ])
 
 const intentFocusMap: Record<AISetupRouteIntent, AIModelFlowFocus> = {
@@ -228,26 +224,10 @@ export function normalizeAIDebugRouteValue(value: unknown): AIDebugRouteValue {
     : 'conversations'
 }
 
-export function normalizeAIWorkbenchArea(
-  value: unknown,
-  legacyContext?: unknown,
-  legacyBehavior?: unknown,
-): AIWorkbenchRouteArea {
+export function normalizeAIWorkbenchArea(value: unknown): AIWorkbenchRouteArea {
   const rawValue = firstString(value)
   if (supportedWorkbenchAreas.has(rawValue as AIWorkbenchRouteArea)) {
     return rawValue as AIWorkbenchRouteArea
-  }
-  if (rawValue === 'context') {
-    const contextArea = firstString(legacyContext)
-    return supportedLegacyContextAreas.has(contextArea as AIWorkbenchRouteArea)
-      ? contextArea as AIWorkbenchRouteArea
-      : 'knowledge'
-  }
-  if (rawValue === 'behavior') {
-    const behaviorArea = firstString(legacyBehavior)
-    return supportedLegacyBehaviorAreas.has(behaviorArea as AIWorkbenchRouteArea)
-      ? behaviorArea as AIWorkbenchRouteArea
-      : 'personas'
   }
   return 'models'
 }
@@ -256,7 +236,7 @@ export function normalizeAIWorkbenchRouteState(
   query: Record<string, unknown>,
 ): AIWorkbenchRouteState {
   return {
-    area: normalizeAIWorkbenchArea(query.area, query.context, query.behavior),
+    area: normalizeAIWorkbenchArea(query.area),
     localMode: {
       capability: normalizeAICapabilityRouteValue(query.capability),
       debug: normalizeAIDebugRouteValue(query.debug),
@@ -277,7 +257,7 @@ export function buildAIWorkbenchAreaQuery(
 ): Record<string, string> {
   const nextQuery: Record<string, string> = {}
   for (const [key, value] of Object.entries(currentQuery)) {
-    if (key === 'area' || key === 'context' || key === 'behavior') {
+    if (!supportedWorkbenchQueryKeys.has(key) || key === 'area') {
       continue
     }
     const stringValue = firstString(value)

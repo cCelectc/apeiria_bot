@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import asdict, is_dataclass
 from typing import Any
 
-from apeiria.ai.tools.contracts import AIToolExecutionCreateInput
+from apeiria.ai.tools.contracts import AIToolObservationCreateInput
 from apeiria.ai.tools.execution import AIToolIntentExecutor
 from apeiria.ai.tools.execution_repository import AIToolExecutionRepository
 from apeiria.ai.tools.models import (
@@ -65,8 +65,8 @@ class AIToolService:
         )
 
         for observation in observations:
-            await self.record_execution(
-                AIToolExecutionCreateInput(
+            await self.record_observation(
+                AIToolObservationCreateInput(
                     session_id=request.session_id,
                     tool_name=observation.tool_name,
                     status=observation.status,
@@ -101,11 +101,11 @@ class AIToolService:
             for observation in observations
         ]
 
-    async def record_execution(
+    async def record_observation(
         self,
-        create_input: AIToolExecutionCreateInput,
+        create_input: AIToolObservationCreateInput,
     ) -> AIToolExecutionView:
-        return self._execution_repository.record_execution(create_input)
+        return self._execution_repository.record_observation(create_input)
 
     async def list_executions(
         self,
@@ -125,7 +125,7 @@ def _to_jsonable_payload(payload: Any) -> Any:
 
 
 __all__ = [
-    "AIToolExecutionCreateInput",
+    "AIToolObservationCreateInput",
     "AIToolService",
     "ai_tool_service",
 ]

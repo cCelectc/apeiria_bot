@@ -47,6 +47,11 @@ const {
   taskStatusTone,
 } = await loadTsModule('src/utils/feedbackState.ts')
 const {
+  buildAIWorkbenchAreaQuery,
+  normalizeAIWorkbenchArea,
+  normalizeAIWorkbenchRouteState,
+} = await loadTsModule('src/utils/aiRouteState.ts')
+const {
   buildProjectUpdatePlanRequest,
   isProjectUpdateTaskActive,
   hasProjectUpdateReleaseUpdate,
@@ -178,6 +183,43 @@ assert.equal(taskStatusTone('succeeded'), 'success')
 assert.equal(taskStatusTone('failed'), 'error')
 assert.equal(taskStatusTone('queued'), 'info')
 assert.equal(taskStatusTone('idle'), 'default')
+assert.equal(normalizeAIWorkbenchArea('skills'), 'skills')
+assert.equal(normalizeAIWorkbenchArea('unknown'), 'models')
+assert.deepEqual(normalizeAIWorkbenchRouteState({
+  area: 'sessions',
+  capability: 'embedding',
+  debug: 'tools',
+  model: 'model-1',
+  profile: 'profile-1',
+  session: 'session-1',
+  source: 'source-1',
+  trace: 'trace-1',
+}), {
+  area: 'sessions',
+  localMode: {
+    capability: 'embedding',
+    debug: 'tools',
+  },
+  selectedIds: {
+    model: 'model-1',
+    profile: 'profile-1',
+    session: 'session-1',
+    source: 'source-1',
+    trace: 'trace-1',
+  },
+})
+assert.deepEqual(buildAIWorkbenchAreaQuery('knowledge', {
+  area: 'models',
+  capability: 'chat',
+  context: 'profiles',
+  extra: 'ignored',
+  model: 'model-1',
+  source: '',
+}), {
+  area: 'knowledge',
+  capability: 'chat',
+  model: 'model-1',
+})
 
 const updateStatus = {
   stable_releases: [

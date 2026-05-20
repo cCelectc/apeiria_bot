@@ -17,7 +17,7 @@ def test_tool_executions_use_sqlite_runtime(
     tmp_path: Path,
     monkeypatch: "MonkeyPatch",
 ) -> None:
-    from apeiria.ai.tools.service import AIToolExecutionCreateInput, AIToolService
+    from apeiria.ai.tools.service import AIToolObservationCreateInput, AIToolService
 
     monkeypatch.setattr(database_runtime, "_project_root", tmp_path)
     database_runtime.ensure_ready()
@@ -25,8 +25,8 @@ def test_tool_executions_use_sqlite_runtime(
 
     async def scenario() -> None:
         service = AIToolService()
-        created = await service.record_execution(
-            AIToolExecutionCreateInput(
+        created = await service.record_observation(
+            AIToolObservationCreateInput(
                 session_id="session-1",
                 tool_name="memory.search",
                 status="success",
@@ -48,7 +48,7 @@ def test_tool_execution_payloads_are_sanitized(
     tmp_path: Path,
     monkeypatch: "MonkeyPatch",
 ) -> None:
-    from apeiria.ai.tools.service import AIToolExecutionCreateInput, AIToolService
+    from apeiria.ai.tools.service import AIToolObservationCreateInput, AIToolService
 
     monkeypatch.setattr(database_runtime, "_project_root", tmp_path)
     database_runtime.ensure_ready()
@@ -56,8 +56,8 @@ def test_tool_execution_payloads_are_sanitized(
 
     async def scenario() -> None:
         service = AIToolService()
-        await service.record_execution(
-            AIToolExecutionCreateInput(
+        await service.record_observation(
+            AIToolObservationCreateInput(
                 session_id="session-1",
                 tool_name="memory.search",
                 status="error",

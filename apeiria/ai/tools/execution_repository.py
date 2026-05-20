@@ -71,9 +71,6 @@ class AIToolExecutionRepository:
             created_at=_parse_datetime(created_at_text),
         )
 
-    # Temporary alias while callers move to observation terminology.
-    record_execution = record_observation
-
     def list_executions(
         self,
         *,
