@@ -18,6 +18,8 @@ from apeiria.app.ai.diagnostics.audit import record_ai_admin_audit
 from apeiria.app.ai.operations.errors import AISourceDeleteBlockedError
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
+
     from apeiria.ai.model import (
         AISourceDefinition,
         AISourcePresetDefinition,
@@ -250,7 +252,7 @@ def _existing_api_keys(existing: "AISourceDefinition | None") -> list[str]:
     return _normalize_api_keys(raw_values)
 
 
-def _normalize_api_keys(values: list[object] | None) -> list[str]:
+def _normalize_api_keys(values: Sequence[object] | None) -> list[str]:
     if not values:
         return []
     return [

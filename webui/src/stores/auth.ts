@@ -11,8 +11,8 @@ export type AuthStatus =
   | 'expired'
 
 export const useAuthStore = defineStore('auth', () => {
-  const principal = ref<WebUIPrincipal | null>(readPrincipal())
-  const status = ref<AuthStatus>(principal.value ? 'restoring' : 'anonymous')
+  const principal = ref<WebUIPrincipal | null>(null)
+  const status = ref<AuthStatus>('anonymous')
   const restorePromise = ref<Promise<void> | null>(null)
 
   const isReady = computed(() => status.value !== 'restoring')
@@ -23,7 +23,6 @@ export const useAuthStore = defineStore('auth', () => {
 
   function acceptSession(nextPrincipal: WebUIPrincipal) {
     principal.value = nextPrincipal
-    persistPrincipal(nextPrincipal)
     status.value = hasControlPanelAccess(nextPrincipal)
       ? 'authenticated'
       : 'forbidden'
@@ -33,7 +32,6 @@ export const useAuthStore = defineStore('auth', () => {
     principal.value = null
     status.value = nextStatus
     restorePromise.value = null
-    localStorage.removeItem('apeiria-principal')
   }
 
   function logout(nextStatus: AuthStatus = 'anonymous') {
@@ -82,7 +80,6 @@ export const useAuthStore = defineStore('auth', () => {
 
       const nextPrincipal = await response.json() as WebUIPrincipal
       principal.value = nextPrincipal
-      persistPrincipal(nextPrincipal)
       status.value = hasControlPanelAccess(nextPrincipal)
         ? 'authenticated'
         : 'forbidden'
@@ -127,21 +124,4 @@ function hasControlPanelAccess(principal: WebUIPrincipal | null) {
 
 function normalizeRole(role: string | undefined) {
   return typeof role === 'string' ? role : ''
-}
-
-function persistPrincipal(principal: WebUIPrincipal) {
-  localStorage.setItem('apeiria-principal', JSON.stringify(principal))
-}
-
-function readPrincipal(): WebUIPrincipal | null {
-  const raw = localStorage.getItem('apeiria-principal')
-  if (!raw) {
-    return null
-  }
-  try {
-    return JSON.parse(raw) as WebUIPrincipal
-  } catch {
-    localStorage.removeItem('apeiria-principal')
-    return null
-  }
 }

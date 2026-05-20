@@ -54,7 +54,6 @@ export function rebuildWebUI() {
 }
 
 function clearSessionAndRedirect() {
-  localStorage.removeItem('apeiria-principal')
   window.location.href = '/login'
 }
 
