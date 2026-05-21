@@ -59,6 +59,7 @@ class AIModelAttemptPlan:
     route: AIModelRouteDefinition | None
     selected: AISelectedModel
     fallback_models: tuple[AISelectedModel, ...] = ()
+    routing_diagnostics: dict[str, object] = field(default_factory=dict)
 
 
 def select_source_for_profile(
@@ -161,6 +162,12 @@ def resolve_model_route_attempt_plan(  # noqa: PLR0913
         route=route,
         selected=selected,
         fallback_models=fallback_models,
+        routing_diagnostics=_route_plan_diagnostics(
+            route=route,
+            selected=selected,
+            fallback_models=fallback_models,
+            candidate_models=candidate_models,
+        ),
     )
 
 
@@ -195,6 +202,46 @@ def _resolve_route_member_models(
             continue
         selected_members.append((selected, member))
     return selected_members
+
+
+def _route_plan_diagnostics(
+    *,
+    route: AIModelRouteDefinition,
+    selected: AISelectedModel,
+    fallback_models: tuple[AISelectedModel, ...],
+    candidate_models: list[tuple[AISelectedModel, AIModelRouteMemberDefinition]],
+) -> dict[str, object]:
+    selected_member = next(
+        (member for candidate, member in candidate_models if candidate is selected),
+        None,
+    )
+    diagnostics: dict[str, object] = {
+        "source": "route",
+        "route_id": route.route_id,
+        "route_mode": route.mode,
+        "route_algorithm": route.algorithm,
+        "fallback_on_failure": route.fallback_on_failure,
+        "selected_profile_id": selected.profile.profile_id,
+        "selected_model": _selected_model_ref(selected),
+        "fallback_model_count": len(fallback_models),
+    }
+    if selected_member is not None:
+        diagnostics["selected_route_member_id"] = selected_member.route_member_id
+    return diagnostics
+
+
+def selected_model_diagnostics(selected: AISelectedModel) -> dict[str, object]:
+    """Build safe selected-model diagnostics for non-route profile fallback."""
+
+    return {
+        "selected_profile_id": selected.profile.profile_id,
+        "selected_model": _selected_model_ref(selected),
+    }
+
+
+def _selected_model_ref(selected: AISelectedModel) -> str:
+    model_name = selected.resolved_model_name or selected.profile.model_id
+    return f"{selected.source.source_id}:{selected.profile.profile_id}:{model_name}"
 
 
 def _select_weighted_model(

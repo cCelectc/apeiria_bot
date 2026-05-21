@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, cast
 from uuid import uuid4
@@ -24,6 +24,7 @@ from apeiria.ai.model.routing.models import (
 from apeiria.ai.model.routing.selection import (
     AIModelAttemptPlan,
     resolve_model_route_attempt_plan,
+    selected_model_diagnostics,
 )
 from apeiria.ai.model.sources.service import ai_source_service
 from apeiria.db.runtime import database_runtime
@@ -367,6 +368,7 @@ class AIModelRouteService:
         from apeiria.ai.model.routing.profile import ai_model_profile_service
 
         routes = await self.list_routes()
+        matched_binding = None
         route = None
         if target is not None:
             binding = resolve_model_route_binding(
@@ -376,6 +378,8 @@ class AIModelRouteService:
             )
             if binding is not None:
                 route = _route_by_id(routes, binding.route_id)
+                if route is not None:
+                    matched_binding = binding
         if route is None:
             route = _default_route_for_task(routes, query.task_class)
         if route is not None:
@@ -392,14 +396,28 @@ class AIModelRouteService:
                 randomizer=randomizer,
             )
             if plan is not None:
-                return plan
+                return replace(
+                    plan,
+                    routing_diagnostics=_route_source_diagnostics(
+                        plan,
+                        binding=matched_binding,
+                    ),
+                )
 
         fallback_selected = await ai_model_profile_service.select_model(
             query=query,
             target=target,
         )
         if fallback_selected is not None:
-            return AIModelAttemptPlan(route=None, selected=fallback_selected)
+            return AIModelAttemptPlan(
+                route=None,
+                selected=fallback_selected,
+                routing_diagnostics={
+                    "source": "profile_fallback",
+                    **selected_model_diagnostics(fallback_selected),
+                    "fallback_model_count": 0,
+                },
+            )
         return None
 
 
@@ -460,6 +478,26 @@ def _default_route_for_task(
     if not candidates:
         return None
     return sorted(candidates, key=lambda item: (item.name, item.route_id))[0]
+
+
+def _route_source_diagnostics(
+    plan: AIModelAttemptPlan,
+    *,
+    binding: AIModelRouteBindingSpec | None,
+) -> dict[str, object]:
+    diagnostics = dict(plan.routing_diagnostics)
+    if binding is None:
+        diagnostics["source"] = "default_route"
+        return diagnostics
+    diagnostics.update(
+        {
+            "source": "route",
+            "binding_id": binding.binding_id,
+            "binding_scope_type": binding.scope_type,
+            "binding_scope_id": binding.scope_id,
+        }
+    )
+    return diagnostics
 
 
 def _utcnow_text() -> str:

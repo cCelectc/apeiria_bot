@@ -114,6 +114,7 @@ class RuntimeTurnPlan:
     prompt_messages: tuple["AIModelMessage", ...]
     prompt_diagnostics: dict[str, object]
     tool_exposure_plan: ToolExposurePlan
+    routing_diagnostics: dict[str, object] = field(default_factory=dict)
     reply_compose_input: "RuntimePromptComposeInput | None" = None
     prompt_packet: "PromptPacket | None" = None
     context_projection_diagnostics: dict[str, object] = field(default_factory=dict)

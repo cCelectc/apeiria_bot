@@ -423,6 +423,7 @@ class ReplyPath:
                 stage_reports=stage_reports,
                 turn=turn,
                 context=context,
+                routing_diagnostics=plan.routing_diagnostics,
                 delivery_status=_delivery_status_for_result(
                     execution.delivery_result,
                 ),
@@ -475,6 +476,7 @@ class ReplyPath:
                 turn=turn,
                 context=context,
                 selected_model_ref=_selected_model_ref(plan),
+                routing_diagnostics=plan.routing_diagnostics,
                 tool_exposure_summary=_tool_exposure_summary(plan),
                 delivery_status=_delivery_status_for_result(commit.delivery_result),
             )
@@ -501,6 +503,7 @@ class ReplyPath:
             turn=turn,
             context=context,
             selected_model_ref=_selected_model_ref(plan),
+            routing_diagnostics=plan.routing_diagnostics,
             tool_exposure_summary=_tool_exposure_summary(plan),
             delivery_status=_delivery_status_for_result(commit.delivery_result),
         )
@@ -674,6 +677,7 @@ class ReplyPath:
         commit: RuntimeCommitResult | None = None,
         context: Any | None = None,
         selected_model_ref: str | None = None,
+        routing_diagnostics: dict[str, object] | None = None,
         tool_exposure_summary: dict[str, object] | None = None,
         delivery_status: str | None = None,
     ) -> AIRuntimeResult:
@@ -685,6 +689,8 @@ class ReplyPath:
         }
         if selected_model_ref is not None:
             diagnostics["selected_model"] = selected_model_ref
+        if routing_diagnostics:
+            diagnostics["model_routing"] = routing_diagnostics
         if tool_exposure_summary:
             diagnostics["tool_exposure"] = tool_exposure_summary
         if context is not None:
@@ -762,11 +768,14 @@ def _with_commit_substep(
 
 
 def _plan_diagnostics(plan: RuntimeTurnPlan) -> dict[str, object]:
-    return {
+    diagnostics: dict[str, object] = {
         "selected_model": _selected_model_ref(plan),
         "fallback_model_count": len(plan.fallback_models),
         "tool_exposure": _tool_exposure_summary(plan),
     }
+    if plan.routing_diagnostics:
+        diagnostics["model_routing"] = plan.routing_diagnostics
+    return diagnostics
 
 
 def _selected_model_ref(plan: RuntimeTurnPlan) -> str:

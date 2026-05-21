@@ -65,6 +65,7 @@ class RuntimeReplyPlanningSelection:
 
     selected: "AISelectedModel"
     fallback_models: tuple["AISelectedModel", ...]
+    routing_diagnostics: dict[str, object]
     tool_exposure_plan: ToolExposurePlan
     pre_tool_task_class: "AIModelTaskClass"
 
@@ -179,6 +180,7 @@ async def plan_runtime_turn(
         prompt_diagnostics=prompt_diagnostics,
         context_projection_diagnostics=context_projection.diagnostics.as_dict(),
         tool_exposure_plan=tool_exposure_plan,
+        routing_diagnostics=planning_selection.routing_diagnostics,
         reply_compose_input=reply_compose_input,
         prompt_packet=prompt_packet,
         tool_mode=social_decision.tool_mode,
@@ -229,6 +231,7 @@ async def select_runtime_reply_planning(
         return RuntimeReplyPlanningSelection(
             selected=selection.selected,
             fallback_models=selection.fallback_models,
+            routing_diagnostics=selection.routing_diagnostics,
             tool_exposure_plan=tool_exposure_plan,
             pre_tool_task_class=fallback_task_class,
         )
@@ -250,6 +253,7 @@ async def select_runtime_reply_planning(
         return RuntimeReplyPlanningSelection(
             selected=initial_selected,
             fallback_models=initial_selection.fallback_models,
+            routing_diagnostics=initial_selection.routing_diagnostics,
             tool_exposure_plan=tool_exposure_plan,
             pre_tool_task_class=final_task_class,
         )
@@ -262,12 +266,14 @@ async def select_runtime_reply_planning(
         return RuntimeReplyPlanningSelection(
             selected=initial_selected,
             fallback_models=initial_selection.fallback_models,
+            routing_diagnostics=initial_selection.routing_diagnostics,
             tool_exposure_plan=tool_exposure_plan,
             pre_tool_task_class=initial_task_class,
         )
     return RuntimeReplyPlanningSelection(
         selected=final_selection.selected,
         fallback_models=final_selection.fallback_models,
+        routing_diagnostics=final_selection.routing_diagnostics,
         tool_exposure_plan=tool_exposure_plan,
         pre_tool_task_class=final_task_class,
     )

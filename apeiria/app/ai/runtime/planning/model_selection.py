@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Literal
 
 from nonebot.log import logger
@@ -52,6 +52,7 @@ class RuntimeModelSelection:
 
     selected: "AISelectedModel"
     fallback_models: tuple["AISelectedModel", ...] = ()
+    routing_diagnostics: dict[str, object] = field(default_factory=dict)
 
 
 async def select_model_attempt_plan(
@@ -68,11 +69,14 @@ async def select_model_attempt_plan(
     if plan is None:
         return None
     fallback_models = plan.fallback_models
+    routing_diagnostics = dict(plan.routing_diagnostics)
     if plan.route is None:
         fallback_models = await select_fallback_models(plan.selected)
+        routing_diagnostics["fallback_model_count"] = len(fallback_models)
     return RuntimeModelSelection(
         selected=plan.selected,
         fallback_models=fallback_models,
+        routing_diagnostics=routing_diagnostics,
     )
 
 

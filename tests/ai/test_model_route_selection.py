@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from dataclasses import dataclass
 from random import Random
 from typing import TYPE_CHECKING
 
@@ -16,8 +17,10 @@ from apeiria.ai.model.routing.models import (
     AIModelRouteMemberDefinition,
     AIModelRouteQuery,
 )
+from apeiria.ai.model.routing.routes import AIModelRouteService
 from apeiria.ai.model.routing.selection import (
     AIModelAttemptPlan,
+    AISelectedModel,
     resolve_model_route_attempt_plan,
 )
 from apeiria.ai.model.sources.models import AISourceDefinition
@@ -198,6 +201,130 @@ def test_select_task_model_uses_route_attempt_plan(
     assert result.profile.profile_id == "profile-a"
 
 
+def test_bound_route_attempt_plan_records_route_diagnostics(
+    monkeypatch: "MonkeyPatch",
+) -> None:
+    route = _route(mode="primary_fallback", algorithm="ordered")
+    service = _route_service(
+        monkeypatch,
+        _RouteServiceData(
+            routes=(route,),
+            bindings=(
+                AIModelRouteBindingSpec(
+                    binding_id="binding-conversation",
+                    scope_type="conversation",
+                    scope_id="conversation-1",
+                    task_class="reply_default",
+                    route_id=route.route_id,
+                ),
+            ),
+            members=(
+                _member("member-a", "profile-a", position=0),
+                _member("member-b", "profile-b", position=1),
+            ),
+            profiles=(
+                _profile("profile-a", "model-a"),
+                _profile("profile-b", "model-b"),
+            ),
+            models=(
+                _model("model-a", "gpt-a"),
+                _model("model-b", "gpt-b"),
+            ),
+        ),
+    )
+
+    plan = asyncio.run(
+        service.resolve_attempt_plan(
+            AIModelRouteQuery(task_class="reply_default"),
+            target=AIModelBindingTarget(
+                conversation_id="conversation-1",
+                group_id="group-1",
+                user_id="user-1",
+            ),
+        )
+    )
+
+    assert plan is not None
+    assert plan.routing_diagnostics == {
+        "source": "route",
+        "route_id": "route-1",
+        "route_mode": "primary_fallback",
+        "route_algorithm": "ordered",
+        "fallback_on_failure": True,
+        "selected_profile_id": "profile-a",
+        "selected_model": "source-1:profile-a:gpt-a",
+        "fallback_model_count": 1,
+        "selected_route_member_id": "member-a",
+        "binding_id": "binding-conversation",
+        "binding_scope_type": "conversation",
+        "binding_scope_id": "conversation-1",
+    }
+
+
+def test_default_route_attempt_plan_records_default_route_diagnostics(
+    monkeypatch: "MonkeyPatch",
+) -> None:
+    route = _route(mode="primary_fallback", algorithm="ordered")
+    service = _route_service(
+        monkeypatch,
+        _RouteServiceData(
+            routes=(route,),
+            members=(_member("member-a", "profile-a", position=0),),
+            profiles=(_profile("profile-a", "model-a"),),
+            models=(_model("model-a", "gpt-a"),),
+        ),
+    )
+
+    plan = asyncio.run(
+        service.resolve_attempt_plan(
+            AIModelRouteQuery(task_class="reply_default"),
+            target=None,
+        )
+    )
+
+    assert plan is not None
+    assert plan.routing_diagnostics["source"] == "default_route"
+    assert plan.routing_diagnostics["route_id"] == "route-1"
+    assert plan.routing_diagnostics["selected_profile_id"] == "profile-a"
+    assert plan.routing_diagnostics["selected_model"] == "source-1:profile-a:gpt-a"
+    assert plan.routing_diagnostics["fallback_model_count"] == 0
+    assert "binding_id" not in plan.routing_diagnostics
+    assert "api_key" not in plan.routing_diagnostics
+
+
+def test_legacy_profile_fallback_records_profile_diagnostics(
+    monkeypatch: "MonkeyPatch",
+) -> None:
+    selected = resolve_model_route_attempt_plan(
+        _route(mode="primary_fallback", algorithm="ordered"),
+        (_member("member-a", "profile-a", position=0),),
+        (_profile("profile-a", "model-a"),),
+        (_source(),),
+        (_model("model-a", "gpt-a"),),
+    )
+    assert selected is not None
+    service = _route_service(
+        monkeypatch,
+        _RouteServiceData(fallback_selected=selected.selected),
+    )
+
+    plan = asyncio.run(
+        service.resolve_attempt_plan(
+            AIModelRouteQuery(task_class="reply_default"),
+            target=None,
+        )
+    )
+
+    assert plan is not None
+    assert plan.route is None
+    assert plan.routing_diagnostics == {
+        "source": "profile_fallback",
+        "selected_profile_id": "profile-a",
+        "selected_model": "source-1:profile-a:gpt-a",
+        "fallback_model_count": 0,
+    }
+
+
 def _route(
     *,
     mode: str,
@@ -270,3 +397,70 @@ def _model(model_id: str, identifier: str) -> AIChatModelDefinition:
         display_name=identifier,
         enabled=True,
     )
+
+
+@dataclass(frozen=True)
+class _RouteServiceData:
+    routes: tuple[AIModelRouteDefinition, ...] = ()
+    bindings: tuple[AIModelRouteBindingSpec, ...] = ()
+    members: tuple[AIModelRouteMemberDefinition, ...] = ()
+    profiles: tuple[AIModelProfileDefinition, ...] = ()
+    models: tuple[AIChatModelDefinition, ...] = ()
+    fallback_selected: AISelectedModel | None = None
+
+
+def _route_service(
+    monkeypatch: "MonkeyPatch",
+    data: _RouteServiceData,
+) -> AIModelRouteService:
+    from apeiria.ai.model.catalog import chat
+    from apeiria.ai.model.routing import profile
+    from apeiria.ai.model.sources import service as source_service
+
+    service = AIModelRouteService()
+
+    async def list_routes() -> list[AIModelRouteDefinition]:
+        return list(data.routes)
+
+    async def list_bindings() -> list[AIModelRouteBindingSpec]:
+        return list(data.bindings)
+
+    async def list_members(
+        *,
+        route_id: str | None = None,
+    ) -> list[AIModelRouteMemberDefinition]:
+        return [
+            item
+            for item in data.members
+            if route_id is None or item.route_id == route_id
+        ]
+
+    async def list_profiles() -> list[AIModelProfileDefinition]:
+        return list(data.profiles)
+
+    async def list_sources() -> list[AISourceDefinition]:
+        return [_source()]
+
+    async def list_all_models() -> list[AIChatModelDefinition]:
+        return list(data.models)
+
+    async def select_model(
+        query: AIModelRouteQuery | None = None,
+        *,
+        target: AIModelBindingTarget | None = None,
+    ) -> AISelectedModel | None:
+        _ = query, target
+        return data.fallback_selected
+
+    monkeypatch.setattr(service, "list_routes", list_routes)
+    monkeypatch.setattr(service, "list_bindings", list_bindings)
+    monkeypatch.setattr(service, "list_members", list_members)
+    monkeypatch.setattr(
+        profile.ai_model_profile_service,
+        "list_profiles",
+        list_profiles,
+    )
+    monkeypatch.setattr(profile.ai_model_profile_service, "select_model", select_model)
+    monkeypatch.setattr(source_service.ai_source_service, "list_sources", list_sources)
+    monkeypatch.setattr(chat.ai_chat_model_service, "list_all_models", list_all_models)
+    return service

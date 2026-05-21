@@ -48,6 +48,11 @@ def test_reply_path_returns_committed_runtime_result() -> None:
         assert result.commit is not None
         assert result.diagnostics["path"] == "reply"
         assert result.diagnostics["selected_model"] == "source-1:profile-1:model-1"
+        assert result.diagnostics["model_routing"] == _routing_diagnostics()
+        planning_report = next(
+            report for report in result.stage_reports if report.stage == "planning"
+        )
+        assert planning_report.diagnostics["model_routing"] == _routing_diagnostics()
         assert [report.stage for report in result.stage_reports] == [
             "policy",
             "observation",
@@ -164,6 +169,7 @@ class _Stages:
             prompt_messages=(AIModelMessage(role="user", content="hello"),),
             prompt_diagnostics={},
             tool_exposure_plan=ToolExposurePlan(),
+            routing_diagnostics=_routing_diagnostics(),
         )
 
     async def execute(self, **_: Any) -> RuntimeExecutionOutcome:
@@ -322,6 +328,16 @@ def _tool_runtime() -> RuntimeToolLoopResult:
         result_lines=(),
         turns=(),
     )
+
+
+def _routing_diagnostics() -> dict[str, object]:
+    return {
+        "source": "route",
+        "route_id": "route-1",
+        "selected_profile_id": "profile-1",
+        "selected_model": "source-1:profile-1:model-1",
+        "fallback_model_count": 0,
+    }
 
 
 @dataclass(frozen=True)
