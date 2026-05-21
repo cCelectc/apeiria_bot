@@ -5,9 +5,8 @@ from __future__ import annotations
 import json
 from typing import TYPE_CHECKING, Any, cast
 
-from apeiria.conversation.contracts import ChatMessageCreate
+from apeiria.conversation.contracts import ChatMessageCreate as _ChatMessageCreate
 from apeiria.conversation.identity import trim_message_window
-from apeiria.conversation.ingest import build_ingested_chat_event
 from apeiria.conversation.models import (
     ChatContextMessageView,
     ChatMessageDetailView,
@@ -24,8 +23,7 @@ from apeiria.conversation.repository import (
 if TYPE_CHECKING:
     from datetime import datetime
 
-    from nonebot.adapters import Bot, Event
-
+    from apeiria.conversation.contracts import ChatMessageCreate
     from apeiria.conversation.models import (
         AuthorRole,
         MessageKind,
@@ -135,7 +133,7 @@ class ChatSessionService:
         del raw_data
         return await self._repository.append_message(
             identity,
-            ChatMessageCreate(
+            _ChatMessageCreate(
                 author_role="user",
                 author_id=author_id,
                 author_name=author_name,
@@ -166,42 +164,6 @@ class ChatSessionService:
             turn_disposition="observed",
             clear_raw_data=True,
         )
-
-    async def ingest_event(
-        self,
-        bot: "Bot",
-        event: "Event",
-        *,
-        persist_raw_data: bool = False,
-    ) -> tuple[ChatSessionIdentity, ChatMessageRow] | None:
-        """Convert one runtime event into a canonical chat message."""
-
-        ingested = build_ingested_chat_event(
-            bot,
-            event,
-            persist_raw_data=persist_raw_data,
-        )
-        if ingested is None:
-            return None
-
-        message = await self.append_message(
-            ingested.identity,
-            ChatMessageCreate(
-                author_role="user",
-                author_id=ingested.author_id,
-                author_name=ingested.author_name,
-                text_content=ingested.text_content,
-                message_kind=ingested.message_kind,
-                directed_to_bot=ingested.directed_to_bot,
-                mentions_bot=ingested.mentions_bot,
-                has_media=ingested.has_media,
-                platform_message_id=ingested.platform_message_id,
-                platform_reply_id=ingested.platform_reply_id,
-                content=ingested.content,
-                raw_data=ingested.raw_data,
-            ),
-        )
-        return ingested.identity, message
 
     async def list_recent_messages(
         self,

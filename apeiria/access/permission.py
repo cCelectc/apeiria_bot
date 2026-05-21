@@ -2,11 +2,6 @@
 
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable
-from typing import TYPE_CHECKING, TypeAlias
-
-from nonebot.exception import IgnoredException
-
 from apeiria.access.audit import AuditActor
 from apeiria.access.audit_service import audit_service
 from apeiria.access.models import AccessContext, PermissionDecision, PluginPolicy
@@ -14,26 +9,24 @@ from apeiria.access.service import access_service
 from apeiria.i18n import t
 from apeiria.plugins.policy import plugin_policy_service
 
-if TYPE_CHECKING:
-    from nonebot.adapters import Bot, Event
-
-DeniedFeedbackHandler: TypeAlias = Callable[
-    ["Bot", "Event", PermissionDecision], Awaitable[None]
-]
-
 
 class PermissionService:
     """Evaluate runtime permission decisions for plugin execution."""
 
-    async def check_plugin_execution(self, bot, event, plugin) -> PermissionDecision:  # noqa: ANN001
-        context = await access_service.build_context(bot, event)
-        if context is None:
-            return self._allow()
-
-        plugin_module = plugin.module_name  # type: ignore[attr-defined]
+    async def check_plugin_execution(
+        self,
+        context: AccessContext,
+        *,
+        plugin_module: str,
+    ) -> PermissionDecision:
         decision = await self._evaluate_plugin(context, plugin_module)
         self._emit_diagnostic(plugin_module, decision)
         return decision
+
+    def allow(self) -> PermissionDecision:
+        """Return the default allow decision for contexts that cannot be built."""
+
+        return self._allow()
 
     async def _evaluate_plugin(
         self,
@@ -53,21 +46,6 @@ class PermissionService:
         if decision is not None:
             return decision
         return self._allow()
-
-    async def assert_plugin_allowed(
-        self,
-        bot: Bot,
-        event: Event,
-        plugin: object,
-        *,
-        on_denied: DeniedFeedbackHandler | None = None,
-    ) -> None:
-        decision = await self.check_plugin_execution(bot, event, plugin)
-        if decision.allowed:
-            return
-        if on_denied is not None:
-            await on_denied(bot, event, decision)
-        raise IgnoredException(decision.code)
 
     async def _check_plugin_state(
         self,

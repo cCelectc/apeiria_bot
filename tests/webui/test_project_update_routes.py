@@ -1,12 +1,16 @@
 from __future__ import annotations
 
 from types import SimpleNamespace
+from typing import TYPE_CHECKING, cast
 
 import pytest
 from fastapi import HTTPException
 
 from apeiria.access.principal import AuthSession, Principal, PrincipalRole
 from apeiria.access.principal_roles import CAP_CONTROL_PANEL
+
+if TYPE_CHECKING:
+    from apeiria.runtime.context import ApeiriaRuntime
 
 HTTP_BAD_REQUEST = 400
 HTTP_NOT_FOUND = 404
@@ -17,8 +21,8 @@ def test_project_update_status_reads_control_plane() -> None:
     from apeiria.webui.routes.project_update import get_project_update_status
 
     state = _status_state()
-    runtime = SimpleNamespace(
-        control_plane=SimpleNamespace(get_project_update_status=lambda: state)
+    runtime = _runtime_with_control_plane(
+        get_project_update_status=lambda: state,
     )
     set_current_runtime(runtime)
 
@@ -35,20 +39,17 @@ def test_project_update_status_reads_control_plane() -> None:
         set_current_runtime(None)
 
 
-def test_project_update_plan_preview_returns_blockers(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_project_update_plan_preview_returns_blockers() -> None:
     from apeiria.app.system.project_update import (
         ProjectUpdateMessage,
         ProjectUpdatePlan,
     )
+    from apeiria.runtime.context import set_current_runtime
     from apeiria.webui.routes import project_update
     from apeiria.webui.schemas.project_update import ProjectUpdatePlanRequest
 
-    monkeypatch.setattr(
-        project_update.project_update_service,
-        "create_plan",
-        lambda _payload: ProjectUpdatePlan(
+    control_plane = SimpleNamespace(
+        create_project_update_plan=lambda _payload: ProjectUpdatePlan(
             channel="branch",
             operation="update",
             target_ref=None,
@@ -62,6 +63,7 @@ def test_project_update_plan_preview_returns_blockers(
             confirmation="update",
         ),
     )
+    set_current_runtime(_runtime_with_control_plane(control_plane))
 
     async def scenario() -> None:
         response = await project_update.preview_project_update_plan(
@@ -73,25 +75,27 @@ def test_project_update_plan_preview_returns_blockers(
 
     import asyncio
 
-    asyncio.run(scenario())
+    try:
+        asyncio.run(scenario())
+    finally:
+        set_current_runtime(None)
 
 
-def test_project_update_refresh_fetches_remote_refs(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_project_update_refresh_fetches_remote_refs() -> None:
+    from apeiria.runtime.context import set_current_runtime
     from apeiria.webui.routes import project_update
 
     state = _status_state()
     calls: list[bool] = []
 
-    def fake_refresh_remote_refs(*, force: bool = False) -> object:
+    def fake_refresh_project_update_status(*, force: bool = False) -> object:
         calls.append(force)
         return state
 
-    monkeypatch.setattr(
-        project_update.project_update_service,
-        "refresh_remote_refs",
-        fake_refresh_remote_refs,
+    set_current_runtime(
+        _runtime_with_control_plane(
+            refresh_project_update_status=fake_refresh_project_update_status,
+        )
     )
 
     async def scenario() -> None:
@@ -103,23 +107,25 @@ def test_project_update_refresh_fetches_remote_refs(
 
     import asyncio
 
-    asyncio.run(scenario())
+    try:
+        asyncio.run(scenario())
+    finally:
+        set_current_runtime(None)
 
 
-def test_project_update_task_creation_requires_unblocked_plan(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_project_update_task_creation_requires_unblocked_plan() -> None:
     from apeiria.app.system.project_update import ProjectUpdateError
+    from apeiria.runtime.context import set_current_runtime
     from apeiria.webui.routes import project_update
     from apeiria.webui.schemas.project_update import ProjectUpdatePlanRequest
 
-    async def fake_create_task(_payload: object) -> object:
+    async def fake_create_project_update_task(_payload: object) -> object:
         raise ProjectUpdateError("blocked")
 
-    monkeypatch.setattr(
-        project_update.project_update_service,
-        "create_task",
-        fake_create_task,
+    set_current_runtime(
+        _runtime_with_control_plane(
+            create_project_update_task=fake_create_project_update_task,
+        )
     )
 
     async def scenario() -> None:
@@ -133,19 +139,17 @@ def test_project_update_task_creation_requires_unblocked_plan(
 
     import asyncio
 
-    asyncio.run(scenario())
+    try:
+        asyncio.run(scenario())
+    finally:
+        set_current_runtime(None)
 
 
-def test_project_update_task_lookup_returns_task(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_project_update_task_lookup_returns_task() -> None:
+    from apeiria.runtime.context import set_current_runtime
     from apeiria.webui.routes import project_update
 
-    monkeypatch.setattr(
-        project_update.project_update_service,
-        "get_task",
-        _task,
-    )
+    set_current_runtime(_runtime_with_control_plane(get_project_update_task=_task))
 
     async def scenario() -> None:
         response = await project_update.get_project_update_task(
@@ -157,18 +161,20 @@ def test_project_update_task_lookup_returns_task(
 
     import asyncio
 
-    asyncio.run(scenario())
+    try:
+        asyncio.run(scenario())
+    finally:
+        set_current_runtime(None)
 
 
-def test_project_update_task_lookup_404(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_project_update_task_lookup_404() -> None:
+    from apeiria.runtime.context import set_current_runtime
     from apeiria.webui.routes import project_update
 
-    monkeypatch.setattr(
-        project_update.project_update_service,
-        "get_task",
-        lambda _task_id: None,
+    set_current_runtime(
+        _runtime_with_control_plane(
+            get_project_update_task=lambda _task_id: None,
+        )
     )
 
     async def scenario() -> None:
@@ -178,7 +184,10 @@ def test_project_update_task_lookup_404(
 
     import asyncio
 
-    asyncio.run(scenario())
+    try:
+        asyncio.run(scenario())
+    finally:
+        set_current_runtime(None)
 
 
 def _status_state() -> object:
@@ -220,6 +229,16 @@ def _status_state() -> object:
         stable_releases=(),
         prerelease_releases=(),
         active_task=None,
+    )
+
+
+def _runtime_with_control_plane(
+    control_plane: object | None = None,
+    **methods: object,
+) -> ApeiriaRuntime:
+    return cast(
+        "ApeiriaRuntime",
+        SimpleNamespace(control_plane=control_plane or SimpleNamespace(**methods)),
     )
 
 

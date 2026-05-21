@@ -17,7 +17,8 @@ from apeiria.app.ai.runtime.strategy import (
     RuntimeHardRuleReasonCode,
 )
 from apeiria.app.ai.runtime.trace import project_turn_trace
-from apeiria.conversation.service import ChatMessageCreate, chat_session_service
+from apeiria.conversation.contracts import ChatMessageCreate
+from apeiria.conversation.service import chat_session_service
 
 if TYPE_CHECKING:
     from apeiria.app.ai.agent_turn import AgentTurnResult

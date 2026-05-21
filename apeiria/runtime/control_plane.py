@@ -4,12 +4,20 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from apeiria.app.system.management import (
-    DashboardStatusSnapshot,
-    system_management_service,
-)
-
 if TYPE_CHECKING:
+    from collections.abc import AsyncIterator
+
+    from apeiria.app.system.management import (
+        DashboardStatusSnapshot,
+        WebUIBuildRunSnapshot,
+        WebUIBuildStatusSnapshot,
+    )
+    from apeiria.app.system.project_update import (
+        ProjectUpdatePlan,
+        ProjectUpdatePlanRequest,
+        ProjectUpdateStatus,
+        ProjectUpdateTask,
+    )
     from apeiria.runtime.context import ApeiriaRuntime
 
 
@@ -23,46 +31,65 @@ class ApeiriaControlPlane:
         return await self._runtime.plugins.list_plugins()
 
     async def list_plugin_catalog_entries(self) -> list[Any]:
-        from apeiria.app.plugins.management import plugin_management_service
-
-        return await plugin_management_service.list_plugins()
+        return await self._runtime.plugin_management.list_plugins()
 
     async def get_plugin_workbench(self) -> Any:
-        from apeiria.app.plugins.management import plugin_management_service
-
-        return await plugin_management_service.build_plugin_workbench(
+        return await self._runtime.plugin_management.build_plugin_workbench(
             plugins=await self.list_plugin_catalog_entries(),
             can_package_update=self.can_plugin_package_update,
         )
 
     def can_plugin_package_update(self, plugin: Any) -> bool:
-        from apeiria.app.plugins.management import plugin_management_service
-
-        return plugin_management_service.can_package_update(plugin)
+        return self._runtime.plugin_management.can_package_update(plugin)
 
     async def list_access_rules(self) -> list[Any]:
-        from apeiria.app.access.management import access_management_service
+        return await self._runtime.access.list_access_rules()
 
-        return await access_management_service.list_access_rules()
-
-    async def get_dashboard_status(self) -> DashboardStatusSnapshot:
-        return await system_management_service.get_status_snapshot()
+    async def get_dashboard_status(self) -> "DashboardStatusSnapshot":
+        return await self._runtime.system.get_status_snapshot()
 
     def get_dashboard_events(self) -> list[Any]:
-        return system_management_service.get_recent_events()
+        return self._runtime.system.get_recent_events()
 
-    def get_web_ui_build_status(self) -> Any:
-        return system_management_service.get_web_ui_build_status()
+    def get_web_ui_build_status(self) -> "WebUIBuildStatusSnapshot":
+        return self._runtime.system.get_web_ui_build_status()
 
-    def get_project_update_status(self) -> Any:
-        from apeiria.app.system.project_update import project_update_service
+    async def rebuild_web_ui(self) -> "WebUIBuildRunSnapshot":
+        return await self._runtime.system.rebuild_web_ui()
 
-        return project_update_service.inspect()
+    def stream_web_ui_rebuild(self) -> "AsyncIterator[bytes]":
+        return self._runtime.system.stream_web_ui_rebuild()
+
+    def schedule_restart(self) -> None:
+        self._runtime.system.schedule_restart()
+
+    def get_project_update_status(self) -> "ProjectUpdateStatus":
+        return self._runtime.project_update.inspect()
+
+    def refresh_project_update_status(
+        self,
+        *,
+        force: bool = False,
+    ) -> "ProjectUpdateStatus":
+        return self._runtime.project_update.refresh_remote_refs(force=force)
+
+    def create_project_update_plan(
+        self,
+        request: "ProjectUpdatePlanRequest",
+    ) -> "ProjectUpdatePlan":
+        return self._runtime.project_update.create_plan(request)
+
+    async def create_project_update_task(
+        self,
+        request: "ProjectUpdatePlanRequest",
+    ) -> "ProjectUpdateTask":
+        return await self._runtime.project_update.create_task(request)
+
+    def get_project_update_task(self, task_id: str) -> "ProjectUpdateTask | None":
+        return self._runtime.project_update.get_task(task_id)
 
     async def list_ai_managed_sessions(self, *, limit: int = 50) -> list[Any]:
-        from apeiria.app.ai import ai_application
-
-        return await ai_application.sessions.list_managed_sessions(limit=limit)
+        return await self._runtime.ai.sessions.list_managed_sessions(limit=limit)
 
     async def get_ai_managed_session_detail(
         self,
@@ -70,9 +97,7 @@ class ApeiriaControlPlane:
         session_id: str,
         message_limit: int = 50,
     ) -> Any:
-        from apeiria.app.ai import ai_application
-
-        return await ai_application.sessions.get_managed_session_detail(
+        return await self._runtime.ai.sessions.get_managed_session_detail(
             session_id=session_id,
             message_limit=message_limit,
         )

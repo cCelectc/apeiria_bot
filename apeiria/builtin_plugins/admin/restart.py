@@ -6,10 +6,9 @@ from arclet.alconna import CommandMeta
 from nonebot.adapters import Event  # noqa: TC002
 from nonebot_plugin_alconna import Alconna, on_alconna
 
-from apeiria.app.system.management import system_management_service
 from apeiria.i18n import t
 
-from .utils import ensure_owner_message
+from .utils import ensure_owner_message, get_runtime_control_plane
 
 _restart = on_alconna(
     Alconna("restart", meta=CommandMeta(description=t("admin.command.restart"))),
@@ -25,5 +24,9 @@ async def handle_restart(event: Event) -> None:
     if owner_error:
         await _restart.finish(owner_error)
 
-    system_management_service.schedule_restart()
+    control_plane = get_runtime_control_plane()
+    if control_plane is None:
+        await _restart.finish(t("admin.runtime_control_plane_unavailable"))
+        return
+    control_plane.schedule_restart()
     await _restart.finish(t("admin.restart.scheduled"))

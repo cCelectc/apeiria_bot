@@ -26,6 +26,7 @@ from .stages import (
     RuntimeIngressInput,
     RuntimeObservationStage,
     RuntimePlanningInput,
+    RuntimePlanningOutput,
     RuntimePlanningStage,
     RuntimePolicyOutcome,
     RuntimePolicyStage,
@@ -70,7 +71,7 @@ class _UnavailableRuntimeStage:
     async def assemble(self, **_: Any) -> RuntimeContextBundle:
         self._raise()
 
-    async def plan(self, **_: Any) -> RuntimeTurnPlan | None:
+    async def plan(self, **_: Any) -> RuntimePlanningOutput | None:
         self._raise()
 
     async def execute(self, **_: Any) -> RuntimeExecutionOutcome:
@@ -339,14 +340,14 @@ class ReplyPath:
                 context=context,
             )
 
-        plan = await self.plan_turn(
+        planning = await self.plan_turn(
             trace_id=trace_id,
             turn=turn,
             context=context,
             social_decision=social_decision,
             current_time=current_time,
         )
-        if plan is None:
+        if planning is None:
             self.project_trace(
                 trace_input=RuntimeTraceInput(
                     stage="trace",
@@ -365,11 +366,13 @@ class ReplyPath:
                 turn=turn,
                 context=context,
             )
+        plan = planning.plan
+        planning_report = planning.report
         stage_reports.append(
             RuntimeStageReport(
                 stage="planning",
                 status="planned",
-                diagnostics=_plan_diagnostics(plan),
+                diagnostics=planning_report.stage_diagnostics(),
             )
         )
 
@@ -383,7 +386,7 @@ class ReplyPath:
             prompt_messages=plan.prompt_messages,
             tool_exposure_plan=plan.tool_exposure_plan,
             current_time=current_time,
-            prompt_diagnostics=plan.prompt_diagnostics,
+            prompt_diagnostics=planning_report.prompt_diagnostics,
         )
         execution = await self.execute_turn(turn_context=turn_context, plan=plan)
         stage_reports.append(
@@ -423,7 +426,7 @@ class ReplyPath:
                 stage_reports=stage_reports,
                 turn=turn,
                 context=context,
-                routing_diagnostics=plan.routing_diagnostics,
+                routing_diagnostics=planning_report.routing_diagnostics,
                 delivery_status=_delivery_status_for_result(
                     execution.delivery_result,
                 ),
@@ -475,9 +478,9 @@ class ReplyPath:
                 stage_reports=stage_reports,
                 turn=turn,
                 context=context,
-                selected_model_ref=_selected_model_ref(plan),
-                routing_diagnostics=plan.routing_diagnostics,
-                tool_exposure_summary=_tool_exposure_summary(plan),
+                selected_model_ref=planning_report.selected_model_ref,
+                routing_diagnostics=planning_report.routing_diagnostics,
+                tool_exposure_summary=planning_report.tool_exposure_summary,
                 delivery_status=_delivery_status_for_result(commit.delivery_result),
             )
         logger.info(
@@ -502,9 +505,9 @@ class ReplyPath:
             stage_reports=stage_reports,
             turn=turn,
             context=context,
-            selected_model_ref=_selected_model_ref(plan),
-            routing_diagnostics=plan.routing_diagnostics,
-            tool_exposure_summary=_tool_exposure_summary(plan),
+            selected_model_ref=planning_report.selected_model_ref,
+            routing_diagnostics=planning_report.routing_diagnostics,
+            tool_exposure_summary=planning_report.tool_exposure_summary,
             delivery_status=_delivery_status_for_result(commit.delivery_result),
         )
 
@@ -610,7 +613,7 @@ class ReplyPath:
         context: Any,
         social_decision: Any,
         current_time: "datetime",
-    ) -> RuntimeTurnPlan | None:
+    ) -> RuntimePlanningOutput | None:
         """Build the runtime-owned plan consumed by execution."""
 
         return await self.planning_stage.plan(
@@ -765,38 +768,6 @@ def _with_commit_substep(
     status: str,
 ) -> RuntimeCommitResult:
     return replace(commit, substeps={**commit.substeps, name: status})
-
-
-def _plan_diagnostics(plan: RuntimeTurnPlan) -> dict[str, object]:
-    diagnostics: dict[str, object] = {
-        "selected_model": _selected_model_ref(plan),
-        "fallback_model_count": len(plan.fallback_models),
-        "tool_exposure": _tool_exposure_summary(plan),
-    }
-    if plan.routing_diagnostics:
-        diagnostics["model_routing"] = plan.routing_diagnostics
-    return diagnostics
-
-
-def _selected_model_ref(plan: RuntimeTurnPlan) -> str:
-    model_name = plan.selected.resolved_model_name or plan.selected.profile.model_id
-    return (
-        f"{plan.selected.source.source_id}:"
-        f"{plan.selected.profile.profile_id}:"
-        f"{model_name}"
-    )
-
-
-def _tool_exposure_summary(plan: RuntimeTurnPlan) -> dict[str, object]:
-    tool_plan = plan.tool_exposure_plan
-    summary: dict[str, object] = {
-        "selected_tool_count": len(tool_plan.selected_tool_names),
-        "has_executable_tools": tool_plan.has_executable_tools,
-    }
-    allowed_tool_count = tool_plan.diagnostics.get("allowed_tool_count")
-    if isinstance(allowed_tool_count, int):
-        summary["allowed_tool_count"] = allowed_tool_count
-    return summary
 
 
 def _delivery_status_for_result(delivery_result: object | None) -> str:

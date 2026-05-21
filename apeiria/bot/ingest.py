@@ -1,12 +1,12 @@
-"""Adapter-facing event ingestion for conversation persistence."""
+"""NoneBot event ingestion for conversation persistence."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
-from apeiria.conversation.identity import build_chat_session_identity_from_event
-from apeiria.conversation.normalization import (
+from apeiria.bot.event_context import build_chat_session_identity_from_event
+from apeiria.bot.normalization import (
     build_debug_raw_payload,
     build_normalized_content,
     detect_has_media,
@@ -26,11 +26,11 @@ if TYPE_CHECKING:
 class IngestedChatEvent:
     """Normalized event data ready for conversation persistence."""
 
-    identity: ChatSessionIdentity
+    identity: "ChatSessionIdentity"
     author_id: str
     author_name: str
     text_content: str
-    message_kind: MessageKind
+    message_kind: "MessageKind"
     directed_to_bot: bool
     mentions_bot: bool
     has_media: bool
@@ -86,4 +86,7 @@ def build_ingested_chat_event(
     )
 
 
-__all__ = ["IngestedChatEvent", "build_ingested_chat_event"]
+__all__ = [
+    "IngestedChatEvent",
+    "build_ingested_chat_event",
+]

@@ -22,11 +22,9 @@ def test_conversation_service_uses_sqlite(
     monkeypatch.setattr(database_runtime, "_project_root", tmp_path)
     database_runtime.ensure_ready()
 
+    from apeiria.conversation.contracts import ChatMessageCreate
     from apeiria.conversation.models import ChatSessionIdentity
-    from apeiria.conversation.service import (
-        ChatMessageCreate,
-        chat_session_service,
-    )
+    from apeiria.conversation.service import chat_session_service
 
     identity = ChatSessionIdentity(
         session_id="onebot:bot-1:private:user-1",
@@ -128,8 +126,9 @@ def test_recent_target_title_uses_latest_message_excerpt(
     database_runtime.ensure_ready()
 
     from apeiria.app.ai.sessions.targets import list_recent_targets
+    from apeiria.conversation.contracts import ChatMessageCreate
     from apeiria.conversation.models import ChatSessionIdentity
-    from apeiria.conversation.service import ChatMessageCreate, chat_session_service
+    from apeiria.conversation.service import chat_session_service
 
     identity = ChatSessionIdentity(
         session_id="onebot:bot-1:private:user-1",
@@ -165,11 +164,9 @@ def test_conversation_disposition_defaults_and_observed_reads(
     monkeypatch.setattr(database_runtime, "_project_root", tmp_path)
     database_runtime.ensure_ready()
 
+    from apeiria.conversation.contracts import ChatMessageCreate
     from apeiria.conversation.models import ChatSessionIdentity
-    from apeiria.conversation.service import (
-        ChatMessageCreate,
-        chat_session_service,
-    )
+    from apeiria.conversation.service import chat_session_service
 
     identity = ChatSessionIdentity(
         session_id="onebot:bot-1:group:group-1",

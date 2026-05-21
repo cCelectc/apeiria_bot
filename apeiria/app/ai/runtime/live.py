@@ -38,6 +38,8 @@ from apeiria.app.chat.protocol import (
     PartialReplyFailedPayload,
     PartialReplyStartPayload,
 )
+from apeiria.bot.ingest import build_ingested_chat_event
+from apeiria.conversation.contracts import ChatMessageCreate
 from apeiria.conversation.service import chat_session_service
 
 if TYPE_CHECKING:
@@ -131,7 +133,7 @@ class DefaultAILiveRuntimeEntry:
             return None
 
         ai_retention_service.maybe_schedule_cleanup(settings=settings)
-        ingested = await chat_session_service.ingest_event(
+        ingested = build_ingested_chat_event(
             bot,
             event,
             persist_raw_data=settings.persist_raw_event_payloads,
@@ -139,7 +141,24 @@ class DefaultAILiveRuntimeEntry:
         if ingested is None:
             return None
 
-        identity, turn = ingested
+        identity = ingested.identity
+        turn = await chat_session_service.append_message(
+            identity,
+            ChatMessageCreate(
+                author_role="user",
+                author_id=ingested.author_id,
+                author_name=ingested.author_name,
+                text_content=ingested.text_content,
+                message_kind=ingested.message_kind,
+                directed_to_bot=ingested.directed_to_bot,
+                mentions_bot=ingested.mentions_bot,
+                has_media=ingested.has_media,
+                platform_message_id=ingested.platform_message_id,
+                platform_reply_id=ingested.platform_reply_id,
+                content=ingested.content,
+                raw_data=ingested.raw_data,
+            ),
+        )
         event_dedupe_key = _message_event_dedupe_key(turn)
         current_time = datetime.now(timezone.utc)
         session_runtime = self._resolve_session_runtime(

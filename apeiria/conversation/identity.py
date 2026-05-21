@@ -4,16 +4,12 @@ from __future__ import annotations
 
 import hashlib
 import json
-from typing import TYPE_CHECKING
 
 from apeiria.conversation.models import (
     ChatContextMessageView,
     ChatSessionIdentity,
     SceneType,
 )
-
-if TYPE_CHECKING:
-    from nonebot.adapters import Bot, Event
 
 
 def _normalize_scene(group_id: str | None) -> tuple[SceneType, str]:
@@ -88,28 +84,6 @@ def build_chat_session_identity(
         scene_type=scene_type,
         scene_id=scene_id,
         subject_id=user_id if scene_type == "private" else None,
-    )
-
-
-def build_chat_session_identity_from_event(
-    bot: Bot,
-    event: Event,
-) -> ChatSessionIdentity | None:
-    """Build a chat session identity from a NoneBot bot/event pair."""
-
-    from apeiria.access.level import group_id_from_event
-
-    try:
-        user_id = event.get_user_id()
-    except Exception:  # noqa: BLE001
-        return None
-
-    group_id = group_id_from_event(event)
-    return build_chat_session_identity(
-        platform=bot.type,
-        bot_id=str(bot.self_id),
-        user_id=str(user_id),
-        group_id=group_id,
     )
 
 

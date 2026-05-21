@@ -25,7 +25,6 @@ if TYPE_CHECKING:
         AIModelTaskClass,
         AISelectedModel,
     )
-    from apeiria.ai.prompting import PromptPacket
     from apeiria.app.ai.agent_turn import AgentTurnResult
     from apeiria.app.ai.reply_strategy.models import ReplyStrategyDecision, WakeContext
     from apeiria.app.ai.runtime.execution.tool_loop import RuntimeToolLoopResult
@@ -112,12 +111,8 @@ class RuntimeTurnPlan:
     skill_activation: str | None
     pre_tool_task_class: "AIModelTaskClass"
     prompt_messages: tuple["AIModelMessage", ...]
-    prompt_diagnostics: dict[str, object]
     tool_exposure_plan: ToolExposurePlan
-    routing_diagnostics: dict[str, object] = field(default_factory=dict)
     reply_compose_input: "RuntimePromptComposeInput | None" = None
-    prompt_packet: "PromptPacket | None" = None
-    context_projection_diagnostics: dict[str, object] = field(default_factory=dict)
     tool_mode: str = "allow"
     tool_execution_timeout_seconds: float | None = None
     post_tool_task_class: "AIModelTaskClass | None" = None
@@ -127,6 +122,40 @@ class RuntimeTurnPlan:
         """Return whether this plan selects executable tools for the turn."""
 
         return self.tool_exposure_plan.has_executable_tools
+
+
+@dataclass(frozen=True, slots=True)
+class RuntimePlanningReport:
+    """Planning-owned diagnostics and trace metadata."""
+
+    selected_model_ref: str
+    fallback_model_count: int
+    tool_exposure_summary: dict[str, object]
+    prompt_diagnostics: dict[str, object] = field(default_factory=dict)
+    routing_diagnostics: dict[str, object] = field(default_factory=dict)
+    context_projection_diagnostics: dict[str, object] = field(default_factory=dict)
+
+    def stage_diagnostics(self) -> dict[str, object]:
+        """Return compact diagnostics for runtime stage reports."""
+
+        diagnostics: dict[str, object] = {
+            "selected_model": self.selected_model_ref,
+            "fallback_model_count": self.fallback_model_count,
+            "tool_exposure": self.tool_exposure_summary,
+        }
+        if self.routing_diagnostics:
+            diagnostics["model_routing"] = self.routing_diagnostics
+        if self.context_projection_diagnostics:
+            diagnostics["context_projection"] = self.context_projection_diagnostics
+        return diagnostics
+
+
+@dataclass(frozen=True, slots=True)
+class RuntimePlanningOutput:
+    """Planning-stage output split into execution plan and stage report."""
+
+    plan: RuntimeTurnPlan
+    report: RuntimePlanningReport
 
 
 @dataclass(frozen=True, slots=True)
@@ -251,7 +280,7 @@ class RuntimePlanningStage(Protocol):
         self,
         *,
         planning_input: RuntimePlanningInput,
-    ) -> RuntimeTurnPlan | None: ...
+    ) -> RuntimePlanningOutput | None: ...
 
 
 @runtime_checkable
@@ -299,6 +328,8 @@ __all__ = [
     "RuntimeIngressInput",
     "RuntimeObservationStage",
     "RuntimePlanningInput",
+    "RuntimePlanningOutput",
+    "RuntimePlanningReport",
     "RuntimePlanningStage",
     "RuntimePolicyOutcome",
     "RuntimePolicyStage",

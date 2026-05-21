@@ -1,4 +1,4 @@
-"""Normalize adapter event payloads into conversation-friendly fields."""
+"""Normalize NoneBot event payloads into conversation-friendly fields."""
 
 from __future__ import annotations
 
@@ -108,7 +108,7 @@ def detect_has_media(raw_data: dict[str, Any] | None) -> bool:
     return False
 
 
-def resolve_message_kind(*, text_content: str, has_media: bool) -> MessageKind:
+def resolve_message_kind(*, text_content: str, has_media: bool) -> "MessageKind":
     has_text = bool(text_content.strip())
     if has_text and has_media:
         return "mixed"

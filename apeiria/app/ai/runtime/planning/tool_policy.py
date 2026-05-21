@@ -9,7 +9,8 @@ from apeiria.ai.tools import (
     AIToolSceneContext,
     ai_tool_policy_binding_service,
 )
-from apeiria.conversation.service import ChatMessageCreate, chat_session_service
+from apeiria.conversation.contracts import ChatMessageCreate
+from apeiria.conversation.service import chat_session_service
 
 if TYPE_CHECKING:
     from apeiria.ai.tools import AIToolPolicy, AIToolTurnCreateInput

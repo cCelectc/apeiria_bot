@@ -22,9 +22,9 @@ def test_default_deny_blocks_without_explicit_allow(monkeypatch: MonkeyPatch) ->
     service = PermissionService()
 
     async def run() -> None:
-        decision = await service._evaluate_plugin(
+        decision = await service.check_plugin_execution(
             _context(),
-            "plugins.alpha",
+            plugin_module="plugins.alpha",
         )
 
         assert decision.allowed is False

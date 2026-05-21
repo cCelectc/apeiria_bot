@@ -8,7 +8,10 @@ from typing import TYPE_CHECKING, Protocol
 from apeiria.app.ai.runtime.planning.turn import plan_runtime_turn
 
 if TYPE_CHECKING:
-    from apeiria.app.ai.runtime.stages import RuntimePlanningInput, RuntimeTurnPlan
+    from apeiria.app.ai.runtime.stages import (
+        RuntimePlanningInput,
+        RuntimePlanningOutput,
+    )
 
 
 class RuntimePlanner(Protocol):
@@ -18,7 +21,7 @@ class RuntimePlanner(Protocol):
         self,
         *,
         planning_input: "RuntimePlanningInput",
-    ) -> "RuntimeTurnPlan | None": ...
+    ) -> "RuntimePlanningOutput | None": ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -31,7 +34,7 @@ class RuntimeTurnPlanningStage:
         self,
         *,
         planning_input: "RuntimePlanningInput",
-    ) -> "RuntimeTurnPlan | None":
+    ) -> "RuntimePlanningOutput | None":
         return await self.prepare_generation(planning_input=planning_input)
 
 

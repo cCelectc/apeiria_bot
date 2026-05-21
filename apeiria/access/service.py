@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from apeiria.access.context import build_access_context
 from apeiria.access.models import AccessContext, AccessPolicyRule
 from apeiria.access.policy import resolve_explicit_rule
 from apeiria.access.repository import access_repository
@@ -10,8 +9,6 @@ from apeiria.access.repository import access_repository
 
 class AccessService:
     """Facade for access context, group state, and explicit rules."""
-
-    build_context = staticmethod(build_access_context)
 
     async def is_group_bot_enabled(self, group_id: str) -> bool:
         return await access_repository.get_group_bot_enabled(group_id)

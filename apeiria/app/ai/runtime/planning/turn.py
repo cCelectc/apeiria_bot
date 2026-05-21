@@ -42,6 +42,8 @@ from apeiria.app.ai.runtime.planning.tool_exposure import (
 )
 from apeiria.app.ai.runtime.stages import (
     RuntimePlanningInput,
+    RuntimePlanningOutput,
+    RuntimePlanningReport,
     RuntimeTurnPlan,
 )
 
@@ -77,7 +79,7 @@ class RuntimeReplyPlanningSelection:
 async def plan_runtime_turn(
     *,
     planning_input: RuntimePlanningInput,
-) -> RuntimeTurnPlan | None:
+) -> RuntimePlanningOutput | None:
     """Resolve the runtime-owned model, prompt, and tool plan for one turn."""
 
     turn = planning_input.turn
@@ -169,7 +171,7 @@ async def plan_runtime_turn(
             **prompt_diagnostics,
             "speech": list(turn.source.speech_diagnostics),
         }
-    return RuntimeTurnPlan(
+    plan = RuntimeTurnPlan(
         stage="planning",
         selected=selected,
         fallback_models=planning_selection.fallback_models,
@@ -177,14 +179,21 @@ async def plan_runtime_turn(
         skill_activation=skill_selection.activation_prompt,
         pre_tool_task_class=pre_tool_task_class,
         prompt_messages=prompt_messages,
-        prompt_diagnostics=prompt_diagnostics,
-        context_projection_diagnostics=context_projection.diagnostics.as_dict(),
         tool_exposure_plan=tool_exposure_plan,
-        routing_diagnostics=planning_selection.routing_diagnostics,
         reply_compose_input=reply_compose_input,
-        prompt_packet=prompt_packet,
         tool_mode=social_decision.tool_mode,
         tool_execution_timeout_seconds=tool_execution_timeout_seconds,
+    )
+    return RuntimePlanningOutput(
+        plan=plan,
+        report=RuntimePlanningReport(
+            selected_model_ref=_selected_model_ref(plan),
+            fallback_model_count=len(plan.fallback_models),
+            tool_exposure_summary=_tool_exposure_summary(plan),
+            prompt_diagnostics=prompt_diagnostics,
+            context_projection_diagnostics=context_projection.diagnostics.as_dict(),
+            routing_diagnostics=planning_selection.routing_diagnostics,
+        ),
     )
 
 
@@ -420,6 +429,27 @@ def _rag_diagnostics_summary(
     return {
         key.removeprefix("rag_"): diagnostics[key] for key in keys if key in diagnostics
     }
+
+
+def _selected_model_ref(plan: RuntimeTurnPlan) -> str:
+    model_name = plan.selected.resolved_model_name or plan.selected.profile.model_id
+    return (
+        f"{plan.selected.source.source_id}:"
+        f"{plan.selected.profile.profile_id}:"
+        f"{model_name}"
+    )
+
+
+def _tool_exposure_summary(plan: RuntimeTurnPlan) -> dict[str, object]:
+    tool_plan = plan.tool_exposure_plan
+    summary: dict[str, object] = {
+        "selected_tool_count": len(tool_plan.selected_tool_names),
+        "has_executable_tools": tool_plan.has_executable_tools,
+    }
+    allowed_tool_count = tool_plan.diagnostics.get("allowed_tool_count")
+    if isinstance(allowed_tool_count, int):
+        summary["allowed_tool_count"] = allowed_tool_count
+    return summary
 
 
 __all__ = [

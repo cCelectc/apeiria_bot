@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
 
@@ -10,9 +9,11 @@ from apeiria.ai.model.routing.bindings import AIModelBindingTarget
 from apeiria.ai.model.routing.models import AIModelProfileDefinition
 from apeiria.ai.model.routing.selection import AISelectedModel
 from apeiria.ai.model.runtime.adapter import AIModelGenerateResponse, AIModelMessage
+from apeiria.ai.model.sources.models import AISourceDefinition
 from apeiria.ai.tools.models import AIToolPolicy
 from apeiria.app.ai.agent_turn import AgentTurnResult
 from apeiria.app.ai.reply_strategy.models import ReplyStrategyDecision, WakeContext
+from apeiria.app.ai.runtime.context.relationships import AIRelationshipTarget
 from apeiria.app.ai.runtime.contracts import RuntimeTraceContext
 from apeiria.app.ai.runtime.execution.tool_loop import RuntimeToolLoopResult
 from apeiria.app.ai.runtime.orchestrator import (
@@ -30,7 +31,10 @@ from apeiria.app.ai.runtime.stages import (
     RuntimeCommitResult,
     RuntimeContextBundle,
     RuntimeExecutionOutcome,
+    RuntimePlanningOutput,
+    RuntimePlanningReport,
     RuntimePolicyOutcome,
+    RuntimeTraceOutcome,
     RuntimeTurnPlan,
 )
 from apeiria.app.ai.runtime.strategy import RuntimeHardRuleDecision
@@ -109,12 +113,15 @@ def test_reply_path_stops_on_social_no_reply() -> None:
     asyncio.run(scenario())
 
 
-@dataclass
 class _Stages:
-    hard_should_reply: bool = True
-    social_should_speak: bool = True
-
-    def __post_init__(self) -> None:
+    def __init__(
+        self,
+        *,
+        hard_should_reply: bool = True,
+        social_should_speak: bool = True,
+    ) -> None:
+        self.hard_should_reply = hard_should_reply
+        self.social_should_speak = social_should_speak
         self.events: list[str] = []
 
     def evaluate(self, **_: Any) -> RuntimePolicyOutcome:
@@ -157,9 +164,9 @@ class _Stages:
         self.events.append("context")
         return RuntimeContextBundle(stage="context", context=_context())
 
-    async def plan(self, **_: Any) -> RuntimeTurnPlan:
+    async def plan(self, **_: Any) -> RuntimePlanningOutput:
         self.events.append("planning")
-        return RuntimeTurnPlan(
+        plan = RuntimeTurnPlan(
             stage="planning",
             selected=_selected_model(),
             fallback_models=(),
@@ -167,9 +174,19 @@ class _Stages:
             skill_activation=None,
             pre_tool_task_class="reply_default",
             prompt_messages=(AIModelMessage(role="user", content="hello"),),
-            prompt_diagnostics={},
             tool_exposure_plan=ToolExposurePlan(),
-            routing_diagnostics=_routing_diagnostics(),
+        )
+        return RuntimePlanningOutput(
+            plan=plan,
+            report=RuntimePlanningReport(
+                selected_model_ref="source-1:profile-1:model-1",
+                fallback_model_count=0,
+                tool_exposure_summary={
+                    "selected_tool_count": 0,
+                    "has_executable_tools": False,
+                },
+                routing_diagnostics=_routing_diagnostics(),
+            ),
         )
 
     async def execute(self, **_: Any) -> RuntimeExecutionOutcome:
@@ -206,7 +223,7 @@ class _Stages:
             commit_status="committed",
         )
 
-    def project(self, **_: Any) -> object:
+    def project(self, **_: Any) -> RuntimeTraceOutcome:
         from apeiria.app.ai.runtime.stages import RuntimeTraceOutcome
         from apeiria.app.ai.runtime.trace import TurnTrace
 
@@ -283,7 +300,12 @@ def _context() -> RuntimeContextMaterials:
     return RuntimeContextMaterials(
         turns=[],
         conversation_summary=None,
-        relationship_target=None,
+        relationship_target=AIRelationshipTarget(
+            platform="test",
+            scene_id="user-1",
+            user_id="user-1",
+            is_private=True,
+        ),
         model_target=AIModelBindingTarget(
             conversation_id="session-1",
             group_id=None,
@@ -302,7 +324,16 @@ def _context() -> RuntimeContextMaterials:
 
 def _selected_model() -> AISelectedModel:
     return AISelectedModel(
-        source=_Source(),
+        source=AISourceDefinition(
+            source_id="source-1",
+            name="Source",
+            capability_type="chat_completion",
+            client_type="openai",
+            preset_type="openai_compatible",
+            api_base=None,
+            enabled=True,
+            adapter_kind="openai_compatible",
+        ),
         profile=AIModelProfileDefinition(
             profile_id="profile-1",
             name="profile",
@@ -338,15 +369,3 @@ def _routing_diagnostics() -> dict[str, object]:
         "selected_model": "source-1:profile-1:model-1",
         "fallback_model_count": 0,
     }
-
-
-@dataclass(frozen=True)
-class _Source:
-    source_id: str = "source-1"
-    name: str = "Source"
-    capability_type: str = "chat_completion"
-    client_type: str = "openai"
-    preset_type: str = "openai_compatible"
-    api_base: str | None = None
-    enabled: bool = True
-    adapter_kind: str = "openai_compatible"
