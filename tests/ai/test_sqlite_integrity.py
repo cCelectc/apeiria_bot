@@ -197,7 +197,7 @@ def test_ai_source_accepts_native_protocol_values(
     with database_runtime.connect_sync() as connection:
         connection.execute(
             """
-            INSERT INTO ai_source (
+            INSERT OR IGNORE INTO ai_source (
                 source_id,
                 name,
                 capability_type,
@@ -271,11 +271,186 @@ def test_ai_source_accepts_native_protocol_values(
     ]
 
 
+def test_model_route_members_require_existing_route_and_profile(
+    tmp_path: Path,
+    monkeypatch: "MonkeyPatch",
+) -> None:
+    monkeypatch.setattr(database_runtime, "_project_root", tmp_path)
+    database_runtime.ensure_ready()
+
+    with database_runtime.connect_sync() as connection, raises(sqlite3.IntegrityError):
+        connection.execute(
+            """
+            INSERT INTO ai_model_route_member (
+                route_member_id,
+                route_id,
+                profile_id,
+                position,
+                weight,
+                enabled,
+                updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "route-member-orphan",
+                "missing-route",
+                "missing-profile",
+                0,
+                1,
+                1,
+                "2026-05-21T00:00:00",
+            ),
+        )
+
+
+def test_model_route_binding_is_unique_per_scope_and_task(
+    tmp_path: Path,
+    monkeypatch: "MonkeyPatch",
+) -> None:
+    monkeypatch.setattr(database_runtime, "_project_root", tmp_path)
+    database_runtime.ensure_ready()
+    _seed_model_profile("profile-primary")
+
+    with database_runtime.connect_sync() as connection:
+        connection.execute(
+            """
+            INSERT INTO ai_model_route (
+                route_id,
+                name,
+                task_class,
+                mode,
+                algorithm,
+                fallback_on_failure,
+                enabled,
+                updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "route-1",
+                "Default reply",
+                "reply_default",
+                "primary_fallback",
+                "ordered",
+                1,
+                1,
+                "2026-05-21T00:00:00",
+            ),
+        )
+        connection.execute(
+            """
+            INSERT INTO ai_model_route_binding (
+                binding_id,
+                scope_type,
+                scope_id,
+                task_class,
+                route_id,
+                updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "binding-1",
+                "global",
+                "__global__",
+                "reply_default",
+                "route-1",
+                "2026-05-21T00:00:00",
+            ),
+        )
+        with raises(sqlite3.IntegrityError):
+            connection.execute(
+                """
+                INSERT INTO ai_model_route_binding (
+                    binding_id,
+                    scope_type,
+                    scope_id,
+                    task_class,
+                    route_id,
+                    updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    "binding-2",
+                    "global",
+                    "__global__",
+                    "reply_default",
+                    "route-1",
+                    "2026-05-21T00:00:00",
+                ),
+            )
+
+
+def test_model_route_backfill_preserves_profile_fallback_chain(
+    tmp_path: Path,
+    monkeypatch: "MonkeyPatch",
+) -> None:
+    monkeypatch.setattr(database_runtime, "_project_root", tmp_path)
+    database_runtime.ensure_ready()
+    _seed_model_profile("profile-fallback")
+    _seed_model_profile("profile-primary", fallback_profile_id="profile-fallback")
+
+    database_runtime.ensure_ready()
+
+    with database_runtime.connect_sync() as connection:
+        rows = connection.execute(
+            """
+            SELECT member.profile_id
+            FROM ai_model_route_member AS member
+            JOIN ai_model_route AS route ON route.route_id = member.route_id
+            WHERE route.task_class = 'reply_default'
+            ORDER BY member.position ASC
+            """
+        ).fetchall()
+
+    assert rows == [("profile-primary",), ("profile-fallback",)]
+
+
+def test_model_route_backfill_breaks_legacy_fallback_cycles(
+    tmp_path: Path,
+    monkeypatch: "MonkeyPatch",
+) -> None:
+    monkeypatch.setattr(database_runtime, "_project_root", tmp_path)
+    database_runtime.ensure_ready()
+    _seed_model_profile("profile-a")
+    _seed_model_profile("profile-b")
+    with database_runtime.connect_sync() as connection:
+        connection.execute(
+            """
+            UPDATE ai_model_profile
+            SET fallback_profile_id = ?
+            WHERE profile_id = ?
+            """,
+            ("profile-b", "profile-a"),
+        )
+        connection.execute(
+            """
+            UPDATE ai_model_profile
+            SET fallback_profile_id = ?
+            WHERE profile_id = ?
+            """,
+            ("profile-a", "profile-b"),
+        )
+
+    database_runtime.ensure_ready()
+
+    with database_runtime.connect_sync() as connection:
+        rows = connection.execute(
+            """
+            SELECT member.profile_id
+            FROM ai_model_route_member AS member
+            JOIN ai_model_route AS route ON route.route_id = member.route_id
+            WHERE route.task_class = 'reply_default'
+            ORDER BY member.position ASC
+            """
+        ).fetchall()
+
+    assert rows == [("profile-a",), ("profile-b",)]
+
+
 def _seed_source() -> None:
     with database_runtime.connect_sync() as connection:
         connection.execute(
             """
-            INSERT INTO ai_source (
+            INSERT OR IGNORE INTO ai_source (
                 source_id,
                 name,
                 capability_type,
@@ -297,5 +472,52 @@ def _seed_source() -> None:
                 "{}",
                 "{}",
                 "2026-04-25T00:00:00",
+            ),
+        )
+
+
+def _seed_model_profile(
+    profile_id: str,
+    *,
+    fallback_profile_id: str | None = None,
+) -> None:
+    _seed_source()
+    create_source_model(
+        "ai_chat_model",
+        model_id=f"model-{profile_id}",
+        source_id="source-1",
+        model_identifier=f"gpt-{profile_id}",
+        display_name=f"GPT {profile_id}",
+        enabled=True,
+        is_default=False,
+        extra_params={},
+    )
+    with database_runtime.connect_sync() as connection:
+        connection.execute(
+            """
+            INSERT INTO ai_model_profile (
+                profile_id,
+                name,
+                model_id,
+                task_class,
+                priority,
+                enabled,
+                fallback_profile_id,
+                updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                profile_id,
+                profile_id,
+                f"model-{profile_id}",
+                "reply_default",
+                (
+                    10
+                    if profile_id.endswith("primary") or profile_id == "profile-a"
+                    else 20
+                ),
+                1,
+                fallback_profile_id,
+                "2026-05-21T00:00:00",
             ),
         )

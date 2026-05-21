@@ -8,8 +8,7 @@ from nonebot.log import logger
 
 from apeiria.ai.memory import AIMemoryExtractionResult, AIMessageSentiment
 from apeiria.ai.memory.extraction import parse_memory_extraction_response
-from apeiria.ai.model import AIModelRouteQuery, model_invoker
-from apeiria.ai.model.routing.profile import ai_model_profile_service
+from apeiria.ai.model import model_invoker
 from apeiria.ai.prompting import (
     MemoryExtractionPromptInput,
     build_memory_extraction_packet,
@@ -19,6 +18,7 @@ from apeiria.app.ai.auxiliary_structured_output import (
     MEMORY_EXTRACTION_SCHEMA,
     auxiliary_json_schema_options,
 )
+from apeiria.app.ai.runtime.planning.model_selection import select_task_model
 
 if TYPE_CHECKING:
     from apeiria.ai.memory import AIMemoryDefinition
@@ -40,9 +40,7 @@ async def extract_memory_from_message(
     message_text: str,
     existing_memories: tuple["AIMemoryDefinition", ...],
 ) -> AIMemoryExtractionResult:
-    selected = await ai_model_profile_service.select_model(
-        query=AIModelRouteQuery(task_class="memory_extraction"),
-    )
+    selected = await select_task_model(task_class="memory_extraction")
     if selected is None:
         return _DEFAULT_EXTRACTION_RESULT
 

@@ -2,6 +2,9 @@ import type {
   AIModelBindingItem,
   AIModelCatalogItem,
   AIModelProfileItem,
+  AIModelRouteBindingItem,
+  AIModelRouteItem,
+  AIModelRouteMemberItem,
   AISourceItem,
   AISourceModelItem,
   AISourcePresetItem,
@@ -12,9 +15,15 @@ import {
   createAISourceModel,
   deleteAISource,
   deleteAISourceModel,
+  deleteAIModelRoute,
+  deleteAIModelRouteBinding,
+  deleteAIModelRouteMember,
   fetchAISourceModels,
   getAIModelBindings,
   getAIModelProfiles,
+  getAIModelRouteBindings,
+  getAIModelRouteMembers,
+  getAIModelRoutes,
   getAISourceModels,
   getAISourcePresets,
   getAISources,
@@ -22,12 +31,16 @@ import {
   updateAISource,
   updateAISourceModel,
   upsertAIModelProfile,
+  upsertAIModelRoute,
+  upsertAIModelRouteBinding,
+  upsertAIModelRouteMember,
 } from '@/api/ai'
 import { getErrorMessage } from '@/api/client'
 import { useNoticeStore } from '@/stores/notice'
 import {
   buildModelSnapshot,
   buildProfileSnapshot,
+  buildRouteSnapshot,
   buildSourceExtraConfig,
   buildSourceSnapshot,
   extractOptionalInt,
@@ -39,6 +52,8 @@ import {
   stringifyJsonObject,
   type ModelFormState,
   type ProfileFormState,
+  type RouteFormState,
+  type RouteMemberFormState,
   type SourceFormState,
 } from '@/composables/aiModels/formState'
 import {
@@ -51,6 +66,7 @@ type NoticeLevel = 'error' | 'success' | 'warning'
 type SourceTouchedField = 'name' | 'preset_type'
 type ModelTouchedField = 'display_name' | 'model_identifier'
 type ProfileTouchedField = 'model_id' | 'name'
+type RouteTouchedField = 'name'
 
 export type AIProviderDetailMode = 'creating' | 'empty' | 'selected'
 
@@ -74,6 +90,9 @@ export function useAIModelsTab(
   const fetchedSourceModels = ref<AIModelCatalogItem[]>([])
   const modelProfiles = ref<AIModelProfileItem[]>([])
   const modelBindings = ref<AIModelBindingItem[]>([])
+  const modelRoutes = ref<AIModelRouteItem[]>([])
+  const modelRouteMembers = ref<AIModelRouteMemberItem[]>([])
+  const modelRouteBindings = ref<AIModelRouteBindingItem[]>([])
 
   const loadingSources = ref(false)
   const loadingSourceModels = ref(false)
@@ -85,14 +104,18 @@ export function useAIModelsTab(
   const testingModelIdentifier = ref('')
   const deletingModelId = ref('')
   const savingProfile = ref(false)
+  const savingRoute = ref(false)
+  const deletingRouteId = ref('')
   const providerDetailMode = ref<AIProviderDetailMode>('empty')
 
   const sourceBaseline = ref('')
   const modelBaseline = ref('')
   const profileBaseline = ref('')
+  const routeBaseline = ref('')
   const sourceSubmitAttempted = ref(false)
   const modelSubmitAttempted = ref(false)
   const profileSubmitAttempted = ref(false)
+  const routeSubmitAttempted = ref(false)
 
   const sourceTouched = reactive<Record<SourceTouchedField, boolean>>({
     name: false,
@@ -104,6 +127,9 @@ export function useAIModelsTab(
   })
   const profileTouched = reactive<Record<ProfileTouchedField, boolean>>({
     model_id: false,
+    name: false,
+  })
+  const routeTouched = reactive<Record<RouteTouchedField, boolean>>({
     name: false,
   })
 
@@ -153,11 +179,21 @@ export function useAIModelsTab(
 
   const profileForm = reactive<ProfileFormState>({
     enabled: true,
-    fallback_profile_id: '',
     model_id: '',
     name: '',
     priority: 100,
     profile_id: '',
+    task_class: 'reply_default',
+  })
+
+  const routeForm = reactive<RouteFormState>({
+    algorithm: 'ordered',
+    enabled: true,
+    fallback_on_failure: true,
+    members: [],
+    mode: 'primary_fallback',
+    name: '',
+    route_id: '',
     task_class: 'reply_default',
   })
 
@@ -190,6 +226,11 @@ export function useAIModelsTab(
   ))
   const modelProfileCount = computed(() => filteredModelProfiles.value.length)
   const isCreatingProfile = computed(() => profileForm.profile_id.length === 0)
+  const filteredModelRoutes = computed(() => modelRoutes.value.filter(
+    item => taskClassValues.includes(item.task_class),
+  ))
+  const modelRouteCount = computed(() => filteredModelRoutes.value.length)
+  const isCreatingRoute = computed(() => routeForm.route_id.length === 0)
 
   const sourceErrors = computed(() => ({
     name: sourceForm.name.trim().length === 0 ? t('ai.sourceNameRequired') : '',
@@ -287,17 +328,37 @@ export function useAIModelsTab(
     && profileDirty.value
     && !savingProfile.value
   ))
+  const routeErrors = computed(() => ({
+    members: routeForm.members.filter(item => !item.deleted).length === 0
+      ? t('ai.modelRouteMemberRequired')
+      : '',
+    name: routeForm.name.trim().length === 0
+      ? t('ai.modelRouteNameRequired')
+      : '',
+  }))
+  const displayedRouteErrors = computed(() => ({
+    members: routeSubmitAttempted.value ? routeErrors.value.members : '',
+    name: routeTouched.name || routeSubmitAttempted.value
+      ? routeErrors.value.name
+      : '',
+  }))
+  const routeValid = computed(() => (
+    !routeErrors.value.name && !routeErrors.value.members
+  ))
+  const routeDirty = computed(() => (
+    buildRouteSnapshot(routeForm) !== routeBaseline.value
+  ))
+  const canSaveRoute = computed(() => (
+    isChatCapability.value
+    && routeValid.value
+    && routeDirty.value
+    && !savingRoute.value
+  ))
 
   const profileModelOptions = computed(() => sourceModels.value.map(item => ({
     title: item.display_name,
     value: item.model_id,
   })))
-  const fallbackProfileOptions = computed(() => filteredModelProfiles.value
-    .filter(item => item.profile_id !== profileForm.profile_id)
-    .map(item => ({
-      title: item.name,
-      value: item.profile_id,
-    })))
   const taskClassOptions = computed(() => taskClassValues.map(value => ({
     title: taskClassTitle(value),
     value,
@@ -305,6 +366,16 @@ export function useAIModelsTab(
   const selectedModelBindingCount = computed(() => (
     modelBindings.value.filter(item => item.profile_id === profileForm.profile_id).length
   ))
+  const selectedRouteBindingCount = computed(() => (
+    modelRouteBindings.value.filter(item => item.route_id === routeForm.route_id).length
+  ))
+  const selectedRouteMembers = computed(() => routeForm.members
+    .filter(item => !item.deleted)
+    .sort((left, right) => left.position - right.position))
+  const routeProfileOptions = computed(() => filteredModelProfiles.value.map(item => ({
+    title: item.name,
+    value: item.profile_id,
+  })))
   const setupWorkflow = computed(() => deriveAISetupWorkflow({
     canFetchSourceModels: canFetchSourceModels.value,
     canSaveModel: canSaveModel.value,
@@ -378,6 +449,11 @@ export function useAIModelsTab(
     profileTouched.name = false
   }
 
+  function resetRouteValidation() {
+    routeSubmitAttempted.value = false
+    routeTouched.name = false
+  }
+
   function syncSourceBaseline() {
     sourceBaseline.value = buildSourceSnapshot(sourceForm)
   }
@@ -390,6 +466,10 @@ export function useAIModelsTab(
     profileBaseline.value = buildProfileSnapshot(profileForm)
   }
 
+  function syncRouteBaseline() {
+    routeBaseline.value = buildRouteSnapshot(routeForm)
+  }
+
   function touchSourceField(field: SourceTouchedField) {
     sourceTouched[field] = true
   }
@@ -400,6 +480,10 @@ export function useAIModelsTab(
 
   function touchProfileField(field: ProfileTouchedField) {
     profileTouched[field] = true
+  }
+
+  function touchRouteField(field: RouteTouchedField) {
+    routeTouched[field] = true
   }
 
   function selectSourceProtocol(presetType: string) {
@@ -551,7 +635,6 @@ export function useAIModelsTab(
   function selectModelProfile(item: AIModelProfileItem) {
     Object.assign(profileForm, {
       enabled: item.enabled,
-      fallback_profile_id: item.fallback_profile_id ?? '',
       model_id: item.model_id,
       name: item.name,
       priority: item.priority,
@@ -565,7 +648,6 @@ export function useAIModelsTab(
   function startCreateModelProfile() {
     Object.assign(profileForm, {
       enabled: true,
-      fallback_profile_id: '',
       model_id: sourceModels.value[0]?.model_id ?? '',
       name: '',
       priority: 100,
@@ -576,9 +658,132 @@ export function useAIModelsTab(
     resetProfileValidation()
   }
 
+  function selectModelRoute(item: AIModelRouteItem) {
+    const members = modelRouteMembers.value
+      .filter(member => member.route_id === item.route_id)
+      .sort((left, right) => (
+        left.position - right.position
+        || left.route_member_id.localeCompare(right.route_member_id)
+      ))
+      .map(member => ({
+        enabled: member.enabled,
+        position: member.position,
+        profile_id: member.profile_id,
+        route_member_id: member.route_member_id,
+        weight: member.weight,
+      }))
+    Object.assign(routeForm, {
+      algorithm: item.algorithm,
+      enabled: item.enabled,
+      fallback_on_failure: item.fallback_on_failure,
+      members,
+      mode: item.mode,
+      name: item.name,
+      route_id: item.route_id,
+      task_class: item.task_class,
+    })
+    syncRouteBaseline()
+    resetRouteValidation()
+  }
+
+  function startCreateModelRoute() {
+    Object.assign(routeForm, {
+      algorithm: 'ordered',
+      enabled: true,
+      fallback_on_failure: true,
+      members: filteredModelProfiles.value[0]
+        ? [_newRouteMember(filteredModelProfiles.value[0].profile_id, 0)]
+        : [],
+      mode: 'primary_fallback',
+      name: '',
+      route_id: '',
+      task_class: 'reply_default',
+    })
+    syncRouteBaseline()
+    resetRouteValidation()
+  }
+
+  function syncActiveRouteSelection() {
+    if (!isChatCapability.value) {
+      startCreateModelRoute()
+      return
+    }
+    const current = filteredModelRoutes.value.find(
+      item => item.route_id === routeForm.route_id,
+    )
+    if (current) {
+      selectModelRoute(current)
+      return
+    }
+    if (filteredModelRoutes.value.length > 0) {
+      selectModelRoute(filteredModelRoutes.value[0])
+      return
+    }
+    startCreateModelRoute()
+  }
+
+  function setRouteMode(mode: string) {
+    routeForm.mode = mode
+    routeForm.algorithm = mode === 'load_balance' ? 'weighted_random' : 'ordered'
+  }
+
+  function addRouteMember(profileId?: string) {
+    const selectedProfileId = profileId
+      ?? routeProfileOptions.value.find(option => (
+        !selectedRouteMembers.value.some(member => member.profile_id === option.value)
+      ))?.value
+      ?? routeProfileOptions.value[0]?.value
+      ?? ''
+    if (!selectedProfileId) {
+      return
+    }
+    routeForm.members.push(
+      _newRouteMember(selectedProfileId, selectedRouteMembers.value.length),
+    )
+    normalizeRouteMemberPositions()
+  }
+
+  function removeRouteMember(index: number) {
+    const member = selectedRouteMembers.value[index]
+    if (!member) {
+      return
+    }
+    if (member.route_member_id) {
+      member.deleted = true
+    } else {
+      const memberIndex = routeForm.members.indexOf(member)
+      if (memberIndex >= 0) {
+        routeForm.members.splice(memberIndex, 1)
+      }
+    }
+    normalizeRouteMemberPositions()
+  }
+
+  function moveRouteMember(index: number, direction: -1 | 1) {
+    const visible = selectedRouteMembers.value
+    const current = visible[index]
+    const target = visible[index + direction]
+    if (!current || !target) {
+      return
+    }
+    const currentPosition = current.position
+    current.position = target.position
+    target.position = currentPosition
+    normalizeRouteMemberPositions()
+  }
+
+  function normalizeRouteMemberPositions() {
+    selectedRouteMembers.value
+      .sort((left, right) => left.position - right.position)
+      .forEach((member, index) => {
+        member.position = index
+      })
+  }
+
   function syncActiveProfileSelection() {
     if (!isChatCapability.value) {
       startCreateModelProfile()
+      syncActiveRouteSelection()
       return
     }
     const current = filteredModelProfiles.value.find(
@@ -586,13 +791,16 @@ export function useAIModelsTab(
     )
     if (current) {
       selectModelProfile(current)
+      syncActiveRouteSelection()
       return
     }
     if (filteredModelProfiles.value.length > 0) {
       selectModelProfile(filteredModelProfiles.value[0])
+      syncActiveRouteSelection()
       return
     }
     startCreateModelProfile()
+    syncActiveRouteSelection()
   }
 
   async function loadSourceModelsFor(sourceId: string) {
@@ -638,17 +846,32 @@ export function useAIModelsTab(
   async function loadModelsData() {
     loadingSources.value = true
     try {
-      const [presetsResponse, sourcesResponse, profilesResponse, bindingsResponse] = await Promise.all([
+      const [
+        presetsResponse,
+        sourcesResponse,
+        profilesResponse,
+        bindingsResponse,
+        routesResponse,
+        routeMembersResponse,
+        routeBindingsResponse,
+      ] = await Promise.all([
         getAISourcePresets(),
         getAISources(),
         getAIModelProfiles(),
         getAIModelBindings(),
+        getAIModelRoutes(),
+        getAIModelRouteMembers(),
+        getAIModelRouteBindings(),
       ])
       allSourcePresets.value = presetsResponse.data
       allSources.value = sourcesResponse.data
       modelProfiles.value = profilesResponse.data
       modelBindings.value = bindingsResponse.data
+      modelRoutes.value = routesResponse.data
+      modelRouteMembers.value = routeMembersResponse.data
+      modelRouteBindings.value = routeBindingsResponse.data
       await syncActiveCapabilitySelection()
+      syncActiveRouteSelection()
     } catch (error) {
       notify(getErrorMessage(error, t('ai.sourceLoadFailed')), 'error')
       throw error
@@ -914,7 +1137,6 @@ export function useAIModelsTab(
     try {
       const response = await upsertAIModelProfile({
         enabled: profileForm.enabled,
-        fallback_profile_id: profileForm.fallback_profile_id || null,
         model_id: profileForm.model_id,
         name: profileForm.name.trim(),
         priority: profileForm.priority,
@@ -936,6 +1158,108 @@ export function useAIModelsTab(
     } finally {
       savingProfile.value = false
     }
+  }
+
+  async function saveModelRoute() {
+    routeSubmitAttempted.value = true
+    if (!routeValid.value) {
+      notify(
+        routeErrors.value.name
+        || routeErrors.value.members
+        || t('ai.modelRouteSaveFailed'),
+        'error',
+      )
+      return
+    }
+    if (!routeDirty.value) {
+      return
+    }
+    savingRoute.value = true
+    try {
+      normalizeRouteMemberPositions()
+      const response = await upsertAIModelRoute({
+        algorithm: routeForm.mode === 'load_balance' ? 'weighted_random' : 'ordered',
+        enabled: routeForm.enabled,
+        fallback_on_failure: routeForm.fallback_on_failure,
+        mode: routeForm.mode,
+        name: routeForm.name.trim(),
+        route_id: routeForm.route_id || null,
+        task_class: routeForm.task_class,
+      })
+      if (!response.data) {
+        throw new Error(t('ai.modelRouteSaveFailed'))
+      }
+      const routeId = response.data.route_id
+      for (const member of routeForm.members) {
+        if (member.deleted) {
+          if (member.route_member_id) {
+            await deleteAIModelRouteMember(member.route_member_id)
+          }
+          continue
+        }
+        await upsertAIModelRouteMember({
+          enabled: member.enabled,
+          position: member.position,
+          profile_id: member.profile_id,
+          route_id: routeId,
+          route_member_id: member.route_member_id || null,
+          weight: Math.max(1, Number(member.weight) || 1),
+        })
+      }
+      await upsertAIModelRouteBinding({
+        route_id: routeId,
+        scope_id: '__global__',
+        scope_type: 'global',
+        task_class: routeForm.task_class,
+      })
+      await refreshRouteData()
+      const selectedRoute = modelRoutes.value.find(item => item.route_id === routeId)
+      if (selectedRoute) {
+        selectModelRoute(selectedRoute)
+      }
+      notify(t('ai.modelRouteSaved'), 'success')
+    } catch (error) {
+      notify(getErrorMessage(error, t('ai.modelRouteSaveFailed')), 'error')
+    } finally {
+      savingRoute.value = false
+    }
+  }
+
+  async function removeModelRoute() {
+    if (!routeForm.route_id) {
+      return
+    }
+    deletingRouteId.value = routeForm.route_id
+    try {
+      for (const binding of modelRouteBindings.value.filter(
+        item => item.route_id === routeForm.route_id,
+      )) {
+        await deleteAIModelRouteBinding({
+          scope_id: binding.scope_id,
+          scope_type: binding.scope_type,
+          task_class: binding.task_class,
+        })
+      }
+      await deleteAIModelRoute(routeForm.route_id)
+      await refreshRouteData()
+      syncActiveRouteSelection()
+      notify(t('ai.modelRouteDeleted'), 'success')
+    } catch (error) {
+      notify(getErrorMessage(error, t('ai.modelRouteDeleteFailed')), 'error')
+    } finally {
+      deletingRouteId.value = ''
+    }
+  }
+
+  async function refreshRouteData() {
+    const [routesResponse, membersResponse, bindingsResponse] = await Promise.all([
+      getAIModelRoutes(),
+      getAIModelRouteMembers(),
+      getAIModelRouteBindings(),
+    ])
+    modelRoutes.value = routesResponse.data
+    modelRouteMembers.value = membersResponse.data
+    modelRouteBindings.value = bindingsResponse.data
   }
 
   watch(selectedSourcePreset, preset => {
@@ -969,26 +1293,44 @@ export function useAIModelsTab(
     clearWorkflowResults()
   })
 
+  function _newRouteMember(
+    profileId: string,
+    position: number,
+  ): RouteMemberFormState {
+    return {
+      enabled: true,
+      position,
+      profile_id: profileId,
+      route_member_id: '',
+      weight: 1,
+    }
+  }
+
   return {
+    addRouteMember,
     canFetchSourceModels,
     canSaveModel,
     canSaveProfile,
+    canSaveRoute,
     canSaveSource,
     clearWorkflowResults,
     deletingModelId,
+    deletingRouteId,
     deletingSource,
     displayedModelErrors,
     displayedProfileErrors,
+    displayedRouteErrors,
     displayedSourceErrors,
-    fallbackProfileOptions,
     fetchedSourceModels,
     fetchingSourceModels,
     filteredModelProfiles,
+    filteredModelRoutes,
     importSourceModelCatalogItem,
     importingModelIdentifier,
     isChatCapability,
     isCreatingModel,
     isCreatingProfile,
+    isCreatingRoute,
     isCreatingSource,
     loadModelsData,
     loadingSourceModels,
@@ -997,23 +1339,34 @@ export function useAIModelsTab(
     modelForm,
     modelProfileCount,
     modelProfiles,
+    modelRouteCount,
+    modelRouteMembers,
+    modelRoutes,
+    moveRouteMember,
     profileForm,
     profileModelOptions,
     providerDetailMode,
     pullSourceModels,
+    removeModelRoute,
+    removeRouteMember,
     removeSource,
     removeSourceModel,
     saveModelProfile,
+    saveModelRoute,
     saveSource,
     saveSourceModel,
     savingModel,
     savingProfile,
+    savingRoute,
     savingSource,
     selectModelProfile,
+    selectModelRoute,
     selectSource,
     selectSourceModel,
     selectSourceProtocol,
     selectedModelBindingCount,
+    selectedRouteBindingCount,
+    selectedRouteMembers,
     selectedSource,
     setupWorkflow,
     sourceForm,
@@ -1021,13 +1374,18 @@ export function useAIModelsTab(
     sourcePresets,
     sources,
     startCreateModelProfile,
+    startCreateModelRoute,
     startCreateSource,
     startCreateSourceModel,
+    setRouteMode,
+    routeForm,
+    routeProfileOptions,
     taskClassOptions,
     testSourceModel,
     testingModelIdentifier,
     touchModelField,
     touchProfileField,
+    touchRouteField,
     touchSourceField,
     workflowResults,
   }

@@ -23,8 +23,7 @@ from apeiria.app.ai.runtime.planning.diagnostics import (
 )
 from apeiria.app.ai.runtime.planning.model_selection import (
     build_no_model_diagnostic,
-    select_fallback_models,
-    select_model,
+    select_model_attempt_plan,
 )
 from apeiria.app.ai.runtime.planning.prompts import (
     RuntimePromptPlanningInput,
@@ -65,6 +64,7 @@ class RuntimeReplyPlanningSelection:
     """Shared model/tool exposure selection for runtime reply planning."""
 
     selected: "AISelectedModel"
+    fallback_models: tuple["AISelectedModel", ...]
     tool_exposure_plan: ToolExposurePlan
     pre_tool_task_class: "AIModelTaskClass"
 
@@ -171,7 +171,7 @@ async def plan_runtime_turn(
     return RuntimeTurnPlan(
         stage="planning",
         selected=selected,
-        fallback_models=await select_fallback_models(selected),
+        fallback_models=planning_selection.fallback_models,
         tool_runtime=tool_runtime,
         skill_activation=skill_selection.activation_prompt,
         pre_tool_task_class=pre_tool_task_class,
@@ -205,19 +205,19 @@ async def select_runtime_reply_planning(
     initial_task_class = select_pre_tool_reply_task_class(
         has_tools=initial_tool_exposure_plan.has_executable_tools,
     )
-    initial_selected = await select_model(
+    initial_selection = await select_model_attempt_plan(
         task_class=initial_task_class,
         target=context.model_target,
     )
-    if initial_selected is None:
+    if initial_selection is None:
         fallback_task_class = select_pre_tool_reply_task_class(has_tools=False)
         if fallback_task_class == initial_task_class:
             return None
-        selected = await select_model(
+        selection = await select_model_attempt_plan(
             task_class=fallback_task_class,
             target=context.model_target,
         )
-        if selected is None:
+        if selection is None:
             return None
         tool_exposure_plan = tool_orchestrator.plan_exposure(
             allowed_tools=allowed_tool_specs,
@@ -227,10 +227,12 @@ async def select_runtime_reply_planning(
             model_supports_tools=False,
         )
         return RuntimeReplyPlanningSelection(
-            selected=selected,
+            selected=selection.selected,
+            fallback_models=selection.fallback_models,
             tool_exposure_plan=tool_exposure_plan,
             pre_tool_task_class=fallback_task_class,
         )
+    initial_selected = initial_selection.selected
 
     tool_exposure_plan = tool_orchestrator.plan_exposure(
         allowed_tools=allowed_tool_specs,
@@ -247,22 +249,25 @@ async def select_runtime_reply_planning(
     if final_task_class == initial_task_class:
         return RuntimeReplyPlanningSelection(
             selected=initial_selected,
+            fallback_models=initial_selection.fallback_models,
             tool_exposure_plan=tool_exposure_plan,
             pre_tool_task_class=final_task_class,
         )
 
-    final_selected = await select_model(
+    final_selection = await select_model_attempt_plan(
         task_class=final_task_class,
         target=context.model_target,
     )
-    if final_selected is None:
+    if final_selection is None:
         return RuntimeReplyPlanningSelection(
             selected=initial_selected,
+            fallback_models=initial_selection.fallback_models,
             tool_exposure_plan=tool_exposure_plan,
             pre_tool_task_class=initial_task_class,
         )
     return RuntimeReplyPlanningSelection(
-        selected=final_selected,
+        selected=final_selection.selected,
+        fallback_models=final_selection.fallback_models,
         tool_exposure_plan=tool_exposure_plan,
         pre_tool_task_class=final_task_class,
     )

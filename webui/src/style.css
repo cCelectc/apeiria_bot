@@ -2876,7 +2876,8 @@
 
 .ai-source-model-list,
 .ai-profile-list,
-.ai-api-key-list {
+.ai-api-key-list,
+.ai-route-members {
   display: grid;
   gap: 8px;
 }
@@ -2944,6 +2945,42 @@
   display: grid;
   min-width: 0;
   gap: 3px;
+}
+
+.ai-route-member-row {
+  display: grid;
+  grid-template-columns: 32px minmax(180px, 1fr) minmax(92px, 120px) auto auto;
+  gap: 10px;
+  align-items: center;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--surface-raised);
+}
+
+.ai-route-member-row > .ai-switch-field {
+  justify-content: center;
+}
+
+.ai-route-member-index {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  background: var(--surface-muted);
+  color: var(--muted-foreground);
+  font-family: var(--font-family-mono);
+  font-size: 0.82rem;
+  font-weight: 720;
+}
+
+.ai-route-member-actions {
+  display: inline-flex;
+  justify-content: flex-end;
+  gap: 4px;
 }
 
 .ai-dialog-wide {
@@ -6568,6 +6605,7 @@
   .ai-runtime-settings-field__main,
   .ai-model-primary-grid--with-models,
   .ai-form-grid,
+  .ai-route-member-row,
   .ai-source-model-row,
   .settings-list-row__main,
   .adapter-overview-strip,

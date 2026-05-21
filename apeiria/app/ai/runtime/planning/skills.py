@@ -6,8 +6,7 @@ from typing import TYPE_CHECKING
 
 from nonebot.log import logger
 
-from apeiria.ai.model import AIModelRouteQuery, model_invoker
-from apeiria.ai.model.routing.profile import ai_model_profile_service
+from apeiria.ai.model import model_invoker
 from apeiria.ai.prompting import (
     SkillSelectionPromptInput,
     build_skill_selection_packet,
@@ -19,6 +18,7 @@ from apeiria.app.ai.auxiliary_structured_output import (
     SKILL_SELECTION_SCHEMA,
     auxiliary_json_schema_options,
 )
+from apeiria.app.ai.runtime.planning.model_selection import select_task_model
 
 if TYPE_CHECKING:
     from apeiria.ai.skills.runtime import AISkillCatalogEntry
@@ -45,9 +45,7 @@ async def select_runtime_skills(
     if not entries:
         return _EMPTY_SELECTION
 
-    selected = await ai_model_profile_service.select_model(
-        query=AIModelRouteQuery(task_class="planner_light"),
-    )
+    selected = await select_task_model(task_class="planner_light")
     if selected is None:
         return _EMPTY_SELECTION
 

@@ -10,6 +10,9 @@ if TYPE_CHECKING:
     from apeiria.ai.model import (
         AIModelBindingSpec,
         AIModelProfileDefinition,
+        AIModelRouteBindingSpec,
+        AIModelRouteDefinition,
+        AIModelRouteMemberDefinition,
         AISourceModelDefinition,
     )
     from apeiria.ai.model import AIModelCatalogItem as DomainModelCatalogItem
@@ -71,7 +74,6 @@ class AIModelProfileItem(BaseModel):
     task_class: str
     priority: int
     enabled: bool
-    fallback_profile_id: str | None = None
 
 
 class AIModelProfileUpsertRequest(BaseModel):
@@ -81,7 +83,6 @@ class AIModelProfileUpsertRequest(BaseModel):
     task_class: str = Field(min_length=1, max_length=64)
     priority: int = Field(default=100, ge=0, le=10000)
     enabled: bool = True
-    fallback_profile_id: str | None = Field(default=None, max_length=64)
 
 
 class AIModelBindingItem(BaseModel):
@@ -89,6 +90,59 @@ class AIModelBindingItem(BaseModel):
     scope_type: str
     scope_id: str
     profile_id: str
+
+
+class AIModelRouteItem(BaseModel):
+    route_id: str
+    name: str
+    task_class: str
+    mode: str
+    algorithm: str
+    fallback_on_failure: bool
+    enabled: bool
+
+
+class AIModelRouteUpsertRequest(BaseModel):
+    route_id: str | None = None
+    name: str = Field(min_length=1, max_length=128)
+    task_class: str = Field(min_length=1, max_length=64)
+    mode: str = Field(min_length=1, max_length=64)
+    algorithm: str = Field(min_length=1, max_length=64)
+    fallback_on_failure: bool = True
+    enabled: bool = True
+
+
+class AIModelRouteMemberItem(BaseModel):
+    route_member_id: str
+    route_id: str
+    profile_id: str
+    position: int
+    weight: int
+    enabled: bool
+
+
+class AIModelRouteMemberUpsertRequest(BaseModel):
+    route_member_id: str | None = None
+    route_id: str = Field(min_length=1, max_length=64)
+    profile_id: str = Field(min_length=1, max_length=64)
+    position: int = Field(ge=0, le=10000)
+    weight: int = Field(default=1, ge=1, le=10000)
+    enabled: bool = True
+
+
+class AIModelRouteBindingItem(BaseModel):
+    binding_id: str
+    scope_type: str
+    scope_id: str
+    task_class: str
+    route_id: str
+
+
+class AIModelRouteBindingUpsertRequest(BaseModel):
+    scope_type: str = Field(min_length=1, max_length=64)
+    scope_id: str = Field(min_length=1, max_length=128)
+    task_class: str = Field(min_length=1, max_length=64)
+    route_id: str = Field(min_length=1, max_length=64)
 
 
 class AIModelCatalogItem(BaseModel):
@@ -122,7 +176,6 @@ def to_ai_model_profile_item(item: "AIModelProfileDefinition") -> AIModelProfile
         task_class=item.task_class,
         priority=item.priority,
         enabled=item.enabled,
-        fallback_profile_id=item.fallback_profile_id,
     )
 
 
@@ -132,6 +185,43 @@ def to_ai_model_binding_item(item: "AIModelBindingSpec") -> AIModelBindingItem:
         scope_type=item.scope_type,
         scope_id=item.scope_id,
         profile_id=item.profile_id,
+    )
+
+
+def to_ai_model_route_item(item: "AIModelRouteDefinition") -> AIModelRouteItem:
+    return AIModelRouteItem(
+        route_id=item.route_id,
+        name=item.name,
+        task_class=item.task_class,
+        mode=item.mode,
+        algorithm=item.algorithm,
+        fallback_on_failure=item.fallback_on_failure,
+        enabled=item.enabled,
+    )
+
+
+def to_ai_model_route_member_item(
+    item: "AIModelRouteMemberDefinition",
+) -> AIModelRouteMemberItem:
+    return AIModelRouteMemberItem(
+        route_member_id=item.route_member_id,
+        route_id=item.route_id,
+        profile_id=item.profile_id,
+        position=item.position,
+        weight=item.weight,
+        enabled=item.enabled,
+    )
+
+
+def to_ai_model_route_binding_item(
+    item: "AIModelRouteBindingSpec",
+) -> AIModelRouteBindingItem:
+    return AIModelRouteBindingItem(
+        binding_id=item.binding_id,
+        scope_type=item.scope_type,
+        scope_id=item.scope_id,
+        task_class=item.task_class,
+        route_id=item.route_id,
     )
 
 

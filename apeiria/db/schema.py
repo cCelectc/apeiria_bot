@@ -92,6 +92,28 @@ RELATIONSHIP_EVENT_TYPE_VALUES: tuple[str, ...] = (
     "manual",
     "decay",
 )
+AI_MODEL_TASK_CLASS_VALUES: tuple[str, ...] = (
+    "planner_light",
+    "reply_default",
+    "reply_roleplay",
+    "reasoning_heavy",
+    "memory_extraction",
+    "tool_orchestration",
+)
+AI_MODEL_ROUTE_MODE_VALUES: tuple[str, ...] = (
+    "primary_fallback",
+    "load_balance",
+)
+AI_MODEL_ROUTE_ALGORITHM_VALUES: tuple[str, ...] = (
+    "ordered",
+    "weighted_random",
+)
+AI_MODEL_ROUTE_SCOPE_VALUES: tuple[str, ...] = (
+    "global",
+    "group",
+    "user",
+    "conversation",
+)
 
 
 class DatabaseSchemaError(RuntimeError):
@@ -299,6 +321,16 @@ def _ensure_current_schema_shape(  # noqa: C901, PLR0912, PLR0915
         _create_ai_session_management_tables(connection)
     if "ai_runtime_settings" not in existing_tables:
         _create_ai_runtime_settings_table(connection)
+    if (
+        not {
+            "ai_model_route",
+            "ai_model_route_member",
+            "ai_model_route_binding",
+        }
+        <= existing_tables
+    ):
+        _create_model_route_tables(connection)
+    _backfill_model_routes_from_profiles(connection)
     _ensure_webui_auth_tables(connection)
     _ensure_context_summary_shape(connection, existing_tables)
     if "ai_tool_policy" in existing_tables:
@@ -934,20 +966,13 @@ def _create_source_model_tables(connection: sqlite3.Connection) -> None:
 
 def _create_model_routing_tables(connection: sqlite3.Connection) -> None:
     connection.execute(
-        """
+        f"""
         CREATE TABLE ai_model_profile (
             profile_id TEXT PRIMARY KEY,
             name TEXT NOT NULL,
             model_id TEXT NOT NULL,
             task_class TEXT NOT NULL CHECK(
-                task_class IN (
-                    'planner_light',
-                    'reply_default',
-                    'reply_roleplay',
-                    'reasoning_heavy',
-                    'memory_extraction',
-                    'tool_orchestration'
-                )
+                {_literal_check("task_class", AI_MODEL_TASK_CLASS_VALUES)}
             ),
             priority INTEGER NOT NULL,
             enabled INTEGER NOT NULL DEFAULT 1 CHECK(enabled IN (0, 1)),
@@ -963,11 +988,11 @@ def _create_model_routing_tables(connection: sqlite3.Connection) -> None:
         """
     )
     connection.execute(
-        """
+        f"""
         CREATE TABLE ai_model_binding (
             binding_id TEXT PRIMARY KEY,
             scope_type TEXT NOT NULL CHECK(
-                scope_type IN ('global', 'group', 'user', 'conversation')
+                {_literal_check("scope_type", AI_MODEL_ROUTE_SCOPE_VALUES)}
             ),
             scope_id TEXT NOT NULL CHECK(length(scope_id) > 0),
             profile_id TEXT NOT NULL,
@@ -980,6 +1005,234 @@ def _create_model_routing_tables(connection: sqlite3.Connection) -> None:
         )
         """
     )
+    _create_model_route_tables(connection)
+
+
+def _create_model_route_tables(connection: sqlite3.Connection) -> None:
+    connection.execute(
+        f"""
+        CREATE TABLE IF NOT EXISTS ai_model_route (
+            route_id TEXT PRIMARY KEY,
+            name TEXT NOT NULL CHECK(length(name) > 0),
+            task_class TEXT NOT NULL CHECK(
+                {_literal_check("task_class", AI_MODEL_TASK_CLASS_VALUES)}
+            ),
+            mode TEXT NOT NULL CHECK(
+                {_literal_check("mode", AI_MODEL_ROUTE_MODE_VALUES)}
+            ),
+            algorithm TEXT NOT NULL CHECK(
+                {_literal_check("algorithm", AI_MODEL_ROUTE_ALGORITHM_VALUES)}
+            ),
+            fallback_on_failure INTEGER NOT NULL DEFAULT 1
+                CHECK(fallback_on_failure IN (0, 1)),
+            enabled INTEGER NOT NULL DEFAULT 1 CHECK(enabled IN (0, 1)),
+            updated_at TEXT NOT NULL,
+            CHECK(mode != 'primary_fallback' OR algorithm = 'ordered'),
+            CHECK(mode != 'load_balance' OR algorithm = 'weighted_random')
+        )
+        """
+    )
+    connection.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_ai_model_route_task_class
+        ON ai_model_route(task_class, enabled)
+        """
+    )
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS ai_model_route_member (
+            route_member_id TEXT PRIMARY KEY,
+            route_id TEXT NOT NULL,
+            profile_id TEXT NOT NULL,
+            position INTEGER NOT NULL CHECK(position >= 0),
+            weight INTEGER NOT NULL DEFAULT 1 CHECK(weight > 0),
+            enabled INTEGER NOT NULL DEFAULT 1 CHECK(enabled IN (0, 1)),
+            updated_at TEXT NOT NULL,
+            UNIQUE(route_id, profile_id),
+            UNIQUE(route_id, position),
+            FOREIGN KEY(route_id)
+                REFERENCES ai_model_route(route_id)
+                ON DELETE CASCADE,
+            FOREIGN KEY(profile_id)
+                REFERENCES ai_model_profile(profile_id)
+                ON DELETE CASCADE
+        )
+        """
+    )
+    connection.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_ai_model_route_member_route
+        ON ai_model_route_member(route_id, enabled, position)
+        """
+    )
+    connection.execute(
+        f"""
+        CREATE TABLE IF NOT EXISTS ai_model_route_binding (
+            binding_id TEXT PRIMARY KEY,
+            scope_type TEXT NOT NULL CHECK(
+                {_literal_check("scope_type", AI_MODEL_ROUTE_SCOPE_VALUES)}
+            ),
+            scope_id TEXT NOT NULL CHECK(length(scope_id) > 0),
+            task_class TEXT NOT NULL CHECK(
+                {_literal_check("task_class", AI_MODEL_TASK_CLASS_VALUES)}
+            ),
+            route_id TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            CHECK(scope_type != 'global' OR scope_id = '__global__'),
+            UNIQUE(scope_type, scope_id, task_class),
+            FOREIGN KEY(route_id)
+                REFERENCES ai_model_route(route_id)
+                ON DELETE CASCADE
+        )
+        """
+    )
+    connection.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_ai_model_route_binding_route
+        ON ai_model_route_binding(route_id)
+        """
+    )
+
+
+def _backfill_model_routes_from_profiles(connection: sqlite3.Connection) -> None:
+    existing_tables = _table_names(connection)
+    if (
+        not {
+            "ai_model_profile",
+            "ai_model_route",
+            "ai_model_route_member",
+            "ai_model_route_binding",
+        }
+        <= existing_tables
+    ):
+        return
+
+    existing_route = connection.execute(
+        """
+        SELECT route_id
+        FROM ai_model_route
+        LIMIT 1
+        """
+    ).fetchone()
+    if existing_route is not None:
+        return
+
+    rows = connection.execute(
+        """
+        SELECT profile_id, task_class, priority, fallback_profile_id
+        FROM ai_model_profile
+        WHERE enabled = 1
+        ORDER BY task_class ASC, priority ASC, profile_id ASC
+        """
+    ).fetchall()
+    if not rows:
+        return
+
+    profiles_by_id = {str(row[0]): row for row in rows}
+    profiles_by_task: dict[str, list[tuple[object, ...]]] = {}
+    for row in rows:
+        profiles_by_task.setdefault(str(row[1]), []).append(row)
+
+    timestamp = _utcnow_text()
+    for task_class, task_profiles in profiles_by_task.items():
+        route_id = f"route_default_{task_class}"
+        connection.execute(
+            """
+            INSERT OR IGNORE INTO ai_model_route (
+                route_id,
+                name,
+                task_class,
+                mode,
+                algorithm,
+                fallback_on_failure,
+                enabled,
+                updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                route_id,
+                f"Default {task_class}",
+                task_class,
+                "primary_fallback",
+                "ordered",
+                1,
+                1,
+                timestamp,
+            ),
+        )
+        connection.execute(
+            """
+            INSERT OR IGNORE INTO ai_model_route_binding (
+                binding_id,
+                scope_type,
+                scope_id,
+                task_class,
+                route_id,
+                updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (
+                f"route_binding_default_{task_class}",
+                "global",
+                "__global__",
+                task_class,
+                route_id,
+                timestamp,
+            ),
+        )
+        ordered_profile_ids: list[str] = []
+        for row in task_profiles:
+            for profile_id in _legacy_profile_chain(
+                start_profile_id=str(row[0]),
+                profiles_by_id=profiles_by_id,
+            ):
+                if profile_id not in ordered_profile_ids:
+                    ordered_profile_ids.append(profile_id)
+
+        for position, profile_id in enumerate(ordered_profile_ids):
+            connection.execute(
+                """
+                INSERT OR IGNORE INTO ai_model_route_member (
+                    route_member_id,
+                    route_id,
+                    profile_id,
+                    position,
+                    weight,
+                    enabled,
+                    updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    f"route_member_default_{task_class}_{position}",
+                    route_id,
+                    profile_id,
+                    position,
+                    1,
+                    1,
+                    timestamp,
+                ),
+            )
+
+
+def _legacy_profile_chain(
+    *,
+    start_profile_id: str,
+    profiles_by_id: dict[str, tuple[object, ...]],
+) -> list[str]:
+    chain: list[str] = []
+    visited: set[str] = set()
+    current_profile_id: str | None = start_profile_id
+    while current_profile_id and current_profile_id not in visited:
+        row = profiles_by_id.get(current_profile_id)
+        if row is None:
+            break
+        visited.add(current_profile_id)
+        chain.append(current_profile_id)
+        fallback_profile_id = row[3]
+        current_profile_id = (
+            str(fallback_profile_id) if fallback_profile_id is not None else None
+        )
+    return chain
 
 
 def _create_command_statistics_tables(connection: sqlite3.Connection) -> None:

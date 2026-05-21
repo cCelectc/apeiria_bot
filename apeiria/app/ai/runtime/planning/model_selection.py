@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Any, Literal
 from nonebot.log import logger
 
 from apeiria.ai.model import AIModelRouteQuery
-from apeiria.ai.model.routing.profile import ai_model_profile_service
+from apeiria.ai.model.routing.routes import ai_model_route_service
 from apeiria.app.ai.agent_turn import (
     AgentModelGenerationRequest,
     AgentModelGenerationResult,
@@ -46,17 +46,48 @@ class GenerationRequest:
     reasoning_options: "AIModelCallOptions | None" = None
 
 
-async def select_model(
+@dataclass(frozen=True)
+class RuntimeModelSelection:
+    """Selected model plus runtime fallback candidates for a task."""
+
+    selected: "AISelectedModel"
+    fallback_models: tuple["AISelectedModel", ...] = ()
+
+
+async def select_model_attempt_plan(
     *,
     task_class: "AIModelTaskClass",
     target: "AIModelBindingTarget",
-) -> "AISelectedModel | None":
-    """Select the primary model for a runtime planning task class."""
+) -> RuntimeModelSelection | None:
+    """Select a route-aware model attempt plan for a runtime task class."""
 
-    return await ai_model_profile_service.select_model(
-        query=AIModelRouteQuery(task_class=task_class),
+    plan = await ai_model_route_service.resolve_attempt_plan(
+        AIModelRouteQuery(task_class=task_class),
         target=target,
     )
+    if plan is None:
+        return None
+    fallback_models = plan.fallback_models
+    if plan.route is None:
+        fallback_models = await select_fallback_models(plan.selected)
+    return RuntimeModelSelection(
+        selected=plan.selected,
+        fallback_models=fallback_models,
+    )
+
+
+async def select_task_model(
+    *,
+    task_class: "AIModelTaskClass",
+    target: "AIModelBindingTarget | None" = None,
+) -> "AISelectedModel | None":
+    """Select only the primary model through the route-aware boundary."""
+
+    plan = await ai_model_route_service.resolve_attempt_plan(
+        AIModelRouteQuery(task_class=task_class),
+        target=target,
+    )
+    return None if plan is None else plan.selected
 
 
 def build_no_model_diagnostic(
@@ -169,9 +200,11 @@ async def select_fallback_models(
 
 __all__ = [
     "GenerationRequest",
+    "RuntimeModelSelection",
     "build_no_model_diagnostic",
     "generate_model_turn",
     "safe_generate_model",
     "select_fallback_models",
-    "select_model",
+    "select_model_attempt_plan",
+    "select_task_model",
 ]

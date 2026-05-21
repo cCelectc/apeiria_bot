@@ -21,6 +21,12 @@ from .models_schemas import (
     AIModelCatalogItem,
     AIModelProfileItem,
     AIModelProfileUpsertRequest,
+    AIModelRouteBindingItem,
+    AIModelRouteBindingUpsertRequest,
+    AIModelRouteItem,
+    AIModelRouteMemberItem,
+    AIModelRouteMemberUpsertRequest,
+    AIModelRouteUpsertRequest,
     AISourceModelFetchRequest,
     AISourceModelItem,
     AISourceModelTestRequest,
@@ -29,6 +35,9 @@ from .models_schemas import (
     to_ai_model_binding_item,
     to_ai_model_catalog_item,
     to_ai_model_profile_item,
+    to_ai_model_route_binding_item,
+    to_ai_model_route_item,
+    to_ai_model_route_member_item,
     to_ai_source_model_item,
 )
 
@@ -197,7 +206,6 @@ async def upsert_ai_model_profile(
             task_class=payload.task_class,
             priority=payload.priority,
             enabled=payload.enabled,
-            fallback_profile_id=payload.fallback_profile_id,
             actor_username=_actor_username_from_claims(session),
         )
         if payload.profile_id
@@ -207,7 +215,6 @@ async def upsert_ai_model_profile(
             task_class=payload.task_class,
             priority=payload.priority,
             enabled=payload.enabled,
-            fallback_profile_id=payload.fallback_profile_id,
             actor_username=_actor_username_from_claims(session),
         )
     )
@@ -220,6 +227,146 @@ async def list_ai_model_bindings(
 ) -> list[AIModelBindingItem]:
     bindings = await ai_application.operations.list_model_bindings()
     return [to_ai_model_binding_item(item) for item in bindings]
+
+
+@router.get("/model-routes", response_model=list[AIModelRouteItem])
+async def list_ai_model_routes(
+    _: Annotated[Any, Depends(require_control_panel)],
+) -> list[AIModelRouteItem]:
+    routes = await ai_application.operations.list_model_routes()
+    return [to_ai_model_route_item(item) for item in routes]
+
+
+@router.put("/model-routes", response_model=AIModelRouteItem | None)
+async def upsert_ai_model_route(
+    payload: AIModelRouteUpsertRequest,
+    session: Annotated["AuthSession", Depends(require_control_panel)],
+) -> AIModelRouteItem | None:
+    item = (
+        await ai_application.operations.update_model_route(
+            route_id=payload.route_id,
+            name=payload.name,
+            task_class=payload.task_class,
+            mode=payload.mode,
+            algorithm=payload.algorithm,
+            fallback_on_failure=payload.fallback_on_failure,
+            enabled=payload.enabled,
+            actor_username=_actor_username_from_claims(session),
+        )
+        if payload.route_id
+        else await ai_application.operations.create_model_route(
+            name=payload.name,
+            task_class=payload.task_class,
+            mode=payload.mode,
+            algorithm=payload.algorithm,
+            fallback_on_failure=payload.fallback_on_failure,
+            enabled=payload.enabled,
+            actor_username=_actor_username_from_claims(session),
+        )
+    )
+    return to_ai_model_route_item(item) if item is not None else None
+
+
+@router.delete("/model-routes", response_model=bool)
+async def delete_ai_model_route(
+    session: Annotated["AuthSession", Depends(require_control_panel)],
+    route_id: Annotated[str, Query(min_length=1)],
+) -> bool:
+    return await ai_application.operations.delete_model_route(
+        route_id=route_id,
+        actor_username=_actor_username_from_claims(session),
+    )
+
+
+@router.get("/model-route-members", response_model=list[AIModelRouteMemberItem])
+async def list_ai_model_route_members(
+    _: Annotated[Any, Depends(require_control_panel)],
+    route_id: Annotated[str | None, Query(min_length=1)] = None,
+) -> list[AIModelRouteMemberItem]:
+    members = await ai_application.operations.list_model_route_members(
+        route_id=route_id
+    )
+    return [to_ai_model_route_member_item(item) for item in members]
+
+
+@router.put(
+    "/model-route-members",
+    response_model=AIModelRouteMemberItem | None,
+)
+async def upsert_ai_model_route_member(
+    payload: AIModelRouteMemberUpsertRequest,
+    session: Annotated["AuthSession", Depends(require_control_panel)],
+) -> AIModelRouteMemberItem | None:
+    item = (
+        await ai_application.operations.update_model_route_member(
+            route_member_id=payload.route_member_id,
+            route_id=payload.route_id,
+            profile_id=payload.profile_id,
+            position=payload.position,
+            weight=payload.weight,
+            enabled=payload.enabled,
+            actor_username=_actor_username_from_claims(session),
+        )
+        if payload.route_member_id
+        else await ai_application.operations.create_model_route_member(
+            route_id=payload.route_id,
+            profile_id=payload.profile_id,
+            position=payload.position,
+            weight=payload.weight,
+            enabled=payload.enabled,
+            actor_username=_actor_username_from_claims(session),
+        )
+    )
+    return to_ai_model_route_member_item(item) if item is not None else None
+
+
+@router.delete("/model-route-members", response_model=bool)
+async def delete_ai_model_route_member(
+    session: Annotated["AuthSession", Depends(require_control_panel)],
+    route_member_id: Annotated[str, Query(min_length=1)],
+) -> bool:
+    return await ai_application.operations.delete_model_route_member(
+        route_member_id=route_member_id,
+        actor_username=_actor_username_from_claims(session),
+    )
+
+
+@router.get("/model-route-bindings", response_model=list[AIModelRouteBindingItem])
+async def list_ai_model_route_bindings(
+    _: Annotated[Any, Depends(require_control_panel)],
+) -> list[AIModelRouteBindingItem]:
+    bindings = await ai_application.operations.list_model_route_bindings()
+    return [to_ai_model_route_binding_item(item) for item in bindings]
+
+
+@router.put("/model-route-bindings", response_model=AIModelRouteBindingItem)
+async def upsert_ai_model_route_binding(
+    payload: AIModelRouteBindingUpsertRequest,
+    session: Annotated["AuthSession", Depends(require_control_panel)],
+) -> AIModelRouteBindingItem:
+    item = await ai_application.operations.upsert_model_route_binding(
+        scope_type=payload.scope_type,
+        scope_id=payload.scope_id,
+        task_class=payload.task_class,
+        route_id=payload.route_id,
+        actor_username=_actor_username_from_claims(session),
+    )
+    return to_ai_model_route_binding_item(item)
+
+
+@router.delete("/model-route-bindings", response_model=bool)
+async def delete_ai_model_route_binding(
+    session: Annotated["AuthSession", Depends(require_control_panel)],
+    scope_type: Annotated[str, Query(min_length=1)],
+    scope_id: Annotated[str, Query(min_length=1)],
+    task_class: Annotated[str, Query(min_length=1)],
+) -> bool:
+    return await ai_application.operations.delete_model_route_binding(
+        scope_type=scope_type,
+        scope_id=scope_id,
+        task_class=task_class,
+        actor_username=_actor_username_from_claims(session),
+    )
 
 
 __all__ = ["router"]

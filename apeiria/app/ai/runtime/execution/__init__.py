@@ -15,8 +15,7 @@ from apeiria.app.ai.runtime.execution.tool_loop import (
 from apeiria.app.ai.runtime.planning.model_selection import (
     GenerationRequest,
     generate_model_turn,
-    select_fallback_models,
-    select_model,
+    select_model_attempt_plan,
 )
 from apeiria.app.ai.runtime.planning.prompts import build_roleplay_reply_messages
 from apeiria.app.ai.runtime.planning.reasoning import reasoning_options_for_task_class
@@ -235,11 +234,16 @@ async def _maybe_refine_tool_response(
     if plan.reply_compose_input is None:
         return base_response, base
 
-    roleplay_selected = await select_model(
+    roleplay_selection = await select_model_attempt_plan(
         task_class=post_tool_task_class,
         target=turn_context.model_target,
     )
-    selected = roleplay_selected or plan.selected
+    selected = roleplay_selection.selected if roleplay_selection else plan.selected
+    fallback_models = (
+        roleplay_selection.fallback_models
+        if roleplay_selection
+        else plan.fallback_models
+    )
     refinement = await generate_model_turn(
         GenerationRequest(
             selected=selected,
@@ -256,7 +260,7 @@ async def _maybe_refine_tool_response(
             failure_stage="reply generation failed after tool calls",
             runtime_mode=turn_context.runtime_mode,
             response_source="refinement",
-            fallback_models=await select_fallback_models(selected),
+            fallback_models=fallback_models,
             reasoning_options=reasoning_options_for_task_class(post_tool_task_class),
         )
     )

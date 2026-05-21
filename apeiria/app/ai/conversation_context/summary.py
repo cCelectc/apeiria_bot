@@ -32,8 +32,8 @@ async def compress_conversation_history(
     if not overflow_messages:
         return existing_summary
 
-    from apeiria.ai.model import AIModelRouteQuery, model_invoker
-    from apeiria.ai.model.routing.profile import ai_model_profile_service
+    from apeiria.ai.model import model_invoker
+    from apeiria.app.ai.runtime.planning.model_selection import select_task_model
 
     messages = render_messages(
         build_conversation_summary_packet(
@@ -45,9 +45,7 @@ async def compress_conversation_history(
         )
     )
 
-    selected = await ai_model_profile_service.select_model(
-        query=AIModelRouteQuery(task_class="planner_light"),
-    )
+    selected = await select_task_model(task_class="planner_light")
 
     if selected is None:
         logger.debug("context compression skipped: no model for planner_light")

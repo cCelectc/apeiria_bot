@@ -6,10 +6,14 @@ from typing import TYPE_CHECKING, cast
 
 from apeiria.ai.model import (
     AIModelProfileCreateInput,
+    AIModelRouteBindingCreateInput,
+    AIModelRouteCreateInput,
+    AIModelRouteMemberCreateInput,
     AISourceCapabilityType,
     ai_chat_model_service,
     ai_embedding_model_service,
     ai_model_profile_service,
+    ai_model_route_service,
     ai_rerank_model_service,
     ai_source_service,
     ai_stt_model_service,
@@ -30,6 +34,10 @@ if TYPE_CHECKING:
         AIModelBindingSpec,
         AIModelCatalogItem,
         AIModelProfileDefinition,
+        AIModelRouteBindingSpec,
+        AIModelRouteDefinition,
+        AIModelRouteMemberDefinition,
+        AIModelRouteScopeType,
         AISourceDefinition,
         AISourceModelDefinition,
     )
@@ -62,7 +70,6 @@ class ModelsAdminMixin:
         task_class: str,
         priority: int,
         enabled: bool,
-        fallback_profile_id: str | None,
         actor_username: str | None = None,
     ) -> "AIModelProfileDefinition":
         create_input = await self._build_profile_create_input(
@@ -71,7 +78,6 @@ class ModelsAdminMixin:
             task_class=task_class,
             priority=priority,
             enabled=enabled,
-            fallback_profile_id=fallback_profile_id,
         )
         created = await ai_model_profile_service.create_profile(create_input)
         record_ai_admin_audit(
@@ -90,7 +96,6 @@ class ModelsAdminMixin:
         task_class: str,
         priority: int,
         enabled: bool,
-        fallback_profile_id: str | None,
         actor_username: str | None = None,
     ) -> "AIModelProfileDefinition | None":
         create_input = await self._build_profile_create_input(
@@ -99,7 +104,6 @@ class ModelsAdminMixin:
             task_class=task_class,
             priority=priority,
             enabled=enabled,
-            fallback_profile_id=fallback_profile_id,
         )
         updated = await ai_model_profile_service.update_profile(
             profile_id=profile_id,
@@ -115,6 +119,210 @@ class ModelsAdminMixin:
 
     async def list_model_bindings(self) -> list["AIModelBindingSpec"]:
         return await ai_model_profile_service.list_bindings()
+
+    async def list_model_routes(self) -> list["AIModelRouteDefinition"]:
+        return await ai_model_route_service.list_routes()
+
+    async def create_model_route(  # noqa: PLR0913
+        self,
+        *,
+        name: str,
+        task_class: str,
+        mode: str,
+        algorithm: str,
+        fallback_on_failure: bool,
+        enabled: bool,
+        actor_username: str | None = None,
+    ) -> "AIModelRouteDefinition":
+        route = await ai_model_route_service.create_route(
+            AIModelRouteCreateInput(
+                name=name,
+                task_class=task_class,  # type: ignore[arg-type]
+                mode=mode,  # type: ignore[arg-type]
+                algorithm=algorithm,  # type: ignore[arg-type]
+                fallback_on_failure=fallback_on_failure,
+                enabled=enabled,
+            )
+        )
+        record_ai_admin_audit(
+            "ai_model_route_created",
+            actor_username=actor_username,
+            detail=f"{route.route_id} {route.name}",
+        )
+        return route
+
+    async def update_model_route(  # noqa: PLR0913
+        self,
+        *,
+        route_id: str,
+        name: str,
+        task_class: str,
+        mode: str,
+        algorithm: str,
+        fallback_on_failure: bool,
+        enabled: bool,
+        actor_username: str | None = None,
+    ) -> "AIModelRouteDefinition | None":
+        route = await ai_model_route_service.update_route(
+            route_id=route_id,
+            create_input=AIModelRouteCreateInput(
+                name=name,
+                task_class=task_class,  # type: ignore[arg-type]
+                mode=mode,  # type: ignore[arg-type]
+                algorithm=algorithm,  # type: ignore[arg-type]
+                fallback_on_failure=fallback_on_failure,
+                enabled=enabled,
+            ),
+        )
+        if route is not None:
+            record_ai_admin_audit(
+                "ai_model_route_updated",
+                actor_username=actor_username,
+                detail=f"{route.route_id} {route.name}",
+            )
+        return route
+
+    async def delete_model_route(
+        self,
+        *,
+        route_id: str,
+        actor_username: str | None = None,
+    ) -> bool:
+        deleted = await ai_model_route_service.delete_route(route_id=route_id)
+        if deleted:
+            record_ai_admin_audit(
+                "ai_model_route_deleted",
+                actor_username=actor_username,
+                detail=route_id,
+            )
+        return deleted
+
+    async def list_model_route_members(
+        self,
+        *,
+        route_id: str | None = None,
+    ) -> list["AIModelRouteMemberDefinition"]:
+        return await ai_model_route_service.list_members(route_id=route_id)
+
+    async def create_model_route_member(  # noqa: PLR0913
+        self,
+        *,
+        route_id: str,
+        profile_id: str,
+        position: int,
+        weight: int,
+        enabled: bool,
+        actor_username: str | None = None,
+    ) -> "AIModelRouteMemberDefinition":
+        member = await ai_model_route_service.create_member(
+            AIModelRouteMemberCreateInput(
+                route_id=route_id,
+                profile_id=profile_id,
+                position=position,
+                weight=weight,
+                enabled=enabled,
+            )
+        )
+        record_ai_admin_audit(
+            "ai_model_route_member_created",
+            actor_username=actor_username,
+            detail=f"{member.route_id} {member.profile_id}",
+        )
+        return member
+
+    async def update_model_route_member(  # noqa: PLR0913
+        self,
+        *,
+        route_member_id: str,
+        route_id: str,
+        profile_id: str,
+        position: int,
+        weight: int,
+        enabled: bool,
+        actor_username: str | None = None,
+    ) -> "AIModelRouteMemberDefinition | None":
+        member = await ai_model_route_service.update_member(
+            route_member_id=route_member_id,
+            create_input=AIModelRouteMemberCreateInput(
+                route_id=route_id,
+                profile_id=profile_id,
+                position=position,
+                weight=weight,
+                enabled=enabled,
+            ),
+        )
+        if member is not None:
+            record_ai_admin_audit(
+                "ai_model_route_member_updated",
+                actor_username=actor_username,
+                detail=f"{member.route_id} {member.profile_id}",
+            )
+        return member
+
+    async def delete_model_route_member(
+        self,
+        *,
+        route_member_id: str,
+        actor_username: str | None = None,
+    ) -> bool:
+        deleted = await ai_model_route_service.delete_member(
+            route_member_id=route_member_id
+        )
+        if deleted:
+            record_ai_admin_audit(
+                "ai_model_route_member_deleted",
+                actor_username=actor_username,
+                detail=route_member_id,
+            )
+        return deleted
+
+    async def list_model_route_bindings(self) -> list["AIModelRouteBindingSpec"]:
+        return await ai_model_route_service.list_bindings()
+
+    async def upsert_model_route_binding(
+        self,
+        *,
+        scope_type: str,
+        scope_id: str,
+        task_class: str,
+        route_id: str,
+        actor_username: str | None = None,
+    ) -> "AIModelRouteBindingSpec":
+        binding = await ai_model_route_service.upsert_binding(
+            AIModelRouteBindingCreateInput(
+                scope_type=cast("AIModelRouteScopeType", scope_type),
+                scope_id=scope_id,
+                task_class=task_class,  # type: ignore[arg-type]
+                route_id=route_id,
+            )
+        )
+        record_ai_admin_audit(
+            "ai_model_route_binding_updated",
+            actor_username=actor_username,
+            detail=f"{binding.scope_type}:{binding.scope_id} {binding.task_class}",
+        )
+        return binding
+
+    async def delete_model_route_binding(
+        self,
+        *,
+        scope_type: str,
+        scope_id: str,
+        task_class: str,
+        actor_username: str | None = None,
+    ) -> bool:
+        deleted = await ai_model_route_service.delete_binding(
+            scope_type=scope_type,
+            scope_id=scope_id,
+            task_class=task_class,  # type: ignore[arg-type]
+        )
+        if deleted:
+            record_ai_admin_audit(
+                "ai_model_route_binding_deleted",
+                actor_username=actor_username,
+                detail=f"{scope_type}:{scope_id} {task_class}",
+            )
+        return deleted
 
     async def list_source_models(
         self,
@@ -326,7 +534,7 @@ class ModelsAdminMixin:
             model_identifier=model_identifier,
         )
 
-    async def _build_profile_create_input(  # noqa: PLR0913
+    async def _build_profile_create_input(
         self,
         *,
         name: str,
@@ -334,7 +542,6 @@ class ModelsAdminMixin:
         task_class: str,
         priority: int,
         enabled: bool,
-        fallback_profile_id: str | None,
     ) -> AIModelProfileCreateInput:
         if not model_id.strip():
             raise AIAdminModelNotFoundError
@@ -344,7 +551,6 @@ class ModelsAdminMixin:
             task_class=task_class,  # type: ignore[arg-type]
             priority=priority,
             enabled=enabled,
-            fallback_profile_id=fallback_profile_id,
         )
 
     async def _create_managed_model(  # noqa: PLR0913

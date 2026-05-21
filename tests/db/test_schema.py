@@ -47,6 +47,9 @@ def test_database_ensure_ready_initializes_empty_sqlite_db(tmp_path: Path) -> No
         "ai_rerank_model",
         "ai_model_profile",
         "ai_model_binding",
+        "ai_model_route",
+        "ai_model_route_member",
+        "ai_model_route_binding",
         "ai_persona",
         "ai_persona_binding",
         "ai_tool_policy",
@@ -207,6 +210,24 @@ def test_database_schema_declares_foreign_keys_and_delete_rules(
             "CASCADE",
         ) in _foreign_keys(connection, "ai_model_binding")
         assert (
+            "ai_model_route",
+            "route_id",
+            "route_id",
+            "CASCADE",
+        ) in _foreign_keys(connection, "ai_model_route_member")
+        assert (
+            "ai_model_profile",
+            "profile_id",
+            "profile_id",
+            "CASCADE",
+        ) in _foreign_keys(connection, "ai_model_route_member")
+        assert (
+            "ai_model_route",
+            "route_id",
+            "route_id",
+            "CASCADE",
+        ) in _foreign_keys(connection, "ai_model_route_binding")
+        assert (
             "ai_persona",
             "persona_id",
             "persona_id",
@@ -261,6 +282,18 @@ def test_database_schema_declares_unique_bindings_and_default_indexes(
             connection,
             "ai_model_binding",
         )
+        assert "UNIQUE(route_id, profile_id)" in _table_sql(
+            connection,
+            "ai_model_route_member",
+        )
+        assert "UNIQUE(route_id, position)" in _table_sql(
+            connection,
+            "ai_model_route_member",
+        )
+        assert "UNIQUE(scope_type, scope_id, task_class)" in _table_sql(
+            connection,
+            "ai_model_route_binding",
+        )
         assert "UNIQUE(scope_type, scope_id)" in _table_sql(
             connection,
             "ai_persona_binding",
@@ -293,6 +326,13 @@ def test_database_schema_declares_value_checks(tmp_path: Path) -> None:
 
     with database.connect_sync() as connection:
         assert "CHECK(enabled IN (0, 1))" in _table_sql(connection, "ai_source")
+        route_table_sql = _table_sql(connection, "ai_model_route")
+        assert "mode IN ('primary_fallback', 'load_balance')" in route_table_sql
+        assert "algorithm IN ('ordered', 'weighted_random')" in route_table_sql
+        assert "fallback_on_failure IN (0, 1)" in route_table_sql
+        route_member_sql = _table_sql(connection, "ai_model_route_member")
+        assert "CHECK(position >= 0)" in route_member_sql
+        assert "CHECK(weight > 0)" in route_member_sql
         assert "json_valid(custom_headers_json)" in _table_sql(
             connection,
             "ai_source",

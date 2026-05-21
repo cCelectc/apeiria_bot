@@ -7,8 +7,6 @@ from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
 from apeiria.access.groups import group_service
-from apeiria.ai.model import AIModelRouteQuery
-from apeiria.ai.model.routing.profile import ai_model_profile_service
 from apeiria.ai.persona import (
     ai_persona_service,
     build_persona_render_context,
@@ -45,6 +43,7 @@ from apeiria.app.ai.runtime.context.relationships import (
 )
 from apeiria.app.ai.runtime.execution.tool_loop import RuntimeToolLoopResult
 from apeiria.app.ai.runtime.planning.hard_rules import decide_runtime_hard_rule
+from apeiria.app.ai.runtime.planning.model_selection import select_task_model
 from apeiria.app.ai.runtime.planning.prompts import (
     build_pre_tool_reply_packet,
     build_roleplay_reply_packet,
@@ -620,8 +619,8 @@ class PromptPreviewReader:
             else select_pre_tool_reply_task_class(has_tools=False)
         )
         roleplay_selected = (
-            await ai_model_profile_service.select_model(
-                query=AIModelRouteQuery(task_class=select_post_tool_reply_task_class()),
+            await select_task_model(
+                task_class=select_post_tool_reply_task_class(),
                 target=build_model_binding_target(identity, resolved_user_id),
             )
             if has_tools

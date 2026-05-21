@@ -52,6 +52,9 @@ const {
   normalizeAIWorkbenchRouteState,
 } = await loadTsModule('src/utils/aiRouteState.ts')
 const {
+  buildRouteSnapshot,
+} = await loadTsModule('src/composables/aiModels/formState.ts')
+const {
   buildProjectUpdatePlanRequest,
   isProjectUpdateTaskActive,
   hasProjectUpdateReleaseUpdate,
@@ -336,5 +339,35 @@ assert.equal(isProjectUpdateTaskActive('queued'), true)
 assert.equal(isProjectUpdateTaskActive('succeeded'), false)
 assert.equal(projectUpdateRestartRequired({ status: 'succeeded', restart_required: true }), true)
 assert.equal(projectUpdateRestartRequired({ status: 'failed', restart_required: true }), false)
+
+const routeSnapshot = buildRouteSnapshot({
+  algorithm: 'ordered',
+  enabled: true,
+  fallback_on_failure: true,
+  members: [
+    {
+      enabled: true,
+      position: 0,
+      profile_id: 'profile-primary',
+      route_member_id: 'member-primary',
+      weight: 1,
+    },
+    {
+      deleted: true,
+      enabled: false,
+      position: 1,
+      profile_id: 'profile-fallback',
+      route_member_id: 'member-fallback',
+      weight: 2,
+    },
+  ],
+  mode: 'primary_fallback',
+  name: ' Reply route ',
+  route_id: 'route-1',
+  task_class: 'reply_default',
+})
+assert.equal(routeSnapshot.includes('"name":"Reply route"'), true)
+assert.equal(routeSnapshot.includes('"deleted":true'), true)
+assert.equal(routeSnapshot.includes('"weight":2'), true)
 
 console.log('route-state and feedback-state helper tests passed')

@@ -39,7 +39,6 @@ class AIModelProfileCreateInput:
     task_class: AIModelTaskClass
     priority: int
     enabled: bool = True
-    fallback_profile_id: str | None = None
 
 
 class AIModelProfileService:
@@ -108,7 +107,7 @@ class AIModelProfileService:
             task_class=create_input.task_class,
             priority=create_input.priority,
             enabled=create_input.enabled,
-            fallback_profile_id=create_input.fallback_profile_id,
+            fallback_profile_id=None,
         )
         with database_runtime.connect_sync() as connection:
             connection.execute(
@@ -160,7 +159,7 @@ class AIModelProfileService:
             task_class=create_input.task_class,
             priority=create_input.priority,
             enabled=create_input.enabled,
-            fallback_profile_id=create_input.fallback_profile_id,
+            fallback_profile_id=None,
         )
         with database_runtime.connect_sync() as connection:
             connection.execute(

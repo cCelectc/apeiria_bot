@@ -3,6 +3,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from apeiria.ai.model.routing.models import (
+        AIModelRouteBindingSpec,
+        AIModelTaskClass,
+    )
 
 
 @dataclass(frozen=True)
@@ -42,5 +49,33 @@ def resolve_model_binding(
             continue
         for binding in bindings:
             if binding.scope_type == scope_type and binding.scope_id == scope_id:
+                return binding
+    return None
+
+
+def resolve_model_route_binding(
+    bindings: list["AIModelRouteBindingSpec"],
+    target: AIModelBindingTarget,
+    *,
+    task_class: "AIModelTaskClass",
+) -> "AIModelRouteBindingSpec | None":
+    """Resolve the effective model route binding for one task and scene."""
+
+    ordered_scopes: list[tuple[str, str | None]] = [
+        ("conversation", target.conversation_id),
+        ("user", target.user_id),
+        ("group", target.group_id),
+        ("global", "__global__"),
+    ]
+
+    for scope_type, scope_id in ordered_scopes:
+        if not scope_id:
+            continue
+        for binding in bindings:
+            if (
+                binding.task_class == task_class
+                and binding.scope_type == scope_type
+                and binding.scope_id == scope_id
+            ):
                 return binding
     return None

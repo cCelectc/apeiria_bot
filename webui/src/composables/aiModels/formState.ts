@@ -43,7 +43,26 @@ export interface ProfileFormState {
   task_class: string
   priority: number
   enabled: boolean
-  fallback_profile_id: string
+}
+
+export interface RouteMemberFormState {
+  route_member_id: string
+  profile_id: string
+  position: number
+  weight: number
+  enabled: boolean
+  deleted?: boolean
+}
+
+export interface RouteFormState {
+  route_id: string
+  name: string
+  task_class: string
+  mode: string
+  algorithm: string
+  fallback_on_failure: boolean
+  enabled: boolean
+  members: RouteMemberFormState[]
 }
 
 export function buildSourceSnapshot(form: SourceFormState) {
@@ -90,11 +109,30 @@ export function buildModelSnapshot(form: ModelFormState) {
 export function buildProfileSnapshot(form: ProfileFormState) {
   return JSON.stringify({
     enabled: form.enabled,
-    fallback_profile_id: form.fallback_profile_id,
     model_id: form.model_id,
     name: form.name.trim(),
     priority: form.priority,
     profile_id: form.profile_id,
+    task_class: form.task_class,
+  })
+}
+
+export function buildRouteSnapshot(form: RouteFormState) {
+  return JSON.stringify({
+    algorithm: form.algorithm,
+    enabled: form.enabled,
+    fallback_on_failure: form.fallback_on_failure,
+    members: form.members.map(item => ({
+      deleted: Boolean(item.deleted),
+      enabled: item.enabled,
+      position: item.position,
+      profile_id: item.profile_id,
+      route_member_id: item.route_member_id,
+      weight: item.weight,
+    })),
+    mode: form.mode,
+    name: form.name.trim(),
+    route_id: form.route_id,
     task_class: form.task_class,
   })
 }

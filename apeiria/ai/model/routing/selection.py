@@ -3,9 +3,14 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from random import Random
 from typing import TYPE_CHECKING
 
-from apeiria.ai.model.routing.models import AIModelProfileDefinition
+from apeiria.ai.model.routing.models import (
+    AIModelProfileDefinition,
+    AIModelRouteDefinition,
+    AIModelRouteMemberDefinition,
+)
 from apeiria.ai.model.runtime.capabilities import (
     AIModelCapabilities,
     merge_model_capabilities,
@@ -45,6 +50,15 @@ class AISelectedCapabilityModel:
     capability_type: "AISourceCapabilityType"
     source: "AISourceDefinition"
     model: "AISourceModelDefinition"
+
+
+@dataclass(frozen=True)
+class AIModelAttemptPlan:
+    """Resolved model route attempt sequence for one turn."""
+
+    route: AIModelRouteDefinition | None
+    selected: AISelectedModel
+    fallback_models: tuple[AISelectedModel, ...] = ()
 
 
 def select_source_for_profile(
@@ -92,6 +106,124 @@ def resolve_source_selected_model_with_fallback(
                 break
             current = fallback_profile
     return None
+
+
+def resolve_source_selected_model(
+    sources: "Sequence[AISourceDefinition]",
+    source_models: "Sequence[AISourceModelDefinition]",
+    profile: AIModelProfileDefinition,
+) -> AISelectedModel | None:
+    """Resolve one source-backed profile without following fallback links."""
+
+    models_by_id = {model.model_id: model for model in source_models if model.enabled}
+    return _resolve_source_selected_model(
+        sources=sources,
+        models_by_id=models_by_id,
+        profile=profile,
+    )
+
+
+def resolve_model_route_attempt_plan(  # noqa: PLR0913
+    route: AIModelRouteDefinition,
+    members: "Sequence[AIModelRouteMemberDefinition]",
+    profiles: "Sequence[AIModelProfileDefinition]",
+    sources: "Sequence[AISourceDefinition]",
+    source_models: "Sequence[AISourceModelDefinition]",
+    *,
+    randomizer: Random | None = None,
+) -> AIModelAttemptPlan | None:
+    """Resolve one route into a selected model and optional fallbacks."""
+
+    if not route.enabled:
+        return None
+    candidate_models = _resolve_route_member_models(
+        route=route,
+        members=members,
+        profiles=profiles,
+        sources=sources,
+        source_models=source_models,
+    )
+    if not candidate_models:
+        return None
+    if route.mode == "load_balance":
+        selected = _select_weighted_model(candidate_models, randomizer=randomizer)
+        ordered_candidates = _ordered_after_selected(candidate_models, selected)
+    else:
+        selected = candidate_models[0][0]
+        ordered_candidates = [item[0] for item in candidate_models]
+
+    fallback_models = tuple(
+        candidate for candidate in ordered_candidates if candidate is not selected
+    )
+    if not route.fallback_on_failure:
+        fallback_models = ()
+    return AIModelAttemptPlan(
+        route=route,
+        selected=selected,
+        fallback_models=fallback_models,
+    )
+
+
+def _resolve_route_member_models(
+    *,
+    route: AIModelRouteDefinition,
+    members: "Sequence[AIModelRouteMemberDefinition]",
+    profiles: "Sequence[AIModelProfileDefinition]",
+    sources: "Sequence[AISourceDefinition]",
+    source_models: "Sequence[AISourceModelDefinition]",
+) -> list[tuple[AISelectedModel, AIModelRouteMemberDefinition]]:
+    profile_map = {
+        profile.profile_id: profile
+        for profile in profiles
+        if profile.enabled and profile.task_class == route.task_class
+    }
+    ordered_members = sorted(
+        (
+            member
+            for member in members
+            if member.enabled and member.route_id == route.route_id
+        ),
+        key=lambda item: (item.position, item.route_member_id),
+    )
+    selected_members: list[tuple[AISelectedModel, AIModelRouteMemberDefinition]] = []
+    for member in ordered_members:
+        profile = profile_map.get(member.profile_id)
+        if profile is None:
+            continue
+        selected = resolve_source_selected_model(sources, source_models, profile)
+        if selected is None:
+            continue
+        selected_members.append((selected, member))
+    return selected_members
+
+
+def _select_weighted_model(
+    candidates: list[tuple[AISelectedModel, AIModelRouteMemberDefinition]],
+    *,
+    randomizer: Random | None,
+) -> AISelectedModel:
+    total_weight = sum(max(member.weight, 0) for _, member in candidates)
+    if total_weight <= 0:
+        return candidates[0][0]
+    picker = randomizer or Random()
+    point = picker.uniform(0, total_weight)
+    cumulative = 0.0
+    for selected, member in candidates:
+        cumulative += max(member.weight, 0)
+        if point <= cumulative:
+            return selected
+    return candidates[-1][0]
+
+
+def _ordered_after_selected(
+    candidates: list[tuple[AISelectedModel, AIModelRouteMemberDefinition]],
+    selected: AISelectedModel,
+) -> list[AISelectedModel]:
+    ordered = [selected]
+    ordered.extend(
+        candidate for candidate, _ in candidates if candidate is not selected
+    )
+    return ordered
 
 
 def resolve_implicit_selected_model(

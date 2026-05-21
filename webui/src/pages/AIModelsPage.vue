@@ -110,58 +110,77 @@ const {
   canFetchSourceModels,
   canSaveModel,
   canSaveProfile,
+  canSaveRoute,
   canSaveSource,
   clearWorkflowResults,
   deletingModelId,
+  deletingRouteId,
   deletingSource,
   displayedModelErrors,
   displayedProfileErrors,
+  displayedRouteErrors,
   displayedSourceErrors,
-  fallbackProfileOptions,
   fetchedSourceModels,
   fetchingSourceModels,
   filteredModelProfiles,
+  filteredModelRoutes,
   importSourceModelCatalogItem,
   importingModelIdentifier,
   isChatCapability,
   isCreatingModel,
   isCreatingProfile,
+  isCreatingRoute,
   isCreatingSource,
+  addRouteMember,
   loadModelsData,
   loadingSourceModels,
   loadingSources,
   modelForm,
   modelProfileCount,
+  modelRouteCount,
   profileForm,
   profileModelOptions,
   providerDetailMode,
   pullSourceModels,
+  removeModelRoute,
+  removeRouteMember,
   removeSource,
   removeSourceModel,
   saveModelProfile,
+  saveModelRoute,
   saveSource,
   saveSourceModel,
   savingModel,
   savingProfile,
+  savingRoute,
   savingSource,
   selectModelProfile,
+  selectModelRoute,
   selectSource,
   selectSourceModel,
   selectSourceProtocol,
   selectedModelBindingCount,
+  selectedRouteBindingCount,
+  selectedRouteMembers,
   setupWorkflow,
   sourceForm,
   sourceModels,
   sourcePresets,
   sources,
   startCreateModelProfile,
+  startCreateModelRoute,
   startCreateSource,
   startCreateSourceModel,
+  setRouteMode,
+  moveRouteMember,
+  routeForm,
+  routeProfileOptions,
   taskClassOptions,
   testSourceModel,
   testingModelIdentifier,
   touchModelField,
   touchProfileField,
+  touchRouteField,
   touchSourceField,
   workflowResults,
 } = useAIModelsTab(sourceCapabilityTab, t)
@@ -1233,33 +1252,6 @@ watch(sourceCapabilityTab, () => {
                   <FormField :label="t('ai.modelProfilePriority')">
                     <Input v-model="profileForm.priority" :disabled="savingProfile" type="number" />
                   </FormField>
-                  <FormField :label="t('ai.modelProfileFallback')">
-                    <Select
-                      :model-value="profileForm.fallback_profile_id || '__none__'"
-                      :disabled="savingProfile"
-                      @update:model-value="value => {
-                        profileForm.fallback_profile_id = value === '__none__' ? '' : String(value)
-                      }"
-                    >
-                      <SelectTrigger>
-                        <SelectValue :placeholder="t('common.none')" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectGroup>
-                          <SelectItem value="__none__">
-                            {{ t('common.none') }}
-                          </SelectItem>
-                          <SelectItem
-                            v-for="item in fallbackProfileOptions"
-                            :key="item.value"
-                            :value="item.value"
-                          >
-                            {{ item.title }}
-                          </SelectItem>
-                        </SelectGroup>
-                      </SelectContent>
-                    </Select>
-                  </FormField>
                   <label class="ai-switch-field">
                     <Switch v-model="profileForm.enabled" :disabled="savingProfile" />
                     <span>{{ t('ai.modelProfileEnabled') }}</span>
@@ -1275,6 +1267,219 @@ watch(sourceCapabilityTab, () => {
                 </div>
                 <div class="ai-form-actions">
                   <Button :disabled="!canSaveProfile" @click="saveModelProfile">
+                    {{ t('common.save') }}
+                  </Button>
+                </div>
+              </div>
+            </template>
+          </Panel>
+
+          <Panel
+            v-if="isChatCapability"
+            :subtitle="t('ai.modelRouteWorkflowHint')"
+            :title="t('ai.modelRoutes')"
+          >
+            <template #actions>
+              <Badge variant="secondary">
+                {{ t('ai.modelRoutes') }}: {{ modelRouteCount }}
+              </Badge>
+              <Badge variant="secondary">
+                {{ t('ai.scopeBindings') }}: {{ selectedRouteBindingCount }}
+              </Badge>
+              <Button size="sm" @click="startCreateModelRoute">
+                <Plus :size="15" />
+                {{ t('ai.createModelRoute') }}
+              </Button>
+            </template>
+
+            <EmptyState
+              v-if="filteredModelProfiles.length === 0"
+              :icon="CircleAlert"
+              :text="t('ai.modelRouteRequiresProfile')"
+              :title="t('ai.modelRouteEmptyTitle')"
+            />
+
+            <template v-else>
+              <div v-if="filteredModelRoutes.length > 0" class="ai-profile-list">
+                <button
+                  v-for="item in filteredModelRoutes"
+                  :key="item.route_id"
+                  class="ai-profile-row"
+                  :class="{ 'ai-profile-row--active': item.route_id === routeForm.route_id }"
+                  type="button"
+                  @click="selectModelRoute(item)"
+                >
+                  <span>
+                    <strong>{{ item.name }}</strong>
+                    <small>{{ item.task_class }} · {{ t(`ai.modelRouteMode.${item.mode}`) }}</small>
+                  </span>
+                  <Badge :variant="item.enabled ? 'default' : 'secondary'">
+                    {{ item.enabled ? t('ai.enabled') : t('ai.disabled') }}
+                  </Badge>
+                </button>
+              </div>
+
+              <div class="ai-profile-editor">
+                <div class="ai-model-editor__header">
+                  <div>
+                    <strong>{{ isCreatingRoute ? t('ai.createModelRoute') : t('ai.editModelRoute') }}</strong>
+                    <p>{{ t('ai.modelRouteEditorHint') }}</p>
+                  </div>
+                  <Button
+                    v-if="!isCreatingRoute"
+                    :disabled="Boolean(deletingRouteId)"
+                    size="sm"
+                    variant="destructive"
+                    @click="removeModelRoute"
+                  >
+                    <Trash2 :size="15" />
+                    {{ t('common.delete') }}
+                  </Button>
+                </div>
+
+                <div class="ai-form-grid">
+                  <FormField
+                    :error="displayedRouteErrors.name"
+                    :label="t('ai.modelRouteName')"
+                    required
+                  >
+                    <Input
+                      v-model="routeForm.name"
+                      :aria-invalid="Boolean(displayedRouteErrors.name)"
+                      :disabled="savingRoute"
+                      @blur="touchRouteField('name')"
+                    />
+                  </FormField>
+                  <FormField :label="t('ai.modelTaskClass')">
+                    <Select v-model="routeForm.task_class" :disabled="savingRoute">
+                      <SelectTrigger>
+                        <SelectValue :placeholder="t('ai.modelTaskClass')" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectGroup>
+                          <SelectItem
+                            v-for="item in taskClassOptions"
+                            :key="item.value"
+                            :value="item.value"
+                          >
+                            {{ item.title }}
+                          </SelectItem>
+                        </SelectGroup>
+                      </SelectContent>
+                    </Select>
+                  </FormField>
+                  <FormField :label="t('ai.modelRouteModeLabel')">
+                    <Select
+                      :model-value="routeForm.mode"
+                      :disabled="savingRoute"
+                      @update:model-value="value => setRouteMode(String(value))"
+                    >
+                      <SelectTrigger>
+                        <SelectValue :placeholder="t('ai.modelRouteModeLabel')" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectGroup>
+                          <SelectItem value="primary_fallback">
+                            {{ t('ai.modelRouteMode.primary_fallback') }}
+                          </SelectItem>
+                          <SelectItem value="load_balance">
+                            {{ t('ai.modelRouteMode.load_balance') }}
+                          </SelectItem>
+                        </SelectGroup>
+                      </SelectContent>
+                    </Select>
+                  </FormField>
+                  <label class="ai-switch-field">
+                    <Switch v-model="routeForm.fallback_on_failure" :disabled="savingRoute" />
+                    <span>{{ t('ai.modelRouteFallbackOnFailure') }}</span>
+                  </label>
+                  <label class="ai-switch-field">
+                    <Switch v-model="routeForm.enabled" :disabled="savingRoute" />
+                    <span>{{ t('ai.modelRouteEnabled') }}</span>
+                  </label>
+                </div>
+
+                <div class="ai-route-members">
+                  <div class="ai-model-editor__header">
+                    <strong>{{ t('ai.modelRouteMembers') }}</strong>
+                    <Button
+                      :disabled="routeProfileOptions.length === 0 || savingRoute"
+                      size="sm"
+                      variant="secondary"
+                      @click="addRouteMember()"
+                    >
+                      <Plus :size="15" />
+                      {{ t('ai.addRouteMember') }}
+                    </Button>
+                  </div>
+                  <div v-if="displayedRouteErrors.members" class="ai-disabled-reason">
+                    {{ displayedRouteErrors.members }}
+                  </div>
+                  <div
+                    v-for="(member, index) in selectedRouteMembers"
+                    :key="member.route_member_id || `${member.profile_id}-${index}`"
+                    class="ai-route-member-row"
+                  >
+                    <span class="ai-route-member-index">{{ index + 1 }}</span>
+                    <Select v-model="member.profile_id" :disabled="savingRoute">
+                      <SelectTrigger>
+                        <SelectValue :placeholder="t('ai.modelProfileName')" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectGroup>
+                          <SelectItem
+                            v-for="item in routeProfileOptions"
+                            :key="item.value"
+                            :value="item.value"
+                          >
+                            {{ item.title }}
+                          </SelectItem>
+                        </SelectGroup>
+                      </SelectContent>
+                    </Select>
+                    <Input
+                      v-if="routeForm.mode === 'load_balance'"
+                      v-model="member.weight"
+                      :aria-label="t('ai.modelRouteWeight')"
+                      :disabled="savingRoute"
+                      min="1"
+                      type="number"
+                    />
+                    <label class="ai-switch-field">
+                      <Switch v-model="member.enabled" :disabled="savingRoute" />
+                      <span>{{ t('ai.enabled') }}</span>
+                    </label>
+                    <div class="ai-route-member-actions">
+                      <Button
+                        :disabled="index === 0 || savingRoute"
+                        size="icon"
+                        variant="ghost"
+                        @click="moveRouteMember(index, -1)"
+                      >
+                        ↑
+                      </Button>
+                      <Button
+                        :disabled="index === selectedRouteMembers.length - 1 || savingRoute"
+                        size="icon"
+                        variant="ghost"
+                        @click="moveRouteMember(index, 1)"
+                      >
+                        ↓
+                      </Button>
+                      <Button
+                        :disabled="savingRoute"
+                        size="icon"
+                        variant="ghost"
+                        @click="removeRouteMember(index)"
+                      >
+                        <Trash2 :size="15" />
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="ai-form-actions">
+                  <Button :disabled="!canSaveRoute" @click="saveModelRoute">
                     {{ t('common.save') }}
                   </Button>
                 </div>

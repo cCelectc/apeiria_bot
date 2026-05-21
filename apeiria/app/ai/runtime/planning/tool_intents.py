@@ -7,8 +7,7 @@ from typing import TYPE_CHECKING, Any
 
 from nonebot.log import logger
 
-from apeiria.ai.model import AIModelRouteQuery, model_invoker
-from apeiria.ai.model.routing.profile import ai_model_profile_service
+from apeiria.ai.model import model_invoker
 from apeiria.ai.prompting import (
     ToolIntentPlanningPromptInput,
     build_tool_intent_planning_packet,
@@ -19,6 +18,7 @@ from apeiria.ai.tools.function_calling import (
     build_function_tools,
     build_intents_from_tool_calls,
 )
+from apeiria.app.ai.runtime.planning.model_selection import select_task_model
 
 if TYPE_CHECKING:
     from apeiria.ai.tools import AIToolIntent, AIToolPolicy
@@ -38,9 +38,7 @@ async def plan_runtime_tool_intents(
     if not allowed_tools:
         return []
 
-    selected = await ai_model_profile_service.select_model(
-        query=AIModelRouteQuery(task_class="tool_orchestration"),
-    )
+    selected = await select_task_model(task_class="tool_orchestration")
     if selected is None:
         return []
 

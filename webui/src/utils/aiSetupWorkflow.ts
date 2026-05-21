@@ -73,7 +73,6 @@ export interface AISetupProfileSummary {
   task_class: string
   priority: number
   enabled: boolean
-  fallback_profile_id: string | null
 }
 
 export interface AISetupWorkflowInput {

@@ -8,13 +8,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol
 
-from apeiria.ai.model.routing.models import AIModelRouteQuery
 from apeiria.ai.runtime_settings import ai_runtime_settings_service
 from apeiria.db.inspection import inspect_database
 from apeiria.db.runtime import database_runtime
 
 if TYPE_CHECKING:
-    from apeiria.ai.model import AIModelBindingTarget, AISelectedModel
+    from apeiria.ai.model import AIModelBindingTarget, AIModelTaskClass, AISelectedModel
 
 
 @dataclass(frozen=True)
@@ -39,10 +38,10 @@ class AIRuntimeDependencyStatus:
 
 
 class AIModelSelector(Protocol):
-    async def select_model(
+    async def select_task_model(
         self,
         *,
-        query: AIModelRouteQuery | None = None,
+        task_class: "AIModelTaskClass",
         target: "AIModelBindingTarget | None" = None,
     ) -> "AISelectedModel | None": ...
 
@@ -115,11 +114,13 @@ class AIRuntimeStatusDiagnostics:
     async def _resolve_default_reply_model(self) -> "AISelectedModel | None":
         selector = self._model_selector
         if selector is None:
-            from apeiria.ai.model.routing.profile import ai_model_profile_service
+            from apeiria.app.ai.runtime.planning.model_selection import (
+                select_task_model,
+            )
 
-            selector = ai_model_profile_service
-        return await selector.select_model(
-            query=AIModelRouteQuery(task_class="reply_default"),
+            return await select_task_model(task_class="reply_default")
+        return await selector.select_task_model(
+            task_class="reply_default",
             target=None,
         )
 
