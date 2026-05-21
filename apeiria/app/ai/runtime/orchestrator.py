@@ -1,9 +1,9 @@
-"""Session runtime turn engine with explicit stage boundaries."""
+"""AI runtime coordinator and explicit runtime paths."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
-from typing import TYPE_CHECKING, Any, NoReturn
+from typing import TYPE_CHECKING, Any, Literal, NoReturn, Protocol
 
 from nonebot.log import logger
 
@@ -37,13 +37,15 @@ from .stages import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
     from datetime import datetime
 
     from apeiria.app.ai.reply_strategy.models import WakeContext
+    from apeiria.app.ai.runtime.contracts import RuntimeTraceContext
 
 
 class RuntimeStageNotConfiguredError(RuntimeError):
-    """Raised when a turn engine helper is called without its stage."""
+    """Raised when a runtime path helper is called without its stage."""
 
 
 class _UnavailableRuntimeStage:
@@ -82,8 +84,84 @@ class _UnavailableRuntimeStage:
 
 
 @dataclass(frozen=True, slots=True)
-class AISessionTurnEngine:
-    """Coordinate one normalized AI turn through named runtime stages."""
+class RuntimeStageReport:
+    """Compact public summary for one runtime stage."""
+
+    stage: str
+    status: str
+    diagnostics: dict[str, object] = field(default_factory=dict)
+
+
+RuntimeOutcome = Literal[
+    "hard_rule_skipped",
+    "observed",
+    "social_no_reply",
+    "no_plan",
+    "no_model",
+    "empty_response",
+    "execution_failed",
+    "commit_failed",
+    "committed",
+]
+
+
+@dataclass(frozen=True, slots=True)
+class AIRuntimeResult:
+    """Result envelope returned by AI runtime coordination."""
+
+    trace_id: str
+    path: str
+    outcome: RuntimeOutcome
+    commit: RuntimeCommitResult | None = None
+    stage_reports: tuple[RuntimeStageReport, ...] = ()
+    diagnostics: dict[str, object] = field(default_factory=dict)
+
+    @property
+    def reply_text(self) -> str | None:
+        """Return the committed reply text when the runtime produced one."""
+
+        return self.commit.reply_text if self.commit is not None else None
+
+
+@dataclass(frozen=True, slots=True)
+class AIRuntimeRequest:
+    """Base request submitted to the AI runtime coordinator."""
+
+    trace_id: str
+    trace: "RuntimeTraceContext"
+    turn: RuntimeTurnInput
+    current_time: "datetime"
+    session_runtime: Any | None = None
+    wake_context: "WakeContext | None" = None
+
+    @property
+    def path_name(self) -> str:
+        """Return the runtime path name requested by this work item."""
+
+        return "reply"
+
+
+@dataclass(frozen=True, slots=True)
+class ReplyRuntimeRequest(AIRuntimeRequest):
+    """Runtime request for a reply-capable turn."""
+
+
+class RuntimePath(Protocol):
+    """Named runtime path executed by the coordinator."""
+
+    @property
+    def name(self) -> str:
+        """Return the stable path name used by the coordinator."""
+        ...
+
+    async def run(self, request: AIRuntimeRequest) -> AIRuntimeResult:
+        """Run one normalized runtime request."""
+        ...
+
+
+@dataclass(frozen=True, slots=True)
+class ReplyPath:
+    """Run one reply-capable turn through the runtime stages."""
 
     policy_stage: RuntimePolicyStage = field(default_factory=_UnavailableRuntimeStage)
     observation_stage: RuntimeObservationStage = field(
@@ -98,45 +176,21 @@ class AISessionTurnEngine:
     )
     commit_stage: RuntimeCommitStage = field(default_factory=_UnavailableRuntimeStage)
     trace_stage: RuntimeTraceStage = field(default_factory=_UnavailableRuntimeStage)
+    name: str = "reply"
 
-    async def run_reply_turn(  # noqa: PLR0913
-        self,
-        *,
-        trace_id: str,
-        trace: Any,
-        turn: RuntimeTurnInput,
-        wake_context: "WakeContext | None",
-        current_time: "datetime",
-        session_runtime: Any | None,
-    ) -> RuntimeCommitResult | None:
-        """Run one reply turn, owning same-session serialization when available."""
+    async def run(self, request: AIRuntimeRequest) -> AIRuntimeResult:
+        """Run a reply-capable runtime request."""
 
-        if _should_serialize_in_engine(session_runtime):
-            runtime = session_runtime
-            assert runtime is not None
-
-            async def operation() -> RuntimeCommitResult | None:
-                return await self._run_reply_turn_steps(
-                    trace_id=trace_id,
-                    trace=trace,
-                    turn=turn,
-                    wake_context=wake_context,
-                    current_time=current_time,
-                    session_runtime=session_runtime,
-                )
-
-            return await runtime.run_serialized(operation, now=current_time)
-
-        return await self._run_reply_turn_steps(
-            trace_id=trace_id,
-            trace=trace,
-            turn=turn,
-            wake_context=wake_context,
-            current_time=current_time,
-            session_runtime=session_runtime,
+        return await self._run_reply_path(
+            trace_id=request.trace_id,
+            trace=request.trace,
+            turn=request.turn,
+            wake_context=request.wake_context,
+            current_time=request.current_time,
+            session_runtime=request.session_runtime,
         )
 
-    async def _run_reply_turn_steps(  # noqa: PLR0913
+    async def _run_reply_path(  # noqa: PLR0913, PLR0915
         self,
         *,
         trace_id: str,
@@ -145,9 +199,10 @@ class AISessionTurnEngine:
         wake_context: "WakeContext | None",
         current_time: "datetime",
         session_runtime: Any | None,
-    ) -> RuntimeCommitResult | None:
+    ) -> AIRuntimeResult:
         """Run one reply turn through policy, context, planning, execution, commit."""
 
+        stage_reports: list[RuntimeStageReport] = []
         identity = turn.identity
         wake_context = wake_context or self._build_fallback_wake_context(turn)
         ingress_input = RuntimeIngressInput(
@@ -159,6 +214,16 @@ class AISessionTurnEngine:
         )
         policy = self.evaluate_policy(
             ingress_input=ingress_input,
+        )
+        stage_reports.append(
+            RuntimeStageReport(
+                stage="policy",
+                status="continue" if policy.should_continue else "skipped",
+                diagnostics={
+                    "action": policy.decision.action,
+                    "reason_codes": policy.decision.reason_codes,
+                },
+            )
         )
         hard_decision = policy.decision
         observation_level = classify_observation_level(hard_decision)
@@ -185,7 +250,19 @@ class AISessionTurnEngine:
                     turn_result=None,
                 ),
             )
-            return None
+            stage_reports.append(
+                RuntimeStageReport(
+                    stage="observation",
+                    status=observation_level,
+                )
+            )
+            stage_reports.append(RuntimeStageReport(stage="trace", status="projected"))
+            return self._result(
+                trace_id=trace_id,
+                outcome="hard_rule_skipped",
+                stage_reports=stage_reports,
+                turn=turn,
+            )
 
         ingress_input = await self._apply_pre_context_observation(
             ingress_input=ingress_input,
@@ -193,11 +270,27 @@ class AISessionTurnEngine:
             persist_light_turn=False,
         )
         await self.apply_observation_side_effects(ingress_input=ingress_input)
+        stage_reports.append(
+            RuntimeStageReport(
+                stage="observation",
+                status=observation_level,
+            )
+        )
         turn = ingress_input.turn
         context_bundle = await self.assemble_context(
             ingress_input=ingress_input,
         )
         context = context_bundle.context
+        stage_reports.append(
+            RuntimeStageReport(
+                stage="context",
+                status="assembled",
+                diagnostics={
+                    "recalled_memory_count": len(context.recalled_memories),
+                    "context_diagnostics": context_bundle.diagnostics,
+                },
+            )
+        )
         social_decision = await self.policy_stage.decide_reply(
             social_input=RuntimeSocialDecisionInput(
                 stage="policy",
@@ -207,6 +300,16 @@ class AISessionTurnEngine:
                 context=context_bundle,
                 current_time=current_time,
             ),
+        )
+        stage_reports.append(
+            RuntimeStageReport(
+                stage="policy",
+                status="speak" if social_decision.should_speak else "no_reply",
+                diagnostics={
+                    "reply_policy": "social",
+                    "reason": getattr(social_decision, "reason", None),
+                },
+            )
         )
         if not social_decision.should_speak:
             runtime_decision = social_skip_to_runtime_decision(social_decision)
@@ -227,7 +330,14 @@ class AISessionTurnEngine:
                     turn_result=None,
                 ),
             )
-            return None
+            stage_reports.append(RuntimeStageReport(stage="trace", status="projected"))
+            return self._result(
+                trace_id=trace_id,
+                outcome="social_no_reply",
+                stage_reports=stage_reports,
+                turn=turn,
+                context=context,
+            )
 
         plan = await self.plan_turn(
             trace_id=trace_id,
@@ -246,7 +356,22 @@ class AISessionTurnEngine:
                     turn_result=None,
                 ),
             )
-            return None
+            stage_reports.append(RuntimeStageReport(stage="planning", status="no_plan"))
+            stage_reports.append(RuntimeStageReport(stage="trace", status="projected"))
+            return self._result(
+                trace_id=trace_id,
+                outcome="no_plan",
+                stage_reports=stage_reports,
+                turn=turn,
+                context=context,
+            )
+        stage_reports.append(
+            RuntimeStageReport(
+                stage="planning",
+                status="planned",
+                diagnostics=_plan_diagnostics(plan),
+            )
+        )
 
         turn_context = build_turn_context(
             trace_id=trace_id,
@@ -261,6 +386,16 @@ class AISessionTurnEngine:
             prompt_diagnostics=plan.prompt_diagnostics,
         )
         execution = await self.execute_turn(turn_context=turn_context, plan=plan)
+        stage_reports.append(
+            RuntimeStageReport(
+                stage="execution",
+                status="executed",
+                diagnostics={
+                    "tool_observation_count": len(execution.tool_runtime.turns),
+                    "has_response": execution.response is not None,
+                },
+            )
+        )
         response = execution.response
         if response is None or not response.content.strip():
             logger.debug(
@@ -281,7 +416,17 @@ class AISessionTurnEngine:
                     delivery_result=execution.delivery_result,
                 ),
             )
-            return None
+            stage_reports.append(RuntimeStageReport(stage="trace", status="projected"))
+            return self._result(
+                trace_id=trace_id,
+                outcome="empty_response",
+                stage_reports=stage_reports,
+                turn=turn,
+                context=context,
+                delivery_status=_delivery_status_for_result(
+                    execution.delivery_result,
+                ),
+            )
 
         commit = await self.commit_turn(
             commit_input=RuntimeCommitInput(
@@ -297,6 +442,17 @@ class AISessionTurnEngine:
                 session_runtime=session_runtime,
             ),
         )
+        stage_reports.append(
+            RuntimeStageReport(
+                stage="commit",
+                status=commit.commit_status,
+                diagnostics={
+                    "delivery_status": _delivery_status_for_result(
+                        commit.delivery_result,
+                    ),
+                },
+            )
+        )
         trace_outcome = self.project_trace(
             trace_input=RuntimeTraceInput(
                 stage="trace",
@@ -310,7 +466,18 @@ class AISessionTurnEngine:
         )
         commit = _with_commit_substep(commit, name="trace", status="committed")
         if commit.commit_status == "failed":
-            return None
+            stage_reports.append(RuntimeStageReport(stage="trace", status="projected"))
+            return self._result(
+                trace_id=trace_id,
+                outcome="commit_failed",
+                commit=commit,
+                stage_reports=stage_reports,
+                turn=turn,
+                context=context,
+                selected_model_ref=_selected_model_ref(plan),
+                tool_exposure_summary=_tool_exposure_summary(plan),
+                delivery_status=_delivery_status_for_result(commit.delivery_result),
+            )
         logger.info(
             "AI trace {} generated {} reply for session {} with source={} "
             "model={} memories={} tool_observations={} entry_kind={} "
@@ -325,7 +492,18 @@ class AISessionTurnEngine:
             trace.kind,
             trace.trigger,
         )
-        return replace(commit, trace=trace_outcome.trace)
+        stage_reports.append(RuntimeStageReport(stage="trace", status="projected"))
+        return self._result(
+            trace_id=trace_id,
+            outcome="committed",
+            commit=replace(commit, trace=trace_outcome.trace),
+            stage_reports=stage_reports,
+            turn=turn,
+            context=context,
+            selected_model_ref=_selected_model_ref(plan),
+            tool_exposure_summary=_tool_exposure_summary(plan),
+            delivery_status=_delivery_status_for_result(commit.delivery_result),
+        )
 
     def evaluate_policy(
         self,
@@ -486,6 +664,80 @@ class AISessionTurnEngine:
 
         return build_fallback_wake_context(turn)
 
+    def _result(  # noqa: PLR0913
+        self,
+        *,
+        trace_id: str,
+        outcome: RuntimeOutcome,
+        stage_reports: list[RuntimeStageReport],
+        turn: RuntimeTurnInput,
+        commit: RuntimeCommitResult | None = None,
+        context: Any | None = None,
+        selected_model_ref: str | None = None,
+        tool_exposure_summary: dict[str, object] | None = None,
+        delivery_status: str | None = None,
+    ) -> AIRuntimeResult:
+        diagnostics: dict[str, object] = {
+            "path": self.name,
+            "outcome": outcome,
+            "runtime_mode": turn.runtime_mode,
+            "stage_count": len(stage_reports),
+        }
+        if selected_model_ref is not None:
+            diagnostics["selected_model"] = selected_model_ref
+        if tool_exposure_summary:
+            diagnostics["tool_exposure"] = tool_exposure_summary
+        if context is not None:
+            diagnostics["recalled_memory_count"] = len(context.recalled_memories)
+            rag_diagnostics = getattr(context, "rag_diagnostics", None)
+            degradation_reason = getattr(rag_diagnostics, "degradation_reason", None)
+            if degradation_reason is not None:
+                diagnostics["rag_degradation_reason"] = degradation_reason
+        if delivery_status is not None:
+            diagnostics["delivery_status"] = delivery_status
+        return AIRuntimeResult(
+            trace_id=trace_id,
+            path=self.name,
+            outcome=outcome,
+            commit=commit,
+            stage_reports=tuple(stage_reports),
+            diagnostics=diagnostics,
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class AIRuntimeCoordinator:
+    """Select and run explicit AI runtime paths."""
+
+    paths: Mapping[str, RuntimePath] = field(default_factory=dict)
+
+    async def run(self, request: AIRuntimeRequest) -> AIRuntimeResult:
+        """Run one normalized AI runtime request."""
+
+        path = self._resolve_path(request)
+        if _should_serialize_in_coordinator(request.session_runtime):
+            runtime = request.session_runtime
+            assert runtime is not None
+
+            async def operation() -> AIRuntimeResult:
+                return await path.run(request)
+
+            return await runtime.run_serialized(operation, now=request.current_time)
+        return await path.run(request)
+
+    def _resolve_path(self, request: AIRuntimeRequest) -> RuntimePath:
+        path = self.paths.get(request.path_name)
+        if path is None:
+            raise RuntimePathNotConfiguredError(request.path_name)
+        return path
+
+
+class RuntimePathNotConfiguredError(RuntimeError):
+    """Raised when no runtime path is registered for a request."""
+
+    def __init__(self, path_name: str) -> None:
+        super().__init__(f"AI runtime path is not configured: {path_name}")
+
 
 def _delivery_target_for_turn(turn: RuntimeTurnInput) -> DeliveryTarget:
     if turn.runtime_mode == "future_task":
@@ -509,12 +761,60 @@ def _with_commit_substep(
     return replace(commit, substeps={**commit.substeps, name: status})
 
 
-def _should_serialize_in_engine(session_runtime: Any | None) -> bool:
+def _plan_diagnostics(plan: RuntimeTurnPlan) -> dict[str, object]:
+    return {
+        "selected_model": _selected_model_ref(plan),
+        "fallback_model_count": len(plan.fallback_models),
+        "tool_exposure": _tool_exposure_summary(plan),
+    }
+
+
+def _selected_model_ref(plan: RuntimeTurnPlan) -> str:
+    model_name = plan.selected.resolved_model_name or plan.selected.profile.model_id
+    return (
+        f"{plan.selected.source.source_id}:"
+        f"{plan.selected.profile.profile_id}:"
+        f"{model_name}"
+    )
+
+
+def _tool_exposure_summary(plan: RuntimeTurnPlan) -> dict[str, object]:
+    tool_plan = plan.tool_exposure_plan
+    summary: dict[str, object] = {
+        "selected_tool_count": len(tool_plan.selected_tool_names),
+        "has_executable_tools": tool_plan.has_executable_tools,
+    }
+    allowed_tool_count = tool_plan.diagnostics.get("allowed_tool_count")
+    if isinstance(allowed_tool_count, int):
+        summary["allowed_tool_count"] = allowed_tool_count
+    return summary
+
+
+def _delivery_status_for_result(delivery_result: object | None) -> str:
+    if delivery_result is None:
+        return "not_required"
+    delivered = getattr(delivery_result, "delivered", None)
+    if delivered is True:
+        return "delivered"
+    if delivered is False:
+        return "failed"
+    return "unknown"
+
+
+def _should_serialize_in_coordinator(session_runtime: Any | None) -> bool:
     if session_runtime is None or not hasattr(session_runtime, "run_serialized"):
         return False
     return not bool(getattr(session_runtime, "current_turn_owns_lock", False))
 
 
 __all__ = [
-    "AISessionTurnEngine",
+    "AIRuntimeCoordinator",
+    "AIRuntimeRequest",
+    "AIRuntimeResult",
+    "ReplyPath",
+    "ReplyRuntimeRequest",
+    "RuntimeOutcome",
+    "RuntimePath",
+    "RuntimePathNotConfiguredError",
+    "RuntimeStageReport",
 ]

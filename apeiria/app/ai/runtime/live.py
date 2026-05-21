@@ -16,13 +16,14 @@ from apeiria.ai.runtime_settings import ai_runtime_settings_service
 from apeiria.app.ai.lifecycle import ensure_ai_runtime_support_initialized
 from apeiria.app.ai.reply_strategy.wake_gate import build_wake_context, evaluate_wake
 from apeiria.app.ai.runtime.composition import (
+    create_ai_runtime_coordinator,
     create_session_runtime_resolver,
-    create_session_turn_engine,
 )
 from apeiria.app.ai.runtime.contracts import (
     FutureTaskRuntimeResult,
     RuntimeTraceContext,
 )
+from apeiria.app.ai.runtime.orchestrator import ReplyRuntimeRequest
 from apeiria.app.ai.runtime.session.context import (
     RuntimeMediaDiagnostic,
     RuntimeSourceMediaKind,
@@ -45,18 +46,20 @@ if TYPE_CHECKING:
     from apeiria.ai.memory import AIMessageSentiment
     from apeiria.app.ai.future_tasks.models import AIFutureTaskDefinition
     from apeiria.app.ai.reply_strategy.models import WakeContext
-    from apeiria.app.ai.runtime.orchestrator import AISessionTurnEngine
+    from apeiria.app.ai.runtime.orchestrator import (
+        AIRuntimeCoordinator,
+        AIRuntimeResult,
+    )
     from apeiria.app.ai.runtime.session.runtime import (
         InMemoryAISessionRuntime,
         InMemoryAISessionRuntimeResolver,
     )
-    from apeiria.app.ai.runtime.stages import RuntimeCommitResult
     from apeiria.conversation.models import ChatSessionIdentity
 
 
 @dataclass(frozen=True)
-class AIRuntimeTurnRequest:
-    """Normalized live runtime request shared by message and future-task ingress."""
+class AIRuntimeIngressRequest:
+    """Normalized live ingress data before coordinator request construction."""
 
     identity: "ChatSessionIdentity"
     message_text: str
@@ -104,7 +107,7 @@ class DefaultAILiveRuntimeEntry:
     """Default runtime entry for live NoneBot messages and due future tasks."""
 
     session_runtime_resolver: InMemoryAISessionRuntimeResolver | None = None
-    turn_engine: AISessionTurnEngine | None = None
+    coordinator: AIRuntimeCoordinator | None = None
 
     async def handle_message(
         self,
@@ -163,7 +166,7 @@ class DefaultAILiveRuntimeEntry:
         result = await self._run_turn(
             trace=trace
             or RuntimeTraceContext(kind="conversation", trigger="nonebot_message"),
-            request=AIRuntimeTurnRequest(
+            request=AIRuntimeIngressRequest(
                 identity=identity,
                 message_text=message_text,
                 source_message_id=turn.message_id,
@@ -211,10 +214,10 @@ class DefaultAILiveRuntimeEntry:
             return None
 
         user_id = identity.subject_id or task.user_id or identity.scene_id
-        runtime_commit = await self._run_turn(
+        runtime_result = await self._run_turn(
             trace=trace
             or RuntimeTraceContext(kind="conversation", trigger="ai_future_task"),
-            request=AIRuntimeTurnRequest(
+            request=AIRuntimeIngressRequest(
                 identity=identity,
                 message_text=task.description,
                 source_message_id=task.source_message_id,
@@ -227,8 +230,9 @@ class DefaultAILiveRuntimeEntry:
             current_time=datetime.now(timezone.utc),
             session_runtime=None,
         )
-        if runtime_commit is None:
+        if runtime_result is None or runtime_result.commit is None:
             return None
+        runtime_commit = runtime_result.commit
         return FutureTaskRuntimeResult(
             reply_text=runtime_commit.reply_text,
             commit_status=runtime_commit.commit_status,
@@ -241,11 +245,11 @@ class DefaultAILiveRuntimeEntry:
         self,
         *,
         trace: RuntimeTraceContext,
-        request: AIRuntimeTurnRequest,
+        request: AIRuntimeIngressRequest,
         current_time: datetime,
         wake_context: "WakeContext | None" = None,
         session_runtime: "InMemoryAISessionRuntime | None" = None,
-    ) -> "RuntimeCommitResult | None":
+    ) -> "AIRuntimeResult | None":
         if session_runtime is None:
             session_runtime = self._resolve_session_runtime(
                 request.identity.session_id,
@@ -265,13 +269,15 @@ class DefaultAILiveRuntimeEntry:
         if settings.stt_input_enabled:
             speech = await speech_input_preparer.prepare(turn, settings=settings)
             turn = speech.turn
-        return await self._resolve_turn_engine().run_reply_turn(
-            trace_id=trace_id,
-            trace=trace,
-            turn=turn,
-            session_runtime=session_runtime,
-            wake_context=wake_context,
-            current_time=current_time,
+        return await self._resolve_coordinator().run(
+            ReplyRuntimeRequest(
+                trace_id=trace_id,
+                trace=trace,
+                turn=turn,
+                session_runtime=session_runtime,
+                wake_context=wake_context,
+                current_time=current_time,
+            )
         )
 
     def _resolve_session_runtime(
@@ -286,12 +292,12 @@ class DefaultAILiveRuntimeEntry:
             object.__setattr__(self, "session_runtime_resolver", resolver)
         return resolver.resolve(session_id, now=now)
 
-    def _resolve_turn_engine(self) -> AISessionTurnEngine:
-        if self.turn_engine is not None:
-            return self.turn_engine
-        engine = create_session_turn_engine()
-        object.__setattr__(self, "turn_engine", engine)
-        return engine
+    def _resolve_coordinator(self) -> AIRuntimeCoordinator:
+        if self.coordinator is not None:
+            return self.coordinator
+        coordinator = create_ai_runtime_coordinator()
+        object.__setattr__(self, "coordinator", coordinator)
+        return coordinator
 
 
 def _message_event_dedupe_key(turn: Any) -> str | None:
@@ -578,7 +584,7 @@ def _int_value(value: object) -> int | None:
 
 
 __all__ = [
-    "AIRuntimeTurnRequest",
+    "AIRuntimeIngressRequest",
     "DefaultAILiveRuntimeEntry",
     "RuntimeMediaExtractionResult",
     "extract_runtime_media",
