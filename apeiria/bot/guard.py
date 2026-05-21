@@ -12,7 +12,7 @@ from apeiria.bot.feedback import guard_feedback_service
 if TYPE_CHECKING:
     from nonebot.adapters import Bot, Event
 
-    from apeiria.access import PermissionDecision
+    from apeiria.access.models import PermissionDecision
 
 DeniedFeedbackHandler: TypeAlias = Callable[
     ["Bot", "Event", "PermissionDecision"], Awaitable[None]

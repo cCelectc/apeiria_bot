@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Literal
 
-from apeiria.access import audit_service
+from apeiria.access.audit_service import audit_service
 from apeiria.config import (
     InvalidProjectConfigError,
     project_config_service,

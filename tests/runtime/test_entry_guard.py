@@ -1,16 +1,18 @@
 from __future__ import annotations
 
 import sqlite3
+from importlib import import_module
 from typing import TYPE_CHECKING
 
 import pytest
 
-from apeiria.bot import entry
 from apeiria.environment.manager import EnvironmentService
 from apeiria.utils.project_context import (
     reset_active_project_root,
     set_active_project_root,
 )
+
+entry = import_module("apeiria.bot.entry")
 
 if TYPE_CHECKING:
     from collections.abc import Iterator

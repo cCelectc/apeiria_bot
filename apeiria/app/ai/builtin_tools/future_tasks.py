@@ -167,9 +167,9 @@ async def cancel_future_task(
 async def _load_chat_identity(
     context: AIToolExecutionContext,
 ) -> "ChatSessionIdentity | None":
-    from apeiria.conversation import service as conversation_service
+    from apeiria.conversation.service import chat_session_service
 
-    return await conversation_service.chat_session_service.get_session_identity(
+    return await chat_session_service.get_session_identity(
         session_id=context.session_id,
     )
 

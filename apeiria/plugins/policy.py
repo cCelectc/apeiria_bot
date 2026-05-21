@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from apeiria.access import audit_service
+from apeiria.access.audit_service import audit_service
 from apeiria.access.models import PluginPolicy
 from apeiria.plugins.protection import (
     get_default_protection_mode,
