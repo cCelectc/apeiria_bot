@@ -13,6 +13,11 @@ ActionStatus = Literal["success", "failed", "unsupported"]
 
 _ONEBOT_SUCCESS_REACTION_EMOJI_ID = "124"
 _ONEBOT_FAILURE_REACTION_EMOJI_ID = "424"  # QFace marker for failure feedback.
+_ONEBOT_V11_ADAPTER_NAME = "onebotv11"
+_ONEBOT_V12_ADAPTER_NAME = "onebotv12"
+_TELEGRAM_ADAPTER_NAME = "telegram"
+_DISCORD_ADAPTER_NAME = "discord"
+_QQ_ADAPTER_NAME = "qq"
 
 
 @dataclass(frozen=True, slots=True)
@@ -120,8 +125,8 @@ class SelfRevokeProviderRegistry:
             return False
 
 
-class OneBotSelfRevokeProvider:
-    """Initial OneBot provider for message revoke and best-effort reactions."""
+class OneBotV11SelfRevokeProvider:
+    """OneBot v11 provider for message revoke and best-effort reactions."""
 
     _REACTION_EMOJI_BY_KIND: ClassVar[dict[FeedbackKind, str]] = {
         "success": _ONEBOT_SUCCESS_REACTION_EMOJI_ID,
@@ -129,10 +134,9 @@ class OneBotSelfRevokeProvider:
     }
 
     def supports(self, bot: "Bot", event: "Event") -> bool:
-        adapter_name = str(getattr(bot, "type", "") or "").lower()
-        if "onebot" not in adapter_name.replace(" ", ""):
+        if _normalized_adapter_name(bot) != _ONEBOT_V11_ADAPTER_NAME:
             return False
-        return hasattr(event, "reply") or hasattr(event, "message_id")
+        return hasattr(event, "reply") and hasattr(event, "message_id")
 
     async def get_reply_target(
         self,
@@ -214,12 +218,394 @@ class OneBotSelfRevokeProvider:
         )
 
 
+class OneBotV12SelfRevokeProvider:
+    """OneBot v12 provider for message revoke operations."""
+
+    def supports(self, bot: "Bot", event: "Event") -> bool:
+        if _normalized_adapter_name(bot) != _ONEBOT_V12_ADAPTER_NAME:
+            return False
+        return hasattr(event, "reply") and hasattr(event, "message_id")
+
+    async def get_reply_target(
+        self,
+        bot: "Bot",  # noqa: ARG002
+        event: "Event",
+    ) -> RevokeTarget | None:
+        reply = getattr(event, "reply", None)
+        if reply is None:
+            return None
+
+        message_id = _string_attr(reply, "message_id")
+        if message_id is None:
+            return None
+
+        return RevokeTarget(
+            message_id=message_id,
+            author_id=_string_attr(reply, "user_id"),
+        )
+
+    async def is_bot_authored(
+        self,
+        bot: "Bot",
+        event: "Event",
+        target: RevokeTarget,
+    ) -> bool:
+        bot_self_id = _string_attr(bot, "self_id")
+        event_self_id = _nested_string_attr(event, "self", "user_id")
+        return (
+            target.author_id is not None
+            and bot_self_id is not None
+            and event_self_id is not None
+            and bot_self_id == event_self_id == target.author_id
+        )
+
+    async def revoke_message(
+        self,
+        bot: "Bot",
+        event: "Event",  # noqa: ARG002
+        target: RevokeTarget,
+    ) -> RevokeActionResult:
+        return await _call_onebot_api(
+            bot,
+            "delete_message",
+            message_id=target.message_id,
+        )
+
+    async def revoke_trigger_message(
+        self,
+        bot: "Bot",
+        event: "Event",
+    ) -> RevokeActionResult:
+        message_id = _event_message_id(event)
+        if message_id is None:
+            return RevokeActionResult.unsupported("trigger_message_id_missing")
+        return await _call_onebot_api(
+            bot,
+            "delete_message",
+            message_id=message_id,
+        )
+
+    async def apply_feedback(
+        self,
+        bot: "Bot",  # noqa: ARG002
+        event: "Event",  # noqa: ARG002
+        *,
+        kind: FeedbackKind,  # noqa: ARG002
+    ) -> RevokeActionResult:
+        return RevokeActionResult.unsupported("reaction_feedback_unsupported")
+
+
+class TelegramSelfRevokeProvider:
+    """Telegram provider for reply-target message deletion."""
+
+    def supports(self, bot: "Bot", event: "Event") -> bool:
+        if _normalized_adapter_name(bot) != _TELEGRAM_ADAPTER_NAME:
+            return False
+        reply = getattr(event, "reply_to_message", None)
+        return (
+            reply is not None
+            and _string_attr(reply, "message_id") is not None
+            and _nested_string_attr(reply, "from_", "id") is not None
+            and _nested_string_attr(event, "chat", "id") is not None
+            and _string_attr(event, "message_id") is not None
+        )
+
+    async def get_reply_target(
+        self,
+        bot: "Bot",  # noqa: ARG002
+        event: "Event",
+    ) -> RevokeTarget | None:
+        reply = getattr(event, "reply_to_message", None)
+        if reply is None:
+            return None
+
+        message_id = _string_attr(reply, "message_id")
+        author_id = _nested_string_attr(reply, "from_", "id")
+        if message_id is None or author_id is None:
+            return None
+        return RevokeTarget(message_id=message_id, author_id=author_id)
+
+    async def is_bot_authored(
+        self,
+        bot: "Bot",
+        event: "Event",  # noqa: ARG002
+        target: RevokeTarget,
+    ) -> bool:
+        return _target_matches_bot_id(target, (getattr(bot, "self_id", None),))
+
+    async def revoke_message(
+        self,
+        bot: "Bot",
+        event: "Event",
+        target: RevokeTarget,
+    ) -> RevokeActionResult:
+        chat_id = _nested_string_attr(event, "chat", "id")
+        if chat_id is None:
+            return RevokeActionResult.unsupported("chat_id_missing")
+        return await _call_adapter_api(
+            bot,
+            _TELEGRAM_ADAPTER_NAME,
+            "delete_message",
+            chat_id=_message_id_value(chat_id),
+            message_id=_message_id_value(target.message_id),
+        )
+
+    async def revoke_trigger_message(
+        self,
+        bot: "Bot",
+        event: "Event",
+    ) -> RevokeActionResult:
+        chat_id = _nested_string_attr(event, "chat", "id")
+        message_id = _event_message_id(event)
+        if chat_id is None:
+            return RevokeActionResult.unsupported("chat_id_missing")
+        if message_id is None:
+            return RevokeActionResult.unsupported("trigger_message_id_missing")
+        return await _call_adapter_api(
+            bot,
+            _TELEGRAM_ADAPTER_NAME,
+            "delete_message",
+            chat_id=_message_id_value(chat_id),
+            message_id=_message_id_value(message_id),
+        )
+
+    async def apply_feedback(
+        self,
+        bot: "Bot",  # noqa: ARG002
+        event: "Event",  # noqa: ARG002
+        *,
+        kind: FeedbackKind,  # noqa: ARG002
+    ) -> RevokeActionResult:
+        return RevokeActionResult.unsupported("reaction_feedback_unsupported")
+
+
+class DiscordSelfRevokeProvider:
+    """Discord provider for reply-target message deletion."""
+
+    def supports(self, bot: "Bot", event: "Event") -> bool:
+        if _normalized_adapter_name(bot) != _DISCORD_ADAPTER_NAME:
+            return False
+        reply = getattr(event, "reply", None)
+        return (
+            reply is not None
+            and _string_attr(reply, "id") is not None
+            and _nested_string_attr(reply, "author", "id") is not None
+            and _string_attr(event, "channel_id") is not None
+            and _event_message_id(event) is not None
+        )
+
+    async def get_reply_target(
+        self,
+        bot: "Bot",  # noqa: ARG002
+        event: "Event",
+    ) -> RevokeTarget | None:
+        reply = getattr(event, "reply", None)
+        if reply is None:
+            return None
+
+        message_id = _string_attr(reply, "id")
+        author_id = _nested_string_attr(reply, "author", "id")
+        if message_id is None or author_id is None:
+            return None
+        return RevokeTarget(message_id=message_id, author_id=author_id)
+
+    async def is_bot_authored(
+        self,
+        bot: "Bot",
+        event: "Event",  # noqa: ARG002
+        target: RevokeTarget,
+    ) -> bool:
+        return _target_matches_bot_id(
+            target,
+            (
+                getattr(bot, "self_id", None),
+                _nested_string_attr(bot, "self_info", "id"),
+            ),
+        )
+
+    async def revoke_message(
+        self,
+        bot: "Bot",
+        event: "Event",
+        target: RevokeTarget,
+    ) -> RevokeActionResult:
+        channel_id = _string_attr(event, "channel_id")
+        if channel_id is None:
+            return RevokeActionResult.unsupported("channel_id_missing")
+        return await _call_adapter_api(
+            bot,
+            _DISCORD_ADAPTER_NAME,
+            "delete_message",
+            channel_id=channel_id,
+            message_id=target.message_id,
+        )
+
+    async def revoke_trigger_message(
+        self,
+        bot: "Bot",
+        event: "Event",
+    ) -> RevokeActionResult:
+        channel_id = _string_attr(event, "channel_id")
+        message_id = _event_message_id(event)
+        if channel_id is None:
+            return RevokeActionResult.unsupported("channel_id_missing")
+        if message_id is None:
+            return RevokeActionResult.unsupported("trigger_message_id_missing")
+        return await _call_adapter_api(
+            bot,
+            _DISCORD_ADAPTER_NAME,
+            "delete_message",
+            channel_id=channel_id,
+            message_id=message_id,
+        )
+
+    async def apply_feedback(
+        self,
+        bot: "Bot",  # noqa: ARG002
+        event: "Event",  # noqa: ARG002
+        *,
+        kind: FeedbackKind,  # noqa: ARG002
+    ) -> RevokeActionResult:
+        return RevokeActionResult.unsupported("reaction_feedback_unsupported")
+
+
+class QQGuildSelfRevokeProvider:
+    """QQ guild/channel provider for reply-target message deletion."""
+
+    def supports(self, bot: "Bot", event: "Event") -> bool:
+        if _normalized_adapter_name(bot) != _QQ_ADAPTER_NAME:
+            return False
+        if _event_type_name(event) == "direct_message_create":
+            return False
+        reply = getattr(event, "reply", None)
+        return (
+            reply is not None
+            and _string_attr(reply, "id") is not None
+            and _nested_string_attr(reply, "author", "id") is not None
+            and _string_attr(event, "channel_id") is not None
+            and _event_message_id(event) is not None
+        )
+
+    async def get_reply_target(
+        self,
+        bot: "Bot",  # noqa: ARG002
+        event: "Event",
+    ) -> RevokeTarget | None:
+        reply = getattr(event, "reply", None)
+        if reply is None:
+            return None
+
+        message_id = _string_attr(reply, "id")
+        author_id = _nested_string_attr(reply, "author", "id")
+        if message_id is None or author_id is None:
+            return None
+        return RevokeTarget(message_id=message_id, author_id=author_id)
+
+    async def is_bot_authored(
+        self,
+        bot: "Bot",
+        event: "Event",  # noqa: ARG002
+        target: RevokeTarget,
+    ) -> bool:
+        return _target_matches_bot_id(
+            target,
+            (
+                getattr(bot, "self_id", None),
+                _nested_string_attr(bot, "self_info", "id"),
+            ),
+        )
+
+    async def revoke_message(
+        self,
+        bot: "Bot",
+        event: "Event",
+        target: RevokeTarget,
+    ) -> RevokeActionResult:
+        channel_id = _string_attr(event, "channel_id")
+        if channel_id is None:
+            return RevokeActionResult.unsupported("channel_id_missing")
+        return await _call_adapter_api(
+            bot,
+            _QQ_ADAPTER_NAME,
+            "delete_message",
+            channel_id=channel_id,
+            message_id=target.message_id,
+        )
+
+    async def revoke_trigger_message(
+        self,
+        bot: "Bot",
+        event: "Event",
+    ) -> RevokeActionResult:
+        channel_id = _string_attr(event, "channel_id")
+        message_id = _event_message_id(event)
+        if channel_id is None:
+            return RevokeActionResult.unsupported("channel_id_missing")
+        if message_id is None:
+            return RevokeActionResult.unsupported("trigger_message_id_missing")
+        return await _call_adapter_api(
+            bot,
+            _QQ_ADAPTER_NAME,
+            "delete_message",
+            channel_id=channel_id,
+            message_id=message_id,
+        )
+
+    async def apply_feedback(
+        self,
+        bot: "Bot",  # noqa: ARG002
+        event: "Event",  # noqa: ARG002
+        *,
+        kind: FeedbackKind,  # noqa: ARG002
+    ) -> RevokeActionResult:
+        return RevokeActionResult.unsupported("reaction_feedback_unsupported")
+
+
+OneBotSelfRevokeProvider = OneBotV11SelfRevokeProvider
+
+
+def _normalized_adapter_name(bot: object) -> str:
+    adapter_name = str(getattr(bot, "type", "") or "").lower()
+    return adapter_name.replace(" ", "")
+
+
 def _string_attr(value: object, name: str) -> str | None:
-    item = getattr(value, name, None)
+    try:
+        item = getattr(value, name, None)
+    except Exception:  # noqa: BLE001
+        return None
     if item is None:
         return None
     text = str(item).strip()
     return text or None
+
+
+def _nested_string_attr(value: object, *names: str) -> str | None:
+    current = value
+    for name in names:
+        try:
+            current = getattr(current, name, None)
+        except Exception:  # noqa: BLE001
+            return None
+        if current is None:
+            return None
+    text = str(current).strip()
+    return text or None
+
+
+def _event_type_name(event: object) -> str:
+    value = getattr(event, "__type__", None)
+    if value is None:
+        return ""
+    name = getattr(value, "value", value)
+    return str(name).lower()
+
+
+def _target_matches_bot_id(target: RevokeTarget, bot_ids: tuple[object, ...]) -> bool:
+    normalized_bot_ids = {
+        str(item).strip() for item in bot_ids if item is not None and str(item).strip()
+    }
+    return target.author_id is not None and target.author_id in normalized_bot_ids
 
 
 def _event_message_id(event: object) -> str | None:
@@ -254,17 +640,42 @@ async def _call_onebot_api(
     return RevokeActionResult.succeeded()
 
 
+async def _call_adapter_api(
+    bot: "Bot",
+    adapter: str,
+    api: str,
+    **data: object,
+) -> RevokeActionResult:
+    try:
+        await bot.call_api(api, **data)
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("Self-revoke {} API {} failed: {}", adapter, api, exc)
+        return RevokeActionResult.failed("platform_operation_failed")
+    return RevokeActionResult.succeeded()
+
+
 self_revoke_provider_registry = SelfRevokeProviderRegistry(
-    providers=(OneBotSelfRevokeProvider(),)
+    providers=(
+        OneBotV11SelfRevokeProvider(),
+        OneBotV12SelfRevokeProvider(),
+        TelegramSelfRevokeProvider(),
+        DiscordSelfRevokeProvider(),
+        QQGuildSelfRevokeProvider(),
+    )
 )
 
 
 __all__ = [
+    "DiscordSelfRevokeProvider",
     "FeedbackKind",
     "OneBotSelfRevokeProvider",
+    "OneBotV11SelfRevokeProvider",
+    "OneBotV12SelfRevokeProvider",
+    "QQGuildSelfRevokeProvider",
     "RevokeActionResult",
     "RevokeTarget",
     "SelfRevokeProvider",
     "SelfRevokeProviderRegistry",
+    "TelegramSelfRevokeProvider",
     "self_revoke_provider_registry",
 ]
