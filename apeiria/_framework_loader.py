@@ -18,6 +18,7 @@ BUILTIN_APPLICATION_PLUGIN_MODULES = (
     "apeiria.builtin_plugins.render",
     "apeiria.builtin_plugins.admin",
     "apeiria.builtin_plugins.help",
+    "apeiria.builtin_plugins.self_revoke",
     "apeiria.builtin_plugins.web_ui",
 )
 

@@ -1,0 +1,24 @@
+self_revoke:
+  meta:
+    name: "Self Revoke"
+    description: "Allows users to revoke messages sent by the bot itself by replying to them."
+    usage: "Reply to a bot message with \"撤回\" or \"revoke\" to request revocation of that bot message."
+    help_category: "Basic"
+    help_introduction: "Clean up content sent by the bot itself through reply-based revoke requests."
+    ui_label: "Self Revoke"
+  command:
+    revoke: "Reply to a bot message and revoke that message"
+  config:
+    permission:
+      label: "Permission"
+      help: "Controls who can trigger self-revoke."
+      public: "All users"
+      superuser: "Superusers only"
+    revoke_trigger_message:
+      label: "Revoke trigger message"
+      help: "After the target message is revoked successfully, best-effort revoke the user's \"撤回/revoke\" trigger message."
+    feedback:
+      label: "Feedback"
+      help: "Controls whether successful or failed revoke attempts use platform-specific feedback."
+      silent: "Silent"
+      reaction: "Reaction"

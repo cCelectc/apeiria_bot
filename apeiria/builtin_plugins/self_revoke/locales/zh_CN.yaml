@@ -1,0 +1,24 @@
+self_revoke:
+  meta:
+    name: "自助撤回"
+    description: "允许用户通过回复撤回机器人自己发送的消息。"
+    usage: "回复机器人消息发送“撤回”或“revoke”即可请求撤回该机器人消息。"
+    help_category: "基础功能"
+    help_introduction: "通过回复消息清理机器人自己发出的内容。"
+    ui_label: "自助撤回"
+  command:
+    revoke: "回复机器人消息并撤回该消息"
+  config:
+    permission:
+      label: "使用权限"
+      help: "控制谁可以触发自助撤回。"
+      public: "所有用户"
+      superuser: "仅超级用户"
+    revoke_trigger_message:
+      label: "撤回触发消息"
+      help: "目标消息撤回成功后，是否尽力撤回用户发送的“撤回/revoke”触发消息。"
+    feedback:
+      label: "反馈方式"
+      help: "控制撤回成功或失败时是否使用平台特定反馈。"
+      silent: "静默"
+      reaction: "表情回应"

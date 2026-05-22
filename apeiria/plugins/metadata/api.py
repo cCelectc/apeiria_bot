@@ -239,6 +239,7 @@ def _coerce_register_config(raw: dict[str, Any]) -> RegisterConfig:
 
 
 def _coerce_command_declaration(raw: dict[str, Any]) -> CommandDeclaration:
+    raw_custom_prefix = raw.get("custom_prefix")
     return CommandDeclaration(
         name=str(raw.get("name", "")),
         description=str(raw.get("description", "")),
@@ -248,9 +249,5 @@ def _coerce_command_declaration(raw: dict[str, Any]) -> CommandDeclaration:
             for item in raw.get("aliases", [])
             if isinstance(item, str) and item.strip()
         ],
-        custom_prefix=(
-            str(raw.get("custom_prefix"))
-            if isinstance(raw.get("custom_prefix"), str) and raw.get("custom_prefix")
-            else None
-        ),
+        custom_prefix=raw_custom_prefix if isinstance(raw_custom_prefix, str) else None,
     )
