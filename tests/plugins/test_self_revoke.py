@@ -12,11 +12,13 @@ from apeiria.builtin_plugins.self_revoke.config import (
 )
 from apeiria.builtin_plugins.self_revoke.providers import (
     DiscordSelfRevokeProvider,
+    FeishuSelfRevokeProvider,
     OneBotV11SelfRevokeProvider,
     OneBotV12SelfRevokeProvider,
     QQGuildSelfRevokeProvider,
     RevokeActionResult,
     RevokeTarget,
+    SatoriSelfRevokeProvider,
     SelfRevokeProviderRegistry,
     TelegramSelfRevokeProvider,
     self_revoke_provider_registry,
@@ -443,6 +445,136 @@ def test_discord_provider_rejects_non_bot_reply() -> None:
     asyncio.run(scenario())
 
 
+def test_feishu_provider_confirms_and_revokes_bot_authored_reply() -> None:
+    provider = FeishuSelfRevokeProvider()
+    bot = _FakeBot(adapter_name="Feishu", self_id="cli-id")
+    bot.bot_config = SimpleNamespace(app_id="app-1")
+    event = _FakeFeishuEvent(
+        message_id="trigger-123",
+        reply=_FeishuReply(
+            message_id="target-456",
+            sender_id="app-1",
+            sender_id_type="app_id",
+        ),
+    )
+
+    async def scenario() -> None:
+        target = await provider.get_reply_target(bot, event)
+        assert target == RevokeTarget(message_id="target-456", author_id="app-1")
+        assert target is not None
+        assert await provider.is_bot_authored(bot, event, target)
+
+        result = await provider.revoke_message(bot, event, target)
+        trigger_result = await provider.revoke_trigger_message(bot, event)
+
+        assert result.success
+        assert trigger_result.success
+        assert bot.calls == [
+            ("im/v1/messages/target-456", {"method": "DELETE"}),
+            ("im/v1/messages/trigger-123", {"method": "DELETE"}),
+        ]
+
+    asyncio.run(scenario())
+
+
+def test_feishu_provider_rejects_non_app_reply() -> None:
+    provider = FeishuSelfRevokeProvider()
+    bot = _FakeBot(adapter_name="Feishu", self_id="cli-id")
+    bot.bot_config = SimpleNamespace(app_id="app-1")
+    event = _FakeFeishuEvent(
+        message_id="trigger-123",
+        reply=_FeishuReply(
+            message_id="target-456",
+            sender_id="app-1",
+            sender_id_type="open_id",
+        ),
+    )
+
+    async def scenario() -> None:
+        target = await provider.get_reply_target(bot, event)
+        assert target is not None
+        assert not await provider.is_bot_authored(bot, event, target)
+
+    asyncio.run(scenario())
+
+
+def test_feishu_provider_requires_current_app_identity() -> None:
+    provider = FeishuSelfRevokeProvider()
+    event = _FakeFeishuEvent(
+        message_id="trigger-123",
+        reply=_FeishuReply(
+            message_id="target-456",
+            sender_id="app-1",
+            sender_id_type="app_id",
+        ),
+    )
+
+    assert not provider.supports(_FakeBot(adapter_name="Feishu", self_id=""), event)
+
+
+def test_satori_provider_confirms_and_revokes_bot_authored_reply() -> None:
+    provider = SatoriSelfRevokeProvider()
+    bot = _FakeSatoriBot(self_id="bot-1")
+    event = _FakeSatoriEvent(
+        channel_id="channel-1",
+        message_id="trigger-123",
+        reply=_SatoriReply(message_id="target-456", author_id="bot-1"),
+    )
+
+    async def scenario() -> None:
+        target = await provider.get_reply_target(bot, event)
+        assert target == RevokeTarget(message_id="target-456", author_id="bot-1")
+        assert target is not None
+        assert await provider.is_bot_authored(bot, event, target)
+
+        result = await provider.revoke_message(bot, event, target)
+        trigger_result = await provider.revoke_trigger_message(bot, event)
+
+        assert result.success
+        assert trigger_result.success
+        assert bot.calls == [
+            (
+                "message_delete",
+                {"channel_id": "channel-1", "message_id": "target-456"},
+            ),
+            (
+                "message_delete",
+                {"channel_id": "channel-1", "message_id": "trigger-123"},
+            ),
+        ]
+
+    asyncio.run(scenario())
+
+
+def test_satori_provider_rejects_non_bot_reply() -> None:
+    provider = SatoriSelfRevokeProvider()
+    bot = _FakeSatoriBot(self_id="bot-1")
+    event = _FakeSatoriEvent(
+        channel_id="channel-1",
+        message_id="trigger-123",
+        reply=_SatoriReply(message_id="target-456", author_id="user-2"),
+    )
+
+    async def scenario() -> None:
+        target = await provider.get_reply_target(bot, event)
+        assert target is not None
+        assert not await provider.is_bot_authored(bot, event, target)
+
+    asyncio.run(scenario())
+
+
+def test_satori_provider_requires_reply_author_metadata() -> None:
+    provider = SatoriSelfRevokeProvider()
+    bot = _FakeSatoriBot(self_id="bot-1")
+    event = _FakeSatoriEvent(
+        channel_id="channel-1",
+        message_id="trigger-123",
+        reply=_SatoriReply(message_id="target-456", author_id=None),
+    )
+
+    assert not provider.supports(bot, event)
+
+
 def test_qq_guild_provider_confirms_and_revokes_bot_authored_reply() -> None:
     provider = QQGuildSelfRevokeProvider()
     bot = _FakeBot(adapter_name="QQ", self_id="10000")
@@ -520,6 +652,31 @@ def test_optional_provider_registry_resolution() -> None:
     )
     assert isinstance(
         registry.resolve(
+            _FakeBot(adapter_name="Feishu", self_id="cli-id"),
+            _FakeFeishuEvent(
+                message_id="trigger-123",
+                reply=_FeishuReply(
+                    message_id="target-456",
+                    sender_id="cli-id",
+                    sender_id_type="app_id",
+                ),
+            ),
+        ),
+        FeishuSelfRevokeProvider,
+    )
+    assert isinstance(
+        registry.resolve(
+            _FakeSatoriBot(self_id="10000"),
+            _FakeSatoriEvent(
+                channel_id="channel-1",
+                message_id="trigger-123",
+                reply=_SatoriReply(message_id="target-456", author_id="10000"),
+            ),
+        ),
+        SatoriSelfRevokeProvider,
+    )
+    assert isinstance(
+        registry.resolve(
             _FakeBot(adapter_name="QQ", self_id="10000"),
             _FakeChannelEvent(
                 adapter_event_type="message_create",
@@ -537,6 +694,8 @@ def test_self_revoke_import_does_not_require_optional_adapter_packages() -> None
     providers = importlib.import_module("apeiria.builtin_plugins.self_revoke.providers")
 
     assert module.__plugin_meta__.name == "自助撤回"
+    assert hasattr(providers, "FeishuSelfRevokeProvider")
+    assert hasattr(providers, "SatoriSelfRevokeProvider")
     assert hasattr(providers, "TelegramSelfRevokeProvider")
 
 
@@ -671,6 +830,15 @@ class _FakeBot:
         return {"status": "ok"}
 
 
+class _FakeSatoriBot(_FakeBot):
+    def __init__(self, *, self_id: str) -> None:
+        super().__init__(adapter_name="Satori", self_id=f"satori:{self_id}")
+        self._satori_self_id = self_id
+
+    def get_self_id(self) -> str:
+        return self._satori_self_id
+
+
 class _Sender:
     def __init__(self, user_id: str | None) -> None:
         self.user_id = user_id
@@ -756,10 +924,78 @@ class _FakeTelegramEvent:
         return "20000"
 
 
+class _FeishuReplySender:
+    def __init__(self, *, sender_id: str, sender_id_type: str) -> None:
+        self.id = sender_id
+        self.id_type = sender_id_type
+
+
+class _FeishuReply:
+    def __init__(
+        self,
+        *,
+        message_id: str,
+        sender_id: str,
+        sender_id_type: str,
+    ) -> None:
+        self.message_id = message_id
+        self.sender = _FeishuReplySender(
+            sender_id=sender_id,
+            sender_id_type=sender_id_type,
+        )
+
+
+class _FakeFeishuEvent:
+    def __init__(self, *, message_id: str, reply: object | None) -> None:
+        self.message_id = message_id
+        self.reply = reply
+
+    def get_user_id(self) -> str:
+        return "ou-user"
+
+
 class _FakeMessageGet:
     def __init__(self, *, message_id: str, author_id: str) -> None:
         self.id = message_id
         self.author = _SimpleUser(author_id)
+
+
+class _SatoriAuthor:
+    def __init__(self, author_id: str) -> None:
+        self.data = {"id": author_id}
+
+
+class _SatoriChildren:
+    def __init__(self, author_id: str | None) -> None:
+        self._author_id = author_id
+
+    def get(self, item_type: str) -> list[object]:
+        if item_type == "author" and self._author_id is not None:
+            return [_SatoriAuthor(self._author_id)]
+        return []
+
+
+class _SatoriReply:
+    def __init__(self, *, message_id: str, author_id: str | None) -> None:
+        self.data = {"id": message_id}
+        self.children = _SatoriChildren(author_id)
+
+
+class _FakeSatoriEvent:
+    def __init__(
+        self,
+        *,
+        channel_id: str,
+        message_id: str,
+        reply: object | None,
+    ) -> None:
+        self.channel = SimpleNamespace(id=channel_id)
+        self.message = SimpleNamespace(id=message_id)
+        self.msg_id = message_id
+        self.reply = reply
+
+    def get_user_id(self) -> str:
+        return "user-1"
 
 
 class _FakeChannelEvent:

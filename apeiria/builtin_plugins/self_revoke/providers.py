@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, ClassVar, Literal, Protocol
 
@@ -18,6 +19,8 @@ _ONEBOT_V12_ADAPTER_NAME = "onebotv12"
 _TELEGRAM_ADAPTER_NAME = "telegram"
 _DISCORD_ADAPTER_NAME = "discord"
 _QQ_ADAPTER_NAME = "qq"
+_FEISHU_ADAPTER_NAME = "feishu"
+_SATORI_ADAPTER_NAME = "satori"
 
 
 @dataclass(frozen=True, slots=True)
@@ -469,6 +472,176 @@ class DiscordSelfRevokeProvider:
         return RevokeActionResult.unsupported("reaction_feedback_unsupported")
 
 
+class FeishuSelfRevokeProvider:
+    """Feishu provider for reply-target message deletion."""
+
+    def supports(self, bot: "Bot", event: "Event") -> bool:
+        if _normalized_adapter_name(bot) != _FEISHU_ADAPTER_NAME:
+            return False
+        reply = getattr(event, "reply", None)
+        return (
+            reply is not None
+            and _string_attr(reply, "message_id") is not None
+            and _nested_string_attr(reply, "sender", "id") is not None
+            and _nested_string_attr(reply, "sender", "id_type") is not None
+            and _feishu_bot_app_id(bot) is not None
+            and _event_message_id(event) is not None
+        )
+
+    async def get_reply_target(
+        self,
+        bot: "Bot",  # noqa: ARG002
+        event: "Event",
+    ) -> RevokeTarget | None:
+        reply = getattr(event, "reply", None)
+        if reply is None:
+            return None
+
+        message_id = _string_attr(reply, "message_id")
+        author_id = _nested_string_attr(reply, "sender", "id")
+        if message_id is None or author_id is None:
+            return None
+        return RevokeTarget(message_id=message_id, author_id=author_id)
+
+    async def is_bot_authored(
+        self,
+        bot: "Bot",
+        event: "Event",
+        target: RevokeTarget,
+    ) -> bool:
+        reply = getattr(event, "reply", None)
+        sender_type = _nested_string_attr(reply, "sender", "id_type")
+        bot_app_id = _feishu_bot_app_id(bot)
+        return (
+            sender_type == "app_id"
+            and target.author_id is not None
+            and bot_app_id is not None
+            and target.author_id == bot_app_id
+        )
+
+    async def revoke_message(
+        self,
+        bot: "Bot",
+        event: "Event",  # noqa: ARG002
+        target: RevokeTarget,
+    ) -> RevokeActionResult:
+        return await _call_adapter_api(
+            bot,
+            _FEISHU_ADAPTER_NAME,
+            f"im/v1/messages/{target.message_id}",
+            method="DELETE",
+        )
+
+    async def revoke_trigger_message(
+        self,
+        bot: "Bot",
+        event: "Event",
+    ) -> RevokeActionResult:
+        message_id = _event_message_id(event)
+        if message_id is None:
+            return RevokeActionResult.unsupported("trigger_message_id_missing")
+        return await _call_adapter_api(
+            bot,
+            _FEISHU_ADAPTER_NAME,
+            f"im/v1/messages/{message_id}",
+            method="DELETE",
+        )
+
+    async def apply_feedback(
+        self,
+        bot: "Bot",  # noqa: ARG002
+        event: "Event",  # noqa: ARG002
+        *,
+        kind: FeedbackKind,  # noqa: ARG002
+    ) -> RevokeActionResult:
+        return RevokeActionResult.unsupported("reaction_feedback_unsupported")
+
+
+class SatoriSelfRevokeProvider:
+    """Satori provider for quote targets that include author metadata."""
+
+    def supports(self, bot: "Bot", event: "Event") -> bool:
+        if _normalized_adapter_name(bot) != _SATORI_ADAPTER_NAME:
+            return False
+        reply = getattr(event, "reply", None)
+        return (
+            reply is not None
+            and _satori_reply_message_id(reply) is not None
+            and _satori_reply_author_id(reply) is not None
+            and _satori_bot_user_id(bot) is not None
+            and _satori_channel_id(event) is not None
+            and _satori_event_message_id(event) is not None
+        )
+
+    async def get_reply_target(
+        self,
+        bot: "Bot",  # noqa: ARG002
+        event: "Event",
+    ) -> RevokeTarget | None:
+        reply = getattr(event, "reply", None)
+        if reply is None:
+            return None
+
+        message_id = _satori_reply_message_id(reply)
+        author_id = _satori_reply_author_id(reply)
+        if message_id is None or author_id is None:
+            return None
+        return RevokeTarget(message_id=message_id, author_id=author_id)
+
+    async def is_bot_authored(
+        self,
+        bot: "Bot",
+        event: "Event",  # noqa: ARG002
+        target: RevokeTarget,
+    ) -> bool:
+        return _target_matches_bot_id(target, (_satori_bot_user_id(bot),))
+
+    async def revoke_message(
+        self,
+        bot: "Bot",
+        event: "Event",
+        target: RevokeTarget,
+    ) -> RevokeActionResult:
+        channel_id = _satori_channel_id(event)
+        if channel_id is None:
+            return RevokeActionResult.unsupported("channel_id_missing")
+        return await _call_adapter_api(
+            bot,
+            _SATORI_ADAPTER_NAME,
+            "message_delete",
+            channel_id=channel_id,
+            message_id=target.message_id,
+        )
+
+    async def revoke_trigger_message(
+        self,
+        bot: "Bot",
+        event: "Event",
+    ) -> RevokeActionResult:
+        channel_id = _satori_channel_id(event)
+        message_id = _satori_event_message_id(event)
+        if channel_id is None:
+            return RevokeActionResult.unsupported("channel_id_missing")
+        if message_id is None:
+            return RevokeActionResult.unsupported("trigger_message_id_missing")
+        return await _call_adapter_api(
+            bot,
+            _SATORI_ADAPTER_NAME,
+            "message_delete",
+            channel_id=channel_id,
+            message_id=message_id,
+        )
+
+    async def apply_feedback(
+        self,
+        bot: "Bot",  # noqa: ARG002
+        event: "Event",  # noqa: ARG002
+        *,
+        kind: FeedbackKind,  # noqa: ARG002
+    ) -> RevokeActionResult:
+        return RevokeActionResult.unsupported("reaction_feedback_unsupported")
+
+
 class QQGuildSelfRevokeProvider:
     """QQ guild/channel provider for reply-target message deletion."""
 
@@ -593,6 +766,16 @@ def _nested_string_attr(value: object, *names: str) -> str | None:
     return text or None
 
 
+def _mapping_string_attr(value: object, key: str) -> str | None:
+    if not isinstance(value, Mapping):
+        return None
+    item = value.get(key)
+    if item is None:
+        return None
+    text = str(item).strip()
+    return text or None
+
+
 def _event_type_name(event: object) -> str:
     value = getattr(event, "__type__", None)
     if value is None:
@@ -618,6 +801,65 @@ def _event_message_id(event: object) -> str | None:
         if value is not None and str(value).strip():
             return str(value).strip()
     return _string_attr(event, "message_id")
+
+
+def _feishu_bot_app_id(bot: object) -> str | None:
+    return _nested_string_attr(bot, "bot_config", "app_id") or _string_attr(
+        bot,
+        "self_id",
+    )
+
+
+def _satori_bot_user_id(bot: object) -> str | None:
+    getter = getattr(bot, "get_self_id", None)
+    if callable(getter):
+        try:
+            value = getter()
+        except Exception:  # noqa: BLE001
+            value = None
+        if value is not None and str(value).strip():
+            return str(value).strip()
+    return _nested_string_attr(bot, "self_info", "id")
+
+
+def _satori_channel_id(event: object) -> str | None:
+    return _nested_string_attr(event, "channel", "id")
+
+
+def _satori_event_message_id(event: object) -> str | None:
+    return (
+        _string_attr(event, "msg_id")
+        or _nested_string_attr(event, "message", "id")
+        or _event_message_id(event)
+    )
+
+
+def _satori_reply_message_id(reply: object) -> str | None:
+    return _mapping_string_attr(getattr(reply, "data", None), "id") or _string_attr(
+        reply,
+        "id",
+    )
+
+
+def _satori_reply_author_id(reply: object) -> str | None:
+    children = getattr(reply, "children", None)
+    getter = getattr(children, "get", None)
+    if not callable(getter):
+        return None
+    try:
+        author_segments = getter("author")
+    except Exception:  # noqa: BLE001
+        return None
+    if not isinstance(author_segments, Sequence):
+        return None
+    try:
+        author = author_segments[0]
+    except (IndexError, TypeError):
+        return None
+    return _mapping_string_attr(getattr(author, "data", None), "id") or _string_attr(
+        author,
+        "id",
+    )
 
 
 def _message_id_value(message_id: str) -> int | str:
@@ -660,6 +902,8 @@ self_revoke_provider_registry = SelfRevokeProviderRegistry(
         OneBotV12SelfRevokeProvider(),
         TelegramSelfRevokeProvider(),
         DiscordSelfRevokeProvider(),
+        FeishuSelfRevokeProvider(),
+        SatoriSelfRevokeProvider(),
         QQGuildSelfRevokeProvider(),
     )
 )
@@ -668,12 +912,14 @@ self_revoke_provider_registry = SelfRevokeProviderRegistry(
 __all__ = [
     "DiscordSelfRevokeProvider",
     "FeedbackKind",
+    "FeishuSelfRevokeProvider",
     "OneBotSelfRevokeProvider",
     "OneBotV11SelfRevokeProvider",
     "OneBotV12SelfRevokeProvider",
     "QQGuildSelfRevokeProvider",
     "RevokeActionResult",
     "RevokeTarget",
+    "SatoriSelfRevokeProvider",
     "SelfRevokeProvider",
     "SelfRevokeProviderRegistry",
     "TelegramSelfRevokeProvider",
