@@ -22,6 +22,7 @@ BUILTIN_APPLICATION_PLUGIN_MODULES = (
     "apeiria.builtin_plugins.help",
     "apeiria.builtin_plugins.self_revoke",
     "apeiria.builtin_plugins.qq_tools",
+    "apeiria.builtin_plugins.repeater",
     "apeiria.builtin_plugins.web_ui",
 )
 

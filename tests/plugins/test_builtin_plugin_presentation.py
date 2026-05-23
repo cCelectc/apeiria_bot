@@ -15,6 +15,7 @@ BUILTIN_PLUGIN_MODULES = (
     "apeiria.builtin_plugins.help",
     "apeiria.builtin_plugins.qq_tools",
     "apeiria.builtin_plugins.render",
+    "apeiria.builtin_plugins.repeater",
     "apeiria.builtin_plugins.self_revoke",
     "apeiria.builtin_plugins.web_ui",
 )
@@ -35,6 +36,7 @@ def test_user_controlled_builtin_plugins_remain_normal() -> None:
         "apeiria.builtin_plugins.ai",
         "apeiria.builtin_plugins.contact_approval",
         "apeiria.builtin_plugins.contact_owner",
+        "apeiria.builtin_plugins.repeater",
         "apeiria.builtin_plugins.render",
         "apeiria.builtin_plugins.self_revoke",
         "apeiria.builtin_plugins.qq_tools",
