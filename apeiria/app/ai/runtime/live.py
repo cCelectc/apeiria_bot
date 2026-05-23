@@ -39,6 +39,7 @@ from apeiria.app.chat.protocol import (
     PartialReplyStartPayload,
 )
 from apeiria.bot.ingest import build_ingested_chat_event
+from apeiria.bot.live_context import live_platform_context
 from apeiria.conversation.contracts import ChatMessageCreate
 from apeiria.conversation.service import chat_session_service
 
@@ -182,30 +183,31 @@ class DefaultAILiveRuntimeEntry:
         message_text = wake_context.message_text
         user_id = str(event.get_user_id())
         media = extract_runtime_media(getattr(turn, "content_json", None))
-        result = await self._run_turn(
-            trace=trace
-            or RuntimeTraceContext(kind="conversation", trigger="nonebot_message"),
-            request=AIRuntimeIngressRequest(
-                identity=identity,
-                message_text=message_text,
-                source_message_id=turn.message_id,
-                user_id=user_id,
-                sender_id=str(bot.self_id),
-                runtime_mode="message",
-                is_tome=bool(hasattr(event, "is_tome") and event.is_tome()),
-                event_dedupe_key=event_dedupe_key,
-                event_dedupe_claimed=event_dedupe_claimed,
-                media_parts=media.parts,
-                media_diagnostics=media.diagnostics,
-                stream_sink=_webchat_stream_sink(
-                    bot=bot,
-                    session_id=identity.session_id,
+        with live_platform_context(bot=bot, event=event):
+            result = await self._run_turn(
+                trace=trace
+                or RuntimeTraceContext(kind="conversation", trigger="nonebot_message"),
+                request=AIRuntimeIngressRequest(
+                    identity=identity,
+                    message_text=message_text,
+                    source_message_id=turn.message_id,
+                    user_id=user_id,
+                    sender_id=str(bot.self_id),
+                    runtime_mode="message",
+                    is_tome=bool(hasattr(event, "is_tome") and event.is_tome()),
+                    event_dedupe_key=event_dedupe_key,
+                    event_dedupe_claimed=event_dedupe_claimed,
+                    media_parts=media.parts,
+                    media_diagnostics=media.diagnostics,
+                    stream_sink=_webchat_stream_sink(
+                        bot=bot,
+                        session_id=identity.session_id,
+                    ),
                 ),
-            ),
-            wake_context=wake_context,
-            current_time=current_time,
-            session_runtime=session_runtime,
-        )
+                wake_context=wake_context,
+                current_time=current_time,
+                session_runtime=session_runtime,
+            )
         return result.reply_text if result is not None else None
 
     async def handle_future_task(

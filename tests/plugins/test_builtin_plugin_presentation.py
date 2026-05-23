@@ -11,13 +11,14 @@ BUILTIN_PLUGIN_MODULES = (
     "apeiria.builtin_plugins.admin",
     "apeiria.builtin_plugins.ai",
     "apeiria.builtin_plugins.help",
+    "apeiria.builtin_plugins.qq_tools",
     "apeiria.builtin_plugins.render",
     "apeiria.builtin_plugins.self_revoke",
     "apeiria.builtin_plugins.web_ui",
 )
 
 
-def test_builtin_plugin_set_stays_six_role_modules() -> None:
+def test_builtin_plugin_set_stays_seven_role_modules() -> None:
     assert iter_builtin_plugin_modules() == BUILTIN_PLUGIN_MODULES
 
 
@@ -27,11 +28,12 @@ def test_web_ui_is_the_protected_builtin_control_panel() -> None:
     assert get_default_protection_mode("apeiria.builtin_plugins.web_ui") == "required"
 
 
-def test_ai_render_and_self_revoke_remain_separate_user_controls() -> None:
+def test_ai_render_self_revoke_and_qq_tools_remain_user_controls() -> None:
     for module_name in (
         "apeiria.builtin_plugins.ai",
         "apeiria.builtin_plugins.render",
         "apeiria.builtin_plugins.self_revoke",
+        "apeiria.builtin_plugins.qq_tools",
     ):
         assert module_name in iter_builtin_plugin_modules()
         assert not is_protected_plugin_module(module_name)
