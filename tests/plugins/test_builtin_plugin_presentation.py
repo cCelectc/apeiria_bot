@@ -10,6 +10,7 @@ from apeiria.plugins.protection import (
 BUILTIN_PLUGIN_MODULES = (
     "apeiria.builtin_plugins.admin",
     "apeiria.builtin_plugins.ai",
+    "apeiria.builtin_plugins.contact_owner",
     "apeiria.builtin_plugins.help",
     "apeiria.builtin_plugins.qq_tools",
     "apeiria.builtin_plugins.render",
@@ -18,7 +19,7 @@ BUILTIN_PLUGIN_MODULES = (
 )
 
 
-def test_builtin_plugin_set_stays_seven_role_modules() -> None:
+def test_builtin_plugin_set_stays_eight_role_modules() -> None:
     assert iter_builtin_plugin_modules() == BUILTIN_PLUGIN_MODULES
 
 
@@ -28,9 +29,10 @@ def test_web_ui_is_the_protected_builtin_control_panel() -> None:
     assert get_default_protection_mode("apeiria.builtin_plugins.web_ui") == "required"
 
 
-def test_ai_render_self_revoke_and_qq_tools_remain_user_controls() -> None:
+def test_user_controlled_builtin_plugins_remain_normal() -> None:
     for module_name in (
         "apeiria.builtin_plugins.ai",
+        "apeiria.builtin_plugins.contact_owner",
         "apeiria.builtin_plugins.render",
         "apeiria.builtin_plugins.self_revoke",
         "apeiria.builtin_plugins.qq_tools",
