@@ -3,44 +3,33 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Literal, Protocol, cast
-
-from nonebot.log import logger
+from typing import TYPE_CHECKING, Literal, Protocol
 
 if TYPE_CHECKING:
-    from collections.abc import Awaitable, Callable
-
     from nonebot.adapters import Bot, Event
 
+from apeiria.bot.platform import (
+    ActionResult,
+    ActionStatus,
+    ProviderRegistry,
+    adapter_name,
+    call_platform_api,
+    event_group_id,
+    event_message_id,
+    event_user_id,
+    id_value,
+)
+
 QQReaction = Literal["like"]
-QQActionStatus = Literal["success", "failed", "unsupported"]
+QQActionStatus = ActionStatus
 
 _ONEBOT_V11_ADAPTER_NAME = "onebotv11"
 _ONEBOT_LIKE_EMOJI_ID = "124"
 
 
 @dataclass(frozen=True, slots=True)
-class QQActionResult:
+class QQActionResult(ActionResult):
     """Provider-neutral result for one bounded QQ action."""
-
-    status: QQActionStatus
-    reason: str | None = None
-
-    @property
-    def success(self) -> bool:
-        return self.status == "success"
-
-    @classmethod
-    def succeeded(cls) -> "QQActionResult":
-        return cls(status="success")
-
-    @classmethod
-    def failed(cls, reason: str = "platform_operation_failed") -> "QQActionResult":
-        return cls(status="failed", reason=reason)
-
-    @classmethod
-    def unsupported(cls, reason: str = "unsupported") -> "QQActionResult":
-        return cls(status="unsupported", reason=reason)
 
 
 @dataclass(frozen=True, slots=True)
@@ -79,40 +68,18 @@ class QQToolProvider(Protocol):
     ) -> QQActionResult: ...
 
 
-class QQToolProviderRegistry:
+class QQToolProviderRegistry(ProviderRegistry[QQToolProvider]):
     """Resolve the first provider that supports a bot/event pair."""
 
     def __init__(self, providers: tuple[QQToolProvider, ...]) -> None:
-        self._providers = providers
-
-    def resolve(
-        self,
-        bot: "Bot",
-        event: "Event",
-    ) -> QQToolProvider | None:
-        for provider in self._providers:
-            if self._provider_supports(provider, bot, event):
-                return provider
-        return None
-
-    def _provider_supports(
-        self,
-        provider: QQToolProvider,
-        bot: "Bot",
-        event: "Event",
-    ) -> bool:
-        try:
-            return provider.supports(bot, event)
-        except Exception as exc:  # noqa: BLE001
-            logger.debug("QQ tools provider support check failed: {}", exc)
-            return False
+        super().__init__(providers, label="QQ tools provider")
 
 
 class OneBotV11QQToolProvider:
     """OneBot v11 provider for bounded QQ current-scene actions."""
 
     def supports(self, bot: "Bot", event: "Event") -> bool:  # noqa: ARG002
-        return _normalized_adapter_name(bot) == _ONEBOT_V11_ADAPTER_NAME
+        return adapter_name(bot) == _ONEBOT_V11_ADAPTER_NAME
 
     async def poke_current_actor(
         self,
@@ -123,10 +90,10 @@ class OneBotV11QQToolProvider:
         if request is None:
             return QQActionResult.unsupported("poke_target_unavailable")
 
-        payload: dict[str, object] = {"user_id": _id_value(request.user_id)}
+        payload: dict[str, object] = {"user_id": id_value(request.user_id)}
         if request.group_id is not None:
-            payload["group_id"] = _id_value(request.group_id)
-            payload["target_id"] = _id_value(request.user_id)
+            payload["group_id"] = id_value(request.group_id)
+            payload["target_id"] = id_value(request.user_id)
 
         return await _call_onebot_api(bot, "send_poke", **payload)
 
@@ -150,12 +117,12 @@ class OneBotV11QQToolProvider:
 
 
 def _poke_request_from_event(event: object) -> QQPokeRequest | None:
-    user_id = _event_user_id(event)
+    user_id = event_user_id(event)
     if user_id is None:
         return None
     return QQPokeRequest(
         user_id=user_id,
-        group_id=_event_group_id(event),
+        group_id=event_group_id(event),
     )
 
 
@@ -164,65 +131,14 @@ def _reaction_request_from_event(
     *,
     reaction: QQReaction,
 ) -> QQMessageReactionRequest | None:
-    message_id = _event_message_id(event)
+    message_id = event_message_id(event)
     if message_id is None:
         return None
     return QQMessageReactionRequest(message_id=message_id, reaction=reaction)
 
 
-def _normalized_adapter_name(bot: object) -> str:
-    adapter_name = str(getattr(bot, "type", "") or "").lower()
-    return adapter_name.replace(" ", "")
-
-
-def _string_attr(value: object, name: str) -> str | None:
-    try:
-        item = getattr(value, name, None)
-    except Exception:  # noqa: BLE001
-        return None
-    if item is None:
-        return None
-    text = str(item).strip()
-    return text or None
-
-
-def _event_user_id(event: object) -> str | None:
-    getter = getattr(event, "get_user_id", None)
-    if callable(getter):
-        try:
-            value = getter()
-        except Exception:  # noqa: BLE001
-            value = None
-        if value is not None and str(value).strip():
-            return str(value).strip()
-    return _string_attr(event, "user_id")
-
-
-def _event_group_id(event: object) -> str | None:
-    return _string_attr(event, "group_id")
-
-
-def _event_message_id(event: object) -> str | None:
-    getter = getattr(event, "get_message_id", None)
-    if callable(getter):
-        try:
-            value = getter()
-        except Exception:  # noqa: BLE001
-            value = None
-        if value is not None and str(value).strip():
-            return str(value).strip()
-    return _string_attr(event, "message_id")
-
-
-def _id_value(value: str) -> int | str:
-    try:
-        return int(value)
-    except ValueError:
-        return value
-
-
 def _message_id_value(message_id: str) -> int | str:
-    return _id_value(message_id)
+    return id_value(message_id)
 
 
 def _emoji_id_for_reaction(reaction: QQReaction) -> str:
@@ -235,15 +151,13 @@ async def _call_onebot_api(
     api: str,
     **data: object,
 ) -> QQActionResult:
-    call_api = getattr(bot, "call_api", None)
-    if not callable(call_api):
-        return QQActionResult.unsupported("platform_api_unavailable")
-    try:
-        await cast("Callable[..., Awaitable[object]]", call_api)(api, **data)
-    except Exception as exc:  # noqa: BLE001
-        logger.debug("QQ tools OneBot API {} failed: {}", api, exc)
-        return QQActionResult.failed("platform_operation_failed")
-    return QQActionResult.succeeded()
+    return await call_platform_api(
+        bot,
+        api,
+        data=data,
+        result_type=QQActionResult,
+        log_label="QQ tools OneBot",
+    )
 
 
 qq_tool_provider_registry = QQToolProviderRegistry(

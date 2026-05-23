@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable, Mapping, Sequence
+from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, ClassVar, Literal, Protocol, cast
 
@@ -9,8 +9,19 @@ from nonebot.log import logger
 if TYPE_CHECKING:
     from nonebot.adapters import Bot, Event
 
+from apeiria.bot.platform import (
+    ActionResult,
+    ProviderRegistry,
+    adapter_name,
+    call_platform_api,
+    event_message_id,
+    id_value,
+    mapping_string_attr,
+    nested_string_attr,
+    string_attr,
+)
+
 FeedbackKind = Literal["success", "failure"]
-ActionStatus = Literal["success", "failed", "unsupported"]
 
 _ONEBOT_SUCCESS_REACTION_EMOJI_ID = "124"
 _ONEBOT_FAILURE_REACTION_EMOJI_ID = "424"  # QFace marker for failure feedback.
@@ -32,27 +43,12 @@ class RevokeTarget:
 
 
 @dataclass(frozen=True, slots=True)
-class RevokeActionResult:
+class RevokeActionResult(ActionResult):
     """Result for best-effort platform operations."""
-
-    status: ActionStatus
-    reason: str | None = None
-
-    @property
-    def success(self) -> bool:
-        return self.status == "success"
-
-    @classmethod
-    def succeeded(cls) -> "RevokeActionResult":
-        return cls(status="success")
 
     @classmethod
     def failed(cls, reason: str = "operation_failed") -> "RevokeActionResult":
         return cls(status="failed", reason=reason)
-
-    @classmethod
-    def unsupported(cls, reason: str = "unsupported") -> "RevokeActionResult":
-        return cls(status="unsupported", reason=reason)
 
 
 class SelfRevokeProvider(Protocol):
@@ -95,37 +91,11 @@ class SelfRevokeProvider(Protocol):
     ) -> RevokeActionResult: ...
 
 
-class SelfRevokeProviderRegistry:
+class SelfRevokeProviderRegistry(ProviderRegistry[SelfRevokeProvider]):
     """Resolve the first provider that supports a bot/event pair."""
 
     def __init__(self, providers: tuple[SelfRevokeProvider, ...]) -> None:
-        self._providers = providers
-
-    def resolve(
-        self,
-        bot: "Bot",
-        event: "Event",
-    ) -> SelfRevokeProvider | None:
-        for provider in self._providers:
-            provider_supported = self._provider_supports(provider, bot, event)
-            if provider_supported:
-                return provider
-        return None
-
-    def _provider_supports(
-        self,
-        provider: SelfRevokeProvider,
-        bot: "Bot",
-        event: "Event",
-    ) -> bool:
-        try:
-            return provider.supports(bot, event)
-        except Exception as exc:  # noqa: BLE001
-            logger.debug(
-                "Self-revoke provider support check failed: {}",
-                exc,
-            )
-            return False
+        super().__init__(providers, label="Self-revoke provider")
 
 
 class OneBotV11SelfRevokeProvider:
@@ -743,42 +713,19 @@ OneBotSelfRevokeProvider = OneBotV11SelfRevokeProvider
 
 
 def _normalized_adapter_name(bot: object) -> str:
-    adapter_name = str(getattr(bot, "type", "") or "").lower()
-    return adapter_name.replace(" ", "")
+    return adapter_name(bot)
 
 
 def _string_attr(value: object, name: str) -> str | None:
-    try:
-        item = getattr(value, name, None)
-    except Exception:  # noqa: BLE001
-        return None
-    if item is None:
-        return None
-    text = str(item).strip()
-    return text or None
+    return string_attr(value, name)
 
 
 def _nested_string_attr(value: object, *names: str) -> str | None:
-    current = value
-    for name in names:
-        try:
-            current = getattr(current, name, None)
-        except Exception:  # noqa: BLE001
-            return None
-        if current is None:
-            return None
-    text = str(current).strip()
-    return text or None
+    return nested_string_attr(value, *names)
 
 
 def _mapping_string_attr(value: object, key: str) -> str | None:
-    if not isinstance(value, Mapping):
-        return None
-    item = value.get(key)
-    if item is None:
-        return None
-    text = str(item).strip()
-    return text or None
+    return mapping_string_attr(value, key)
 
 
 def _event_type_name(event: object) -> str:
@@ -797,15 +744,7 @@ def _target_matches_bot_id(target: RevokeTarget, bot_ids: tuple[object, ...]) ->
 
 
 def _event_message_id(event: object) -> str | None:
-    getter = getattr(event, "get_message_id", None)
-    if callable(getter):
-        try:
-            value = getter()
-        except Exception:  # noqa: BLE001
-            value = None
-        if value is not None and str(value).strip():
-            return str(value).strip()
-    return _string_attr(event, "message_id")
+    return event_message_id(event)
 
 
 def _feishu_bot_app_id(bot: object) -> str | None:
@@ -891,10 +830,7 @@ async def _satori_fetch_author_id(
 
 
 def _message_id_value(message_id: str) -> int | str:
-    try:
-        return int(message_id)
-    except ValueError:
-        return message_id
+    return id_value(message_id)
 
 
 async def _call_onebot_api(
@@ -902,12 +838,13 @@ async def _call_onebot_api(
     api: str,
     **data: object,
 ) -> RevokeActionResult:
-    try:
-        await bot.call_api(api, **data)
-    except Exception as exc:  # noqa: BLE001
-        logger.debug("Self-revoke OneBot API {} failed: {}", api, exc)
-        return RevokeActionResult.failed("platform_operation_failed")
-    return RevokeActionResult.succeeded()
+    return await call_platform_api(
+        bot,
+        api,
+        data=data,
+        result_type=RevokeActionResult,
+        log_label="Self-revoke OneBot",
+    )
 
 
 async def _call_adapter_api(
@@ -916,12 +853,13 @@ async def _call_adapter_api(
     api: str,
     **data: object,
 ) -> RevokeActionResult:
-    try:
-        await bot.call_api(api, **data)
-    except Exception as exc:  # noqa: BLE001
-        logger.debug("Self-revoke {} API {} failed: {}", adapter, api, exc)
-        return RevokeActionResult.failed("platform_operation_failed")
-    return RevokeActionResult.succeeded()
+    return await call_platform_api(
+        bot,
+        api,
+        data=data,
+        result_type=RevokeActionResult,
+        log_label=f"Self-revoke {adapter}",
+    )
 
 
 self_revoke_provider_registry = SelfRevokeProviderRegistry(

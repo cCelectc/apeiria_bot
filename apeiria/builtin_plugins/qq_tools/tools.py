@@ -4,9 +4,8 @@ from __future__ import annotations
 
 from typing import Literal
 
-from apeiria.ai.plugin_api import ai_tool
+from apeiria.ai.plugin_api import ai_tool, live_platform_context
 from apeiria.ai.tools.models import AIToolExecutionContext, AIToolLevel, AIToolResult
-from apeiria.bot.live_context import get_live_platform_context
 
 from .providers import (
     QQActionResult,
@@ -28,7 +27,7 @@ async def poke(
 ) -> AIToolResult:
     """Poke the current actor through the active QQ provider."""
 
-    live = get_live_platform_context()
+    live = live_platform_context()
     if live is None:
         return _not_ready("runtime_missing_capability")
 
@@ -52,7 +51,7 @@ async def react_to_message(
 ) -> AIToolResult:
     """React to the current/source message through the active QQ provider."""
 
-    live = get_live_platform_context()
+    live = live_platform_context()
     if live is None:
         return _not_ready("runtime_missing_capability")
 

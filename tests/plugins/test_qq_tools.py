@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any, cast
 
 from apeiria.ai.contributions import ai_contributions
+from apeiria.ai.plugin_api import live_platform_context as get_plugin_live_context
 from apeiria.ai.skills.loader import load_skills_from_sources
 from apeiria.ai.skills.runtime import AISkillRuntime
 from apeiria.ai.tools.exposure import create_tool_exposure_plan
@@ -20,10 +21,7 @@ from apeiria.ai.tools.policy import (
     evaluate_tool_policy,
     resolve_default_tool_policy,
 )
-from apeiria.bot.live_context import (
-    get_live_platform_context,
-    live_platform_context,
-)
+from apeiria.bot.live_context import live_platform_context
 from apeiria.builtin_plugins.qq_tools import tools
 from apeiria.builtin_plugins.qq_tools.providers import (
     OneBotV11QQToolProvider,
@@ -117,13 +115,13 @@ def test_live_platform_context_is_available_and_resets() -> None:
     bot = _FakeBot(adapter_name="OneBot V11", self_id="10000")
     event = _FakeEvent(user_id="20000", message_id="123")
 
-    assert get_live_platform_context() is None
+    assert get_plugin_live_context() is None
     with live_platform_context(bot=cast("Any", bot), event=cast("Any", event)):
-        live = get_live_platform_context()
+        live = get_plugin_live_context()
         assert live is not None
         assert live.bot is bot
         assert live.event is event
-    assert get_live_platform_context() is None
+    assert get_plugin_live_context() is None
 
 
 def test_missing_live_context_returns_not_ready() -> None:

@@ -2,11 +2,9 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-
 from nonebot.plugin import PluginMetadata
 
-from apeiria.ai.contributions import register_ai_skill_source
+from apeiria.ai.plugin_api import ai_skill_source
 from apeiria.plugins.metadata.api import (
     HelpExtra,
     PluginExtraData,
@@ -33,7 +31,7 @@ __plugin_meta__ = PluginMetadata(
     ).to_dict(),
 )
 
-register_ai_skill_source("skills/qq-tools/SKILL.md", base_path=Path(__file__).parent)
+ai_skill_source("skills/qq-tools/SKILL.md")
 
 from . import tools as tools
 
