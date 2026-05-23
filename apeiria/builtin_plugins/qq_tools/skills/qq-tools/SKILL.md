@@ -1,14 +1,19 @@
 ---
 name: qq-tools
-description: Decide when the bounded QQ chat action tools are useful.
+description: 提供可选的 QQ 戳一戳、表情回应和当前群成员提及能力。
 version: 1
 triggers:
   - poke
   - 戳一戳
   - reaction
   - 表情回应
+  - mention
+  - 艾特
+  - 提醒
 entry_mode: prompt_only
 tools:
+  - qq.get_group_members
+  - qq.mention_user
   - qq.poke
   - qq.react_to_message
 tags:
@@ -16,57 +21,39 @@ tags:
   - tools
 ---
 
-These tools are social signals for the current QQ conversation, not keyword
-commands and not task-completion APIs. Do not call a tool just because the user
-mentions poking, liking, reactions, QQ, or tools.
+这些工具只是 QQ 对话里的可选动作，不是关键词命令，也不是完成任务的固定步骤。
+是否使用工具，取决于它能否让这次回复更自然、更准确或更有用。
 
-Default to a normal text reply. Use a QQ action only when it improves the
-chatting posture of the current reply turn.
+默认直接用文本回复。不使用工具始终是合理选择；需要时，可以把 QQ 动作作为回复的补充。
 
-## Reaction
+## @ 提及
 
-`qq.react_to_message` adds one bounded reaction to the current or source
-message. It can be used together with a normal reply, but it is optional. Do not
-add a reaction merely because you are replying.
+`qq.get_group_members` 可以按 QQ 号、昵称或群名片查询当前 QQ 群成员。
+`qq.mention_user` 可以为一个已确认的数字 QQ 号生成真实提及片段，并把它放进正常回复。
 
-Good uses:
+如果提及某个具体成员能让回复更清楚或更有帮助，可以使用提及工具。目标已经明确、
+且已有可靠数字 QQ 号时，直接调用 `qq.mention_user`。如果只知道昵称、群名片或身份描述，
+可以调用 `qq.get_group_members` 查找候选；结果仍不明确时，直接追问，不要猜测。
 
-- Add light acknowledgement or warmth to a casual share, joke, progress update,
-  or small success.
-- Pair a short reply with a reaction when the reaction strengthens the tone
-  without replacing useful content.
-- Use it when a full extra sentence would be noisier than a small social signal.
+提及应该是有效回复的一部分，不应变成只有提及、不含实际内容的消息，也不应作为装饰。
 
-Avoid it when:
+不要编造 QQ 号。不要使用 `@all`、用户给出的原始 CQ 码、原始平台 API 名、
+任意目标 ID、群 ID、消息 ID 或凭据作为提及输入。
 
-- The user needs an answer, explanation, decision, or concrete help.
-- The user is sad, angry, anxious, confused, or discussing a serious topic.
-- A reaction would feel perfunctory, dismissive, or like decoration.
+## 表情回应
 
-## Poke
+`qq.react_to_message` 可以给当前或来源消息添加一个受限表情回应。它可以配合文本回复，
+但不是礼貌默认项，也不是必备动作。只有当一个小表情确实贴合语气，或能自然加强文字回复时，
+才使用它。
 
-`qq.poke` pokes the current message actor in the live QQ scene. Treat it as a
-light relationship signal, not a reminder system and not a way to target
-arbitrary users.
+## 戳一戳
 
-Good uses:
+`qq.poke` 会在当前 QQ 场景中戳一戳消息发送者。把它当作轻量关系信号，只适合明显熟悉、
+玩笑、低风险的语境。它不是提醒系统，也不能用来指定任意目标用户。
 
-- The conversation is already playful, familiar, and low-stakes.
-- A tiny mischievous or affectionate gesture fits the current tone.
-- The poke complements the reply rather than replacing necessary words.
+## 可用性
 
-Avoid it when:
+这些工具可能因为场景策略、适配器支持或缺少当前消息上下文而不可用。不可用时，
+继续自然地用文本回复即可。除非用户明确询问，否则不要解释平台内部细节。
 
-- The user is unfamiliar, formal, upset, asking for help, or discussing
-  something serious.
-- The action would feel like nagging, teasing too hard, or forcing intimacy.
-- You have recently used a QQ action in the same exchange.
-
-## Availability
-
-These tools may be unavailable because of scene policy, adapter support, or
-missing live message context. If unavailable, continue naturally with text. Do
-not explain platform internals unless the user explicitly asks.
-
-Do not invent other QQ tools, raw API names, target IDs, message IDs, or
-arbitrary payloads.
+不要编造其他 QQ 工具、原始 API 名、目标 ID、消息 ID 或任意载荷。

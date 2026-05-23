@@ -26,6 +26,9 @@ from apeiria.builtin_plugins.qq_tools import tools
 from apeiria.builtin_plugins.qq_tools.providers import (
     OneBotV11QQToolProvider,
     QQActionResult,
+    QQGroupMember,
+    QQGroupMemberLookupResult,
+    QQMentionFragmentResult,
     QQToolProviderRegistry,
 )
 
@@ -45,7 +48,7 @@ def test_qq_tools_plugin_metadata_is_ai_capability_pack() -> None:
     )
 
 
-def test_qq_tools_contribute_only_two_decorated_ai_tools() -> None:
+def test_qq_tools_contribute_only_decorated_ai_tools() -> None:
     importlib.import_module("apeiria.builtin_plugins.qq_tools")
 
     snapshot = ai_contributions.snapshot()
@@ -55,15 +58,48 @@ def test_qq_tools_contribute_only_two_decorated_ai_tools() -> None:
         if contribution.tool.name.startswith(("qq.", "onebot."))
     )
 
-    assert qq_tool_names == ["qq.poke", "qq.react_to_message"]
+    assert qq_tool_names == [
+        "qq.get_group_members",
+        "qq.mention_user",
+        "qq.poke",
+        "qq.react_to_message",
+    ]
+    assert _tool_definition(tools.get_group_members).origin == "plugin"
+    assert _tool_definition(tools.mention_user).origin == "plugin"
     assert _tool_definition(tools.poke).origin == "plugin"
     assert _tool_definition(tools.react_to_message).origin == "plugin"
 
 
 def test_qq_tools_have_write_level_and_narrow_schemas() -> None:
+    lookup_definition = _tool_definition(tools.get_group_members)
+    mention_definition = _tool_definition(tools.mention_user)
     poke_definition = _tool_definition(tools.poke)
     reaction_definition = _tool_definition(tools.react_to_message)
 
+    assert lookup_definition.required_level is AIToolLevel.WRITE
+    assert lookup_definition.input_schema == {
+        "type": "object",
+        "properties": {
+            "keyword": {
+                "type": "string",
+                "description": "Keyword",
+                "default": "",
+            }
+        },
+        "additionalProperties": False,
+    }
+    assert mention_definition.required_level is AIToolLevel.WRITE
+    assert mention_definition.input_schema == {
+        "type": "object",
+        "properties": {
+            "user_id": {
+                "type": "string",
+                "description": "User id",
+            }
+        },
+        "additionalProperties": False,
+        "required": ["user_id"],
+    }
     assert poke_definition.required_level is AIToolLevel.WRITE
     assert poke_definition.input_schema == {
         "type": "object",
@@ -97,18 +133,23 @@ def test_qq_tools_skill_is_contributed_and_parseable() -> None:
     skill = loaded[0]
     assert skill.skill_name == "qq-tools"
     assert skill.entry_mode == "prompt_only"
-    assert skill.tools == ("qq.poke", "qq.react_to_message")
-    assert "qq.call_api" not in skill.body_markdown
-    normalized_body = " ".join(skill.body_markdown.split())
-    assert "not keyword commands" in normalized_body
-    assert "It can be used together with a normal reply" in normalized_body
+    assert skill.tools == (
+        "qq.get_group_members",
+        "qq.mention_user",
+        "qq.poke",
+        "qq.react_to_message",
+    )
 
     runtime = AISkillRuntime()
     runtime.register_file_skills(loaded)
     activation = runtime.activate_skill_explicit("qq-tools")
     assert activation is not None
-    assert activation.tools == ("qq.poke", "qq.react_to_message")
-    assert "Do not invent other QQ tools" in activation.body_markdown
+    assert activation.tools == (
+        "qq.get_group_members",
+        "qq.mention_user",
+        "qq.poke",
+        "qq.react_to_message",
+    )
 
 
 def test_live_platform_context_is_available_and_resets() -> None:
@@ -229,6 +270,247 @@ def test_onebot_reaction_requires_resolved_message() -> None:
     asyncio.run(scenario())
 
 
+def test_onebot_group_member_lookup_calls_bounded_current_group_api() -> None:
+    provider = OneBotV11QQToolProvider()
+    bot = _FakeBot(
+        adapter_name="OneBot V11",
+        self_id="10000",
+        api_results={
+            "get_group_member_list": [
+                {
+                    "user_id": 20000,
+                    "nickname": "Alice",
+                    "card": "小爱",
+                    "role": "member",
+                },
+                {
+                    "user_id": "20001",
+                    "nickname": "Bob",
+                    "card": "",
+                    "role": "admin",
+                },
+                {"nickname": "missing id"},
+            ]
+        },
+    )
+    event = _FakeEvent(user_id="20000", group_id="30000", message_id="123")
+
+    async def scenario() -> None:
+        result = await provider.get_group_members(
+            cast("Any", bot),
+            cast("Any", event),
+            keyword="",
+        )
+
+        assert result == QQGroupMemberLookupResult(
+            status="success",
+            group_id="30000",
+            members=(
+                QQGroupMember(
+                    user_id="20000",
+                    nickname="Alice",
+                    group_card="小爱",
+                    role="member",
+                ),
+                QQGroupMember(
+                    user_id="20001",
+                    nickname="Bob",
+                    group_card="",
+                    role="admin",
+                ),
+            ),
+            total_matches=2,
+            truncated=False,
+        )
+        assert [member.to_payload() for member in result.members] == [
+            {
+                "user_id": "20000",
+                "nickname": "Alice",
+                "group_card": "小爱",
+                "role": "member",
+            },
+            {
+                "user_id": "20001",
+                "nickname": "Bob",
+                "group_card": "",
+                "role": "admin",
+            },
+        ]
+        assert bot.calls == [("get_group_member_list", {"group_id": 30000})]
+
+    asyncio.run(scenario())
+
+
+def test_onebot_group_member_lookup_filters_by_keyword() -> None:
+    provider = OneBotV11QQToolProvider()
+    bot = _FakeBot(
+        adapter_name="OneBot V11",
+        self_id="10000",
+        api_results={
+            "get_group_member_list": [
+                {"user_id": "20000", "nickname": "Alice", "card": "小爱"},
+                {"user_id": "20001", "nickname": "Bob", "card": "项目负责人"},
+            ]
+        },
+    )
+    event = _FakeEvent(user_id="20000", group_id="30000", message_id="123")
+
+    async def scenario() -> None:
+        result = await provider.get_group_members(
+            cast("Any", bot),
+            cast("Any", event),
+            keyword="负责",
+        )
+
+        assert result.status == "success"
+        assert result.total_matches == 1
+        assert result.truncated is False
+        assert [member.user_id for member in result.members] == ["20001"]
+
+    asyncio.run(scenario())
+
+
+def test_onebot_group_member_lookup_caps_results() -> None:
+    result_limit = 20
+    total_members = result_limit + 1
+    provider = OneBotV11QQToolProvider()
+    bot = _FakeBot(
+        adapter_name="OneBot V11",
+        self_id="10000",
+        api_results={
+            "get_group_member_list": [
+                {"user_id": str(20000 + index), "nickname": f"Member {index}"}
+                for index in range(total_members)
+            ]
+        },
+    )
+    event = _FakeEvent(user_id="20000", group_id="30000", message_id="123")
+
+    async def scenario() -> None:
+        result = await provider.get_group_members(
+            cast("Any", bot),
+            cast("Any", event),
+            limit=50,
+        )
+
+        assert result.status == "success"
+        assert len(result.members) == result_limit
+        assert result.total_matches == total_members
+        assert result.truncated is True
+
+    asyncio.run(scenario())
+
+
+def test_onebot_group_member_lookup_requires_group_context() -> None:
+    provider = OneBotV11QQToolProvider()
+    bot = _FakeBot(adapter_name="OneBot V11", self_id="10000")
+    event = _FakeEvent(user_id="20000", message_id="123")
+
+    async def scenario() -> None:
+        result = await provider.get_group_members(cast("Any", bot), cast("Any", event))
+
+        assert result.status == "unsupported"
+        assert result.reason == "group_context_unavailable"
+        assert bot.calls == []
+
+    asyncio.run(scenario())
+
+
+def test_onebot_group_member_lookup_platform_failure_is_bounded() -> None:
+    provider = OneBotV11QQToolProvider()
+    bot = _FakeBot(
+        adapter_name="OneBot V11",
+        self_id="10000",
+        fail_apis={"get_group_member_list"},
+    )
+    event = _FakeEvent(user_id="20000", group_id="30000", message_id="123")
+
+    async def scenario() -> None:
+        result = await provider.get_group_members(cast("Any", bot), cast("Any", event))
+
+        assert result.status == "failed"
+        assert result.reason == "platform_operation_failed"
+        assert bot.calls == [("get_group_member_list", {"group_id": 30000})]
+
+    asyncio.run(scenario())
+
+
+def test_onebot_group_member_lookup_missing_api_is_not_ready() -> None:
+    provider = OneBotV11QQToolProvider()
+    bot = _FakeBotWithoutCallAPI(adapter_name="OneBot V11", self_id="10000")
+    event = _FakeEvent(user_id="20000", group_id="30000", message_id="123")
+
+    async def scenario() -> None:
+        result = await provider.get_group_members(cast("Any", bot), cast("Any", event))
+
+        assert result.status == "unsupported"
+        assert result.reason == "platform_api_unavailable"
+
+    asyncio.run(scenario())
+
+
+def test_onebot_group_member_lookup_invalid_response_is_bounded() -> None:
+    provider = OneBotV11QQToolProvider()
+    bot = _FakeBot(
+        adapter_name="OneBot V11",
+        self_id="10000",
+        api_results={"get_group_member_list": {"unexpected": "shape"}},
+    )
+    event = _FakeEvent(user_id="20000", group_id="30000", message_id="123")
+
+    async def scenario() -> None:
+        result = await provider.get_group_members(cast("Any", bot), cast("Any", event))
+
+        assert result.status == "failed"
+        assert result.reason == "platform_response_invalid"
+
+    asyncio.run(scenario())
+
+
+def test_onebot_mention_user_returns_fragment_without_sending() -> None:
+    provider = OneBotV11QQToolProvider()
+    bot = _FakeBot(adapter_name="OneBot V11", self_id="10000")
+    event = _FakeEvent(user_id="20000", group_id="30000", message_id="123")
+
+    async def scenario() -> None:
+        result = await provider.mention_user(
+            cast("Any", bot),
+            cast("Any", event),
+            user_id=" 20001 ",
+        )
+
+        assert result == QQMentionFragmentResult(
+            status="success",
+            user_id="20001",
+            mention="[CQ:at,qq=20001]",
+        )
+        assert bot.calls == []
+        assert bot.sent == []
+
+    asyncio.run(scenario())
+
+
+def test_onebot_mention_user_rejects_invalid_ids() -> None:
+    provider = OneBotV11QQToolProvider()
+    bot = _FakeBot(adapter_name="OneBot V11", self_id="10000")
+    event = _FakeEvent(user_id="20000", group_id="30000", message_id="123")
+
+    async def scenario() -> None:
+        for user_id in ("all", "[CQ:at,qq=123]", "abc", "0", "123 456"):
+            result = await provider.mention_user(
+                cast("Any", bot),
+                cast("Any", event),
+                user_id=user_id,
+            )
+            assert result.status == "unsupported"
+            assert result.reason == "invalid_user_id"
+
+        assert bot.calls == []
+        assert bot.sent == []
+
+    asyncio.run(scenario())
+
+
 def test_provider_failure_becomes_bounded_tool_error() -> None:
     bot = _FakeBot(
         adapter_name="OneBot V11",
@@ -254,8 +536,125 @@ def test_provider_failure_becomes_bounded_tool_error() -> None:
     asyncio.run(scenario())
 
 
+def test_mention_tool_returns_payload_fragment() -> None:
+    bot = _FakeBot(adapter_name="OneBot V11", self_id="10000")
+    event = _FakeEvent(user_id="20000", group_id="30000", message_id="123")
+
+    async def scenario() -> None:
+        with live_platform_context(bot=cast("Any", bot), event=cast("Any", event)):
+            result = await tools.mention_user(
+                "20001",
+                context=_execution_context(),
+            )
+
+        assert result.status == "success"
+        assert result.output_payload == {
+            "status": "success",
+            "user_id": "20001",
+            "mention": "[CQ:at,qq=20001]",
+        }
+        assert "[CQ:at,qq=20001]" in result.summary
+        assert "user_id=20001" in result.summary
+        assert bot.calls == []
+        assert bot.sent == []
+
+    asyncio.run(scenario())
+
+
+def test_mention_tool_rejects_invalid_user_id_without_sending() -> None:
+    bot = _FakeBot(adapter_name="OneBot V11", self_id="10000")
+    event = _FakeEvent(user_id="20000", group_id="30000", message_id="123")
+
+    async def scenario() -> None:
+        with live_platform_context(bot=cast("Any", bot), event=cast("Any", event)):
+            result = await tools.mention_user(
+                "all",
+                context=_execution_context(),
+            )
+
+        assert result.status == "not_ready"
+        assert result.output_payload == {
+            "status": "unsupported",
+            "user_id": None,
+            "mention": None,
+            "reason": "invalid_user_id",
+        }
+        assert bot.calls == []
+        assert bot.sent == []
+
+    asyncio.run(scenario())
+
+
+def test_mention_tool_unsupported_adapter_returns_not_ready() -> None:
+    bot = _FakeBot(adapter_name="Console", self_id="10000")
+    event = _FakeEvent(user_id="20000", group_id="30000", message_id="123")
+
+    async def scenario() -> None:
+        with live_platform_context(bot=cast("Any", bot), event=cast("Any", event)):
+            result = await tools.mention_user(
+                "20001",
+                context=_execution_context(),
+            )
+
+        assert result.status == "not_ready"
+        assert result.output_payload == {
+            "status": "not_ready",
+            "reason": "unsupported_adapter",
+        }
+        assert bot.calls == []
+        assert bot.sent == []
+
+    asyncio.run(scenario())
+
+
+def test_group_member_lookup_tool_returns_bounded_payload() -> None:
+    bot = _FakeBot(
+        adapter_name="OneBot V11",
+        self_id="10000",
+        api_results={
+            "get_group_member_list": [
+                {"user_id": "20000", "nickname": "Alice", "card": "小爱"},
+                {"user_id": "20001", "nickname": "Bob", "card": "项目负责人"},
+            ]
+        },
+    )
+    event = _FakeEvent(user_id="20000", group_id="30000", message_id="123")
+
+    async def scenario() -> None:
+        with live_platform_context(bot=cast("Any", bot), event=cast("Any", event)):
+            result = await tools.get_group_members(
+                "负责",
+                context=_execution_context(),
+            )
+
+        assert result.status == "success"
+        assert result.output_payload == {
+            "status": "success",
+            "group_id": "30000",
+            "count": 1,
+            "total_matches": 1,
+            "truncated": False,
+            "members": [
+                {
+                    "user_id": "20001",
+                    "nickname": "Bob",
+                    "group_card": "项目负责人",
+                    "role": "member",
+                }
+            ],
+        }
+        assert "user_id=20001" in result.summary
+        assert "nickname=Bob" in result.summary
+        assert "group_card=项目负责人" in result.summary
+        assert bot.calls == [("get_group_member_list", {"group_id": 30000})]
+
+    asyncio.run(scenario())
+
+
 def test_qq_tools_are_denied_below_write_and_hidden_in_default_group() -> None:
     qq_definitions = (
+        _tool_definition(tools.get_group_members),
+        _tool_definition(tools.mention_user),
         _tool_definition(tools.poke),
         _tool_definition(tools.react_to_message),
     )
@@ -279,6 +678,8 @@ def test_qq_tools_are_denied_below_write_and_hidden_in_default_group() -> None:
     assert default_group_policy.allowed_level is AIToolLevel.NONE
     assert default_group_plan.visible_tool_names == ()
     assert set(default_group_plan.denied_reasons) == {
+        "qq.get_group_members",
+        "qq.mention_user",
         "qq.poke",
         "qq.react_to_message",
     }
@@ -289,6 +690,8 @@ def test_qq_tools_are_denied_below_write_and_hidden_in_default_group() -> None:
         model_supports_tools=True,
     )
     assert explicit_write_plan.visible_tool_names == (
+        "qq.get_group_members",
+        "qq.mention_user",
         "qq.poke",
         "qq.react_to_message",
     )
@@ -319,17 +722,34 @@ class _FakeBot:
         adapter_name: str,
         self_id: str,
         fail_apis: set[str] | None = None,
+        api_results: dict[str, object] | None = None,
     ) -> None:
         self.type = adapter_name
         self.self_id = self_id
         self.fail_apis = fail_apis or set()
+        self.api_results = api_results or {}
         self.calls: list[tuple[str, dict[str, object]]] = []
+        self.sent: list[tuple[object, object]] = []
 
     async def call_api(self, api: str, **data: object) -> object:
         self.calls.append((api, data))
         if api in self.fail_apis:
             raise _FakePlatformError
-        return {}
+        return self.api_results.get(api, {})
+
+    async def send(self, event: object, message: object) -> None:
+        self.sent.append((event, message))
+
+
+class _FakeBotWithoutCallAPI:
+    def __init__(
+        self,
+        *,
+        adapter_name: str,
+        self_id: str,
+    ) -> None:
+        self.type = adapter_name
+        self.self_id = self_id
 
 
 class _FakeEvent:
