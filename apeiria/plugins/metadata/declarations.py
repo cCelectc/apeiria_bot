@@ -13,6 +13,7 @@ from pydantic import BaseModel
 from apeiria.plugins.metadata.api import RegisterConfig
 
 MIN_MAPPING_TYPE_ARGS = 2
+VARIADIC_TUPLE_TYPE_ARGS = 2
 BUILTIN_ANNOTATION_TYPES: dict[str, object] = {
     "str": str,
     "int": int,
@@ -73,14 +74,16 @@ def declaration_from_runtime_annotation(
     origin = get_origin(normalized_annotation)
     args = get_args(normalized_annotation)
 
-    if origin in {list, set}:
+    if origin in {list, set, tuple}:
+        collection_type = list if origin is tuple else origin
+        item_annotation = _sequence_runtime_item_annotation(args)
         item_declaration = (
-            declaration_from_runtime_annotation(args[0], None, seen_models)
-            if args
+            declaration_from_runtime_annotation(item_annotation, None, seen_models)
+            if item_annotation is not None
             else _declaration_from_default(_default_collection_default_value(default))
         )
         return FieldDeclaration(
-            type=origin,
+            type=collection_type,
             choices=[],
             item_type=item_declaration.type or str,
             allows_null=allows_null,
@@ -217,6 +220,14 @@ def _normalize_runtime_scalar_annotation(annotation: object, default: Any) -> ob
     return str
 
 
+def _sequence_runtime_item_annotation(args: tuple[object, ...]) -> object | None:
+    if not args:
+        return None
+    if len(args) == VARIADIC_TUPLE_TYPE_ARGS and args[1] is Ellipsis:
+        return args[0]
+    return args[0]
+
+
 def _default_collection_item_type(default: Any) -> object | None:
     if isinstance(default, list | set | tuple) and default:
         return type(next(iter(default)))
@@ -291,7 +302,7 @@ def _declaration_from_ast_subscript(
     default: Any,
 ) -> FieldDeclaration:
     value_name = _ast_value_name(annotation.value)
-    if value_name in {"list", "List", "Sequence"}:
+    if value_name in {"list", "List", "Sequence", "tuple", "Tuple"}:
         return _sequence_declaration(list, annotation.slice)
     if value_name in {"set", "Set"}:
         return _sequence_declaration(set, annotation.slice)

@@ -68,6 +68,12 @@ const {
   filterPendingEntriesForRuntime,
   runtimeStartedAtFromUptime,
 } = await loadTsModule('src/utils/restartPendingState.ts')
+const {
+  buildSettingsUpdate,
+  normalizeFieldValueForSave,
+  toEditorValue,
+  toSequenceChipValues,
+} = await loadTsModule('src/utils/settingsEditor.ts')
 
 assert.equal(
   normalizeAuthRedirect('/plugins?filter=attention', 'http://localhost'),
@@ -365,6 +371,79 @@ assert.deepEqual(
   ], null).map(item => item.id),
   ['kept'],
 )
+
+const stringListField = {
+  key: 'owner_targets',
+  label: 'Owner targets',
+  type: 'list',
+  editor: 'chips',
+  item_type: 'str',
+  key_type: null,
+  schema: null,
+  default: [],
+  help: '',
+  choices: [],
+  base_value: [],
+  current_value: ['qq:123456'],
+  local_value: null,
+  value_source: 'plugin_section',
+  has_local_override: true,
+  allows_null: false,
+  editable: true,
+  type_category: 'sequence',
+  order: 10,
+  secret: false,
+}
+assert.deepEqual(toSequenceChipValues(['qq:123456', 123456, 'qq:789']), [
+  'qq:123456',
+  'qq:789',
+])
+assert.deepEqual(toEditorValue(stringListField, ['qq:123456']), ['qq:123456'])
+assert.deepEqual(
+  normalizeFieldValueForSave(stringListField, ['qq:123456', '']),
+  ['qq:123456'],
+)
+assert.deepEqual(
+  buildSettingsUpdate(
+    [stringListField],
+    { owner_targets: ['qq:123456', 'qq:789'] },
+    {},
+    'Invalid JSON',
+  ),
+  {
+    values: { owner_targets: ['qq:123456', 'qq:789'] },
+    clear: [],
+  },
+)
+
+const jsonArrayField = {
+  ...stringListField,
+  key: 'groups',
+  editor: 'json_array',
+  current_value: ['10000'],
+}
+assert.deepEqual(
+  toEditorValue(jsonArrayField, ['10000']),
+  '[\n  "10000"\n]',
+)
+assert.deepEqual(normalizeFieldValueForSave(jsonArrayField, '["10000","20000"]'), [
+  '10000',
+  '20000',
+])
+
+const jsonObjectField = {
+  ...stringListField,
+  key: 'mapping',
+  editor: 'json_object',
+  item_type: null,
+  current_value: { a: '1' },
+  type: 'dict',
+  type_category: 'mapping',
+}
+assert.equal(toEditorValue(jsonObjectField, { a: '1' }), '{\n  "a": "1"\n}')
+assert.deepEqual(normalizeFieldValueForSave(jsonObjectField, '{"a":"1"}'), {
+  a: '1',
+})
 
 const routeSnapshot = buildRouteSnapshot({
   algorithm: 'ordered',

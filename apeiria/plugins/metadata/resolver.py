@@ -30,6 +30,17 @@ read_project_plugin_module_map = project_config_service.read_project_plugin_modu
 read_pyproject_nonebot_config = project_config_service.read_pyproject_nonebot_config
 read_project_plugin_config = plugin_config_service.read_project_plugin_config
 _DEFAULT_CONFIG_ORDER = 99
+_FIELD_SHAPE_DEFAULTS: dict[str, object] = {
+    "default": None,
+    "type": str,
+    "choices": [],
+    "item_type": None,
+    "key_type": None,
+    "allows_null": False,
+    "item_schema": None,
+    "key_schema": None,
+    "value_schema": None,
+}
 
 
 @dataclass(frozen=True)
@@ -60,20 +71,37 @@ def _merge_declared_config(
     base: RegisterConfig,
     enhancement: RegisterConfig,
 ) -> RegisterConfig:
+    structure_override = _has_structure_override(enhancement)
     return RegisterConfig(
         key=base.key,
-        default=base.default,
+        default=_merge_config_value(base, enhancement, "default"),
         help=enhancement.help or base.help,
-        type=base.type,
+        type=_merge_config_value(base, enhancement, "type"),
         choices=list(enhancement.choices or base.choices),
         choice_labels=dict(enhancement.choice_labels or base.choice_labels),
-        item_type=base.item_type,
-        key_type=base.key_type,
-        allows_null=base.allows_null,
-        fields=_merge_declared_configs(base.fields, enhancement.fields),
-        item_schema=_merge_nested_schema(base.item_schema, enhancement.item_schema),
-        key_schema=_merge_nested_schema(base.key_schema, enhancement.key_schema),
-        value_schema=_merge_nested_schema(base.value_schema, enhancement.value_schema),
+        item_type=_merge_config_value(base, enhancement, "item_type"),
+        key_type=_merge_config_value(base, enhancement, "key_type"),
+        allows_null=bool(_merge_config_value(base, enhancement, "allows_null")),
+        fields=(
+            list(enhancement.fields)
+            if structure_override and enhancement.fields
+            else _merge_declared_configs(base.fields, enhancement.fields)
+        ),
+        item_schema=(
+            enhancement.item_schema
+            if structure_override
+            else _merge_nested_schema(base.item_schema, enhancement.item_schema)
+        ),
+        key_schema=(
+            enhancement.key_schema
+            if structure_override
+            else _merge_nested_schema(base.key_schema, enhancement.key_schema)
+        ),
+        value_schema=(
+            enhancement.value_schema
+            if structure_override
+            else _merge_nested_schema(base.value_schema, enhancement.value_schema)
+        ),
         label=enhancement.label or base.label,
         order=(
             enhancement.order
@@ -93,6 +121,32 @@ def _merge_nested_schema(
     if enhancement is None:
         return base
     return _merge_declared_config(base, enhancement)
+
+
+def _merge_config_value(
+    base: RegisterConfig,
+    enhancement: RegisterConfig,
+    name: str,
+) -> object:
+    value = getattr(enhancement, name)
+    if not _same_config_value(value, _FIELD_SHAPE_DEFAULTS[name]):
+        return value
+    return getattr(base, name)
+
+
+def _has_structure_override(config: RegisterConfig) -> bool:
+    for name in ("type", "item_type", "key_type", "item_schema", "value_schema"):
+        if not _same_config_value(getattr(config, name), _FIELD_SHAPE_DEFAULTS[name]):
+            return True
+    return False
+
+
+def _same_config_value(left: object, right: object) -> bool:
+    if isinstance(left, list) and isinstance(right, list):
+        return left == right
+    if isinstance(left, dict) and isinstance(right, dict):
+        return left == right
+    return left is right or left == right
 
 
 def _project_root() -> Path:

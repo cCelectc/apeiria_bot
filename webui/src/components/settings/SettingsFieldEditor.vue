@@ -29,6 +29,7 @@ import {
   isSequenceChipField,
   textInputMode,
   textInputType,
+  toSequenceChipValues,
   type SettingField,
 } from '@/utils/settingsEditor'
 import SettingsStructuredEditor from './SettingsStructuredEditor.vue'
@@ -86,11 +87,9 @@ const selectedChoiceKey = computed(() => {
   return option?.key
 })
 
-const chips = computed(() =>
-  Array.isArray(props.modelValue)
-    ? props.modelValue.map(item => displayFieldValue(item))
-    : [],
-)
+const chipValues = computed(() => toSequenceChipValues(props.modelValue))
+
+const chips = computed(() => chipValues.value.map(item => displayFieldValue(item)))
 
 const textareaValue = computed(() => {
   const value = canEdit.value ? props.modelValue : props.field.current_value
@@ -119,12 +118,12 @@ function addChip() {
   if (!value) {
     return
   }
-  emit('update:modelValue', [...chips.value, value])
+  emit('update:modelValue', [...chipValues.value, value])
   chipDraft.value = ''
 }
 
 function removeChip(index: number) {
-  emit('update:modelValue', chips.value.filter((_, currentIndex) => currentIndex !== index))
+  emit('update:modelValue', chipValues.value.filter((_, currentIndex) => currentIndex !== index))
 }
 
 function useReadonlyTextarea(field: SettingField) {

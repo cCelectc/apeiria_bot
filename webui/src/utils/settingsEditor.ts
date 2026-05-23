@@ -140,6 +140,13 @@ export function isSequenceChipField(field: SettingField) {
   return field.editor === 'chips'
 }
 
+export function toSequenceChipValues(value: unknown) {
+  if (!Array.isArray(value)) {
+    return []
+  }
+  return value.filter((item): item is string => typeof item === 'string')
+}
+
 export function isNestedEditorField(field: SettingField) {
   return field.editor === 'nested_object'
     || field.editor === 'nested_sequence'
