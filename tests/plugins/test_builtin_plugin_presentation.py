@@ -10,6 +10,7 @@ from apeiria.plugins.protection import (
 BUILTIN_PLUGIN_MODULES = (
     "apeiria.builtin_plugins.admin",
     "apeiria.builtin_plugins.ai",
+    "apeiria.builtin_plugins.contact_approval",
     "apeiria.builtin_plugins.contact_owner",
     "apeiria.builtin_plugins.help",
     "apeiria.builtin_plugins.qq_tools",
@@ -19,7 +20,7 @@ BUILTIN_PLUGIN_MODULES = (
 )
 
 
-def test_builtin_plugin_set_stays_eight_role_modules() -> None:
+def test_builtin_plugin_set_includes_contact_approval_role() -> None:
     assert iter_builtin_plugin_modules() == BUILTIN_PLUGIN_MODULES
 
 
@@ -32,6 +33,7 @@ def test_web_ui_is_the_protected_builtin_control_panel() -> None:
 def test_user_controlled_builtin_plugins_remain_normal() -> None:
     for module_name in (
         "apeiria.builtin_plugins.ai",
+        "apeiria.builtin_plugins.contact_approval",
         "apeiria.builtin_plugins.contact_owner",
         "apeiria.builtin_plugins.render",
         "apeiria.builtin_plugins.self_revoke",

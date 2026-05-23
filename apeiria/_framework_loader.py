@@ -17,6 +17,7 @@ BUILTIN_APPLICATION_PLUGIN_MODULES = (
     "apeiria.builtin_plugins.ai",
     "apeiria.builtin_plugins.render",
     "apeiria.builtin_plugins.admin",
+    "apeiria.builtin_plugins.contact_approval",
     "apeiria.builtin_plugins.contact_owner",
     "apeiria.builtin_plugins.help",
     "apeiria.builtin_plugins.self_revoke",
