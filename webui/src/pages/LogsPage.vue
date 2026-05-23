@@ -8,7 +8,7 @@ import {
   SlidersHorizontal,
   Trash2,
   Unplug,
-} from 'lucide-vue-next'
+} from '@lucide/vue'
 import { computed, nextTick, onActivated, onDeactivated, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'

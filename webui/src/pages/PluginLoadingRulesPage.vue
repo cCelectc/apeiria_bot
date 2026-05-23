@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { AlertCircle, FolderOpen, Plus, RefreshCw, Save, Trash2 } from 'lucide-vue-next'
+import { AlertCircle, FolderOpen, Plus, RefreshCw, Save, Trash2 } from '@lucide/vue'
 import { computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import {

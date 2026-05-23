@@ -6,7 +6,7 @@ import {
   Search,
   Trash2,
   UploadCloud,
-} from 'lucide-vue-next'
+} from '@lucide/vue'
 import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { getErrorMessage } from '@/api/client'

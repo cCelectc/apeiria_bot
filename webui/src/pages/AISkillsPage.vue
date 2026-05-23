@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Brain, RefreshCw } from 'lucide-vue-next'
+import { Brain, RefreshCw } from '@lucide/vue'
 import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { getErrorMessage } from '@/api/client'

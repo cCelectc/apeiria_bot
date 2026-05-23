@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ContactRound, RefreshCw, Save, Trash2 } from 'lucide-vue-next'
+import { ContactRound, RefreshCw, Save, Trash2 } from '@lucide/vue'
 import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { getErrorMessage } from '@/api/client'

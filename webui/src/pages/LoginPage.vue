@@ -8,7 +8,7 @@ import {
   Loader2,
   LogIn,
   ShieldCheck,
-} from 'lucide-vue-next'
+} from '@lucide/vue'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'

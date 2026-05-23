@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { Component } from 'vue'
 import type { WorkbenchEmptyCause } from './types'
-import { FilterX, Info, ListRestart, MousePointerSquareDashed } from 'lucide-vue-next'
+import { FilterX, Info, ListRestart, MousePointerSquareDashed } from '@lucide/vue'
 import { computed, markRaw, toRaw } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Button } from '@/components/ui/button'

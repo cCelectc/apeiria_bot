@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { CheckCircle2, MessagesSquare, Plus, RefreshCw, Save } from 'lucide-vue-next'
+import { CheckCircle2, MessagesSquare, Plus, RefreshCw, Save } from '@lucide/vue'
 import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { getErrorMessage } from '@/api/client'

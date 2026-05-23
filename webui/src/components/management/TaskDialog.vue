@@ -6,7 +6,7 @@ import {
   CircleDashed,
   Clock3,
   RefreshCw,
-} from 'lucide-vue-next'
+} from '@lucide/vue'
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Button } from '@/components/ui/button'

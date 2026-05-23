@@ -12,7 +12,7 @@ import {
   Settings2,
   SlidersHorizontal,
   Wrench,
-} from 'lucide-vue-next'
+} from '@lucide/vue'
 import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'

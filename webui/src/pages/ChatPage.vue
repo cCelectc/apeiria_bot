@@ -22,7 +22,7 @@ import {
   Send,
   Trash2,
   X,
-} from 'lucide-vue-next'
+} from '@lucide/vue'
 import { nextTick, onMounted, onUnmounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import ChatMessageList from '@/components/management/ChatMessageList.vue'

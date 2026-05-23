@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { AlertCircle, RefreshCw } from 'lucide-vue-next'
+import { AlertCircle, RefreshCw } from '@lucide/vue'
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
