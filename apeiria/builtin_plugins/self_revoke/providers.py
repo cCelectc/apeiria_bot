@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, ClassVar, Literal, Protocol
+from typing import TYPE_CHECKING, ClassVar, Literal, Protocol, cast
 
 from nonebot.log import logger
 
@@ -567,7 +567,6 @@ class SatoriSelfRevokeProvider:
         return (
             reply is not None
             and _satori_reply_message_id(reply) is not None
-            and _satori_reply_author_id(reply) is not None
             and _satori_bot_user_id(bot) is not None
             and _satori_channel_id(event) is not None
             and _satori_event_message_id(event) is not None
@@ -575,7 +574,7 @@ class SatoriSelfRevokeProvider:
 
     async def get_reply_target(
         self,
-        bot: "Bot",  # noqa: ARG002
+        bot: "Bot",
         event: "Event",
     ) -> RevokeTarget | None:
         reply = getattr(event, "reply", None)
@@ -583,8 +582,14 @@ class SatoriSelfRevokeProvider:
             return None
 
         message_id = _satori_reply_message_id(reply)
-        author_id = _satori_reply_author_id(reply)
-        if message_id is None or author_id is None:
+        if message_id is None:
+            return None
+        author_id = _satori_reply_author_id(reply) or await _satori_fetch_author_id(
+            bot,
+            event,
+            message_id,
+        )
+        if author_id is None:
             return None
         return RevokeTarget(message_id=message_id, author_id=author_id)
 
@@ -860,6 +865,29 @@ def _satori_reply_author_id(reply: object) -> str | None:
         author,
         "id",
     )
+
+
+async def _satori_fetch_author_id(
+    bot: object,
+    event: object,
+    message_id: str | None,
+) -> str | None:
+    channel_id = _satori_channel_id(event)
+    if message_id is None or channel_id is None:
+        return None
+    call_api = getattr(bot, "call_api", None)
+    if not callable(call_api):
+        return None
+    try:
+        message = await cast("Callable[..., Awaitable[object]]", call_api)(
+            "message_get",
+            channel_id=channel_id,
+            message_id=message_id,
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("Self-revoke Satori message_get failed: {}", exc)
+        return None
+    return _nested_string_attr(message, "user", "id")
 
 
 def _message_id_value(message_id: str) -> int | str:

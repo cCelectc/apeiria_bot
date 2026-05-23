@@ -563,7 +563,39 @@ def test_satori_provider_rejects_non_bot_reply() -> None:
     asyncio.run(scenario())
 
 
-def test_satori_provider_requires_reply_author_metadata() -> None:
+def test_satori_provider_fetches_missing_reply_author() -> None:
+    provider = SatoriSelfRevokeProvider()
+    bot = _FakeSatoriBot(self_id="bot-1", fetched_author_id="bot-1")
+    event = _FakeSatoriEvent(
+        channel_id="channel-1",
+        message_id="trigger-123",
+        reply=_SatoriReply(message_id="target-456", author_id=None),
+    )
+
+    async def scenario() -> None:
+        target = await provider.get_reply_target(bot, event)
+        assert target == RevokeTarget(message_id="target-456", author_id="bot-1")
+        assert await provider.is_bot_authored(bot, event, target)
+
+        result = await provider.revoke_message(bot, event, target)
+
+        assert result.success
+        assert bot.calls == [
+            (
+                "message_get",
+                {"channel_id": "channel-1", "message_id": "target-456"},
+            ),
+            (
+                "message_delete",
+                {"channel_id": "channel-1", "message_id": "target-456"},
+            ),
+        ]
+
+    assert provider.supports(bot, event)
+    asyncio.run(scenario())
+
+
+def test_satori_provider_rejects_when_missing_reply_author_cannot_be_fetched() -> None:
     provider = SatoriSelfRevokeProvider()
     bot = _FakeSatoriBot(self_id="bot-1")
     event = _FakeSatoriEvent(
@@ -572,7 +604,18 @@ def test_satori_provider_requires_reply_author_metadata() -> None:
         reply=_SatoriReply(message_id="target-456", author_id=None),
     )
 
-    assert not provider.supports(bot, event)
+    async def scenario() -> None:
+        target = await provider.get_reply_target(bot, event)
+        assert target is None
+        assert bot.calls == [
+            (
+                "message_get",
+                {"channel_id": "channel-1", "message_id": "target-456"},
+            )
+        ]
+
+    assert provider.supports(bot, event)
+    asyncio.run(scenario())
 
 
 def test_qq_guild_provider_confirms_and_revokes_bot_authored_reply() -> None:
@@ -831,12 +874,28 @@ class _FakeBot:
 
 
 class _FakeSatoriBot(_FakeBot):
-    def __init__(self, *, self_id: str) -> None:
+    def __init__(
+        self,
+        *,
+        self_id: str,
+        fetched_author_id: str | None = None,
+    ) -> None:
         super().__init__(adapter_name="Satori", self_id=f"satori:{self_id}")
         self._satori_self_id = self_id
+        self._satori_fetched_author_id = fetched_author_id
 
     def get_self_id(self) -> str:
         return self._satori_self_id
+
+    async def call_api(self, api: str, **data: object) -> object:
+        if api == "message_get":
+            self.calls.append((api, data))
+            if self._satori_fetched_author_id is not None:
+                return SimpleNamespace(
+                    user=SimpleNamespace(id=self._satori_fetched_author_id),
+                )
+            return SimpleNamespace(user=None)
+        return await super().call_api(api, **data)
 
 
 class _Sender:
