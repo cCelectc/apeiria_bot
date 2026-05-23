@@ -1,5 +1,9 @@
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
+import {
+  filterPendingEntriesForRuntime,
+  runtimeStartedAtFromUptime,
+} from '@/utils/restartPendingState'
 
 export type RestartUndoAction =
   | { kind: 'core-settings', values: Record<string, unknown> }
@@ -55,6 +59,19 @@ export const useRestartStore = defineStore('restart', () => {
     persistEntries(entries.value)
   }
 
+  function syncRuntimeUptime(uptimeSeconds: number | null | undefined) {
+    const runtimeStartedAt = runtimeStartedAtFromUptime(uptimeSeconds)
+    const nextEntries = filterPendingEntriesForRuntime(
+      entries.value,
+      runtimeStartedAt,
+    )
+    if (nextEntries.length === entries.value.length) {
+      return
+    }
+    entries.value = nextEntries
+    persistEntries(entries.value)
+  }
+
   return {
     entries,
     hasReversiblePending,
@@ -64,6 +81,7 @@ export const useRestartStore = defineStore('restart', () => {
     reversibleEntries,
     markPending,
     clearPending,
+    syncRuntimeUptime,
   }
 })
 

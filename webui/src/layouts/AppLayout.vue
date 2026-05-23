@@ -65,6 +65,7 @@ import {
   SidebarTrigger,
 } from '@/components/ui/sidebar'
 import { logout as logoutSession } from '@/api/auth'
+import { getStatus } from '@/api/dashboard'
 import { getProjectUpdateStatus, refreshProjectUpdateStatus } from '@/api/projectUpdate'
 import { useRestartController } from '@/composables/useRestartController'
 import { useAuthStore } from '@/stores/auth'
@@ -250,6 +251,19 @@ async function refreshProjectUpdateNotice() {
   }
 }
 
+async function syncRestartReminderWithRuntime() {
+  if (!authStore.isOwner) {
+    return
+  }
+
+  try {
+    const response = await getStatus()
+    restartStore.syncRuntimeUptime(response.data.uptime)
+  } catch {
+    // Keep local reminders when the runtime status cannot be checked.
+  }
+}
+
 async function runConfirmedAction() {
   const action = pendingConfirmAction.value
   pendingConfirmAction.value = null
@@ -280,6 +294,7 @@ watch(
   () => authStore.isOwner,
   () => {
     void refreshProjectUpdateNotice()
+    void syncRestartReminderWithRuntime()
   },
   { immediate: true },
 )

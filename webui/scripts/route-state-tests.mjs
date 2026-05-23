@@ -64,6 +64,10 @@ const {
   selectProjectUpdateTarget,
   shouldRefreshProjectUpdateRemote,
 } = await loadTsModule('src/utils/projectUpdateState.ts')
+const {
+  filterPendingEntriesForRuntime,
+  runtimeStartedAtFromUptime,
+} = await loadTsModule('src/utils/restartPendingState.ts')
 
 assert.equal(
   normalizeAuthRedirect('/plugins?filter=attention', 'http://localhost'),
@@ -339,6 +343,28 @@ assert.equal(isProjectUpdateTaskActive('queued'), true)
 assert.equal(isProjectUpdateTaskActive('succeeded'), false)
 assert.equal(projectUpdateRestartRequired({ status: 'succeeded', restart_required: true }), true)
 assert.equal(projectUpdateRestartRequired({ status: 'failed', restart_required: true }), false)
+
+const runtimeStartedAt = runtimeStartedAtFromUptime(
+  120,
+  new Date('2026-05-23T10:00:00.000Z'),
+)
+assert.equal(runtimeStartedAt?.toISOString(), '2026-05-23T09:58:00.000Z')
+assert.equal(runtimeStartedAtFromUptime(-1), null)
+assert.equal(runtimeStartedAtFromUptime(Number.NaN), null)
+assert.deepEqual(
+  filterPendingEntriesForRuntime([
+    { id: 'before-restart', updated_at: '2026-05-23T09:57:59.000Z' },
+    { id: 'after-restart', updated_at: '2026-05-23T09:58:01.000Z' },
+    { id: 'invalid-date', updated_at: 'not-a-date' },
+  ], runtimeStartedAt).map(item => item.id),
+  ['after-restart', 'invalid-date'],
+)
+assert.deepEqual(
+  filterPendingEntriesForRuntime([
+    { id: 'kept', updated_at: '2026-05-23T09:57:59.000Z' },
+  ], null).map(item => item.id),
+  ['kept'],
+)
 
 const routeSnapshot = buildRouteSnapshot({
   algorithm: 'ordered',
