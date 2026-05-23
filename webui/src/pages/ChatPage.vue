@@ -122,6 +122,7 @@ const {
 const sessionState = useChatSessionState(client, {
   clearComposer,
   closeImagePreview,
+  // eslint-disable-next-line no-alert -- Existing chat deletion flow expects a synchronous confirmation result.
   confirmDelete: () => window.confirm(t('chat.confirmDelete')),
   createSessionKey,
   focusComposerEnd: () => focusComposer(true),

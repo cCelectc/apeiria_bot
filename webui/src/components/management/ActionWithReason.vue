@@ -28,7 +28,7 @@ const emit = defineEmits<{
   activate: []
 }>()
 
-const actionReasonId = `management-action-reason-${++actionReasonIdSeed}`
+const actionReasonId = nextActionReasonId()
 const reasonId = computed(() => props.reason ? actionReasonId : undefined)
 
 function handleActivate() {
@@ -36,6 +36,11 @@ function handleActivate() {
     return
   }
   emit('activate')
+}
+
+function nextActionReasonId() {
+  actionReasonIdSeed += 1
+  return `management-action-reason-${actionReasonIdSeed}`
 }
 </script>
 
