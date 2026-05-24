@@ -185,8 +185,6 @@ def get_plugin_source(plugin: Plugin) -> str:
             if CUSTOM_PLUGIN_ROOT in resolved.parents:
                 return "custom"
 
-    if plugin.module_name in {"echo", "nonebot.plugins.echo"}:
-        return "builtin"
     if is_framework_dependency_plugin_module(plugin.module_name):
         return "framework"
     return "external"
@@ -194,9 +192,6 @@ def get_plugin_source(plugin: Plugin) -> str:
 
 def get_plugin_source_by_module_name(module_name: str) -> str:
     """Classify plugin source using module name when no loaded plugin exists."""
-    if module_name in {"echo", "nonebot.plugins.echo"}:
-        return "builtin"
-
     spec = resolve_module_spec(module_name)
     origin = getattr(spec, "origin", None)
     if isinstance(origin, str) and origin:

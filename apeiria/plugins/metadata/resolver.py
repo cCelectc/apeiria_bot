@@ -8,7 +8,6 @@ import nonebot
 from pydantic import BaseModel
 
 from apeiria._framework_loader import (
-    FRAMEWORK_BUILTIN_PLUGIN_NAMES,
     FRAMEWORK_PLUGIN_MODULES,
 )
 from apeiria.config import plugin_config_service, project_config_service
@@ -196,7 +195,6 @@ def _iter_explicit_plugin_modules(
 
     module_names = [
         *FRAMEWORK_PLUGIN_MODULES,
-        *FRAMEWORK_BUILTIN_PLUGIN_NAMES,
         *config["modules"],
         *persisted_module_map.values(),
         *pyproject_modules,

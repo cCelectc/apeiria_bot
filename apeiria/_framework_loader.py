@@ -27,8 +27,6 @@ BUILTIN_APPLICATION_PLUGIN_MODULES = (
     "apeiria.builtin_plugins.web_ui",
 )
 
-FRAMEWORK_BUILTIN_PLUGIN_NAMES = ("echo",)
-
 
 def iter_builtin_plugin_modules() -> tuple[str, ...]:
     """Return Apeiria built-in application plugin modules."""
@@ -153,7 +151,6 @@ def load_framework() -> None:
 
     setup_logging()
 
-    nonebot.load_builtin_plugins(*FRAMEWORK_BUILTIN_PLUGIN_NAMES)
     for plugin in FRAMEWORK_PLUGIN_MODULES:
         nonebot.load_plugin(plugin)
 
