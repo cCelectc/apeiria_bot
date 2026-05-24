@@ -153,4 +153,4 @@ async def handle_revoke(bot: Bot, event: Event, matcher: Matcher) -> None:
         matcher.stop_propagation()
 
 
-__all__ = ["handle_revoke"]
+__all__ = ["_prefixed_revoke", "_prefixless_revoke", "handle_revoke"]

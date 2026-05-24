@@ -230,4 +230,4 @@ def _message_from_event(event: Event) -> object:
         return getattr(event, "message", "")
 
 
-__all__ = ["build_repeater_event", "handle_repeater"]
+__all__ = ["_repeater", "build_repeater_event", "handle_repeater"]

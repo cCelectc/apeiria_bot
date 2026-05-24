@@ -173,4 +173,4 @@ def _event_plaintext(event: Event) -> str:
         return ""
 
 
-__all__ = ["handle_contact_owner"]
+__all__ = ["_contact_owner", "handle_contact_owner"]

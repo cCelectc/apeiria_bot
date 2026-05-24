@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import importlib
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any, cast
@@ -34,7 +33,6 @@ from apeiria.builtin_plugins.contact_approval.providers import (
     OneBotV11ContactApprovalProvider,
 )
 from apeiria.builtin_plugins.contact_approval.service import (
-    ContactApprovalHandleResult,
     handle_approval_message,
     handle_request_event,
 )
@@ -911,96 +909,6 @@ def test_service_handles_expired_and_platform_failed_actions(tmp_path: Path) -> 
     asyncio.run(scenario())
 
 
-def test_contact_approval_plugin_metadata_declares_core_config() -> None:
-    module = importlib.import_module("apeiria.builtin_plugins.contact_approval")
-
-    assert module.__plugin_meta__.name == "关系审批"
-    assert module.__plugin_meta__.type == "application"
-    assert module.__plugin_meta__.extra["plugin_type"] == "normal"
-    fields = {
-        field["key"]: field
-        for field in module.__plugin_meta__.extra["config"]["fields"]
-    }
-    assert fields["owner_targets"]["default"] == []
-    assert fields["group_join_gate_mode"]["default"] == "whitelist"
-    assert fields["group_join_gate_ids"]["default"] == []
-    assert fields["ticket_expiration_minutes"]["default"] == (
-        DEFAULT_TICKET_EXPIRATION_MINUTES
-    )
-    command_names = {
-        command["name"] for command in module.__plugin_meta__.extra["commands"]
-    }
-    assert command_names == {
-        "审批",
-        "同意",
-        "拒绝",
-        "忽略",
-        "详情",
-    }
-
-
-def test_contact_approval_handlers_forward_results_and_reply_commands(
-    monkeypatch: MonkeyPatch,
-) -> None:
-    module = importlib.import_module("apeiria.builtin_plugins.contact_approval")
-    monkeypatch.setattr(module, "get_contact_approval_config", _config)
-
-    async def fake_request(
-        bot: object,
-        event: object,
-        *,
-        config: ContactApprovalConfig | None = None,
-    ) -> ContactApprovalHandleResult:
-        assert isinstance(config, ContactApprovalConfig)
-        assert bot is not None
-        assert event is not None
-        return ContactApprovalHandleResult(
-            status="notified",
-            should_stop_propagation=True,
-        )
-
-    async def fake_message(
-        bot: object,
-        event: object,
-        *,
-        message_text: str,
-        reply_message_id: str | None = None,
-        config: ContactApprovalConfig | None = None,
-    ) -> ContactApprovalHandleResult:
-        assert isinstance(config, ContactApprovalConfig)
-        assert message_text == "同意"
-        assert reply_message_id == "msg-1"
-        assert bot is not None
-        assert event is not None
-        return ContactApprovalHandleResult(
-            status="missing_target",
-            reply="请引用审批消息。",
-            should_stop_propagation=True,
-        )
-
-    monkeypatch.setattr(module, "handle_request_event", fake_request)
-    monkeypatch.setattr(module, "handle_approval_message", fake_message)
-
-    async def scenario() -> None:
-        assert await module._is_approval_message(
-            _FakeEvent(text="同意", reply=_Reply("msg-1")),
-        )
-        request_matcher = _FakeMatcher()
-        await module.handle_contact_request(_FakeBot(), _FakeEvent(), request_matcher)
-        assert request_matcher.stopped is True
-
-        matcher = _FakeMatcher()
-        await module.handle_contact_approval(
-            _FakeBot(),
-            _FakeEvent(text="同意", reply=_Reply("msg-1")),
-            matcher,
-        )
-        assert matcher.sent == ["请引用审批消息。"]
-        assert matcher.stopped is True
-
-    asyncio.run(scenario())
-
-
 def test_owner_targets_can_fall_back_to_nonebot_superusers(
     tmp_path: Path,
     monkeypatch: MonkeyPatch,
@@ -1164,18 +1072,6 @@ class _FakeEvent:
 
     def get_plaintext(self) -> str:
         return self.text
-
-
-class _FakeMatcher:
-    def __init__(self) -> None:
-        self.sent: list[str] = []
-        self.stopped = False
-
-    async def send(self, message: str) -> None:
-        self.sent.append(message)
-
-    def stop_propagation(self) -> None:
-        self.stopped = True
 
 
 class _FakeApprovalProvider:

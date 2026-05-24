@@ -276,4 +276,9 @@ def _reply_message_id(event: object) -> str | None:
     return text or None
 
 
-__all__ = ["handle_contact_approval", "handle_contact_request"]
+__all__ = [
+    "_approval",
+    "_request",
+    "handle_contact_approval",
+    "handle_contact_request",
+]

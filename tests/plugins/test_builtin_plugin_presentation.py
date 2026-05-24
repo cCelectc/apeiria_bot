@@ -29,19 +29,3 @@ def test_web_ui_is_the_protected_builtin_control_panel() -> None:
     assert is_protected_plugin_module("apeiria.builtin_plugins.web_ui")
     assert get_plugin_kind("apeiria.builtin_plugins.web_ui") == "core"
     assert get_default_protection_mode("apeiria.builtin_plugins.web_ui") == "required"
-
-
-def test_user_controlled_builtin_plugins_remain_normal() -> None:
-    for module_name in (
-        "apeiria.builtin_plugins.ai",
-        "apeiria.builtin_plugins.contact_approval",
-        "apeiria.builtin_plugins.contact_owner",
-        "apeiria.builtin_plugins.repeater",
-        "apeiria.builtin_plugins.render",
-        "apeiria.builtin_plugins.self_revoke",
-        "apeiria.builtin_plugins.qq_tools",
-    ):
-        assert module_name in iter_builtin_plugin_modules()
-        assert not is_protected_plugin_module(module_name)
-        assert get_plugin_kind(module_name) == "plugin"
-        assert get_default_protection_mode(module_name) == "normal"

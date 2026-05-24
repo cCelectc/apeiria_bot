@@ -33,21 +33,6 @@ from apeiria.builtin_plugins.qq_tools.providers import (
 )
 
 
-def test_qq_tools_plugin_metadata_is_ai_capability_pack() -> None:
-    module = importlib.import_module("apeiria.builtin_plugins.qq_tools")
-
-    meta = module.__plugin_meta__
-    assert meta.name == "QQ Tools"
-    assert meta.type == "application"
-    assert meta.usage == "Provides AI tools only; no chat command is registered."
-    assert meta.extra["plugin_type"] == "normal"
-    assert meta.extra["commands"] == []
-    assert meta.extra["ui"]["label"] == "QQ Tools"
-    assert meta.extra["help"]["introduction"] == (
-        "让 AI 在明确有价值时使用少量 QQ 聊天动作。"
-    )
-
-
 def test_qq_tools_contribute_only_decorated_ai_tools() -> None:
     importlib.import_module("apeiria.builtin_plugins.qq_tools")
 

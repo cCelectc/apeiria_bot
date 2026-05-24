@@ -48,6 +48,7 @@ include = ["apeiria*"]
 
 [dependency-groups]
 dev = [
+    "nonebug>=0.4.1,<0.5.0",
     "pre-commit",
     "pytest",
     "pyright[nodejs]",
@@ -136,6 +137,11 @@ venv = ".venv"
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
+addopts = ["-p", "no:nonebug"]
+filterwarnings = [
+    "ignore:Failing to pass a value to the 'type_params' parameter of 'typing\\.ForwardRef\\._evaluate':DeprecationWarning:nonebot\\.typing",
+    "ignore:ForwardRef\\._evaluate is a private API and is retained for compatibility:DeprecationWarning:nonebot\\.typing",
+]
 norecursedirs = [
     ".venv",
     ".apeiria",

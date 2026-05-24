@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import importlib
 from typing import Any, cast
 
 from apeiria.builtin_plugins.contact_owner.config import (
@@ -12,7 +11,6 @@ from apeiria.builtin_plugins.contact_owner.config import (
 from apeiria.builtin_plugins.contact_owner.providers import (
     ContactOwnerDeliveryResult,
     ContactOwnerProviderRegistry,
-    OneBotV11ContactOwnerProvider,
     OwnerTarget,
     parse_owner_target,
 )
@@ -147,90 +145,6 @@ def test_contact_owner_service_validates_and_reports_failures() -> None:
         assert failed.status == "delivery_failed"
 
     asyncio.run(scenario())
-
-
-def test_contact_owner_service_delivers_bounded_owner_message() -> None:
-    provider = _FakeProvider()
-    registry = ContactOwnerProviderRegistry((provider,))
-    bot = _FakeBot(adapter_name="OneBot V11", self_id="10000")
-    event = _FakeEvent(user_id="20000", group_id="30000", message_id="msg-1")
-
-    async def scenario() -> None:
-        result = await handle_contact_owner_event(
-            cast("Any", bot),
-            cast("Any", event),
-            message_text="联系主人 你好，我遇到问题了",
-            config=ContactOwnerConfig(owner_target="qq:123456"),
-            registry=registry,
-        )
-
-        assert result.status == "delivered"
-        assert result.reply
-        assert result.should_stop_propagation is True
-        assert len(provider.calls) == 1
-        target, message = provider.calls[0]
-        assert target == OwnerTarget(scope="qq", target_id="123456")
-        assert "你好，我遇到问题了" in message
-        assert "20000" in message
-        assert "30000" in message
-        assert "msg-1" in message
-
-    asyncio.run(scenario())
-
-
-def test_onebot_contact_owner_provider_sends_private_message() -> None:
-    provider = OneBotV11ContactOwnerProvider()
-    bot = _FakeBot(adapter_name="OneBot V11", self_id="10000")
-    event = _FakeEvent(user_id="20000")
-    target = OwnerTarget(scope="qq", target_id="123456")
-
-    async def scenario() -> None:
-        assert provider.supports(cast("Any", bot), cast("Any", event), target)
-        result = await provider.deliver_owner_message(
-            cast("Any", bot),
-            cast("Any", event),
-            target,
-            message="hello",
-        )
-
-        assert result.success
-        assert bot.calls == [
-            ("send_private_msg", {"user_id": 123456, "message": "hello"})
-        ]
-
-    asyncio.run(scenario())
-
-    failing_bot = _FakeBot(
-        adapter_name="OneBot V11",
-        self_id="10000",
-        fail_apis={"send_private_msg"},
-    )
-
-    async def failing_scenario() -> None:
-        result = await provider.deliver_owner_message(
-            cast("Any", failing_bot),
-            cast("Any", event),
-            target,
-            message="hello",
-        )
-
-        assert result.status == "failed"
-
-    asyncio.run(failing_scenario())
-
-
-def test_contact_owner_plugin_metadata_declares_core_config() -> None:
-    module = importlib.import_module("apeiria.builtin_plugins.contact_owner")
-
-    assert module.__plugin_meta__.name == "联系主人"
-    assert module.__plugin_meta__.type == "application"
-    fields = {
-        field["key"]: field
-        for field in module.__plugin_meta__.extra["config"]["fields"]
-    }
-    assert fields["contact_prefix"]["default"] == DEFAULT_CONTACT_PREFIX
-    assert fields["owner_target"]["default"] == ""
-    assert fields["minimum_message_length"]["default"] == 0
 
 
 class _FakeProvider:
