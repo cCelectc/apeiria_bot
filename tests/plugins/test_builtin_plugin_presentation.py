@@ -17,6 +17,7 @@ BUILTIN_PLUGIN_MODULES = (
     "apeiria.builtin_plugins.render",
     "apeiria.builtin_plugins.repeater",
     "apeiria.builtin_plugins.self_revoke",
+    "apeiria.builtin_plugins.trigger_reply",
     "apeiria.builtin_plugins.web_ui",
 )
 

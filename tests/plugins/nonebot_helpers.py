@@ -69,14 +69,19 @@ def make_fake_event(  # noqa: PLR0913
     event_type: str = "message",
     user_id: str = "20000",
     group_id: str | None = None,
+    guild_id: str | None = None,
+    channel_id: str | None = None,
     message: FakeMessage | None = None,
     self_id: str = "10000",
     message_id: int | str = 123,
     reply: object | None = None,
     request_type: str | None = None,
+    notice_type: str | None = None,
     sub_type: str | None = None,
+    target_id: str | None = None,
     flag: str | None = None,
     comment: str | None = None,
+    is_tome: bool = True,
 ) -> Event:
     resolved_message = message or FakeMessage()
     fields: dict[str, tuple[type[Any], Any]] = {
@@ -84,9 +89,13 @@ def make_fake_event(  # noqa: PLR0913
         "message_id": (int | str, message_id),
         "user_id": (str, user_id),
         "group_id": (str | None, group_id),
+        "guild_id": (str | None, guild_id),
+        "channel_id": (str | None, channel_id),
         "reply": (object | None, reply),
         "request_type": (str | None, request_type),
+        "notice_type": (str | None, notice_type),
         "sub_type": (str | None, sub_type),
+        "target_id": (str | None, target_id),
         "flag": (str | None, flag),
         "comment": (str | None, comment),
     }
@@ -112,8 +121,11 @@ def make_fake_event(  # noqa: PLR0913
         def get_message(self) -> FakeMessage:
             return resolved_message
 
+        def get_plaintext(self) -> str:
+            return resolved_message.extract_plain_text()
+
         def is_tome(self) -> bool:
-            return True
+            return is_tome
 
     return create_model("FakeEvent", __base__=FakeEvent, **fields)()
 

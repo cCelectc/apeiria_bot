@@ -45,6 +45,7 @@ include = ["apeiria*"]
 [tool.setuptools.package-data]
 "apeiria.ai.prompting.templates" = ["reply/*.md", "conversation_summary/*.md"]
 "apeiria.builtin_plugins.qq_tools" = ["skills/*/SKILL.md"]
+"apeiria.builtin_plugins.trigger_reply" = ["rules.example.toml"]
 
 [dependency-groups]
 dev = [

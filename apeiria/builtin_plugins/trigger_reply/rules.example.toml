@@ -1,0 +1,286 @@
+# 触发回复规则文件示例。
+#
+# 使用方法：
+# 1. 复制本文件内容到 trigger_reply 的 localstore 配置目录 rules.toml。
+# 2. 修改或删除不需要的示例规则。
+# 3. 使用 /重载回复 或 /tr 重新读取规则。
+#
+# 本文件只包含回复规则；enabled、priority、rules_file、debug 等插件全局配置
+# 仍写在 Apeiria 的插件配置中，不写在这里。
+
+
+# ---------------------------------------------------------------------------
+# 1. 完整配置例子
+# ---------------------------------------------------------------------------
+
+# 顶层 TOML 表就是一条回复规则，表名就是规则 ID。
+# 一条规则至少需要一个触发条件：match、matches 或 event。
+# 一条规则必须配置 reply。第一版 reply 只支持文本。
+[complete-example]
+enabled = true # 可选值: true / false；默认 true。
+priority = 10 # 可选值: 正整数；默认 1；数值越小越先检查。
+block = true # 可选值: true / false；默认 true；命中后停止检查后续规则。
+chance = 1.0 # 可选值: 0.0 到 1.0；默认 1.0；命中后必定回复。
+
+scenes = ["group"] # 可选值: [] / ["group"] / ["private"] / ["group", "private"]；默认 []，不限场景。
+groups = { mode = "white", values = ["qq:123456"] } # mode 可选 white / black；values 格式为 platform:id 或 platform:*；默认 []，不限群。
+users = { mode = "black", values = ["qq:10001"] } # mode 可选 white / black；values 格式为 platform:id 或 platform:*；默认 []，不限用户。
+
+type = "full" # 可选值: full / fuzzy / start / end / regex；默认 full；兼容 exact / contains / startswith / endswith。
+match = ["完整示例", "complete example"] # 可写字符串或字符串列表；列表内部是 OR，任意一项命中即可。
+event = "qq.poke" # 可选值: qq.poke / poke；不写则不匹配 poke；poke 不写 to_me 时默认只响应戳机器人。
+
+to_me = false # 可选值: true / false；消息触发默认 false；poke 触发默认 true。
+ignore_case = true # 可选值: true / false；默认 true；regex 也会按该值编译。
+strip = true # 可选值: true / false；默认 true；匹配前去掉两端空白。
+allow_plaintext = true # 可选值: true / false；默认 true；允许用适配器纯文本再匹配一次。
+
+matches = [
+  { type = "start", match = "完整示例 ", to_me = false, ignore_case = true, strip = true, allow_plaintext = true }, # 显式匹配对象；字段同上。
+  { type = "regex", match = "^完整示例\\s+(?P<name>.+)$" }, # regex 支持捕获组变量，如 {v1}、{name}。
+] # 可选；显式匹配列表；列表内部是 OR，并且会与 match / event 共同作为 OR 触发。
+
+reply = [
+  { text = "命中：{trigger}", weight = 3 }, # text 必填；weight 必须 > 0，默认 1。
+  { text = "用户 {user_id} 在群 {group_id} 触发：{message}", weight = 1 },
+] # 可写字符串、字符串列表、或 { text, weight } 对象列表；字符串和对象不能混用。
+
+cooldown = { scope = "user", seconds = 10 } # 可写数字秒数，或 { seconds, scope }；scope 可选 group / user / entry，默认 group。
+
+
+# ---------------------------------------------------------------------------
+# 2. 最小规则
+# ---------------------------------------------------------------------------
+
+# 未写 type 时默认为 full，表示完整匹配。
+[hello]
+match = "你好"
+reply = "你好"
+
+
+# ---------------------------------------------------------------------------
+# 3. 通用规则控制
+# ---------------------------------------------------------------------------
+
+# priority + block = false 可让一条消息产生多条回复。
+# 下面两条都会命中“多回复测试”：先回复 first，再回复 second。
+[multi-reply-first]
+priority = 20 # 默认 1。
+block = false # 默认 true。
+match = "多回复测试"
+reply = "first"
+
+[multi-reply-second]
+priority = 30
+block = true
+match = "多回复测试"
+reply = "second"
+
+# chance 是整条规则命中后的回复概率，不影响触发词匹配本身。
+[sometimes]
+match = "抽奖"
+chance = 0.2 # 可选值: 0.0 到 1.0；0.0 永不回复，1.0 必定回复。
+reply = "你中奖了"
+
+
+# ---------------------------------------------------------------------------
+# 4. match 简写与匹配类型
+# ---------------------------------------------------------------------------
+
+# match 可以是字符串，也可以是字符串列表。列表内部是 OR。
+[test-help]
+type = "full"
+match = ["test帮助", "test help"]
+reply = "这是 test 帮助"
+
+[match-fuzzy]
+type = "fuzzy" # 包含匹配。
+match = "关键词"
+reply = "消息中包含“关键词”就会触发"
+
+[match-start]
+type = "start" # 前缀匹配，适合配合 {rest}。
+match = "复读"
+reply = "{rest}"
+
+[match-end]
+type = "end" # 后缀匹配。
+match = "吗"
+reply = "这是一个以“吗”结尾的问题"
+
+[match-regex]
+type = "regex" # 正则匹配，适合提取变量。
+match = "我叫(?P<name>.+)"
+reply = "你好，{name}"
+
+
+# ---------------------------------------------------------------------------
+# 5. 匹配选项
+# ---------------------------------------------------------------------------
+
+[match-options]
+type = "full"
+match = "HELLO"
+to_me = false # 可选值: true / false；消息默认 false。
+ignore_case = true # 可选值: true / false；默认 true。
+strip = true # 可选值: true / false；默认 true。
+allow_plaintext = true # 可选值: true / false；默认 true。
+reply = "大小写不敏感，且会先去掉两端空白"
+
+
+# ---------------------------------------------------------------------------
+# 6. matches：同一规则混合多种触发条件
+# ---------------------------------------------------------------------------
+
+[mixed-help]
+reply = "帮助内容..."
+matches = [
+  { type = "full", match = "帮助" },
+  { type = "start", match = "help " },
+  { type = "regex", match = "^/help(?:\\s+(.+))?$" },
+]
+
+# match、event、matches 可以同时存在，彼此也是 OR。
+[mixed-message-and-poke]
+event = "qq.poke"
+match = "戳一下"
+reply = "收到"
+matches = [
+  { type = "start", match = "poke " },
+]
+
+
+# ---------------------------------------------------------------------------
+# 7. poke 事件
+# ---------------------------------------------------------------------------
+
+[poke]
+event = "qq.poke" # 可选值: qq.poke / poke；默认 to_me = true，只响应戳机器人本身。
+reply = "别戳啦"
+
+[any-poke]
+event = "poke"
+to_me = false # 显式响应当前支持 provider 中的全部 poke。
+chance = 0.2
+reply = "有人被戳了"
+
+
+# ---------------------------------------------------------------------------
+# 8. reply 写法
+# ---------------------------------------------------------------------------
+
+[single-reply]
+match = "单回复"
+reply = "只有这一条回复" # 字符串：固定回复。
+
+[random-hello]
+match = "在吗"
+reply = ["在", "在的", "什么事？"] # 字符串列表：均匀随机选择一条。
+
+[weighted-hello]
+match = "hello"
+reply = [
+  { text = "你好", weight = 5 },
+  { text = "在的", weight = 2 },
+  { text = "什么事？", weight = 1 },
+] # 对象列表：按 weight 加权随机；text 必填，weight 默认 1 且必须 > 0。
+
+# TOML 双引号中的 \n 会解析为真实换行；单引号中的 '\n' 会保留为反斜杠加 n。
+# 首尾空白和换行会按配置原样发送；空白字符串仍会被视为无效回复。
+[newline-reply]
+match = "换行示例"
+reply = "第一行\n第二行"
+
+
+# ---------------------------------------------------------------------------
+# 9. 场景与目标过滤
+# ---------------------------------------------------------------------------
+
+[private-menu]
+scenes = ["private"] # 可选值: group / private；默认 []，不限场景。
+match = "菜单"
+reply = "私聊菜单"
+
+[group-menu]
+scenes = ["group"]
+groups = ["qq:123456"] # 简单列表默认白名单；格式必须是 platform:id 或 platform:*。
+match = "菜单"
+reply = "指定 QQ 群菜单"
+
+[all-qq-groups]
+scenes = ["group"]
+groups = ["qq:*"] # qq:* 表示全部 QQ 群。
+match = "群菜单"
+reply = "所有 QQ 群都能触发"
+
+[blocked-user-example]
+users = { mode = "black", values = ["qq:10001"] } # mode 可选 white / black。
+match = "公共命令"
+reply = "除黑名单用户外都能触发"
+
+[specific-users-example]
+users = { mode = "white", values = ["qq:10002", "qq:10003"] }
+match = "专属命令"
+reply = "只有指定用户可以触发"
+
+
+# ---------------------------------------------------------------------------
+# 10. cooldown
+# ---------------------------------------------------------------------------
+
+# cooldown 只存在内存中，机器人重启或 /重载回复 后会清空。
+[cooldown-simple]
+match = "冷却测试"
+cooldown = 5 # 简写：秒数；等价于 { seconds = 5, scope = "group" }。
+reply = "同一群聊 5 秒内只回复一次"
+
+[cooldown-user]
+match = "用户冷却"
+reply = "同一用户 10 秒内只回复一次"
+
+[cooldown-user.cooldown]
+scope = "user" # 可选值: group / user / entry；默认 group。
+seconds = 10 # 冷却秒数；也可以写 time = 10。
+
+[cooldown-entry]
+match = "全局冷却"
+reply = "这条规则全局 30 秒内只回复一次"
+
+[cooldown-entry.cooldown]
+scope = "entry"
+seconds = 30
+
+
+# ---------------------------------------------------------------------------
+# 11. 变量
+# ---------------------------------------------------------------------------
+
+# 常用变量：
+# - {message}: 原始消息字符串
+# - {text}: 适配器提取的纯文本
+# - {trigger}: 实际命中的触发文本；regex 时为完整命中
+# - {rest}: start 匹配去掉前缀后的剩余文本；regex 时为第一个捕获组
+# - {user_id}: 触发用户 ID
+# - {group_id}: 群 ID；私聊为空
+# - {target_id}: poke 目标 ID；消息触发时通常为空
+#
+# regex 变量：
+# - {v0}: 完整命中
+# - {v1}, {v2}: 第 1、2、... 个捕获组
+# - {name}: 命名捕获组，例如 (?P<name>...)
+#
+# 未知变量会保留原样，不会导致事件处理报错。
+[variables-start]
+type = "start"
+match = "复读"
+reply = "用户 {user_id} 要我复读：{rest}"
+
+[variables-regex]
+type = "regex"
+match = "天气\\s+(.+)"
+reply = "你查询的是 {v1}，完整触发文本是 {v0}"
+
+[variables-named-regex]
+type = "regex"
+match = "提醒(?P<name>.+)"
+reply = "收到，{name}。未知变量示例：{unknown}"
