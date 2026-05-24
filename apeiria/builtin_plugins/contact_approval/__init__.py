@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from nonebot import require
 from nonebot.adapters import Bot, Event  # noqa: TC002
 from nonebot.matcher import Matcher  # noqa: TC002
 from nonebot.plugin import PluginMetadata
@@ -31,6 +32,8 @@ from .config import (
 )
 from .service import handle_approval_message, handle_request_event
 
+require("nonebot_plugin_localstore")
+
 __plugin_meta__ = PluginMetadata(
     name="关系审批",
     description="通过主人私聊和群内审批卡片处理好友申请与加群请求。",
@@ -51,6 +54,7 @@ __plugin_meta__ = PluginMetadata(
             introduction="把好友申请、机器人入群邀请和群成员加群申请整理成可追踪审批。",
         ),
         ui=UiExtra(label="关系审批", order=18),
+        required_plugins=["nonebot_plugin_localstore"],
         commands=[
             CommandDeclaration(
                 name="审批",

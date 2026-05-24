@@ -4,7 +4,6 @@ import json
 import secrets
 from typing import TYPE_CHECKING, Any
 
-from apeiria.db.runtime import database_runtime
 from apeiria.utils.files import atomic_write_text
 
 from .models import (
@@ -40,9 +39,11 @@ class ApprovalTicketStore:
 
     @property
     def path(self) -> Path:
-        return self._path or (
-            database_runtime.project_root / "data" / "contact_approval" / "tickets.json"
-        )
+        if self._path is not None:
+            return self._path
+        from nonebot_plugin_localstore import get_data_file
+
+        return get_data_file("contact_approval", "tickets.json")
 
     def upsert_pending(
         self,
