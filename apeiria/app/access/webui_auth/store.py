@@ -7,6 +7,7 @@ import hashlib
 import hmac
 import json
 import secrets
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 
@@ -27,7 +28,16 @@ _MAX_AUDIT_EVENTS = 100
 
 if TYPE_CHECKING:
     import sqlite3
+    from collections.abc import Callable
     from pathlib import Path
+
+
+@dataclass(frozen=True)
+class WebUIAuthStoreData:
+    token_secret: str
+    users: list[dict[str, Any]]
+    registration_codes: list[dict[str, Any]]
+    audit_events: list[dict[str, Any]]
 
 
 def _apply_secret_permissions(secret_file: "Path") -> None:
@@ -91,12 +101,11 @@ def new_registration_code(*, role: str, created_by: str) -> dict[str, str]:
     }
 
 
-def count_enabled_owner_accounts(data: dict[str, Any]) -> int:
+def count_enabled_owner_accounts(users: list[dict[str, Any]]) -> int:
     """Count enabled owner accounts in the current auth store."""
     return sum(
         1
-        for item in data.get("users", [])
-        if isinstance(item, dict)
+        for item in users
         if normalize_supported_role(item.get("role"), fallback=ROLE_OWNER) == ROLE_OWNER
         if not bool(item.get("is_disabled", False))
     )
@@ -110,29 +119,29 @@ def ensure_supported_role(role: object) -> str:
     return normalized_role
 
 
-def _ensure_bootstrap_registration_code(data: dict[str, Any]) -> dict[str, Any]:
+def _ensure_bootstrap_registration_code(data: WebUIAuthStoreData) -> WebUIAuthStoreData:
     """Ensure there is one bootstrap registration code when auth is fully empty."""
-    users = [item for item in data.get("users", []) if isinstance(item, dict)]
-    registration_codes = [
-        item for item in data.get("registration_codes", []) if isinstance(item, dict)
-    ]
-    if users or registration_codes:
+    if data.users or data.registration_codes:
         return data
-    data["registration_codes"] = [
-        new_registration_code(role=ROLE_OWNER, created_by="system")
-    ]
-    return data
+    return WebUIAuthStoreData(
+        token_secret=data.token_secret,
+        users=data.users,
+        registration_codes=[
+            new_registration_code(role=ROLE_OWNER, created_by="system")
+        ],
+        audit_events=data.audit_events,
+    )
 
 
-def load_or_create_raw() -> dict[str, Any]:
+def load_store_data() -> WebUIAuthStoreData:
     """Load auth storage from SQLite, importing legacy JSON once when present."""
     database = _database()
     database.ensure_ready()
     imported_secret_file: Path | None = None
     with database.transaction_sync() as connection:
         imported_secret_file = _import_legacy_json_if_needed(connection)
-        data = _load_raw_from_connection(connection)
-        if not data["token_secret"]:
+        data = _load_store_data_from_connection(connection)
+        if not data.token_secret:
             token_secret = secrets.token_urlsafe(32)
             timestamp = iso_now()
             connection.execute(
@@ -146,40 +155,127 @@ def load_or_create_raw() -> dict[str, Any]:
                 """,
                 (token_secret, timestamp, timestamp),
             )
-            data["token_secret"] = token_secret
-            data = _ensure_bootstrap_registration_code(data)
-            _persist_raw_in_connection(connection, data)
+            data = _ensure_bootstrap_registration_code(
+                WebUIAuthStoreData(
+                    token_secret=token_secret,
+                    users=data.users,
+                    registration_codes=data.registration_codes,
+                    audit_events=data.audit_events,
+                )
+            )
+            _replace_registration_code_items(connection, data.registration_codes)
             logger.info("{}", t("web_ui.secrets.generated"))
     if imported_secret_file is not None:
         _backup_legacy_secret_file(imported_secret_file)
-    return data
+    return load_store_data_readonly()
 
 
-def _is_current_schema(data: dict[str, Any]) -> bool:
-    return (
-        isinstance(data.get("users"), list)
-        and isinstance(data.get("registration_codes"), list)
-        and isinstance(data.get("audit_events"), list)
+def load_store_data_readonly() -> WebUIAuthStoreData:
+    """Load auth storage from SQLite without mutating on read."""
+    database = _database()
+    database.ensure_ready()
+    with database.connect_sync() as connection:
+        return _load_store_data_from_connection(connection)
+
+
+def with_auth_transaction(
+    operation: "Callable[[sqlite3.Connection], Any]",
+) -> Any:
+    """Run one auth mutation within a SQLite transaction."""
+    database = _database()
+    database.ensure_ready()
+    imported_secret_file: Path | None = None
+    with database.transaction_sync() as connection:
+        imported_secret_file = _import_legacy_json_if_needed(connection)
+        _ensure_token_secret(connection)
+        result = operation(connection)
+        _trim_audit_events(connection)
+    if imported_secret_file is not None:
+        _backup_legacy_secret_file(imported_secret_file)
+    return result
+
+
+def get_token_secret() -> str:
+    """Return the JWT signing secret."""
+    return load_store_data().token_secret
+
+
+def get_secret_file_path() -> "Path":
+    """Return the auth storage file path."""
+    return _get_secret_file()
+
+
+def list_user_items(connection: "sqlite3.Connection") -> list[dict[str, Any]]:
+    return _load_user_items(connection)
+
+
+def list_registration_code_items(
+    connection: "sqlite3.Connection",
+) -> list[dict[str, Any]]:
+    return _load_registration_code_items(connection)
+
+
+def list_audit_event_items(connection: "sqlite3.Connection") -> list[dict[str, Any]]:
+    return _load_audit_event_items(connection)
+
+
+def append_audit_event(  # noqa: PLR0913
+    connection: "sqlite3.Connection",
+    event_type: str,
+    *,
+    actor_username: str | None = None,
+    target_username: str | None = None,
+    detail: str | None = None,
+    occurred_at: str | None = None,
+) -> None:
+    connection.execute(
+        """
+        INSERT INTO webui_security_audit_event (
+            event_type,
+            occurred_at,
+            actor_username,
+            target_username,
+            detail
+        ) VALUES (?, ?, ?, ?, ?)
+        """,
+        (
+            event_type,
+            occurred_at or iso_now(),
+            actor_username,
+            target_username,
+            detail,
+        ),
     )
 
 
-def _is_legacy_schema(data: dict[str, Any]) -> bool:
-    if "password" in data or "invite_codes" in data:
-        return True
-    registration_codes = data.get("registration_codes")
-    return isinstance(registration_codes, list) and any(
-        isinstance(item, str) for item in registration_codes
-    )
-
-
-def _load_raw_from_connection(connection: "sqlite3.Connection") -> dict[str, Any]:
+def _ensure_token_secret(connection: "sqlite3.Connection") -> str:
     token_secret = _read_token_secret(connection)
-    return {
-        "token_secret": token_secret,
-        "users": _load_user_items(connection),
-        "registration_codes": _load_registration_code_items(connection),
-        "audit_events": _load_audit_event_items(connection),
-    }
+    if token_secret:
+        return token_secret
+    token_secret = secrets.token_urlsafe(32)
+    timestamp = iso_now()
+    connection.execute(
+        """
+        INSERT INTO webui_auth_secret (id, token_secret, created_at, updated_at)
+        VALUES (1, ?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET
+            token_secret = excluded.token_secret,
+            updated_at = excluded.updated_at
+        """,
+        (token_secret, timestamp, timestamp),
+    )
+    return token_secret
+
+
+def _load_store_data_from_connection(
+    connection: "sqlite3.Connection",
+) -> WebUIAuthStoreData:
+    return WebUIAuthStoreData(
+        token_secret=_read_token_secret(connection),
+        users=_load_user_items(connection),
+        registration_codes=_load_registration_code_items(connection),
+        audit_events=_load_audit_event_items(connection),
+    )
 
 
 def _read_token_secret(connection: "sqlite3.Connection") -> str:
@@ -265,48 +361,12 @@ def _load_audit_event_items(connection: "sqlite3.Connection") -> list[dict[str, 
     ]
 
 
-def _persist_raw_in_connection(
-    connection: "sqlite3.Connection",
-    data: dict[str, Any],
-) -> None:
-    token_secret = str(data.get("token_secret") or "").strip()
-    if not token_secret:
-        token_secret = secrets.token_urlsafe(32)
-        data["token_secret"] = token_secret
-    timestamp = iso_now()
-    connection.execute(
-        """
-        INSERT INTO webui_auth_secret (id, token_secret, created_at, updated_at)
-        VALUES (1, ?, ?, ?)
-        ON CONFLICT(id) DO UPDATE SET
-            token_secret = excluded.token_secret,
-            updated_at = excluded.updated_at
-        """,
-        (token_secret, timestamp, timestamp),
-    )
-    _replace_user_items(connection, data.get("users", []))
-    _replace_registration_code_items(connection, data.get("registration_codes", []))
-    _replace_audit_event_items(connection, data.get("audit_events", []))
-
-
 def _replace_user_items(
     connection: "sqlite3.Connection",
-    users: object,
+    users: list[dict[str, Any]],
 ) -> None:
     connection.execute("DELETE FROM webui_account")
-    if not isinstance(users, list):
-        return
     for item in users:
-        if not isinstance(item, dict):
-            continue
-        try:
-            user_id = str(item["user_id"])
-            username = normalize_username(str(item["username"]))
-            password_hash = str(item["password_hash"])
-        except KeyError:
-            continue
-        if not user_id or not username or not password_hash:
-            continue
         timestamp = iso_now()
         connection.execute(
             """
@@ -324,9 +384,9 @@ def _replace_user_items(
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
-                user_id,
-                username,
-                password_hash,
+                str(item["user_id"]),
+                normalize_username(str(item["username"])),
+                str(item["password_hash"]),
                 normalize_supported_role(item.get("role"), fallback=ROLE_OWNER),
                 1 if bool(item.get("is_disabled", False)) else 0,
                 str(item.get("last_login_at"))
@@ -344,14 +404,10 @@ def _replace_user_items(
 
 def _replace_registration_code_items(
     connection: "sqlite3.Connection",
-    registration_codes: object,
+    registration_codes: list[dict[str, Any]],
 ) -> None:
     connection.execute("DELETE FROM webui_registration_code")
-    if not isinstance(registration_codes, list):
-        return
     for item in registration_codes:
-        if not isinstance(item, dict):
-            continue
         code = str(item.get("code") or "").strip()
         if not code:
             continue
@@ -371,43 +427,28 @@ def _replace_registration_code_items(
 
 def _replace_audit_event_items(
     connection: "sqlite3.Connection",
-    audit_events: object,
+    audit_events: list[dict[str, Any]],
 ) -> None:
     connection.execute("DELETE FROM webui_security_audit_event")
-    if not isinstance(audit_events, list):
-        return
-    recent_events = (
-        audit_events[-_MAX_AUDIT_EVENTS:]
-        if len(audit_events) > _MAX_AUDIT_EVENTS
-        else audit_events
-    )
-    for item in recent_events:
-        if not isinstance(item, dict):
-            continue
+    for item in audit_events[-_MAX_AUDIT_EVENTS:]:
         event_type = str(item.get("event_type") or "").strip()
         if not event_type:
             continue
-        connection.execute(
-            """
-            INSERT INTO webui_security_audit_event (
-                event_type,
-                occurred_at,
-                actor_username,
-                target_username,
-                detail
-            ) VALUES (?, ?, ?, ?, ?)
-            """,
-            (
-                event_type,
-                str(item.get("occurred_at") or iso_now()),
+        append_audit_event(
+            connection,
+            event_type,
+            actor_username=(
                 str(item.get("actor_username"))
                 if item.get("actor_username") is not None
-                else None,
+                else None
+            ),
+            target_username=(
                 str(item.get("target_username"))
                 if item.get("target_username") is not None
-                else None,
-                str(item.get("detail")) if item.get("detail") is not None else None,
+                else None
             ),
+            detail=str(item.get("detail")) if item.get("detail") is not None else None,
+            occurred_at=str(item.get("occurred_at") or iso_now()),
         )
 
 
@@ -419,28 +460,51 @@ def _import_legacy_json_if_needed(connection: "sqlite3.Connection") -> "Path | N
         return None
 
     data = _load_legacy_json(secret_file)
-    _persist_raw_in_connection(connection, data)
+    connection.execute(
+        """
+        INSERT INTO webui_auth_secret (id, token_secret, created_at, updated_at)
+        VALUES (1, ?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET
+            token_secret = excluded.token_secret,
+            updated_at = excluded.updated_at
+        """,
+        (
+            str(data.get("token_secret") or "").strip() or secrets.token_urlsafe(32),
+            iso_now(),
+            iso_now(),
+        ),
+    )
+    _replace_user_items(
+        connection,
+        [
+            item
+            for item in data.get("users", [])
+            if isinstance(item, dict)
+            and item.get("user_id")
+            and item.get("username")
+            and item.get("password_hash")
+        ],
+    )
+    _replace_registration_code_items(
+        connection,
+        [item for item in data.get("registration_codes", []) if isinstance(item, dict)],
+    )
+    _replace_audit_event_items(
+        connection,
+        [item for item in data.get("audit_events", []) if isinstance(item, dict)],
+    )
     return secret_file
 
 
 def _has_sqlite_auth_state(connection: "sqlite3.Connection") -> bool:
-    existing_tables = _table_names(connection)
-    for table_name in (
-        "webui_auth_secret",
-        "webui_account",
-        "webui_registration_code",
-        "webui_security_audit_event",
-    ):
-        if table_name not in existing_tables:
-            continue
-        row = connection.execute(
-            f"""
-            SELECT 1 FROM {table_name} LIMIT 1
-            """
-        ).fetchone()
-        if row is not None:
-            return True
-    return False
+    row = connection.execute(
+        """
+        SELECT token_secret
+        FROM webui_auth_secret
+        WHERE id = 1
+        """
+    ).fetchone()
+    return row is not None and bool(str(row[0]).strip())
 
 
 def _table_names(connection: "sqlite3.Connection") -> set[str]:
@@ -492,6 +556,23 @@ def _load_legacy_json(secret_file: "Path") -> dict[str, Any]:
     return data
 
 
+def _is_current_schema(data: dict[str, Any]) -> bool:
+    return (
+        isinstance(data.get("users"), list)
+        and isinstance(data.get("registration_codes"), list)
+        and isinstance(data.get("audit_events"), list)
+    )
+
+
+def _is_legacy_schema(data: dict[str, Any]) -> bool:
+    if "password" in data or "invite_codes" in data:
+        return True
+    registration_codes = data.get("registration_codes")
+    return isinstance(registration_codes, list) and any(
+        isinstance(item, str) for item in registration_codes
+    )
+
+
 def _backup_legacy_secret_file(secret_file: "Path") -> None:
     backup_file = secret_file.with_name(f"{secret_file.name}.v1.backup")
     counter = 1
@@ -502,73 +583,44 @@ def _backup_legacy_secret_file(secret_file: "Path") -> None:
     _apply_secret_permissions(backup_file)
 
 
-def persist_raw(data: dict[str, Any]) -> None:
-    """Persist auth storage to SQLite."""
-    database = _database()
-    database.ensure_ready()
-    with database.transaction_sync() as connection:
-        _persist_raw_in_connection(connection, data)
-
-
-class LazyAuthStore(dict[str, Any]):
-    """Lazy-loading auth store to avoid requiring NoneBot during import."""
-
-    def __init__(self) -> None:
-        super().__init__()
-        self._loaded = False
-        self._loaded_path: Path | None = None
-
-    def _ensure_loaded(self) -> None:
-        secret_file = _get_secret_file()
-        if self._loaded and self._loaded_path == secret_file:
-            return
-        super().clear()
-        super().update(load_or_create_raw())
-        self._loaded = True
-        self._loaded_path = secret_file
-
-    def __getitem__(self, key: str) -> Any:
-        self._ensure_loaded()
-        return super().__getitem__(key)
-
-    def __setitem__(self, key: str, value: Any) -> None:
-        self._ensure_loaded()
-        super().__setitem__(key, value)
-
-    def get(self, key: str, default: Any = None) -> Any:
-        self._ensure_loaded()
-        return super().get(key, default)
-
-    def pop(self, key: str, default: Any = None) -> Any:
-        self._ensure_loaded()
-        return super().pop(key, default)
-
-
-auth_store = LazyAuthStore()
-
-
-def get_token_secret() -> str:
-    """Return the JWT signing secret."""
-    return str(auth_store["token_secret"])
-
-
-def get_secret_file_path() -> "Path":
-    """Return the auth storage file path."""
-    return _get_secret_file()
+def _trim_audit_events(connection: "sqlite3.Connection") -> None:
+    rows = connection.execute(
+        """
+        SELECT id
+        FROM webui_security_audit_event
+        ORDER BY id DESC
+        LIMIT -1 OFFSET ?
+        """,
+        (_MAX_AUDIT_EVENTS,),
+    ).fetchall()
+    if not rows:
+        return
+    connection.executemany(
+        """
+        DELETE FROM webui_security_audit_event
+        WHERE id = ?
+        """,
+        [(int(row[0]),) for row in rows],
+    )
 
 
 __all__ = [
-    "LazyAuthStore",
-    "auth_store",
+    "WebUIAuthStoreData",
+    "append_audit_event",
     "count_enabled_owner_accounts",
     "ensure_supported_role",
     "get_secret_file_path",
     "get_token_secret",
     "hash_password",
     "iso_now",
+    "list_audit_event_items",
+    "list_registration_code_items",
+    "list_user_items",
+    "load_store_data",
+    "load_store_data_readonly",
     "new_registration_code",
     "normalize_username",
-    "persist_raw",
     "validate_password",
     "verify_password_hash",
+    "with_auth_transaction",
 ]

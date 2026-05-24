@@ -228,7 +228,7 @@ class ProjectUpdateService:
 
     def __init__(self, project_root: Path | None = None) -> None:
         self._project_root = (
-            project_root if project_root is not None else current_project_root()
+            project_root.resolve() if project_root is not None else None
         )
         self._tasks: dict[str, ProjectUpdateTask] = {}
         self._active_task_id: str | None = None
@@ -240,13 +240,13 @@ class ProjectUpdateService:
 
     @property
     def project_root(self) -> Path:
-        return self._project_root
+        return self._project_root or current_project_root()
 
     def inspect(self) -> ProjectUpdateStatus:
         checkout = self.inspect_checkout()
         stable, prerelease = self.list_release_candidates(checkout)
         return ProjectUpdateStatus(
-            project_root=self._project_root,
+            project_root=self.project_root,
             checkout=checkout,
             branch=self._build_branch_state(checkout),
             remote_refresh=self._current_remote_refresh_state(),
@@ -271,7 +271,7 @@ class ProjectUpdateService:
         return self.inspect()
 
     def inspect_checkout(self) -> GitCheckoutState:
-        project_root = self._project_root.resolve()
+        project_root = self.project_root.resolve()
         is_git = self._git_success("rev-parse", "--is-inside-work-tree")
         if not is_git:
             return GitCheckoutState(
@@ -716,7 +716,7 @@ class ProjectUpdateService:
         return result.logs.strip() or "Web UI build completed."
 
     def _inspect_readiness(self) -> str:
-        inspection = inspect_database(self._project_root)
+        inspection = inspect_database(self.project_root)
         return f"Database schema status: {inspection.schema.status}."
 
     def _mark_task_succeeded(self, task_id: str, plan: ProjectUpdatePlan) -> None:
@@ -848,7 +848,7 @@ class ProjectUpdateService:
                 )
             )
 
-        database = inspect_database(self._project_root)
+        database = inspect_database(self.project_root)
         schema_version = database.schema.schema_version
         if schema_version is not None:
             if (
@@ -1036,7 +1036,7 @@ class ProjectUpdateService:
         env["GIT_TERMINAL_PROMPT"] = "0"
         return subprocess.run(
             ["git", *args],
-            cwd=self._project_root,
+            cwd=self.project_root,
             check=False,
             capture_output=True,
             text=True,

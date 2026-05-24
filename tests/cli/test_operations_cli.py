@@ -12,7 +12,10 @@ from apeiria.app.plugins.store.sources import _read_package_requirement
 from apeiria.cli.main import cli
 from apeiria.cli.support import store_package_dependency
 from apeiria.db.runtime import ApeiriaDatabase
-from apeiria.utils.project_context import default_project_root
+from apeiria.utils.project_context import (
+    default_project_root,
+    runtime_project_root_env_var,
+)
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -249,16 +252,17 @@ def test_run_uses_canonical_entry_and_forwards_arguments(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    calls: list[tuple[list[str], Path]] = []
+    calls: list[tuple[list[str], Path, str | None]] = []
 
     def fake_run(
         args: list[str],
         *,
         cwd: Path,
         check: bool,
+        env: dict[str, str],
     ) -> subprocess.CompletedProcess[str]:
         assert check is False
-        calls.append((args, cwd))
+        calls.append((args, cwd, env.get(runtime_project_root_env_var())))
         return subprocess.CompletedProcess(args=args, returncode=0)
 
     monkeypatch.setattr("apeiria.cli.commands.env.subprocess.run", fake_run)
@@ -276,7 +280,11 @@ def test_run_uses_canonical_entry_and_forwards_arguments(
 
     assert result.exit_code == 0
     assert calls == [
-        ([sys.executable, "-m", "apeiria.bot.entry", "--verbose"], tmp_path.resolve())
+        (
+            [sys.executable, "-m", "apeiria.bot.entry", "--verbose"],
+            tmp_path.resolve(),
+            str(tmp_path.resolve()),
+        )
     ]
 
 

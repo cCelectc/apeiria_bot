@@ -4,7 +4,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from apeiria.app.access.webui_auth.store import auth_store, iso_now, persist_raw
+from apeiria.app.access.webui_auth.store import (
+    append_audit_event,
+    load_store_data_readonly,
+    with_auth_transaction,
+)
 
 
 @dataclass(frozen=True)
@@ -25,19 +29,15 @@ def append_security_audit_event(
     target_username: str | None = None,
     detail: str | None = None,
 ) -> None:
-    current_events = [
-        item for item in auth_store.get("audit_events", []) if isinstance(item, dict)
-    ]
-    current_events.append(
-        {
-            "event_type": event_type,
-            "occurred_at": iso_now(),
-            "actor_username": actor_username,
-            "target_username": target_username,
-            "detail": detail,
-        }
+    with_auth_transaction(
+        lambda connection: append_audit_event(
+            connection,
+            event_type,
+            actor_username=actor_username,
+            target_username=target_username,
+            detail=detail,
+        )
     )
-    auth_store["audit_events"] = current_events[-100:]
     _mirror_to_governance_audit(
         event_type,
         actor_username=actor_username,
@@ -101,6 +101,7 @@ def _mirror_to_governance_audit(
 
 def list_security_audit_events(limit: int = 20) -> list[WebUISecurityAuditEvent]:
     """List recent security audit events."""
+    data = load_store_data_readonly()
     items = [
         WebUISecurityAuditEvent(
             event_type=str(item.get("event_type") or "unknown"),
@@ -117,8 +118,7 @@ def list_security_audit_events(limit: int = 20) -> list[WebUISecurityAuditEvent]
             ),
             detail=str(item.get("detail")) if item.get("detail") is not None else None,
         )
-        for item in auth_store.get("audit_events", [])
-        if isinstance(item, dict)
+        for item in data.audit_events
     ]
     return items[-limit:][::-1]
 
@@ -137,7 +137,6 @@ def record_security_audit_event(
         target_username=target_username,
         detail=detail,
     )
-    persist_raw(auth_store)
 
 
 __all__ = [

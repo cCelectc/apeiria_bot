@@ -24,6 +24,7 @@ from apeiria.plugins.metadata.static_scan import (
     scan_plugin_config,
     scan_plugin_config_from_origin,
 )
+from apeiria.utils.project_context import current_project_root
 
 read_project_plugin_module_map = project_config_service.read_project_plugin_module_map
 read_pyproject_nonebot_config = project_config_service.read_pyproject_nonebot_config
@@ -149,7 +150,7 @@ def _same_config_value(left: object, right: object) -> bool:
 
 
 def _project_root() -> Path:
-    return Path(__file__).resolve().parent.parent.parent.parent
+    return current_project_root()
 
 
 def _resolve_plugin_dir(path: str) -> Path:

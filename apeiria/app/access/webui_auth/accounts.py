@@ -7,18 +7,20 @@ from dataclasses import dataclass
 from typing import Any
 
 from apeiria.access.principal_roles import ROLE_OWNER, normalize_supported_role
-from apeiria.app.access.webui_auth.audit import append_security_audit_event
 from apeiria.app.access.webui_auth.store import (
-    auth_store,
+    append_audit_event,
     count_enabled_owner_accounts,
     ensure_supported_role,
     hash_password,
     iso_now,
+    list_registration_code_items,
+    list_user_items,
+    load_store_data_readonly,
     new_registration_code,
     normalize_username,
-    persist_raw,
     validate_password,
     verify_password_hash,
+    with_auth_transaction,
 )
 
 
@@ -47,15 +49,11 @@ class WebUIRegistrationCode:
 
 
 def _user_items() -> list[dict[str, Any]]:
-    return [item for item in auth_store.get("users", []) if isinstance(item, dict)]
+    return load_store_data_readonly().users
 
 
 def _registration_code_items() -> list[dict[str, Any]]:
-    return [
-        item
-        for item in auth_store.get("registration_codes", [])
-        if isinstance(item, dict)
-    ]
+    return load_store_data_readonly().registration_codes
 
 
 def _build_account(item: dict[str, Any]) -> WebUIAccount | None:
@@ -122,24 +120,15 @@ def create_account(username: str, password: str, *, role: str = ROLE_OWNER) -> s
     if get_account_by_username(normalized_username) is not None:
         raise ValueError("username_taken")
 
-    auth_store["users"] = [
-        *_user_items(),
-        {
-            "user_id": f"webui_{secrets.token_hex(8)}",
-            "username": normalized_username,
-            "password_hash": hash_password(password),
-            "role": normalized_role,
-            "is_disabled": False,
-            "password_changed_at": iso_now(),
-            "session_version": 0,
-        },
-    ]
-    append_security_audit_event(
-        "account_created",
-        actor_username="host",
-        target_username=normalized_username,
+    with_auth_transaction(
+        lambda connection: _create_account_in_connection(
+            connection,
+            username=normalized_username,
+            password_hash=hash_password(password),
+            role=normalized_role,
+            actor_username="host",
+        )
     )
-    persist_raw(auth_store)
     return normalized_username
 
 
@@ -182,16 +171,14 @@ def create_registration_code(
         role=normalized_role,
         created_by=created_by,
     )
-    auth_store["registration_codes"] = [
-        *_registration_code_items(),
-        registration_code,
-    ]
-    append_security_audit_event(
-        "registration_code_created",
-        actor_username=created_by,
-        detail=normalized_role,
+    with_auth_transaction(
+        lambda connection: _insert_registration_code_in_connection(
+            connection,
+            registration_code,
+            actor_username=created_by,
+            detail=normalized_role,
+        )
     )
-    persist_raw(auth_store)
     return WebUIRegistrationCode(**registration_code)
 
 
@@ -202,38 +189,28 @@ def revoke_registration_code(
 ) -> str:
     """Delete one registration code."""
     normalized = code.strip()
-    current = _registration_code_items()
-    next_registration_codes = [
-        item for item in current if str(item.get("code") or "").strip() != normalized
-    ]
-    if len(next_registration_codes) == len(current):
-        raise ValueError("registration_code_not_found")
-    auth_store["registration_codes"] = next_registration_codes
-    append_security_audit_event(
-        "registration_code_revoked",
-        actor_username=revoked_by,
+    deleted = with_auth_transaction(
+        lambda connection: _delete_registration_code_in_connection(
+            connection,
+            normalized,
+            actor_username=revoked_by,
+        )
     )
-    persist_raw(auth_store)
+    if not deleted:
+        raise ValueError("registration_code_not_found")
     return normalized
 
 
 def update_account_password(user_id: str, password: str) -> WebUIAccount | None:
     """Update one account password."""
     validate_password(password)
-    for item in _user_items():
-        if str(item.get("user_id")) != user_id:
-            continue
-        item["password_hash"] = hash_password(password)
-        item["password_changed_at"] = iso_now()
-        item["session_version"] = int(item.get("session_version") or 0) + 1
-        append_security_audit_event(
-            "password_changed",
-            actor_username=str(item.get("username") or ""),
-            target_username=str(item.get("username") or ""),
+    return with_auth_transaction(
+        lambda connection: _update_account_password_in_connection(
+            connection,
+            user_id,
+            password,
         )
-        persist_raw(auth_store)
-        return get_account_by_username(str(item.get("username") or ""))
-    return None
+    )
 
 
 def set_account_password(username: str, password: str) -> str:
@@ -244,21 +221,17 @@ def set_account_password(username: str, password: str) -> str:
     if account is None:
         raise ValueError("account_not_found")
 
-    for item in _user_items():
-        if str(item.get("user_id")) != account.user_id:
-            continue
-        item["password_hash"] = hash_password(password)
-        item["password_changed_at"] = iso_now()
-        item["session_version"] = int(item.get("session_version") or 0) + 1
-        item["is_disabled"] = False
-        append_security_audit_event(
-            "password_changed",
-            actor_username="host",
-            target_username=normalized_username,
+    updated = with_auth_transaction(
+        lambda connection: _set_account_password_in_connection(
+            connection,
+            account.user_id,
+            normalized_username,
+            password,
         )
-        persist_raw(auth_store)
-        return normalized_username
-    raise ValueError("account_not_found")
+    )
+    if updated is None:
+        raise ValueError("account_not_found")
+    return normalized_username
 
 
 def update_account_role(user_id: str, role: str) -> WebUIAccount | None:
@@ -266,13 +239,13 @@ def update_account_role(user_id: str, role: str) -> WebUIAccount | None:
     normalized_role = normalize_supported_role(role)
     if not normalized_role:
         return None
-    for item in _user_items():
-        if str(item.get("user_id")) != user_id:
-            continue
-        item["role"] = normalized_role
-        persist_raw(auth_store)
-        return get_account_by_username(str(item.get("username") or ""))
-    return None
+    return with_auth_transaction(
+        lambda connection: _update_account_role_in_connection(
+            connection,
+            user_id,
+            normalized_role,
+        )
+    )
 
 
 def set_account_disabled(username: str, *, disabled: bool) -> str:
@@ -285,23 +258,21 @@ def set_account_disabled(username: str, *, disabled: bool) -> str:
         disabled
         and account.role == ROLE_OWNER
         and not account.is_disabled
-        and count_enabled_owner_accounts(auth_store) <= 1
+        and count_enabled_owner_accounts(_user_items()) <= 1
     ):
         raise ValueError("last_owner_forbidden")
 
-    for item in _user_items():
-        if str(item.get("user_id")) != account.user_id:
-            continue
-        item["is_disabled"] = disabled
-        item["session_version"] = int(item.get("session_version") or 0) + 1
-        append_security_audit_event(
-            "account_disabled" if disabled else "account_enabled",
-            actor_username="host",
-            target_username=normalized_username,
+    updated = with_auth_transaction(
+        lambda connection: _set_account_disabled_in_connection(
+            connection,
+            account.user_id,
+            normalized_username,
+            disabled=disabled,
         )
-        persist_raw(auth_store)
-        return normalized_username
-    raise ValueError("account_not_found")
+    )
+    if updated is None:
+        raise ValueError("account_not_found")
+    return normalized_username
 
 
 def delete_account(username: str) -> str:
@@ -313,19 +284,19 @@ def delete_account(username: str) -> str:
     if (
         account.role == ROLE_OWNER
         and not account.is_disabled
-        and count_enabled_owner_accounts(auth_store) <= 1
+        and count_enabled_owner_accounts(_user_items()) <= 1
     ):
         raise ValueError("last_owner_forbidden")
 
-    auth_store["users"] = [
-        item for item in _user_items() if str(item.get("user_id")) != account.user_id
-    ]
-    append_security_audit_event(
-        "account_deleted",
-        actor_username="host",
-        target_username=normalized_username,
+    deleted = with_auth_transaction(
+        lambda connection: _delete_account_in_connection(
+            connection,
+            account.user_id,
+            normalized_username,
+        )
     )
-    persist_raw(auth_store)
+    if not deleted:
+        raise ValueError("account_not_found")
     return normalized_username
 
 
@@ -335,34 +306,20 @@ def rotate_account_session_version(
     actor_username: str,
 ) -> WebUIAccount | None:
     """Invalidate previous sessions for one account and return the updated record."""
-    for item in _user_items():
-        if str(item.get("user_id")) != user_id:
-            continue
-        item["session_version"] = int(item.get("session_version") or 0) + 1
-        append_security_audit_event(
-            "sessions_revoked",
+    return with_auth_transaction(
+        lambda connection: _rotate_account_session_version_in_connection(
+            connection,
+            user_id,
             actor_username=actor_username,
-            target_username=str(item.get("username") or ""),
         )
-        persist_raw(auth_store)
-        return get_account_by_username(str(item.get("username") or ""))
-    return None
+    )
 
 
 def record_login_success(user_id: str) -> WebUIAccount | None:
     """Update last-login metadata for one account."""
-    for item in _user_items():
-        if str(item.get("user_id")) != user_id:
-            continue
-        item["last_login_at"] = iso_now()
-        append_security_audit_event(
-            "login_succeeded",
-            actor_username=str(item.get("username") or ""),
-            target_username=str(item.get("username") or ""),
-        )
-        persist_raw(auth_store)
-        return get_account_by_username(str(item.get("username") or ""))
-    return None
+    return with_auth_transaction(
+        lambda connection: _record_login_success_in_connection(connection, user_id)
+    )
 
 
 def register_account(
@@ -390,6 +347,359 @@ def register_account(
     if get_account_by_username(normalized_username) is not None:
         raise ValueError("username_taken")
 
+    return with_auth_transaction(
+        lambda connection: _register_account_in_connection(
+            connection,
+            normalized_registration_code,
+            normalized_username,
+            password,
+        )
+    )
+
+
+def recover_owner_account(username: str, password: str) -> tuple[str, bool]:
+    """Create or recover one owner account from the host."""
+    normalized_username = normalize_username(username)
+    if not normalized_username:
+        raise ValueError("username_invalid")
+    validate_password(password)
+
+    return with_auth_transaction(
+        lambda connection: _recover_owner_account_in_connection(
+            connection,
+            normalized_username,
+            password,
+        )
+    )
+
+
+def _row_to_account(item: dict[str, Any]) -> WebUIAccount | None:
+    return _build_account(item)
+
+
+def _load_account_by_user_id(
+    connection: Any,
+    user_id: str,
+) -> WebUIAccount | None:
+    return next(
+        (
+            account
+            for item in list_user_items(connection)
+            if str(item.get("user_id")) == user_id
+            if (account := _row_to_account(item)) is not None
+        ),
+        None,
+    )
+
+
+def _load_account_by_username(
+    connection: Any,
+    username: str,
+) -> WebUIAccount | None:
+    normalized = normalize_username(username)
+    return next(
+        (
+            account
+            for item in list_user_items(connection)
+            if str(item.get("username") or "") == normalized
+            if (account := _row_to_account(item)) is not None
+        ),
+        None,
+    )
+
+
+def _create_account_in_connection(
+    connection: Any,
+    *,
+    username: str,
+    password_hash: str,
+    role: str,
+    actor_username: str,
+) -> None:
+    timestamp = iso_now()
+    connection.execute(
+        """
+        INSERT INTO webui_account (
+            user_id,
+            username,
+            password_hash,
+            role,
+            is_disabled,
+            last_login_at,
+            password_changed_at,
+            session_version,
+            created_at,
+            updated_at
+        ) VALUES (?, ?, ?, ?, 0, NULL, ?, 0, ?, ?)
+        """,
+        (
+            f"webui_{secrets.token_hex(8)}",
+            username,
+            password_hash,
+            role,
+            timestamp,
+            timestamp,
+            timestamp,
+        ),
+    )
+    append_audit_event(
+        connection,
+        "account_created",
+        actor_username=actor_username,
+        target_username=username,
+    )
+
+
+def _insert_registration_code_in_connection(
+    connection: Any,
+    registration_code: dict[str, str],
+    *,
+    actor_username: str,
+    detail: str,
+) -> None:
+    connection.execute(
+        """
+        INSERT INTO webui_registration_code (code, role, created_at, created_by)
+        VALUES (?, ?, ?, ?)
+        """,
+        (
+            registration_code["code"],
+            registration_code["role"],
+            registration_code["created_at"],
+            registration_code["created_by"],
+        ),
+    )
+    append_audit_event(
+        connection,
+        "registration_code_created",
+        actor_username=actor_username,
+        detail=detail,
+    )
+
+
+def _delete_registration_code_in_connection(
+    connection: Any,
+    code: str,
+    *,
+    actor_username: str | None,
+) -> bool:
+    deleted = connection.execute(
+        """
+        DELETE FROM webui_registration_code
+        WHERE code = ?
+        """,
+        (code,),
+    ).rowcount
+    if not deleted:
+        return False
+    append_audit_event(
+        connection,
+        "registration_code_revoked",
+        actor_username=actor_username,
+    )
+    return True
+
+
+def _update_account_password_in_connection(
+    connection: Any,
+    user_id: str,
+    password: str,
+) -> WebUIAccount | None:
+    account = _load_account_by_user_id(connection, user_id)
+    if account is None:
+        return None
+    timestamp = iso_now()
+    connection.execute(
+        """
+        UPDATE webui_account
+        SET password_hash = ?,
+            password_changed_at = ?,
+            session_version = session_version + 1,
+            updated_at = ?
+        WHERE user_id = ?
+        """,
+        (hash_password(password), timestamp, timestamp, user_id),
+    )
+    append_audit_event(
+        connection,
+        "password_changed",
+        actor_username=account.username,
+        target_username=account.username,
+    )
+    return _load_account_by_user_id(connection, user_id)
+
+
+def _set_account_password_in_connection(
+    connection: Any,
+    user_id: str,
+    normalized_username: str,
+    password: str,
+) -> WebUIAccount | None:
+    account = _load_account_by_user_id(connection, user_id)
+    if account is None:
+        return None
+    timestamp = iso_now()
+    connection.execute(
+        """
+        UPDATE webui_account
+        SET password_hash = ?,
+            password_changed_at = ?,
+            session_version = session_version + 1,
+            is_disabled = 0,
+            updated_at = ?
+        WHERE user_id = ?
+        """,
+        (hash_password(password), timestamp, timestamp, user_id),
+    )
+    append_audit_event(
+        connection,
+        "password_changed",
+        actor_username="host",
+        target_username=normalized_username,
+    )
+    return _load_account_by_user_id(connection, user_id)
+
+
+def _update_account_role_in_connection(
+    connection: Any,
+    user_id: str,
+    role: str,
+) -> WebUIAccount | None:
+    updated = connection.execute(
+        """
+        UPDATE webui_account
+        SET role = ?,
+            updated_at = ?
+        WHERE user_id = ?
+        """,
+        (role, iso_now(), user_id),
+    ).rowcount
+    if not updated:
+        return None
+    return _load_account_by_user_id(connection, user_id)
+
+
+def _set_account_disabled_in_connection(
+    connection: Any,
+    user_id: str,
+    normalized_username: str,
+    *,
+    disabled: bool,
+) -> WebUIAccount | None:
+    updated = connection.execute(
+        """
+        UPDATE webui_account
+        SET is_disabled = ?,
+            session_version = session_version + 1,
+            updated_at = ?
+        WHERE user_id = ?
+        """,
+        (1 if disabled else 0, iso_now(), user_id),
+    ).rowcount
+    if not updated:
+        return None
+    append_audit_event(
+        connection,
+        "account_disabled" if disabled else "account_enabled",
+        actor_username="host",
+        target_username=normalized_username,
+    )
+    return _load_account_by_user_id(connection, user_id)
+
+
+def _delete_account_in_connection(
+    connection: Any,
+    user_id: str,
+    normalized_username: str,
+) -> bool:
+    deleted = connection.execute(
+        """
+        DELETE FROM webui_account
+        WHERE user_id = ?
+        """,
+        (user_id,),
+    ).rowcount
+    if not deleted:
+        return False
+    append_audit_event(
+        connection,
+        "account_deleted",
+        actor_username="host",
+        target_username=normalized_username,
+    )
+    return True
+
+
+def _rotate_account_session_version_in_connection(
+    connection: Any,
+    user_id: str,
+    *,
+    actor_username: str,
+) -> WebUIAccount | None:
+    account = _load_account_by_user_id(connection, user_id)
+    if account is None:
+        return None
+    connection.execute(
+        """
+        UPDATE webui_account
+        SET session_version = session_version + 1,
+            updated_at = ?
+        WHERE user_id = ?
+        """,
+        (iso_now(), user_id),
+    )
+    append_audit_event(
+        connection,
+        "sessions_revoked",
+        actor_username=actor_username,
+        target_username=account.username,
+    )
+    return _load_account_by_user_id(connection, user_id)
+
+
+def _record_login_success_in_connection(
+    connection: Any,
+    user_id: str,
+) -> WebUIAccount | None:
+    account = _load_account_by_user_id(connection, user_id)
+    if account is None:
+        return None
+    connection.execute(
+        """
+        UPDATE webui_account
+        SET last_login_at = ?,
+            updated_at = ?
+        WHERE user_id = ?
+        """,
+        (iso_now(), iso_now(), user_id),
+    )
+    append_audit_event(
+        connection,
+        "login_succeeded",
+        actor_username=account.username,
+        target_username=account.username,
+    )
+    return _load_account_by_user_id(connection, user_id)
+
+
+def _register_account_in_connection(
+    connection: Any,
+    registration_code: str,
+    normalized_username: str,
+    password: str,
+) -> WebUIAccount:
+    registration_code_item = next(
+        (
+            item
+            for item in list_registration_code_items(connection)
+            if str(item.get("code") or "").strip() == registration_code
+        ),
+        None,
+    )
+    if registration_code_item is None:
+        raise ValueError("registration_code_invalid")
+    if _load_account_by_username(connection, normalized_username) is not None:
+        raise ValueError("username_taken")
     account = WebUIAccount(
         user_id=f"webui_{secrets.token_hex(8)}",
         username=normalized_username,
@@ -400,74 +710,119 @@ def register_account(
         ),
         is_disabled=False,
     )
-    auth_store["users"] = [
-        *_user_items(),
-        {
-            "user_id": account.user_id,
-            "username": account.username,
-            "password_hash": account.password_hash,
-            "role": account.role,
-            "is_disabled": account.is_disabled,
-        },
-    ]
-    auth_store["registration_codes"] = [
-        item
-        for item in _registration_code_items()
-        if str(item.get("code") or "").strip() != normalized_registration_code
-    ]
-    append_security_audit_event(
+    timestamp = iso_now()
+    connection.execute(
+        """
+        INSERT INTO webui_account (
+            user_id,
+            username,
+            password_hash,
+            role,
+            is_disabled,
+            last_login_at,
+            password_changed_at,
+            session_version,
+            created_at,
+            updated_at
+        ) VALUES (?, ?, ?, ?, 0, NULL, NULL, 0, ?, ?)
+        """,
+        (
+            account.user_id,
+            account.username,
+            account.password_hash,
+            account.role,
+            timestamp,
+            timestamp,
+        ),
+    )
+    deleted = connection.execute(
+        """
+        DELETE FROM webui_registration_code
+        WHERE code = ?
+        """,
+        (registration_code,),
+    ).rowcount
+    if not deleted:
+        raise ValueError("registration_code_invalid")
+    append_audit_event(
+        connection,
         "registration_code_used",
         actor_username=normalized_username,
         target_username=normalized_username,
         detail=account.role,
     )
-    persist_raw(auth_store)
-    return account
+    created = _load_account_by_user_id(connection, account.user_id)
+    if created is None:
+        raise ValueError("registration_failed")
+    return created
 
 
-def recover_owner_account(username: str, password: str) -> tuple[str, bool]:
-    """Create or recover one owner account from the host."""
-    normalized_username = normalize_username(username)
-    if not normalized_username:
-        raise ValueError("username_invalid")
-    validate_password(password)
-
-    account = get_account_by_username(normalized_username)
+def _recover_owner_account_in_connection(
+    connection: Any,
+    normalized_username: str,
+    password: str,
+) -> tuple[str, bool]:
+    account = _load_account_by_username(connection, normalized_username)
+    timestamp = iso_now()
     if account is not None:
-        for item in _user_items():
-            if str(item.get("user_id")) != account.user_id:
-                continue
-            item["password_hash"] = hash_password(password)
-            item["password_changed_at"] = iso_now()
-            item["session_version"] = int(item.get("session_version") or 0) + 1
-            item["role"] = ROLE_OWNER
-            item["is_disabled"] = False
-            append_security_audit_event(
-                "owner_account_recovered",
-                actor_username="host",
-                target_username=normalized_username,
-            )
-            persist_raw(auth_store)
-            return normalized_username, False
+        connection.execute(
+            """
+            UPDATE webui_account
+            SET password_hash = ?,
+                password_changed_at = ?,
+                session_version = session_version + 1,
+                role = ?,
+                is_disabled = 0,
+                updated_at = ?
+            WHERE user_id = ?
+            """,
+            (
+                hash_password(password),
+                timestamp,
+                ROLE_OWNER,
+                timestamp,
+                account.user_id,
+            ),
+        )
+        append_audit_event(
+            connection,
+            "owner_account_recovered",
+            actor_username="host",
+            target_username=normalized_username,
+        )
+        return normalized_username, False
 
-    auth_store["users"] = [
-        *_user_items(),
-        {
-            "user_id": f"webui_{secrets.token_hex(8)}",
-            "username": normalized_username,
-            "password_hash": hash_password(password),
-            "role": ROLE_OWNER,
-            "is_disabled": False,
-            "password_changed_at": iso_now(),
-            "session_version": 0,
-        },
-    ]
-    append_security_audit_event(
+    connection.execute(
+        """
+        INSERT INTO webui_account (
+            user_id,
+            username,
+            password_hash,
+            role,
+            is_disabled,
+            last_login_at,
+            password_changed_at,
+            session_version,
+            created_at,
+            updated_at
+        ) VALUES (?, ?, ?, ?, 0, NULL, ?, 0, ?, ?)
+        """,
+        (
+            f"webui_{secrets.token_hex(8)}",
+            normalized_username,
+            hash_password(password),
+            ROLE_OWNER,
+            timestamp,
+            timestamp,
+            timestamp,
+        ),
+    )
+    append_audit_event(
+        connection,
         "owner_account_recovered",
         actor_username="host",
         target_username=normalized_username,
     )
-    persist_raw(auth_store)
     return normalized_username, True
 
 

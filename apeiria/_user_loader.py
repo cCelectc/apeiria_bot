@@ -3,20 +3,21 @@ from __future__ import annotations
 """User setup and plugin loading helpers for runtime bootstrap."""
 
 from importlib.util import module_from_spec, spec_from_file_location
-from pathlib import Path
 from typing import TYPE_CHECKING
 
 import nonebot
 
 from apeiria.config import adapter_config_service, plugin_config_service
 from apeiria.environment.extension_project import inject_plugin_site_packages
+from apeiria.utils.project_context import current_project_root
 
 if TYPE_CHECKING:
+    from pathlib import Path
     from types import ModuleType
 
 
 def _project_root() -> Path:
-    return Path(__file__).resolve().parent.parent
+    return current_project_root()
 
 
 def _load_user_module(user_bot: Path) -> ModuleType | None:

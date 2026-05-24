@@ -61,18 +61,18 @@ class EnvironmentService:
 
     def __init__(self, project_root: Path | None = None) -> None:
         self._project_root = (
-            project_root if project_root is not None else current_project_root()
+            project_root.resolve() if project_root is not None else None
         )
 
     @property
     def project_root(self) -> Path:
-        return self._project_root
+        return self._project_root or current_project_root()
 
     def main_config_path(self) -> Path:
-        return self._project_root / "apeiria.config.toml"
+        return self.project_root / "apeiria.config.toml"
 
     def plugin_project_root(self) -> Path:
-        return self._project_root / _PLUGIN_PROJECT_RELATIVE_PATH
+        return self.project_root / _PLUGIN_PROJECT_RELATIVE_PATH
 
     def plugin_project_pyproject_path(self) -> Path:
         return self.plugin_project_root() / "pyproject.toml"
@@ -87,10 +87,10 @@ class EnvironmentService:
         return self.plugin_project_root() / ".venv"
 
     def uv_cache_dir(self) -> Path:
-        return self._project_root / ".apeiria" / "cache" / "uv"
+        return self.project_root / ".apeiria" / "cache" / "uv"
 
     def _main_requires_python(self) -> str:
-        pyproject_path = self._project_root / "pyproject.toml"
+        pyproject_path = self.project_root / "pyproject.toml"
         toml_module = _load_toml_module()
         if toml_module is None:
             return _PYTHON_VERSION_FALLBACK
@@ -133,7 +133,7 @@ class EnvironmentService:
         return root
 
     def get_environment_snapshot(self) -> EnvironmentSnapshot:
-        root = self._project_root
+        root = self.project_root
         frontend_dir = frontend_workspace_dir(root)
         build_status = read_frontend_build_status(root)
         build_tool = shutil.which("pnpm") or shutil.which("npm")
@@ -198,9 +198,9 @@ class EnvironmentService:
 
     def ensure_runtime_env_files(self) -> None:
         for target in (
-            self._project_root / ".env",
-            self._project_root / ".env.dev",
-            self._project_root / ".env.prod",
+            self.project_root / ".env",
+            self.project_root / ".env.dev",
+            self.project_root / ".env.prod",
         ):
             if target.exists():
                 continue
@@ -210,20 +210,20 @@ class EnvironmentService:
     def _project_config_templates(self) -> tuple[tuple[Path, Path], ...]:
         return (
             (
-                self._project_root / "apeiria.config.example.toml",
-                self._project_root / "apeiria.config.toml",
+                self.project_root / "apeiria.config.example.toml",
+                self.project_root / "apeiria.config.toml",
             ),
             (
-                self._project_root / "apeiria.plugins.example.toml",
-                self._project_root / "apeiria.plugins.toml",
+                self.project_root / "apeiria.plugins.example.toml",
+                self.project_root / "apeiria.plugins.toml",
             ),
             (
-                self._project_root / "apeiria.adapters.example.toml",
-                self._project_root / "apeiria.adapters.toml",
+                self.project_root / "apeiria.adapters.example.toml",
+                self.project_root / "apeiria.adapters.toml",
             ),
             (
-                self._project_root / "apeiria.drivers.example.toml",
-                self._project_root / "apeiria.drivers.toml",
+                self.project_root / "apeiria.drivers.example.toml",
+                self.project_root / "apeiria.drivers.toml",
             ),
         )
 
@@ -251,11 +251,11 @@ class EnvironmentService:
         cache_dir.mkdir(parents=True, exist_ok=True)
         env = os.environ.copy()
         env["UV_CACHE_DIR"] = str(cache_dir)
-        env["UV_PROJECT_ENVIRONMENT"] = str(self._project_root / ".venv")
+        env["UV_PROJECT_ENVIRONMENT"] = str(self.project_root / ".venv")
         env.pop("VIRTUAL_ENV", None)
         result = subprocess.run(
             [executable, *args],
-            cwd=self._project_root,
+            cwd=self.project_root,
             check=False,
             env=env,
         )
@@ -300,7 +300,7 @@ class EnvironmentService:
 
     def sync_main_project(self, *, no_dev: bool = False) -> None:
         args = ["sync"]
-        if (self._project_root / "uv.lock").exists():
+        if (self.project_root / "uv.lock").exists():
             args.append("--locked")
         if no_dev:
             args.append("--no-dev")
@@ -322,23 +322,23 @@ class EnvironmentService:
         return self.initialize_user_environment()
 
     def validate_database_schema(self) -> None:
-        database = ApeiriaDatabase(project_root=self._project_root)
+        database = ApeiriaDatabase(project_root=self.project_root)
         asyncio.run(ensure_database_ready(database))
 
     def repair_database_schema(self) -> None:
         self.validate_database_schema()
 
     def runtime_export_targets(self) -> list[tuple[Path, Path]]:
-        database_path = ApeiriaDatabase(project_root=self._project_root).database_path()
+        database_path = ApeiriaDatabase(project_root=self.project_root).database_path()
         return [
             (self.main_config_path(), Path("apeiria.config.toml")),
-            (self._project_root / "apeiria.plugins.toml", Path("apeiria.plugins.toml")),
+            (self.project_root / "apeiria.plugins.toml", Path("apeiria.plugins.toml")),
             (
-                self._project_root / "apeiria.adapters.toml",
+                self.project_root / "apeiria.adapters.toml",
                 Path("apeiria.adapters.toml"),
             ),
             (
-                self._project_root / "apeiria.drivers.toml",
+                self.project_root / "apeiria.drivers.toml",
                 Path("apeiria.drivers.toml"),
             ),
             (
@@ -356,7 +356,7 @@ class EnvironmentService:
         ]
 
     def _database_path(self) -> Path:
-        return ApeiriaDatabase(project_root=self._project_root).database_path()
+        return ApeiriaDatabase(project_root=self.project_root).database_path()
 
     def _copy_runtime_export_target(self, source: Path, destination: Path) -> None:
         destination.parent.mkdir(parents=True, exist_ok=True)
@@ -376,7 +376,7 @@ class EnvironmentService:
         target_root = (
             output_dir.expanduser().resolve()
             if output_dir is not None
-            else (self._project_root / ".apeiria" / "export").resolve()
+            else (self.project_root / ".apeiria" / "export").resolve()
         )
         copied = 0
         for source, relative_path in self.runtime_export_targets():
@@ -433,7 +433,7 @@ class EnvironmentService:
             if status.build_tool == "pnpm"
             else ["npm", "run", "build"]
         )
-        frontend_dir = frontend_workspace_dir(self._project_root)
+        frontend_dir = frontend_workspace_dir(self.project_root)
         process = await asyncio.create_subprocess_exec(
             *command,
             cwd=str(frontend_dir),
@@ -448,7 +448,7 @@ class EnvironmentService:
         if process.returncode != 0:
             raise RuntimeError(logs.strip() or "build_failed")
 
-        write_frontend_build_meta(self._project_root)
+        write_frontend_build_meta(self.project_root)
         next_status = self.get_frontend_build_status()
         return FrontendBuildRunResult(
             is_built=next_status.is_built,
@@ -469,7 +469,7 @@ class EnvironmentService:
             if status.build_tool == "pnpm"
             else ["npm", "run", "build"]
         )
-        frontend_dir = frontend_workspace_dir(self._project_root)
+        frontend_dir = frontend_workspace_dir(self.project_root)
         process = await asyncio.create_subprocess_exec(
             *command,
             cwd=str(frontend_dir),
@@ -500,7 +500,7 @@ class EnvironmentService:
             )
             return
 
-        write_frontend_build_meta(self._project_root)
+        write_frontend_build_meta(self.project_root)
         next_status = self.get_frontend_build_status()
         yield self._encode_build_stream_event(
             FrontendBuildStreamEvent(event="done", status=next_status)

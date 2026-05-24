@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 from typing import TYPE_CHECKING, Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
@@ -22,6 +21,7 @@ from apeiria.app.access.webui_auth.service import (
     auth_session_service,
 )
 from apeiria.i18n import t
+from apeiria.utils.project_context import current_project_root
 from apeiria.webui.auth import (
     clear_auth_session_cookie,
     require_auth,
@@ -57,7 +57,6 @@ else:
     Principal = Any
 
 router = APIRouter()
-_PROJECT_ROOT = Path(__file__).resolve().parents[3]
 
 
 def _to_webui_principal_response(principal: Principal) -> WebUIPrincipalResponse:
@@ -171,7 +170,7 @@ async def get_webui_bootstrap(
             WebUILocaleItem(code="en_US", label="English"),
         ],
         preferred_home="/dashboard",
-        frontend_workspace=frontend_workspace_name(_PROJECT_ROOT),
+        frontend_workspace=frontend_workspace_name(current_project_root()),
     )
 
 

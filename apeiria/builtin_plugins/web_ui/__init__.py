@@ -18,6 +18,7 @@ from apeiria.plugins.metadata.api import (
     UiExtra,
 )
 from apeiria.utils.plugin_introspection import prewarm_plugin_module_caches
+from apeiria.utils.project_context import package_root
 from apeiria.webui.frontend_build import serving_dist_dir
 
 require("nonebot_plugin_localstore")
@@ -96,7 +97,7 @@ def _mount_routes() -> None:
     )
     access_logger.addHandler(file_handler)
 
-    dist_dir = serving_dist_dir(Path(__file__).parent.parent.parent.parent)
+    dist_dir = serving_dist_dir(package_root())
     if dist_dir is not None:
         from fastapi.staticfiles import StaticFiles
         from starlette.responses import FileResponse

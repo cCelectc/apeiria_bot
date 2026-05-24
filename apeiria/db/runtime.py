@@ -4,11 +4,11 @@ from __future__ import annotations
 
 import sqlite3
 from contextlib import contextmanager
-from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
+    from pathlib import Path
 
 
 class ApeiriaDatabase:
@@ -16,14 +16,16 @@ class ApeiriaDatabase:
 
     def __init__(self, project_root: Path | None = None) -> None:
         self._project_root = (
-            project_root
-            if project_root is not None
-            else Path(__file__).resolve().parent.parent.parent
+            project_root.resolve() if project_root is not None else None
         )
 
     @property
     def project_root(self) -> Path:
-        return self._project_root
+        if self._project_root is not None:
+            return self._project_root
+        from apeiria.utils.project_context import current_project_root
+
+        return current_project_root()
 
     def database_path(self) -> Path:
         return self.project_root / "data" / "db" / "apeiria.sqlite3"

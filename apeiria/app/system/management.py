@@ -12,6 +12,10 @@ from typing import TYPE_CHECKING
 import nonebot
 
 from apeiria.environment import environment_service
+from apeiria.utils.project_context import (
+    current_project_root,
+    runtime_project_root_env_var,
+)
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
@@ -169,6 +173,7 @@ class SystemManagementService:
     async def _restart_process(self) -> None:
         await asyncio.sleep(0.5)
         argv = sys.argv[:] if sys.argv else ["bot.py"]
+        os.environ[runtime_project_root_env_var()] = str(current_project_root())
         os.execv(sys.executable, [sys.executable, *argv])
 
 

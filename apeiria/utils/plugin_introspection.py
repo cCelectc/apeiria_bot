@@ -27,6 +27,7 @@ from apeiria.plugins.protection import (
     is_protected_plugin_module,
 )
 from apeiria.plugins.state import get_disabled_plugin_modules_sync
+from apeiria.utils.project_context import current_project_root, package_root
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -34,11 +35,15 @@ if TYPE_CHECKING:
     from nonebot.plugin import Plugin
 
 
-OFFICIAL_PLUGIN_ROOT = (
-    Path(__file__).resolve().parents[1] / "builtin_plugins"
-).resolve()
-CUSTOM_PLUGIN_ROOT = (Path(__file__).resolve().parents[2] / "local_plugins").resolve()
 _USER_MANAGED_SOURCES = {"custom", "external"}
+
+
+def _official_plugin_root() -> Path:
+    return (package_root() / "apeiria" / "builtin_plugins").resolve()
+
+
+def _custom_plugin_root() -> Path:
+    return (current_project_root() / "local_plugins").resolve()
 
 
 def get_plugin_extra(plugin: Plugin) -> PluginExtraData | None:
@@ -180,9 +185,9 @@ def get_plugin_source(plugin: Plugin) -> str:
         except OSError:
             resolved = None
         if resolved:
-            if OFFICIAL_PLUGIN_ROOT in resolved.parents:
+            if _official_plugin_root() in resolved.parents:
                 return "builtin"
-            if CUSTOM_PLUGIN_ROOT in resolved.parents:
+            if _custom_plugin_root() in resolved.parents:
                 return "custom"
 
     if is_framework_dependency_plugin_module(plugin.module_name):
@@ -200,9 +205,9 @@ def get_plugin_source_by_module_name(module_name: str) -> str:
         except OSError:
             resolved = None
         if resolved:
-            if OFFICIAL_PLUGIN_ROOT in resolved.parents:
+            if _official_plugin_root() in resolved.parents:
                 return "builtin"
-            if CUSTOM_PLUGIN_ROOT in resolved.parents:
+            if _custom_plugin_root() in resolved.parents:
                 return "custom"
 
     if is_framework_dependency_plugin_module(module_name):

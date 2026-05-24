@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -10,6 +11,7 @@ import click
 from apeiria.cli.context import active_environment_service, active_health_service
 from apeiria.cli.i18n import _
 from apeiria.cli.output import echo_json
+from apeiria.utils.project_context import runtime_project_root_env_var
 
 if TYPE_CHECKING:
     from apeiria.environment.models import ProjectConfigBootstrapResult
@@ -198,10 +200,12 @@ def run(
     root = project_root()
     if reload:
         raise click.exceptions.Exit(run_with_reload(cwd=root, extra_args=extra_args))
+    env = _runtime_process_env(root)
     result = subprocess.run(
         [sys.executable, "-m", "apeiria.bot.entry", *extra_args],
         cwd=root,
         check=False,
+        env=env,
     )
     if result.returncode != 0:
         raise click.exceptions.Exit(result.returncode)
@@ -225,11 +229,19 @@ def _run_entry_once(
     cwd: Path,
     extra_args: tuple[str, ...],
 ) -> int:
+    env = _runtime_process_env(cwd)
     return subprocess.run(
         [sys.executable, "-m", "apeiria.bot.entry", *extra_args],
         cwd=cwd,
         check=False,
+        env=env,
     ).returncode
+
+
+def _runtime_process_env(project_root: Path) -> dict[str, str]:
+    env = os.environ.copy()
+    env[runtime_project_root_env_var()] = str(project_root.resolve())
+    return env
 
 
 @env.command("info", help=_("Show current Apeiria environment paths and status."))
