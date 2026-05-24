@@ -91,6 +91,52 @@ def load_trigger_rule_set(path: Path) -> TriggerRuleSet:
     )
 
 
+def load_trigger_rule_sets(paths: Sequence[Path]) -> TriggerRuleSet:
+    rule_sets = tuple(load_trigger_rule_set(path) for path in paths)
+    invalid = tuple(ruleset for ruleset in rule_sets if ruleset.status == "invalid")
+    if invalid:
+        return TriggerRuleSet(
+            status="invalid",
+            errors=tuple(
+                error for ruleset in invalid for error in _source_errors(ruleset)
+            ),
+            source_path=_joined_source_path(paths),
+        )
+    entries: list[TriggerEntry] = []
+    errors: list[str] = []
+    seen_entry_ids: set[str] = set()
+    active_sources = tuple(
+        ruleset for ruleset in rule_sets if ruleset.status == "active"
+    )
+    for ruleset in rule_sets:
+        if ruleset.status == "missing" and active_sources:
+            errors.append(f"{ruleset.source_path}: rules file missing")
+        errors.extend(_source_errors(ruleset))
+        for entry in ruleset.entries:
+            if entry.id in seen_entry_ids:
+                errors.append(
+                    f"{ruleset.source_path}: duplicate entry id ignored: {entry.id}"
+                )
+                continue
+            seen_entry_ids.add(entry.id)
+            entries.append(entry)
+    return TriggerRuleSet(
+        entries=tuple(sorted(entries, key=lambda entry: entry.priority)),
+        status="active" if active_sources else "missing",
+        errors=tuple(errors),
+        source_path=_joined_source_path(paths),
+    )
+
+
+def _source_errors(ruleset: TriggerRuleSet) -> tuple[str, ...]:
+    source = ruleset.source_path or "<unknown>"
+    return tuple(f"{source}: {error}" for error in ruleset.errors)
+
+
+def _joined_source_path(paths: Sequence[Path]) -> str:
+    return ", ".join(str(path) for path in paths)
+
+
 def _load_entries(payload: object) -> tuple[list[TriggerEntry], list[str]]:
     if not isinstance(payload, Mapping):
         msg = "rules file must be a TOML table"
@@ -478,4 +524,5 @@ __all__ = [
     "TriggerRuleSetCache",
     "default_rule_set_cache",
     "load_trigger_rule_set",
+    "load_trigger_rule_sets",
 ]

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
 from pathlib import PurePath
 from typing import TypeVar
 
@@ -22,7 +23,7 @@ class TriggerReplyConfig(BaseModel):
     enabled: bool = DEFAULT_ENABLED
     priority: int = DEFAULT_PRIORITY
     stop_propagation_on_match: bool = DEFAULT_STOP_PROPAGATION_ON_MATCH
-    rules_file: str = DEFAULT_RULES_FILE
+    rules_file: tuple[str, ...] = (DEFAULT_RULES_FILE,)
     debug: bool = DEFAULT_DEBUG
 
 
@@ -83,12 +84,26 @@ def _normalize_priority(value: object, *, fallback: int) -> int:
     return max(priority, 1)
 
 
-def _normalize_rules_file(value: object, *, fallback: str) -> str:
-    if not isinstance(value, str):
-        return fallback
+def _normalize_rules_file(value: object, *, fallback: str) -> tuple[str, ...]:
+    candidates: list[str]
+    if isinstance(value, str):
+        candidates = [value]
+    elif isinstance(value, Sequence):
+        candidates = [item for item in value if isinstance(item, str)]
+    else:
+        candidates = []
+    paths = tuple(
+        text
+        for item in candidates
+        if (text := _normalize_rules_file_item(item)) is not None
+    )
+    return paths or (fallback,)
+
+
+def _normalize_rules_file_item(value: str) -> str | None:
     text = value.strip()
     if not text or PurePath(text).is_absolute() or ".." in PurePath(text).parts:
-        return fallback
+        return None
     return text
 
 

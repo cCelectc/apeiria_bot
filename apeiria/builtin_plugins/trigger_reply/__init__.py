@@ -33,7 +33,7 @@ from .config import (
     TriggerReplyConfig,
     get_trigger_reply_config,
 )
-from .loader import default_rule_set_cache, load_trigger_rule_set
+from .loader import default_rule_set_cache, load_trigger_rule_sets
 from .models import TriggerEvaluationResult, TriggerInput, TriggerReplyDecision
 from .providers import message_input_provider_registry, poke_input_provider_registry
 from .service import default_trigger_reply_service
@@ -101,9 +101,10 @@ __plugin_meta__ = PluginMetadata(
                 ),
                 RegisterConfig(
                     key="rules_file",
-                    default=DEFAULT_RULES_FILE,
-                    help="localstore 插件配置目录下的规则文件相对路径。",
-                    type=str,
+                    default=[DEFAULT_RULES_FILE],
+                    help="localstore 插件配置目录下的规则文件相对路径列表。",
+                    type=list,
+                    item_type=str,
                     label="规则文件",
                     order=40,
                 ),
@@ -124,13 +125,22 @@ __plugin_meta__ = PluginMetadata(
 
 def trigger_rules_file_path(config: TriggerReplyConfig | None = None) -> Path:
     resolved_config = config or get_trigger_reply_config()
-    return get_plugin_config_file(resolved_config.rules_file)
+    return get_plugin_config_file(resolved_config.rules_file[0])
+
+
+def trigger_rules_file_paths(
+    config: TriggerReplyConfig | None = None,
+) -> tuple[Path, ...]:
+    resolved_config = config or get_trigger_reply_config()
+    return tuple(
+        get_plugin_config_file(rules_file) for rules_file in resolved_config.rules_file
+    )
 
 
 def reload_trigger_rules(
     config: TriggerReplyConfig | None = None,
 ) -> tuple[int, tuple[str, ...]]:
-    ruleset = load_trigger_rule_set(trigger_rules_file_path(config))
+    ruleset = load_trigger_rule_sets(trigger_rules_file_paths(config))
     default_rule_set_cache.load_count += 1
     if ruleset.status != "invalid":
         default_rule_set_cache.set(ruleset)
@@ -404,4 +414,5 @@ __all__ = [
     "handle_trigger_reply_reload",
     "reload_trigger_rules",
     "trigger_rules_file_path",
+    "trigger_rules_file_paths",
 ]

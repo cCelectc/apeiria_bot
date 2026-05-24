@@ -7,11 +7,11 @@ from typing import TYPE_CHECKING, Any, cast
 import pytest
 
 import apeiria.builtin_plugins.trigger_reply.service as trigger_reply_service_module
-from apeiria.builtin_plugins.trigger_reply.config import (
-    DEFAULT_RULES_FILE,
-    normalize_trigger_reply_config,
+from apeiria.builtin_plugins.trigger_reply.config import normalize_trigger_reply_config
+from apeiria.builtin_plugins.trigger_reply.loader import (
+    load_trigger_rule_set,
+    load_trigger_rule_sets,
 )
-from apeiria.builtin_plugins.trigger_reply.loader import load_trigger_rule_set
 from apeiria.builtin_plugins.trigger_reply.models import (
     TriggerCooldown,
     TriggerEntry,
@@ -42,7 +42,7 @@ def test_trigger_reply_config_normalizes_bounded_values() -> None:
             "enabled": "off",
             "priority": "0",
             "stop_propagation_on_match": "no",
-            "rules_file": "../escape.toml",
+            "rules_file": ["first.toml", "../escape.toml", "packs/extra.toml"],
             "debug": "yes",
         }
     )
@@ -51,7 +51,7 @@ def test_trigger_reply_config_normalizes_bounded_values() -> None:
         "enabled": False,
         "priority": 1,
         "stop_propagation_on_match": False,
-        "rules_file": DEFAULT_RULES_FILE,
+        "rules_file": ("first.toml", "packs/extra.toml"),
         "debug": True,
     }
 
@@ -140,6 +140,77 @@ reply = "pong"
 
     ruleset = load_trigger_rule_set(rules_path)
 
+    assert ruleset.entries == ()
+
+
+def test_loader_merges_multiple_rule_files_and_skips_duplicate_ids(
+    tmp_path: Path,
+) -> None:
+    first = tmp_path / "first.toml"
+    second = tmp_path / "second.toml"
+    first.write_text(
+        """
+[shared]
+match = "ping"
+reply = "first"
+
+[first-only]
+match = "first"
+reply = "first only"
+""",
+        encoding="utf-8",
+    )
+    second.write_text(
+        """
+[shared]
+match = "ping"
+reply = "second"
+
+[second-only]
+match = "second"
+reply = "second only"
+""",
+        encoding="utf-8",
+    )
+
+    ruleset = load_trigger_rule_sets((first, tmp_path / "missing.toml", second))
+    service = TriggerReplyService(reply_choice=lambda values: values[0])
+
+    shared = service.evaluate(
+        TriggerInput(source="message", message_text="ping"),
+        ruleset=ruleset,
+    )
+    second_only = service.evaluate(
+        TriggerInput(source="message", message_text="second"),
+        ruleset=ruleset,
+    )
+
+    assert shared.decisions[0].reply == "first"
+    assert second_only.decisions[0].reply == "second only"
+    assert any(
+        "duplicate entry id ignored: shared" in error for error in ruleset.errors
+    )
+    assert any("rules file missing" in error for error in ruleset.errors)
+
+
+def test_loader_marks_multiple_rule_files_invalid_when_any_file_is_invalid(
+    tmp_path: Path,
+) -> None:
+    valid = tmp_path / "valid.toml"
+    invalid = tmp_path / "invalid.toml"
+    valid.write_text(
+        """
+[valid]
+match = "ping"
+reply = "pong"
+""",
+        encoding="utf-8",
+    )
+    invalid.write_text("[[entries]\n", encoding="utf-8")
+
+    ruleset = load_trigger_rule_sets((valid, invalid))
+
+    assert ruleset.status == "invalid"
     assert ruleset.entries == ()
 
 

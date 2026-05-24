@@ -68,7 +68,11 @@ match = "new"
         )
     )
     module.default_trigger_reply_service.cooldown_store.mark("old:user:u1", 60)
-    monkeypatch.setattr(module, "trigger_rules_file_path", lambda _config: rules_path)
+    monkeypatch.setattr(
+        module,
+        "trigger_rules_file_paths",
+        lambda _config: (rules_path,),
+    )
 
     _count, errors = module.reload_trigger_rules(TriggerReplyConfig())
 
@@ -97,7 +101,11 @@ def test_reload_function_preserves_active_ruleset_when_file_is_invalid(
             )
         )
     )
-    monkeypatch.setattr(module, "trigger_rules_file_path", lambda _config: rules_path)
+    monkeypatch.setattr(
+        module,
+        "trigger_rules_file_paths",
+        lambda _config: (rules_path,),
+    )
 
     _count, errors = module.reload_trigger_rules(TriggerReplyConfig())
 

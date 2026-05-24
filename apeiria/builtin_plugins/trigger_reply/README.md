@@ -23,7 +23,7 @@ _Apeiria 面向特征信息和戳一戳的规则回复插件_
 | `enabled` | 否 | `true` | 是否启用触发回复 |
 | `priority` | 否 | `12` | NoneBot matcher 优先级，修改后需重启生效 |
 | `stop_propagation_on_match` | 否 | `true` | 成功发送至少一条回复后是否阻止后续插件处理同一事件 |
-| `rules_file` | 否 | `rules.toml` | 本插件 localstore 配置目录下的规则文件相对路径 |
+| `rules_file` | 否 | `rules.toml` | 本插件 localstore 配置目录下的规则文件相对路径或路径列表 |
 | `debug` | 否 | `false` | 启用后记录规则加载与事件跳过原因 |
 
 示例：
@@ -33,7 +33,9 @@ trigger_reply:
   enabled: true
   priority: 12
   stop_propagation_on_match: true
-  rules_file: rules.toml
+  rules_file:
+    - rules.toml
+    - packs/fun.toml
   debug: false
 ```
 
@@ -49,6 +51,5 @@ trigger_reply:
 热重载只重载规则 TOML，不重载插件代码；重载后会清空内存 cooldown。如果新
 规则文件是无效 TOML，插件会保留上一份可用规则。
 
-规则文件写法见同目录的 `rules.example.toml`。示例以可复制 TOML 为主，注释
-中说明了 match、event、reply、chance、scenes、groups、users、cooldown 和
-变量的用法。
+`rules_file` 写成列表时会按顺序合并规则；重复的规则 ID 会保留先加载的条目。
+规则文件写法见同目录的 `rules.example.toml`。示例以可复制 TOML 为主，注释中说明了 match、event、reply、chance、scenes、groups、users、cooldown 和变量的用法。
