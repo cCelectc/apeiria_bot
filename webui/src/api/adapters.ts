@@ -80,6 +80,52 @@ export interface AdapterStoreTask {
   diagnostics: AdapterTaskDiagnostic[]
 }
 
+export type AdapterSelectionState =
+  | 'available'
+  | 'installed'
+  | 'enabled_pending_restart'
+  | 'enabled_loaded'
+  | 'unavailable'
+
+export interface AdapterSelectionItem {
+  source_id: string | null
+  source_name: string | null
+  adapter_id: string | null
+  module_name: string
+  display_name: string
+  package_name: string | null
+  description: string | null
+  homepage: string | null
+  project_link: string | null
+  tags: string[]
+  is_official: boolean
+  is_installed: boolean
+  is_enabled: boolean
+  is_loaded: boolean
+  is_importable: boolean
+  is_configurable: boolean
+  installed_package: string | null
+  installed_module_names: string[]
+  can_update: boolean
+  state: AdapterSelectionState
+}
+
+export interface AdapterSelectionSummary {
+  enabled: number
+  loaded: number
+  unavailable: number
+  restart_required: number
+}
+
+export interface AdapterSelectionResponse {
+  enabled_adapters: AdapterSelectionItem[]
+  candidates: AdapterSelectionItem[]
+  summary: AdapterSelectionSummary
+  total_candidates: number
+  page: number
+  per_page: number
+}
+
 export interface AdapterTaskStep {
   phase: string | null
   label: string | null
@@ -106,6 +152,26 @@ export function updateAdapterConfig(payload: { modules: string[] }) {
     '/adapters/config',
     payload,
   )
+}
+
+export function getAdapterSelection(params?: {
+  source?: string
+  search?: string
+  category?: string
+  sort?: string
+  unenabled_only?: boolean
+  page?: number
+  per_page?: number
+}) {
+  return client.get<AdapterSelectionResponse>('/adapters/selection', { params })
+}
+
+export function enableAdapterSelection(payload: { module_name: string }) {
+  return client.post<AdapterSelectionItem>('/adapters/selection/enable', payload)
+}
+
+export function disableAdapterSelection(payload: { module_name: string }) {
+  return client.post<AdapterSelectionItem>('/adapters/selection/disable', payload)
 }
 
 export function getAdapterStoreSources() {

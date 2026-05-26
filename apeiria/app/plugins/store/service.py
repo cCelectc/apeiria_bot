@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 from datetime import datetime
+from importlib.util import find_spec
 
 import nonebot
 
@@ -185,6 +186,7 @@ def _enrich_project_item_state(
     installed = (
         item.module_name in project_state.loaded_module_names
         or item.module_name in project_state.registered_module_names
+        or (item.type == "adapter" and _module_is_importable(item.module_name))
     )
     registered = item.module_name in project_state.registered_module_names
     installed_package = project_state.module_to_package.get(item.module_name)
@@ -309,6 +311,13 @@ def _normalize_adapter_module_name(module_name: str) -> str:
     if module_name.endswith(".adapter"):
         return module_name[: -len(".adapter")]
     return module_name
+
+
+def _module_is_importable(module_name: str) -> bool:
+    try:
+        return find_spec(module_name) is not None
+    except (ImportError, ModuleNotFoundError, ValueError):
+        return False
 
 
 def _match_item(item: StoreItem, query: StoreQuery) -> bool:

@@ -4,6 +4,7 @@ from fastapi import APIRouter
 
 from apeiria.webui.routes.access import router as permission_router
 from apeiria.webui.routes.adapter_config import router as adapter_config_router
+from apeiria.webui.routes.adapter_selection import router as adapter_selection_router
 from apeiria.webui.routes.adapter_store import router as adapter_store_router
 from apeiria.webui.routes.ai import router as ai_router
 from apeiria.webui.routes.auth import router as auth_router
@@ -26,6 +27,11 @@ router.include_router(
     adapter_config_router,
     prefix="/adapters",
     tags=["adapter-config"],
+)
+router.include_router(
+    adapter_selection_router,
+    prefix="/adapters/selection",
+    tags=["adapter-selection"],
 )
 router.include_router(
     adapter_store_router,

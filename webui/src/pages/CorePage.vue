@@ -7,19 +7,20 @@ import {
   Cable,
   CheckCircle2,
   Code2,
+  Download,
   Eye,
   FileCog,
-  PackageOpen,
+  MoreHorizontal,
   Plus,
   RefreshCw,
   Save,
+  Search,
   SlidersHorizontal,
   Trash2,
   Wrench,
 } from '@lucide/vue'
 import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useRouter } from 'vue-router'
 import { getErrorMessage } from '@/api/client'
 import {
   getCoreSettings,
@@ -37,12 +38,14 @@ import {
   Panel,
   RawSettingsEditor,
   StatusBadge,
+  TaskDialog,
 } from '@/components/management'
 import type { WorkbenchMetricItem, WorkbenchTone } from '@/components/management'
 import { SettingsFieldEditor } from '@/components/settings'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
 import {
   Dialog,
   DialogContent,
@@ -51,6 +54,14 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
@@ -62,7 +73,10 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import type { AdapterSelectionItem } from '@/api/adapters'
 import { useAdapterManagement } from '@/composables/useAdapterManagement'
+import { useAdapterSelection } from '@/composables/useAdapterSelection'
+import { usePluginSettingsDialog } from '@/composables/usePluginSettingsDialog'
 import { useRawTomlValidation } from '@/composables/useRawTomlValidation'
 import { useSettingsEditor } from '@/composables/useSettingsEditor'
 import { useNoticeStore } from '@/stores/notice'
@@ -77,7 +91,6 @@ import {
 type CoreTab = 'core' | 'adapters' | 'drivers'
 
 const { t } = useI18n()
-const router = useRouter()
 const noticeStore = useNoticeStore()
 const restartStore = useRestartStore()
 const loading = ref(false)
@@ -123,6 +136,18 @@ const adapterManager = useAdapterManagement({
   t: (key, params) => t(key, params || {}),
 })
 
+const adapterSelection = useAdapterSelection({
+  noticeStore,
+  restartStore,
+  t: (key, params) => t(key, params || {}),
+})
+
+const adapterSettings = usePluginSettingsDialog({
+  noticeStore,
+  restartStore,
+  t: (key, params) => t(key, params || {}),
+})
+
 const corePreviewItems = computed(() =>
   buildSettingsPreviewItems(
     coreEditor.fields.value,
@@ -138,10 +163,10 @@ const hasPendingCoreRawChanges = computed(() =>
   coreRawText.value !== coreRawInitialText.value,
 )
 const loadedAdapterCount = computed(() =>
-  adapterManager.configuredModules.value.filter(item => item.is_loaded).length,
+  adapterSelection.summary.value.loaded,
 )
 const unavailableAdapterCount = computed(() =>
-  adapterManager.configuredModules.value.filter(item => !item.is_importable).length,
+  adapterSelection.summary.value.unavailable,
 )
 const activeDriverCount = computed(() =>
   driverBuiltin.value.filter(item => item.is_active).length,
@@ -159,7 +184,7 @@ const metrics = computed<WorkbenchMetricItem[]>(() => [
     label: t('core.adapterOverviewRuntimeTitle'),
     value: t('core.adapterOverviewRuntimeValue', {
       loaded: loadedAdapterCount.value,
-      total: adapterManager.adapterCount.value,
+      total: adapterSelection.summary.value.enabled,
     }),
     icon: Cable,
     tone: unavailableAdapterCount.value > 0 ? 'warning' : 'success',
@@ -207,6 +232,7 @@ async function refreshCorePage() {
     await Promise.all([
       coreEditor.reload(),
       adapterManager.reload(),
+      adapterSelection.reload(),
       loadDriverManagement(),
     ])
   } finally {
@@ -305,10 +331,7 @@ async function confirmCoreSettingsSave() {
   }
 }
 
-function openAdapterConfigWithNewRow() {
-  if (adapterManager.draftRows.value.length === 0) {
-    adapterManager.addDraftRow()
-  }
+function openAdapterExpertConfig() {
   adapterConfigDialogVisible.value = true
 }
 
@@ -352,15 +375,115 @@ function formatModuleList(modules: string[]) {
   return modules.length > 0 ? modules.join('\n') : t('common.none')
 }
 
-function adapterDisplayName(moduleName: string) {
-  return moduleName.split('.').at(-1) || moduleName
-}
-
-function adapterTone(item: { is_loaded: boolean, is_importable: boolean }): WorkbenchTone {
+function adapterTone(item: Pick<AdapterSelectionItem, 'is_loaded' | 'is_importable'>): WorkbenchTone {
   if (!item.is_importable) {
     return 'warning'
   }
   return item.is_loaded ? 'success' : 'default'
+}
+
+function adapterStateLabel(item: AdapterSelectionItem) {
+  const map: Record<AdapterSelectionItem['state'], string> = {
+    available: t('core.adapterStateAvailable'),
+    installed: t('core.adapterStateInstalled'),
+    enabled_loaded: t('core.adapterStateEnabledLoaded'),
+    enabled_pending_restart: t('core.adapterStateEnabledPendingRestart'),
+    unavailable: t('core.adapterStateUnavailable'),
+  }
+  return map[item.state] || item.state
+}
+
+function adapterStateTone(item: AdapterSelectionItem): WorkbenchTone {
+  if (item.state === 'unavailable') {
+    return 'warning'
+  }
+  if (item.state === 'enabled_loaded') {
+    return 'success'
+  }
+  if (item.state === 'enabled_pending_restart' || item.state === 'installed') {
+    return 'info'
+  }
+  return 'default'
+}
+
+function adapterPrimaryActionLabel(item: AdapterSelectionItem | null) {
+  if (!item) {
+    return t('core.adapterSelectionChoose')
+  }
+  if (item.is_enabled) {
+    return item.is_loaded
+      ? t('core.adapterSelectionAlreadyEnabled')
+      : t('core.adapterSelectionEnabledPendingRestart')
+  }
+  if (item.is_installed) {
+    return t('core.adapterSelectionEnable')
+  }
+  return t('core.adapterSelectionInstallAndEnable')
+}
+
+function adapterPrimaryActionDisabled(item: AdapterSelectionItem | null) {
+  return !item || item.is_enabled || adapterSelection.actionLocked.value
+}
+
+function adapterExternalUrl(item: AdapterSelectionItem | null) {
+  const url = item?.homepage || item?.project_link || ''
+  return url.startsWith('http://') || url.startsWith('https://') ? url : ''
+}
+
+function openAdapterSettings(item: AdapterSelectionItem) {
+  if (!item.is_configurable) {
+    noticeStore.show(t('core.adapterSelectionNoEditableConfig'), 'info')
+    return
+  }
+  void adapterSettings.openSettings({
+    module_name: item.module_name,
+    kind: 'adapter',
+    access_mode: 'default_allow',
+    name: item.display_name,
+    description: item.description,
+    homepage: item.homepage,
+    source: item.source_name || 'adapter',
+    is_global_enabled: true,
+    is_protected: false,
+    protected_reason: null,
+    plugin_type: 'adapter',
+    author: null,
+    version: null,
+    is_loaded: item.is_loaded,
+    is_explicit: item.is_enabled,
+    is_dependency: false,
+    is_pending_uninstall: false,
+    can_edit_config: item.is_configurable,
+    can_view_readme: false,
+    can_enable_disable: false,
+    can_uninstall: false,
+    can_package_update: item.can_update,
+    child_plugins: [],
+    required_plugins: [],
+    dependent_plugins: [],
+    installed_package: item.installed_package || item.package_name,
+    installed_module_names: item.installed_module_names,
+  })
+}
+
+function openAdapterSettingsPreview() {
+  void adapterSettings.openPluginSettingsPreview()
+}
+
+function openAdapterRawPreview() {
+  void adapterSettings.openPluginRawPreview()
+}
+
+function toggleAdapterUnenabledOnly(value: boolean | 'indeterminate') {
+  adapterSelection.unenabledOnly.value = value === true
+  void adapterSelection.loadPopupSelection()
+}
+
+function reloadOpenAdapterRawSettings() {
+  const moduleName = adapterSettings.settingsPlugin.value?.module_name
+  if (moduleName) {
+    void adapterSettings.loadPluginRawSettings(moduleName)
+  }
 }
 
 function driverTone(item: DriverConfigItem): WorkbenchTone {
@@ -369,10 +492,6 @@ function driverTone(item: DriverConfigItem): WorkbenchTone {
 
 function driverStatusText(item: DriverConfigItem) {
   return item.is_active ? t('plugins.driverActive') : t('plugins.driverRegisteredOnly')
-}
-
-function openPackageManager() {
-  void router.push({ name: 'adapter-store' })
 }
 
 onMounted(() => {
@@ -543,92 +662,101 @@ onMounted(() => {
         >
           <template #actions>
             <Badge variant="secondary">
-              {{ t('plugins.adapterCount') }}: {{ adapterManager.adapterCount.value }}
+              {{ t('core.adapterSelectionEnabledCount', { count: adapterSelection.summary.value.enabled }) }}
             </Badge>
-            <Button variant="secondary" @click="adapterConfigDialogVisible = true">
-              <SlidersHorizontal :size="16" />
-              {{ t('core.adapterOverviewAdvancedAction') }}
+            <Button @click="adapterSelection.openPopup">
+              <Plus data-icon="inline-start" />
+              {{ t('core.adapterSelectionAdd') }}
             </Button>
-            <Button variant="outline" @click="openPackageManager">
-              <PackageOpen :size="16" />
-              {{ t('core.adapterPackageManager') }}
-            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger as-child>
+                <Button variant="outline" size="icon">
+                  <MoreHorizontal data-icon="inline-start" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuGroup>
+                  <DropdownMenuItem @click="openAdapterExpertConfig">
+                    <SlidersHorizontal data-icon="inline-start" />
+                    {{ t('core.adapterSelectionExpertEdit') }}
+                  </DropdownMenuItem>
+                </DropdownMenuGroup>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </template>
 
-          <Alert v-if="adapterManager.errorMessage.value" variant="destructive">
+          <Alert v-if="adapterSelection.errorMessage.value" variant="destructive">
             <AlertCircle :size="16" />
-            <AlertDescription>{{ adapterManager.errorMessage.value }}</AlertDescription>
+            <AlertDescription>{{ adapterSelection.errorMessage.value }}</AlertDescription>
           </Alert>
 
-          <LoadingSkeleton v-if="adapterManager.loading.value" rows="5" />
+          <LoadingSkeleton v-if="adapterSelection.loading.value" rows="5" />
 
-          <div v-else-if="adapterManager.configuredModules.value.length > 0" class="adapter-overview">
-            <div class="adapter-overview-strip">
-              <div class="adapter-overview-strip__item">
-                <Cable :size="20" />
+          <div v-else class="adapter-overview">
+            <div class="adapter-selection-summary">
+              <div class="adapter-selection-summary__item">
+                <CheckCircle2 :size="18" />
                 <div>
-                  <div class="adapter-overview-strip__title">
+                  <div class="adapter-selection-summary__label">
+                    {{ t('core.adapterSelectionEnabled') }}
+                  </div>
+                  <strong>{{ adapterSelection.summary.value.enabled }}</strong>
+                </div>
+              </div>
+
+              <div class="adapter-selection-summary__item">
+                <Cable :size="18" />
+                <div>
+                  <div class="adapter-selection-summary__label">
                     {{ t('core.adapterOverviewRuntimeTitle') }}
                   </div>
-                  <div class="adapter-overview-strip__value">
-                    {{ t('core.adapterOverviewRuntimeValue', { loaded: loadedAdapterCount, total: adapterManager.adapterCount.value }) }}
-                  </div>
-                  <div class="adapter-overview-strip__text">
-                    {{ t('core.adapterOverviewRuntimeText') }}
-                  </div>
+                  <strong>{{ adapterSelection.summary.value.loaded }}</strong>
                 </div>
               </div>
 
-              <div class="adapter-overview-strip__item">
-                <Code2 :size="20" />
+              <div
+                class="adapter-selection-summary__item"
+                :class="{ 'adapter-selection-summary__item--warning': adapterSelection.summary.value.unavailable > 0 }"
+              >
+                <AlertCircle :size="18" />
                 <div>
-                  <div class="adapter-overview-strip__title">
-                    {{ t('core.adapterOverviewConfigTitle') }}
+                  <div class="adapter-selection-summary__label">
+                    {{ t('core.adapterStateUnavailable') }}
                   </div>
-                  <div class="adapter-overview-strip__value">
-                    {{ t('core.adapterOverviewConfigValue', { total: adapterManager.adapterCount.value }) }}
-                  </div>
-                  <div class="adapter-overview-strip__text">
-                    {{ t('core.adapterOverviewConfigText') }}
-                  </div>
+                  <strong>{{ adapterSelection.summary.value.unavailable }}</strong>
                 </div>
               </div>
 
-              <div class="adapter-overview-strip__item" :class="{ 'adapter-overview-strip__item--warning': unavailableAdapterCount > 0 }">
-                <AlertCircle :size="20" />
+              <div class="adapter-selection-summary__item">
+                <RefreshCw :size="18" />
                 <div>
-                  <div class="adapter-overview-strip__title">
-                    {{ t('core.adapterOverviewRestartTitle') }}
+                  <div class="adapter-selection-summary__label">
+                    {{ t('core.adapterSelectionRestartRequired') }}
                   </div>
-                  <div class="adapter-overview-strip__value">
-                    {{
-                      unavailableAdapterCount > 0
-                        ? t('core.adapterOverviewUnavailableValue', { total: unavailableAdapterCount })
-                        : t('core.adapterOverviewRestartValue')
-                    }}
-                  </div>
-                  <div class="adapter-overview-strip__text">
-                    {{ t('core.adapterOverviewRestartText') }}
-                  </div>
+                  <strong>{{ adapterSelection.summary.value.restart_required }}</strong>
                 </div>
               </div>
             </div>
 
-            <section class="adapter-status-list" :aria-label="t('core.adapterOverviewListTitle')">
+            <section
+              v-if="adapterSelection.enabledAdapters.value.length > 0"
+              class="adapter-status-list"
+              :aria-label="t('core.adapterOverviewListTitle')"
+            >
               <div class="adapter-status-list__header">
                 <div>
                   <div class="adapter-status-list__title">
-                    {{ t('core.adapterOverviewListTitle') }}
+                    {{ t('core.adapterSelectionEnabledAdapters') }}
                   </div>
                   <div class="adapter-status-list__description">
-                    {{ t('core.adapterOverviewListDescription') }}
+                    {{ t('core.adapterSelectionEnabledAdaptersDescription') }}
                   </div>
                 </div>
               </div>
 
               <article
-                v-for="item in adapterManager.configuredModules.value"
-                :key="item.name"
+                v-for="item in adapterSelection.enabledAdapters.value"
+                :key="item.module_name"
                 class="adapter-status-row"
               >
                 <div class="adapter-status-row__signal" :class="`workbench-tone--${adapterTone(item)}`">
@@ -638,46 +766,103 @@ onMounted(() => {
                 <div class="adapter-status-row__main">
                   <div class="adapter-status-row__title-line">
                     <h2 class="adapter-status-row__title">
-                      {{ adapterDisplayName(item.name) }}
+                      {{ item.display_name }}
                     </h2>
                     <div class="adapter-status-row__chips">
+                      <StatusBadge :label="adapterStateLabel(item)" :tone="adapterStateTone(item)" />
                       <StatusBadge
-                        :label="item.is_loaded ? t('core.adapterLoaded') : t('core.adapterNotLoaded')"
-                        :tone="item.is_loaded ? 'success' : 'default'"
-                      />
-                      <StatusBadge
-                        :label="item.is_importable ? t('core.adapterImportable') : t('core.adapterUnavailable')"
-                        :tone="item.is_importable ? 'success' : 'warning'"
+                        v-if="item.is_configurable"
+                        :label="t('core.adapterSelectionConfigurable')"
+                        tone="info"
                       />
                     </div>
                   </div>
                   <div class="adapter-status-row__module">
-                    {{ item.name }}
+                    {{ item.package_name || item.installed_package || item.module_name }}
                   </div>
                   <div class="adapter-status-row__summary">
-                    {{ adapterManager.rowStatusSummary(item.name) }}
+                    {{ item.description || item.module_name }}
                   </div>
                 </div>
+
+                <div class="adapter-status-row__actions">
+                  <Button
+                    :disabled="!item.is_configurable"
+                    size="sm"
+                    variant="secondary"
+                    @click="openAdapterSettings(item)"
+                  >
+                    <SlidersHorizontal data-icon="inline-start" />
+                    {{ item.is_configurable ? t('plugins.settings') : t('core.adapterSelectionNoConfig') }}
+                  </Button>
+                  <Button
+                    :disabled="adapterSelection.actionLocked.value"
+                    size="sm"
+                    variant="outline"
+                    @click="adapterSelection.disableAdapter(item)"
+                  >
+                    {{ t('core.adapterSelectionDisable') }}
+                  </Button>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger as-child>
+                      <Button size="icon" variant="ghost">
+                        <MoreHorizontal data-icon="inline-start" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuGroup>
+                        <DropdownMenuItem
+                          :disabled="!item.can_update || adapterSelection.actionLocked.value"
+                          @click="adapterSelection.updateAdapter(item)"
+                        >
+                          <RefreshCw data-icon="inline-start" />
+                          {{ t('adapterStore.update') }}
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          :disabled="adapterSelection.actionLocked.value || (!item.installed_package && !item.package_name)"
+                          @click="adapterSelection.uninstallAdapter(item)"
+                        >
+                          <Trash2 data-icon="inline-start" />
+                          {{ t('adapterStore.uninstall') }}
+                        </DropdownMenuItem>
+                      </DropdownMenuGroup>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuGroup>
+                        <DropdownMenuItem @click="openAdapterExpertConfig">
+                          <Code2 data-icon="inline-start" />
+                          {{ t('core.adapterSelectionExpertEdit') }}
+                        </DropdownMenuItem>
+                      </DropdownMenuGroup>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
+                <details class="adapter-status-row__details">
+                  <summary>{{ t('core.adapterSelectionTechnicalDetails') }}</summary>
+                  <div>
+                    <span>{{ t('core.adapterModuleLabel') }}: {{ item.module_name }}</span>
+                    <span>{{ t('adapterStore.packageName') }}: {{ item.package_name || item.installed_package || t('common.none') }}</span>
+                  </div>
+                </details>
               </article>
             </section>
-          </div>
 
-          <EmptyState
-            v-else
-            :text="t('core.adapterEmptyText')"
-            :title="t('plugins.emptyAdapterModules')"
-          >
-            <template #actions>
-              <Button variant="secondary" @click="openAdapterConfigWithNewRow">
-                <Plus :size="16" />
-                {{ t('core.adapterOverviewEmptyAction') }}
-              </Button>
-              <Button variant="ghost" @click="openPackageManager">
-                <PackageOpen :size="16" />
-                {{ t('core.adapterPackageManager') }}
-              </Button>
-            </template>
-          </EmptyState>
+            <EmptyState
+              v-else
+              :text="t('core.adapterSelectionEmptyText')"
+              :title="t('core.adapterSelectionEmptyTitle')"
+            >
+              <template #actions>
+                <Button @click="adapterSelection.openPopup">
+                  <Plus data-icon="inline-start" />
+                  {{ t('core.adapterSelectionAdd') }}
+                </Button>
+                <Button variant="ghost" @click="openAdapterExpertConfig">
+                  <Code2 data-icon="inline-start" />
+                  {{ t('core.adapterSelectionExpertEdit') }}
+                </Button>
+              </template>
+            </EmptyState>
+          </div>
         </Panel>
       </TabsContent>
 
@@ -812,10 +997,183 @@ onMounted(() => {
       </DialogContent>
     </Dialog>
 
+    <Dialog v-model:open="adapterSelection.popupVisible.value">
+      <DialogContent class="adapter-selection-dialog">
+        <DialogHeader>
+          <DialogTitle>{{ t('core.adapterSelectionAdd') }}</DialogTitle>
+          <DialogDescription>{{ t('core.adapterSelectionDescription') }}</DialogDescription>
+        </DialogHeader>
+
+        <Alert v-if="adapterSelection.popupErrorMessage.value" variant="destructive">
+          <AlertCircle data-icon="inline-start" />
+          <AlertDescription>{{ adapterSelection.popupErrorMessage.value }}</AlertDescription>
+        </Alert>
+
+        <div class="adapter-selection-toolbar">
+          <div class="adapter-selection-search">
+            <Search :size="16" />
+            <Input
+              v-model="adapterSelection.search.value"
+              :placeholder="t('core.adapterSelectionSearch')"
+              @input="adapterSelection.schedulePopupReload"
+            />
+          </div>
+          <label class="adapter-selection-filter">
+            <Checkbox
+              :checked="adapterSelection.unenabledOnly.value"
+              @update:checked="toggleAdapterUnenabledOnly"
+            />
+            <span>{{ t('core.adapterSelectionOnlyUnenabled') }}</span>
+          </label>
+        </div>
+
+        <LoadingSkeleton v-if="adapterSelection.popupLoading.value" rows="8" />
+
+        <div v-else class="adapter-selection-layout">
+          <section class="adapter-selection-list" :aria-label="t('core.adapterSelectionCandidates')">
+            <button
+              v-for="item in adapterSelection.candidates.value"
+              :key="`${item.source_id || 'local'}:${item.module_name}`"
+              class="adapter-selection-option"
+              :class="{
+                'adapter-selection-option--active':
+                  adapterSelection.selectedCandidateKey.value
+                  === `${item.source_id || 'local'}:${item.module_name}`,
+              }"
+              type="button"
+              @click="adapterSelection.selectCandidate(item)"
+            >
+              <span class="adapter-selection-option__title">{{ item.display_name }}</span>
+              <span class="adapter-selection-option__module">{{ item.package_name || item.module_name }}</span>
+              <span class="adapter-selection-option__chips">
+                <StatusBadge :label="adapterStateLabel(item)" :tone="adapterStateTone(item)" />
+                <Badge v-if="item.is_official" variant="outline">{{ t('adapterStore.official') }}</Badge>
+              </span>
+            </button>
+
+            <EmptyState
+              v-if="adapterSelection.candidates.value.length === 0"
+              compact
+              :text="t('core.adapterSelectionNoResultsText')"
+              :title="t('core.adapterSelectionNoResults')"
+            />
+          </section>
+
+          <aside class="adapter-selection-detail">
+            <template v-if="adapterSelection.selectedCandidate.value">
+              <div class="adapter-selection-detail__header">
+                <div>
+                  <div class="adapter-selection-detail__eyebrow">
+                    {{ adapterSelection.selectedCandidate.value.source_name || t('core.adaptersTab') }}
+                  </div>
+                  <h3>{{ adapterSelection.selectedCandidate.value.display_name }}</h3>
+                </div>
+                <StatusBadge
+                  :label="adapterStateLabel(adapterSelection.selectedCandidate.value)"
+                  :tone="adapterStateTone(adapterSelection.selectedCandidate.value)"
+                />
+              </div>
+
+              <p class="adapter-selection-detail__description">
+                {{ adapterSelection.selectedCandidate.value.description || adapterSelection.selectedCandidate.value.module_name }}
+              </p>
+
+              <div class="adapter-selection-detail__meta">
+                <span>{{ t('core.adapterModuleLabel') }}</span>
+                <code>{{ adapterSelection.selectedCandidate.value.module_name }}</code>
+                <span>{{ t('adapterStore.packageName') }}</span>
+                <code>{{ adapterSelection.selectedCandidate.value.package_name || t('common.none') }}</code>
+              </div>
+
+              <div class="adapter-selection-detail__tags">
+                <Badge
+                  v-for="tag in adapterSelection.selectedCandidate.value.tags.slice(0, 6)"
+                  :key="tag"
+                  variant="secondary"
+                >
+                  {{ tag }}
+                </Badge>
+              </div>
+
+              <div class="adapter-selection-detail__actions">
+                <Button
+                  :disabled="adapterPrimaryActionDisabled(adapterSelection.selectedCandidate.value)"
+                  @click="adapterSelection.applySelectedCandidate"
+                >
+                  <Download data-icon="inline-start" />
+                  {{ adapterPrimaryActionLabel(adapterSelection.selectedCandidate.value) }}
+                </Button>
+                <Button
+                  v-if="adapterExternalUrl(adapterSelection.selectedCandidate.value)"
+                  as="a"
+                  :href="adapterExternalUrl(adapterSelection.selectedCandidate.value)"
+                  rel="noreferrer"
+                  target="_blank"
+                  variant="outline"
+                >
+                  {{ t('adapterStore.openProject') }}
+                </Button>
+              </div>
+            </template>
+
+            <EmptyState
+              v-else
+              compact
+              cause="selection-required"
+              :title="t('core.adapterSelectionChoose')"
+            />
+          </aside>
+        </div>
+
+        <section class="adapter-selection-manual">
+          <button
+            class="adapter-selection-manual__toggle"
+            type="button"
+            @click="adapterSelection.manualExpanded.value = !adapterSelection.manualExpanded.value"
+          >
+            {{ t('core.adapterSelectionManualToggle') }}
+          </button>
+
+          <div v-if="adapterSelection.manualExpanded.value" class="adapter-selection-manual__form">
+            <div class="adapter-selection-manual__field">
+              <Label for="adapter-manual-requirement">{{ t('adapterStore.manualRequirement') }}</Label>
+              <Input
+                id="adapter-manual-requirement"
+                v-model="adapterSelection.manualRequirement.value"
+                :placeholder="t('adapterStore.manualRequirementPlaceholder')"
+              />
+            </div>
+            <div class="adapter-selection-manual__field">
+              <Label for="adapter-manual-module">{{ t('adapterStore.manualModule') }}</Label>
+              <Input
+                id="adapter-manual-module"
+                v-model="adapterSelection.manualModuleName.value"
+                :placeholder="t('adapterStore.manualModulePlaceholder')"
+              />
+            </div>
+            <Button
+              :disabled="!adapterSelection.canSubmitManualInstall.value || adapterSelection.actionLocked.value"
+              variant="secondary"
+              @click="adapterSelection.installManual"
+            >
+              <Download data-icon="inline-start" />
+              {{ t('adapterStore.install') }}
+            </Button>
+          </div>
+        </section>
+
+        <DialogFooter>
+          <Button variant="ghost" @click="adapterSelection.closePopup">
+            {{ t('common.close') }}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+
     <Dialog v-model:open="adapterConfigDialogVisible">
       <DialogContent class="adapter-config-dialog">
         <DialogHeader>
-          <DialogTitle>{{ t('core.adapterOverviewAdvancedAction') }}</DialogTitle>
+          <DialogTitle>{{ t('core.adapterSelectionExpertEdit') }}</DialogTitle>
           <DialogDescription>{{ t('core.adapterModuleHelper') }}</DialogDescription>
         </DialogHeader>
 
@@ -920,5 +1278,236 @@ onMounted(() => {
         </DialogFooter>
       </DialogContent>
     </Dialog>
+
+    <Dialog v-model:open="adapterSettings.settingsDialogVisible.value">
+      <DialogContent class="plugin-settings-dialog">
+        <DialogHeader>
+          <DialogTitle>
+            {{
+              t('plugins.settingsTitle', {
+                name: adapterSettings.settingsPlugin.value?.name
+                  || adapterSettings.settingsPlugin.value?.module_name
+                  || '',
+              })
+            }}
+          </DialogTitle>
+          <DialogDescription>{{ adapterSettings.settingsPlugin.value?.module_name }}</DialogDescription>
+        </DialogHeader>
+
+        <Alert v-if="adapterSettings.settingsErrorMessage.value" variant="destructive">
+          <AlertCircle data-icon="inline-start" />
+          <AlertDescription>{{ adapterSettings.settingsErrorMessage.value }}</AlertDescription>
+        </Alert>
+
+        <LoadingSkeleton v-if="adapterSettings.settingsDialogLoading.value" rows="7" />
+
+        <Tabs
+          v-else
+          v-model="adapterSettings.settingsEditorMode.value"
+          class="plugin-settings-tabs"
+        >
+          <div class="plugin-settings-tabs__bar">
+            <TabsList>
+              <TabsTrigger value="basic">
+                <FileCog data-icon="inline-start" />
+                {{ t('plugins.settingsBasicTab') }}
+              </TabsTrigger>
+              <TabsTrigger value="advanced">
+                <Code2 data-icon="inline-start" />
+                {{ t('plugins.settingsAdvancedTab') }}
+              </TabsTrigger>
+            </TabsList>
+
+            <Button
+              v-if="adapterSettings.settingsEditorMode.value === 'basic'"
+              :disabled="!adapterSettings.hasPendingPluginChanges.value || adapterSettings.settingsSaving.value"
+              size="sm"
+              @click="openAdapterSettingsPreview"
+            >
+              <Save data-icon="inline-start" />
+              {{ t('plugins.settingsSave') }}
+            </Button>
+          </div>
+
+          <TabsContent value="basic" class="plugin-settings-tab-content">
+            <EmptyState
+              v-if="!adapterSettings.settingsState.value?.has_config_model
+                || adapterSettings.settingsFields.value.length === 0"
+              :title="t('core.adapterSelectionNoEditableConfig')"
+            />
+
+            <div v-else class="settings-list-panel plugin-settings-list">
+              <article
+                v-for="field in adapterSettings.settingsFields.value"
+                :key="field.key"
+                class="settings-list-row"
+              >
+                <div class="settings-list-row__main">
+                  <div class="settings-list-row__info">
+                    <div class="settings-list-row__label">
+                      {{ field.label || field.key }}
+                    </div>
+                    <div v-if="field.help" class="settings-list-row__description">
+                      {{ field.help }}
+                    </div>
+                    <div class="settings-list-row__status">
+                      <StatusBadge
+                        v-if="field.has_local_override"
+                        :label="t('plugins.settingsLocalShort')"
+                        tone="info"
+                      />
+                      <StatusBadge
+                        v-if="!field.editable"
+                        :label="t('plugins.settingsReadonly')"
+                        tone="warning"
+                      />
+                    </div>
+                    <div class="settings-list-row__value-summary">
+                      {{ t('plugins.settingsCurrent') }}:
+                      {{ adapterSettings.displayFieldValue(field.current_value) }}
+                    </div>
+                  </div>
+
+                  <div class="settings-list-row__control">
+                    <div class="settings-list-row__actions">
+                      <Button
+                        v-if="adapterSettings.pluginEditor.hasFieldPending(field)"
+                        size="sm"
+                        variant="ghost"
+                        @click="adapterSettings.pluginEditor.cancelField(field)"
+                      >
+                        {{ t('common.cancel') }}
+                      </Button>
+                      <Button
+                        v-if="field.has_local_override"
+                        size="sm"
+                        variant="ghost"
+                        @click="adapterSettings.clearPluginField(field)"
+                      >
+                        {{ t('plugins.settingsClear') }}
+                      </Button>
+                    </div>
+
+                    <SettingsFieldEditor
+                      :model-value="adapterSettings.settingsForm.value[field.key]"
+                      :array-hint="t('plugins.settingsArrayHint')"
+                      :editable="field.editable"
+                      :field="field"
+                      :json-hint="t('plugins.settingsJsonHint')"
+                      @update:model-value="value => adapterSettings.pluginEditor.updateFieldValue(field, value)"
+                    />
+                  </div>
+                </div>
+              </article>
+            </div>
+          </TabsContent>
+
+          <TabsContent value="advanced" class="plugin-settings-tab-content">
+            <RawSettingsEditor
+              v-model="adapterSettings.settingsRawText.value"
+              :description="t('plugins.settingsAdvancedDescription')"
+              :dirty="adapterSettings.hasPendingPluginRawChanges.value"
+              :error-message="adapterSettings.settingsRawErrorMessage.value"
+              :loading="adapterSettings.settingsRawLoading.value"
+              :reload-label="t('common.refresh')"
+              :save-label="t('plugins.settingsSave')"
+              :saving="adapterSettings.settingsRawSaving.value"
+              :validation-error-column="adapterSettings.pluginRawValidationColumn.value"
+              :validation-error-line="adapterSettings.pluginRawValidationLine.value"
+              :validation-error-message="adapterSettings.pluginRawValidationMessage.value"
+              :validation-pending="adapterSettings.pluginRawValidationPending.value"
+              @reload="reloadOpenAdapterRawSettings"
+              @save="openAdapterRawPreview"
+            />
+          </TabsContent>
+        </Tabs>
+
+        <DialogFooter>
+          <Button variant="ghost" @click="adapterSettings.closeSettingsDialog">
+            {{ t('common.close') }}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+
+    <Dialog v-model:open="adapterSettings.previewDialogVisible.value">
+      <DialogContent class="settings-preview-dialog">
+        <DialogHeader>
+          <DialogTitle>{{ adapterSettings.previewTitle.value }}</DialogTitle>
+          <DialogDescription>{{ t('plugins.settingsRestartHint') }}</DialogDescription>
+        </DialogHeader>
+
+        <Table v-if="adapterSettings.previewMode.value === 'basic'">
+          <TableHeader>
+            <TableRow>
+              <TableHead>{{ t('plugins.settingsField') }}</TableHead>
+              <TableHead>{{ t('plugins.previewCurrent') }}</TableHead>
+              <TableHead>{{ t('plugins.previewNext') }}</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            <TableRow
+              v-for="item in adapterSettings.previewItems.value"
+              :key="item.key"
+            >
+              <TableCell class="settings-preview-dialog__key">
+                {{ item.key }}
+              </TableCell>
+              <TableCell>{{ item.current }}</TableCell>
+              <TableCell>{{ item.next }}</TableCell>
+            </TableRow>
+          </TableBody>
+        </Table>
+
+        <div v-else class="settings-raw-preview-grid">
+          <div class="settings-raw-preview-block">
+            <div class="settings-raw-preview-block__label">
+              {{ t('plugins.previewCurrent') }}
+            </div>
+            <pre>{{ adapterSettings.previewCurrentText.value }}</pre>
+          </div>
+          <div class="settings-raw-preview-block">
+            <div class="settings-raw-preview-block__label">
+              {{ t('plugins.previewNext') }}
+            </div>
+            <pre>{{ adapterSettings.previewNextText.value }}</pre>
+          </div>
+        </div>
+
+        <DialogFooter>
+          <Button variant="ghost" @click="adapterSettings.previewDialogVisible.value = false">
+            {{ t('common.cancel') }}
+          </Button>
+          <Button :disabled="adapterSettings.previewSaving.value" @click="adapterSettings.confirmPreviewSave">
+            <Save data-icon="inline-start" />
+            {{ t('plugins.confirmSave') }}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+
+    <TaskDialog
+      v-model="adapterSelection.taskDialogVisible.value"
+      :binding-value="adapterSelection.activeTask.value?.binding_value"
+      :close-label="t('common.close')"
+      :current-phase="adapterSelection.activeTask.value?.current_phase"
+      :current-phase-label="adapterSelection.activeTask.value?.current_phase_label"
+      :diagnostics="adapterSelection.activeTask.value?.diagnostics || []"
+      :loading="adapterSelection.taskIsRunning.value"
+      :logs="adapterSelection.activeTask.value?.logs || ''"
+      :operation="adapterSelection.activeTask.value?.operation"
+      :queue-position="adapterSelection.activeTask.value?.queue_position"
+      :raw-status="adapterSelection.activeTask.value?.status"
+      :requirement="adapterSelection.activeTask.value?.requirement"
+      :resource-kind="adapterSelection.activeTask.value?.resource_kind"
+      :restart-required="adapterSelection.activeTask.value?.restart_required"
+      :retry-label="adapterSelection.canRetryTask.value ? t('taskDialog.retry') : ''"
+      :status="adapterSelection.taskStatusLabel.value"
+      :status-tone="adapterSelection.taskStatusTone.value"
+      :steps="adapterSelection.activeTask.value?.steps || []"
+      :title="adapterSelection.activeTask.value?.title || t('adapterStore.installRunning')"
+      :waiting-text="t('adapterStore.taskWaiting')"
+      @retry="adapterSelection.retryActiveTask"
+    />
   </PageScaffold>
 </template>
