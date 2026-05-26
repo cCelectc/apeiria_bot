@@ -10,6 +10,8 @@ from apeiria.db.runtime import database_runtime
 from apeiria.exceptions import ResourceNotFoundError
 
 if TYPE_CHECKING:
+    from collections.abc import Collection
+
     from nonebot.plugin import Plugin
 
 
@@ -43,6 +45,14 @@ class PluginStateRow:
 
 class PluginCatalogRepository:
     """Own plugin governance persistence without relying on NoneBot ORM."""
+
+    async def get_persisted_plugin_modules(self) -> set[str]:
+        return self.get_persisted_plugin_modules_sync()
+
+    def get_persisted_plugin_modules_sync(self) -> set[str]:
+        with database_runtime.connect_sync() as connection:
+            rows = connection.execute("SELECT plugin_id FROM plugin_state").fetchall()
+        return {str(row[0]) for row in rows}
 
     async def get_enabled_map(self) -> dict[str, bool]:
         return self._get_enabled_map_sync()
@@ -108,6 +118,39 @@ class PluginCatalogRepository:
                 (1 if enabled else 0, _utcnow_text(), module_name),
             )
         return True
+
+    async def delete_plugin_records(self, module_names: "Collection[str]") -> list[str]:
+        return self.delete_plugin_records_sync(module_names)
+
+    def delete_plugin_records_sync(self, module_names: "Collection[str]") -> list[str]:
+        normalized = sorted(
+            {
+                module_name.strip()
+                for module_name in module_names
+                if isinstance(module_name, str) and module_name.strip()
+            }
+        )
+        if not normalized:
+            return []
+
+        placeholders = ", ".join("?" for _ in normalized)
+        with database_runtime.connect_sync() as connection:
+            rows = connection.execute(
+                f"""
+                SELECT plugin_id
+                FROM plugin_state
+                WHERE plugin_id IN ({placeholders})
+                """,
+                normalized,
+            ).fetchall()
+            existing = sorted(str(row[0]) for row in rows)
+            if not existing:
+                return []
+            connection.executemany(
+                "DELETE FROM plugin_state WHERE plugin_id = ?",
+                [(module_name,) for module_name in existing],
+            )
+        return existing
 
     async def ensure_plugin_record_by_module_name(self, module_name: str) -> None:
         self._ensure_plugin_record_sync(module_name)

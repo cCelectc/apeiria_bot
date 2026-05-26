@@ -24,6 +24,7 @@ class ApeiriaBootstrapper:
     def __init__(self) -> None:
         self.database: object | None = None
         self.runtime: ApeiriaRuntime | None = None
+        self._startup_pending_plugin_module_uninstalls: set[str] = set()
 
     def phase_names(self) -> tuple[str, ...]:
         return self._PHASE_NAMES
@@ -33,6 +34,9 @@ class ApeiriaBootstrapper:
 
         previous_runtime = get_current_runtime()
         previous_bootstrapper_runtime = self.runtime
+        previous_pending_plugin_module_uninstalls = set(
+            self._startup_pending_plugin_module_uninstalls
+        )
 
         try:
             self._run_environment_phase()
@@ -45,12 +49,15 @@ class ApeiriaBootstrapper:
         except Exception:
             set_current_runtime(previous_runtime)
             self.runtime = previous_bootstrapper_runtime
+            self._startup_pending_plugin_module_uninstalls = (
+                previous_pending_plugin_module_uninstalls
+            )
             raise
 
     def _run_environment_phase(self) -> None:
         from apeiria.runtime.phases.environment import run_environment_phase
 
-        run_environment_phase()
+        self._startup_pending_plugin_module_uninstalls = set(run_environment_phase())
 
     def _run_config_phase(self) -> None:
         from apeiria.runtime.phases.config import run_config_phase
@@ -60,7 +67,11 @@ class ApeiriaBootstrapper:
     def _run_database_phase(self) -> None:
         from apeiria.runtime.phases.database import run_database_phase
 
-        self.database = run_database_phase()
+        self.database = run_database_phase(
+            pending_plugin_module_uninstalls=(
+                self._startup_pending_plugin_module_uninstalls
+            ),
+        )
 
     def _run_framework_phase(self) -> None:
         from apeiria.runtime.phases.framework import run_framework_phase

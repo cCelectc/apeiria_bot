@@ -8,10 +8,11 @@ from apeiria.environment.extension_project import (
 from apeiria.plugins.config_bootstrap import bootstrap_plugin_configs
 
 
-def run_environment_phase() -> None:
+def run_environment_phase() -> list[str]:
     process_pending_plugin_requirement_removals()
-    process_pending_plugin_module_uninstalls()
+    pending_module_uninstalls = process_pending_plugin_module_uninstalls()
     inject_plugin_site_packages()
     # Plugin config bootstrap must run after extension site-packages are exposed,
     # otherwise plugins installed only in `.apeiria/extensions` cannot be scanned.
     bootstrap_plugin_configs()
+    return pending_module_uninstalls
