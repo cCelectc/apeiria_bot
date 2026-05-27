@@ -30,6 +30,7 @@ class AISkillService:
     def __init__(self) -> None:
         self._initialized = False
         self._loaded_skill_sources: set[Path] = set()
+        self._last_reload_errors: tuple[str, ...] = ()
 
     def ensure_initialized(
         self,
@@ -37,43 +38,67 @@ class AISkillService:
         skills_dir: "Path | None" = None,
         skill_sources: tuple["Path", ...] = (),
     ) -> None:
-        """Load file-based skills.
+        """Load file-based skills once, or refresh source tracking when needed."""
 
-        Safe to call multiple times. New skill sources may be supplied by the
-        plugin lifecycle coordinator and are scanned once.
-        """
-
-        was_initialized = self._initialized
         sources = _skill_sources(
             skills_dir=skills_dir,
             extra_sources=skill_sources,
         )
-        new_sources = tuple(
-            source for source in sources if source not in self._loaded_skill_sources
+        if self._initialized and all(
+            source in self._loaded_skill_sources for source in sources
+        ):
+            return
+
+        self.reload_skills(
+            skills_dir=skills_dir,
+            skill_sources=skill_sources,
         )
-        if new_sources:
-            file_skills = load_skills_from_sources(new_sources)
-            ai_skill_runtime.register_file_skills(file_skills)
-            self._loaded_skill_sources.update(new_sources)
-        elif was_initialized:
-            file_skills = ai_skill_runtime.list_file_skills()
-        else:
-            file_skills = []
 
+    def reload_skills(
+        self,
+        *,
+        skills_dir: "Path | None" = None,
+        skill_sources: tuple["Path", ...] = (),
+    ) -> tuple[str, ...]:
+        """Fully rescan configured skill sources and replace runtime catalog."""
+
+        sources = _skill_sources(
+            skills_dir=skills_dir,
+            extra_sources=skill_sources,
+        )
+        try:
+            file_skills = load_skills_from_sources(sources)
+        except Exception as exc:  # noqa: BLE001
+            logger.opt(exception=exc).warning("Skill reload failed")
+            self._last_reload_errors = (str(exc),)
+            self._initialized = True
+            return self._last_reload_errors
+
+        ai_skill_runtime.replace_file_skills(file_skills)
+        self._loaded_skill_sources = set(sources)
         self._initialized = True
-
-        if not was_initialized:
-            logger.info(
-                "Skill service initialized: {} file skills",
-                len(file_skills),
-            )
+        self._last_reload_errors = ()
+        logger.info(
+            "Skill service reloaded: {} file skills",
+            len(file_skills),
+        )
+        return self._last_reload_errors
 
     def list_skills(self) -> list["AISkillMetadata"]:
         """Return parsed prompt skills as product-facing metadata."""
 
         self.ensure_initialized()
+        catalog_names = {item.skill_name for item in ai_skill_runtime.list_catalog()}
+        last_error = (
+            "\n".join(self._last_reload_errors) if self._last_reload_errors else None
+        )
         file_skills = [
-            build_file_skill_metadata(file_def)
+            build_file_skill_metadata(
+                file_def,
+                loaded=file_def.skill_name in catalog_names,
+                selectable_now=file_def.skill_name in catalog_names,
+                error=last_error,
+            )
             for file_def in ai_skill_runtime.list_file_skills()
         ]
         return sorted(file_skills, key=lambda s: s.name)

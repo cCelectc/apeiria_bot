@@ -1,33 +1,24 @@
-"""Executable tool, policy, and execution admin operations."""
+"""Executable tool and execution admin operations."""
 
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
 from apeiria.ai.tools import (
-    AIToolLevel,
-    AIToolPolicyBindingCreateInput,
-    AIToolPolicyBindingSpec,
-    AIToolSceneContext,
-    ai_tool_policy_binding_service,
     ai_tool_service,
-    resolve_default_tool_policy,
 )
-from apeiria.app.ai.diagnostics.audit import record_ai_admin_audit
 from apeiria.app.ai.lifecycle import ensure_ai_runtime_support_initialized
-from apeiria.app.ai.runtime.planning.tool_intents import preview_runtime_tool_intents
 
 if TYPE_CHECKING:
     from apeiria.ai.tools import (
         AIToolDefinition,
         AIToolExecutionView,
-        AIToolIntentPreview,
         AIToolPolicy,
     )
 
 
 class ToolsAdminMixin:
-    """Admin read/mutation for executable tools, policies, and executions."""
+    """Admin read operations for executable tools and executions."""
 
     @staticmethod
     def _ensure_ai_support_ready() -> None:
@@ -40,108 +31,19 @@ class ToolsAdminMixin:
         self._ensure_ai_support_ready()
         return ai_tool_service.list_tool_specs(policy)
 
-    async def preview_tool_intents(
-        self,
-        *,
-        message_text: str,
-        scope_type: str,
-        is_tome: bool,
-        allowed_level: AIToolLevel = AIToolLevel.NONE,
-    ) -> list["AIToolIntentPreview"]:
-        self._ensure_ai_support_ready()
-        policy = self.preview_tool_policy(
-            scope_type=scope_type,
-            is_tome=is_tome,
-            allowed_level=allowed_level,
-        )
-        return await preview_runtime_tool_intents(
-            message_text=message_text,
-            policy=policy,
-        )
-
-    async def list_tool_policy_bindings(self) -> list[AIToolPolicyBindingSpec]:
-        return await ai_tool_policy_binding_service.list_bindings()
-
-    async def create_tool_policy_binding(
-        self,
-        *,
-        scope_type: str,
-        scope_id: str,
-        allowed_level: AIToolLevel,
-        actor_username: str | None = None,
-    ) -> AIToolPolicyBindingSpec:
-        created = await ai_tool_policy_binding_service.create_binding(
-            AIToolPolicyBindingCreateInput(
-                scope_type=scope_type,
-                scope_id=scope_id,
-                allowed_level=allowed_level,
-            ),
-        )
-        record_ai_admin_audit(
-            "ai_tool_policy_binding_created",
-            actor_username=actor_username,
-            detail=f"{created.binding_id} {created.scope_type}:{created.scope_id}",
-        )
-        return created
-
-    async def update_tool_policy_binding(
-        self,
-        *,
-        binding_id: str,
-        allowed_level: AIToolLevel,
-        actor_username: str | None = None,
-    ) -> AIToolPolicyBindingSpec | None:
-        updated = await ai_tool_policy_binding_service.update_binding(
-            binding_id=binding_id,
-            allowed_level=allowed_level,
-        )
-        if updated is None:
-            return None
-        record_ai_admin_audit(
-            "ai_tool_policy_binding_updated",
-            actor_username=actor_username,
-            detail=f"{updated.binding_id} {updated.scope_type}:{updated.scope_id}",
-        )
-        return updated
-
-    async def delete_tool_policy_binding(
-        self,
-        *,
-        binding_id: str,
-        actor_username: str | None = None,
-    ) -> bool:
-        deleted = await ai_tool_policy_binding_service.delete_binding(
-            binding_id=binding_id,
-        )
-        if deleted:
-            record_ai_admin_audit(
-                "ai_tool_policy_binding_deleted",
-                actor_username=actor_username,
-                detail=binding_id,
-            )
-        return deleted
-
-    def preview_tool_policy(
-        self,
-        *,
-        scope_type: str,
-        is_tome: bool,
-        allowed_level: AIToolLevel | str | None = None,
-    ) -> "AIToolPolicy":
-        return resolve_default_tool_policy(
-            AIToolSceneContext(
-                scope_type=scope_type,
-                is_tome=is_tome,
-            ),
-            allowed_level=allowed_level,
-        )
-
     async def list_tool_executions(
         self,
         *,
         session_id: str,
     ) -> list["AIToolExecutionView"]:
         return await ai_tool_service.list_executions(session_id=session_id)
+
+    async def list_recent_tool_executions(
+        self,
+        *,
+        limit: int,
+    ) -> list["AIToolExecutionView"]:
+        return await ai_tool_service.list_recent_executions(limit=limit)
 
 
 __all__ = ["ToolsAdminMixin"]

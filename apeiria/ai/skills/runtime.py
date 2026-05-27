@@ -102,6 +102,16 @@ class AISkillRuntime:
             len(skills),
         )
 
+    def replace_file_skills(
+        self,
+        skills: list[AISkillFileDefinition],
+    ) -> None:
+        """Replace the full file-skill catalog atomically."""
+
+        self._file_skills = {}
+        self._catalog = {}
+        self.register_file_skills(skills)
+
     # ------------------------------------------------------------------
     # Catalog queries
     # ------------------------------------------------------------------

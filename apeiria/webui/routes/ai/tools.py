@@ -1,8 +1,8 @@
-"""AI executable tools, policy-bindings, and executions routes."""
+"""AI executable tools observation routes."""
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Annotated, Any
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Query
 
@@ -13,31 +13,12 @@ from apeiria.webui.auth import require_auth
 
 from .tools_schemas import (
     AIToolExecutionItem,
-    AIToolIntentPreviewItem,
-    AIToolIntentPreviewRequest,
     AIToolItem,
-    AIToolPolicyBindingCreateRequest,
-    AIToolPolicyBindingItem,
-    AIToolPolicyBindingUpdateRequest,
-    AIToolPolicyPreviewItem,
-    AIToolPolicyPreviewRequest,
     to_ai_tool_execution_item,
-    to_ai_tool_intent_preview_item,
     to_ai_tool_item,
-    to_ai_tool_policy_binding_item,
-    to_ai_tool_policy_preview_item,
 )
 
-if TYPE_CHECKING:
-    from apeiria.access.principal import AuthSession
-
-
 router = APIRouter()
-
-
-def _actor_username_from_claims(session: "AuthSession") -> str | None:
-    username = session.username.strip()
-    return username or None
 
 
 @router.get("/tools", response_model=list[AIToolItem])
@@ -80,90 +61,12 @@ async def list_ai_tools(
     ]
 
 
-@router.post("/tools/policy-preview", response_model=AIToolPolicyPreviewItem)
-async def preview_ai_tool_policy(
-    payload: AIToolPolicyPreviewRequest,
+@router.get("/tools/executions/recent", response_model=list[AIToolExecutionItem])
+async def list_recent_ai_tool_executions(
     _: Annotated[Any, Depends(require_auth)],
-) -> AIToolPolicyPreviewItem:
-    policy = ai_application.operations.preview_tool_policy(
-        scope_type=payload.scope_type,
-        is_tome=payload.is_tome,
-        allowed_level=payload.allowed_level,
-    )
-    return to_ai_tool_policy_preview_item(policy)
-
-
-@router.post("/tools/intent-preview", response_model=list[AIToolIntentPreviewItem])
-async def preview_ai_tool_intents(
-    payload: AIToolIntentPreviewRequest,
-    _: Annotated[Any, Depends(require_auth)],
-) -> list[AIToolIntentPreviewItem]:
-    intents = await ai_application.operations.preview_tool_intents(
-        message_text=payload.message_text,
-        scope_type=payload.scope_type,
-        is_tome=payload.is_tome,
-        allowed_level=coerce_tool_level(payload.allowed_level),
-    )
-    return [to_ai_tool_intent_preview_item(item) for item in intents]
-
-
-@router.get("/tools/policy-bindings", response_model=list[AIToolPolicyBindingItem])
-async def list_ai_tool_policy_bindings(
-    _: Annotated[Any, Depends(require_auth)],
-) -> list[AIToolPolicyBindingItem]:
-    rows = await ai_application.operations.list_tool_policy_bindings()
-    return [to_ai_tool_policy_binding_item(item) for item in rows]
-
-
-@router.post("/tools/policy-bindings", response_model=AIToolPolicyBindingItem)
-async def create_ai_tool_policy_binding(
-    payload: AIToolPolicyBindingCreateRequest,
-    session: Annotated["AuthSession", Depends(require_auth)],
-) -> AIToolPolicyBindingItem:
-    item = await ai_application.operations.create_tool_policy_binding(
-        scope_type=payload.scope_type,
-        scope_id=payload.scope_id,
-        allowed_level=coerce_tool_level(payload.allowed_level),
-        actor_username=_actor_username_from_claims(session),
-    )
-    return to_ai_tool_policy_binding_item(item)
-
-
-@router.patch("/tools/policy-bindings", response_model=AIToolPolicyBindingItem | None)
-async def update_ai_tool_policy_binding(
-    payload: AIToolPolicyBindingUpdateRequest,
-    session: Annotated["AuthSession", Depends(require_auth)],
-) -> AIToolPolicyBindingItem | None:
-    item = await ai_application.operations.update_tool_policy_binding(
-        binding_id=payload.binding_id,
-        allowed_level=coerce_tool_level(payload.allowed_level),
-        actor_username=_actor_username_from_claims(session),
-    )
-    if item is None:
-        return None
-    return to_ai_tool_policy_binding_item(item)
-
-
-@router.delete("/tools/policy-bindings")
-async def delete_ai_tool_policy_binding(
-    session: Annotated["AuthSession", Depends(require_auth)],
-    binding_id: Annotated[str, Query(min_length=1)],
-) -> dict[str, bool]:
-    deleted = await ai_application.operations.delete_tool_policy_binding(
-        binding_id=binding_id,
-        actor_username=_actor_username_from_claims(session),
-    )
-    return {"deleted": deleted}
-
-
-@router.get("/tools/executions", response_model=list[AIToolExecutionItem])
-async def list_ai_tool_executions(
-    _: Annotated[Any, Depends(require_auth)],
-    scene_id: Annotated[str, Query(min_length=1)],
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
 ) -> list[AIToolExecutionItem]:
-    rows = await ai_application.operations.list_tool_executions(
-        session_id=scene_id,
-    )
+    rows = await ai_application.operations.list_recent_tool_executions(limit=limit)
     return [to_ai_tool_execution_item(item) for item in rows]
 
 

@@ -9,7 +9,6 @@ import {
   MetricStrip,
   PageScaffold,
   Panel,
-  StatusBadge,
 } from '@/components/management'
 import type { WorkbenchMetricItem } from '@/components/management'
 import { Button } from '@/components/ui/button'
@@ -22,7 +21,13 @@ defineProps<{
 }>()
 const errorMessage = ref('')
 const search = ref('')
-const { loadSkillsData, loadingSkills, skills } = useAISkillsTab(t)
+const {
+  loadSkillsData,
+  loadingSkills,
+  reloadSkillsData,
+  reloadingSkills,
+  skills,
+} = useAISkillsTab(t)
 
 const filteredSkills = computed(() => {
   const keyword = search.value.trim().toLowerCase()
@@ -53,6 +58,15 @@ async function loadData() {
   }
 }
 
+async function reloadData() {
+  errorMessage.value = ''
+  try {
+    await reloadSkillsData()
+  } catch (error) {
+    errorMessage.value = getErrorMessage(error, t('ai.loadFailed'))
+  }
+}
+
 onMounted(() => {
   void loadData()
 })
@@ -66,9 +80,13 @@ onMounted(() => {
     :title="t('ai.skillsTab')"
   >
     <template #actions>
-      <Button :disabled="loadingSkills" variant="secondary" @click="loadData">
+      <Button :disabled="loadingSkills || reloadingSkills" variant="secondary" @click="loadData">
         <RefreshCw :class="{ 'animate-spin': loadingSkills }" :size="16" />
         {{ t('common.refresh') }}
+      </Button>
+      <Button :disabled="reloadingSkills" @click="reloadData">
+        <RefreshCw :class="{ 'animate-spin': reloadingSkills }" :size="16" />
+        {{ t('ai.reloadSkills') }}
       </Button>
     </template>
 
@@ -97,11 +115,19 @@ onMounted(() => {
               <span>{{ item.name }}</span>
             </div>
             <StatusBadge
-              :label="item.name"
-              tone="info"
+              :label="item.selectable_now ? t('ai.skillsSelectable') : t('ai.skillsUnavailable')"
+              :tone="item.selectable_now ? 'success' : 'warning'"
             />
           </div>
           <p>{{ item.display_description || item.description || t('common.none') }}</p>
+          <div class="ai-data-form__meta">
+            <Badge variant="outline">{{ item.entry_mode }}</Badge>
+            <Badge variant="outline">{{ item.source_path }}</Badge>
+            <Badge v-if="item.required_tools.length > 0" variant="secondary">
+              {{ item.required_tools.join(', ') }}
+            </Badge>
+          </div>
+          <p v-if="item.error" class="accounts-form-error">{{ item.error }}</p>
         </article>
       </div>
     </Panel>

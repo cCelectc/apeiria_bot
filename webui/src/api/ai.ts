@@ -472,24 +472,13 @@ export interface AISkillItem {
   description: string
   display_name: string
   display_description: string
-}
-
-export interface AIToolPolicyBindingItem {
-  binding_id: string
-  scope_type: string
-  scope_id: string
-  allowed_level: string
-}
-
-export interface AIToolIntentPreviewItem {
-  tool_name: string
-  kind: string
-  reason: string | null
-  input_payload: unknown
-}
-
-export interface AIToolPolicyPreviewItem {
-  allowed_level: string
+  entry_mode: string
+  tags: string[]
+  source_path: string
+  required_tools: string[]
+  loaded: boolean
+  selectable_now: boolean
+  error: string | null
 }
 
 export interface AIToolExecutionItem {
@@ -1078,66 +1067,16 @@ export function getAISkills() {
   return client.get<AISkillItem[]>('/ai/skills')
 }
 
+export function reloadAISkills() {
+  return client.post<AISkillItem[]>('/ai/skills/reload')
+}
+
 export function getAITools() {
   return client.get<AIToolItem[]>('/ai/tools')
 }
 
-export function getAIToolPolicyBindings() {
-  return client.get<AIToolPolicyBindingItem[]>('/ai/tools/policy-bindings')
-}
-
-export function createAIToolPolicyBinding(payload: {
-  scope_type: string
-  scope_id: string
-  allowed_level: string
-}) {
-  return client.post<AIToolPolicyBindingItem>(
-    '/ai/tools/policy-bindings',
-    payload,
-  )
-}
-
-export function updateAIToolPolicyBinding(payload: {
-  binding_id: string
-  allowed_level: string
-}) {
-  return client.patch<AIToolPolicyBindingItem | null>(
-    '/ai/tools/policy-bindings',
-    payload,
-  )
-}
-
-export function deleteAIToolPolicyBinding(bindingId: string) {
-  return client.delete<{ deleted: boolean }>('/ai/tools/policy-bindings', {
-    params: { binding_id: bindingId },
-  })
-}
-
-export function previewAIToolPolicy(payload: {
-  scope_type: string
-  is_tome: boolean
-  allowed_level: string
-}) {
-  return client.post<AIToolPolicyPreviewItem>(
-    '/ai/tools/policy-preview',
-    payload,
-  )
-}
-
-export function previewAIToolIntents(payload: {
-  message_text: string
-  scope_type: string
-  is_tome: boolean
-  allowed_level: string
-}) {
-  return client.post<AIToolIntentPreviewItem[]>(
-    '/ai/tools/intent-preview',
-    payload,
-  )
-}
-
-export function getAIToolExecutions(params: { scene_id: string }) {
-  return client.get<AIToolExecutionItem[]>('/ai/tools/executions', { params })
+export function getAIRecentToolExecutions(params?: { limit?: number }) {
+  return client.get<AIToolExecutionItem[]>('/ai/tools/executions/recent', { params })
 }
 
 export function getAIFutureTasks(params?: { limit?: number }) {

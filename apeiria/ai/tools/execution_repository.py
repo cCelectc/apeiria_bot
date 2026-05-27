@@ -112,6 +112,47 @@ class AIToolExecutionRepository:
             for row in rows
         ]
 
+    def list_recent_executions(
+        self,
+        *,
+        limit: int,
+    ) -> list[AIToolExecutionView]:
+        with database_runtime.connect_sync() as connection:
+            rows = connection.execute(
+                """
+                SELECT
+                    execution_id,
+                    session_id,
+                    tool_name,
+                    status,
+                    trace_id,
+                    call_id,
+                    reason,
+                    input_json,
+                    output_json,
+                    created_at
+                FROM ai_tool_execution
+                ORDER BY created_at DESC, id DESC
+                LIMIT ?
+                """,
+                (limit,),
+            ).fetchall()
+        return [
+            AIToolExecutionView(
+                execution_id=str(row[0]),
+                session_id=str(row[1]),
+                tool_name=str(row[2]),
+                status=row[3],
+                trace_id=None if row[4] is None else str(row[4]),
+                call_id=None if row[5] is None else str(row[5]),
+                reason=None if row[6] is None else str(row[6]),
+                input_json=None if row[7] is None else str(row[7]),
+                output_json=None if row[8] is None else str(row[8]),
+                created_at=_parse_datetime(str(row[9])),
+            )
+            for row in rows
+        ]
+
 
 def _serialize_execution_payload(payload: Any | None) -> str | None:
     if payload is None:

@@ -4,7 +4,6 @@ import type {
   AISessionItem,
   AISessionPromptChannelsItem,
   AISessionPromptPreviewItem,
-  AIToolExecutionItem,
   AITurnTraceItem,
 } from '@/api/ai'
 import { computed, reactive, ref } from 'vue'
@@ -13,7 +12,6 @@ import {
   getAIScenes,
   getAISceneTurns,
   getAIUsageSummary,
-  getAIToolExecutions,
   getAITurnTraces,
 } from '@/api/ai'
 import { getErrorMessage } from '@/api/client'
@@ -33,7 +31,6 @@ export function useAIDebugTab(t: (key: string) => string) {
   const loadingTraces = ref(false)
   const conversations = ref<AISessionItem[]>([])
   const turns = ref<AIChatMessageItem[]>([])
-  const toolExecutions = ref<AIToolExecutionItem[]>([])
   const promptPreview = ref<AISessionPromptPreviewItem | null>(null)
   const traces = ref<AITurnTraceItem[]>([])
   const usageByResponseSource = ref<AIModelUsageSummaryItem[]>([])
@@ -71,13 +68,6 @@ export function useAIDebugTab(t: (key: string) => string) {
     )
     return [...values]
   })
-  const toolExecutionStats = computed(() => ({
-    failed: toolExecutions.value.filter(item => (
-      ['error', 'failed', 'timeout', 'denied', 'not_ready'].includes(item.status)
-    )).length,
-    success: toolExecutions.value.filter(item => item.status === 'success').length,
-    timeout: toolExecutions.value.filter(item => item.status === 'timeout').length,
-  }))
   const planningPromptChannelSections = computed(() => (
     buildPromptChannelSections(promptPreview.value?.planning_channels, t)
   ))
@@ -97,7 +87,6 @@ export function useAIDebugTab(t: (key: string) => string) {
         await loadConversationDetails(selectedSceneId.value)
       } else {
         turns.value = []
-        toolExecutions.value = []
         promptPreview.value = null
       }
     } catch (error) {
@@ -112,19 +101,17 @@ export function useAIDebugTab(t: (key: string) => string) {
     traceFilter.session_id = sceneId
     loadingTurns.value = true
     try {
-      const [turnsResponse, executionsResponse, previewResponse] = await Promise.all([
+      const [turnsResponse, previewResponse] = await Promise.all([
         getAISceneTurns({
           limit: debugForm.turnLimit,
           scene_id: sceneId,
         }),
-        getAIToolExecutions({ scene_id: sceneId }),
         getAIScenePromptPreview({
           scene_id: sceneId,
           turn_limit: debugForm.turnLimit,
         }),
       ])
       turns.value = turnsResponse.data
-      toolExecutions.value = executionsResponse.data
       promptPreview.value = previewResponse.data
       await loadTraces()
     } catch (error) {
@@ -173,24 +160,6 @@ export function useAIDebugTab(t: (key: string) => string) {
       .join(' / ') || t('common.none')
   }
 
-  function summarizeJsonText(value: string | null) {
-    if (!value) {
-      return t('common.none')
-    }
-    try {
-      const parsed = JSON.parse(value) as Record<string, unknown> | unknown[]
-      if (Array.isArray(parsed)) {
-        return parsed.slice(0, 3).map(item => JSON.stringify(item)).join(' / ')
-      }
-      return Object.entries(parsed)
-        .slice(0, 4)
-        .map(([key, item]) => `${key}: ${typeof item === 'object' ? JSON.stringify(item) : String(item)}`)
-        .join(' / ')
-    } catch {
-      return value
-    }
-  }
-
   return {
     conversations,
     debugForm,
@@ -206,10 +175,7 @@ export function useAIDebugTab(t: (key: string) => string) {
     roleplayPromptChannelSections,
     selectedConversation,
     selectedConversationId: selectedSceneId,
-    summarizeJsonText,
     summarizeRawPayload,
-    toolExecutions,
-    toolExecutionStats,
     traceFilter,
     traceIds,
     traces,

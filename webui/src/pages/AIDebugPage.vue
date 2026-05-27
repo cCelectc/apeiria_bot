@@ -5,7 +5,6 @@ import {
   CalendarClock,
   MessageSquare,
   RefreshCw,
-  Save,
   Search,
   Trash2,
 } from '@lucide/vue'
@@ -39,9 +38,7 @@ import {
 } from '@/components/ui/select'
 import { Tabs, TabsContent } from '@/components/ui/tabs'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
-import { Textarea } from '@/components/ui/textarea'
 import { useAIDebugTab } from '@/composables/useAIDebugTab'
-import { useAIDebugToolsTab } from '@/composables/useAIDebugToolsTab'
 import { useAIFutureTasksTab } from '@/composables/useAIFutureTasksTab'
 import { normalizeAIDebugRouteValue } from '@/utils/aiRouteState'
 
@@ -70,36 +67,13 @@ const {
   roleplayPromptChannelSections,
   selectedConversation,
   selectedConversationId,
-  summarizeJsonText,
   summarizeRawPayload,
-  toolExecutions,
-  toolExecutionStats,
   traceFilter,
   traceIds,
   traces,
   turns,
   usageByResponseSource,
 } = useAIDebugTab(t)
-const {
-  bindingForm,
-  bindings,
-  editBinding,
-  editingBindingId,
-  intentPreview,
-  intentPreviewForm,
-  loadDebugToolsData,
-  loadingTools,
-  policyPreview,
-  previewForm,
-  previewingIntents,
-  previewingPolicy,
-  removeBinding,
-  resetBindingForm,
-  runIntentPreview,
-  runPolicyPreview,
-  saving,
-  submitBinding,
-} = useAIDebugToolsTab(t)
 const {
   cancelFutureTask,
   cancellingTaskId,
@@ -111,8 +85,6 @@ const {
 
 const limitOptions = [10, 20, 50, 100]
 const turnLimitOptions = [20, 50, 100, 200]
-const scopeTypeOptions = ['global', 'private', 'group', 'scene']
-const toolLevelOptions = ['none', 'read', 'write', 'host', 'admin']
 const traceStatusOptions = ['__all__', 'success', 'failed', 'skipped']
 const metrics = computed<WorkbenchMetricItem[]>(() => [
   {
@@ -126,12 +98,6 @@ const metrics = computed<WorkbenchMetricItem[]>(() => [
     label: t('ai.debugMessageCount'),
     tone: 'info',
     value: turns.value.length,
-  },
-  {
-    key: 'tools',
-    label: t('ai.debugToolCallCount'),
-    tone: toolExecutionStats.value.failed > 0 ? 'warning' : 'success',
-    value: toolExecutions.value.length,
   },
   {
     icon: CalendarClock,
@@ -187,7 +153,6 @@ async function loadData() {
   try {
     await Promise.all([
       loadDebugData(),
-      loadDebugToolsData(),
       loadFutureTasks(),
     ])
   } catch (error) {
@@ -266,9 +231,9 @@ watch(debugTab, () => {
     :title="t('ai.debugTab')"
   >
     <template #actions>
-      <Button :disabled="loadingDebug || loadingTools || loadingFutureTasks" variant="secondary" @click="loadData">
+      <Button :disabled="loadingDebug || loadingFutureTasks" variant="secondary" @click="loadData">
         <RefreshCw
-          :class="{ 'animate-spin': loadingDebug || loadingTools || loadingFutureTasks }"
+          :class="{ 'animate-spin': loadingDebug || loadingFutureTasks }"
           :size="16"
         />
         {{ t('common.refresh') }}
@@ -287,7 +252,6 @@ watch(debugTab, () => {
       >
         <ToggleGroupItem value="conversations">{{ t('ai.debugConversationTitle') }}</ToggleGroupItem>
         <ToggleGroupItem value="futureTasks">{{ t('ai.futureTaskTab') }}</ToggleGroupItem>
-        <ToggleGroupItem value="tools">{{ t('ai.debugToolsTab') }}</ToggleGroupItem>
       </ToggleGroup>
     </div>
 
@@ -408,33 +372,6 @@ watch(debugTab, () => {
                     <Badge v-if="turn.trace_id" variant="outline">{{ turn.trace_id }}</Badge>
                   </div>
                   <p>{{ turn.text_content || summarizeRawPayload(turn.raw_data) }}</p>
-                </article>
-              </div>
-            </Panel>
-
-            <Panel :title="t('ai.toolExecutionSummary')">
-              <div class="ai-data-form__meta">
-                <StatusBadge :label="`${t('ai.toolStatusSuccess')}: ${toolExecutionStats.success}`" tone="success" />
-                <StatusBadge :label="`${t('ai.toolStatusError')}: ${toolExecutionStats.failed}`" tone="error" />
-                <StatusBadge :label="`${t('ai.toolStatusTimeout')}: ${toolExecutionStats.timeout}`" tone="warning" />
-              </div>
-              <div class="ai-debug-execution-list">
-                <article
-                  v-for="item in toolExecutions"
-                  :key="item.execution_id"
-                  class="ai-debug-execution"
-                >
-                  <div>
-                    <strong>{{ item.tool_name }}</strong>
-                    <span>{{ item.created_at }}</span>
-                  </div>
-                  <StatusBadge :label="item.status" :tone="statusTone(item.status)" />
-                  <div class="ai-data-form__meta">
-                    <Badge v-if="item.trace_id" variant="outline">{{ t('ai.traceId') }}: {{ item.trace_id }}</Badge>
-                    <Badge v-if="item.call_id" variant="outline">{{ t('ai.callId') }}: {{ item.call_id }}</Badge>
-                    <Badge v-if="item.reason" variant="secondary">{{ t('ai.denialReason') }}: {{ item.reason }}</Badge>
-                  </div>
-                  <p>{{ summarizeJsonText(item.output_json) }}</p>
                 </article>
               </div>
             </Panel>
@@ -588,148 +525,6 @@ watch(debugTab, () => {
             </article>
           </div>
         </Panel>
-      </TabsContent>
-
-      <TabsContent value="tools">
-        <div class="ai-debug-tools-grid">
-          <Panel :title="editingBindingId ? t('ai.updateBinding') : t('ai.createBinding')">
-            <div class="ai-data-form">
-              <div class="ai-data-grid-2">
-                <FormField :label="t('ai.scopeType')">
-                  <Select v-model="bindingForm.scope_type">
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectGroup>
-                        <SelectItem v-for="option in scopeTypeOptions" :key="option" :value="option">
-                          {{ option }}
-                        </SelectItem>
-                      </SelectGroup>
-                    </SelectContent>
-                  </Select>
-                </FormField>
-                <FormField :label="t('ai.scopeId')">
-                  <Input v-model="bindingForm.scope_id" :disabled="!!editingBindingId" />
-                </FormField>
-              </div>
-              <FormField :label="t('ai.allowedLevel')">
-                <Select v-model="bindingForm.allowed_level">
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectGroup>
-                      <SelectItem v-for="option in toolLevelOptions" :key="option" :value="option">
-                        {{ option }}
-                      </SelectItem>
-                    </SelectGroup>
-                  </SelectContent>
-                </Select>
-              </FormField>
-              <div class="ai-data-actions">
-                <Button variant="ghost" @click="resetBindingForm">{{ t('common.cancel') }}</Button>
-                <Button :disabled="saving || !bindingForm.scope_id.trim()" @click="submitBinding">
-                  <RefreshCw v-if="saving" class="animate-spin" :size="16" />
-                  <Save v-else :size="16" />
-                  {{ t('common.save') }}
-                </Button>
-              </div>
-            </div>
-          </Panel>
-
-          <Panel :title="t('ai.bindingTitle')">
-            <LoadingSkeleton v-if="loadingTools && bindings.length === 0" :rows="4" />
-            <div v-else class="ai-debug-binding-list">
-              <article
-                v-for="item in bindings"
-                :key="item.binding_id"
-                class="ai-debug-binding"
-              >
-                <div>
-                  <strong>{{ item.scope_type }} / {{ item.scope_id }}</strong>
-                  <span>{{ item.allowed_level }}</span>
-                </div>
-                <Badge variant="secondary">
-                  {{ t('ai.allowedLevel') }}: {{ item.allowed_level }}
-                </Badge>
-                <div>
-                  <Button size="sm" variant="secondary" @click="editBinding(item)">
-                    {{ t('common.edit') }}
-                  </Button>
-                  <Button size="sm" variant="destructive" @click="removeBinding(item.binding_id)">
-                    {{ t('common.delete') }}
-                  </Button>
-                </div>
-              </article>
-            </div>
-          </Panel>
-
-          <Panel :title="t('ai.previewTitle')">
-            <div class="ai-data-form">
-              <div class="ai-data-grid-2">
-                <FormField :label="t('ai.scopeType')">
-                  <Select v-model="previewForm.scope_type">
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectGroup>
-                        <SelectItem v-for="option in scopeTypeOptions" :key="option" :value="option">
-                          {{ option }}
-                        </SelectItem>
-                      </SelectGroup>
-                    </SelectContent>
-                  </Select>
-                </FormField>
-                <FormField :label="t('ai.allowedLevel')">
-                  <Select v-model="previewForm.allowed_level">
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectGroup>
-                        <SelectItem v-for="option in toolLevelOptions" :key="option" :value="option">
-                          {{ option }}
-                        </SelectItem>
-                      </SelectGroup>
-                    </SelectContent>
-                  </Select>
-                </FormField>
-              </div>
-              <label class="ai-data-switch-row">
-                <div>
-                  <strong>{{ t('ai.isTome') }}</strong>
-                  <span>{{ previewForm.is_tome ? t('ai.enabled') : t('ai.disabled') }}</span>
-                </div>
-                <input v-model="previewForm.is_tome" type="checkbox">
-              </label>
-              <div class="ai-data-actions">
-                <Button :disabled="previewingPolicy" variant="secondary" @click="runPolicyPreview">
-                  {{ t('ai.previewPolicy') }}
-                </Button>
-              </div>
-              <pre v-if="policyPreview" class="ai-debug-json">{{ formatJson(policyPreview) }}</pre>
-            </div>
-          </Panel>
-
-          <Panel :title="t('ai.intentPreviewResult')">
-            <div class="ai-data-form">
-              <FormField :label="t('ai.intentPreviewMessage')">
-                <Textarea v-model="intentPreviewForm.message_text" class="min-h-24" />
-              </FormField>
-              <Button :disabled="previewingIntents || !intentPreviewForm.message_text.trim()" @click="runIntentPreview">
-                {{ t('ai.previewIntents') }}
-              </Button>
-              <div class="ai-debug-intent-list">
-                <article
-                  v-for="item in intentPreview"
-                  :key="`${item.tool_name}-${item.kind}`"
-                  class="ai-debug-intent"
-                >
-                  <div class="ai-debug-turn__meta">
-                    <Badge variant="secondary">{{ item.tool_name }}</Badge>
-                    <Badge variant="outline">{{ item.kind }}</Badge>
-                  </div>
-                  <p>{{ item.reason || t('common.none') }}</p>
-                  <pre>{{ formatJson(item.input_payload) }}</pre>
-                </article>
-              </div>
-            </div>
-          </Panel>
-        </div>
       </TabsContent>
     </Tabs>
   </PageScaffold>

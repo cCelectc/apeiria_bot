@@ -6,6 +6,7 @@ import {
   CalendarClock,
   ContactRound,
   DatabaseZap,
+  Eye,
   Info,
   MessagesSquare,
   Network,
@@ -38,6 +39,7 @@ import AIRelationshipsPage from './AIRelationshipsPage.vue'
 import AIRuntimeSettingsPage from './AIRuntimeSettingsPage.vue'
 import AISessionsPage from './AISessionsPage.vue'
 import AISkillsPage from './AISkillsPage.vue'
+import AIToolsPage from './AIToolsPage.vue'
 
 type WorkbenchAreaOption = {
   description: string
@@ -116,6 +118,13 @@ const areas: WorkbenchAreaOption[] = [
     icon: Wrench,
     label: 'ai.skillsTab',
     value: 'skills',
+  },
+  {
+    description: 'ai.toolsObservationSubtitle',
+    group: 'behavior',
+    icon: Eye,
+    label: 'ai.toolsTab',
+    value: 'tools',
   },
   {
     description: 'ai.pageSubtitle.futureTasks',
@@ -295,6 +304,7 @@ onMounted(() => {
     <AIProfilesPage v-else-if="activeArea === 'profiles'" embedded />
     <AIPersonasPage v-else-if="activeArea === 'personas'" embedded />
     <AISkillsPage v-else-if="activeArea === 'skills'" embedded />
+    <AIToolsPage v-else-if="activeArea === 'tools'" embedded />
     <AIRuntimeSettingsPage v-else-if="activeArea === 'runtimeSettings'" embedded />
     <AIFutureTasksPage v-else embedded />
   </PageScaffold>

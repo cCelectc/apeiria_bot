@@ -32,7 +32,7 @@ export type AIModelFlowHighlight =
   | 'provider'
   | 'test'
 
-export type AIDebugRouteValue = 'conversations' | 'futureTasks' | 'tools'
+export type AIDebugRouteValue = 'conversations' | 'futureTasks'
 export type AIWorkbenchRouteArea =
   | 'debug'
   | 'futureTasks'
@@ -45,6 +45,7 @@ export type AIWorkbenchRouteArea =
   | 'runtimeSettings'
   | 'sessions'
   | 'skills'
+  | 'tools'
 
 export interface AIWorkbenchRouteState {
   area: AIWorkbenchRouteArea
@@ -90,7 +91,6 @@ const supportedSetupRouteIntents = new Set<AISetupRouteIntent>([
 const supportedDebugRouteValues = new Set<AIDebugRouteValue>([
   'conversations',
   'futureTasks',
-  'tools',
 ])
 
 const supportedWorkbenchAreas = new Set<AIWorkbenchRouteArea>([
@@ -105,6 +105,7 @@ const supportedWorkbenchAreas = new Set<AIWorkbenchRouteArea>([
   'runtimeSettings',
   'sessions',
   'skills',
+  'tools',
 ])
 
 const supportedWorkbenchQueryKeys = new Set([

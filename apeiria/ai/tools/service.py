@@ -114,6 +114,13 @@ class AIToolService:
     ) -> list[AIToolExecutionView]:
         return self._execution_repository.list_executions(session_id=session_id)
 
+    async def list_recent_executions(
+        self,
+        *,
+        limit: int,
+    ) -> list[AIToolExecutionView]:
+        return self._execution_repository.list_recent_executions(limit=limit)
+
 
 ai_tool_service = AIToolService()
 

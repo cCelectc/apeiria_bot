@@ -1,4 +1,4 @@
-"""Catalog models for LLM-visible prompt skills."""
+"""Catalog and admin models for file-based prompt skills."""
 
 from __future__ import annotations
 
@@ -15,3 +15,10 @@ class AISkillMetadata:
     origin: Literal["file"] = "file"
     entry_mode: str = "prompt_only"
     tags: tuple[str, ...] = ()
+    source_path: str = ""
+    required_tools: tuple[str, ...] = ()
+    loaded: bool = True
+    selectable_now: bool = True
+    display_name: str = ""
+    display_description: str = ""
+    error: str | None = None
