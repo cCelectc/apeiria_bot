@@ -7,7 +7,6 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Depends, HTTPException, WebSocket
 from fastapi.responses import FileResponse, RedirectResponse
 
-from apeiria.access.principal_roles import CAP_CONTROL_PANEL
 from apeiria.app.chat import (
     ChatAssetFileMissingError,
     ChatAssetNotFoundError,
@@ -17,15 +16,15 @@ from apeiria.app.chat import (
 from apeiria.app.chat.transport import serve_chat_websocket
 from apeiria.i18n import t
 from apeiria.webui.auth import (
+    require_auth,
     require_connection_auth,
-    require_control_panel,
 )
 
 router = APIRouter()
 
 
 def _ensure_chat_session(session: Any) -> None:
-    if session.has_capability(CAP_CONTROL_PANEL):
+    if session is not None:
         return
     raise ChatAuthError(t("web_ui.auth.permission_denied"))
 
@@ -33,7 +32,7 @@ def _ensure_chat_session(session: Any) -> None:
 @router.get("/assets/{asset_id}", response_model=None)
 async def get_chat_asset(
     asset_id: str,
-    _: Annotated[Any, Depends(require_control_panel)],
+    _: Annotated[Any, Depends(require_auth)],
 ) -> FileResponse | RedirectResponse:
     try:
         asset = chat_gateway_service.get_asset(asset_id)

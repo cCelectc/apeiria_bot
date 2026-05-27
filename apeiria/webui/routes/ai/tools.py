@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, Query
 from apeiria.ai.tools import AIToolPolicy, coerce_tool_level
 from apeiria.ai.tools.exposure import create_tool_exposure_plan
 from apeiria.app.ai import ai_application
-from apeiria.webui.auth import require_control_panel
+from apeiria.webui.auth import require_auth
 
 from .tools_schemas import (
     AIToolExecutionItem,
@@ -42,7 +42,7 @@ def _actor_username_from_claims(session: "AuthSession") -> str | None:
 
 @router.get("/tools", response_model=list[AIToolItem])
 async def list_ai_tools(
-    _: Annotated[Any, Depends(require_control_panel)],
+    _: Annotated[Any, Depends(require_auth)],
     *,
     allowed_only: Annotated[bool, Query()] = False,
     allowed_level: Annotated[str | None, Query()] = None,
@@ -83,7 +83,7 @@ async def list_ai_tools(
 @router.post("/tools/policy-preview", response_model=AIToolPolicyPreviewItem)
 async def preview_ai_tool_policy(
     payload: AIToolPolicyPreviewRequest,
-    _: Annotated[Any, Depends(require_control_panel)],
+    _: Annotated[Any, Depends(require_auth)],
 ) -> AIToolPolicyPreviewItem:
     policy = ai_application.operations.preview_tool_policy(
         scope_type=payload.scope_type,
@@ -96,7 +96,7 @@ async def preview_ai_tool_policy(
 @router.post("/tools/intent-preview", response_model=list[AIToolIntentPreviewItem])
 async def preview_ai_tool_intents(
     payload: AIToolIntentPreviewRequest,
-    _: Annotated[Any, Depends(require_control_panel)],
+    _: Annotated[Any, Depends(require_auth)],
 ) -> list[AIToolIntentPreviewItem]:
     intents = await ai_application.operations.preview_tool_intents(
         message_text=payload.message_text,
@@ -109,7 +109,7 @@ async def preview_ai_tool_intents(
 
 @router.get("/tools/policy-bindings", response_model=list[AIToolPolicyBindingItem])
 async def list_ai_tool_policy_bindings(
-    _: Annotated[Any, Depends(require_control_panel)],
+    _: Annotated[Any, Depends(require_auth)],
 ) -> list[AIToolPolicyBindingItem]:
     rows = await ai_application.operations.list_tool_policy_bindings()
     return [to_ai_tool_policy_binding_item(item) for item in rows]
@@ -118,7 +118,7 @@ async def list_ai_tool_policy_bindings(
 @router.post("/tools/policy-bindings", response_model=AIToolPolicyBindingItem)
 async def create_ai_tool_policy_binding(
     payload: AIToolPolicyBindingCreateRequest,
-    session: Annotated["AuthSession", Depends(require_control_panel)],
+    session: Annotated["AuthSession", Depends(require_auth)],
 ) -> AIToolPolicyBindingItem:
     item = await ai_application.operations.create_tool_policy_binding(
         scope_type=payload.scope_type,
@@ -132,7 +132,7 @@ async def create_ai_tool_policy_binding(
 @router.patch("/tools/policy-bindings", response_model=AIToolPolicyBindingItem | None)
 async def update_ai_tool_policy_binding(
     payload: AIToolPolicyBindingUpdateRequest,
-    session: Annotated["AuthSession", Depends(require_control_panel)],
+    session: Annotated["AuthSession", Depends(require_auth)],
 ) -> AIToolPolicyBindingItem | None:
     item = await ai_application.operations.update_tool_policy_binding(
         binding_id=payload.binding_id,
@@ -146,7 +146,7 @@ async def update_ai_tool_policy_binding(
 
 @router.delete("/tools/policy-bindings")
 async def delete_ai_tool_policy_binding(
-    session: Annotated["AuthSession", Depends(require_control_panel)],
+    session: Annotated["AuthSession", Depends(require_auth)],
     binding_id: Annotated[str, Query(min_length=1)],
 ) -> dict[str, bool]:
     deleted = await ai_application.operations.delete_tool_policy_binding(
@@ -158,7 +158,7 @@ async def delete_ai_tool_policy_binding(
 
 @router.get("/tools/executions", response_model=list[AIToolExecutionItem])
 async def list_ai_tool_executions(
-    _: Annotated[Any, Depends(require_control_panel)],
+    _: Annotated[Any, Depends(require_auth)],
     scene_id: Annotated[str, Query(min_length=1)],
 ) -> list[AIToolExecutionItem]:
     rows = await ai_application.operations.list_tool_executions(

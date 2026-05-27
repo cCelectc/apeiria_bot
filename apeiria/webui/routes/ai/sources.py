@@ -10,7 +10,7 @@ from apeiria.app.ai import ai_application
 from apeiria.app.ai.operations import (
     AISourceDeleteBlockedError,
 )
-from apeiria.webui.auth import require_control_panel
+from apeiria.webui.auth import require_auth
 
 from .sources_schemas import (
     AISourceItem,
@@ -34,7 +34,7 @@ def _actor_username_from_claims(session: "AuthSession") -> str | None:
 
 @router.get("/source-presets", response_model=list[AISourcePresetItem])
 async def list_ai_source_presets(
-    _: Annotated[Any, Depends(require_control_panel)],
+    _: Annotated[Any, Depends(require_auth)],
 ) -> list[AISourcePresetItem]:
     return [
         to_ai_source_preset_item(item)
@@ -44,7 +44,7 @@ async def list_ai_source_presets(
 
 @router.get("/sources", response_model=list[AISourceItem])
 async def list_ai_sources(
-    _: Annotated[Any, Depends(require_control_panel)],
+    _: Annotated[Any, Depends(require_auth)],
 ) -> list[AISourceItem]:
     items = await ai_application.operations.list_sources()
     return [to_ai_source_item(item) for item in items]
@@ -53,7 +53,7 @@ async def list_ai_sources(
 @router.post("/sources", response_model=AISourceItem)
 async def create_ai_source(
     payload: AISourceUpsertRequest,
-    session: Annotated["AuthSession", Depends(require_control_panel)],
+    session: Annotated["AuthSession", Depends(require_auth)],
 ) -> AISourceItem:
     item = await ai_application.operations.create_source(
         name=payload.name,
@@ -78,7 +78,7 @@ async def create_ai_source(
 @router.put("/sources", response_model=AISourceItem | None)
 async def update_ai_source(
     payload: AISourceUpsertRequest,
-    session: Annotated["AuthSession", Depends(require_control_panel)],
+    session: Annotated["AuthSession", Depends(require_auth)],
 ) -> AISourceItem | None:
     if not payload.source_id:
         return None
@@ -105,7 +105,7 @@ async def update_ai_source(
 
 @router.delete("/sources", response_model=bool)
 async def delete_ai_source(
-    session: Annotated["AuthSession", Depends(require_control_panel)],
+    session: Annotated["AuthSession", Depends(require_auth)],
     source_id: Annotated[str, Query(min_length=1)],
 ) -> bool:
     try:

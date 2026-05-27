@@ -2,24 +2,16 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Annotated, Any
+from typing import TYPE_CHECKING
 
 import jwt
-from fastapi import Depends, HTTPException, Request, Response, status
+from fastapi import HTTPException, Request, Response, status
 
 from apeiria.access.principal import AuthSession  # noqa: TC001
-from apeiria.access.principal_roles import (
-    CAP_ACCOUNT_MANAGE,
-    CAP_CONTROL_PANEL,
-    ROLE_OWNER,
-    normalize_role,
-)
 from apeiria.app.access.webui_auth.service import auth_session_service
 from apeiria.i18n import t
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
-
     from starlette.requests import HTTPConnection
 
 _AUTH_COOKIE_NAME = "apeiria_webui_session"
@@ -112,43 +104,3 @@ def _request_is_secure(request: Request | None) -> bool:
     if forwarded_proto.split(",", 1)[0].strip().lower() == "https":
         return True
     return request.url.scheme == "https"
-
-
-def require_role(required_role: str) -> Callable[..., Any]:
-    """Build a dependency that requires the current session role."""
-
-    async def _require_role(
-        session: Annotated[AuthSession, Depends(require_auth)],
-    ) -> AuthSession:
-        actual_role = normalize_role(session.role_id)
-        if actual_role != normalize_role(required_role):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail=t("web_ui.auth.permission_denied"),
-            )
-        return session
-
-    return _require_role
-
-
-require_owner = require_role(ROLE_OWNER)
-
-
-def require_capability(capability: str) -> Callable[..., Any]:
-    """Build a dependency that requires one control-panel capability."""
-
-    async def _require_capability(
-        session: Annotated[AuthSession, Depends(require_auth)],
-    ) -> AuthSession:
-        if not session.has_capability(capability):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail=t("web_ui.auth.permission_denied"),
-            )
-        return session
-
-    return _require_capability
-
-
-require_control_panel = require_capability(CAP_CONTROL_PANEL)
-require_account_manage = require_capability(CAP_ACCOUNT_MANAGE)

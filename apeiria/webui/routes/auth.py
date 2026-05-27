@@ -1,4 +1,4 @@
-"""Authentication routes for the Web UI."""
+"""Authentication and account-management routes for the Web UI."""
 
 from __future__ import annotations
 
@@ -6,13 +6,15 @@ from typing import TYPE_CHECKING, Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 
-from apeiria.access.principal_roles import can_access_control_panel
 from apeiria.app.access.webui_auth.secrets import (
+    create_account,
+    delete_account,
     get_account_by_id,
-    list_security_audit_events,
+    list_accounts,
     record_login_success,
-    register_account,
+    reset_account_password,
     rotate_account_session_version,
+    set_account_disabled,
     update_account_password,
     verify_account_password,
 )
@@ -25,7 +27,6 @@ from apeiria.utils.project_context import current_project_root
 from apeiria.webui.auth import (
     clear_auth_session_cookie,
     require_auth,
-    require_control_panel,
     set_auth_session_cookie,
 )
 from apeiria.webui.frontend_build import frontend_workspace_name
@@ -37,12 +38,14 @@ from apeiria.webui.login_guard import (
     record_login_success as clear_login_failures,
 )
 from apeiria.webui.schemas.models import (
+    AccountCreateRequest,
+    AccountDeleteRequest,
+    AccountDisableRequest,
+    AccountPasswordResetRequest,
     LoginRequest,
     LoginResponse,
     PasswordChangeRequest,
-    RegisterRequest,
     RegisterResponse,
-    SecurityAuditEventItem,
     SessionRefreshResponse,
     WebUIAccountItem,
     WebUIBootstrapResponse,
@@ -63,9 +66,29 @@ def _to_webui_principal_response(principal: Principal) -> WebUIPrincipalResponse
     return WebUIPrincipalResponse(
         user_id=principal.principal_id,
         username=principal.display_name,
-        role=principal.role.role_id,
-        capabilities=principal.capabilities,
     )
+
+
+def _to_webui_account_item(account: Any) -> WebUIAccountItem:
+    return WebUIAccountItem(
+        user_id=account.user_id,
+        username=account.username,
+        is_disabled=account.is_disabled,
+        last_login_at=account.last_login_at,
+        password_changed_at=account.password_changed_at,
+    )
+
+
+def _require_actor_password(
+    session: "AuthSession",
+    actor_password: str,
+) -> None:
+    account = verify_account_password(session.username, actor_password)
+    if account is None or account.user_id != session.user_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=t("web_ui.auth.invalid_credentials"),
+        )
 
 
 @router.post("/login")
@@ -88,11 +111,6 @@ async def login(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=t("web_ui.auth.invalid_credentials"),
         )
-    if not can_access_control_panel(account.role):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail=t("web_ui.auth.permission_denied"),
-        )
     clear_login_failures(account.username, client_ip)
     account = record_login_success(account.user_id) or account
     session = auth_session_service.create_session(
@@ -113,41 +131,17 @@ async def logout(response: Response) -> RegisterResponse:
     return RegisterResponse(detail=t("web_ui.auth.logout_success"))
 
 
-@router.post("/register")
-async def register(body: RegisterRequest) -> RegisterResponse:
-    """Register a new Web UI account with a one-time registration code."""
-    try:
-        register_account(body.registration_code, body.username, body.password)
-    except ValueError as exc:
-        error_code = str(exc)
-        detail_key = {
-            "registration_code_invalid": "web_ui.auth.registration_code_invalid",
-            "username_invalid": "web_ui.auth.username_invalid",
-            "username_taken": "web_ui.auth.username_taken",
-        }.get(error_code, "web_ui.auth.register_failed")
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=t(detail_key),
-        ) from None
-    return RegisterResponse(detail=t("web_ui.auth.register_success"))
-
-
 @router.get("/me")
 async def get_current_user(
     session: Annotated[AuthSession, Depends(require_auth)],
 ) -> WebUIPrincipalResponse:
     """Return the current authenticated user."""
-    if not can_access_control_panel(session.role_id):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail=t("web_ui.auth.permission_denied"),
-        )
     return _to_webui_principal_response(session.principal)
 
 
 @router.get("/bootstrap", response_model=WebUIBootstrapResponse)
 async def get_webui_bootstrap(
-    session: Annotated[AuthSession, Depends(require_control_panel)],
+    session: Annotated[AuthSession, Depends(require_auth)],
 ) -> WebUIBootstrapResponse:
     account = get_account_by_id(session.user_id)
     if account is None:
@@ -157,14 +151,7 @@ async def get_webui_bootstrap(
         )
     return WebUIBootstrapResponse(
         principal=_to_webui_principal_response(session.principal),
-        account=WebUIAccountItem(
-            user_id=account.user_id,
-            username=account.username,
-            role=account.role,
-            is_disabled=account.is_disabled,
-            last_login_at=account.last_login_at,
-            password_changed_at=account.password_changed_at,
-        ),
+        account=_to_webui_account_item(account),
         locales=[
             WebUILocaleItem(code="zh_CN", label="中文"),
             WebUILocaleItem(code="en_US", label="English"),
@@ -174,43 +161,126 @@ async def get_webui_bootstrap(
     )
 
 
-@router.get("/me/account")
-async def get_current_account(
-    session: Annotated[AuthSession, Depends(require_control_panel)],
+@router.get("/accounts", response_model=list[WebUIAccountItem])
+async def get_accounts(
+    _: Annotated[AuthSession, Depends(require_auth)],
+) -> list[WebUIAccountItem]:
+    """Return all account records."""
+    return [_to_webui_account_item(account) for account in list_accounts()]
+
+
+@router.post("/accounts", response_model=WebUIAccountItem)
+async def create_managed_account(
+    body: AccountCreateRequest,
+    session: Annotated[AuthSession, Depends(require_auth)],
 ) -> WebUIAccountItem:
-    """Return the current account record."""
-    user_id = session.user_id
-    account = get_account_by_id(user_id)
+    _require_actor_password(session, body.actor_password)
+    try:
+        normalized_username = create_account(body.username, body.password)
+    except ValueError as exc:
+        error_code = str(exc)
+        detail_key = {
+            "username_invalid": "web_ui.auth.username_invalid",
+            "username_taken": "web_ui.auth.username_taken",
+            "password_invalid": "web_ui.auth.invalid_credentials",
+        }.get(error_code, "web_ui.auth.invalid_credentials")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=t(detail_key),
+        ) from None
+    account = next(
+        (item for item in list_accounts() if item.username == normalized_username),
+        None,
+    )
+    if account is None:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="account_create_failed",
+        )
+    return _to_webui_account_item(account)
+
+
+@router.patch("/accounts/{user_id}", response_model=WebUIAccountItem)
+async def update_managed_account_status(
+    user_id: str,
+    body: AccountDisableRequest,
+    session: Annotated[AuthSession, Depends(require_auth)],
+) -> WebUIAccountItem:
+    _require_actor_password(session, body.actor_password)
+    try:
+        account = set_account_disabled(
+            user_id,
+            disabled=body.is_disabled,
+            actor_user_id=session.user_id,
+        )
+    except ValueError as exc:
+        detail_key = {
+            "self_disable_forbidden": "web_ui.auth.self_disable_forbidden",
+            "last_account_forbidden": "web_ui.auth.last_account_forbidden",
+        }.get(str(exc), "web_ui.auth.invalid_credentials")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=t(detail_key),
+        ) from None
     if account is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=t("web_ui.auth.account_not_found"),
         )
-    return WebUIAccountItem(
-        user_id=account.user_id,
-        username=account.username,
-        role=account.role,
-        is_disabled=account.is_disabled,
-        last_login_at=account.last_login_at,
-        password_changed_at=account.password_changed_at,
-    )
+    return _to_webui_account_item(account)
 
 
-@router.get("/audit-events")
-async def get_security_audit_events(
-    _: Annotated[Any, Depends(require_control_panel)],
-) -> list[SecurityAuditEventItem]:
-    """List recent security audit events."""
-    return [
-        SecurityAuditEventItem(
-            event_type=event.event_type,
-            occurred_at=event.occurred_at,
-            actor_username=event.actor_username,
-            target_username=event.target_username,
-            detail=event.detail,
+@router.delete("/accounts/{user_id}", response_model=RegisterResponse)
+async def delete_managed_account(
+    user_id: str,
+    body: AccountDeleteRequest,
+    session: Annotated[AuthSession, Depends(require_auth)],
+) -> RegisterResponse:
+    _require_actor_password(session, body.actor_password)
+    try:
+        deleted = delete_account(user_id, actor_user_id=session.user_id)
+    except ValueError as exc:
+        detail_key = {
+            "self_delete_forbidden": "web_ui.auth.self_delete_forbidden",
+            "last_account_forbidden": "web_ui.auth.last_account_forbidden",
+        }.get(str(exc), "web_ui.auth.invalid_credentials")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=t(detail_key),
+        ) from None
+    if not deleted:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=t("web_ui.auth.account_not_found"),
         )
-        for event in list_security_audit_events()
-    ]
+    return RegisterResponse(detail=t("web_ui.auth.account_deleted"))
+
+
+@router.post("/accounts/{user_id}/reset-password", response_model=WebUIAccountItem)
+async def reset_managed_account_password(
+    user_id: str,
+    body: AccountPasswordResetRequest,
+    session: Annotated[AuthSession, Depends(require_auth)],
+) -> WebUIAccountItem:
+    _require_actor_password(session, body.actor_password)
+    if user_id == session.user_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=t("web_ui.auth.self_password_reset_forbidden"),
+        )
+    try:
+        account = reset_account_password(user_id, body.new_password)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=t("web_ui.auth.invalid_credentials"),
+        ) from None
+    if account is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=t("web_ui.auth.account_not_found"),
+        )
+    return _to_webui_account_item(account)
 
 
 @router.post("/password")
@@ -218,7 +288,7 @@ async def change_password(
     body: PasswordChangeRequest,
     request: Request,
     response: Response,
-    session: Annotated[AuthSession, Depends(require_control_panel)],
+    session: Annotated[AuthSession, Depends(require_auth)],
 ) -> SessionRefreshResponse:
     """Change the current account password."""
     username = session.username
@@ -255,15 +325,10 @@ async def change_password(
 async def revoke_other_sessions(
     request: Request,
     response: Response,
-    session: Annotated[AuthSession, Depends(require_control_panel)],
+    session: Annotated[AuthSession, Depends(require_auth)],
 ) -> SessionRefreshResponse:
     """Invalidate previous sessions and rotate the current account session."""
-    user_id = session.user_id
-    actor_username = session.username
-    updated_account = rotate_account_session_version(
-        user_id,
-        actor_username=actor_username,
-    )
+    updated_account = rotate_account_session_version(session.user_id)
     if updated_account is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

@@ -4,7 +4,6 @@ import asyncio
 from typing import TYPE_CHECKING
 
 from apeiria.access.principal import AuthSession, Principal, PrincipalRole
-from apeiria.access.principal_roles import CAP_CONTROL_PANEL
 from apeiria.ai.model.catalog.storage import create_source_model
 from apeiria.db.runtime import database_runtime
 from apeiria.utils.project_context import (
@@ -238,8 +237,8 @@ def _control_panel_session() -> AuthSession:
             principal_id="admin",
             display_name="admin",
             role=PrincipalRole(
-                role_id="owner",
-                capabilities=(CAP_CONTROL_PANEL,),
+                role_id="webui_local_account",
+                capabilities=("control_panel",),
             ),
         ),
         auth_method="password",

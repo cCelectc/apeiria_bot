@@ -87,8 +87,8 @@ def _inspect_web_ui_auth(
             key="web_ui_auth_legacy_schema",
             message="Legacy Web UI auth storage schema is present.",
             hint=(
-                "Migrate or recreate `data/web_ui/secret.json` with the current "
-                "account schema before startup."
+                "Remove or archive `data/web_ui/secret.json`; current Web UI auth "
+                "state lives in SQLite and host recovery can recreate access."
             ),
         ),
     )

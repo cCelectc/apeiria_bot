@@ -12,7 +12,7 @@ from apeiria.app.plugins.management import plugin_management_service
 from apeiria.exceptions import ResourceNotFoundError
 from apeiria.i18n import t
 from apeiria.runtime.context import get_current_runtime
-from apeiria.webui.auth import require_control_panel, require_owner
+from apeiria.webui.auth import require_auth
 from apeiria.webui.schemas.plugin_catalog import (
     OrphanPluginConfigResponse,
     PluginItem,
@@ -46,7 +46,7 @@ def _require_runtime_control_plane() -> Any:
 @router.get("/{module_name}/readme", response_model=PluginReadmeResponse)
 async def get_plugin_readme(
     module_name: str,
-    _: Annotated[Any, Depends(require_control_panel)],
+    _: Annotated[Any, Depends(require_auth)],
 ) -> PluginReadmeResponse:
     try:
         state = await plugin_management_service.get_plugin_readme(module_name)
@@ -66,7 +66,7 @@ async def get_plugin_readme(
 async def get_plugin_readme_asset(
     module_name: str,
     path: Annotated[str, Query(min_length=1)],
-    _: Annotated[Any, Depends(require_control_panel)],
+    _: Annotated[Any, Depends(require_auth)],
 ) -> FileResponse:
     try:
         asset_path = await plugin_management_service.get_plugin_readme_asset_path(
@@ -102,7 +102,7 @@ async def get_plugin_readme_asset(
 
 @router.get("/", response_model=list[PluginItem])
 async def list_plugins(
-    _: Annotated[Any, Depends(require_control_panel)],
+    _: Annotated[Any, Depends(require_auth)],
 ) -> list[PluginItem]:
     control_plane = _require_runtime_control_plane()
     plugins = await control_plane.list_plugin_catalog_entries()
@@ -117,7 +117,7 @@ async def list_plugins(
 
 @router.get("/workbench", response_model=PluginWorkbenchResponse)
 async def get_plugin_workbench(
-    _: Annotated[Any, Depends(require_control_panel)],
+    _: Annotated[Any, Depends(require_auth)],
 ) -> PluginWorkbenchResponse:
     control_plane = _require_runtime_control_plane()
     workspace = await control_plane.get_plugin_workbench()
@@ -127,7 +127,7 @@ async def get_plugin_workbench(
 @router.get("/{module_name}/workspace", response_model=PluginWorkspaceResponse)
 async def get_plugin_workspace(
     module_name: str,
-    _: Annotated[Any, Depends(require_control_panel)],
+    _: Annotated[Any, Depends(require_auth)],
 ) -> PluginWorkspaceResponse:
     workspace = await plugin_management_service.build_plugin_workspace(module_name)
     if workspace is None:
@@ -165,7 +165,7 @@ async def get_plugin_workspace(
 @router.post("/update-checks", response_model=list[PluginUpdateCheckItem])
 async def check_plugin_updates(
     payload: PluginUpdateCheckRequest,
-    _: Annotated[Any, Depends(require_control_panel)],
+    _: Annotated[Any, Depends(require_auth)],
 ) -> list[PluginUpdateCheckItem]:
     results = await plugin_management_service.check_plugin_updates(
         force_refresh=payload.force_refresh,
@@ -175,7 +175,7 @@ async def check_plugin_updates(
 
 @router.get("/orphan-configs", response_model=OrphanPluginConfigResponse)
 async def list_orphan_plugin_configs(
-    _: Annotated[Any, Depends(require_owner)],
+    _: Annotated[Any, Depends(require_auth)],
 ) -> OrphanPluginConfigResponse:
     items = await plugin_management_service.list_orphan_plugin_configs()
     return to_orphan_plugin_config_response(items)
@@ -183,7 +183,7 @@ async def list_orphan_plugin_configs(
 
 @router.post("/orphan-configs/cleanup", response_model=OrphanPluginConfigResponse)
 async def cleanup_orphan_plugin_configs(
-    _: Annotated[Any, Depends(require_owner)],
+    _: Annotated[Any, Depends(require_auth)],
 ) -> OrphanPluginConfigResponse:
     items = await plugin_management_service.cleanup_orphan_plugin_configs()
     return to_orphan_plugin_config_response(items)

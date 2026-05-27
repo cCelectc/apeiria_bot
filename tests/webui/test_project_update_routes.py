@@ -7,7 +7,6 @@ import pytest
 from fastapi import HTTPException
 
 from apeiria.access.principal import AuthSession, Principal, PrincipalRole
-from apeiria.access.principal_roles import CAP_CONTROL_PANEL
 
 if TYPE_CHECKING:
     from apeiria.runtime.context import ApeiriaRuntime
@@ -275,8 +274,8 @@ def _owner_session() -> AuthSession:
             principal_id="owner",
             display_name="owner",
             role=PrincipalRole(
-                role_id="owner",
-                capabilities=(CAP_CONTROL_PANEL,),
+                role_id="webui_local_account",
+                capabilities=("control_panel",),
             ),
         ),
         auth_method="password",

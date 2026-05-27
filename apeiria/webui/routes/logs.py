@@ -13,10 +13,9 @@ from fastapi import (
     WebSocketDisconnect,
 )
 
-from apeiria.access.principal_roles import CAP_CONTROL_PANEL
 from apeiria.webui.auth import (
+    require_auth,
     require_connection_auth,
-    require_control_panel,
 )
 from apeiria.webui.schemas.models import (
     LogHistoryQuery,
@@ -29,7 +28,7 @@ router = APIRouter()
 
 
 def _ensure_log_stream_session(session: Any) -> None:
-    if session.has_capability(CAP_CONTROL_PANEL):
+    if session is not None:
         return
     msg = "forbidden"
     raise ValueError(msg)
@@ -37,7 +36,7 @@ def _ensure_log_stream_session(session: Any) -> None:
 
 @router.get("/history", response_model=LogHistoryResponse)
 async def get_log_history(
-    _: Annotated[Any, Depends(require_control_panel)],
+    _: Annotated[Any, Depends(require_auth)],
     before: Annotated[int, Query(ge=0)] = 0,
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
     filters: Annotated[LogHistoryQuery, Depends()] = LogHistoryQuery(),
@@ -70,7 +69,7 @@ async def get_log_history(
 
 @router.get("/sources", response_model=LogSourcesResponse)
 async def get_log_sources(
-    _: Annotated[Any, Depends(require_control_panel)],
+    _: Annotated[Any, Depends(require_auth)],
 ) -> LogSourcesResponse:
     from apeiria.log import load_history_log_sources
 

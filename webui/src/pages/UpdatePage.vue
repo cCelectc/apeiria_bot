@@ -118,7 +118,7 @@ const planMessages = computed(() => [
 ])
 const actionState = computed(() =>
   resolveProjectUpdateActionState({
-    isOwner: authStore.isOwner,
+    isAuthenticated: authStore.isAuthenticated,
     plan: plan.value,
     planLoading: loadingPlan.value,
     statusLoading: loadingStatus.value,

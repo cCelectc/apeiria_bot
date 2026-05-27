@@ -11,7 +11,7 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Depends
 
 from apeiria.app.ai import ai_application
-from apeiria.webui.auth import require_control_panel
+from apeiria.webui.auth import require_auth
 
 from .future_tasks import router as _future_tasks_router
 from .knowledge import router as _knowledge_router
@@ -40,7 +40,7 @@ AI_RUNTIME_PLUGIN_MODULE = "apeiria.builtin_plugins.ai"
 
 @router.get("/bootstrap", response_model=AIBootstrapResponse)
 async def get_ai_bootstrap(
-    _: Annotated[Any, Depends(require_control_panel)],
+    _: Annotated[Any, Depends(require_auth)],
 ) -> AIBootstrapResponse:
     return AIBootstrapResponse(
         source_presets=[
@@ -61,7 +61,7 @@ async def get_ai_bootstrap(
 
 @router.get("/runtime-status", response_model=AIRuntimeStatusResponse)
 async def get_ai_runtime_status(
-    _: Annotated[Any, Depends(require_control_panel)],
+    _: Annotated[Any, Depends(require_auth)],
 ) -> AIRuntimeStatusResponse:
     from apeiria.plugins.repository import plugin_catalog_repository
 

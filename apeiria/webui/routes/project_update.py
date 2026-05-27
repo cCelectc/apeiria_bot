@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from apeiria.app.system.project_update import ProjectUpdateError
 from apeiria.runtime.context import get_current_runtime
-from apeiria.webui.auth import require_control_panel, require_owner
+from apeiria.webui.auth import require_auth
 from apeiria.webui.schemas.project_update import (
     ProjectUpdatePlanRequest,
     ProjectUpdatePlanResponse,
@@ -36,7 +36,7 @@ def _require_runtime_control_plane() -> Any:
 
 @router.get("/status", response_model=ProjectUpdateStatusResponse)
 async def get_project_update_status(
-    _: Annotated[Any, Depends(require_control_panel)],
+    _: Annotated[Any, Depends(require_auth)],
 ) -> ProjectUpdateStatusResponse:
     state = _require_runtime_control_plane().get_project_update_status()
     return to_project_update_status_response(state)
@@ -44,7 +44,7 @@ async def get_project_update_status(
 
 @router.post("/refresh", response_model=ProjectUpdateStatusResponse)
 async def refresh_project_update_status(
-    _: Annotated[Any, Depends(require_owner)],
+    _: Annotated[Any, Depends(require_auth)],
 ) -> ProjectUpdateStatusResponse:
     try:
         state = _require_runtime_control_plane().refresh_project_update_status(
@@ -58,7 +58,7 @@ async def refresh_project_update_status(
 @router.post("/plan", response_model=ProjectUpdatePlanResponse)
 async def preview_project_update_plan(
     payload: ProjectUpdatePlanRequest,
-    _: Annotated[Any, Depends(require_control_panel)],
+    _: Annotated[Any, Depends(require_auth)],
 ) -> ProjectUpdatePlanResponse:
     plan = _require_runtime_control_plane().create_project_update_plan(
         to_project_update_plan_request(payload)
@@ -69,7 +69,7 @@ async def preview_project_update_plan(
 @router.post("/tasks", response_model=ProjectUpdateTaskItem)
 async def create_project_update_task(
     payload: ProjectUpdatePlanRequest,
-    _: Annotated[Any, Depends(require_owner)],
+    _: Annotated[Any, Depends(require_auth)],
 ) -> ProjectUpdateTaskItem:
     try:
         task = await _require_runtime_control_plane().create_project_update_task(
@@ -83,7 +83,7 @@ async def create_project_update_task(
 @router.get("/tasks/{task_id}", response_model=ProjectUpdateTaskItem)
 async def get_project_update_task(
     task_id: str,
-    _: Annotated[Any, Depends(require_control_panel)],
+    _: Annotated[Any, Depends(require_auth)],
 ) -> ProjectUpdateTaskItem:
     task = _require_runtime_control_plane().get_project_update_task(task_id)
     if task is None:

@@ -52,7 +52,7 @@ class WebChatService:
         return WebUIPrincipal(
             id=session.user_id or "webui_admin",
             username=username,
-            role=session.role_id or "admin",
+            role="webui_local_account",
         )
 
     def create_session(

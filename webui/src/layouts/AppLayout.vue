@@ -20,7 +20,6 @@ import {
   Sun,
   Undo2,
   UploadCloud,
-  UserCog,
   X,
 } from '@lucide/vue'
 import { computed, ref, watch } from 'vue'
@@ -107,9 +106,7 @@ const navItems = computed<NavItem[]>(() => [
   { key: 'plugins', icon: Plug, title: t('layout.pluginsWorkbench'), to: '/plugins' },
   { key: 'permissions', icon: Shield, title: t('layout.permissions'), to: '/permissions' },
   { key: 'chat', icon: MessageSquare, title: t('layout.chat'), to: '/chat' },
-  ...(authStore.isOwner
-    ? [{ key: 'accounts', icon: UserCog, title: t('layout.accounts'), to: '/accounts' }]
-    : []),
+  { key: 'accounts', icon: Settings, title: t('layout.accounts'), to: '/accounts' },
 ])
 
 const themeToggleLabel = computed(() =>
@@ -118,12 +115,7 @@ const themeToggleLabel = computed(() =>
 const currentLocaleLabel = computed(() =>
   locale.value === 'zh_CN' ? t('layout.chinese') : t('layout.english'),
 )
-const currentRoleLabel = computed(() => {
-  if (authStore.role === 'owner') {
-    return t('accounts.roles.owner')
-  }
-  return authStore.role || t('common.none')
-})
+const currentAccessLabel = computed(() => t('layout.authenticatedUser'))
 const restartEntries = computed(() => restartStore.entries.slice(0, 3))
 const confirmDialogOpen = computed({
   get: () => pendingConfirmAction.value !== null,
@@ -152,9 +144,7 @@ const confirmActionBusy = computed(() => {
   }
   return false
 })
-const showProjectUpdateNotice = computed(() =>
-  authStore.isOwner && hasProjectReleaseUpdate.value,
-)
+const showProjectUpdateNotice = computed(() => hasProjectReleaseUpdate.value)
 
 function routeMatches(to: string) {
   const targetPath = to.replace(/\/+$/, '') || '/'
@@ -233,11 +223,6 @@ function requestRevertPendingChanges() {
 }
 
 async function refreshProjectUpdateNotice() {
-  if (!authStore.isOwner) {
-    hasProjectReleaseUpdate.value = false
-    return
-  }
-
   try {
     const response = await getProjectUpdateStatus()
     let nextStatus = response.data
@@ -252,10 +237,6 @@ async function refreshProjectUpdateNotice() {
 }
 
 async function syncRestartReminderWithRuntime() {
-  if (!authStore.isOwner) {
-    return
-  }
-
   try {
     const response = await getStatus()
     restartStore.syncRuntimeUptime(response.data.uptime)
@@ -291,7 +272,7 @@ watch(logsRouteActive, active => {
 })
 
 watch(
-  () => authStore.isOwner,
+  () => authStore.isAuthenticated,
   () => {
     void refreshProjectUpdateNotice()
     void syncRestartReminderWithRuntime()
@@ -468,7 +449,7 @@ watch(
           </div>
           <div class="app-shell-user__text">
             <strong>{{ authStore.principal?.username || t('layout.unknownUser') }}</strong>
-            <span>{{ currentRoleLabel }}</span>
+            <span>{{ currentAccessLabel }}</span>
           </div>
           <Badge
             v-if="showProjectUpdateNotice"
@@ -503,7 +484,6 @@ watch(
             </DropdownMenuContent>
           </DropdownMenu>
           <Button
-            v-if="authStore.isOwner"
             size="icon"
             :title="t('layout.projectUpdate')"
             variant="ghost"

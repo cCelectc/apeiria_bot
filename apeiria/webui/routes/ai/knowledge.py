@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from apeiria.ai.knowledge.chunking import KnowledgeUploadValidationError
 from apeiria.app.ai import ai_application
-from apeiria.webui.auth import require_control_panel
+from apeiria.webui.auth import require_auth
 
 from .knowledge_schemas import (
     AIKnowledgeChunkItem,
@@ -46,7 +46,7 @@ def _actor_username_from_claims(session: "AuthSession") -> str | None:
 
 @router.get("/knowledge/state", response_model=AIKnowledgeStateItem)
 async def get_ai_knowledge_state(
-    _: Annotated[object, Depends(require_control_panel)],
+    _: Annotated[object, Depends(require_auth)],
 ) -> AIKnowledgeStateItem:
     return to_knowledge_state_item(
         await ai_application.operations.get_knowledge_state()
@@ -56,7 +56,7 @@ async def get_ai_knowledge_state(
 @router.patch("/knowledge/state", response_model=AIKnowledgeStateItem)
 async def update_ai_knowledge_state(
     payload: AIKnowledgeStateUpdateRequest,
-    session: Annotated["AuthSession", Depends(require_control_panel)],
+    session: Annotated["AuthSession", Depends(require_auth)],
 ) -> AIKnowledgeStateItem:
     return to_knowledge_state_item(
         await ai_application.operations.set_knowledge_rag_enabled(
@@ -69,7 +69,7 @@ async def update_ai_knowledge_state(
 @router.post("/knowledge/documents", response_model=AIKnowledgeUploadResultItem)
 async def upload_ai_knowledge_document(
     payload: AIKnowledgeDocumentUploadRequest,
-    session: Annotated["AuthSession", Depends(require_control_panel)],
+    session: Annotated["AuthSession", Depends(require_auth)],
 ) -> AIKnowledgeUploadResultItem:
     try:
         result = await ai_application.operations.upload_knowledge_document(
@@ -84,7 +84,7 @@ async def upload_ai_knowledge_document(
 
 @router.get("/knowledge/documents", response_model=list[AIKnowledgeDocumentItem])
 async def list_ai_knowledge_documents(
-    _: Annotated[object, Depends(require_control_panel)],
+    _: Annotated[object, Depends(require_auth)],
 ) -> list[AIKnowledgeDocumentItem]:
     documents = await ai_application.operations.list_knowledge_documents()
     return [to_knowledge_document_item(document) for document in documents]
@@ -96,7 +96,7 @@ async def list_ai_knowledge_documents(
 )
 async def list_ai_knowledge_chunks(
     document_id: str,
-    _: Annotated[object, Depends(require_control_panel)],
+    _: Annotated[object, Depends(require_auth)],
 ) -> list[AIKnowledgeChunkItem]:
     chunks = await ai_application.operations.list_knowledge_chunks(
         document_id=document_id,
@@ -110,7 +110,7 @@ async def list_ai_knowledge_chunks(
 )
 async def rebuild_ai_knowledge_document_embeddings(
     document_id: str,
-    session: Annotated["AuthSession", Depends(require_control_panel)],
+    session: Annotated["AuthSession", Depends(require_auth)],
 ) -> AIKnowledgeRebuildDiagnosticsItem:
     result = await ai_application.operations.rebuild_knowledge_embeddings(
         document_id=document_id,
@@ -124,7 +124,7 @@ async def rebuild_ai_knowledge_document_embeddings(
 )
 async def delete_ai_knowledge_document(
     document_id: str,
-    session: Annotated["AuthSession", Depends(require_control_panel)],
+    session: Annotated["AuthSession", Depends(require_auth)],
 ) -> AIKnowledgeDeleteResult:
     deleted = await ai_application.operations.delete_knowledge_document(
         document_id=document_id,
@@ -139,7 +139,7 @@ async def delete_ai_knowledge_document(
 )
 async def preview_ai_knowledge_retrieval(
     payload: AIKnowledgeRetrievalPreviewRequest,
-    _: Annotated[object, Depends(require_control_panel)],
+    _: Annotated[object, Depends(require_auth)],
 ) -> AIKnowledgeRetrievalResultItem:
     result = await ai_application.operations.preview_knowledge_retrieval(
         query_text=payload.query_text,

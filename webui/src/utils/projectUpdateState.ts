@@ -40,7 +40,6 @@ export interface ProjectUpdatePlanRequestLike {
 
 export type ProjectUpdateActionReasonCode =
   | ''
-  | 'owner_required'
   | 'status_loading'
   | 'plan_loading'
   | 'plan_unavailable'
@@ -57,7 +56,7 @@ export interface ProjectUpdateActionState {
 }
 
 export interface ProjectUpdateActionInput {
-  isOwner: boolean
+  isAuthenticated: boolean
   plan: ProjectUpdatePlanLike | null
   planLoading?: boolean
   statusLoading?: boolean
@@ -161,8 +160,8 @@ export function resolveProjectUpdateActionState(
     operation,
   } satisfies Pick<ProjectUpdateActionState, 'confirmationRequired' | 'labelKey' | 'operation'>
 
-  if (!input.isOwner) {
-    return disabledAction(base, 'owner_required')
+  if (!input.isAuthenticated) {
+    return disabledAction(base, 'plan_unavailable')
   }
   if (input.statusLoading) {
     return disabledAction(base, 'status_loading')

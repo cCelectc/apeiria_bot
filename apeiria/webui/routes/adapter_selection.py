@@ -10,7 +10,7 @@ from apeiria.app.plugins.adapter_selection import (
     AdapterSelectionRequest,
     adapter_selection_service,
 )
-from apeiria.webui.auth import require_control_panel, require_owner
+from apeiria.webui.auth import require_auth
 from apeiria.webui.schemas.adapter_selection import (
     AdapterSelectionEnableRequest,
     AdapterSelectionItem,
@@ -26,7 +26,7 @@ router = APIRouter()
 @router.get("", response_model=AdapterSelectionResponse)
 async def get_adapter_selection(
     params: Annotated[AdapterSelectionQueryParams, Depends()],
-    _: Annotated[Any, Depends(require_control_panel)],
+    _: Annotated[Any, Depends(require_auth)],
 ) -> AdapterSelectionResponse:
     state = await adapter_selection_service.get_selection(
         AdapterSelectionRequest(
@@ -45,7 +45,7 @@ async def get_adapter_selection(
 @router.post("/enable", response_model=AdapterSelectionItem)
 async def enable_adapter(
     payload: AdapterSelectionEnableRequest,
-    _: Annotated[Any, Depends(require_owner)],
+    _: Annotated[Any, Depends(require_auth)],
 ) -> AdapterSelectionItem:
     try:
         item = adapter_selection_service.enable_adapter(payload.module_name)
@@ -57,7 +57,7 @@ async def enable_adapter(
 @router.post("/disable", response_model=AdapterSelectionItem)
 async def disable_adapter(
     payload: AdapterSelectionEnableRequest,
-    _: Annotated[Any, Depends(require_owner)],
+    _: Annotated[Any, Depends(require_auth)],
 ) -> AdapterSelectionItem:
     item = adapter_selection_service.disable_adapter(payload.module_name)
     if item is None:

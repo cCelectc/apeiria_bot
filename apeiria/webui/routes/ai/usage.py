@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Annotated, Any, Literal
 from fastapi import APIRouter, Depends, Query
 
 from apeiria.app.ai import ai_application
-from apeiria.webui.auth import require_control_panel
+from apeiria.webui.auth import require_auth
 
 from .usage_schemas import (
     AIModelUsageEventItem,
@@ -33,7 +33,7 @@ UsageGroupBy = Literal[
 
 @router.get("/usage-events", response_model=list[AIModelUsageEventItem])
 async def list_ai_usage_events(  # noqa: PLR0913
-    _: Annotated[Any, Depends(require_control_panel)],
+    _: Annotated[Any, Depends(require_auth)],
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
     trace_id: Annotated[str | None, Query(min_length=1)] = None,
     session_id: Annotated[str | None, Query(min_length=1)] = None,
@@ -60,7 +60,7 @@ async def list_ai_usage_events(  # noqa: PLR0913
 
 @router.get("/usage-summary", response_model=list[AIModelUsageSummaryItem])
 async def summarize_ai_usage(  # noqa: PLR0913
-    _: Annotated[Any, Depends(require_control_panel)],
+    _: Annotated[Any, Depends(require_auth)],
     group_by: UsageGroupBy = "session",
     trace_id: Annotated[str | None, Query(min_length=1)] = None,
     session_id: Annotated[str | None, Query(min_length=1)] = None,

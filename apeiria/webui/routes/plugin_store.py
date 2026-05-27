@@ -16,7 +16,7 @@ from apeiria.app.plugins.store.workflows import (
     package_store_workflow,
 )
 from apeiria.i18n import t
-from apeiria.webui.auth import require_control_panel, require_owner
+from apeiria.webui.auth import require_auth
 from apeiria.webui.schemas.operations import OperationStatusResponse
 from apeiria.webui.schemas.plugin_store import (
     PluginStoreCategoryItem,
@@ -55,7 +55,7 @@ class PluginStoreRefreshRequest(BaseModel):
 
 @router.get("/sources", response_model=list[PluginStoreSourceItem])
 async def list_plugin_store_sources(
-    _: Annotated[Any, Depends(require_control_panel)],
+    _: Annotated[Any, Depends(require_auth)],
 ) -> list[PluginStoreSourceItem]:
     return [
         to_plugin_store_source_item(item)
@@ -65,7 +65,7 @@ async def list_plugin_store_sources(
 
 @router.get("/items", response_model=PluginStoreItemsResponse)
 async def list_plugin_store_items(
-    _: Annotated[Any, Depends(require_control_panel)],
+    _: Annotated[Any, Depends(require_auth)],
     params: Annotated[PluginStoreItemsQueryParams, Depends()],
 ) -> PluginStoreItemsResponse:
     result = await package_store_workflow.list_items(
@@ -97,7 +97,7 @@ async def list_plugin_store_items(
 async def get_plugin_store_item(
     source_id: str,
     plugin_id: str,
-    _: Annotated[Any, Depends(require_control_panel)],
+    _: Annotated[Any, Depends(require_auth)],
 ) -> PluginStoreItem:
     item = await package_store_workflow.get_item(
         PackageStoreItemRequest(
@@ -117,7 +117,7 @@ async def get_plugin_store_item(
 @router.post("/refresh", response_model=list[PluginStoreSourceItem])
 async def refresh_plugin_store_sources(
     payload: PluginStoreRefreshRequest,
-    _: Annotated[Any, Depends(require_control_panel)],
+    _: Annotated[Any, Depends(require_auth)],
 ) -> list[PluginStoreSourceItem]:
     return [
         to_plugin_store_source_item(item)
@@ -131,7 +131,7 @@ async def refresh_plugin_store_sources(
 @router.post("/install", response_model=PluginStoreTaskItem)
 async def install_plugin_store_item(
     payload: PluginStoreInstallRequest,
-    _: Annotated[Any, Depends(require_owner)],
+    _: Annotated[Any, Depends(require_auth)],
 ) -> PluginStoreTaskItem:
     try:
         task = await plugin_store_task_service.create_plugin_install_task(
@@ -152,7 +152,7 @@ async def install_plugin_store_item(
 @router.post("/update", response_model=PluginStoreTaskItem)
 async def update_plugin_store_item(
     payload: PluginStoreInstallRequest,
-    _: Annotated[Any, Depends(require_owner)],
+    _: Annotated[Any, Depends(require_auth)],
 ) -> PluginStoreTaskItem:
     try:
         task = await plugin_store_task_service.create_plugin_update_task(
@@ -173,7 +173,7 @@ async def update_plugin_store_item(
 @router.get("/tasks/{task_id}", response_model=PluginStoreTaskItem)
 async def get_plugin_store_task(
     task_id: str,
-    _: Annotated[Any, Depends(require_control_panel)],
+    _: Annotated[Any, Depends(require_auth)],
 ) -> PluginStoreTaskItem:
     task = package_store_workflow.get_task(task_id)
     if task is None:
@@ -184,7 +184,7 @@ async def get_plugin_store_task(
 @router.post("/revert-install")
 async def revert_plugin_store_install(
     payload: PluginStoreRevertInstallRequest,
-    _: Annotated[Any, Depends(require_owner)],
+    _: Annotated[Any, Depends(require_auth)],
 ) -> OperationStatusResponse:
     try:
         package_store_workflow.revert_install(

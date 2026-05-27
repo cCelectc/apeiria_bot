@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, Query
 
 from apeiria.ai.profile import AIProfileUpdateInput
 from apeiria.app.ai import ai_application
-from apeiria.webui.auth import require_control_panel
+from apeiria.webui.auth import require_auth
 
 from .profiles_schemas import (
     AIProfileItem,
@@ -30,7 +30,7 @@ def _actor_username_from_claims(session: "AuthSession") -> str | None:
 
 @router.get("/profiles", response_model=list[AIProfileItem])
 async def list_ai_profiles(
-    _: Annotated[Any, Depends(require_control_panel)],
+    _: Annotated[Any, Depends(require_auth)],
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
 ) -> list[AIProfileItem]:
     profiles = await ai_application.operations.list_user_profiles(limit=limit)
@@ -39,7 +39,7 @@ async def list_ai_profiles(
 
 @router.get("/profiles/detail", response_model=AIProfileItem | None)
 async def get_ai_profile(
-    _: Annotated[Any, Depends(require_control_panel)],
+    _: Annotated[Any, Depends(require_auth)],
     platform: Annotated[str, Query(min_length=1)],
     user_id: Annotated[str, Query(min_length=1)],
 ) -> AIProfileItem | None:
@@ -53,7 +53,7 @@ async def get_ai_profile(
 @router.patch("/profiles", response_model=AIProfileItem | None)
 async def update_ai_profile(
     payload: AIProfileUpdateRequest,
-    session: Annotated["AuthSession", Depends(require_control_panel)],
+    session: Annotated["AuthSession", Depends(require_auth)],
 ) -> AIProfileItem | None:
     update_fields: dict[str, Any] = {
         "name_visibility": payload.name_visibility,
@@ -72,7 +72,7 @@ async def update_ai_profile(
 
 @router.delete("/profiles", response_model=bool)
 async def delete_ai_profile(
-    session: Annotated["AuthSession", Depends(require_control_panel)],
+    session: Annotated["AuthSession", Depends(require_auth)],
     profile_id: Annotated[str, Query(min_length=1)],
 ) -> bool:
     return await ai_application.operations.delete_user_profile(

@@ -10,7 +10,7 @@ from apeiria.app.access.management import access_management_service
 from apeiria.exceptions import ProtectedPluginError, ResourceNotFoundError
 from apeiria.i18n import t
 from apeiria.runtime.context import get_current_runtime
-from apeiria.webui.auth import require_control_panel
+from apeiria.webui.auth import require_auth
 from apeiria.webui.schemas.models import (
     AccessRuleCreateRequest,
     AccessRuleDeleteRequest,
@@ -31,7 +31,7 @@ def _require_runtime_control_plane() -> Any:
 
 @router.get("/rules", response_model=list[AccessRuleItem])
 async def list_access_rules(
-    _: Annotated[Any, Depends(require_control_panel)],
+    _: Annotated[Any, Depends(require_auth)],
 ) -> list[AccessRuleItem]:
     rows = await _require_runtime_control_plane().list_access_rules()
     return [
@@ -49,7 +49,7 @@ async def list_access_rules(
 @router.post("/rules", response_model=AccessRuleItem)
 async def create_access_rule(
     body: AccessRuleCreateRequest,
-    _: Annotated[Any, Depends(require_control_panel)],
+    _: Annotated[Any, Depends(require_auth)],
 ) -> AccessRuleItem:
     if body.subject_type not in {"user", "group"}:
         raise HTTPException(
@@ -91,7 +91,7 @@ async def create_access_rule(
 @router.post("/rules/delete")
 async def delete_access_rule(
     body: AccessRuleDeleteRequest,
-    _: Annotated[Any, Depends(require_control_panel)],
+    _: Annotated[Any, Depends(require_auth)],
 ) -> dict[str, str]:
     deleted = await access_management_service.delete_access_rule(
         subject_type=body.subject_type,
@@ -110,7 +110,7 @@ async def delete_access_rule(
 async def update_plugin_access_mode(
     module_name: str,
     body: PluginAccessModeUpdateRequest,
-    _: Annotated[Any, Depends(require_control_panel)],
+    _: Annotated[Any, Depends(require_auth)],
 ) -> dict[str, str]:
     if body.access_mode not in {"default_allow", "default_deny"}:
         raise HTTPException(

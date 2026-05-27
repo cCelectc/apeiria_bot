@@ -105,7 +105,7 @@ let searchTimer: number | null = null
 let syncingRouteState = false
 
 const pageSize = 16
-const isOwnerRole = computed(() => authStore.role === 'owner')
+const canUpdateStore = computed(() => authStore.isAuthenticated)
 const pageCount = computed(() => Math.max(1, Math.ceil(totalItems.value / pageSize)))
 const sourceOptions = computed(() => [
   { value: ALL_STORE_OPTIONS, label: t('pluginStore.allSources') },
@@ -272,7 +272,7 @@ function actionLabel(item: PluginStoreItem) {
 }
 
 function canActOnItem(item: PluginStoreItem) {
-  return isOwnerRole.value && (!item.is_installed || item.can_update)
+  return canUpdateStore.value && (!item.is_installed || item.can_update)
 }
 
 async function openDetailDialog(item: PluginStoreItem) {

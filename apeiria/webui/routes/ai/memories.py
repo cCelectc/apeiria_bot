@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Annotated, Any, Literal
 from fastapi import APIRouter, Depends, Query
 
 from apeiria.app.ai import ai_application
-from apeiria.webui.auth import require_control_panel
+from apeiria.webui.auth import require_auth
 
 from .memories_schemas import (
     AIMemoryBulkActionRequest,
@@ -35,7 +35,7 @@ def _actor_username_from_claims(session: "AuthSession") -> str | None:
 
 @router.get("/memories", response_model=list[AIMemoryItem])
 async def list_ai_memories(  # noqa: PLR0913
-    _: Annotated[Any, Depends(require_control_panel)],
+    _: Annotated[Any, Depends(require_auth)],
     anchor_type: Annotated[
         Literal["scene", "participant", "user"],
         Query(),
@@ -60,7 +60,7 @@ async def list_ai_memories(  # noqa: PLR0913
 @router.post("/memories", response_model=AIMemoryItem)
 async def create_ai_memory(
     payload: AIMemoryCreateRequest,
-    session: Annotated["AuthSession", Depends(require_control_panel)],
+    session: Annotated["AuthSession", Depends(require_auth)],
 ) -> AIMemoryItem:
     memory = await ai_application.operations.create_memory(
         memory_layer=payload.memory_layer,
@@ -78,7 +78,7 @@ async def create_ai_memory(
 @router.patch("/memories", response_model=AIMemoryItem | None)
 async def update_ai_memory(
     payload: AIMemoryUpdateRequest,
-    session: Annotated["AuthSession", Depends(require_control_panel)],
+    session: Annotated["AuthSession", Depends(require_auth)],
 ) -> AIMemoryItem | None:
     memory = await ai_application.operations.update_memory(
         memory_id=payload.memory_id,
@@ -92,7 +92,7 @@ async def update_ai_memory(
 
 @router.delete("/memories", response_model=AIMemoryDeleteResult)
 async def delete_ai_memory(
-    session: Annotated["AuthSession", Depends(require_control_panel)],
+    session: Annotated["AuthSession", Depends(require_auth)],
     memory_id: Annotated[str, Query(min_length=1)],
 ) -> AIMemoryDeleteResult:
     return AIMemoryDeleteResult(
@@ -106,7 +106,7 @@ async def delete_ai_memory(
 @router.patch("/memories/lifecycle", response_model=AIMemoryItem | None)
 async def set_ai_memory_lifecycle(
     payload: AIMemoryLifecycleRequest,
-    session: Annotated["AuthSession", Depends(require_control_panel)],
+    session: Annotated["AuthSession", Depends(require_auth)],
 ) -> AIMemoryItem | None:
     memory = await ai_application.operations.set_memory_lifecycle(
         memory_id=payload.memory_id,
@@ -119,7 +119,7 @@ async def set_ai_memory_lifecycle(
 @router.post("/memories/bulk-delete", response_model=AIMemoryBulkActionResult)
 async def bulk_delete_ai_memories(
     payload: AIMemoryBulkActionRequest,
-    session: Annotated["AuthSession", Depends(require_control_panel)],
+    session: Annotated["AuthSession", Depends(require_auth)],
 ) -> AIMemoryBulkActionResult:
     count = await ai_application.operations.bulk_delete_memories(
         memory_ids=payload.memory_ids,
@@ -131,7 +131,7 @@ async def bulk_delete_ai_memories(
 @router.post("/memories/bulk-lifecycle", response_model=AIMemoryBulkActionResult)
 async def bulk_set_ai_memory_lifecycle(
     payload: AIMemoryBulkLifecycleRequest,
-    session: Annotated["AuthSession", Depends(require_control_panel)],
+    session: Annotated["AuthSession", Depends(require_auth)],
 ) -> AIMemoryBulkActionResult:
     count = await ai_application.operations.bulk_set_memory_lifecycle(
         memory_ids=payload.memory_ids,

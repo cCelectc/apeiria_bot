@@ -1,27 +1,31 @@
 <script setup lang="ts">
-import type { SecurityAuditEventItem, WebUIAccountItem } from '@/api/auth'
-import type { WorkbenchMetricItem, WorkbenchTableColumn } from '@/components/management'
+import type { WebUIAccountItem } from '@/api/auth'
+import type { WorkbenchMetricItem } from '@/components/management'
 import {
   Clock3,
-  History,
   KeyRound,
   LockKeyhole,
+  Plus,
   RefreshCw,
   RotateCcwKey,
   ShieldCheck,
+  Trash2,
   UserRound,
+  UserRoundPlus,
 } from '@lucide/vue'
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import {
   changePassword,
-  getCurrentAccount,
-  getSecurityAuditEvents,
+  createAccount,
+  deleteAccount,
+  getAccounts,
+  resetAccountPassword,
   revokeOtherSessions,
+  updateAccountDisabled,
 } from '@/api/auth'
 import { getErrorMessage } from '@/api/client'
 import {
-  DataTablePanel,
   EmptyState,
   FormField,
   MetricStrip,
@@ -33,7 +37,11 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
+  Table,
+  TableBody,
   TableCell,
+  TableHead,
+  TableHeader,
   TableRow,
 } from '@/components/ui/table'
 import { useAuthStore } from '@/stores/auth'
@@ -43,39 +51,56 @@ import { resolveCollectionFeedback } from '@/utils/feedbackState'
 const { t } = useI18n()
 const authStore = useAuthStore()
 const noticeStore = useNoticeStore()
-const currentAccount = ref<WebUIAccountItem | null>(null)
-const auditEvents = ref<SecurityAuditEventItem[]>([])
+
+const accounts = ref<WebUIAccountItem[]>([])
 const loading = ref(false)
-const passwordSaving = ref(false)
-const revokingSessions = ref(false)
 const errorMessage = ref('')
 const passwordError = ref('')
-const confirmPassword = ref('')
+const createError = ref('')
+const resetError = ref('')
+const passwordSaving = ref(false)
+const createSaving = ref(false)
+const resetSavingFor = ref('')
+const revokingSessions = ref(false)
+
+const createForm = reactive({
+  username: '',
+  password: '',
+  confirm_password: '',
+  actor_password: '',
+})
 const passwordForm = reactive({
   current_password: '',
   new_password: '',
+  confirm_password: '',
 })
+const resetForms = reactive<Record<string, {
+  new_password: string
+  confirm_password: string
+  actor_password: string
+}>>({})
+const disableActorPasswords = reactive<Record<string, string>>({})
+const deleteActorPasswords = reactive<Record<string, string>>({})
 
-const auditColumns = computed<WorkbenchTableColumn[]>(() => [
-  { key: 'occurred_at', label: t('accounts.auditTime') },
-  { key: 'event_type', label: t('accounts.auditType') },
-  { key: 'actor_username', label: t('accounts.auditActor') },
-  { key: 'target_username', label: t('accounts.auditTarget') },
-  { key: 'detail', label: t('accounts.auditDetail') },
-])
+const currentAccount = computed(() =>
+  accounts.value.find(item => item.user_id === authStore.principal?.user_id) || null,
+)
+const enabledCount = computed(() =>
+  accounts.value.filter(item => !item.is_disabled).length,
+)
 const metrics = computed<WorkbenchMetricItem[]>(() => [
   {
     icon: ShieldCheck,
-    key: 'role',
-    label: t('accounts.currentRole'),
+    key: 'accounts',
+    label: t('accounts.title'),
     tone: 'info',
-    value: roleLabel(authStore.role),
+    value: accounts.value.length,
   },
   {
     icon: UserRound,
-    key: 'username',
-    label: t('accounts.username'),
-    value: currentAccount.value?.username || t('common.none'),
+    key: 'enabled',
+    label: t('accounts.enabled'),
+    value: enabledCount.value,
   },
   {
     icon: Clock3,
@@ -90,28 +115,15 @@ const metrics = computed<WorkbenchMetricItem[]>(() => [
     value: formatTimestamp(currentAccount.value?.password_changed_at),
   },
 ])
-const passwordSubmitDisabled = computed(() =>
-  passwordSaving.value
-  || !passwordForm.current_password
-  || !passwordForm.new_password
-  || !confirmPassword.value,
-)
 const accountFeedback = computed(() =>
   resolveCollectionFeedback({
     errorMessage: errorMessage.value,
     hasFilters: false,
     loading: loading.value,
-    totalCount: currentAccount.value || auditEvents.value.length > 0 ? 1 : 0,
-    visibleCount: currentAccount.value || auditEvents.value.length > 0 ? 1 : 0,
+    totalCount: accounts.value.length,
+    visibleCount: accounts.value.length,
   }),
 )
-
-function roleLabel(role: string) {
-  if (role === 'owner') {
-    return t('accounts.roles.owner')
-  }
-  return role || t('common.none')
-}
 
 function formatTimestamp(value: string | null | undefined) {
   if (!value) {
@@ -124,33 +136,35 @@ function formatTimestamp(value: string | null | undefined) {
   return date.toLocaleString()
 }
 
-function auditEventLabel(eventType: string) {
-  const label = t(`accounts.auditEvents.${eventType}`)
-  return label === `accounts.auditEvents.${eventType}` ? eventType : label
+function isCurrentAccount(item: WebUIAccountItem) {
+  return item.user_id === authStore.principal?.user_id
 }
 
-function auditKey(event: SecurityAuditEventItem) {
-  return [
-    event.event_type,
-    event.occurred_at,
-    event.actor_username || '',
-    event.target_username || '',
-    event.detail || '',
-  ].join(':')
+function getResetForm(userId: string) {
+  if (!resetForms[userId]) {
+    resetForms[userId] = {
+      new_password: '',
+      confirm_password: '',
+      actor_password: '',
+    }
+  }
+  return resetForms[userId]
+}
+
+function canToggle(item: WebUIAccountItem) {
+  return !isCurrentAccount(item)
+}
+
+function canDelete(item: WebUIAccountItem) {
+  return !isCurrentAccount(item)
 }
 
 async function loadData() {
   loading.value = true
-  if (!currentAccount.value && auditEvents.value.length === 0) {
-    errorMessage.value = ''
-  }
+  errorMessage.value = ''
   try {
-    const [accountResponse, auditResponse] = await Promise.all([
-      getCurrentAccount(),
-      getSecurityAuditEvents(),
-    ])
-    currentAccount.value = accountResponse.data
-    auditEvents.value = auditResponse.data
+    const response = await getAccounts()
+    accounts.value = response.data
   } catch (error) {
     errorMessage.value = getErrorMessage(error, t('accounts.loadFailed'))
   } finally {
@@ -158,25 +172,69 @@ async function loadData() {
   }
 }
 
+async function submitCreate() {
+  createError.value = ''
+  if (!createForm.username.trim()) {
+    createError.value = t('register.usernameRequired')
+    return
+  }
+  if (!createForm.password || !createForm.confirm_password || !createForm.actor_password) {
+    createError.value = t('accounts.passwordIncomplete')
+    return
+  }
+  if (createForm.password !== createForm.confirm_password) {
+    createError.value = t('register.passwordMismatch')
+    return
+  }
+  createSaving.value = true
+  try {
+    const response = await createAccount({
+      username: createForm.username.trim(),
+      password: createForm.password,
+      actor_password: createForm.actor_password,
+    })
+    noticeStore.show(
+      t('accounts.accountCreated', { username: response.data.username }),
+      'success',
+    )
+    createForm.username = ''
+    createForm.password = ''
+    createForm.confirm_password = ''
+    createForm.actor_password = ''
+    await loadData()
+  } catch (error) {
+    createError.value = getErrorMessage(error, t('accounts.createFailed'))
+  } finally {
+    createSaving.value = false
+  }
+}
+
 async function submitPassword() {
-  if (!passwordForm.current_password || !passwordForm.new_password || !confirmPassword.value) {
+  passwordError.value = ''
+  if (
+    !passwordForm.current_password
+    || !passwordForm.new_password
+    || !passwordForm.confirm_password
+  ) {
     passwordError.value = t('accounts.passwordIncomplete')
     return
   }
-  if (passwordForm.new_password !== confirmPassword.value) {
+  if (passwordForm.new_password !== passwordForm.confirm_password) {
     passwordError.value = t('register.passwordMismatch')
     return
   }
 
   passwordSaving.value = true
-  passwordError.value = ''
   try {
-    const response = await changePassword(passwordForm)
+    const response = await changePassword({
+      current_password: passwordForm.current_password,
+      new_password: passwordForm.new_password,
+    })
     authStore.acceptSession(response.data.principal)
     noticeStore.show(response.data.detail || t('accounts.passwordChanged'), 'success')
     passwordForm.current_password = ''
     passwordForm.new_password = ''
-    confirmPassword.value = ''
+    passwordForm.confirm_password = ''
     await loadData()
   } catch (error) {
     passwordError.value = getErrorMessage(error, t('accounts.passwordChangeFailed'))
@@ -197,6 +255,85 @@ async function handleRevokeOtherSessions() {
     errorMessage.value = getErrorMessage(error, t('accounts.revokeOtherSessionsFailed'))
   } finally {
     revokingSessions.value = false
+  }
+}
+
+async function toggleAccount(item: WebUIAccountItem) {
+  const actorPassword = disableActorPasswords[item.user_id] || ''
+  if (!actorPassword) {
+    errorMessage.value = t('accounts.actorPasswordRequired')
+    return
+  }
+  errorMessage.value = ''
+  try {
+    const response = await updateAccountDisabled(item.user_id, {
+      is_disabled: !item.is_disabled,
+      actor_password: actorPassword,
+    })
+    disableActorPasswords[item.user_id] = ''
+    noticeStore.show(
+      response.data.is_disabled
+        ? t('accounts.accountDisabled', { username: response.data.username })
+        : t('accounts.accountEnabled', { username: response.data.username }),
+      'success',
+    )
+    await loadData()
+  } catch (error) {
+    errorMessage.value = getErrorMessage(error, t('accounts.updateFailed'))
+  }
+}
+
+async function handleDelete(item: WebUIAccountItem) {
+  const actorPassword = deleteActorPasswords[item.user_id] || ''
+  if (!actorPassword) {
+    errorMessage.value = t('accounts.actorPasswordRequired')
+    return
+  }
+  errorMessage.value = ''
+  try {
+    await deleteAccount(item.user_id, { actor_password: actorPassword })
+    deleteActorPasswords[item.user_id] = ''
+    noticeStore.show(
+      t('accounts.accountDeleted', { username: item.username }),
+      'success',
+    )
+    await loadData()
+  } catch (error) {
+    errorMessage.value = getErrorMessage(error, t('accounts.deleteFailed'))
+  }
+}
+
+async function handleReset(item: WebUIAccountItem) {
+  const form = getResetForm(item.user_id)
+  resetError.value = ''
+  if (!form.new_password || !form.confirm_password || !form.actor_password) {
+    resetError.value = t('accounts.passwordIncomplete')
+    return
+  }
+  if (form.new_password !== form.confirm_password) {
+    resetError.value = t('register.passwordMismatch')
+    return
+  }
+  resetSavingFor.value = item.user_id
+  try {
+    const response = await resetAccountPassword(item.user_id, {
+      new_password: form.new_password,
+      actor_password: form.actor_password,
+    })
+    resetForms[item.user_id] = {
+      new_password: '',
+      confirm_password: '',
+      actor_password: '',
+    }
+    noticeStore.show(
+      t('accounts.passwordReset', { username: response.data.username }),
+      'success',
+    )
+    await loadData()
+  } catch (error) {
+    resetError.value = getErrorMessage(error, t('accounts.resetFailed'))
+  } finally {
+    resetSavingFor.value = ''
   }
 }
 
@@ -240,10 +377,6 @@ onMounted(loadData)
 
           <div class="accounts-stat-list">
             <div class="accounts-stat">
-              <span>{{ t('accounts.currentRole') }}</span>
-              <strong>{{ roleLabel(authStore.role) }}</strong>
-            </div>
-            <div class="accounts-stat">
               <span>{{ t('accounts.lastLogin') }}</span>
               <strong>{{ formatTimestamp(currentAccount?.last_login_at) }}</strong>
             </div>
@@ -284,15 +417,6 @@ onMounted(loadData)
 
     <Panel :subtitle="t('accounts.passwordHint')" :title="t('accounts.passwordTitle')">
       <form class="accounts-password-form" @submit.prevent="submitPassword">
-        <input
-          autocomplete="username"
-          hidden
-          name="username"
-          readonly
-          type="text"
-          :value="currentAccount?.username || authStore.principal?.username || ''"
-        >
-
         <FormField
           for-id="account-current-password"
           :label="t('accounts.currentPassword')"
@@ -328,7 +452,7 @@ onMounted(loadData)
         >
           <Input
             id="account-confirm-password"
-            v-model="confirmPassword"
+            v-model="passwordForm.confirm_password"
             autocomplete="new-password"
             type="password"
           />
@@ -336,7 +460,7 @@ onMounted(loadData)
 
         <div class="accounts-form-actions">
           <Button
-            :disabled="passwordSubmitDisabled"
+            :disabled="passwordSaving"
             type="submit"
           >
             <KeyRound :class="{ 'animate-spin': passwordSaving }" :size="16" />
@@ -346,82 +470,201 @@ onMounted(loadData)
       </form>
     </Panel>
 
-    <DataTablePanel
-      :columns="auditColumns"
-      :empty-title="auditEvents.length === 0 && !loading ? t('accounts.noAuditEvents') : ''"
-      :loading="loading"
-      :subtitle="t('accounts.auditHint')"
-      :title="t('accounts.auditTitle')"
-    >
-      <template v-if="auditEvents.length === 0 && !loading" #actions>
-        <Button :disabled="loading" variant="secondary" @click="loadData">
-          <RefreshCw :size="16" />
-          {{ t('common.refresh') }}
-        </Button>
-      </template>
+    <Panel :subtitle="t('accounts.createHint')" :title="t('accounts.createTitle')">
+      <form class="accounts-password-form" @submit.prevent="submitCreate">
+        <FormField
+          for-id="account-create-username"
+          :label="t('accounts.username')"
+          required
+        >
+          <Input
+            id="account-create-username"
+            v-model="createForm.username"
+            autocomplete="off"
+          />
+        </FormField>
 
-      <TableRow
-        v-for="event in auditEvents"
-        :key="auditKey(event)"
-        class="accounts-audit-table-row"
-      >
-        <TableCell class="accounts-audit-time">
-          {{ formatTimestamp(event.occurred_at) }}
-        </TableCell>
-        <TableCell>
-          <span class="accounts-audit-event">{{ auditEventLabel(event.event_type) }}</span>
-        </TableCell>
-        <TableCell>{{ event.actor_username || t('common.none') }}</TableCell>
-        <TableCell>{{ event.target_username || t('common.none') }}</TableCell>
-        <TableCell class="accounts-audit-detail">
-          {{ event.detail || t('common.none') }}
-        </TableCell>
-      </TableRow>
-    </DataTablePanel>
+        <FormField
+          for-id="account-create-password"
+          :label="t('accounts.newPassword')"
+          required
+        >
+          <Input
+            id="account-create-password"
+            v-model="createForm.password"
+            autocomplete="new-password"
+            type="password"
+          />
+        </FormField>
 
-    <div class="accounts-audit-cards">
-      <EmptyState
-        v-if="auditEvents.length === 0 && !loading"
-        :icon="History"
-        :title="t('accounts.noAuditEvents')"
-      >
-        <template #actions>
-          <Button :disabled="loading" variant="secondary" @click="loadData">
-            <RefreshCw data-icon="inline-start" />
-            {{ t('common.refresh') }}
+        <FormField
+          for-id="account-create-confirm-password"
+          :label="t('accounts.confirmPassword')"
+          required
+        >
+          <Input
+            id="account-create-confirm-password"
+            v-model="createForm.confirm_password"
+            autocomplete="new-password"
+            type="password"
+          />
+        </FormField>
+
+        <FormField
+          :error="createError"
+          for-id="account-create-actor-password"
+          :helper="t('accounts.actorPasswordHelper')"
+          :label="t('accounts.actorPassword')"
+          required
+        >
+          <Input
+            id="account-create-actor-password"
+            v-model="createForm.actor_password"
+            autocomplete="current-password"
+            type="password"
+          />
+        </FormField>
+
+        <div class="accounts-form-actions">
+          <Button
+            :disabled="createSaving"
+            type="submit"
+          >
+            <UserRoundPlus :class="{ 'animate-spin': createSaving }" :size="16" />
+            {{ t('accounts.createAccount') }}
           </Button>
-        </template>
-      </EmptyState>
-      <article
-        v-for="event in auditEvents"
-        :key="`card:${auditKey(event)}`"
-        class="accounts-audit-card"
-      >
-        <div class="accounts-audit-card__header">
-          <div>
-            <strong>{{ auditEventLabel(event.event_type) }}</strong>
-            <span>{{ formatTimestamp(event.occurred_at) }}</span>
-          </div>
         </div>
-        <dl class="accounts-audit-card__grid">
-          <div>
-            <dt>{{ t('accounts.auditActor') }}</dt>
-            <dd>{{ event.actor_username || t('common.none') }}</dd>
-          </div>
-          <div>
-            <dt>{{ t('accounts.auditTarget') }}</dt>
-            <dd>{{ event.target_username || t('common.none') }}</dd>
-          </div>
-          <div>
-            <dt>{{ t('accounts.auditDetail') }}</dt>
-            <dd>{{ event.detail || t('common.none') }}</dd>
-          </div>
-        </dl>
-      </article>
-    </div>
+      </form>
+    </Panel>
 
-    <Alert v-if="authStore.status === 'forbidden'" variant="destructive">
-      <AlertDescription>{{ t('login.forbidden') }}</AlertDescription>
+    <Panel :subtitle="t('accounts.manageHint')" :title="t('accounts.manageTitle')">
+      <EmptyState
+        v-if="accounts.length === 0 && !loading"
+        :icon="UserRound"
+        :title="t('accounts.noAccounts')"
+      />
+
+      <Table v-else>
+        <TableHeader>
+          <TableRow>
+            <TableHead>{{ t('accounts.username') }}</TableHead>
+            <TableHead>{{ t('accounts.status') }}</TableHead>
+            <TableHead>{{ t('accounts.lastLogin') }}</TableHead>
+            <TableHead>{{ t('accounts.passwordChangedAt') }}</TableHead>
+            <TableHead>{{ t('common.actions') }}</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          <TableRow v-for="item in accounts" :key="item.user_id">
+            <TableCell>
+              <div class="accounts-table-user">
+                <strong>{{ item.username }}</strong>
+                <span v-if="isCurrentAccount(item)">{{ t('accounts.currentAccount') }}</span>
+              </div>
+            </TableCell>
+            <TableCell>
+              <StatusBadge
+                :label="item.is_disabled ? t('accounts.disabled') : t('accounts.enabled')"
+                :tone="item.is_disabled ? 'warning' : 'success'"
+              />
+            </TableCell>
+            <TableCell>{{ formatTimestamp(item.last_login_at) }}</TableCell>
+            <TableCell>{{ formatTimestamp(item.password_changed_at) }}</TableCell>
+            <TableCell>
+              <div class="accounts-table-actions">
+                <FormField
+                  :label="t('accounts.actorPassword')"
+                  :label-class="'sr-only'"
+                >
+                  <Input
+                    v-model="disableActorPasswords[item.user_id]"
+                    autocomplete="current-password"
+                    :placeholder="t('accounts.actorPassword')"
+                    type="password"
+                  />
+                </FormField>
+                <Button
+                  :disabled="!canToggle(item)"
+                  size="sm"
+                  variant="secondary"
+                  @click="toggleAccount(item)"
+                >
+                  {{ item.is_disabled ? t('accounts.enableAccount') : t('accounts.disableAccount') }}
+                </Button>
+                <FormField
+                  :label="t('accounts.actorPassword')"
+                  :label-class="'sr-only'"
+                >
+                  <Input
+                    v-model="deleteActorPasswords[item.user_id]"
+                    autocomplete="current-password"
+                    :placeholder="t('accounts.actorPassword')"
+                    type="password"
+                  />
+                </FormField>
+                <Button
+                  :disabled="!canDelete(item)"
+                  size="sm"
+                  variant="destructive"
+                  @click="handleDelete(item)"
+                >
+                  <Trash2 :size="15" />
+                  {{ t('common.delete') }}
+                </Button>
+              </div>
+
+              <div v-if="!isCurrentAccount(item)" class="accounts-reset-form">
+                <FormField
+                  :label="t('accounts.newPassword')"
+                  :label-class="'sr-only'"
+                >
+                  <Input
+                    v-model="getResetForm(item.user_id).new_password"
+                    autocomplete="new-password"
+                    :placeholder="t('accounts.newPassword')"
+                    type="password"
+                  />
+                </FormField>
+                <FormField
+                  :label="t('accounts.confirmPassword')"
+                  :label-class="'sr-only'"
+                >
+                  <Input
+                    v-model="getResetForm(item.user_id).confirm_password"
+                    autocomplete="new-password"
+                    :placeholder="t('accounts.confirmPassword')"
+                    type="password"
+                  />
+                </FormField>
+                <FormField
+                  :error="resetSavingFor === item.user_id ? resetError : ''"
+                  :label="t('accounts.actorPassword')"
+                  :label-class="'sr-only'"
+                >
+                  <Input
+                    v-model="getResetForm(item.user_id).actor_password"
+                    autocomplete="current-password"
+                    :placeholder="t('accounts.actorPassword')"
+                    type="password"
+                  />
+                </FormField>
+                <Button
+                  :disabled="resetSavingFor === item.user_id"
+                  size="sm"
+                  @click="handleReset(item)"
+                >
+                  <Plus :class="{ 'animate-spin': resetSavingFor === item.user_id }" :size="15" />
+                  {{ t('accounts.resetPassword') }}
+                </Button>
+              </div>
+            </TableCell>
+          </TableRow>
+        </TableBody>
+      </Table>
+    </Panel>
+
+    <Alert v-if="resetError && !resetSavingFor" variant="destructive">
+      <AlertDescription>{{ resetError }}</AlertDescription>
     </Alert>
   </PageScaffold>
 </template>

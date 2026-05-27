@@ -18,7 +18,6 @@ AuthMethod = Literal[
     "password",
     "session_cookie",
     "session_refresh",
-    "registration_code",
     "host_recovery",
 ]
 

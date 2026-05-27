@@ -1,13 +1,11 @@
 import type { WebUIPrincipal } from '@/api/auth'
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
-import { CAP_CONTROL_PANEL } from '@/constants/access'
 
 export type AuthStatus =
   | 'anonymous'
   | 'restoring'
   | 'authenticated'
-  | 'forbidden'
   | 'expired'
 
 interface RestoreOptions {
@@ -21,15 +19,10 @@ export const useAuthStore = defineStore('auth', () => {
 
   const isReady = computed(() => status.value !== 'restoring')
   const isAuthenticated = computed(() => status.value === 'authenticated')
-  const role = computed(() => normalizeRole(principal.value?.role))
-  const capabilities = computed(() => principal.value?.capabilities ?? [])
-  const isOwner = computed(() => hasControlPanelAccess(principal.value))
 
   function acceptSession(nextPrincipal: WebUIPrincipal) {
     principal.value = nextPrincipal
-    status.value = hasControlPanelAccess(nextPrincipal)
-      ? 'authenticated'
-      : 'forbidden'
+    status.value = 'authenticated'
   }
 
   function clearSession(nextStatus: AuthStatus = 'anonymous') {
@@ -44,10 +37,6 @@ export const useAuthStore = defineStore('auth', () => {
 
   function handleUnauthorized() {
     clearSession('expired')
-  }
-
-  function handleForbidden() {
-    clearSession('forbidden')
   }
 
   async function initialize(options: RestoreOptions = {}) {
@@ -77,23 +66,14 @@ export const useAuthStore = defineStore('auth', () => {
         clearSession(unauthorizedStatus)
         return
       }
-      if (response.status === 403) {
-        handleForbidden()
-        return
-      }
       if (!response.ok) {
-        handleForbidden()
+        clearSession(unauthorizedStatus)
         return
       }
 
       const nextPrincipal = await response.json() as WebUIPrincipal
       principal.value = nextPrincipal
-      status.value = hasControlPanelAccess(nextPrincipal)
-        ? 'authenticated'
-        : 'forbidden'
-      if (status.value !== 'authenticated') {
-        clearSession('forbidden')
-      }
+      status.value = 'authenticated'
     } catch {
       clearSession(unauthorizedStatus)
     } finally {
@@ -111,25 +91,13 @@ export const useAuthStore = defineStore('auth', () => {
   return {
     principal,
     status,
-    role,
-    capabilities,
     isReady,
     isAuthenticated,
-    isOwner,
     acceptSession,
     clearSession,
     logout,
     handleUnauthorized,
-    handleForbidden,
     initialize,
     ensureInitialized,
   }
 })
-
-function hasControlPanelAccess(principal: WebUIPrincipal | null) {
-  return !!principal?.capabilities?.includes(CAP_CONTROL_PANEL)
-}
-
-function normalizeRole(role: string | undefined) {
-  return typeof role === 'string' ? role : ''
-}

@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Annotated, Any
 from fastapi import APIRouter, Depends
 
 from apeiria.app.ai import ai_application
-from apeiria.webui.auth import require_control_panel
+from apeiria.webui.auth import require_auth
 
 from .personas_schemas import (
     AIPersonaBindingItem,
@@ -31,7 +31,7 @@ def _actor_username_from_claims(session: "AuthSession") -> str | None:
 
 @router.get("/personas", response_model=list[AIPersonaItem])
 async def list_ai_personas(
-    _: Annotated[Any, Depends(require_control_panel)],
+    _: Annotated[Any, Depends(require_auth)],
 ) -> list[AIPersonaItem]:
     personas = await ai_application.operations.list_personas()
     return [to_ai_persona_item(item) for item in personas]
@@ -40,7 +40,7 @@ async def list_ai_personas(
 @router.put("/personas", response_model=AIPersonaItem | None)
 async def upsert_ai_persona(
     payload: AIPersonaUpsertRequest,
-    session: Annotated["AuthSession", Depends(require_control_panel)],
+    session: Annotated["AuthSession", Depends(require_auth)],
 ) -> AIPersonaItem | None:
     persona = (
         await ai_application.operations.update_persona(
@@ -67,7 +67,7 @@ async def upsert_ai_persona(
 
 @router.get("/persona-bindings", response_model=list[AIPersonaBindingItem])
 async def list_ai_persona_bindings(
-    _: Annotated[Any, Depends(require_control_panel)],
+    _: Annotated[Any, Depends(require_auth)],
 ) -> list[AIPersonaBindingItem]:
     bindings = await ai_application.operations.list_persona_bindings()
     return [to_ai_persona_binding_item(item) for item in bindings]

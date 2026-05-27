@@ -21,7 +21,7 @@ from apeiria.app.plugins.store.update_check import (
 from apeiria.config.plugins import plugin_config_service
 from apeiria.exceptions import ProtectedPluginError, ResourceNotFoundError
 from apeiria.i18n import t
-from apeiria.webui.auth import require_control_panel, require_owner
+from apeiria.webui.auth import require_auth
 from apeiria.webui.schemas.operations import OperationStatusResponse
 from apeiria.webui.schemas.plugin_management import (
     PluginInstallConfirmRequest,
@@ -66,7 +66,7 @@ def resolve_plugin_install_source(
 async def update_plugin_policy(
     module_name: str,
     payload: PluginPolicyUpdateRequest,
-    _: Annotated[Any, Depends(require_control_panel)],
+    _: Annotated[Any, Depends(require_auth)],
 ) -> PluginPolicyUpdateResponse:
     plugin = await plugin_management_service.get_plugin(module_name)
     try:
@@ -97,7 +97,7 @@ async def update_plugin_policy(
 async def preview_toggle_plugin(
     module_name: str,
     query: Annotated[PluginTogglePreviewQuery, Depends()],
-    _: Annotated[Any, Depends(require_control_panel)],
+    _: Annotated[Any, Depends(require_auth)],
 ) -> PluginTogglePreviewResponse:
     try:
         preview = await plugin_management_service.preview_toggle_plugin(
@@ -116,7 +116,7 @@ async def preview_toggle_plugin(
 async def uninstall_plugin(
     module_name: str,
     payload: PluginUninstallRequest,
-    _: Annotated[Any, Depends(require_owner)],
+    _: Annotated[Any, Depends(require_auth)],
 ) -> OperationStatusResponse:
     try:
         await plugin_management_service.uninstall_plugin(
@@ -141,7 +141,7 @@ async def uninstall_plugin(
 @router.post("/install/manual", response_model=PluginStoreTaskItem)
 async def install_plugin_manual(
     payload: PluginManualInstallRequest,
-    _: Annotated[Any, Depends(require_owner)],
+    _: Annotated[Any, Depends(require_auth)],
 ) -> PluginStoreTaskItem:
     try:
         task = await plugin_store_task_service.create_manual_plugin_install_task(
@@ -156,7 +156,7 @@ async def install_plugin_manual(
 @router.post("/install/resolve", response_model=PluginInstallResolveResponse)
 async def resolve_plugin_install(
     payload: PluginInstallResolveRequest,
-    _: Annotated[Any, Depends(require_control_panel)],
+    _: Annotated[Any, Depends(require_auth)],
 ) -> PluginInstallResolveResponse:
     result = resolve_plugin_install_source(payload)
     if isawaitable(result):
@@ -171,7 +171,7 @@ async def resolve_plugin_install(
 @router.post("/install/confirm", response_model=PluginStoreTaskItem)
 async def confirm_plugin_install(
     payload: PluginInstallConfirmRequest,
-    _: Annotated[Any, Depends(require_owner)],
+    _: Annotated[Any, Depends(require_auth)],
 ) -> PluginStoreTaskItem:
     action = payload.action
     if action.kind != "install_package":
@@ -259,7 +259,7 @@ def _completed_registration_task(
 async def update_plugin_package_task(
     module_name: str,
     payload: PluginPackageUpdateRequest,
-    _: Annotated[Any, Depends(require_owner)],
+    _: Annotated[Any, Depends(require_auth)],
 ) -> PluginStoreTaskItem:
     plugin = await plugin_management_service.get_plugin(module_name)
     if plugin is None:
@@ -301,7 +301,7 @@ async def update_plugin_package_task(
 @router.get("/install/tasks/{task_id}", response_model=PluginStoreTaskItem)
 async def get_plugin_install_task(
     task_id: str,
-    _: Annotated[Any, Depends(require_control_panel)],
+    _: Annotated[Any, Depends(require_auth)],
 ) -> PluginStoreTaskItem:
     task = plugin_store_task_service.get_task(task_id)
     if task is None:

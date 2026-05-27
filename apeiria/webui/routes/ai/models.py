@@ -14,7 +14,7 @@ from apeiria.app.ai.operations import (
     AISourceModelTestConfigError,
     AISourceModelTestUpstreamError,
 )
-from apeiria.webui.auth import require_control_panel
+from apeiria.webui.auth import require_auth
 
 from .models_schemas import (
     AIModelBindingItem,
@@ -55,7 +55,7 @@ def _actor_username_from_claims(session: "AuthSession") -> str | None:
 
 @router.get("/sources/models", response_model=list[AISourceModelItem])
 async def list_ai_source_models(
-    _: Annotated[Any, Depends(require_control_panel)],
+    _: Annotated[Any, Depends(require_auth)],
     source_id: Annotated[str, Query(min_length=1)],
 ) -> list[AISourceModelItem]:
     items = await ai_application.operations.list_source_models(source_id=source_id)
@@ -65,7 +65,7 @@ async def list_ai_source_models(
 @router.post("/sources/models/fetch", response_model=list[AIModelCatalogItem])
 async def fetch_ai_source_models(
     payload: AISourceModelFetchRequest,
-    _: Annotated[Any, Depends(require_control_panel)],
+    _: Annotated[Any, Depends(require_auth)],
 ) -> list[AIModelCatalogItem]:
     try:
         items = await ai_application.operations.fetch_source_models(
@@ -91,7 +91,7 @@ async def fetch_ai_source_models(
 @router.post("/sources/models/test", response_model=AISourceModelTestResult)
 async def test_ai_source_model(
     payload: AISourceModelTestRequest,
-    _: Annotated[Any, Depends(require_control_panel)],
+    _: Annotated[Any, Depends(require_auth)],
 ) -> AISourceModelTestResult:
     try:
         (
@@ -126,7 +126,7 @@ async def test_ai_source_model(
 @router.post("/sources/models", response_model=AISourceModelItem)
 async def create_ai_source_model(
     payload: AISourceModelUpsertRequest,
-    session: Annotated["AuthSession", Depends(require_control_panel)],
+    session: Annotated["AuthSession", Depends(require_auth)],
 ) -> AISourceModelItem:
     item = await ai_application.operations.create_source_model(
         source_id=payload.source_id,
@@ -146,7 +146,7 @@ async def create_ai_source_model(
 @router.put("/sources/models", response_model=AISourceModelItem | None)
 async def update_ai_source_model(
     payload: AISourceModelUpsertRequest,
-    session: Annotated["AuthSession", Depends(require_control_panel)],
+    session: Annotated["AuthSession", Depends(require_auth)],
 ) -> AISourceModelItem | None:
     if not payload.model_id:
         return None
@@ -168,7 +168,7 @@ async def update_ai_source_model(
 
 @router.delete("/sources/models", response_model=bool)
 async def delete_ai_source_model(
-    session: Annotated["AuthSession", Depends(require_control_panel)],
+    session: Annotated["AuthSession", Depends(require_auth)],
     model_id: Annotated[str, Query(min_length=1)],
     source_id: Annotated[str | None, Query(max_length=64)] = None,
 ) -> bool:
@@ -187,7 +187,7 @@ async def delete_ai_source_model(
 
 @router.get("/model-profiles", response_model=list[AIModelProfileItem])
 async def list_ai_model_profiles(
-    _: Annotated[Any, Depends(require_control_panel)],
+    _: Annotated[Any, Depends(require_auth)],
 ) -> list[AIModelProfileItem]:
     profiles = await ai_application.operations.list_model_profiles()
     return [to_ai_model_profile_item(item) for item in profiles]
@@ -196,7 +196,7 @@ async def list_ai_model_profiles(
 @router.put("/model-profiles", response_model=AIModelProfileItem | None)
 async def upsert_ai_model_profile(
     payload: AIModelProfileUpsertRequest,
-    session: Annotated["AuthSession", Depends(require_control_panel)],
+    session: Annotated["AuthSession", Depends(require_auth)],
 ) -> AIModelProfileItem | None:
     item = (
         await ai_application.operations.update_model_profile(
@@ -223,7 +223,7 @@ async def upsert_ai_model_profile(
 
 @router.get("/model-bindings", response_model=list[AIModelBindingItem])
 async def list_ai_model_bindings(
-    _: Annotated[Any, Depends(require_control_panel)],
+    _: Annotated[Any, Depends(require_auth)],
 ) -> list[AIModelBindingItem]:
     bindings = await ai_application.operations.list_model_bindings()
     return [to_ai_model_binding_item(item) for item in bindings]
@@ -231,7 +231,7 @@ async def list_ai_model_bindings(
 
 @router.get("/model-routes", response_model=list[AIModelRouteItem])
 async def list_ai_model_routes(
-    _: Annotated[Any, Depends(require_control_panel)],
+    _: Annotated[Any, Depends(require_auth)],
 ) -> list[AIModelRouteItem]:
     routes = await ai_application.operations.list_model_routes()
     return [to_ai_model_route_item(item) for item in routes]
@@ -240,7 +240,7 @@ async def list_ai_model_routes(
 @router.put("/model-routes", response_model=AIModelRouteItem | None)
 async def upsert_ai_model_route(
     payload: AIModelRouteUpsertRequest,
-    session: Annotated["AuthSession", Depends(require_control_panel)],
+    session: Annotated["AuthSession", Depends(require_auth)],
 ) -> AIModelRouteItem | None:
     item = (
         await ai_application.operations.update_model_route(
@@ -269,7 +269,7 @@ async def upsert_ai_model_route(
 
 @router.delete("/model-routes", response_model=bool)
 async def delete_ai_model_route(
-    session: Annotated["AuthSession", Depends(require_control_panel)],
+    session: Annotated["AuthSession", Depends(require_auth)],
     route_id: Annotated[str, Query(min_length=1)],
 ) -> bool:
     return await ai_application.operations.delete_model_route(
@@ -280,7 +280,7 @@ async def delete_ai_model_route(
 
 @router.get("/model-route-members", response_model=list[AIModelRouteMemberItem])
 async def list_ai_model_route_members(
-    _: Annotated[Any, Depends(require_control_panel)],
+    _: Annotated[Any, Depends(require_auth)],
     route_id: Annotated[str | None, Query(min_length=1)] = None,
 ) -> list[AIModelRouteMemberItem]:
     members = await ai_application.operations.list_model_route_members(
@@ -295,7 +295,7 @@ async def list_ai_model_route_members(
 )
 async def upsert_ai_model_route_member(
     payload: AIModelRouteMemberUpsertRequest,
-    session: Annotated["AuthSession", Depends(require_control_panel)],
+    session: Annotated["AuthSession", Depends(require_auth)],
 ) -> AIModelRouteMemberItem | None:
     item = (
         await ai_application.operations.update_model_route_member(
@@ -322,7 +322,7 @@ async def upsert_ai_model_route_member(
 
 @router.delete("/model-route-members", response_model=bool)
 async def delete_ai_model_route_member(
-    session: Annotated["AuthSession", Depends(require_control_panel)],
+    session: Annotated["AuthSession", Depends(require_auth)],
     route_member_id: Annotated[str, Query(min_length=1)],
 ) -> bool:
     return await ai_application.operations.delete_model_route_member(
@@ -333,7 +333,7 @@ async def delete_ai_model_route_member(
 
 @router.get("/model-route-bindings", response_model=list[AIModelRouteBindingItem])
 async def list_ai_model_route_bindings(
-    _: Annotated[Any, Depends(require_control_panel)],
+    _: Annotated[Any, Depends(require_auth)],
 ) -> list[AIModelRouteBindingItem]:
     bindings = await ai_application.operations.list_model_route_bindings()
     return [to_ai_model_route_binding_item(item) for item in bindings]
@@ -342,7 +342,7 @@ async def list_ai_model_route_bindings(
 @router.put("/model-route-bindings", response_model=AIModelRouteBindingItem)
 async def upsert_ai_model_route_binding(
     payload: AIModelRouteBindingUpsertRequest,
-    session: Annotated["AuthSession", Depends(require_control_panel)],
+    session: Annotated["AuthSession", Depends(require_auth)],
 ) -> AIModelRouteBindingItem:
     item = await ai_application.operations.upsert_model_route_binding(
         scope_type=payload.scope_type,
@@ -356,7 +356,7 @@ async def upsert_ai_model_route_binding(
 
 @router.delete("/model-route-bindings", response_model=bool)
 async def delete_ai_model_route_binding(
-    session: Annotated["AuthSession", Depends(require_control_panel)],
+    session: Annotated["AuthSession", Depends(require_auth)],
     scope_type: Annotated[str, Query(min_length=1)],
     scope_id: Annotated[str, Query(min_length=1)],
     task_class: Annotated[str, Query(min_length=1)],

@@ -1,6 +1,5 @@
 import type { RouteRecordRaw } from 'vue-router'
 import { createRouter, createWebHistory } from 'vue-router'
-import { CAP_ACCOUNT_MANAGE, CAP_CONTROL_PANEL } from '@/constants/access'
 import { useAuthStore } from '@/stores/auth'
 import { buildAuthRedirect } from '@/utils/routeRedirect'
 
@@ -12,15 +11,9 @@ const routes: RouteRecordRaw[] = [
     meta: { requiresAuth: false, titleKey: 'login.submit' },
   },
   {
-    path: '/register',
-    name: 'register',
-    component: () => import('@/pages/RegisterPage.vue'),
-    meta: { requiresAuth: false, titleKey: 'register.submit' },
-  },
-  {
     path: '/',
     component: () => import('@/layouts/AppLayout.vue'),
-    meta: { requiresAuth: true, requiredCapability: CAP_CONTROL_PANEL },
+    meta: { requiresAuth: true },
     children: [
       { path: '', redirect: '/dashboard' },
       {
@@ -87,7 +80,7 @@ const routes: RouteRecordRaw[] = [
         path: 'accounts',
         name: 'accounts',
         component: () => import('@/pages/AccountsPage.vue'),
-        meta: { titleKey: 'accounts.title', requiredCapability: CAP_ACCOUNT_MANAGE },
+        meta: { titleKey: 'accounts.title' },
       },
       {
         path: 'update',
@@ -119,15 +112,7 @@ router.beforeEach(async to => {
     }
   }
 
-  const requiredCapability = typeof to.meta.requiredCapability === 'string'
-    ? to.meta.requiredCapability
-    : ''
-  if (requiredCapability && !authStore.capabilities.includes(requiredCapability)) {
-    authStore.handleForbidden()
-    return { name: 'login' }
-  }
-
-  if ((to.name === 'login' || to.name === 'register') && authStore.isAuthenticated) {
+  if (to.name === 'login' && authStore.isAuthenticated) {
     return { name: 'dashboard' }
   }
 

@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Annotated, Any
 from fastapi import APIRouter, Depends, Query
 
 from apeiria.app.ai import ai_application
-from apeiria.webui.auth import require_control_panel
+from apeiria.webui.auth import require_auth
 
 from .future_tasks_schemas import AIFutureTaskItem, to_ai_future_task_item
 
@@ -25,7 +25,7 @@ def _actor_username_from_claims(session: "AuthSession") -> str | None:
 
 @router.get("/future-tasks", response_model=list[AIFutureTaskItem])
 async def list_ai_future_tasks(
-    _: Annotated[Any, Depends(require_control_panel)],
+    _: Annotated[Any, Depends(require_auth)],
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
 ) -> list[AIFutureTaskItem]:
     tasks = await ai_application.future_tasks.list_tasks(limit=limit)
@@ -34,7 +34,7 @@ async def list_ai_future_tasks(
 
 @router.delete("/future-tasks", response_model=AIFutureTaskItem | None)
 async def cancel_ai_future_task(
-    session: Annotated["AuthSession", Depends(require_control_panel)],
+    session: Annotated["AuthSession", Depends(require_auth)],
     task_id: Annotated[str, Query(min_length=1)],
 ) -> AIFutureTaskItem | None:
     task = await ai_application.future_tasks.cancel_task(

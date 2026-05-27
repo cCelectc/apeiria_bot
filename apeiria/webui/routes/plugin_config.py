@@ -7,7 +7,7 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Depends, HTTPException
 
 from apeiria.app.plugins.management import plugin_management_service
-from apeiria.webui.auth import require_control_panel
+from apeiria.webui.auth import require_auth
 from apeiria.webui.schemas.plugin_config import (
     PluginConfigRequest,
     PluginConfigResponse,
@@ -36,7 +36,7 @@ def _ensure_plugin_settings_module_name(module_name: str) -> None:
 
 @router.get("/local-sources", response_model=PluginConfigResponse)
 async def get_plugin_local_sources(
-    _: Annotated[Any, Depends(require_control_panel)],
+    _: Annotated[Any, Depends(require_auth)],
 ) -> PluginConfigResponse:
     return to_plugin_config_response(plugin_management_service.get_plugin_config())
 
@@ -44,7 +44,7 @@ async def get_plugin_local_sources(
 @router.patch("/local-sources", response_model=PluginConfigResponse)
 async def update_plugin_local_sources(
     payload: PluginConfigRequest,
-    _: Annotated[Any, Depends(require_control_panel)],
+    _: Annotated[Any, Depends(require_auth)],
 ) -> PluginConfigResponse:
     return to_plugin_config_response(
         plugin_management_service.update_plugin_config(
@@ -57,7 +57,7 @@ async def update_plugin_local_sources(
 @router.get("/{module_name}/settings", response_model=PluginSettingsResponse)
 async def get_plugin_settings(
     module_name: str,
-    _: Annotated[Any, Depends(require_control_panel)],
+    _: Annotated[Any, Depends(require_auth)],
 ) -> PluginSettingsResponse:
     _ensure_plugin_settings_module_name(module_name)
     state = run_settings_action(plugin_management_service.get_plugin_view, module_name)
@@ -67,7 +67,7 @@ async def get_plugin_settings(
 @router.get("/{module_name}/settings/raw", response_model=PluginRawSettingsResponse)
 async def get_plugin_settings_raw(
     module_name: str,
-    _: Annotated[Any, Depends(require_control_panel)],
+    _: Annotated[Any, Depends(require_auth)],
 ) -> PluginRawSettingsResponse:
     _ensure_plugin_settings_module_name(module_name)
     state = run_settings_action(plugin_management_service.get_plugin_text, module_name)
@@ -78,7 +78,7 @@ async def get_plugin_settings_raw(
 async def update_plugin_settings(
     module_name: str,
     payload: PluginSettingsUpdateRequest,
-    _: Annotated[Any, Depends(require_control_panel)],
+    _: Annotated[Any, Depends(require_auth)],
 ) -> PluginSettingsResponse:
     _ensure_plugin_settings_module_name(module_name)
     state = run_settings_action(
@@ -94,7 +94,7 @@ async def update_plugin_settings(
 async def update_plugin_settings_raw(
     module_name: str,
     payload: PluginSettingsRawUpdateRequest,
-    _: Annotated[Any, Depends(require_control_panel)],
+    _: Annotated[Any, Depends(require_auth)],
 ) -> PluginRawSettingsResponse:
     _ensure_plugin_settings_module_name(module_name)
     state = run_settings_action(
@@ -112,7 +112,7 @@ async def update_plugin_settings_raw(
 async def validate_plugin_settings_raw(
     module_name: str,
     payload: PluginSettingsRawUpdateRequest,
-    _: Annotated[Any, Depends(require_control_panel)],
+    _: Annotated[Any, Depends(require_auth)],
 ) -> PluginSettingsRawValidationResponse:
     _ensure_plugin_settings_module_name(module_name)
     state = run_settings_action(

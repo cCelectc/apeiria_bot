@@ -4,7 +4,6 @@ import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import {
   AlertCircle,
-  ArrowRight,
   Loader2,
   LogIn,
   ShieldCheck,
@@ -41,9 +40,6 @@ const authStateMessage = computed(() => {
   if (authStore.status === 'expired') {
     return t('login.sessionExpired')
   }
-  if (authStore.status === 'forbidden') {
-    return t('login.forbidden')
-  }
   return ''
 })
 const visibleError = computed(() => errorMessage.value || authStateMessage.value)
@@ -65,12 +61,7 @@ async function submitLogin() {
       password: password.value,
     })
     authStore.acceptSession(response.data.principal)
-    if (authStore.isAuthenticated) {
-      await router.push(normalizeAuthRedirect(route.query.redirect))
-      return
-    }
-    authStore.handleForbidden()
-    errorMessage.value = t('login.forbidden')
+    await router.push(normalizeAuthRedirect(route.query.redirect))
   } catch (error) {
     errorMessage.value = getErrorMessage(error, t('login.wrongPassword'))
   } finally {
@@ -139,13 +130,6 @@ async function submitLogin() {
               <Loader2 v-if="loading" class="auth-spin" :size="16" />
               <LogIn v-else :size="16" />
               {{ loading ? t('common.loading') : t('login.submit') }}
-            </Button>
-
-            <Button as-child class="auth-secondary-link" type="button" variant="link">
-              <RouterLink to="/register">
-                {{ t('login.toRegister') }}
-                <ArrowRight :size="14" />
-              </RouterLink>
             </Button>
           </form>
         </div>

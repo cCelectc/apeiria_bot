@@ -14,7 +14,6 @@ from apeiria.utils.project_context import (
 if TYPE_CHECKING:
     from pathlib import Path
 
-    import pytest
 
 EXPECTED_UPDATED_SESSION_VERSION = 1
 EXPECTED_ROTATED_SESSION_VERSION = 2
@@ -39,7 +38,6 @@ def _clear_webui_auth_modules() -> None:
 
 
 def test_webui_auth_account_flow_uses_current_storage(
-    monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
     _clear_webui_auth_modules()
@@ -52,8 +50,6 @@ def test_webui_auth_account_flow_uses_current_storage(
             {
                 "token_secret": "legacy-token-secret",
                 "users": [],
-                "registration_codes": [],
-                "audit_events": [],
             }
         ),
         encoding="utf-8",
@@ -63,18 +59,14 @@ def test_webui_auth_account_flow_uses_current_storage(
         secrets_module = importlib.import_module(
             "apeiria.app.access.webui_auth.secrets"
         )
-        audit_module = importlib.import_module("apeiria.app.access.webui_auth.audit")
-        monkeypatch.setattr(audit_module, "_mirror_to_governance_audit", _noop_mirror)
-
-        created_code = secrets_module.create_registration_code(
-            role="owner",
-            created_by="host",
-        )
-        registered = secrets_module.register_account(
-            created_code.code,
+        created_username, created = secrets_module.recover_owner_account(
             "Alice",
             "strong-pass-123",
         )
+        assert created_username == "alice"
+        assert created is True
+        registered = secrets_module.get_account_by_username("alice")
+        assert registered is not None
         verified = secrets_module.verify_account_password("alice", "strong-pass-123")
         updated = secrets_module.update_account_password(
             registered.user_id,
@@ -82,7 +74,6 @@ def test_webui_auth_account_flow_uses_current_storage(
         )
         rotated = secrets_module.rotate_account_session_version(
             registered.user_id,
-            actor_username="alice",
         )
 
         assert secrets_module.get_secret_file_path() == secret_file
@@ -100,20 +91,8 @@ def test_webui_auth_account_flow_uses_current_storage(
         )
         assert rotated is not None
         assert rotated.session_version == EXPECTED_ROTATED_SESSION_VERSION
-        assert [
-            item.event_type for item in secrets_module.list_security_audit_events()
-        ] == [
-            "sessions_revoked",
-            "password_changed",
-            "registration_code_used",
-            "registration_code_created",
-        ]
         assert not secret_file.is_file()
         assert secret_file.with_name("secret.json.v1.backup").is_file()
         assert ApeiriaDatabase(project_root=tmp_path).database_path().is_file()
     finally:
         reset_active_project_root(token)
-
-
-def _noop_mirror(*_args: object, **_kwargs: object) -> None:
-    return None

@@ -96,7 +96,7 @@ MESSAGES_ZH_CN = {
         "检查项目插件配置冲突后，重新执行校验"
     ),
     "fix or restore `data/web_ui/secret.json`, then rerun check": (
-        "修复或恢复 `data/web_ui/secret.json` 后，重新执行校验"
+        "移除旧版 `data/web_ui/secret.json` 或确认其可导入后，重新执行校验"
     ),
     "Export local runtime state for migration.": "导出本地运行态以便迁移。",
     "Import local runtime state from a migration bundle.": ("从迁移包导入本地运行态。"),

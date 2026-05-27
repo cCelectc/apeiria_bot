@@ -11,8 +11,9 @@ if TYPE_CHECKING:
     from apeiria.db.runtime import ApeiriaDatabase
 
 CURRENT_SCHEMA_LINE = "apeiria_v1"
-CURRENT_SCHEMA_VERSION = 2
-SUPPORTED_MIGRATION_SOURCE_VERSIONS = frozenset({1})
+CURRENT_SCHEMA_VERSION = 3
+WEBUI_AUTH_SIMPLIFIED_SCHEMA_VERSION = 2
+SUPPORTED_MIGRATION_SOURCE_VERSIONS = frozenset({1, 2})
 
 TOOL_LEVEL_VALUES: tuple[str, ...] = ("none", "read", "write", "host", "admin")
 TOOL_LEVEL_CHECK = "allowed_level IN ('none', 'read', 'write', 'host', 'admin')"
@@ -211,6 +212,10 @@ def _migrate_schema_to_current(
 ) -> None:
     if meta.schema_version == 1:
         _migrate_v1_to_v2(connection)
+        _migrate_v2_to_v3(connection)
+        return
+    if meta.schema_version == WEBUI_AUTH_SIMPLIFIED_SCHEMA_VERSION:
+        _migrate_v2_to_v3(connection)
         return
     raise UnsupportedDatabaseVersionError.unsupported_schema_version(
         observed=meta.schema_version,
@@ -221,6 +226,11 @@ def _migrate_schema_to_current(
 def _migrate_v1_to_v2(connection: sqlite3.Connection) -> None:
     _ensure_current_schema_shape(connection)
     _ensure_webui_auth_tables(connection)
+    _set_schema_version(connection, WEBUI_AUTH_SIMPLIFIED_SCHEMA_VERSION)
+
+
+def _migrate_v2_to_v3(connection: sqlite3.Connection) -> None:
+    _replace_webui_auth_tables_v3(connection)
     _set_schema_version(connection, CURRENT_SCHEMA_VERSION)
 
 
@@ -332,6 +342,7 @@ def _ensure_current_schema_shape(  # noqa: C901, PLR0912, PLR0915
         _create_model_route_tables(connection)
     _backfill_model_routes_from_profiles(connection)
     _ensure_webui_auth_tables(connection)
+    _replace_webui_auth_tables_v3(connection)
     _ensure_context_summary_shape(connection, existing_tables)
     if "ai_tool_policy" in existing_tables:
         _replace_ai_tool_policy_if_legacy(connection)
@@ -654,7 +665,6 @@ def _create_webui_auth_tables(connection: sqlite3.Connection) -> None:
             user_id TEXT PRIMARY KEY,
             username TEXT NOT NULL UNIQUE CHECK(length(username) > 0),
             password_hash TEXT NOT NULL CHECK(length(password_hash) > 0),
-            role TEXT NOT NULL CHECK(length(role) > 0),
             is_disabled INTEGER NOT NULL DEFAULT 0 CHECK(is_disabled IN (0, 1)),
             last_login_at TEXT,
             password_changed_at TEXT,
@@ -666,38 +676,32 @@ def _create_webui_auth_tables(connection: sqlite3.Connection) -> None:
     )
     connection.execute(
         """
-        CREATE TABLE IF NOT EXISTS webui_registration_code (
-            code TEXT PRIMARY KEY,
-            role TEXT NOT NULL CHECK(length(role) > 0),
-            created_at TEXT NOT NULL,
-            created_by TEXT NOT NULL CHECK(length(created_by) > 0)
-        )
-        """
-    )
-    connection.execute(
-        """
-        CREATE TABLE IF NOT EXISTS webui_security_audit_event (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            event_type TEXT NOT NULL CHECK(length(event_type) > 0),
-            occurred_at TEXT NOT NULL,
-            actor_username TEXT,
-            target_username TEXT,
-            detail TEXT
-        )
-        """
-    )
-    connection.execute(
-        """
         CREATE INDEX IF NOT EXISTS idx_webui_account_username
         ON webui_account(username)
         """
     )
-    connection.execute(
-        """
-        CREATE INDEX IF NOT EXISTS idx_webui_security_audit_event_occurred_at
-        ON webui_security_audit_event(occurred_at)
-        """
-    )
+
+
+def _replace_webui_auth_tables_v3(connection: sqlite3.Connection) -> None:
+    connection.execute("DROP TABLE IF EXISTS webui_registration_code")
+    connection.execute("DROP TABLE IF EXISTS webui_security_audit_event")
+    account_columns = _column_names(connection, "webui_account")
+    expected_columns = {
+        "user_id",
+        "username",
+        "password_hash",
+        "is_disabled",
+        "last_login_at",
+        "password_changed_at",
+        "session_version",
+        "created_at",
+        "updated_at",
+    }
+    if account_columns == expected_columns:
+        return
+    connection.execute("DROP INDEX IF EXISTS idx_webui_account_username")
+    connection.execute("DROP TABLE IF EXISTS webui_account")
+    _create_webui_auth_tables(connection)
 
 
 def _create_governance_tables(connection: sqlite3.Connection) -> None:

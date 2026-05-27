@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Annotated, Any
 from fastapi import APIRouter, Depends, Query
 
 from apeiria.app.ai import ai_application
-from apeiria.webui.auth import require_control_panel
+from apeiria.webui.auth import require_auth
 
 from .relationships_schemas import (
     AIRelationshipEventItem,
@@ -31,7 +31,7 @@ def _actor_username_from_claims(session: "AuthSession") -> str | None:
 
 @router.get("/relationships/list", response_model=list[AIRelationshipStateItem])
 async def list_ai_relationships(
-    _: Annotated[Any, Depends(require_control_panel)],
+    _: Annotated[Any, Depends(require_auth)],
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
 ) -> list[AIRelationshipStateItem]:
     states = await ai_application.operations.list_relationships(limit=limit)
@@ -40,7 +40,7 @@ async def list_ai_relationships(
 
 @router.get("/relationships", response_model=AIRelationshipStateItem)
 async def get_ai_relationship_state(
-    _: Annotated[Any, Depends(require_control_panel)],
+    _: Annotated[Any, Depends(require_auth)],
     platform: Annotated[str, Query(min_length=1)],
     user_id: Annotated[str, Query(min_length=1)],
 ) -> AIRelationshipStateItem:
@@ -53,7 +53,7 @@ async def get_ai_relationship_state(
 
 @router.get("/relationships/events", response_model=list[AIRelationshipEventItem])
 async def list_ai_relationship_events(
-    _: Annotated[Any, Depends(require_control_panel)],
+    _: Annotated[Any, Depends(require_auth)],
     platform: Annotated[str, Query(min_length=1)],
     user_id: Annotated[str, Query(min_length=1)],
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
@@ -69,7 +69,7 @@ async def list_ai_relationship_events(
 @router.patch("/relationships", response_model=AIRelationshipStateItem)
 async def update_ai_relationship_score(
     payload: AIRelationshipScoreUpdateRequest,
-    session: Annotated["AuthSession", Depends(require_control_panel)],
+    session: Annotated["AuthSession", Depends(require_auth)],
 ) -> AIRelationshipStateItem:
     state = await ai_application.operations.set_relationship_score(
         platform=payload.platform,

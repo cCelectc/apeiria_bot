@@ -9,7 +9,7 @@ from fastapi.responses import StreamingResponse
 
 from apeiria.i18n import t
 from apeiria.runtime.context import get_current_runtime
-from apeiria.webui.auth import require_control_panel
+from apeiria.webui.auth import require_auth
 from apeiria.webui.schemas.models import (
     DashboardEventItem,
     DashboardEventsResponse,
@@ -35,7 +35,7 @@ def _require_runtime_control_plane() -> Any:
 
 @router.get("/status", response_model=StatusResponse)
 async def get_status(
-    _: Annotated[Any, Depends(require_control_panel)],
+    _: Annotated[Any, Depends(require_auth)],
 ) -> StatusResponse:
     """Return the current dashboard status snapshot."""
     snapshot = await _require_runtime_control_plane().get_dashboard_status()
@@ -53,7 +53,7 @@ async def get_status(
 
 @router.get("/events", response_model=DashboardEventsResponse)
 async def get_events(
-    _: Annotated[Any, Depends(require_control_panel)],
+    _: Annotated[Any, Depends(require_auth)],
 ) -> DashboardEventsResponse:
     """Return recent warning and error events for the dashboard."""
     events = _require_runtime_control_plane().get_dashboard_events()
@@ -72,7 +72,7 @@ async def get_events(
 
 @router.get("/webui-build", response_model=WebUIBuildStatusResponse)
 async def get_webui_build_status(
-    _: Annotated[Any, Depends(require_control_panel)],
+    _: Annotated[Any, Depends(require_auth)],
 ) -> WebUIBuildStatusResponse:
     status = _require_runtime_control_plane().get_web_ui_build_status()
     return WebUIBuildStatusResponse(
@@ -86,7 +86,7 @@ async def get_webui_build_status(
 
 @router.post("/webui-build", response_model=WebUIBuildRunResponse)
 async def rebuild_webui(
-    _: Annotated[Any, Depends(require_control_panel)],
+    _: Annotated[Any, Depends(require_auth)],
 ) -> WebUIBuildRunResponse:
     try:
         status = await _require_runtime_control_plane().rebuild_web_ui()
@@ -104,7 +104,7 @@ async def rebuild_webui(
 
 @router.post("/webui-build/stream")
 async def rebuild_webui_stream(
-    _: Annotated[Any, Depends(require_control_panel)],
+    _: Annotated[Any, Depends(require_auth)],
 ) -> StreamingResponse:
     control_plane = _require_runtime_control_plane()
     status = control_plane.get_web_ui_build_status()
@@ -121,7 +121,7 @@ async def rebuild_webui_stream(
 
 @router.post("/restart", response_model=OperationStatusResponse)
 async def restart_bot(
-    _: Annotated[Any, Depends(require_control_panel)],
+    _: Annotated[Any, Depends(require_auth)],
 ) -> OperationStatusResponse:
     _require_runtime_control_plane().schedule_restart()
     return OperationStatusResponse(detail=t("web_ui.dashboard.restart_scheduled"))

@@ -7,7 +7,7 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from apeiria.app.ai import ai_application
-from apeiria.webui.auth import require_control_panel
+from apeiria.webui.auth import require_auth
 
 from .sessions_schemas import (
     AIChatMessageItem,
@@ -31,7 +31,7 @@ router = APIRouter()
 
 @router.get("/recent-targets", response_model=list[AIRecentTargetItem])
 async def list_ai_recent_targets(
-    _: Annotated[Any, Depends(require_control_panel)],
+    _: Annotated[Any, Depends(require_auth)],
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
 ) -> list[AIRecentTargetItem]:
     targets = await ai_application.sessions.list_recent_targets(limit=limit)
@@ -40,7 +40,7 @@ async def list_ai_recent_targets(
 
 @router.get("/scenes", response_model=list[AISessionItem])
 async def list_ai_scenes(
-    _: Annotated[Any, Depends(require_control_panel)],
+    _: Annotated[Any, Depends(require_auth)],
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
 ) -> list[AISessionItem]:
     conversations = await ai_application.sessions.list_recent_sessions(limit=limit)
@@ -49,7 +49,7 @@ async def list_ai_scenes(
 
 @router.get("/scenes/turns", response_model=list[AIChatMessageItem])
 async def list_ai_scene_turns(
-    _: Annotated[Any, Depends(require_control_panel)],
+    _: Annotated[Any, Depends(require_auth)],
     scene_id: Annotated[str, Query(min_length=1)],
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
 ) -> list[AIChatMessageItem]:
@@ -65,7 +65,7 @@ async def list_ai_scene_turns(
     response_model=AISessionPromptPreviewItem | None,
 )
 async def get_ai_scene_prompt_preview(
-    _: Annotated[Any, Depends(require_control_panel)],
+    _: Annotated[Any, Depends(require_auth)],
     scene_id: Annotated[str, Query(min_length=1)],
     turn_limit: Annotated[int, Query(ge=1, le=200)] = 50,
 ) -> AISessionPromptPreviewItem | None:
@@ -80,7 +80,7 @@ async def get_ai_scene_prompt_preview(
 
 @router.get("/managed-sessions", response_model=list[AIManagedSessionItem])
 async def list_ai_managed_sessions(
-    _: Annotated[Any, Depends(require_control_panel)],
+    _: Annotated[Any, Depends(require_auth)],
     limit: Annotated[int, Query(ge=1, le=100)] = 50,
 ) -> list[AIManagedSessionItem]:
     sessions = await ai_application.sessions.list_managed_sessions(limit=limit)
@@ -92,7 +92,7 @@ async def list_ai_managed_sessions(
     response_model=AIManagedSessionDetailItem,
 )
 async def get_ai_managed_session(
-    _: Annotated[Any, Depends(require_control_panel)],
+    _: Annotated[Any, Depends(require_auth)],
     session_id: str,
     message_limit: Annotated[int, Query(ge=1, le=200)] = 50,
 ) -> AIManagedSessionDetailItem:
@@ -113,7 +113,7 @@ async def get_ai_managed_session(
     response_model=AIManagedSessionDetailItem,
 )
 async def update_ai_managed_session_enabled(
-    session: Annotated[Any, Depends(require_control_panel)],
+    session: Annotated[Any, Depends(require_auth)],
     session_id: str,
     payload: AIManagedSessionAIEnabledUpdate,
 ) -> AIManagedSessionDetailItem:
@@ -135,7 +135,7 @@ async def update_ai_managed_session_enabled(
     response_model=AIManagedSessionDetailItem,
 )
 async def update_ai_managed_session_persona(
-    session: Annotated[Any, Depends(require_control_panel)],
+    session: Annotated[Any, Depends(require_auth)],
     session_id: str,
     payload: AIManagedSessionPersonaUpdate,
 ) -> AIManagedSessionDetailItem:
@@ -157,7 +157,7 @@ async def update_ai_managed_session_persona(
     response_model=AIManagedSessionDetailItem,
 )
 async def reset_ai_managed_session_context(
-    session: Annotated[Any, Depends(require_control_panel)],
+    session: Annotated[Any, Depends(require_auth)],
     session_id: str,
 ) -> AIManagedSessionDetailItem:
     detail = await ai_application.sessions.reset_managed_session_context(

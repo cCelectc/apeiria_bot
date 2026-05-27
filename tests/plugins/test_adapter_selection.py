@@ -12,7 +12,7 @@ from apeiria.plugins.registry import (
 from apeiria.webui.routes.adapter_selection import (
     disable_adapter,
     enable_adapter,
-    require_owner,
+    require_auth,
 )
 from apeiria.webui.routes.adapter_selection import (
     router as adapter_selection_router,
@@ -158,9 +158,9 @@ def test_enable_and_disable_adapter_update_project_modules(
     ]
 
 
-def test_adapter_selection_write_routes_require_owner_dependency() -> None:
-    assert require_owner in _route_dependencies(enable_adapter)
-    assert require_owner in _route_dependencies(disable_adapter)
+def test_adapter_selection_write_routes_require_auth_dependency() -> None:
+    assert require_auth in _route_dependencies(enable_adapter)
+    assert require_auth in _route_dependencies(disable_adapter)
 
 
 def _patch_config_state(

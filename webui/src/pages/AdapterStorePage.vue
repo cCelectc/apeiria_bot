@@ -576,7 +576,7 @@ onBeforeUnmount(() => {
         {{ t('adapterStore.refreshSources') }}
       </Button>
       <Button
-        :disabled="!authStore.isOwner || actionLocked"
+        :disabled="!authStore.isAuthenticated || actionLocked"
         @click="openManualInstallDialog"
       >
         <UploadCloud :size="16" />
@@ -755,7 +755,7 @@ onBeforeUnmount(() => {
           <span class="adapter-store-card__action-spacer" />
           <Button
             v-if="!item.is_installed"
-            :disabled="!authStore.isOwner || actionLocked"
+            :disabled="!authStore.isAuthenticated || actionLocked"
             size="sm"
             @click="openActionDialog(item, 'install')"
           >
@@ -763,7 +763,7 @@ onBeforeUnmount(() => {
           </Button>
           <Button
             v-if="item.can_update"
-            :disabled="!authStore.isOwner || actionLocked"
+            :disabled="!authStore.isAuthenticated || actionLocked"
             size="sm"
             variant="secondary"
             @click="openActionDialog(item, 'update')"
@@ -772,7 +772,7 @@ onBeforeUnmount(() => {
           </Button>
           <Button
             v-if="canUninstall(item)"
-            :disabled="!authStore.isOwner || actionLocked"
+            :disabled="!authStore.isAuthenticated || actionLocked"
             size="sm"
             variant="ghost"
             @click="openActionDialog(item, 'uninstall')"

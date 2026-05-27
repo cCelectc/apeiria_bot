@@ -6,7 +6,6 @@ import pytest
 from fastapi import HTTPException
 
 from apeiria.access.principal import AuthSession, Principal, PrincipalRole
-from apeiria.access.principal_roles import CAP_CONTROL_PANEL
 from apeiria.db.runtime import database_runtime
 
 if TYPE_CHECKING:
@@ -116,20 +115,6 @@ def test_ai_runtime_settings_route_rejects_invalid_update(
     asyncio.run(scenario())
 
 
-def test_require_control_panel_rejects_session_without_capability() -> None:
-    from apeiria.webui.auth import require_control_panel
-
-    async def scenario() -> None:
-        with pytest.raises(HTTPException) as exc_info:
-            await require_control_panel(_plain_session())
-
-        assert exc_info.value.status_code == HTTP_FORBIDDEN
-
-    import asyncio
-
-    asyncio.run(scenario())
-
-
 def _control_panel_session() -> AuthSession:
     return AuthSession(
         principal=Principal(
@@ -137,8 +122,8 @@ def _control_panel_session() -> AuthSession:
             principal_id="admin",
             display_name="admin",
             role=PrincipalRole(
-                role_id="owner",
-                capabilities=(CAP_CONTROL_PANEL,),
+                role_id="webui_local_account",
+                capabilities=("control_panel",),
             ),
         ),
         auth_method="password",
@@ -153,7 +138,7 @@ def _plain_session() -> AuthSession:
             principal_kind="webui_account",
             principal_id="viewer",
             display_name="viewer",
-            role=PrincipalRole(role_id="viewer", capabilities=()),
+            role=PrincipalRole(role_id="limited_account", capabilities=()),
         ),
         auth_method="password",
         session_version=1,

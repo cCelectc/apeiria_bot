@@ -28,7 +28,7 @@ client.interceptors.response.use(
       && authStore.status !== 'anonymous'
       && requestUrl.includes('/auth/me')
     ) {
-      authStore.handleForbidden()
+      authStore.clearSession('anonymous')
       window.location.href = '/login'
     }
     return Promise.reject(error)
@@ -85,7 +85,6 @@ export function getErrorMessage(error: unknown, fallback: string) {
 
 function isCredentialRequest(requestUrl: string) {
   return requestUrl.includes('/auth/login')
-    || requestUrl.includes('/auth/register')
     || requestUrl.includes('/auth/password')
 }
 

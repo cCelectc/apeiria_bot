@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import ValidationError
 
 from apeiria.ai.runtime_settings import ai_runtime_settings_service
-from apeiria.webui.auth import require_control_panel
+from apeiria.webui.auth import require_auth
 
 from .settings_schemas import (
     AIRuntimeSettingsResponse,
@@ -21,7 +21,7 @@ router = APIRouter()
 
 @router.get("/runtime-settings", response_model=AIRuntimeSettingsResponse)
 async def get_ai_runtime_settings(
-    _: Annotated[Any, Depends(require_control_panel)],
+    _: Annotated[Any, Depends(require_auth)],
 ) -> AIRuntimeSettingsResponse:
     return to_ai_runtime_settings_response(ai_runtime_settings_service.get_view())
 
@@ -29,7 +29,7 @@ async def get_ai_runtime_settings(
 @router.patch("/runtime-settings", response_model=AIRuntimeSettingsResponse)
 async def update_ai_runtime_settings(
     payload: AIRuntimeSettingsUpdateRequest,
-    _: Annotated[Any, Depends(require_control_panel)],
+    _: Annotated[Any, Depends(require_auth)],
 ) -> AIRuntimeSettingsResponse:
     try:
         view = ai_runtime_settings_service.update_settings(

@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
-from apeiria.access.principal import Principal
-from apeiria.access.principal_roles import ROLE_OWNER, role_for
+from apeiria.access.principal import Principal, PrincipalRole
+
+_FULL_ACCESS_ROLE = PrincipalRole(
+    role_id="webui_local_account",
+    capabilities=("control_panel", "account_manage"),
+)
 
 
 class PrincipalService:
@@ -14,17 +18,12 @@ class PrincipalService:
         *,
         user_id: str,
         username: str,
-        role: object,
     ) -> Principal:
-        resolved_role = role_for(role, fallback=ROLE_OWNER)
-        if resolved_role is None:
-            msg = "unsupported_role"
-            raise ValueError(msg)
         return Principal(
             principal_kind="webui_account",
             principal_id=user_id,
             display_name=username,
-            role=resolved_role,
+            role=_FULL_ACCESS_ROLE,
             metadata={"username": username},
         )
 
@@ -35,13 +34,11 @@ class PrincipalService:
         paths can resolve a stable governance principal without inventing
         a second Principal factory.
         """
-        resolved_role = role_for(ROLE_OWNER, fallback=ROLE_OWNER)
-        assert resolved_role is not None
         return Principal(
             principal_kind="system_actor",
             principal_id=f"system:{actor_name}",
             display_name=actor_name,
-            role=resolved_role,
+            role=_FULL_ACCESS_ROLE,
         )
 
     def build_host_operator(self, actor_name: str = "host") -> Principal:
@@ -50,13 +47,11 @@ class PrincipalService:
         Intended caller: host-side recovery / CLI that needs to present a
         governance principal but cannot use the WebUI account path.
         """
-        resolved_role = role_for(ROLE_OWNER, fallback=ROLE_OWNER)
-        assert resolved_role is not None
         return Principal(
             principal_kind="host_operator",
             principal_id=f"host:{actor_name}",
             display_name=actor_name,
-            role=resolved_role,
+            role=_FULL_ACCESS_ROLE,
         )
 
     def build_bot_subject(
@@ -64,7 +59,6 @@ class PrincipalService:
         *,
         subject_id: str,
         display_name: str,
-        role: object = ROLE_OWNER,
     ) -> Principal:
         """Reserved for Phase 3 runtime ingress.
 
@@ -72,13 +66,11 @@ class PrincipalService:
         bot identity needs to become a governance principal for audit /
         permission attribution.
         """
-        resolved_role = role_for(role, fallback=ROLE_OWNER)
-        assert resolved_role is not None
         return Principal(
             principal_kind="bot_subject",
             principal_id=subject_id,
             display_name=display_name,
-            role=resolved_role,
+            role=_FULL_ACCESS_ROLE,
         )
 
 

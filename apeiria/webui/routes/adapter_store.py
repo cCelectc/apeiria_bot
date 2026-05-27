@@ -16,7 +16,7 @@ from apeiria.app.plugins.store.workflows import (
     package_store_workflow,
 )
 from apeiria.i18n import t
-from apeiria.webui.auth import require_control_panel, require_owner
+from apeiria.webui.auth import require_auth
 from apeiria.webui.schemas.adapter_store import (
     AdapterStoreCategoryItem,
     AdapterStoreItem,
@@ -57,7 +57,7 @@ class AdapterStoreRefreshRequest(BaseModel):
 
 @router.get("/sources", response_model=list[AdapterStoreSourceItem])
 async def list_adapter_store_sources(
-    _: Annotated[Any, Depends(require_control_panel)],
+    _: Annotated[Any, Depends(require_auth)],
 ) -> list[AdapterStoreSourceItem]:
     return [
         to_adapter_store_source_item(item)
@@ -67,7 +67,7 @@ async def list_adapter_store_sources(
 
 @router.get("/items", response_model=AdapterStoreItemsResponse)
 async def list_adapter_store_items(
-    _: Annotated[Any, Depends(require_control_panel)],
+    _: Annotated[Any, Depends(require_auth)],
     params: Annotated[AdapterStoreItemsQueryParams, Depends()],
 ) -> AdapterStoreItemsResponse:
     result = await package_store_workflow.list_items(
@@ -99,7 +99,7 @@ async def list_adapter_store_items(
 async def get_adapter_store_item(
     source_id: str,
     adapter_id: str,
-    _: Annotated[Any, Depends(require_control_panel)],
+    _: Annotated[Any, Depends(require_auth)],
 ) -> AdapterStoreItem:
     item = await package_store_workflow.get_item(
         PackageStoreItemRequest(
@@ -119,7 +119,7 @@ async def get_adapter_store_item(
 @router.post("/refresh", response_model=list[AdapterStoreSourceItem])
 async def refresh_adapter_store_sources(
     payload: AdapterStoreRefreshRequest,
-    _: Annotated[Any, Depends(require_control_panel)],
+    _: Annotated[Any, Depends(require_auth)],
 ) -> list[AdapterStoreSourceItem]:
     return [
         to_adapter_store_source_item(item)
@@ -133,7 +133,7 @@ async def refresh_adapter_store_sources(
 @router.post("/install", response_model=AdapterStoreTaskItem)
 async def install_adapter_store_item(
     payload: AdapterStoreMutationRequest,
-    _: Annotated[Any, Depends(require_owner)],
+    _: Annotated[Any, Depends(require_auth)],
 ) -> AdapterStoreTaskItem:
     try:
         task = await plugin_store_task_service.create_adapter_install_task(
@@ -154,7 +154,7 @@ async def install_adapter_store_item(
 @router.post("/install/manual", response_model=AdapterStoreTaskItem)
 async def install_adapter_manual(
     payload: AdapterStoreManualInstallRequest,
-    _: Annotated[Any, Depends(require_owner)],
+    _: Annotated[Any, Depends(require_auth)],
 ) -> AdapterStoreTaskItem:
     try:
         task = await plugin_store_task_service.create_manual_adapter_install_task(
@@ -170,7 +170,7 @@ async def install_adapter_manual(
 @router.post("/update", response_model=AdapterStoreTaskItem)
 async def update_adapter_store_item(
     payload: AdapterStoreMutationRequest,
-    _: Annotated[Any, Depends(require_owner)],
+    _: Annotated[Any, Depends(require_auth)],
 ) -> AdapterStoreTaskItem:
     try:
         task = await plugin_store_task_service.create_adapter_update_task(
@@ -191,7 +191,7 @@ async def update_adapter_store_item(
 @router.post("/uninstall", response_model=AdapterStoreTaskItem)
 async def uninstall_adapter_store_item(
     payload: AdapterStoreUninstallRequest,
-    _: Annotated[Any, Depends(require_owner)],
+    _: Annotated[Any, Depends(require_auth)],
 ) -> AdapterStoreTaskItem:
     try:
         task = await plugin_store_task_service.create_manual_adapter_uninstall_task(
@@ -207,7 +207,7 @@ async def uninstall_adapter_store_item(
 @router.get("/tasks/{task_id}", response_model=AdapterStoreTaskItem)
 async def get_adapter_store_task(
     task_id: str,
-    _: Annotated[Any, Depends(require_control_panel)],
+    _: Annotated[Any, Depends(require_auth)],
 ) -> AdapterStoreTaskItem:
     task = package_store_workflow.get_task(task_id)
     if task is None:
@@ -218,7 +218,7 @@ async def get_adapter_store_task(
 @router.post("/revert-install", response_model=OperationStatusResponse)
 async def revert_adapter_store_install(
     payload: AdapterStoreRevertInstallRequest,
-    _: Annotated[Any, Depends(require_owner)],
+    _: Annotated[Any, Depends(require_auth)],
 ) -> OperationStatusResponse:
     try:
         package_store_workflow.revert_install(

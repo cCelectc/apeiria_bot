@@ -3,25 +3,14 @@ import client from './client'
 export interface WebUIPrincipal {
   user_id: string
   username: string
-  role: string
-  capabilities: string[]
 }
 
 export interface WebUIAccountItem {
   user_id: string
   username: string
-  role: string
   is_disabled: boolean
   last_login_at: string | null
   password_changed_at: string | null
-}
-
-export interface SecurityAuditEventItem {
-  event_type: string
-  occurred_at: string
-  actor_username: string | null
-  target_username: string | null
-  detail: string | null
 }
 
 export function login(payload: {
@@ -35,20 +24,42 @@ export function logout() {
   return client.post<{ status: string, detail?: string | null }>('/auth/logout')
 }
 
-export function register(payload: {
-  registration_code: string
-  username: string
-  password: string
-}) {
-  return client.post<{ status: string, detail?: string | null }>('/auth/register', payload)
-}
-
 export function getCurrentUser() {
   return client.get<WebUIPrincipal>('/auth/me')
 }
 
-export function getCurrentAccount() {
-  return client.get<WebUIAccountItem>('/auth/me/account')
+export function getAccounts() {
+  return client.get<WebUIAccountItem[]>('/auth/accounts')
+}
+
+export function createAccount(payload: {
+  username: string
+  password: string
+  actor_password: string
+}) {
+  return client.post<WebUIAccountItem>('/auth/accounts', payload)
+}
+
+export function updateAccountDisabled(userId: string, payload: {
+  is_disabled: boolean
+  actor_password: string
+}) {
+  return client.patch<WebUIAccountItem>(`/auth/accounts/${userId}`, payload)
+}
+
+export function deleteAccount(userId: string, payload: {
+  actor_password: string
+}) {
+  return client.delete<{ status: string, detail?: string | null }>(`/auth/accounts/${userId}`, {
+    data: payload,
+  })
+}
+
+export function resetAccountPassword(userId: string, payload: {
+  new_password: string
+  actor_password: string
+}) {
+  return client.post<WebUIAccountItem>(`/auth/accounts/${userId}/reset-password`, payload)
 }
 
 export function changePassword(payload: {
@@ -60,10 +71,6 @@ export function changePassword(payload: {
     detail?: string | null
     principal: WebUIPrincipal
   }>('/auth/password', payload)
-}
-
-export function getSecurityAuditEvents() {
-  return client.get<SecurityAuditEventItem[]>('/auth/audit-events')
 }
 
 export function revokeOtherSessions() {

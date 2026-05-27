@@ -46,7 +46,6 @@ class AuthSessionService:
         principal = principal_service.build_webui_account_principal(
             user_id=account.user_id,
             username=account.username,
-            role=account.role,
         )
         return AuthSession(
             principal=principal,
@@ -66,7 +65,6 @@ class AuthSessionService:
             "sub": session.token_subject,
             "user_id": session.user_id,
             "username": session.username,
-            "role": session.role_id,
             "session_version": session.session_version,
             "auth_method": session.auth_method,
             "client_ip": session.client_ip,
@@ -102,7 +100,6 @@ class AuthSessionService:
                         "sub",
                         "user_id",
                         "username",
-                        "role",
                         "session_version",
                         "auth_method",
                         "client_ip",
