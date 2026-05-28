@@ -15,9 +15,11 @@ from nonebot.adapters import Bot, Event
 from nonebot.permission import SUPERUSER
 from nonebot.plugin import PluginMetadata, inherit_supported_adapters
 from nonebot.plugin.on import on_command, on_message
+from nonebot.rule import Rule
 
 from apeiria.app.ai import ai_application
 from apeiria.app.ai.runtime.contracts import RuntimeTraceContext
+from apeiria.app.ai.runtime.planning.model_selection import has_selectable_task_model
 from apeiria.plugins.metadata.api import (
     PluginExtraData,
     PluginType,
@@ -45,7 +47,15 @@ __plugin_meta__ = PluginMetadata(
 )
 
 ai_status = on_command("ai-status", permission=SUPERUSER, block=True)
-ai_message = on_message(priority=50, block=False)
+
+
+async def _ai_message_runtime_ready() -> bool:
+    """Return whether live AI message matching should be enabled."""
+
+    return await has_selectable_task_model(task_class="reply_default")
+
+
+ai_message = on_message(Rule(_ai_message_runtime_ready), priority=50, block=False)
 
 
 async def _run_ai_lifecycle_startup() -> None:

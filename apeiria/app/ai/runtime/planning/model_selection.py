@@ -94,6 +94,16 @@ async def select_task_model(
     return None if plan is None else plan.selected
 
 
+async def has_selectable_task_model(
+    *,
+    task_class: "AIModelTaskClass",
+    target: "AIModelBindingTarget | None" = None,
+) -> bool:
+    """Return whether the requested task class currently resolves a model."""
+
+    return await select_task_model(task_class=task_class, target=target) is not None
+
+
 def build_no_model_diagnostic(
     *,
     trace_id: str,
@@ -207,6 +217,7 @@ __all__ = [
     "RuntimeModelSelection",
     "build_no_model_diagnostic",
     "generate_model_turn",
+    "has_selectable_task_model",
     "safe_generate_model",
     "select_fallback_models",
     "select_model_attempt_plan",
