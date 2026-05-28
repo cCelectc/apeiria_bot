@@ -32,6 +32,7 @@ from apeiria.app.ai.runtime.session.context import (
 )
 from apeiria.app.ai.runtime.speech import speech_input_preparer
 from apeiria.app.ai.wiring import ai_wiring
+from apeiria.app.chat.connection import WebChatConnectionClosed
 from apeiria.app.chat.protocol import (
     PartialReplyCompletePayload,
     PartialReplyDeltaPayload,
@@ -388,7 +389,15 @@ def _webchat_stream_sink(
 
 
 def _discard_completed_partial_reply_task(task: object) -> None:
-    _ = task
+    if not hasattr(task, "exception"):
+        return
+    try:
+        exc = task.exception()
+    except Exception:  # noqa: BLE001
+        return
+    if exc is None or isinstance(exc, WebChatConnectionClosed):
+        return
+    logger.opt(exception=exc).warning("Web UI chat partial reply emission failed")
 
 
 def _stream_sink_with_trace_id(

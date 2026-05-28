@@ -9,6 +9,7 @@ from uuid import uuid4
 from nonebot.adapters import Bot, Event, Message, MessageSegment
 from nonebot.log import logger
 
+from .connection import WebChatConnectionClosed
 from .message import WebChatMessage, WebChatMessageSegment
 from .protocol import ErrorPayload, MessageReceivePayload
 
@@ -58,7 +59,14 @@ class WebChatBot(Bot):
             segments=segments,
             timestamp=datetime.now(timezone.utc),
         )
-        await self._emitter.emit_message(self._connection, payload)
+        try:
+            await self._emitter.emit_message(self._connection, payload)
+        except WebChatConnectionClosed:
+            logger.debug(
+                "Web UI chat closed before bot reply delivery for session={}",
+                self._session.session_id,
+            )
+            return {"status": "disconnected"}
         return {"status": "ok"}
 
     async def call_api(self, api: str, **data: Any) -> Any:

@@ -13,6 +13,7 @@ from apeiria.i18n import t
 
 from .adapter import WebChatAdapter
 from .bot import WebChatBot
+from .connection import WebChatConnectionClosed
 from .event import WebChatMessageEvent
 from .protocol import (
     ChatSegment,
@@ -100,8 +101,19 @@ class WebChatMessageHandler:
         try:
             event = self._build_event(session, payload.message_id, payload.segments)
             await handle_event(bot, event)
+        except WebChatConnectionClosed:
+            logger.debug(
+                "Web UI chat connection closed while handling session={}",
+                session.session_id,
+            )
         except Exception as exc:  # noqa: BLE001
-            await bot.emit_error(str(exc))
+            try:
+                await bot.emit_error(str(exc))
+            except WebChatConnectionClosed:
+                logger.debug(
+                    "Web UI chat closed before error delivery for session={}",
+                    session.session_id,
+                )
 
     def _get_adapter(self) -> WebChatAdapter:
         if self._adapter is None:
