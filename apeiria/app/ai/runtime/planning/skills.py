@@ -6,7 +6,6 @@ from typing import TYPE_CHECKING
 
 from nonebot.log import logger
 
-from apeiria.ai.model import model_invoker
 from apeiria.ai.prompting import (
     SkillSelectionPromptInput,
     build_skill_selection_packet,
@@ -19,6 +18,7 @@ from apeiria.app.ai.auxiliary_structured_output import (
     auxiliary_json_schema_options,
 )
 from apeiria.app.ai.runtime.planning.model_selection import select_task_model
+from apeiria.app.ai.wiring import ai_wiring
 
 if TYPE_CHECKING:
     from apeiria.ai.skills.runtime import AISkillCatalogEntry
@@ -51,7 +51,7 @@ async def select_runtime_skills(
 
     known_names = {entry.skill_name for entry in entries}
     try:
-        response = await model_invoker.generate_text(
+        response = await ai_wiring.model.invoker.generate_text(
             selected=selected,
             messages=render_messages(
                 build_skill_selection_packet(

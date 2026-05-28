@@ -7,10 +7,7 @@ from datetime import datetime, timezone
 from typing import cast
 from uuid import uuid4
 
-from apeiria.ai.model.routing import (
-    list_model_profile_candidates,
-    resolve_model_profile,
-)
+from apeiria.ai.model.catalog.chat import AIChatModelService
 from apeiria.ai.model.routing.bindings import (
     AIModelBindingSpec,
     AIModelBindingTarget,
@@ -21,12 +18,16 @@ from apeiria.ai.model.routing.models import (
     AIModelRouteQuery,
     AIModelTaskClass,
 )
+from apeiria.ai.model.routing.rules import (
+    list_model_profile_candidates,
+    resolve_model_profile,
+)
 from apeiria.ai.model.routing.selection import (
     AISelectedModel,
     resolve_implicit_selected_model,
     resolve_source_selected_model_with_fallback,
 )
-from apeiria.ai.model.sources.service import ai_source_service
+from apeiria.ai.model.sources.service import AISourceService
 from apeiria.db.runtime import database_runtime
 
 
@@ -43,6 +44,15 @@ class AIModelProfileCreateInput:
 
 class AIModelProfileService:
     """Model profile persistence and task routing service."""
+
+    def __init__(
+        self,
+        *,
+        source_service: AISourceService | None = None,
+        chat_model_service: AIChatModelService | None = None,
+    ) -> None:
+        self._source_service = source_service or AISourceService()
+        self._chat_model_service = chat_model_service or AIChatModelService()
 
     async def list_profiles(
         self,
@@ -216,8 +226,6 @@ class AIModelProfileService:
         *,
         target: AIModelBindingTarget | None = None,
     ) -> AISelectedModel | None:
-        from apeiria.ai.model.catalog.chat import ai_chat_model_service
-
         profiles = await self.list_profiles()
         candidate_profiles: list[AIModelProfileDefinition] = []
         if target is not None:
@@ -228,8 +236,8 @@ class AIModelProfileService:
                 candidate_profiles.append(bound_profile)
         if query is not None:
             candidate_profiles.extend(list_model_profile_candidates(profiles, query))
-        sources = await ai_source_service.list_sources()
-        source_models = await ai_chat_model_service.list_all_models()
+        sources = await self._source_service.list_sources()
+        source_models = await self._chat_model_service.list_all_models()
         deduped_candidates = list(
             {profile.profile_id: profile for profile in candidate_profiles}.values()
         )
@@ -247,9 +255,6 @@ class AIModelProfileService:
             source_models,
             query=query,
         )
-
-
-ai_model_profile_service = AIModelProfileService()
 
 
 def _utcnow_text() -> str:

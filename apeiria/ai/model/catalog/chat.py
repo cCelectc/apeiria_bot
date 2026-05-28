@@ -145,6 +145,3 @@ class AIChatModelService:
         model_id: str,
     ) -> bool:
         return delete_source_model("ai_chat_model", model_id=model_id)
-
-
-ai_chat_model_service = AIChatModelService()

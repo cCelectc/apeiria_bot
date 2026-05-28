@@ -7,8 +7,8 @@ from typing import TYPE_CHECKING
 from apeiria.ai.tools import (
     AIToolPolicyBindingTarget,
     AIToolSceneContext,
-    ai_tool_policy_binding_service,
 )
+from apeiria.app.ai.wiring import ai_wiring
 from apeiria.conversation.contracts import ChatMessageCreate
 from apeiria.conversation.service import chat_session_service
 
@@ -24,7 +24,7 @@ async def resolve_tool_policy(
 ) -> "AIToolPolicy":
     """Resolve the scene-scoped tool policy for the current conversation."""
 
-    return await ai_tool_policy_binding_service.resolve_scene_policy(
+    return await ai_wiring.tool_policy_binding_service.resolve_scene_policy(
         scene_context=AIToolSceneContext(
             scope_type=identity.scene_type,
             is_tome=is_tome,

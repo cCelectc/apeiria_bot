@@ -18,10 +18,10 @@ from apeiria.ai.model.runtime.capabilities import (
     AIModelCallRequirements,
     AIModelCapabilityPlanningError,
 )
-from apeiria.ai.model.runtime.client import ai_model_client
+from apeiria.ai.model.runtime.client import AIModelClient
 from apeiria.ai.model.runtime.factory import build_source_adapter
 from apeiria.ai.model.runtime.planning import plan_model_call
-from apeiria.ai.model.sources.service import ai_source_service
+from apeiria.ai.model.sources.service import AISourceService
 from apeiria.app.ai.usage_recording import (
     AIModelUsageRecorder,
     ai_model_usage_recorder,
@@ -52,8 +52,12 @@ class ModelInvoker:
     def __init__(
         self,
         *,
+        client: AIModelClient | None = None,
+        source_service: AISourceService | None = None,
         usage_recorder: AIModelUsageRecorder | None = None,
     ) -> None:
+        self._client = client or AIModelClient()
+        self._source_service = source_service or AISourceService()
         self._usage_recorder: AIModelUsageRecorder | None = (
             usage_recorder or ai_model_usage_recorder
         )
@@ -65,7 +69,7 @@ class ModelInvoker:
         api_key: str,
     ) -> list["AIModelCatalogItem"]:
         self._register_source(source, api_key=api_key)
-        return await ai_model_client.list_models(
+        return await self._client.list_models(
             source_id=source.source_id,
             api_key=api_key,
         )
@@ -81,7 +85,7 @@ class ModelInvoker:
         options: AIModelCallOptions | None = None,
         call_options: dict[str, object] | None = None,
     ) -> "AIModelGenerateResponse | None":
-        api_key = ai_source_service.get_source_api_key(selected.source)
+        api_key = self._source_service.get_source_api_key(selected.source)
         model_name = self.resolve_model_name(selected)
         if not api_key or not model_name:
             return None
@@ -98,7 +102,7 @@ class ModelInvoker:
             raise AIModelCapabilityPlanningError(plan)
 
         self._register_source(selected.source, api_key=api_key)
-        response = await ai_model_client.generate_text(
+        response = await self._client.generate_text(
             AIModelGenerateRequest(
                 source_id=selected.source.source_id,
                 model_name=model_name,
@@ -135,7 +139,7 @@ class ModelInvoker:
         options: AIModelCallOptions | None = None,
         call_options: dict[str, object] | None = None,
     ) -> "AsyncIterator[AIModelStreamEvent]":
-        api_key = ai_source_service.get_source_api_key(selected.source)
+        api_key = self._source_service.get_source_api_key(selected.source)
         model_name = self.resolve_model_name(selected)
         if not api_key or not model_name:
             return
@@ -164,7 +168,7 @@ class ModelInvoker:
             )
 
         self._register_source(selected.source, api_key=api_key)
-        async for event in ai_model_client.stream_text(
+        async for event in self._client.stream_text(
             AIModelStreamRequest(
                 source_id=selected.source.source_id,
                 model_name=model_name,
@@ -188,7 +192,7 @@ class ModelInvoker:
         max_tokens: int | None = None,
     ) -> "AIModelGenerateResponse":
         self._register_source(source, api_key=api_key)
-        return await ai_model_client.generate_text(
+        return await self._client.generate_text(
             AIModelGenerateRequest(
                 source_id=source.source_id,
                 model_name=model_name,
@@ -206,7 +210,7 @@ class ModelInvoker:
         texts: tuple[str, ...],
     ) -> "AIModelEmbeddingResponse":
         self._register_source(source, api_key=api_key)
-        response = await ai_model_client.embed_texts(
+        response = await self._client.embed_texts(
             AIModelEmbeddingRequest(
                 source_id=source.source_id,
                 model_name=model_name,
@@ -233,7 +237,7 @@ class ModelInvoker:
         language: str | None = None,
     ) -> "AIModelTranscriptionResponse":
         self._register_source(source, api_key=api_key)
-        response = await ai_model_client.transcribe_audio(
+        response = await self._client.transcribe_audio(
             AIModelTranscriptionRequest(
                 source_id=source.source_id,
                 model_name=model_name,
@@ -260,7 +264,7 @@ class ModelInvoker:
         mime_type: str = "audio/wav",
         language: str | None = None,
     ) -> "AIModelTranscriptionResponse | None":
-        api_key = ai_source_service.get_source_api_key(selected.source)
+        api_key = self._source_service.get_source_api_key(selected.source)
         model_name = self.resolve_model_name(selected)
         if not api_key or not model_name:
             return None
@@ -281,7 +285,7 @@ class ModelInvoker:
             raise AIModelCapabilityPlanningError(plan)
 
         self._register_source(selected.source, api_key=api_key)
-        response = await ai_model_client.transcribe_audio(
+        response = await self._client.transcribe_audio(
             AIModelTranscriptionRequest(
                 source_id=selected.source.source_id,
                 model_name=model_name,
@@ -311,7 +315,7 @@ class ModelInvoker:
         response_format: Literal["mp3", "opus", "aac", "flac", "wav", "pcm"] = "wav",
     ) -> "AIModelSpeechResponse":
         self._register_source(source, api_key=api_key)
-        response = await ai_model_client.synthesize_speech(
+        response = await self._client.synthesize_speech(
             AIModelSpeechRequest(
                 source_id=source.source_id,
                 model_name=model_name,
@@ -336,7 +340,7 @@ class ModelInvoker:
         voice: str = "alloy",
         response_format: Literal["mp3", "opus", "aac", "flac", "wav", "pcm"] = "wav",
     ) -> "AIModelSpeechResponse | None":
-        api_key = ai_source_service.get_source_api_key(selected.source)
+        api_key = self._source_service.get_source_api_key(selected.source)
         model_name = self.resolve_model_name(selected)
         if not api_key or not model_name:
             return None
@@ -360,7 +364,7 @@ class ModelInvoker:
         self._register_source(selected.source, api_key=api_key)
         planned_voice = str(plan.options.get("voice") or voice)
         planned_format = plan.options.get("response_format") or response_format
-        response = await ai_model_client.synthesize_speech(
+        response = await self._client.synthesize_speech(
             AIModelSpeechRequest(
                 source_id=selected.source.source_id,
                 model_name=model_name,
@@ -389,7 +393,7 @@ class ModelInvoker:
         top_n: int = 3,
     ) -> "AIModelRerankResponse":
         self._register_source(source, api_key=api_key)
-        response = await ai_model_client.rerank_documents(
+        response = await self._client.rerank_documents(
             AIModelRerankRequest(
                 source_id=source.source_id,
                 model_name=model_name,
@@ -415,13 +419,13 @@ class ModelInvoker:
             return selected.resolved_model_name.strip()
         return None
 
-    @staticmethod
     def _register_source(
+        self,
         source: "AISourceDefinition",
         *,
         api_key: str,
     ) -> None:
-        ai_model_client.registry.register(
+        self._client.registry.register(
             source.source_id,
             build_source_adapter(source, api_key=api_key),
         )
@@ -441,6 +445,3 @@ class ModelInvoker:
             operation=operation,
             response=response,
         )
-
-
-model_invoker = ModelInvoker()

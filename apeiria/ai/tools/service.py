@@ -122,9 +122,6 @@ class AIToolService:
         return self._execution_repository.list_recent_executions(limit=limit)
 
 
-ai_tool_service = AIToolService()
-
-
 def _to_jsonable_payload(payload: Any) -> Any:
     if is_dataclass(payload) and not isinstance(payload, type):
         return asdict(payload)
@@ -134,5 +131,4 @@ def _to_jsonable_payload(payload: Any) -> Any:
 __all__ = [
     "AIToolObservationCreateInput",
     "AIToolService",
-    "ai_tool_service",
 ]

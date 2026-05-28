@@ -6,8 +6,9 @@ from typing import TYPE_CHECKING
 
 from pytest import raises
 
-from apeiria.ai.memory.service import AIMemoryCreateInput, ai_memory_service
+from apeiria.ai.memory.service import AIMemoryCreateInput
 from apeiria.ai.model.catalog.storage import create_source_model
+from apeiria.app.ai.wiring import ai_wiring
 from apeiria.db.runtime import database_runtime
 
 if TYPE_CHECKING:
@@ -86,7 +87,7 @@ def test_memory_source_message_reference_is_enforced(
 
     async def scenario() -> None:
         with raises(sqlite3.IntegrityError):
-            await ai_memory_service.create_memory_if_absent(
+            await ai_wiring.memory_service.create_memory_if_absent(
                 AIMemoryCreateInput(
                     anchor_type="user",
                     anchor_id="user-1",

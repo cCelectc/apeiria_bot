@@ -265,8 +265,6 @@ class AIToolPolicyBindingService:
         ]
 
 
-ai_tool_policy_binding_service = AIToolPolicyBindingService()
-
 __all__ = [
     "AIToolLevel",
     "AIToolPolicy",
@@ -276,7 +274,6 @@ __all__ = [
     "AIToolPolicyBindingTarget",
     "AIToolSceneContext",
     "AIToolTurnCreateInput",
-    "ai_tool_policy_binding_service",
     "evaluate_tool_policy",
     "resolve_default_tool_policy",
     "resolve_tool_policy_binding",

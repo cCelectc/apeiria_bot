@@ -36,13 +36,12 @@ if TYPE_CHECKING:
         AIToolPolicyBindingSpec,
         AIToolPolicyBindingTarget,
         AIToolSceneContext,
-        ai_tool_policy_binding_service,
         evaluate_tool_policy,
         resolve_default_tool_policy,
         resolve_tool_policy_binding,
         summarize_tool_policy,
     )
-    from .service import AIToolService, ai_tool_service
+    from .service import AIToolService
 
 __all__ = [
     "AIRelationshipInspectObservationOutput",
@@ -70,8 +69,6 @@ __all__ = [
     "AIToolService",
     "AIToolTurnCreateInput",
     "ToolResult",
-    "ai_tool_policy_binding_service",
-    "ai_tool_service",
     "coerce_tool_level",
     "evaluate_tool_policy",
     "resolve_default_tool_policy",
@@ -89,8 +86,6 @@ _LAZY_EXPORTS = {
     "AIToolSceneContext": ".policy",
     "AIToolService": ".service",
     "ToolResult": ".loop.projection",
-    "ai_tool_policy_binding_service": ".policy",
-    "ai_tool_service": ".service",
     "evaluate_tool_policy": ".policy",
     "resolve_default_tool_policy": ".policy",
     "resolve_tool_policy_binding": ".policy",

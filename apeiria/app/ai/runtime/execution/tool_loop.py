@@ -52,6 +52,7 @@ from apeiria.app.ai.usage_recording import (
     AIModelUsageRecordContext,
     record_model_usage_safely,
 )
+from apeiria.app.ai.wiring import ai_wiring
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -136,13 +137,9 @@ class RuntimeToolLoopRunner:
         usage_recorder: Any | None = None,
     ) -> None:
         if model_invoker is None:
-            from apeiria.ai.model import model_invoker as default_model_invoker
-
-            model_invoker = default_model_invoker
+            model_invoker = ai_wiring.model.invoker
         if tool_service is None:
-            from apeiria.ai.tools.service import ai_tool_service
-
-            tool_service = ai_tool_service
+            tool_service = ai_wiring.tool_service
         if usage_recorder is None:
             from apeiria.app.ai.usage_recording import (
                 ai_model_usage_recorder as default_usage_recorder,

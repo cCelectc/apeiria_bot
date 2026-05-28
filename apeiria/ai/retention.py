@@ -194,6 +194,3 @@ class AIRetentionService:
         for memory_id in memory_ids:
             ai_memory_embedding_store.delete(memory_id=memory_id)
         return int(cursor.rowcount or 0)
-
-
-ai_retention_service = AIRetentionService()

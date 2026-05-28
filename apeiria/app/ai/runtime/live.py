@@ -11,7 +11,6 @@ from uuid import uuid4
 
 from nonebot.log import logger
 
-from apeiria.ai.retention import ai_retention_service
 from apeiria.ai.runtime_settings import ai_runtime_settings_service
 from apeiria.app.ai.lifecycle import ensure_ai_runtime_support_initialized
 from apeiria.app.ai.reply_strategy.wake_gate import build_wake_context, evaluate_wake
@@ -32,6 +31,7 @@ from apeiria.app.ai.runtime.session.context import (
     RuntimeTurnSource,
 )
 from apeiria.app.ai.runtime.speech import speech_input_preparer
+from apeiria.app.ai.wiring import ai_wiring
 from apeiria.app.chat.protocol import (
     PartialReplyCompletePayload,
     PartialReplyDeltaPayload,
@@ -133,7 +133,7 @@ class DefaultAILiveRuntimeEntry:
         if not evaluate_wake(wake_context).should_process:
             return None
 
-        ai_retention_service.maybe_schedule_cleanup(settings=settings)
+        ai_wiring.retention_service.maybe_schedule_cleanup(settings=settings)
         ingested = build_ingested_chat_event(
             bot,
             event,
@@ -221,7 +221,7 @@ class DefaultAILiveRuntimeEntry:
         from apeiria.app.ai.future_tasks import ai_future_task_service
 
         ensure_ai_runtime_support_initialized(source="runtime_fallback")
-        ai_retention_service.maybe_schedule_cleanup(
+        ai_wiring.retention_service.maybe_schedule_cleanup(
             settings=ai_runtime_settings_service.get_settings()
         )
         task = await ai_future_task_service.get_task(task_id=task_id)

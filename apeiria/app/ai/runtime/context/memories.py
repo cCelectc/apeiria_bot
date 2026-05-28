@@ -11,11 +11,11 @@ from apeiria.ai.memory import (
     AIMemoryQuery,
     AIMemoryRetrievalDiagnostics,
     AIMemoryRetrievalSelection,
-    ai_memory_service,
 )
 from apeiria.ai.memory.governance import decide_candidate_scope
 from apeiria.app.ai.runtime.context.memory_extraction import extract_memory_from_message
 from apeiria.app.ai.runtime.context.profiles import ingest_profile_from_message
+from apeiria.app.ai.wiring import ai_wiring
 from apeiria.conversation.identity import build_participant_subject_id
 
 if TYPE_CHECKING:
@@ -239,7 +239,7 @@ async def _retrieve_memories(
         if selection.is_prompt_visible
     ]
     if mutate_recall and recalled:
-        await ai_memory_service.mark_memories_recalled(
+        await ai_wiring.memory_service.mark_memories_recalled(
             memory_ids=[memory.memory_id for memory in recalled],
             recalled_at=datetime.now(timezone.utc),
         )
@@ -260,7 +260,7 @@ async def retrieve_memory_diagnostics_for_context(
     scope_rank = 0
     for memory_layer in _RECALL_LAYER_ORDER:
         if memory_layer == "knowledge":
-            memories = await ai_memory_service.retrieve_knowledge_memories(
+            memories = await ai_wiring.memory_service.retrieve_knowledge_memories(
                 targets=_build_knowledge_targets(identity, user_id),
                 query_text=query_text,
                 limit=_LAYER_RECALL_LIMITS[memory_layer],
@@ -287,7 +287,7 @@ async def retrieve_memory_diagnostics_for_context(
                 limit=_LAYER_RECALL_LIMITS[memory_layer],
                 memory_layer=memory_layer,
             )
-            result = await ai_memory_service.retrieve_memory_selections(query)
+            result = await ai_wiring.memory_service.retrieve_memory_selections(query)
             for item in result.selected:
                 if item.memory.memory_id in seen_ids:
                     continue
@@ -341,9 +341,9 @@ async def _collect_layer_memories(
             memory_layer=memory_layer,
         )
         rows = (
-            await ai_memory_service.recall_memories(query)
+            await ai_wiring.memory_service.recall_memories(query)
             if mutate_recall
-            else await ai_memory_service.retrieve_memories(query)
+            else await ai_wiring.memory_service.retrieve_memories(query)
         )
         for row in rows:
             if row.memory_id in seen_ids:
@@ -379,7 +379,7 @@ async def store_extracted_memories(
     existing_memories: list[AIMemoryDefinition] = []
     seen_memory_ids: set[str] = set()
     for anchor in write_anchors:
-        rows = await ai_memory_service.list_memories(
+        rows = await ai_wiring.memory_service.list_memories(
             anchor_type=anchor.anchor_type,
             anchor_id=anchor.anchor_id,
             memory_layer="long_term",
@@ -416,14 +416,14 @@ async def store_extracted_memories(
             candidates_by_anchor.setdefault(anchor, []).append(candidate)
 
         for anchor, scoped_candidates in candidates_by_anchor.items():
-            await ai_memory_service.remember_candidates(
+            await ai_wiring.memory_service.remember_candidates(
                 anchor_type=anchor.anchor_type,
                 anchor_id=anchor.anchor_id,
                 source_message_id=source_message_id,
                 candidates=scoped_candidates,
                 scene_type=identity.scene_type,
             )
-            await ai_memory_service.consolidate_anchor_summary(
+            await ai_wiring.memory_service.consolidate_anchor_summary(
                 anchor_type=anchor.anchor_type,
                 anchor_id=anchor.anchor_id,
             )

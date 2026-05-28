@@ -14,9 +14,8 @@ if TYPE_CHECKING:
         AISkillCatalogEntry,
         AISkillRuntime,
         AISkillSelectionResult,
-        ai_skill_runtime,
     )
-    from .service import AISkillService, ai_skill_service
+    from .service import AISkillService
 
 __all__ = [
     "AISkillActivation",
@@ -26,8 +25,6 @@ __all__ = [
     "AISkillRuntime",
     "AISkillSelectionResult",
     "AISkillService",
-    "ai_skill_runtime",
-    "ai_skill_service",
 ]
 
 _LAZY_EXPORTS = {
@@ -36,8 +33,6 @@ _LAZY_EXPORTS = {
     "AISkillRuntime": ".runtime",
     "AISkillSelectionResult": ".runtime",
     "AISkillService": ".service",
-    "ai_skill_runtime": ".runtime",
-    "ai_skill_service": ".service",
 }
 
 

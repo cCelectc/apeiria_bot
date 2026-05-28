@@ -22,7 +22,7 @@ if TYPE_CHECKING:
         project_emotion,
         relationship_tier,
     )
-    from .service import AIRelationshipService, ai_relationship_service
+    from .service import AIRelationshipService
 
 __all__ = [
     "AIRelationshipDelta",
@@ -31,7 +31,6 @@ __all__ = [
     "AIRelationshipService",
     "AIRelationshipState",
     "EmotionProjection",
-    "ai_relationship_service",
     "apply_inactivity_decay",
     "apply_relationship_delta",
     "clamp_relationship_score",
@@ -42,7 +41,6 @@ __all__ = [
 
 _LAZY_EXPORTS = {
     "AIRelationshipService": ".service",
-    "ai_relationship_service": ".service",
     "apply_inactivity_decay": ".scoring",
     "apply_relationship_delta": ".scoring",
     "clamp_relationship_score": ".scoring",

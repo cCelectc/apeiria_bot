@@ -9,9 +9,7 @@ from apeiria.ai.knowledge.models import (
     KnowledgeRetrievalDiagnostics,
     KnowledgeRetrievalResult,
 )
-from apeiria.ai.knowledge.service import knowledge_retrieval_service
 from apeiria.ai.knowledge.settings import knowledge_settings_store
-from apeiria.ai.tools import ai_tool_service
 from apeiria.app.ai.runtime.context.context_window import build_and_store_context_window
 from apeiria.app.ai.runtime.context.memories import (
     retrieve_memory_diagnostics_for_context,
@@ -27,6 +25,7 @@ from apeiria.app.ai.runtime.context.relationships import (
 )
 from apeiria.app.ai.runtime.planning.tool_policy import resolve_tool_policy
 from apeiria.app.ai.runtime.planning.wake import resolve_initiative_bias
+from apeiria.app.ai.wiring import ai_wiring
 
 if TYPE_CHECKING:
     from datetime import datetime
@@ -179,7 +178,7 @@ async def collect_tool_context(
     )
     return RuntimeToolContext(
         tool_policy=tool_policy,
-        allowed_tools=tuple(ai_tool_service.list_allowed_tools(tool_policy)),
+        allowed_tools=tuple(ai_wiring.tool_service.list_allowed_tools(tool_policy)),
     )
 
 
@@ -237,7 +236,7 @@ async def retrieve_rag_for_context(
             items=(),
             diagnostics=KnowledgeRetrievalDiagnostics(degradation_reason="disabled"),
         )
-    return await knowledge_retrieval_service.retrieve(
+    return await ai_wiring.knowledge_service.retrieve(
         query_text=query_text,
         limit=limit,
     )

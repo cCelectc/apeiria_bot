@@ -31,10 +31,7 @@ if TYPE_CHECKING:
         AIMemoryStateUpdateInput,
         AIMemoryUpdateInput,
     )
-    from .service import (
-        AIMemoryService,
-        ai_memory_service,
-    )
+    from .service import AIMemoryService
 
 __all__ = [
     "AIMemoryAnchorType",
@@ -58,7 +55,6 @@ __all__ = [
     "AIMemoryUseMode",
     "AIMessageSentiment",
     "AIObservationLevel",
-    "ai_memory_service",
 ]
 
 _LAZY_EXPORTS = {
@@ -66,7 +62,6 @@ _LAZY_EXPORTS = {
     "AIMemoryService": ".service",
     "AIMemoryStateUpdateInput": ".contracts",
     "AIMemoryUpdateInput": ".contracts",
-    "ai_memory_service": ".service",
 }
 
 

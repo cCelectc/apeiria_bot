@@ -10,14 +10,6 @@ from apeiria.ai.model import (
     AIModelRouteCreateInput,
     AIModelRouteMemberCreateInput,
     AISourceCapabilityType,
-    ai_chat_model_service,
-    ai_embedding_model_service,
-    ai_model_profile_service,
-    ai_model_route_service,
-    ai_rerank_model_service,
-    ai_source_service,
-    ai_stt_model_service,
-    ai_tts_model_service,
 )
 from apeiria.ai.model.catalog.capability_templates import enrich_model_capabilities
 from apeiria.ai.model.runtime.capability_sources import (
@@ -28,6 +20,7 @@ from apeiria.app.ai.operations.errors import (
     AIAdminModelNotFoundError,
     AISourceModelDeleteBlockedError,
 )
+from apeiria.app.ai.wiring import ai_wiring
 
 if TYPE_CHECKING:
     from apeiria.ai.model import (
@@ -60,7 +53,7 @@ class ModelsAdminMixin:
     """Admin CRUD and test hooks for model profiles, bindings, and source models."""
 
     async def list_model_profiles(self) -> list["AIModelProfileDefinition"]:
-        return await ai_model_profile_service.list_profiles()
+        return await ai_wiring.model.profile_service.list_profiles()
 
     async def create_model_profile(  # noqa: PLR0913
         self,
@@ -79,7 +72,7 @@ class ModelsAdminMixin:
             priority=priority,
             enabled=enabled,
         )
-        created = await ai_model_profile_service.create_profile(create_input)
+        created = await ai_wiring.model.profile_service.create_profile(create_input)
         record_ai_admin_audit(
             "ai_model_profile_created",
             actor_username=actor_username,
@@ -105,7 +98,7 @@ class ModelsAdminMixin:
             priority=priority,
             enabled=enabled,
         )
-        updated = await ai_model_profile_service.update_profile(
+        updated = await ai_wiring.model.profile_service.update_profile(
             profile_id=profile_id,
             create_input=create_input,
         )
@@ -118,10 +111,10 @@ class ModelsAdminMixin:
         return updated
 
     async def list_model_bindings(self) -> list["AIModelBindingSpec"]:
-        return await ai_model_profile_service.list_bindings()
+        return await ai_wiring.model.profile_service.list_bindings()
 
     async def list_model_routes(self) -> list["AIModelRouteDefinition"]:
-        return await ai_model_route_service.list_routes()
+        return await ai_wiring.model.route_service.list_routes()
 
     async def create_model_route(  # noqa: PLR0913
         self,
@@ -134,7 +127,7 @@ class ModelsAdminMixin:
         enabled: bool,
         actor_username: str | None = None,
     ) -> "AIModelRouteDefinition":
-        route = await ai_model_route_service.create_route(
+        route = await ai_wiring.model.route_service.create_route(
             AIModelRouteCreateInput(
                 name=name,
                 task_class=task_class,  # type: ignore[arg-type]
@@ -163,7 +156,7 @@ class ModelsAdminMixin:
         enabled: bool,
         actor_username: str | None = None,
     ) -> "AIModelRouteDefinition | None":
-        route = await ai_model_route_service.update_route(
+        route = await ai_wiring.model.route_service.update_route(
             route_id=route_id,
             create_input=AIModelRouteCreateInput(
                 name=name,
@@ -188,7 +181,7 @@ class ModelsAdminMixin:
         route_id: str,
         actor_username: str | None = None,
     ) -> bool:
-        deleted = await ai_model_route_service.delete_route(route_id=route_id)
+        deleted = await ai_wiring.model.route_service.delete_route(route_id=route_id)
         if deleted:
             record_ai_admin_audit(
                 "ai_model_route_deleted",
@@ -202,7 +195,7 @@ class ModelsAdminMixin:
         *,
         route_id: str | None = None,
     ) -> list["AIModelRouteMemberDefinition"]:
-        return await ai_model_route_service.list_members(route_id=route_id)
+        return await ai_wiring.model.route_service.list_members(route_id=route_id)
 
     async def create_model_route_member(  # noqa: PLR0913
         self,
@@ -214,7 +207,7 @@ class ModelsAdminMixin:
         enabled: bool,
         actor_username: str | None = None,
     ) -> "AIModelRouteMemberDefinition":
-        member = await ai_model_route_service.create_member(
+        member = await ai_wiring.model.route_service.create_member(
             AIModelRouteMemberCreateInput(
                 route_id=route_id,
                 profile_id=profile_id,
@@ -241,7 +234,7 @@ class ModelsAdminMixin:
         enabled: bool,
         actor_username: str | None = None,
     ) -> "AIModelRouteMemberDefinition | None":
-        member = await ai_model_route_service.update_member(
+        member = await ai_wiring.model.route_service.update_member(
             route_member_id=route_member_id,
             create_input=AIModelRouteMemberCreateInput(
                 route_id=route_id,
@@ -265,7 +258,7 @@ class ModelsAdminMixin:
         route_member_id: str,
         actor_username: str | None = None,
     ) -> bool:
-        deleted = await ai_model_route_service.delete_member(
+        deleted = await ai_wiring.model.route_service.delete_member(
             route_member_id=route_member_id
         )
         if deleted:
@@ -277,7 +270,7 @@ class ModelsAdminMixin:
         return deleted
 
     async def list_model_route_bindings(self) -> list["AIModelRouteBindingSpec"]:
-        return await ai_model_route_service.list_bindings()
+        return await ai_wiring.model.route_service.list_bindings()
 
     async def upsert_model_route_binding(
         self,
@@ -288,7 +281,7 @@ class ModelsAdminMixin:
         route_id: str,
         actor_username: str | None = None,
     ) -> "AIModelRouteBindingSpec":
-        binding = await ai_model_route_service.upsert_binding(
+        binding = await ai_wiring.model.route_service.upsert_binding(
             AIModelRouteBindingCreateInput(
                 scope_type=cast("AIModelRouteScopeType", scope_type),
                 scope_id=scope_id,
@@ -311,7 +304,7 @@ class ModelsAdminMixin:
         task_class: str,
         actor_username: str | None = None,
     ) -> bool:
-        deleted = await ai_model_route_service.delete_binding(
+        deleted = await ai_wiring.model.route_service.delete_binding(
             scope_type=scope_type,
             scope_id=scope_id,
             task_class=task_class,  # type: ignore[arg-type]
@@ -329,7 +322,7 @@ class ModelsAdminMixin:
         *,
         source_id: str,
     ) -> list["AISourceModelDefinition"]:
-        source = await ai_source_service.get_source(source_id=source_id)
+        source = await ai_wiring.model.source_service.get_source(source_id=source_id)
         if source is None:
             return []
         return await self._list_managed_models(
@@ -372,7 +365,7 @@ class ModelsAdminMixin:
         capability_provenance: dict[str, object] | None = None,
         actor_username: str | None = None,
     ) -> "AISourceModelDefinition":
-        source = await ai_source_service.get_source(source_id=source_id)
+        source = await ai_wiring.model.source_service.get_source(source_id=source_id)
         if source is None:
             raise AIAdminModelNotFoundError
         created = await self._create_managed_model(
@@ -409,7 +402,7 @@ class ModelsAdminMixin:
         capability_provenance: dict[str, object] | None = None,
         actor_username: str | None = None,
     ) -> "AISourceModelDefinition | None":
-        source = await ai_source_service.get_source(source_id=source_id)
+        source = await ai_wiring.model.source_service.get_source(source_id=source_id)
         if source is None:
             return None
         updated = await self._update_managed_model(
@@ -460,7 +453,9 @@ class ModelsAdminMixin:
             )
         deleted = False
         if source_id:
-            source = await ai_source_service.get_source(source_id=source_id)
+            source = await ai_wiring.model.source_service.get_source(
+                source_id=source_id
+            )
             if source is not None:
                 deleted = await self._delete_managed_model(
                     capability_type=source.capability_type,
@@ -495,7 +490,7 @@ class ModelsAdminMixin:
     ) -> str:
         if capability_type != "chat_completion":
             return model_id
-        existing = await ai_chat_model_service.get_model(model_id=model_id)
+        existing = await ai_wiring.model.chat_model_service.get_model(model_id=model_id)
         if existing is None:
             return model_id
         return f"{existing.model_id} {existing.display_name}"
@@ -508,7 +503,7 @@ class ModelsAdminMixin:
     ) -> list["AIModelProfileDefinition"]:
         if capability_type != "chat_completion":
             return []
-        profiles = await ai_model_profile_service.list_profiles()
+        profiles = await ai_wiring.model.profile_service.list_profiles()
         return [profile for profile in profiles if profile.model_id == model_id]
 
     async def test_source_model(  # noqa: PLR0913
@@ -654,30 +649,32 @@ class ModelsAdminMixin:
         source_id: str | None = None,
     ) -> "AISourceCapabilityType | None":
         if source_id:
-            source = await ai_source_service.get_source(source_id=source_id)
+            source = await ai_wiring.model.source_service.get_source(
+                source_id=source_id
+            )
             if source is not None:
                 return source.capability_type
 
         lookups = (
             (
                 cast("AISourceCapabilityType", "chat_completion"),
-                ai_chat_model_service.get_model,
+                ai_wiring.model.chat_model_service.get_model,
             ),
             (
                 cast("AISourceCapabilityType", "embedding"),
-                ai_embedding_model_service.get_model,
+                ai_wiring.model.embedding_model_service.get_model,
             ),
             (
                 cast("AISourceCapabilityType", "speech_to_text"),
-                ai_stt_model_service.get_model,
+                ai_wiring.model.stt_model_service.get_model,
             ),
             (
                 cast("AISourceCapabilityType", "text_to_speech"),
-                ai_tts_model_service.get_model,
+                ai_wiring.model.tts_model_service.get_model,
             ),
             (
                 cast("AISourceCapabilityType", "rerank"),
-                ai_rerank_model_service.get_model,
+                ai_wiring.model.rerank_model_service.get_model,
             ),
         )
         for capability_type, get_model in lookups:
@@ -689,11 +686,7 @@ class ModelsAdminMixin:
     def _get_model_capability_entry(
         capability_type: "AISourceCapabilityType",
     ) -> "AICapabilityModelRegistryEntry":
-        from apeiria.ai.model.catalog.registry import (
-            SOURCE_MODEL_CAPABILITY_REGISTRY,
-        )
-
-        return SOURCE_MODEL_CAPABILITY_REGISTRY[capability_type]
+        return ai_wiring.model.capability_registry[capability_type]
 
 
 __all__ = ["ModelsAdminMixin"]

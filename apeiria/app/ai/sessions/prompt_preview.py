@@ -7,17 +7,12 @@ from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
 from apeiria.access.groups import group_service
-from apeiria.ai.persona import (
-    ai_persona_service,
-    build_persona_render_context,
-)
+from apeiria.ai.persona import build_persona_render_context
 from apeiria.ai.prompting import render_flat
 from apeiria.ai.runtime_settings import ai_runtime_settings_service
 from apeiria.ai.tools import (
     AIToolPolicyBindingTarget,
     AIToolSceneContext,
-    ai_tool_policy_binding_service,
-    ai_tool_service,
     summarize_tool_policy,
 )
 from apeiria.app.ai.diagnostics.workbench import (
@@ -68,6 +63,7 @@ from apeiria.app.ai.runtime.session.management import (
     managed_session_disabled_decision,
 )
 from apeiria.app.ai.runtime.stages import RuntimeContextBundle
+from apeiria.app.ai.wiring import ai_wiring
 from apeiria.conversation.service import chat_session_service
 
 from .models import (
@@ -498,7 +494,7 @@ class PromptPreviewReader:
         relationship_context = await load_relationship_context(
             target=relationship_target,
         )
-        persona = await ai_persona_service.build_persona_prompt_bundle(
+        persona = await ai_wiring.persona_service.build_persona_prompt_bundle(
             target=build_persona_binding_target(identity, resolved_user_id),
             render_context=build_persona_render_context(
                 bot_id=identity.bot_id,
@@ -513,7 +509,7 @@ class PromptPreviewReader:
                 or resolved_user_id,
             ),
         )
-        tool_policy = await ai_tool_policy_binding_service.resolve_scene_policy(
+        tool_policy = await ai_wiring.tool_policy_binding_service.resolve_scene_policy(
             scene_context=AIToolSceneContext(
                 scope_type=identity.scene_type,
                 is_tome=identity.scene_type == "private",
@@ -535,7 +531,7 @@ class PromptPreviewReader:
         )
         tool_results = extract_tool_result_lines(turns)
         tool_policy_text = summarize_tool_policy(
-            ai_tool_service.registry.list_tools(),
+            ai_wiring.tool_service.registry.list_tools(),
             tool_policy,
         )
         profile_card = await load_profile_card_for_context(
@@ -584,7 +580,7 @@ class PromptPreviewReader:
             profile_card_source_refs=(
                 profile_card.source_refs if profile_card is not None else ()
             ),
-            allowed_tools=tuple(ai_tool_service.list_allowed_tools(tool_policy)),
+            allowed_tools=tuple(ai_wiring.tool_service.list_allowed_tools(tool_policy)),
         )
         context = context_bundle.context
         allowed_tool_specs = (

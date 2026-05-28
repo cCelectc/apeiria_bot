@@ -5,7 +5,6 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
-from apeiria.ai.persona.service import ai_persona_service
 from apeiria.ai.token_usage import AIModelUsageRepository
 from apeiria.app.ai.diagnostics.usage import AIModelUsageTotals
 from apeiria.app.ai.runtime.trace import turn_trace_repository
@@ -19,6 +18,7 @@ from apeiria.app.ai.sessions.models import (
     AISessionTraceEntry,
 )
 from apeiria.app.ai.sessions.repository import AISessionManagementRepository
+from apeiria.app.ai.wiring import ai_wiring
 from apeiria.conversation.service import chat_session_service
 
 if TYPE_CHECKING:
@@ -141,7 +141,7 @@ class AISessionManagementReader:
 async def _persona_summary(persona_id: str | None) -> AISessionPersonaSummary | None:
     if persona_id is None:
         return None
-    persona = await ai_persona_service.get_persona(
+    persona = await ai_wiring.persona_service.get_persona(
         persona_id=persona_id,
         include_disabled=True,
     )

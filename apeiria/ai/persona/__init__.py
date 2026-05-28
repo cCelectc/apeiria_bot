@@ -18,7 +18,6 @@ if TYPE_CHECKING:
         AIPersonaPromptBundle,
         AIPersonaRenderContext,
         AIPersonaService,
-        ai_persona_service,
         build_persona_render_context,
     )
 
@@ -30,7 +29,6 @@ __all__ = [
     "AIPersonaPromptBundle",
     "AIPersonaRenderContext",
     "AIPersonaService",
-    "ai_persona_service",
     "build_persona_render_context",
     "resolve_persona_binding",
 ]
@@ -39,7 +37,6 @@ _LAZY_EXPORTS = {
     "AIPersonaPromptBundle": ".service",
     "AIPersonaRenderContext": ".service",
     "AIPersonaService": ".service",
-    "ai_persona_service": ".service",
     "build_persona_render_context": ".service",
 }
 

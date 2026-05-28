@@ -9,13 +9,13 @@ from apeiria.ai.model import (
     AISourceCreateInput,
     AISourcePresetType,
     UnsupportedAISourcePresetError,
-    ai_source_service,
     resolve_adapter_kind_for_preset,
     resolve_capability_type_for_preset,
     resolve_client_type_for_preset,
 )
 from apeiria.app.ai.diagnostics.audit import record_ai_admin_audit
 from apeiria.app.ai.operations.errors import AISourceDeleteBlockedError
+from apeiria.app.ai.wiring import ai_wiring
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -33,7 +33,9 @@ def coerce_source_preset_type(
 ) -> AISourcePresetType:
     """Reject unknown preset types; used by source and source-model CRUD."""
 
-    known_preset_types = {item.preset_type for item in ai_source_service.list_presets()}
+    known_preset_types = {
+        item.preset_type for item in ai_wiring.model.source_service.list_presets()
+    }
     if preset_type in known_preset_types:
         return cast("AISourcePresetType", preset_type)
     raise UnsupportedAISourcePresetError
@@ -43,10 +45,10 @@ class SourcesAdminMixin:
     """Admin CRUD for AI source connectors."""
 
     def list_source_presets(self) -> tuple["AISourcePresetDefinition", ...]:
-        return ai_source_service.list_presets()
+        return ai_wiring.model.source_service.list_presets()
 
     async def list_sources(self) -> list["AISourceDefinition"]:
-        return await ai_source_service.list_sources()
+        return await ai_wiring.model.source_service.list_sources()
 
     async def create_source(  # noqa: PLR0913
         self,
@@ -69,7 +71,7 @@ class SourcesAdminMixin:
     ) -> "AISourceDefinition":
         _ = capability_type
         coerced_preset_type = coerce_source_preset_type(preset_type)
-        created = await ai_source_service.create_source(
+        created = await ai_wiring.model.source_service.create_source(
             AISourceCreateInput(
                 name=name,
                 capability_type=resolve_capability_type_for_preset(coerced_preset_type),
@@ -120,8 +122,8 @@ class SourcesAdminMixin:
     ) -> "AISourceDefinition | None":
         _ = capability_type
         coerced_preset_type = coerce_source_preset_type(preset_type)
-        existing = await ai_source_service.get_source(source_id=source_id)
-        updated = await ai_source_service.update_source(
+        existing = await ai_wiring.model.source_service.get_source(source_id=source_id)
+        updated = await ai_wiring.model.source_service.update_source(
             source_id=source_id,
             create_input=AISourceCreateInput(
                 name=name,
@@ -159,9 +161,11 @@ class SourcesAdminMixin:
         source_id: str,
         actor_username: str | None = None,
     ) -> bool:
-        source = await ai_source_service.get_source(source_id=source_id)
-        dependency_report = await ai_source_service.build_delete_dependency_report(
-            source_id=source_id,
+        source = await ai_wiring.model.source_service.get_source(source_id=source_id)
+        dependency_report = (
+            await ai_wiring.model.source_service.build_delete_dependency_report(
+                source_id=source_id,
+            )
         )
         if dependency_report is not None:
             raise AISourceDeleteBlockedError(
@@ -169,12 +173,14 @@ class SourcesAdminMixin:
                 model_labels=dependency_report.model_labels,
             )
         try:
-            deleted = await ai_source_service.delete_source(
+            deleted = await ai_wiring.model.source_service.delete_source(
                 source_id=source_id,
             )
         except sqlite3.IntegrityError:
-            dependency_report = await ai_source_service.build_delete_dependency_report(
-                source_id=source_id,
+            dependency_report = (
+                await ai_wiring.model.source_service.build_delete_dependency_report(
+                    source_id=source_id,
+                )
             )
             raise AISourceDeleteBlockedError(
                 model_count=dependency_report.model_count

@@ -20,6 +20,7 @@ from apeiria.ai.model.runtime.capabilities import (
     parse_model_capabilities,
 )
 from apeiria.app.ai.runtime.media import resolve_runtime_media_part
+from apeiria.app.ai.wiring import ai_wiring
 
 if TYPE_CHECKING:
     from apeiria.ai.model.runtime.adapter import AIModelTranscriptionResponse
@@ -152,11 +153,7 @@ class DefaultSpeechModelSelector:
     """Select the configured default speech-to-text capability model."""
 
     async def select_stt_model(self) -> object | None:
-        from apeiria.ai.model.routing.capability_selection import (
-            ai_model_capability_selection_service,
-        )
-
-        return await ai_model_capability_selection_service.select_default_model(
+        return await ai_wiring.model.capability_selection_service.select_default_model(
             capability_type="speech_to_text",
         )
 
@@ -168,11 +165,9 @@ class ModelInvokerSpeechTranscriber:
         self,
         **kwargs: object,
     ) -> "AIModelTranscriptionResponse | None":
-        from apeiria.ai.model.runtime.service import model_invoker
-
         selected = kwargs["selected"]
         assert isinstance(selected, AISelectedModel)
-        return await model_invoker.transcribe_audio(
+        return await ai_wiring.model.invoker.transcribe_audio(
             selected,
             audio_bytes=kwargs["audio_bytes"],  # type: ignore[arg-type]
             file_name=str(kwargs.get("file_name") or "sample.wav"),

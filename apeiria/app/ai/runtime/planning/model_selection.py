@@ -8,12 +8,12 @@ from typing import TYPE_CHECKING, Any, Literal
 from nonebot.log import logger
 
 from apeiria.ai.model import AIModelRouteQuery
-from apeiria.ai.model.routing.routes import ai_model_route_service
 from apeiria.app.ai.agent_turn import (
     AgentModelGenerationRequest,
     AgentModelGenerationResult,
     AgentTurnModelRuntime,
 )
+from apeiria.app.ai.wiring import ai_wiring
 
 if TYPE_CHECKING:
     from apeiria.ai.model import (
@@ -62,7 +62,7 @@ async def select_model_attempt_plan(
 ) -> RuntimeModelSelection | None:
     """Select a route-aware model attempt plan for a runtime task class."""
 
-    plan = await ai_model_route_service.resolve_attempt_plan(
+    plan = await ai_wiring.model.route_service.resolve_attempt_plan(
         AIModelRouteQuery(task_class=task_class),
         target=target,
     )
@@ -87,7 +87,7 @@ async def select_task_model(
 ) -> "AISelectedModel | None":
     """Select only the primary model through the route-aware boundary."""
 
-    plan = await ai_model_route_service.resolve_attempt_plan(
+    plan = await ai_wiring.model.route_service.resolve_attempt_plan(
         AIModelRouteQuery(task_class=task_class),
         target=target,
     )
@@ -170,17 +170,14 @@ async def select_fallback_models(
     if limit <= 0 or selected.profile.fallback_profile_id is None:
         return ()
 
-    from apeiria.ai.model.catalog.chat import ai_chat_model_service
     from apeiria.ai.model.routing import resolve_source_selected_model_with_fallback
-    from apeiria.ai.model.routing.profile import ai_model_profile_service
-    from apeiria.ai.model.sources.service import ai_source_service
 
-    profiles = await ai_model_profile_service.list_profiles()
+    profiles = await ai_wiring.model.profile_service.list_profiles()
     enabled_profiles = {
         profile.profile_id: profile for profile in profiles if profile.enabled
     }
-    sources = await ai_source_service.list_sources()
-    source_models = await ai_chat_model_service.list_all_models()
+    sources = await ai_wiring.model.source_service.list_sources()
+    source_models = await ai_wiring.model.chat_model_service.list_all_models()
 
     fallback_models: list[AISelectedModel] = []
     visited = {selected.profile.profile_id}

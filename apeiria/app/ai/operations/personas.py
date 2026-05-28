@@ -4,8 +4,9 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from apeiria.ai.persona import AIPersonaCreateInput, ai_persona_service
+from apeiria.ai.persona import AIPersonaCreateInput
 from apeiria.app.ai.diagnostics.audit import record_ai_admin_audit
+from apeiria.app.ai.wiring import ai_wiring
 
 if TYPE_CHECKING:
     from apeiria.ai.persona import AIPersonaBindingSpec, AIPersonaDefinition
@@ -32,10 +33,10 @@ class PersonasAdminMixin:
     """Admin CRUD for AI personas and their scope bindings."""
 
     async def list_personas(self) -> list["AIPersonaDefinition"]:
-        return await ai_persona_service.list_personas()
+        return await ai_wiring.persona_service.list_personas()
 
     async def list_persona_bindings(self) -> list["AIPersonaBindingSpec"]:
-        return await ai_persona_service.list_bindings()
+        return await ai_wiring.persona_service.list_bindings()
 
     async def create_persona(  # noqa: PLR0913
         self,
@@ -47,7 +48,7 @@ class PersonasAdminMixin:
         enabled: bool,
         actor_username: str | None = None,
     ) -> "AIPersonaDefinition":
-        created = await ai_persona_service.create_persona(
+        created = await ai_wiring.persona_service.create_persona(
             _build_persona_create_input(
                 name=name,
                 description=description,
@@ -74,7 +75,7 @@ class PersonasAdminMixin:
         enabled: bool,
         actor_username: str | None = None,
     ) -> "AIPersonaDefinition | None":
-        updated = await ai_persona_service.update_persona(
+        updated = await ai_wiring.persona_service.update_persona(
             persona_id=persona_id,
             create_input=_build_persona_create_input(
                 name=name,

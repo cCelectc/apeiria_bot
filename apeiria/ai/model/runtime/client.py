@@ -116,6 +116,3 @@ class AIModelClient:
         if adapter is None:
             raise UnknownAISourceError(request.source_id)
         return await adapter.rerank_documents(request)
-
-
-ai_model_client = AIModelClient()

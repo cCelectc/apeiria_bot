@@ -125,9 +125,6 @@ class AISkillService:
         return ai_skill_runtime.activate_skill_explicit(skill_name)
 
 
-ai_skill_service = AISkillService()
-
-
 def _skill_sources(
     *,
     skills_dir: "Path | None",
@@ -139,4 +136,4 @@ def _skill_sources(
     return tuple(dict.fromkeys(resolved))
 
 
-__all__ = ["AISkillService", "ai_skill_service"]
+__all__ = ["AISkillService"]

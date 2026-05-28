@@ -410,9 +410,6 @@ class AISourceService:
         )
 
 
-ai_source_service = AISourceService()
-
-
 def _extract_inline_api_key(source: AISourceDefinition) -> str | None:
     extra_config = source.extra_config or {}
     raw_api_keys = extra_config.get("api_keys")

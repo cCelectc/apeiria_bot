@@ -7,18 +7,18 @@ from typing import TYPE_CHECKING, Any
 
 from nonebot.log import logger
 
-from apeiria.ai.model import model_invoker
 from apeiria.ai.prompting import (
     ToolIntentPlanningPromptInput,
     build_tool_intent_planning_packet,
     render_messages,
 )
-from apeiria.ai.tools import AIToolIntentPreview, ai_tool_service
+from apeiria.ai.tools import AIToolIntentPreview
 from apeiria.ai.tools.function_calling import (
     build_function_tools,
     build_intents_from_tool_calls,
 )
 from apeiria.app.ai.runtime.planning.model_selection import select_task_model
+from apeiria.app.ai.wiring import ai_wiring
 
 if TYPE_CHECKING:
     from apeiria.ai.tools import AIToolIntent, AIToolPolicy
@@ -34,7 +34,7 @@ async def plan_runtime_tool_intents(
 ) -> list["AIToolIntent"]:
     """Plan tool intents through app-owned model selection and invocation."""
 
-    allowed_tools = ai_tool_service.list_allowed_tools(policy)
+    allowed_tools = ai_wiring.tool_service.list_allowed_tools(policy)
     if not allowed_tools:
         return []
 
@@ -43,7 +43,7 @@ async def plan_runtime_tool_intents(
         return []
 
     try:
-        response = await model_invoker.generate_text(
+        response = await ai_wiring.model.invoker.generate_text(
             selected=selected,
             messages=render_messages(
                 build_tool_intent_planning_packet(

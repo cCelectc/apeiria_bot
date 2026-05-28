@@ -22,6 +22,7 @@ from apeiria.app.ai.usage_recording import (
     AIModelUsageRecordContext,
     record_model_usage_safely,
 )
+from apeiria.app.ai.wiring import ai_wiring
 
 
 class AgentTurnModelRuntime:
@@ -34,9 +35,7 @@ class AgentTurnModelRuntime:
         usage_recorder: Any | None = None,
     ) -> None:
         if model_invoker is None:
-            from apeiria.ai.model import model_invoker as default_model_invoker
-
-            model_invoker = default_model_invoker
+            model_invoker = ai_wiring.model.invoker
         if usage_recorder is None:
             from apeiria.app.ai.usage_recording import (
                 ai_model_usage_recorder as default_usage_recorder,

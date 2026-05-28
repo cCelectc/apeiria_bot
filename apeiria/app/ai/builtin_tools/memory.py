@@ -6,7 +6,6 @@ from typing import TYPE_CHECKING, Annotated, cast
 
 from apeiria.ai.memory.contracts import AIMemoryCreateInput, AIMemoryUpdateInput
 from apeiria.ai.memory.models import AIMemoryQuery
-from apeiria.ai.memory.service import ai_memory_service
 from apeiria.ai.tools.decorators import ai_tool
 from apeiria.ai.tools.models import AIToolExecutionContext, AIToolLevel, AIToolResult
 from apeiria.app.ai.builtin_tools.common import (
@@ -20,6 +19,7 @@ from apeiria.app.ai.builtin_tools.common import (
     optional_choice,
     short_text,
 )
+from apeiria.app.ai.wiring import ai_wiring
 
 if TYPE_CHECKING:
     from apeiria.ai.memory.models import (
@@ -66,7 +66,7 @@ async def search_memory(
         ),
     )
     try:
-        memories = await ai_memory_service.retrieve_memories(query)
+        memories = await ai_wiring.memory_service.retrieve_memories(query)
     except PermissionError as exc:
         return denied_result("memory.search", str(exc))
 
@@ -129,7 +129,7 @@ async def write_memory(  # noqa: PLR0913
         confidence=normalized_confidence,
     )
     try:
-        memory = await ai_memory_service.create_memory(create_input)
+        memory = await ai_wiring.memory_service.create_memory(create_input)
     except PermissionError as exc:
         return denied_result("memory.write", str(exc))
 
@@ -149,13 +149,13 @@ async def _update_memory(
     confidence: float,
     context: AIToolExecutionContext,
 ) -> AIToolResult:
-    existing = await ai_memory_service.get_memory(memory_id=memory_id)
+    existing = await ai_wiring.memory_service.get_memory(memory_id=memory_id)
     if existing is None:
         return error_result("memory.write", f"memory {memory_id} was not found")
     if not existing.is_editable or existing.lifecycle_state != "active":
         return error_result("memory.write", f"memory {memory_id} is not editable")
     try:
-        updated = await ai_memory_service.update_memory_content(
+        updated = await ai_wiring.memory_service.update_memory_content(
             memory_id=memory_id,
             update_input=AIMemoryUpdateInput(
                 content=content,

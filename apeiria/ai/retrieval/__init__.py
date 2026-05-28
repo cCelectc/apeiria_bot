@@ -11,7 +11,7 @@ from .models import (
     RetrievalDocument,
     RetrievalResult,
 )
-from .service import RetrievalCandidateService, retrieval_candidate_service
+from .service import RetrievalCandidateService
 
 __all__ = [
     "DenseVectorRecord",
@@ -22,6 +22,5 @@ __all__ = [
     "RetrievalDocument",
     "RetrievalResult",
     "content_hash_for_text",
-    "retrieval_candidate_service",
     "retrieval_document_id",
 ]

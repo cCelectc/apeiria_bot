@@ -379,6 +379,3 @@ class AIRelationshipService:
             reason=row.reason,
             created_at=row.created_at,
         )
-
-
-ai_relationship_service = AIRelationshipService()

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from apeiria.ai.profile import ai_profile_service
+from apeiria.app.ai.wiring import ai_wiring
 
 if TYPE_CHECKING:
     from apeiria.ai.memory import AIMemoryDefinition
@@ -20,7 +20,7 @@ async def load_profile_card_for_context(
 ) -> "AIProfileCard | None":
     """Load runtime profile-card projection for the active user."""
 
-    return await ai_profile_service.build_profile_card(
+    return await ai_wiring.profile_service.build_profile_card(
         platform=identity.platform,
         user_id=identity.subject_id or user_id,
         scene_type=identity.scene_type,
@@ -34,7 +34,7 @@ async def ingest_profile_from_message(
     user_id: str,
     self_introduction_name: str | None,
 ) -> None:
-    await ai_profile_service.ingest_message(
+    await ai_wiring.profile_service.ingest_message(
         platform=identity.platform,
         user_id=identity.subject_id or user_id,
         scene_type=identity.scene_type,

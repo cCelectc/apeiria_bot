@@ -5,14 +5,9 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from apeiria.ai.memory.embedding_store import ai_memory_embedding_store
-from apeiria.ai.retrieval import (
-    DenseVectorRecord,
-    RetrievalCandidateService,
-    RetrievalDocument,
-    content_hash_for_text,
-    retrieval_candidate_service,
-    retrieval_document_id,
-)
+from apeiria.ai.retrieval.identity import content_hash_for_text, retrieval_document_id
+from apeiria.ai.retrieval.models import DenseVectorRecord, RetrievalDocument
+from apeiria.ai.retrieval.service import RetrievalCandidateService
 
 if TYPE_CHECKING:
     from apeiria.ai.memory.contracts import AIMemoryCreateInput
@@ -31,7 +26,7 @@ class KnowledgeMemoryCoordinator:
         retrieval: RetrievalCandidateService | None = None,
     ) -> None:
         self._repository = repository
-        self._retrieval = retrieval or retrieval_candidate_service
+        self._retrieval = retrieval or RetrievalCandidateService()
 
     async def create_knowledge_memory(
         self,

@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from apeiria.ai.relationship import ai_relationship_service
 from apeiria.app.ai.diagnostics.audit import record_ai_admin_audit
+from apeiria.app.ai.wiring import ai_wiring
 
 if TYPE_CHECKING:
     from apeiria.ai.relationship import AIRelationshipEvent, AIRelationshipState
@@ -19,7 +19,7 @@ class RelationshipsAdminMixin:
         *,
         limit: int = 50,
     ) -> list["AIRelationshipState"]:
-        return await ai_relationship_service.list_states(limit=limit)
+        return await ai_wiring.relationship_service.list_states(limit=limit)
 
     async def get_relationship_state(
         self,
@@ -27,7 +27,7 @@ class RelationshipsAdminMixin:
         platform: str,
         user_id: str,
     ) -> "AIRelationshipState":
-        return await ai_relationship_service.get_state(
+        return await ai_wiring.relationship_service.get_state(
             platform=platform,
             user_id=user_id,
         )
@@ -39,7 +39,7 @@ class RelationshipsAdminMixin:
         user_id: str,
         limit: int = 20,
     ) -> list["AIRelationshipEvent"]:
-        return await ai_relationship_service.list_events_for_target(
+        return await ai_wiring.relationship_service.list_events_for_target(
             platform=platform,
             user_id=user_id,
             limit=limit,
@@ -54,7 +54,7 @@ class RelationshipsAdminMixin:
         scene_id: str | None = None,
         actor_username: str | None = None,
     ) -> "AIRelationshipState":
-        state = await ai_relationship_service.set_manual_score(
+        state = await ai_wiring.relationship_service.set_manual_score(
             platform=platform,
             user_id=user_id,
             score=score,

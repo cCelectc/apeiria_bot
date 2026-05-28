@@ -5,11 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from apeiria.ai.relationship import (
-    ai_relationship_service,
-    derive_relationship_delta,
-    project_emotion,
-)
+from apeiria.ai.relationship import derive_relationship_delta, project_emotion
+from apeiria.app.ai.wiring import ai_wiring
 
 if TYPE_CHECKING:
     from apeiria.ai.memory import AIMessageSentiment
@@ -74,15 +71,15 @@ async def load_relationship_context(
 ) -> str | None:
     """Load prompt-ready relationship context for the current target."""
 
-    state = await ai_relationship_service.get_state(
+    state = await ai_wiring.relationship_service.get_state(
         platform=target.platform,
         user_id=target.user_id,
     )
-    effective_state = await ai_relationship_service.get_effective_state(
+    effective_state = await ai_wiring.relationship_service.get_effective_state(
         platform=target.platform,
         user_id=target.user_id,
     )
-    events = await ai_relationship_service.list_events(
+    events = await ai_wiring.relationship_service.list_events(
         affinity_id=state.affinity_id,
         limit=3,
     )
@@ -108,7 +105,7 @@ async def update_relationship_state(
     if delta is None:
         return
 
-    await ai_relationship_service.apply_delta(
+    await ai_wiring.relationship_service.apply_delta(
         platform=target.platform,
         user_id=target.user_id,
         scene_id=target.scene_id,

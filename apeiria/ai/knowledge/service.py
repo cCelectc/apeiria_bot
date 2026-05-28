@@ -15,14 +15,9 @@ from apeiria.ai.knowledge.models import (
     KnowledgeUploadResult,
 )
 from apeiria.ai.knowledge.repository import KnowledgeRepository
-from apeiria.ai.retrieval import (
-    DenseVectorRecord,
-    RetrievalCandidateService,
-    RetrievalDocument,
-    content_hash_for_text,
-    retrieval_candidate_service,
-    retrieval_document_id,
-)
+from apeiria.ai.retrieval.identity import content_hash_for_text, retrieval_document_id
+from apeiria.ai.retrieval.models import DenseVectorRecord, RetrievalDocument
+from apeiria.ai.retrieval.service import RetrievalCandidateService
 
 if TYPE_CHECKING:
     from apeiria.ai.knowledge.models import (
@@ -43,7 +38,7 @@ class KnowledgeRetrievalService:
         retrieval: RetrievalCandidateService | None = None,
     ) -> None:
         self._repository = repository or KnowledgeRepository()
-        self._retrieval = retrieval or retrieval_candidate_service
+        self._retrieval = retrieval or RetrievalCandidateService()
 
     async def upload_document(
         self,
@@ -421,9 +416,6 @@ def _document_status_for_rebuild(
     return "pending"
 
 
-knowledge_retrieval_service = KnowledgeRetrievalService()
-
 __all__ = [
     "KnowledgeRetrievalService",
-    "knowledge_retrieval_service",
 ]

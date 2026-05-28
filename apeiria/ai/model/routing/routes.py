@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from typing import TYPE_CHECKING, cast
 from uuid import uuid4
 
+from apeiria.ai.model.catalog.chat import AIChatModelService
 from apeiria.ai.model.routing.bindings import (
     AIModelBindingTarget,
     resolve_model_route_binding,
@@ -21,12 +22,13 @@ from apeiria.ai.model.routing.models import (
     AIModelRouteScopeType,
     AIModelTaskClass,
 )
+from apeiria.ai.model.routing.profile import AIModelProfileService
 from apeiria.ai.model.routing.selection import (
     AIModelAttemptPlan,
     resolve_model_route_attempt_plan,
     selected_model_diagnostics,
 )
-from apeiria.ai.model.sources.service import ai_source_service
+from apeiria.ai.model.sources.service import AISourceService
 from apeiria.db.runtime import database_runtime
 
 if TYPE_CHECKING:
@@ -68,6 +70,20 @@ class AIModelRouteBindingCreateInput:
 
 class AIModelRouteService:
     """Model route persistence and attempt-plan service."""
+
+    def __init__(
+        self,
+        *,
+        source_service: AISourceService | None = None,
+        chat_model_service: AIChatModelService | None = None,
+        profile_service: AIModelProfileService | None = None,
+    ) -> None:
+        self._source_service = source_service or AISourceService()
+        self._chat_model_service = chat_model_service or AIChatModelService()
+        self._profile_service = profile_service or AIModelProfileService(
+            source_service=self._source_service,
+            chat_model_service=self._chat_model_service,
+        )
 
     async def list_routes(self) -> list[AIModelRouteDefinition]:
         with database_runtime.connect_sync() as connection:
@@ -364,9 +380,6 @@ class AIModelRouteService:
         target: AIModelBindingTarget | None = None,
         randomizer: "Random | None" = None,
     ) -> AIModelAttemptPlan | None:
-        from apeiria.ai.model.catalog.chat import ai_chat_model_service
-        from apeiria.ai.model.routing.profile import ai_model_profile_service
-
         routes = await self.list_routes()
         matched_binding = None
         route = None
@@ -384,9 +397,9 @@ class AIModelRouteService:
             route = _default_route_for_task(routes, query.task_class)
         if route is not None:
             members = await self.list_members(route_id=route.route_id)
-            profiles = await ai_model_profile_service.list_profiles()
-            sources = await ai_source_service.list_sources()
-            source_models = await ai_chat_model_service.list_all_models()
+            profiles = await self._profile_service.list_profiles()
+            sources = await self._source_service.list_sources()
+            source_models = await self._chat_model_service.list_all_models()
             plan = resolve_model_route_attempt_plan(
                 route,
                 members,
@@ -404,7 +417,7 @@ class AIModelRouteService:
                     ),
                 )
 
-        fallback_selected = await ai_model_profile_service.select_model(
+        fallback_selected = await self._profile_service.select_model(
             query=query,
             target=target,
         )
@@ -502,6 +515,3 @@ def _route_source_diagnostics(
 
 def _utcnow_text() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
-
-
-ai_model_route_service = AIModelRouteService()

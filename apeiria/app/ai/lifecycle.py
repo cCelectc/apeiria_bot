@@ -12,6 +12,7 @@ from apeiria.ai.contributions import (
     ai_contributions,
 )
 from apeiria.app.ai.tooling import register_app_ai_tools
+from apeiria.app.ai.wiring import ai_wiring
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -165,16 +166,12 @@ class AIPluginLifecycleCoordinator:
 
     def _get_tool_service(self) -> _ToolService:
         if self._tool_service is None:
-            from apeiria.ai.tools import ai_tool_service
-
-            return ai_tool_service
+            return ai_wiring.tool_service
         return self._tool_service
 
     def _get_skill_service(self) -> _SkillService:
         if self._skill_service is None:
-            from apeiria.ai.skills import ai_skill_service
-
-            return ai_skill_service
+            return ai_wiring.skill_service
         return self._skill_service
 
     def _get_future_task_service(self) -> _FutureTaskService:

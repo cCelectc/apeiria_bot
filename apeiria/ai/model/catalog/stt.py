@@ -103,6 +103,3 @@ class AISTTModelService:
         model_id: str,
     ) -> bool:
         return delete_source_model("ai_stt_model", model_id=model_id)
-
-
-ai_stt_model_service = AISTTModelService()

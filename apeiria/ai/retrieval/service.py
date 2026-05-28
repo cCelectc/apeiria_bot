@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 from apeiria.ai.model.routing.capability_selection import (
-    ai_model_capability_selection_service,
+    AIModelCapabilitySelectionService,
 )
-from apeiria.ai.model.runtime.service import model_invoker
-from apeiria.ai.model.sources.service import ai_source_service
+from apeiria.ai.model.runtime.service import ModelInvoker
+from apeiria.ai.model.sources.service import AISourceService
 from apeiria.ai.retrieval.dense import score_dense_candidates
 from apeiria.ai.retrieval.identity import (
     embedding_space_id_for_selected,
@@ -29,7 +29,22 @@ _MAX_CANDIDATE_LIMIT = 50
 class RetrievalCandidateService:
     """Select dense or sparse candidate generation, then optional rerank."""
 
-    def __init__(self, *, sparse_index: RetrievalSparseIndex | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        sparse_index: RetrievalSparseIndex | None = None,
+        capability_selection_service: AIModelCapabilitySelectionService | None = None,
+        model_invoker: ModelInvoker | None = None,
+        source_service: AISourceService | None = None,
+    ) -> None:
+        self._source_service = source_service or AISourceService()
+        self._capability_selection_service = (
+            capability_selection_service
+            or AIModelCapabilitySelectionService(source_service=self._source_service)
+        )
+        self._model_invoker = model_invoker or ModelInvoker(
+            source_service=self._source_service,
+        )
         self._sparse_index = sparse_index or retrieval_sparse_index
 
     async def retrieve_candidates(  # noqa: PLR0913
@@ -99,6 +114,9 @@ class RetrievalCandidateService:
             candidates=candidates,
             limit=limit,
             allow_rerank=allow_rerank,
+            capability_selection_service=self._capability_selection_service,
+            model_invoker=self._model_invoker,
+            source_service=self._source_service,
         )
         selected = reranked[:limit]
         return RetrievalResult(
@@ -134,7 +152,7 @@ class RetrievalCandidateService:
         self._sparse_index.delete_many(document_ids)
 
     async def _build_embedding(self, *, content: str) -> "_EmbeddingAttempt":
-        selected = await ai_model_capability_selection_service.select_default_model(
+        selected = await self._capability_selection_service.select_default_model(
             capability_type="embedding",
         )
         if selected is None:
@@ -142,14 +160,14 @@ class RetrievalCandidateService:
                 result=None,
                 failure_reason="no_embedding_model",
             )
-        api_key = ai_source_service.get_source_api_key(selected.source)
+        api_key = self._source_service.get_source_api_key(selected.source)
         if not api_key:
             return _EmbeddingAttempt(
                 result=None,
                 failure_reason="missing_embedding_credentials",
             )
         try:
-            response = await model_invoker.embed_texts_for_source(
+            response = await self._model_invoker.embed_texts_for_source(
                 source=selected.source,
                 api_key=api_key,
                 model_name=selected.model.model_identifier,
@@ -203,6 +221,3 @@ class _EmbeddingAttempt:
 def _candidate_limit(limit: int, candidate_limit: int | None) -> int:
     requested = candidate_limit or max(limit * 4, _DEFAULT_CANDIDATE_LIMIT)
     return min(max(requested, limit), _MAX_CANDIDATE_LIMIT)
-
-
-retrieval_candidate_service = RetrievalCandidateService()

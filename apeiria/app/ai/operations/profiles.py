@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from apeiria.ai.profile import ai_profile_service
 from apeiria.app.ai.diagnostics.audit import record_ai_admin_audit
+from apeiria.app.ai.wiring import ai_wiring
 
 if TYPE_CHECKING:
     from apeiria.ai.profile import (
@@ -22,7 +22,7 @@ class ProfilesAdminMixin:
         *,
         limit: int = 50,
     ) -> list["AIProfileDefinition"]:
-        return await ai_profile_service.list_profiles(limit=limit)
+        return await ai_wiring.profile_service.list_profiles(limit=limit)
 
     async def get_user_profile(
         self,
@@ -30,7 +30,7 @@ class ProfilesAdminMixin:
         platform: str,
         user_id: str,
     ) -> "AIProfileDefinition | None":
-        return await ai_profile_service.get_profile(
+        return await ai_wiring.profile_service.get_profile(
             platform=platform,
             user_id=user_id,
         )
@@ -42,7 +42,7 @@ class ProfilesAdminMixin:
         update_input: "AIProfileUpdateInput",
         actor_username: str | None = None,
     ) -> "AIProfileDefinition | None":
-        result = await ai_profile_service.update_profile(
+        result = await ai_wiring.profile_service.update_profile(
             profile_id=profile_id,
             update_input=update_input,
         )
@@ -60,10 +60,10 @@ class ProfilesAdminMixin:
         profile_id: str,
         actor_username: str | None = None,
     ) -> bool:
-        existing = await ai_profile_service.get_profile_by_id(
+        existing = await ai_wiring.profile_service.get_profile_by_id(
             profile_id=profile_id,
         )
-        deleted = await ai_profile_service.delete_profile(
+        deleted = await ai_wiring.profile_service.delete_profile(
             profile_id=profile_id,
         )
         if deleted:

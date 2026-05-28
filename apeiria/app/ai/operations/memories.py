@@ -8,9 +8,9 @@ from apeiria.ai.memory import (
     AIMemoryCreateInput,
     AIMemoryQuery,
     AIMemoryUpdateInput,
-    ai_memory_service,
 )
 from apeiria.app.ai.diagnostics.audit import record_ai_admin_audit
+from apeiria.app.ai.wiring import ai_wiring
 
 if TYPE_CHECKING:
     from apeiria.ai.memory import (
@@ -90,7 +90,7 @@ class MemoriesAdminMixin:
         normalized_kind = _normalize_optional_memory_kind(memory_kind)
         normalized_anchor_type = _normalize_memory_anchor_type(anchor_type)
         if query_text.strip():
-            return await ai_memory_service.retrieve_memories(
+            return await ai_wiring.memory_service.retrieve_memories(
                 AIMemoryQuery(
                     anchor_type=normalized_anchor_type,
                     anchor_id=anchor_id,
@@ -100,7 +100,7 @@ class MemoriesAdminMixin:
                     memory_kind=normalized_kind,
                 ),
             )
-        memories = await ai_memory_service.list_memories(
+        memories = await ai_wiring.memory_service.list_memories(
             anchor_type=normalized_anchor_type,
             anchor_id=anchor_id,
             memory_layer=normalized_layer,
@@ -144,16 +144,16 @@ class MemoriesAdminMixin:
             msg = "summary memories are system-managed and cannot be created manually"
             raise ValueError(msg)
         if normalized_layer == "knowledge":
-            row = await ai_memory_service.create_knowledge_memory(create_input)
+            row = await ai_wiring.memory_service.create_knowledge_memory(create_input)
         else:
-            row = await ai_memory_service.create_memory_if_absent(create_input)
+            row = await ai_wiring.memory_service.create_memory_if_absent(create_input)
             if row is None:
-                existing = await ai_memory_service.get_memory_by_identity(
+                existing = await ai_wiring.memory_service.get_memory_by_identity(
                     create_input,
                 )
                 assert existing is not None
                 row = existing
-        memories = await ai_memory_service.list_memories(
+        memories = await ai_wiring.memory_service.list_memories(
             anchor_type=normalized_anchor_type,
             anchor_id=anchor_id,
             memory_layer=normalized_layer,
@@ -173,8 +173,8 @@ class MemoriesAdminMixin:
         memory_id: str,
         actor_username: str | None = None,
     ) -> bool:
-        existing = await ai_memory_service.get_memory(memory_id=memory_id)
-        deleted = await ai_memory_service.delete_memory(
+        existing = await ai_wiring.memory_service.get_memory(memory_id=memory_id)
+        deleted = await ai_wiring.memory_service.delete_memory(
             memory_id=memory_id,
         )
         if deleted:
@@ -198,12 +198,12 @@ class MemoriesAdminMixin:
         confidence: float,
         actor_username: str | None = None,
     ) -> "AIMemoryDefinition | None":
-        existing = await ai_memory_service.get_memory(memory_id=memory_id)
+        existing = await ai_wiring.memory_service.get_memory(memory_id=memory_id)
         if existing is None:
             return None
         if not existing.is_editable or existing.memory_layer == "summary":
             return None
-        row = await ai_memory_service.update_memory_content(
+        row = await ai_wiring.memory_service.update_memory_content(
             memory_id=memory_id,
             update_input=AIMemoryUpdateInput(
                 content=content,
@@ -214,7 +214,7 @@ class MemoriesAdminMixin:
         )
         if row is None:
             return None
-        memories = await ai_memory_service.list_memories(
+        memories = await ai_wiring.memory_service.list_memories(
             anchor_type=cast("AIMemoryAnchorType", row.anchor_type),
             anchor_id=row.anchor_id,
             memory_layer=cast("AIMemoryLayer", row.memory_layer),
@@ -239,7 +239,7 @@ class MemoriesAdminMixin:
         actor_username: str | None = None,
     ) -> "AIMemoryDefinition | None":
         normalized_state = _normalize_memory_lifecycle_state(lifecycle_state)
-        result = await ai_memory_service.set_memory_state(
+        result = await ai_wiring.memory_service.set_memory_state(
             memory_id=memory_id,
             lifecycle_state=normalized_state,
             governance_reason=f"operator set lifecycle {normalized_state}",
@@ -258,7 +258,7 @@ class MemoriesAdminMixin:
         memory_ids: list[str],
         actor_username: str | None = None,
     ) -> int:
-        count = await ai_memory_service.bulk_delete_memories(
+        count = await ai_wiring.memory_service.bulk_delete_memories(
             memory_ids=memory_ids,
         )
         if count > 0:
@@ -277,7 +277,7 @@ class MemoriesAdminMixin:
         actor_username: str | None = None,
     ) -> int:
         normalized_state = _normalize_memory_lifecycle_state(lifecycle_state)
-        count = await ai_memory_service.bulk_set_memory_state(
+        count = await ai_wiring.memory_service.bulk_set_memory_state(
             memory_ids=memory_ids,
             lifecycle_state=normalized_state,
             governance_reason=f"operator bulk set lifecycle {normalized_state}",

@@ -4,16 +4,15 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from apeiria.ai.model.routing.capability_selection import (
-    ai_model_capability_selection_service,
-)
-from apeiria.ai.model.runtime.service import model_invoker
-from apeiria.ai.model.sources.service import ai_source_service
-
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
+    from apeiria.ai.model.routing.capability_selection import (
+        AIModelCapabilitySelectionService,
+    )
     from apeiria.ai.model.runtime.adapter import AIModelRerankResultItem
+    from apeiria.ai.model.runtime.service import ModelInvoker
+    from apeiria.ai.model.sources.service import AISourceService
     from apeiria.ai.retrieval.models import (
         RerankStatus,
         RetrievalCandidate,
@@ -24,12 +23,15 @@ _RERANK_MIN_CANDIDATES = 8
 _RERANK_MAX_CANDIDATES = 50
 
 
-async def maybe_rerank_candidates(  # noqa: PLR0911
+async def maybe_rerank_candidates(  # noqa: PLR0911, PLR0913
     *,
     query_text: str,
     candidates: tuple[RetrievalCandidate, ...],
     limit: int,
     allow_rerank: bool,
+    capability_selection_service: "AIModelCapabilitySelectionService",
+    model_invoker: "ModelInvoker",
+    source_service: "AISourceService",
 ) -> tuple[tuple[RetrievalCandidate, ...], RerankStatus]:
     """Rerank candidates when a rerank model is configured and usable."""
 
@@ -37,12 +39,12 @@ async def maybe_rerank_candidates(  # noqa: PLR0911
         return candidates, "not_applicable"
     if not allow_rerank or len(candidates) <= 1:
         return candidates[:limit], "skipped"
-    selected = await ai_model_capability_selection_service.select_default_model(
+    selected = await capability_selection_service.select_default_model(
         capability_type="rerank",
     )
     if selected is None:
         return candidates[:limit], "not_configured"
-    api_key = ai_source_service.get_source_api_key(selected.source)
+    api_key = source_service.get_source_api_key(selected.source)
     if not api_key:
         return candidates[:limit], "skipped"
 

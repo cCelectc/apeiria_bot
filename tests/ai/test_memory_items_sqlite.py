@@ -23,10 +23,11 @@ def test_memory_items_use_sqlite(
     database_runtime.ensure_ready()
 
     from apeiria.ai.memory.models import AIMemoryQuery
-    from apeiria.ai.memory.service import AIMemoryCreateInput, ai_memory_service
+    from apeiria.ai.memory.service import AIMemoryCreateInput
+    from apeiria.app.ai.wiring import ai_wiring
 
     async def scenario() -> None:
-        created = await ai_memory_service.create_memory(
+        created = await ai_wiring.memory_service.create_memory(
             AIMemoryCreateInput(
                 anchor_type="user",
                 anchor_id="user-1",
@@ -38,7 +39,7 @@ def test_memory_items_use_sqlite(
             ),
         )
 
-        duplicate = await ai_memory_service.create_memory_if_absent(
+        duplicate = await ai_wiring.memory_service.create_memory_if_absent(
             AIMemoryCreateInput(
                 anchor_type="user",
                 anchor_id="user-1",
@@ -49,7 +50,7 @@ def test_memory_items_use_sqlite(
         )
         assert duplicate is None
 
-        recalled = await ai_memory_service.recall_memories(
+        recalled = await ai_wiring.memory_service.recall_memories(
             AIMemoryQuery(
                 anchor_type="user",
                 anchor_id="user-1",
@@ -61,7 +62,7 @@ def test_memory_items_use_sqlite(
         assert [item.memory_id for item in recalled] == [created.memory_id]
         assert recalled[0].last_recalled_at is not None
 
-        suppressed = await ai_memory_service.set_memory_state(
+        suppressed = await ai_wiring.memory_service.set_memory_state(
             memory_id=created.memory_id,
             lifecycle_state="suppressed",
             governance_reason="test suppression",
@@ -70,7 +71,7 @@ def test_memory_items_use_sqlite(
         assert suppressed.lifecycle_state == "suppressed"
 
         assert (
-            await ai_memory_service.retrieve_memories(
+            await ai_wiring.memory_service.retrieve_memories(
                 AIMemoryQuery(
                     anchor_type="user",
                     anchor_id="user-1",
@@ -82,18 +83,21 @@ def test_memory_items_use_sqlite(
             == []
         )
 
-        listed = await ai_memory_service.list_memories(
+        listed = await ai_wiring.memory_service.list_memories(
             anchor_type="user",
             anchor_id="user-1",
             lifecycle_states=(),
         )
         assert [item.memory_id for item in listed] == [created.memory_id]
 
-        deleted = await ai_memory_service.delete_memory(
+        deleted = await ai_wiring.memory_service.delete_memory(
             memory_id=created.memory_id,
         )
         assert deleted is True
-        assert await ai_memory_service.get_memory(memory_id=created.memory_id) is None
+        assert (
+            await ai_wiring.memory_service.get_memory(memory_id=created.memory_id)
+            is None
+        )
 
     asyncio.run(scenario())
 
@@ -108,23 +112,22 @@ def test_memory_lifecycle_changes_sync_sparse_index(
     from apeiria.ai.memory.service import (
         AIMemoryCreateInput,
         _memory_to_retrieval_document,
-        ai_memory_service,
     )
-    from apeiria.ai.retrieval import service as retrieval_service_module
     from apeiria.ai.retrieval.sparse import retrieval_sparse_index
+    from apeiria.app.ai.wiring import ai_wiring
 
     async def select_default_model(*, capability_type: str) -> object | None:
         del capability_type
         return None
 
     monkeypatch.setattr(
-        retrieval_service_module.ai_model_capability_selection_service,
+        ai_wiring.retrieval_service._capability_selection_service,
         "select_default_model",
         select_default_model,
     )
 
     async def scenario() -> None:
-        memory = await ai_memory_service.create_memory(
+        memory = await ai_wiring.memory_service.create_memory(
             AIMemoryCreateInput(
                 anchor_type="user",
                 anchor_id="user-1",
@@ -134,7 +137,7 @@ def test_memory_lifecycle_changes_sync_sparse_index(
             )
         )
 
-        await ai_memory_service.set_memory_state(
+        await ai_wiring.memory_service.set_memory_state(
             memory_id=memory.memory_id,
             lifecycle_state="suppressed",
             default_use_mode="ignore",
@@ -150,13 +153,15 @@ def test_memory_lifecycle_changes_sync_sparse_index(
 
         assert suppressed_result.candidates == ()
 
-        await ai_memory_service.set_memory_state(
+        await ai_wiring.memory_service.set_memory_state(
             memory_id=memory.memory_id,
             lifecycle_state="active",
             default_use_mode="context",
             governance_reason="test reactivation",
         )
-        reactivated = await ai_memory_service.get_memory(memory_id=memory.memory_id)
+        reactivated = await ai_wiring.memory_service.get_memory(
+            memory_id=memory.memory_id
+        )
         assert reactivated is not None
 
         reactivated_document = _memory_to_retrieval_document(reactivated)
@@ -181,11 +186,12 @@ def test_consolidate_anchor_summary_creates_first_summary_memory(
     monkeypatch.setattr(database_runtime, "_project_root", tmp_path)
     database_runtime.ensure_ready()
 
-    from apeiria.ai.memory.service import AIMemoryCreateInput, ai_memory_service
+    from apeiria.ai.memory.service import AIMemoryCreateInput
+    from apeiria.app.ai.wiring import ai_wiring
 
     async def scenario() -> None:
         for content in ("likes concise answers", "works on Apeiria"):
-            await ai_memory_service.create_memory(
+            await ai_wiring.memory_service.create_memory(
                 AIMemoryCreateInput(
                     anchor_type="user",
                     anchor_id="user-1",
@@ -195,12 +201,12 @@ def test_consolidate_anchor_summary_creates_first_summary_memory(
                 ),
             )
 
-        await ai_memory_service.consolidate_anchor_summary(
+        await ai_wiring.memory_service.consolidate_anchor_summary(
             anchor_type="user",
             anchor_id="user-1",
         )
 
-        summaries = await ai_memory_service.list_memories(
+        summaries = await ai_wiring.memory_service.list_memories(
             anchor_type="user",
             anchor_id="user-1",
             memory_layer="summary",

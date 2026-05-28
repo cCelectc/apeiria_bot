@@ -6,7 +6,6 @@ from typing import TYPE_CHECKING
 
 from nonebot.log import logger
 
-from apeiria.ai.relationship import ai_relationship_service
 from apeiria.app.ai.reply_strategy.helpers import (
     count_recent_bot_turns,
     latest_bot_turn_at,
@@ -14,6 +13,7 @@ from apeiria.app.ai.reply_strategy.helpers import (
 )
 from apeiria.app.ai.reply_strategy.models import WakeContext
 from apeiria.app.ai.reply_strategy.service import reply_strategy_service
+from apeiria.app.ai.wiring import ai_wiring
 
 if TYPE_CHECKING:
     from datetime import datetime
@@ -33,7 +33,7 @@ async def resolve_initiative_bias(
 ) -> float:
     """Project the relationship state into an initiative bias."""
 
-    projection = await ai_relationship_service.project_state(
+    projection = await ai_wiring.relationship_service.project_state(
         platform=relationship_target.platform,
         user_id=relationship_target.user_id,
     )

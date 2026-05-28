@@ -7,13 +7,12 @@ import re
 import wave
 from typing import TYPE_CHECKING, cast
 
-from apeiria.ai.model import ai_source_service, resolve_client_type_for_preset
+from apeiria.ai.model import resolve_client_type_for_preset
 from apeiria.ai.model.catalog.capability_templates import enrich_catalog_item
 from apeiria.ai.model.runtime.adapter import AIModelCatalogItem
 from apeiria.ai.model.runtime.capability_sources import (
     capability_provenance_to_metadata,
 )
-from apeiria.ai.model.runtime.service import model_invoker
 from apeiria.app.ai.operations.errors import (
     AISourceModelFetchConfigError,
     AISourceModelFetchUpstreamError,
@@ -21,6 +20,7 @@ from apeiria.app.ai.operations.errors import (
     AISourceModelTestUpstreamError,
 )
 from apeiria.app.ai.operations.sources import coerce_source_preset_type
+from apeiria.app.ai.wiring import ai_wiring
 
 if TYPE_CHECKING:
     from typing import Literal
@@ -55,7 +55,9 @@ async def fetch_source_model_catalog(
 ) -> list["AIModelCatalogItem"]:
     stored_source = None
     if source_id:
-        stored_source = await ai_source_service.get_source(source_id=source_id)
+        stored_source = await ai_wiring.model.source_service.get_source(
+            source_id=source_id
+        )
     source = _resolve_source_for_model_fetch(
         stored_source=stored_source,
         preset_type=preset_type,
@@ -65,12 +67,12 @@ async def fetch_source_model_catalog(
     resolved_api_key = (
         api_key
         or _stored_source_api_key(stored_source)
-        or ai_source_service.get_source_api_key(source)
+        or ai_wiring.model.source_service.get_source_api_key(source)
     )
     if not resolved_api_key:
         raise AISourceModelFetchConfigError
     try:
-        catalog_items = await model_invoker.list_source_models(
+        catalog_items = await ai_wiring.model.invoker.list_source_models(
             source=source,
             api_key=resolved_api_key,
         )
@@ -118,7 +120,9 @@ async def test_source_model_connectivity(  # noqa: PLR0913
 
     stored_source = None
     if source_id:
-        stored_source = await ai_source_service.get_source(source_id=source_id)
+        stored_source = await ai_wiring.model.source_service.get_source(
+            source_id=source_id
+        )
     source = _resolve_source_for_model_fetch(
         stored_source=stored_source,
         preset_type=preset_type,
@@ -128,7 +132,7 @@ async def test_source_model_connectivity(  # noqa: PLR0913
     resolved_api_key = (
         api_key
         or _stored_source_api_key(stored_source)
-        or ai_source_service.get_source_api_key(source)
+        or ai_wiring.model.source_service.get_source_api_key(source)
     )
     if not resolved_api_key:
         raise AISourceModelTestConfigError(
@@ -136,7 +140,7 @@ async def test_source_model_connectivity(  # noqa: PLR0913
         )
     try:
         if source.capability_type == "embedding":
-            embedding_response = await model_invoker.embed_texts_for_source(
+            embedding_response = await ai_wiring.model.invoker.embed_texts_for_source(
                 source=source,
                 api_key=resolved_api_key,
                 model_name=resolved_model_identifier,
@@ -158,12 +162,14 @@ async def test_source_model_connectivity(  # noqa: PLR0913
                 source.extra_config,
                 "stt_language",
             )
-            transcription_response = await model_invoker.transcribe_audio_for_source(
-                source=source,
-                api_key=resolved_api_key,
-                model_name=resolved_model_identifier,
-                audio_bytes=_build_test_wav_bytes(),
-                language=stt_language,
+            transcription_response = (
+                await ai_wiring.model.invoker.transcribe_audio_for_source(
+                    source=source,
+                    api_key=resolved_api_key,
+                    model_name=resolved_model_identifier,
+                    audio_bytes=_build_test_wav_bytes(),
+                    language=stt_language,
+                )
             )
             transcription_summary = transcription_response.text.strip()
             return (
@@ -183,13 +189,15 @@ async def test_source_model_connectivity(  # noqa: PLR0913
                 source.extra_config,
                 "tts_response_format",
             )
-            speech_response = await model_invoker.synthesize_speech_for_source(
-                source=source,
-                api_key=resolved_api_key,
-                model_name=resolved_model_identifier,
-                text=TTS_TEST_TEXT,
-                voice=tts_voice,
-                response_format=tts_response_format,
+            speech_response = (
+                await ai_wiring.model.invoker.synthesize_speech_for_source(
+                    source=source,
+                    api_key=resolved_api_key,
+                    model_name=resolved_model_identifier,
+                    text=TTS_TEST_TEXT,
+                    voice=tts_voice,
+                    response_format=tts_response_format,
+                )
             )
             return (
                 resolved_model_identifier,
@@ -200,7 +208,7 @@ async def test_source_model_connectivity(  # noqa: PLR0913
             rerank_top_n = (
                 _coerce_optional_int(source.extra_config, "rerank_top_n") or 2
             )
-            rerank_response = await model_invoker.rerank_documents_for_source(
+            rerank_response = await ai_wiring.model.invoker.rerank_documents_for_source(
                 source=source,
                 api_key=resolved_api_key,
                 model_name=resolved_model_identifier,
@@ -221,7 +229,7 @@ async def test_source_model_connectivity(  # noqa: PLR0913
                 f"rerank ok ({rerank_summary})",
                 0,
             )
-        response = await model_invoker.generate_text_for_source(
+        response = await ai_wiring.model.invoker.generate_text_for_source(
             source=source,
             api_key=resolved_api_key,
             model_name=resolved_model_identifier,
@@ -270,7 +278,7 @@ def _resolve_source_for_model_fetch(
             AISourceModelFetchConfigError.MISSING_API_BASE
         )
 
-    return ai_source_service.build_ephemeral_source(
+    return ai_wiring.model.source_service.build_ephemeral_source(
         name=stored_source.name if stored_source is not None else "preview_source",
         capability_type=(  # type: ignore[arg-type]
             stored_source.capability_type
@@ -278,7 +286,7 @@ def _resolve_source_for_model_fetch(
             else next(
                 (
                     item.capability_type
-                    for item in ai_source_service.list_presets()
+                    for item in ai_wiring.model.source_service.list_presets()
                     if item.preset_type == coerced_preset_type
                 ),
                 "chat_completion",
@@ -307,7 +315,7 @@ def _resolve_source_for_model_fetch(
 def _stored_source_api_key(source: "AISourceDefinition | None") -> str | None:
     if source is None:
         return None
-    return ai_source_service.get_source_api_key(source)
+    return ai_wiring.model.source_service.get_source_api_key(source)
 
 
 def _sanitize_upstream_error_detail(

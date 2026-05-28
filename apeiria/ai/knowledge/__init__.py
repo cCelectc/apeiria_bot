@@ -21,7 +21,6 @@ from apeiria.ai.knowledge.models import (
 from apeiria.ai.knowledge.repository import KnowledgeRepository
 from apeiria.ai.knowledge.service import (
     KnowledgeRetrievalService,
-    knowledge_retrieval_service,
 )
 
 __all__ = [
@@ -37,5 +36,4 @@ __all__ = [
     "KnowledgeUploadedDocument",
     "chunk_embedding_store",
     "chunk_uploaded_document",
-    "knowledge_retrieval_service",
 ]

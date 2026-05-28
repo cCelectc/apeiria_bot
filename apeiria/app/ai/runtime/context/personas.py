@@ -6,12 +6,9 @@ from typing import TYPE_CHECKING
 
 from apeiria.access.groups import group_service
 from apeiria.ai.model import AIModelBindingTarget
-from apeiria.ai.persona import (
-    AIPersonaBindingTarget,
-    ai_persona_service,
-    build_persona_render_context,
-)
+from apeiria.ai.persona import AIPersonaBindingTarget, build_persona_render_context
 from apeiria.app.ai.sessions.repository import AISessionManagementRepository
+from apeiria.app.ai.wiring import ai_wiring
 
 if TYPE_CHECKING:
     from datetime import datetime
@@ -115,7 +112,7 @@ async def load_persona_bundle(
         turn.identity.session_id,
     )
     if managed_session is not None and managed_session.persona_id:
-        override = await ai_persona_service.build_persona_prompt_bundle_by_id(
+        override = await ai_wiring.persona_service.build_persona_prompt_bundle_by_id(
             persona_id=managed_session.persona_id,
             render_context=render_context,
         )
@@ -123,7 +120,7 @@ async def load_persona_bundle(
             return override
 
     target = build_persona_binding_target(turn.identity, turn.user_id)
-    return await ai_persona_service.build_persona_prompt_bundle(
+    return await ai_wiring.persona_service.build_persona_prompt_bundle(
         target=target,
         render_context=render_context,
     )

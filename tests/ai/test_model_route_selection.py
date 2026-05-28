@@ -25,6 +25,7 @@ from apeiria.ai.model.routing.selection import (
 )
 from apeiria.ai.model.sources.models import AISourceDefinition
 from apeiria.app.ai.runtime.planning import model_selection
+from apeiria.app.ai.wiring import ai_wiring
 
 if TYPE_CHECKING:
     from pytest import MonkeyPatch
@@ -193,7 +194,7 @@ def test_select_task_model_uses_route_attempt_plan(
             assert target is None
             return selected
 
-    monkeypatch.setattr(model_selection, "ai_model_route_service", RouteService())
+    monkeypatch.setattr(ai_wiring.model, "_route_service", RouteService())
 
     result = asyncio.run(model_selection.select_task_model(task_class="reply_default"))
 
@@ -413,10 +414,6 @@ def _route_service(
     monkeypatch: "MonkeyPatch",
     data: _RouteServiceData,
 ) -> AIModelRouteService:
-    from apeiria.ai.model.catalog import chat
-    from apeiria.ai.model.routing import profile
-    from apeiria.ai.model.sources import service as source_service
-
     service = AIModelRouteService()
 
     async def list_routes() -> list[AIModelRouteDefinition]:
@@ -455,12 +452,12 @@ def _route_service(
     monkeypatch.setattr(service, "list_routes", list_routes)
     monkeypatch.setattr(service, "list_bindings", list_bindings)
     monkeypatch.setattr(service, "list_members", list_members)
+    monkeypatch.setattr(service._profile_service, "list_profiles", list_profiles)
+    monkeypatch.setattr(service._profile_service, "select_model", select_model)
+    monkeypatch.setattr(service._source_service, "list_sources", list_sources)
     monkeypatch.setattr(
-        profile.ai_model_profile_service,
-        "list_profiles",
-        list_profiles,
+        service._chat_model_service,
+        "list_all_models",
+        list_all_models,
     )
-    monkeypatch.setattr(profile.ai_model_profile_service, "select_model", select_model)
-    monkeypatch.setattr(source_service.ai_source_service, "list_sources", list_sources)
-    monkeypatch.setattr(chat.ai_chat_model_service, "list_all_models", list_all_models)
     return service

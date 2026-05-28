@@ -362,8 +362,5 @@ def _build_template_variables(
     }
 
 
-ai_persona_service = AIPersonaService()
-
-
 def _utcnow_text() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")

@@ -28,14 +28,9 @@ from apeiria.ai.memory.repository import (
     utcnow,
 )
 from apeiria.ai.memory.summaries import MemorySummaryCoordinator
-from apeiria.ai.retrieval import (
-    DenseVectorRecord,
-    RetrievalCandidateService,
-    RetrievalDocument,
-    content_hash_for_text,
-    retrieval_candidate_service,
-    retrieval_document_id,
-)
+from apeiria.ai.retrieval.identity import content_hash_for_text, retrieval_document_id
+from apeiria.ai.retrieval.models import DenseVectorRecord, RetrievalDocument
+from apeiria.ai.retrieval.service import RetrievalCandidateService
 
 if TYPE_CHECKING:
     from datetime import datetime
@@ -66,7 +61,7 @@ class AIMemoryService:
         summaries: MemorySummaryCoordinator | None = None,
         retrieval: RetrievalCandidateService | None = None,
     ) -> None:
-        self._retrieval = retrieval or retrieval_candidate_service
+        self._retrieval = retrieval or RetrievalCandidateService()
         self._repository = repository or AIMemoryRepository()
         self._knowledge = knowledge or KnowledgeMemoryCoordinator(
             self._repository,
@@ -740,6 +735,3 @@ def _creation_action_for_state(
 
 def _actor_for_memory(memory: AIMemoryDefinition) -> AIMemoryActorType:
     return "operator" if memory.memory_layer == "operator" else "system"
-
-
-ai_memory_service = AIMemoryService()

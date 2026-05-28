@@ -6,9 +6,9 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from apeiria.ai.knowledge.repository import KnowledgeRepository
-from apeiria.ai.knowledge.service import knowledge_retrieval_service
 from apeiria.ai.knowledge.settings import knowledge_settings_store
 from apeiria.app.ai.diagnostics.audit import record_ai_admin_audit
+from apeiria.app.ai.wiring import ai_wiring
 
 if TYPE_CHECKING:
     from apeiria.ai.knowledge.models import (
@@ -64,7 +64,7 @@ class KnowledgeAdminMixin:
         content: str | bytes,
         actor_username: str | None = None,
     ) -> KnowledgeUploadResult:
-        result = await knowledge_retrieval_service.upload_document(
+        result = await ai_wiring.knowledge_service.upload_document(
             source_file_name=source_file_name,
             content=content,
         )
@@ -98,7 +98,7 @@ class KnowledgeAdminMixin:
         document_id: str | None = None,
         actor_username: str | None = None,
     ) -> KnowledgeRebuildDiagnostics:
-        result = await knowledge_retrieval_service.rebuild_embeddings(
+        result = await ai_wiring.knowledge_service.rebuild_embeddings(
             document_id=document_id,
         )
         record_ai_admin_audit(
@@ -114,7 +114,7 @@ class KnowledgeAdminMixin:
         query_text: str,
         limit: int,
     ) -> KnowledgeRetrievalResult:
-        return await knowledge_retrieval_service.retrieve(
+        return await ai_wiring.knowledge_service.retrieve(
             query_text=query_text,
             limit=limit,
         )
@@ -125,7 +125,7 @@ class KnowledgeAdminMixin:
         document_id: str,
         actor_username: str | None = None,
     ) -> bool:
-        deleted = knowledge_retrieval_service.delete_document(document_id=document_id)
+        deleted = ai_wiring.knowledge_service.delete_document(document_id=document_id)
         if deleted:
             record_ai_admin_audit(
                 "ai_knowledge_document_deleted",

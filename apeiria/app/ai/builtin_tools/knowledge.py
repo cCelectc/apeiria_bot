@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Annotated
 
-from apeiria.ai.knowledge.service import knowledge_retrieval_service
 from apeiria.ai.knowledge.settings import knowledge_settings_store
 from apeiria.ai.tools.decorators import ai_tool
 from apeiria.ai.tools.models import (
@@ -19,6 +18,7 @@ from apeiria.app.ai.builtin_tools.common import (
     clean_required_text,
     denied_result,
 )
+from apeiria.app.ai.wiring import ai_wiring
 
 if TYPE_CHECKING:
     from apeiria.ai.knowledge.models import (
@@ -62,7 +62,7 @@ async def search_knowledge(
         maximum=_MAX_KNOWLEDGE_RESULTS,
     )
     try:
-        result = await knowledge_retrieval_service.retrieve(
+        result = await ai_wiring.knowledge_service.retrieve(
             query_text=query_text,
             limit=bounded_limit,
         )

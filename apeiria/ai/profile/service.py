@@ -224,6 +224,3 @@ def _memory_belongs_to_profile(memory: "AIMemoryDefinition", user_id: str) -> bo
     if memory.anchor_type == "user":
         return memory.anchor_id == user_id
     return memory.anchor_type == "participant"
-
-
-ai_profile_service = AIProfileService()

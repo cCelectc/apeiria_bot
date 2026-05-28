@@ -9,10 +9,7 @@ from nonebot.log import logger
 
 from apeiria.ai.prompting import render_messages
 from apeiria.ai.runtime_settings import ai_runtime_settings_service
-from apeiria.ai.tools import (
-    ai_tool_service,
-    summarize_tool_policy,
-)
+from apeiria.ai.tools import summarize_tool_policy
 from apeiria.app.ai.runtime.context.projection import (
     project_runtime_context,
 )
@@ -46,6 +43,7 @@ from apeiria.app.ai.runtime.stages import (
     RuntimePlanningReport,
     RuntimeTurnPlan,
 )
+from apeiria.app.ai.wiring import ai_wiring
 
 if TYPE_CHECKING:
     from datetime import datetime
@@ -116,7 +114,7 @@ async def plan_runtime_turn(
 
     tool_runtime = RuntimeToolLoopResult(
         policy_text=summarize_tool_policy(
-            ai_tool_service.registry.list_tools(),
+            ai_wiring.tool_service.registry.list_tools(),
             context.tool_policy,
         ),
         result_lines=(),

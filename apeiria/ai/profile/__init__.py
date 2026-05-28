@@ -9,7 +9,7 @@ from .models import (
     AIProfileNameVisibility,
     AIProfileUpdateInput,
 )
-from .service import AIProfileService, ai_profile_service
+from .service import AIProfileService
 
 __all__ = [
     "AIProfileCard",
@@ -18,5 +18,4 @@ __all__ = [
     "AIProfileNameVisibility",
     "AIProfileService",
     "AIProfileUpdateInput",
-    "ai_profile_service",
 ]

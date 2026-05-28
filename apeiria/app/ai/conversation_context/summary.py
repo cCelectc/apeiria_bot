@@ -11,6 +11,7 @@ from apeiria.ai.prompting import (
     build_conversation_summary_packet,
     render_messages,
 )
+from apeiria.app.ai.wiring import ai_wiring
 from apeiria.conversation.summary import build_short_conversation_summary
 
 if TYPE_CHECKING:
@@ -31,8 +32,6 @@ async def compress_conversation_history(
 
     if not overflow_messages:
         return existing_summary
-
-    from apeiria.ai.model import model_invoker
     from apeiria.app.ai.runtime.planning.model_selection import select_task_model
 
     messages = render_messages(
@@ -52,7 +51,7 @@ async def compress_conversation_history(
         return _fallback_summary(overflow_messages, existing_summary)
 
     try:
-        response = await model_invoker.generate_text(
+        response = await ai_wiring.model.invoker.generate_text(
             selected=selected,
             messages=messages,
         )

@@ -11,6 +11,11 @@ trace projection. Future runtime variants should add a request/path pair when
 their sequencing differs, rather than branching inside the live entry or
 reintroducing a session-turn-engine facade.
 
+`apeiria/app/ai/runtime/composition.py` is the runtime-stage assembly point for
+those paths. It is not the canonical owner of shared AI domain services. Shared
+AI domain composition now lives in `apeiria/app/ai/wiring.py` and
+`apeiria/app/ai/model_wiring.py`.
+
 `AIRuntimeResult` carries the terminal `RuntimeOutcome`, optional commit result,
 compact stage reports, and diagnostics. Outcomes distinguish hard-rule skips,
 social no-reply, no-plan/no-model paths, empty responses, commit failures, and

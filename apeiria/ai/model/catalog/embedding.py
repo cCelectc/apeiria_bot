@@ -99,6 +99,3 @@ class AIEmbeddingModelService:
         model_id: str,
     ) -> bool:
         return delete_source_model("ai_embedding_model", model_id=model_id)
-
-
-ai_embedding_model_service = AIEmbeddingModelService()

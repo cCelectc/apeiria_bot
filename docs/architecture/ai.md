@@ -47,7 +47,11 @@ Apeiria 的 AI 子系统不是"调一下 OpenAI"，而是一套**可路由、可
 - `apeiria/app/ai/` 是 NoneBot 与域之间的**防腐层**，负责把 Event 翻译成
   `RuntimeTurnInput`、把域结果翻译回 NoneBot 可投递的回复。
 - 不要从 `apeiria.ai` 包根 import 任何东西。`__init__.py` 故意为空。
-  从具体模块导入：`from apeiria.ai.tools.service import ai_tool_service`。
+- 生产组合入口看 `apeiria/app/ai/wiring.py` 与
+  `apeiria/app/ai/model_wiring.py`。应用层拿共享 AI 域服务时，优先通过
+  `ai_wiring` / `ai_wiring.model`，而不是依赖域层里的模块级单例。
+- 域层 `apeiria/ai/` 不得反向 import `apeiria/app/ai/wiring.py`；域内协作要靠
+  构造注入或域内显式装配。
 
 ---
 
@@ -115,8 +119,10 @@ str | None  → NoneBot 投递
 - `AIRuntimeResult.outcome` 有 9 种终态（`hard_rule_skipped` / `social_no_reply` /
   `no_plan` / `no_model` / `empty_response` / `execution_failed` /
   `commit_failed` / `committed` / `observed`），调试时第一眼看这个字段。
-- `composition.py` 是装配根：要替换某个 stage（例如压测时换掉 `execution_stage`），
-  改这一个文件即可。
+- `composition.py` 仍然是 runtime path 的 stage 装配根。
+- AI 域服务的生产组合根则是 `apeiria/app/ai/wiring.py` /
+  `apeiria/app/ai/model_wiring.py`。前者管工具、技能、记忆、知识、画像、关系、
+  retention 等跨边界域服务，后者管 model source/catalog/routing/runtime 子系统。
 
 ---
 
