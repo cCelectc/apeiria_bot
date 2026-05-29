@@ -93,6 +93,7 @@ class RuntimeTurnSource:
     user_id: str
     direct_signal: bool = False
     is_private: bool = False
+    reply_to_bot: bool = False
     event_dedupe_key: str | None = None
     event_dedupe_claimed: bool = False
     media_parts: tuple[RuntimeSourceMediaPart, ...] = ()

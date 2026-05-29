@@ -81,6 +81,11 @@ class AssistantReplyPersistenceStage:
                 author_id=turn.sender_id,
                 text_content=response.content.strip(),
                 turn_disposition="generated",
+                platform_message_id=(
+                    delivery.remote_message_id
+                    if delivery is not None and delivery.delivered
+                    else None
+                ),
                 meta=sanitize_runtime_diagnostics(
                     {
                         "trace_id": trace_id,

@@ -164,6 +164,22 @@ const zhCN = {
           label: '群聊主动回复',
           help: '允许未直接提及机器人的群聊消息进入环境回复候选。',
         },
+        quietHoursEnabled: {
+          label: '夜间静默',
+          help: '启用夜间静默时段，让实时 AI 在静默时段优先观察而不是回复。',
+        },
+        quietHoursStartMinute: {
+          label: '静默开始分钟',
+          help: '本地运行时间中，夜间静默开始的日内分钟数，0 表示 00:00。',
+        },
+        quietHoursEndMinute: {
+          label: '静默结束分钟',
+          help: '本地运行时间中，夜间静默结束的日内分钟数，420 表示 07:00。',
+        },
+        nightAwakeLeaseMinutes: {
+          label: '夜间唤醒租约',
+          help: '夜间被明确叫到后，当前会话保持可继续对话的分钟数。',
+        },
         ambientMergeWindowMs: {
           label: '环境消息合并窗口',
           help: '将短时间内连续出现的群聊环境消息合并为同一轮候选的毫秒数。',

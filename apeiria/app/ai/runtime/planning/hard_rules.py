@@ -9,6 +9,7 @@ from apeiria.app.ai.reply_strategy.models import (  # noqa: TC001
     ReplyStrategyDecision,
     WakeContext,
 )
+from apeiria.app.ai.runtime.planning.night_policy import is_within_quiet_hours
 from apeiria.app.ai.runtime.planning.social import (
     project_social_skip_decision,
 )
@@ -25,7 +26,7 @@ if TYPE_CHECKING:
     from apeiria.app.ai.runtime.strategy import RuntimeHardRuleAction
 
 
-def decide_runtime_hard_rule(  # noqa: C901, PLR0911
+def decide_runtime_hard_rule(  # noqa: C901, PLR0911, PLR0912
     *,
     wake_context: WakeContext,
     source: RuntimeTurnSource,
@@ -82,6 +83,104 @@ def decide_runtime_hard_rule(  # noqa: C901, PLR0911
             should_reply=False,
         )
 
+    quiet_hours_active = bool(
+        session_runtime is not None
+        and is_within_quiet_hours(
+            current_time=current_time,
+            policy=session_runtime.policy,
+        )
+    )
+    if quiet_hours_active and session_runtime is not None:
+        if session_runtime.has_active_awake_lease(now=current_time):
+            return _decision(
+                action="continue",
+                reason_code="quiet_hours_awake_lease",
+                reason_text=(
+                    "Session stays responsive during quiet hours because "
+                    "an awake lease is active."
+                ),
+                wake_context=wake_context,
+                source=source,
+                should_observe=True,
+                should_reply=True,
+                extra_evidence=session_runtime.awake_lease_evidence(now=current_time),
+            )
+        direct_bypass_enabled = session_runtime.policy.direct_bypass_ambient_budget
+        if wake_context.is_future_task or source.runtime_mode == "future_task":
+            return _decision(
+                action="continue",
+                reason_code="future_task",
+                reason_text=(
+                    "Future task may continue during quiet hours without "
+                    "opening an awake lease."
+                ),
+                wake_context=wake_context,
+                source=source,
+                should_observe=True,
+                should_reply=True,
+            )
+        if direct_bypass_enabled and (
+            wake_context.is_tome
+            or source.direct_signal
+            or wake_context.is_private
+            or source.is_private
+            or source.reply_to_bot
+        ):
+            session_runtime.open_awake_lease(
+                reason=(
+                    "direct_signal"
+                    if (wake_context.is_tome or source.direct_signal)
+                    else "private_message"
+                    if (wake_context.is_private or source.is_private)
+                    else "reply_to_bot"
+                ),
+                now=current_time,
+            )
+            return _decision(
+                action="continue",
+                reason_code="quiet_hours_directed",
+                reason_text=(
+                    "Directed input broke through quiet-hour gating and "
+                    "opened a session awake lease."
+                ),
+                wake_context=wake_context,
+                source=source,
+                should_observe=True,
+                should_reply=True,
+                extra_evidence=session_runtime.awake_lease_evidence(now=current_time),
+            )
+        if (
+            wake_context.is_tome
+            or source.direct_signal
+            or wake_context.is_private
+            or source.is_private
+            or source.reply_to_bot
+        ):
+            return _decision(
+                action="observe",
+                reason_code="quiet_hours",
+                reason_text=(
+                    "Quiet hours suppressed a directed input because direct "
+                    "bypass is disabled."
+                ),
+                wake_context=wake_context,
+                source=source,
+                should_observe=True,
+                should_reply=False,
+            )
+        return _decision(
+            action="observe",
+            reason_code="quiet_hours",
+            reason_text=(
+                "Quiet hours suppress ambient live replies while keeping "
+                "the turn observable."
+            ),
+            wake_context=wake_context,
+            source=source,
+            should_observe=True,
+            should_reply=False,
+        )
+
     is_priority_input = (
         wake_context.is_future_task
         or source.runtime_mode == "future_task"
@@ -89,6 +188,7 @@ def decide_runtime_hard_rule(  # noqa: C901, PLR0911
         or source.direct_signal
         or wake_context.is_private
         or source.is_private
+        or source.reply_to_bot
     )
     if (
         session_runtime is not None
@@ -144,6 +244,17 @@ def decide_runtime_hard_rule(  # noqa: C901, PLR0911
             action="continue",
             reason_code="direct_signal",
             reason_text="Input directly addresses the bot.",
+            wake_context=wake_context,
+            source=source,
+            should_observe=True,
+            should_reply=True,
+        )
+
+    if source.reply_to_bot:
+        return _decision(
+            action="continue",
+            reason_code="direct_signal",
+            reason_text="Input replied directly to a bot-authored message.",
             wake_context=wake_context,
             source=source,
             should_observe=True,
@@ -229,6 +340,7 @@ def _decision(  # noqa: PLR0913
         "source_message_id": source.source_message_id,
         "runtime_mode": source.runtime_mode,
         "direct_signal": wake_context.is_tome or source.direct_signal,
+        "reply_to_bot": source.reply_to_bot,
         "is_private": wake_context.is_private or source.is_private,
         "allow_group_initiative": wake_context.allow_group_initiative,
     }

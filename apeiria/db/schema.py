@@ -331,6 +331,56 @@ def _ensure_current_schema_shape(  # noqa: C901, PLR0912, PLR0915
         _create_ai_session_management_tables(connection)
     if "ai_runtime_settings" not in existing_tables:
         _create_ai_runtime_settings_table(connection)
+    if "ai_runtime_settings" in existing_tables:
+        runtime_setting_columns = _column_names(connection, "ai_runtime_settings")
+        if "quiet_hours_enabled" not in runtime_setting_columns:
+            connection.execute(
+                """
+                ALTER TABLE ai_runtime_settings
+                ADD COLUMN quiet_hours_enabled INTEGER CHECK(
+                    quiet_hours_enabled IS NULL OR quiet_hours_enabled IN (0, 1)
+                )
+                """
+            )
+        if "quiet_hours_start_minute" not in runtime_setting_columns:
+            connection.execute(
+                """
+                ALTER TABLE ai_runtime_settings
+                ADD COLUMN quiet_hours_start_minute INTEGER CHECK(
+                    quiet_hours_start_minute IS NULL
+                        OR (
+                            quiet_hours_start_minute >= 0
+                            AND quiet_hours_start_minute <= 1439
+                        )
+                )
+                """
+            )
+        if "quiet_hours_end_minute" not in runtime_setting_columns:
+            connection.execute(
+                """
+                ALTER TABLE ai_runtime_settings
+                ADD COLUMN quiet_hours_end_minute INTEGER CHECK(
+                    quiet_hours_end_minute IS NULL
+                        OR (
+                            quiet_hours_end_minute >= 0
+                            AND quiet_hours_end_minute <= 1439
+                        )
+                )
+                """
+            )
+        if "night_awake_lease_minutes" not in runtime_setting_columns:
+            connection.execute(
+                """
+                ALTER TABLE ai_runtime_settings
+                ADD COLUMN night_awake_lease_minutes INTEGER CHECK(
+                    night_awake_lease_minutes IS NULL
+                        OR (
+                            night_awake_lease_minutes >= 1
+                            AND night_awake_lease_minutes <= 120
+                        )
+                )
+                """
+            )
     if (
         not {
             "ai_model_route",
@@ -867,6 +917,30 @@ def _create_ai_runtime_settings_table(connection: sqlite3.Connection) -> None:
             allow_group_initiative INTEGER CHECK(
                 allow_group_initiative IS NULL
                     OR allow_group_initiative IN (0, 1)
+            ),
+            quiet_hours_enabled INTEGER CHECK(
+                quiet_hours_enabled IS NULL OR quiet_hours_enabled IN (0, 1)
+            ),
+            quiet_hours_start_minute INTEGER CHECK(
+                quiet_hours_start_minute IS NULL
+                    OR (
+                        quiet_hours_start_minute >= 0
+                        AND quiet_hours_start_minute <= 1439
+                    )
+            ),
+            quiet_hours_end_minute INTEGER CHECK(
+                quiet_hours_end_minute IS NULL
+                    OR (
+                        quiet_hours_end_minute >= 0
+                        AND quiet_hours_end_minute <= 1439
+                    )
+            ),
+            night_awake_lease_minutes INTEGER CHECK(
+                night_awake_lease_minutes IS NULL
+                    OR (
+                        night_awake_lease_minutes >= 1
+                        AND night_awake_lease_minutes <= 120
+                    )
             ),
             stt_input_enabled INTEGER CHECK(
                 stt_input_enabled IS NULL OR stt_input_enabled IN (0, 1)

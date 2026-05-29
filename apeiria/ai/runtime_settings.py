@@ -12,6 +12,10 @@ from apeiria.db.runtime import database_runtime
 
 AIRuntimeSettingKey = Literal[
     "allow_group_initiative",
+    "quiet_hours_enabled",
+    "quiet_hours_start_minute",
+    "quiet_hours_end_minute",
+    "night_awake_lease_minutes",
     "stt_input_enabled",
     "persist_raw_event_payloads",
     "ambient_merge_window_ms",
@@ -48,6 +52,7 @@ AI_RUNTIME_SETTING_KEYS: tuple[AIRuntimeSettingKey, ...] = get_args(AIRuntimeSet
 _BOOLEAN_SETTING_KEYS: frozenset[AIRuntimeSettingKey] = frozenset(
     {
         "allow_group_initiative",
+        "quiet_hours_enabled",
         "stt_input_enabled",
         "persist_raw_event_payloads",
         "direct_bypass_ambient_budget",
@@ -61,6 +66,10 @@ class AIRuntimeSettings(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
 
     allow_group_initiative: bool = False
+    quiet_hours_enabled: bool = False
+    quiet_hours_start_minute: int = Field(default=0, ge=0, le=1439)
+    quiet_hours_end_minute: int = Field(default=420, ge=0, le=1439)
+    night_awake_lease_minutes: int = Field(default=5, ge=1, le=120)
     stt_input_enabled: bool = False
     persist_raw_event_payloads: bool = False
     ambient_merge_window_ms: int = Field(default=1500, ge=0)
@@ -120,6 +129,51 @@ AI_RUNTIME_SETTING_FIELDS: tuple[AIRuntimeSettingField, ...] = (
         value_type="boolean",
         application="next_turn",
         order=10,
+    ),
+    AIRuntimeSettingField(
+        key="quiet_hours_enabled",
+        label="Quiet hours",
+        help="Enable night-time quiet-hour reply gating for live AI turns.",
+        group="reply_policy",
+        value_type="boolean",
+        application="next_turn",
+        order=15,
+    ),
+    AIRuntimeSettingField(
+        key="quiet_hours_start_minute",
+        label="Quiet hours start",
+        help="Minute of day when quiet hours begin, in local runtime time.",
+        group="reply_policy",
+        value_type="integer",
+        application="next_turn",
+        visibility="advanced",
+        order=16,
+        minimum=0,
+    ),
+    AIRuntimeSettingField(
+        key="quiet_hours_end_minute",
+        label="Quiet hours end",
+        help="Minute of day when quiet hours end, in local runtime time.",
+        group="reply_policy",
+        value_type="integer",
+        application="next_turn",
+        visibility="advanced",
+        order=17,
+        minimum=0,
+    ),
+    AIRuntimeSettingField(
+        key="night_awake_lease_minutes",
+        label="Night awake lease",
+        help=(
+            "Minutes that one session stays responsive after a directed "
+            "night-time turn."
+        ),
+        group="reply_policy",
+        value_type="integer",
+        application="next_session_runtime",
+        visibility="advanced",
+        order=18,
+        minimum=1,
     ),
     AIRuntimeSettingField(
         key="ambient_merge_window_ms",

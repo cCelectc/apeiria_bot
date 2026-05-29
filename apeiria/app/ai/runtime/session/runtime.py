@@ -54,6 +54,10 @@ class AISessionRuntime(Protocol):
 class SessionRuntimePolicy:
     """Bounded in-memory session runtime policy."""
 
+    quiet_hours_enabled: bool = False
+    quiet_hours_start_minute: int = 0
+    quiet_hours_end_minute: int = 420
+    night_awake_lease: timedelta = timedelta(minutes=5)
     ambient_merge_window: timedelta = timedelta(milliseconds=1500)
     max_pending_messages: int = 12
     group_reply_cooldown: timedelta = timedelta(seconds=180)
@@ -67,6 +71,10 @@ class SessionRuntimePolicy:
         """Build runtime policy from AI-owned runtime settings."""
 
         return cls(
+            quiet_hours_enabled=settings.quiet_hours_enabled,
+            quiet_hours_start_minute=settings.quiet_hours_start_minute,
+            quiet_hours_end_minute=settings.quiet_hours_end_minute,
+            night_awake_lease=timedelta(minutes=settings.night_awake_lease_minutes),
             ambient_merge_window=timedelta(
                 milliseconds=settings.ambient_merge_window_ms
             ),
@@ -106,6 +114,15 @@ class DeferState:
     recorded_at: datetime
 
 
+@dataclass(frozen=True, slots=True)
+class AwakeLeaseState:
+    """Metadata for one active quiet-hour wake lease."""
+
+    lease_until: datetime
+    reason: str
+    recorded_at: datetime
+
+
 @dataclass(slots=True)
 class InMemoryAISessionRuntime:
     """In-memory runtime state for one AI session."""
@@ -116,6 +133,7 @@ class InMemoryAISessionRuntime:
     last_active_at: datetime = field(default_factory=_utcnow)
     wait_state: WaitState | None = None
     defer_state: DeferState | None = None
+    awake_lease_state: AwakeLeaseState | None = None
     last_ambient_reply_at: datetime | None = None
     consecutive_ambient_replies: int = 0
     _lock: asyncio.Lock = field(default_factory=asyncio.Lock, init=False, repr=False)
@@ -329,6 +347,49 @@ class InMemoryAISessionRuntime:
         )
         self.touch(now)
 
+    def open_awake_lease(
+        self,
+        *,
+        reason: str,
+        now: datetime,
+        duration: timedelta | None = None,
+    ) -> AwakeLeaseState:
+        """Open or refresh the session awake lease."""
+
+        lease_duration = duration or self.policy.night_awake_lease
+        state = AwakeLeaseState(
+            lease_until=now + lease_duration,
+            reason=reason,
+            recorded_at=now,
+        )
+        self.awake_lease_state = state
+        self.touch(now)
+        return state
+
+    def has_active_awake_lease(self, *, now: datetime) -> bool:
+        """Return whether this session currently has an active awake lease."""
+
+        state = self.awake_lease_state
+        if state is None:
+            return False
+        if now < state.lease_until:
+            return True
+        self.awake_lease_state = None
+        return False
+
+    def awake_lease_evidence(self, *, now: datetime) -> dict[str, object]:
+        """Return bounded evidence for the active awake lease when present."""
+
+        if not self.has_active_awake_lease(now=now):
+            return {}
+        assert self.awake_lease_state is not None
+        remaining = self.awake_lease_state.lease_until - now
+        return {
+            "awake_lease_until": self.awake_lease_state.lease_until.isoformat(),
+            "awake_lease_remaining_seconds": int(remaining.total_seconds()),
+            "awake_lease_reason": self.awake_lease_state.reason,
+        }
+
     def is_idle_expired(self, *, now: datetime) -> bool:
         """Return whether this runtime can be evicted from memory."""
 
@@ -368,20 +429,24 @@ class InMemoryAISessionRuntimeResolver:
         session_id: str,
         *,
         now: datetime | None = None,
+        policy: SessionRuntimePolicy | None = None,
     ) -> InMemoryAISessionRuntime:
         """Resolve or create the in-memory runtime for one session."""
 
         current_time = now or _utcnow()
+        effective_policy = policy or self._policy
+        self._policy = effective_policy
         runtime = self._runtimes.get(session_id)
         if runtime is None:
             runtime = InMemoryAISessionRuntime(
                 session_id=session_id,
-                policy=self._policy,
+                policy=effective_policy,
                 runner=self._runner,
                 last_active_at=current_time,
             )
             self._runtimes[session_id] = runtime
         else:
+            runtime.policy = effective_policy
             runtime.touch(current_time)
         return runtime
 

@@ -275,6 +275,27 @@ class ChatSessionRepository:
             ).fetchall()
         return [row_to_chat_message(row) for row in rows]
 
+    def get_message_row_by_platform_message_id(
+        self,
+        *,
+        session_id: str,
+        platform_message_id: str,
+    ) -> ChatMessageRow | None:
+        with database_runtime.connect_sync() as connection:
+            row = connection.execute(
+                _SELECT_CHAT_MESSAGE_FIELDS
+                + """
+                JOIN chat_session
+                    ON chat_message.session_pk = chat_session.id
+                WHERE chat_session.session_id = ?
+                  AND chat_message.platform_message_id = ?
+                ORDER BY chat_message.created_at DESC, chat_message.id DESC
+                LIMIT 1
+                """,
+                (session_id, platform_message_id),
+            ).fetchone()
+        return None if row is None else row_to_chat_message(row)
+
     async def update_message_disposition(
         self,
         *,

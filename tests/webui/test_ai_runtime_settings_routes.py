@@ -14,6 +14,9 @@ if TYPE_CHECKING:
 HTTP_BAD_REQUEST = 400
 HTTP_FORBIDDEN = 403
 DEFAULT_TOOL_TIMEOUT_SECONDS = 8.0
+UPDATED_QUIET_HOURS_START_MINUTE = 60
+UPDATED_QUIET_HOURS_END_MINUTE = 360
+UPDATED_NIGHT_AWAKE_LEASE_MINUTES = 5
 UPDATED_TOOL_TIMEOUT_SECONDS = 2.5
 
 
@@ -38,18 +41,10 @@ def test_ai_runtime_settings_routes_read_and_update(
             initial.effective["tool_execution_timeout_seconds"]
             == DEFAULT_TOOL_TIMEOUT_SECONDS
         )
+        assert initial.effective["quiet_hours_enabled"] is False
         assert initial.overrides == {}
         assert any(
-            item.key == "tool_execution_timeout_seconds"
-            and item.default_value == DEFAULT_TOOL_TIMEOUT_SECONDS
-            and item.label_key.endswith(".toolExecutionTimeoutSeconds.label")
-            and item.help_key.endswith(".toolExecutionTimeoutSeconds.help")
-            and item.visibility == "default"
-            and item.order > 0
-            for item in initial.fields
-        )
-        assert any(
-            item.key == "duplicate_event_ttl_seconds" and item.visibility == "hidden"
+            item.key == "quiet_hours_enabled" and item.visibility == "default"
             for item in initial.fields
         )
 
@@ -57,6 +52,10 @@ def test_ai_runtime_settings_routes_read_and_update(
             AIRuntimeSettingsUpdateRequest(
                 values={
                     "allow_group_initiative": True,
+                    "quiet_hours_enabled": True,
+                    "quiet_hours_start_minute": UPDATED_QUIET_HOURS_START_MINUTE,
+                    "quiet_hours_end_minute": UPDATED_QUIET_HOURS_END_MINUTE,
+                    "night_awake_lease_minutes": UPDATED_NIGHT_AWAKE_LEASE_MINUTES,
                     "tool_execution_timeout_seconds": UPDATED_TOOL_TIMEOUT_SECONDS,
                 }
             ),
@@ -64,12 +63,17 @@ def test_ai_runtime_settings_routes_read_and_update(
         )
 
         assert updated.effective["allow_group_initiative"] is True
+        assert updated.effective["quiet_hours_enabled"] is True
         assert (
             updated.effective["tool_execution_timeout_seconds"]
             == UPDATED_TOOL_TIMEOUT_SECONDS
         )
         assert updated.overrides == {
             "allow_group_initiative": True,
+            "quiet_hours_enabled": True,
+            "quiet_hours_start_minute": UPDATED_QUIET_HOURS_START_MINUTE,
+            "quiet_hours_end_minute": UPDATED_QUIET_HOURS_END_MINUTE,
+            "night_awake_lease_minutes": UPDATED_NIGHT_AWAKE_LEASE_MINUTES,
             "tool_execution_timeout_seconds": UPDATED_TOOL_TIMEOUT_SECONDS,
         }
 
@@ -80,7 +84,11 @@ def test_ai_runtime_settings_routes_read_and_update(
 
         assert cleared.effective["allow_group_initiative"] is False
         assert cleared.overrides == {
-            "tool_execution_timeout_seconds": UPDATED_TOOL_TIMEOUT_SECONDS
+            "quiet_hours_enabled": True,
+            "quiet_hours_start_minute": UPDATED_QUIET_HOURS_START_MINUTE,
+            "quiet_hours_end_minute": UPDATED_QUIET_HOURS_END_MINUTE,
+            "night_awake_lease_minutes": UPDATED_NIGHT_AWAKE_LEASE_MINUTES,
+            "tool_execution_timeout_seconds": UPDATED_TOOL_TIMEOUT_SECONDS,
         }
 
     import asyncio

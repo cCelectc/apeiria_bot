@@ -219,6 +219,23 @@ class ChatSessionService:
         messages.reverse()
         return messages
 
+    async def get_message_by_platform_message_id(
+        self,
+        *,
+        session_id: str,
+        platform_message_id: str,
+    ) -> ChatMessageDetailView | None:
+        row = self._repository.get_message_row_by_platform_message_id(
+            session_id=session_id,
+            platform_message_id=platform_message_id,
+        )
+        if row is None:
+            return None
+        return self._to_message_detail_view(
+            message=row,
+            session_id=session_id,
+        )
+
     async def list_recent_user_ids_for_session(
         self,
         *,

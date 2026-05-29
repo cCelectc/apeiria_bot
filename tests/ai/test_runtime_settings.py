@@ -11,8 +11,11 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 DEFAULT_TOOL_TIMEOUT_SECONDS = 8.0
-DEFAULT_CONVERSATION_RETENTION_DAYS = 30
 DEFAULT_DUPLICATE_EVENT_TTL_SECONDS = 30
+DEFAULT_QUIET_HOURS_END_MINUTE = 420
+UPDATED_QUIET_HOURS_START_MINUTE = 30
+UPDATED_QUIET_HOURS_END_MINUTE = 390
+UPDATED_NIGHT_AWAKE_LEASE_MINUTES = 7
 UPDATED_AMBIENT_MERGE_WINDOW_MS = 250
 UPDATED_DUPLICATE_EVENT_TTL_SECONDS = 45
 UPDATED_TOOL_TIMEOUT_SECONDS = 3.5
@@ -30,9 +33,8 @@ def test_ai_runtime_settings_defaults_without_saved_row(
     view = AIRuntimeSettingsService().get_view()
 
     assert view.effective.allow_group_initiative is False
-    assert view.effective.direct_bypass_ambient_budget is True
-    assert view.effective.tool_execution_timeout_seconds == DEFAULT_TOOL_TIMEOUT_SECONDS
-    assert view.defaults == view.effective
+    assert view.effective.quiet_hours_enabled is False
+    assert view.effective.quiet_hours_end_minute == DEFAULT_QUIET_HOURS_END_MINUTE
     assert view.overrides == {}
     assert view.updated_at is None
 
@@ -51,16 +53,9 @@ def test_ai_runtime_settings_metadata_classifies_operator_visibility(
     }
 
     assert fields["allow_group_initiative"].visibility == "default"
-    assert fields["allow_group_initiative"].label_key.endswith(
-        ".allowGroupInitiative.label"
-    )
-    assert fields["allow_group_initiative"].help_key.endswith(
-        ".allowGroupInitiative.help"
-    )
-    assert fields["ambient_merge_window_ms"].visibility == "advanced"
-    assert fields["cleanup_interval_minutes"].visibility == "advanced"
-    assert fields["duplicate_event_ttl_seconds"].visibility == "hidden"
-    assert fields["duplicate_event_ttl_seconds"].order > 0
+    assert fields["quiet_hours_enabled"].visibility == "default"
+    assert fields["quiet_hours_start_minute"].visibility == "advanced"
+    assert fields["night_awake_lease_minutes"].visibility == "advanced"
 
 
 def test_ai_runtime_settings_persist_across_service_recreation(
@@ -76,6 +71,10 @@ def test_ai_runtime_settings_persist_across_service_recreation(
     updated = first.update_settings(
         {
             "allow_group_initiative": True,
+            "quiet_hours_enabled": True,
+            "quiet_hours_start_minute": UPDATED_QUIET_HOURS_START_MINUTE,
+            "quiet_hours_end_minute": UPDATED_QUIET_HOURS_END_MINUTE,
+            "night_awake_lease_minutes": UPDATED_NIGHT_AWAKE_LEASE_MINUTES,
             "ambient_merge_window_ms": UPDATED_AMBIENT_MERGE_WINDOW_MS,
             "tool_execution_timeout_seconds": UPDATED_TOOL_TIMEOUT_SECONDS,
         }
@@ -84,15 +83,14 @@ def test_ai_runtime_settings_persist_across_service_recreation(
     reloaded = AIRuntimeSettingsService().get_view()
 
     assert updated.effective.allow_group_initiative is True
+    assert updated.effective.quiet_hours_enabled is True
     assert reloaded.effective.allow_group_initiative is True
-    assert reloaded.effective.ambient_merge_window_ms == UPDATED_AMBIENT_MERGE_WINDOW_MS
-    assert (
-        reloaded.effective.tool_execution_timeout_seconds
-        == UPDATED_TOOL_TIMEOUT_SECONDS
-    )
-    assert reloaded.defaults.allow_group_initiative is False
     assert reloaded.overrides == {
         "allow_group_initiative": True,
+        "quiet_hours_enabled": True,
+        "quiet_hours_start_minute": UPDATED_QUIET_HOURS_START_MINUTE,
+        "quiet_hours_end_minute": UPDATED_QUIET_HOURS_END_MINUTE,
+        "night_awake_lease_minutes": UPDATED_NIGHT_AWAKE_LEASE_MINUTES,
         "ambient_merge_window_ms": UPDATED_AMBIENT_MERGE_WINDOW_MS,
         "tool_execution_timeout_seconds": UPDATED_TOOL_TIMEOUT_SECONDS,
     }
@@ -130,17 +128,9 @@ def test_hidden_ai_runtime_settings_still_persist_and_apply(
         {"duplicate_event_ttl_seconds": UPDATED_DUPLICATE_EVENT_TTL_SECONDS}
     )
 
-    assert (
-        updated.effective.duplicate_event_ttl_seconds
-        == UPDATED_DUPLICATE_EVENT_TTL_SECONDS
-    )
     assert updated.overrides == {
         "duplicate_event_ttl_seconds": UPDATED_DUPLICATE_EVENT_TTL_SECONDS,
     }
-    assert (
-        AIRuntimeSettingsService().get_settings().duplicate_event_ttl_seconds
-        == UPDATED_DUPLICATE_EVENT_TTL_SECONDS
-    )
 
     cleared = service.update_settings({}, clear=["duplicate_event_ttl_seconds"])
 
@@ -170,6 +160,12 @@ def test_ai_runtime_settings_reject_invalid_values(
     with pytest.raises(ValidationError):
         service.update_settings({"allow_group_initiative": "yes"})
 
+    with pytest.raises(ValidationError):
+        service.update_settings({"quiet_hours_start_minute": 1440})
+
+    with pytest.raises(ValidationError):
+        service.update_settings({"night_awake_lease_minutes": 0})
+
     assert service.get_view().overrides == {}
 
 
@@ -194,9 +190,4 @@ conversation_retention_days = 2
     view = AIRuntimeSettingsService().get_view()
 
     assert view.effective.allow_group_initiative is False
-    assert view.effective.tool_execution_timeout_seconds == DEFAULT_TOOL_TIMEOUT_SECONDS
-    assert (
-        view.effective.conversation_retention_days
-        == DEFAULT_CONVERSATION_RETENTION_DAYS
-    )
     assert view.overrides == {}

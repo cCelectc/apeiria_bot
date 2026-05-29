@@ -164,6 +164,22 @@ const enUS = {
           label: 'Group initiative',
           help: 'Allow group messages that do not directly mention the bot to become ambient reply candidates.',
         },
+        quietHoursEnabled: {
+          label: 'Quiet hours',
+          help: 'Enable night-time quiet-hour gating so live AI turns prefer observation over reply.',
+        },
+        quietHoursStartMinute: {
+          label: 'Quiet start minute',
+          help: 'Local runtime minute-of-day when quiet hours begin; 0 means 00:00.',
+        },
+        quietHoursEndMinute: {
+          label: 'Quiet end minute',
+          help: 'Local runtime minute-of-day when quiet hours end; 420 means 07:00.',
+        },
+        nightAwakeLeaseMinutes: {
+          label: 'Night awake lease',
+          help: 'Minutes that a directed night-time session stays conversational after being drawn in.',
+        },
         ambientMergeWindowMs: {
           label: 'Ambient merge window',
           help: 'Milliseconds used to merge short bursts of ambient group messages into one candidate turn.',

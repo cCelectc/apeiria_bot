@@ -418,6 +418,10 @@ def test_database_schema_declares_value_checks(tmp_path: Path) -> None:
         settings_table_sql = _table_sql(connection, "ai_runtime_settings")
         assert "CHECK(id = 1)" in settings_table_sql
         assert "allow_group_initiative IN (0, 1)" in settings_table_sql
+        assert "quiet_hours_enabled IN (0, 1)" in settings_table_sql
+        assert "quiet_hours_start_minute >= 0" in settings_table_sql
+        assert "quiet_hours_end_minute <= 1439" in settings_table_sql
+        assert "night_awake_lease_minutes >= 1" in settings_table_sql
         assert "ambient_merge_window_ms >= 0" in settings_table_sql
         assert "tool_execution_timeout_seconds > 0" in settings_table_sql
         assert "conversation_retention_days >= 1" in settings_table_sql

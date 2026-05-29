@@ -29,6 +29,9 @@ RuntimeHardRuleReasonCode = Literal[
     "ambient_merge_window",
     "session_busy",
     "ambient_cooldown",
+    "quiet_hours",
+    "quiet_hours_directed",
+    "quiet_hours_awake_lease",
     "ambient_weak_relevance",
     "policy_denied",
 ]

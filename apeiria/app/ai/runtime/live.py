@@ -30,6 +30,7 @@ from apeiria.app.ai.runtime.session.context import (
     RuntimeTurnInput,
     RuntimeTurnSource,
 )
+from apeiria.app.ai.runtime.session.runtime import SessionRuntimePolicy
 from apeiria.app.ai.runtime.speech import speech_input_preparer
 from apeiria.app.ai.wiring import ai_wiring
 from apeiria.app.chat.connection import WebChatConnectionClosed
@@ -72,6 +73,7 @@ class AIRuntimeIngressRequest:
     sender_id: str
     runtime_mode: Literal["message", "future_task"]
     is_tome: bool = False
+    reply_to_bot: bool = False
     future_task: "AIFutureTaskDefinition | None" = None
     sentiment: "AIMessageSentiment | None" = None
     event_dedupe_key: str | None = None
@@ -93,6 +95,7 @@ class AIRuntimeIngressRequest:
                 user_id=self.user_id,
                 direct_signal=self.is_tome,
                 is_private=self.identity.scene_type == "private",
+                reply_to_bot=self.reply_to_bot,
                 event_dedupe_key=self.event_dedupe_key,
                 event_dedupe_claimed=self.event_dedupe_claimed,
                 media_parts=self.media_parts,
@@ -184,6 +187,11 @@ class DefaultAILiveRuntimeEntry:
         message_text = wake_context.message_text
         user_id = str(event.get_user_id())
         media = extract_runtime_media(getattr(turn, "content_json", None))
+        reply_to_bot = await _is_reply_to_bot_message(
+            session_id=identity.session_id,
+            platform_reply_id=ingested.platform_reply_id,
+            bot_self_id=str(bot.self_id),
+        )
         with live_platform_context(bot=bot, event=event):
             result = await self._run_turn(
                 trace=trace
@@ -196,6 +204,7 @@ class DefaultAILiveRuntimeEntry:
                     sender_id=str(bot.self_id),
                     runtime_mode="message",
                     is_tome=bool(hasattr(event, "is_tome") and event.is_tome()),
+                    reply_to_bot=reply_to_bot,
                     event_dedupe_key=event_dedupe_key,
                     event_dedupe_claimed=event_dedupe_claimed,
                     media_parts=media.parts,
@@ -308,11 +317,16 @@ class DefaultAILiveRuntimeEntry:
         *,
         now: datetime,
     ) -> "InMemoryAISessionRuntime":
+        settings = ai_runtime_settings_service.get_settings()
         resolver = self.session_runtime_resolver
         if resolver is None:
             resolver = create_session_runtime_resolver()
             object.__setattr__(self, "session_runtime_resolver", resolver)
-        return resolver.resolve(session_id, now=now)
+        return resolver.resolve(
+            session_id,
+            now=now,
+            policy=SessionRuntimePolicy.from_settings(settings),
+        )
 
     def _resolve_coordinator(self) -> AIRuntimeCoordinator:
         if self.coordinator is not None:
@@ -332,6 +346,23 @@ def _message_event_dedupe_key(turn: Any) -> str | None:
         return f"source_message:{source_message_id.strip()}"
 
     return None
+
+
+async def _is_reply_to_bot_message(
+    *,
+    session_id: str,
+    platform_reply_id: str | None,
+    bot_self_id: str,
+) -> bool:
+    if not platform_reply_id:
+        return False
+    replied = await chat_session_service.get_message_by_platform_message_id(
+        session_id=session_id,
+        platform_message_id=platform_reply_id,
+    )
+    if replied is None:
+        return False
+    return replied.author_role == "assistant" or replied.author_id == bot_self_id
 
 
 def _delivery_status_for_commit(delivery_result: object | None) -> str | None:
