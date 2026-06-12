@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
 from uuid import uuid4
+
+from sqlalchemy import delete, select, update
 
 from apeiria.ai.tools.models import (
     AIToolDefinition,
@@ -15,7 +16,9 @@ from apeiria.ai.tools.models import (
     coerce_tool_level,
     tool_level_allows,
 )
-from apeiria.db.runtime import database_runtime
+from apeiria.db.base import _epoch_ms
+from apeiria.db.engine import get_session
+from apeiria.db.models.ai_tools import AIToolPolicy as AIToolPolicyModel
 
 
 @dataclass(frozen=True)
@@ -143,7 +146,20 @@ class AIToolPolicyBindingService:
     """Persistence and resolution service for tool policy bindings."""
 
     async def list_bindings(self) -> list[AIToolPolicyBindingSpec]:
-        return self._list_bindings_sync()
+        async with get_session() as session:
+            result = await session.execute(
+                select(AIToolPolicyModel).order_by(AIToolPolicyModel.binding_id)
+            )
+            rows = result.scalars().all()
+        return [
+            AIToolPolicyBindingSpec(
+                binding_id=r.binding_id,
+                scope_type=r.scope_type,
+                scope_id=r.scope_id,
+                allowed_level=coerce_tool_level(r.allowed_level),
+            )
+            for r in rows
+        ]
 
     async def create_binding(
         self,
@@ -155,25 +171,17 @@ class AIToolPolicyBindingService:
             scope_id=create_input.scope_id,
             allowed_level=create_input.allowed_level,
         )
-        with database_runtime.connect_sync() as connection:
-            connection.execute(
-                """
-                INSERT INTO ai_tool_policy (
-                    binding_id,
-                    scope_type,
-                    scope_id,
-                    allowed_level,
-                    updated_at
-                ) VALUES (?, ?, ?, ?, ?)
-                """,
-                (
-                    binding.binding_id,
-                    binding.scope_type,
-                    binding.scope_id,
-                    binding.allowed_level.value,
-                    _utcnow_text(),
-                ),
+        async with get_session() as session:
+            session.add(
+                AIToolPolicyModel(
+                    binding_id=binding.binding_id,
+                    scope_type=binding.scope_type,
+                    scope_id=binding.scope_id,
+                    allowed_level=binding.allowed_level.value,
+                    updated_at=_epoch_ms(),
+                )
             )
+            await session.commit()
         return binding
 
     async def update_binding(
@@ -182,31 +190,21 @@ class AIToolPolicyBindingService:
         binding_id: str,
         allowed_level: AIToolLevel,
     ) -> AIToolPolicyBindingSpec | None:
-        with database_runtime.connect_sync() as connection:
-            row = connection.execute(
-                """
-                SELECT scope_type, scope_id
-                FROM ai_tool_policy
-                WHERE binding_id = ?
-                """,
-                (binding_id,),
-            ).fetchone()
+        async with get_session() as session:
+            result = await session.execute(
+                select(AIToolPolicyModel.scope_type, AIToolPolicyModel.scope_id).where(
+                    AIToolPolicyModel.binding_id == binding_id
+                )
+            )
+            row = result.first()
             if row is None:
                 return None
-            connection.execute(
-                """
-                UPDATE ai_tool_policy
-                SET
-                    allowed_level = ?,
-                    updated_at = ?
-                WHERE binding_id = ?
-                """,
-                (
-                    allowed_level.value,
-                    _utcnow_text(),
-                    binding_id,
-                ),
+            await session.execute(
+                update(AIToolPolicyModel)
+                .where(AIToolPolicyModel.binding_id == binding_id)
+                .values(allowed_level=allowed_level.value, updated_at=_epoch_ms())
             )
+            await session.commit()
         return AIToolPolicyBindingSpec(
             binding_id=binding_id,
             scope_type=str(row[0]),
@@ -219,15 +217,14 @@ class AIToolPolicyBindingService:
         *,
         binding_id: str,
     ) -> bool:
-        with database_runtime.connect_sync() as connection:
-            cursor = connection.execute(
-                """
-                DELETE FROM ai_tool_policy
-                WHERE binding_id = ?
-                """,
-                (binding_id,),
+        async with get_session() as session:
+            result = await session.execute(
+                delete(AIToolPolicyModel).where(
+                    AIToolPolicyModel.binding_id == binding_id
+                )
             )
-        return cursor.rowcount > 0
+            await session.commit()
+        return result.rowcount > 0
 
     async def resolve_scene_policy(
         self,
@@ -240,29 +237,6 @@ class AIToolPolicyBindingService:
         if binding is not None:
             return AIToolPolicy(allowed_level=binding.allowed_level)
         return resolve_default_tool_policy(scene_context)
-
-    def _list_bindings_sync(self) -> list[AIToolPolicyBindingSpec]:
-        with database_runtime.connect_sync() as connection:
-            rows = connection.execute(
-                """
-                SELECT
-                    binding_id,
-                    scope_type,
-                    scope_id,
-                    allowed_level
-                FROM ai_tool_policy
-                ORDER BY rowid ASC
-                """
-            ).fetchall()
-        return [
-            AIToolPolicyBindingSpec(
-                binding_id=str(row[0]),
-                scope_type=str(row[1]),
-                scope_id=str(row[2]),
-                allowed_level=coerce_tool_level(str(row[3])),
-            )
-            for row in rows
-        ]
 
 
 __all__ = [
@@ -279,7 +253,3 @@ __all__ = [
     "resolve_tool_policy_binding",
     "summarize_tool_policy",
 ]
-
-
-def _utcnow_text() -> str:
-    return datetime.now(timezone.utc).isoformat(timespec="seconds")

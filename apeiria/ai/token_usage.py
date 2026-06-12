@@ -8,7 +8,9 @@ from datetime import datetime, timezone
 from typing import Literal
 from uuid import uuid4
 
-from apeiria.db.runtime import database_runtime
+from sqlalchemy import text
+
+from apeiria.db.engine import get_session
 
 AIModelUsageMeasurementSource = Literal["provider", "missing"]
 AIModelUsageGroupBy = Literal[
@@ -105,16 +107,16 @@ class AIModelUsageSummary:
 class AIModelUsageRepository:
     """Own SQL operations for AI model usage observability."""
 
-    def record_usage(
+    async def record_usage(
         self,
         create_input: AIModelUsageCreateInput,
     ) -> AIModelUsageRecord:
         event_id = f"model_usage_{uuid4().hex}"
         created_at = create_input.created_at or _utcnow()
         usage = create_input.usage
-        with database_runtime.connect_sync() as connection:
-            connection.execute(
-                """
+        async with get_session() as session:
+            await session.execute(
+                text("""
                 INSERT INTO ai_model_usage_event (
                     usage_event_id,
                     trace_id,
@@ -140,35 +142,44 @@ class AIModelUsageRepository:
                     finish_reason,
                     created_at
                 ) VALUES (
-                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+                    :usage_event_id, :trace_id, :session_id,
+                    :runtime_mode, :response_source, :source_id,
+                    :model_name, :operation, :attempt_index,
+                    :status, :usage_available, :measurement_source,
+                    :input_tokens, :output_tokens, :total_tokens,
+                    :cached_input_tokens, :reasoning_tokens,
+                    :audio_input_tokens, :audio_output_tokens,
+                    :provider_usage_json, :provider_response_id,
+                    :finish_reason, :created_at
                 )
-                """,
-                (
-                    event_id,
-                    create_input.trace_id,
-                    create_input.session_id,
-                    create_input.runtime_mode,
-                    create_input.response_source,
-                    create_input.source_id,
-                    create_input.model_name,
-                    create_input.operation,
-                    create_input.attempt_index,
-                    create_input.status,
-                    1 if usage.usage_available else 0,
-                    usage.measurement_source,
-                    usage.input_tokens,
-                    usage.output_tokens,
-                    usage.total_tokens,
-                    usage.cached_input_tokens,
-                    usage.reasoning_tokens,
-                    usage.audio_input_tokens,
-                    usage.audio_output_tokens,
-                    _json_dumps(usage.provider_usage),
-                    create_input.provider_response_id,
-                    create_input.finish_reason,
-                    _datetime_to_text(created_at),
-                ),
+                """),
+                {
+                    "usage_event_id": event_id,
+                    "trace_id": create_input.trace_id,
+                    "session_id": create_input.session_id,
+                    "runtime_mode": create_input.runtime_mode,
+                    "response_source": create_input.response_source,
+                    "source_id": create_input.source_id,
+                    "model_name": create_input.model_name,
+                    "operation": create_input.operation,
+                    "attempt_index": create_input.attempt_index,
+                    "status": create_input.status,
+                    "usage_available": 1 if usage.usage_available else 0,
+                    "measurement_source": usage.measurement_source,
+                    "input_tokens": usage.input_tokens,
+                    "output_tokens": usage.output_tokens,
+                    "total_tokens": usage.total_tokens,
+                    "cached_input_tokens": usage.cached_input_tokens,
+                    "reasoning_tokens": usage.reasoning_tokens,
+                    "audio_input_tokens": usage.audio_input_tokens,
+                    "audio_output_tokens": usage.audio_output_tokens,
+                    "provider_usage_json": _json_dumps(usage.provider_usage),
+                    "provider_response_id": create_input.provider_response_id,
+                    "finish_reason": create_input.finish_reason,
+                    "created_at": _datetime_to_text(created_at),
+                },
             )
+            await session.commit()
         return AIModelUsageRecord(
             usage_event_id=event_id,
             trace_id=create_input.trace_id,
@@ -195,7 +206,7 @@ class AIModelUsageRepository:
             created_at=created_at,
         )
 
-    def list_usage_events(  # noqa: PLR0913
+    async def list_usage_events(  # noqa: PLR0913
         self,
         *,
         limit: int,
@@ -218,17 +229,20 @@ class AIModelUsageRepository:
             created_from=created_from,
             created_to=created_to,
         )
-        params.append(min(max(limit, 1), 100))
-        with database_runtime.connect_sync() as connection:
-            rows = connection.execute(
-                _SELECT_USAGE_FIELDS
-                + where
-                + " ORDER BY created_at DESC, id DESC LIMIT ?",
-                tuple(params),
-            ).fetchall()
-        return [row_to_usage_record(row) for row in rows]
+        params["_limit"] = min(max(limit, 1), 100)
+        async with get_session() as session:
+            result = await session.execute(
+                text(
+                    _SELECT_USAGE_FIELDS
+                    + where
+                    + " ORDER BY created_at DESC LIMIT :_limit"
+                ),
+                params,
+            )
+            rows = result.fetchall()
+        return [row_to_usage_record(tuple(row)) for row in rows]
 
-    def summarize_usage(  # noqa: PLR0913
+    async def summarize_usage(  # noqa: PLR0913
         self,
         *,
         group_by: AIModelUsageGroupBy,
@@ -252,9 +266,9 @@ class AIModelUsageRepository:
             created_from=created_from,
             created_to=created_to,
         )
-        with database_runtime.connect_sync() as connection:
-            rows = connection.execute(
-                f"""
+        async with get_session() as session:
+            result = await session.execute(
+                text(f"""
                 SELECT
                     {group_column} AS group_key,
                     COUNT(*) AS call_count,
@@ -273,9 +287,10 @@ class AIModelUsageRepository:
                 {where}
                 GROUP BY {group_column}
                 ORDER BY total_tokens DESC, call_count DESC
-                """,
-                tuple(params),
-            ).fetchall()
+                """),
+                params,
+            )
+            rows = result.fetchall()
         return [
             AIModelUsageSummary(
                 group_key=str(row[0]),
@@ -384,9 +399,9 @@ def _usage_filters(  # noqa: PLR0913
     operation: str | None,
     created_from: datetime | None = None,
     created_to: datetime | None = None,
-) -> tuple[str, list[object]]:
+) -> tuple[str, dict[str, object]]:
     clauses: list[str] = []
-    params: list[object] = []
+    params: dict[str, object] = {}
     for column, value in (
         ("trace_id", trace_id),
         ("session_id", session_id),
@@ -396,14 +411,14 @@ def _usage_filters(  # noqa: PLR0913
         ("operation", operation),
     ):
         if value is not None:
-            clauses.append(f"{column} = ?")
-            params.append(value)
+            clauses.append(f"{column} = :{column}")
+            params[column] = value
     if created_from is not None:
-        clauses.append("created_at >= ?")
-        params.append(_datetime_to_text(created_from))
+        clauses.append("created_at >= :created_from")
+        params["created_from"] = _datetime_to_text(created_from)
     if created_to is not None:
-        clauses.append("created_at <= ?")
-        params.append(_datetime_to_text(created_to))
+        clauses.append("created_at <= :created_to")
+        params["created_to"] = _datetime_to_text(created_to)
     return (" WHERE " + " AND ".join(clauses) if clauses else "", params)
 
 

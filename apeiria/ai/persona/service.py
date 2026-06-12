@@ -3,8 +3,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
-from typing import cast
+from typing import TYPE_CHECKING, cast
+
+if TYPE_CHECKING:
+    from datetime import datetime
+
+from sqlalchemy import select, update
 
 from apeiria.ai.persona.models import (
     AIPersonaBindingSpec,
@@ -14,7 +18,9 @@ from apeiria.ai.persona.models import (
     PersonaBindingScope,
 )
 from apeiria.ai.persona.resolver import resolve_persona_binding
-from apeiria.db.runtime import database_runtime
+from apeiria.db.base import _epoch_ms
+from apeiria.db.engine import get_session
+from apeiria.db.models.ai_persona import AIPersona, AIPersonaBinding
 
 
 @dataclass(frozen=True)
@@ -57,53 +63,41 @@ class AIPersonaService:
         include_disabled: bool = True,
     ) -> list[AIPersonaDefinition]:
         """List personas from storage."""
-        with database_runtime.connect_sync() as connection:
-            rows = connection.execute(
-                """
-                SELECT
-                    persona_id,
-                    name,
-                    description,
-                    system_prompt,
-                    style_prompt,
-                    enabled
-                FROM ai_persona
-                ORDER BY name ASC, persona_id ASC
-                """
-            ).fetchall()
+        async with get_session() as session:
+            result = await session.execute(
+                select(AIPersona).order_by(AIPersona.name, AIPersona.persona_id)
+            )
+            rows = result.scalars().all()
         return [
             AIPersonaDefinition(
-                persona_id=str(row[0]),
-                name=str(row[1]),
-                description=str(row[2]),
-                system_prompt=str(row[3]),
-                style_prompt=str(row[4]),
-                enabled=bool(row[5]),
+                persona_id=r.persona_id,
+                name=r.name,
+                description=r.description,
+                system_prompt=r.system_prompt,
+                style_prompt=r.style_prompt,
+                enabled=bool(r.enabled),
             )
-            for row in rows
-            if include_disabled or bool(row[5])
+            for r in rows
+            if include_disabled or bool(r.enabled)
         ]
 
     async def list_bindings(
         self,
     ) -> list[AIPersonaBindingSpec]:
         """List persona bindings from storage."""
-        with database_runtime.connect_sync() as connection:
-            rows = connection.execute(
-                """
-                SELECT binding_id, scope_type, scope_id, persona_id
-                FROM ai_persona_binding
-                ORDER BY binding_id ASC
-                """
-            ).fetchall()
+        async with get_session() as session:
+            result = await session.execute(
+                select(AIPersonaBinding).order_by(AIPersonaBinding.binding_id)
+            )
+            rows = result.scalars().all()
         return [
             AIPersonaBindingSpec(
-                binding_id=str(row[0]),
-                scope_type=cast("PersonaBindingScope", str(row[1])),
-                scope_id=str(row[2]),
-                persona_id=str(row[3]),
+                binding_id=r.binding_id,
+                scope_type=cast("PersonaBindingScope", r.scope_type),
+                scope_id=r.scope_id,
+                persona_id=r.persona_id,
             )
-            for row in rows
+            for r in rows
         ]
 
     async def resolve_persona(
@@ -138,37 +132,31 @@ class AIPersonaService:
         self,
         create_input: AIPersonaCreateInput,
     ) -> AIPersonaDefinition:
+        import uuid
+
         persona = AIPersonaDefinition(
-            persona_id=f"persona_{__import__('uuid').uuid4().hex}",
+            persona_id=f"persona_{uuid.uuid4().hex}",
             name=create_input.name,
             description=create_input.description,
             system_prompt=create_input.system_prompt,
             style_prompt=create_input.style_prompt,
             enabled=create_input.enabled,
         )
-        with database_runtime.connect_sync() as connection:
-            connection.execute(
-                """
-                INSERT INTO ai_persona (
-                    persona_id,
-                    name,
-                    description,
-                    system_prompt,
-                    style_prompt,
-                    enabled,
-                    updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    persona.persona_id,
-                    persona.name,
-                    persona.description,
-                    persona.system_prompt,
-                    persona.style_prompt,
-                    1 if persona.enabled else 0,
-                    _utcnow_text(),
-                ),
+        now = _epoch_ms()
+        async with get_session() as session:
+            session.add(
+                AIPersona(
+                    persona_id=persona.persona_id,
+                    name=persona.name,
+                    description=persona.description,
+                    system_prompt=persona.system_prompt,
+                    style_prompt=persona.style_prompt,
+                    enabled=1 if persona.enabled else 0,
+                    created_at=now,
+                    updated_at=now,
+                )
             )
+            await session.commit()
         return persona
 
     async def update_persona(
@@ -194,29 +182,20 @@ class AIPersonaService:
             style_prompt=create_input.style_prompt,
             enabled=create_input.enabled,
         )
-        with database_runtime.connect_sync() as connection:
-            connection.execute(
-                """
-                UPDATE ai_persona
-                SET
-                    name = ?,
-                    description = ?,
-                    system_prompt = ?,
-                    style_prompt = ?,
-                    enabled = ?,
-                    updated_at = ?
-                WHERE persona_id = ?
-                """,
-                (
-                    updated.name,
-                    updated.description,
-                    updated.system_prompt,
-                    updated.style_prompt,
-                    1 if updated.enabled else 0,
-                    _utcnow_text(),
-                    persona_id,
-                ),
+        async with get_session() as session:
+            await session.execute(
+                update(AIPersona)
+                .where(AIPersona.persona_id == persona_id)
+                .values(
+                    name=updated.name,
+                    description=updated.description,
+                    system_prompt=updated.system_prompt,
+                    style_prompt=updated.style_prompt,
+                    enabled=1 if updated.enabled else 0,
+                    updated_at=_epoch_ms(),
+                )
             )
+            await session.commit()
         return updated
 
     async def build_persona_prompt_bundle(
@@ -360,7 +339,3 @@ def _build_template_variables(
         "is_group_chat": "true" if render_context.is_group_chat else "false",
         "is_private_chat": "true" if render_context.is_private_chat else "false",
     }
-
-
-def _utcnow_text() -> str:
-    return datetime.now(timezone.utc).isoformat(timespec="seconds")

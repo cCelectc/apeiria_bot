@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
 from typing import Literal, get_args
 
 from pydantic import BaseModel, ConfigDict, Field
+from sqlalchemy import select
+from sqlalchemy.dialects.sqlite import insert
 
-from apeiria.db.runtime import database_runtime
+from apeiria.db.base import _epoch_ms
+from apeiria.db.engine import get_session
+from apeiria.db.models.ai_settings import AIRuntimeSettings as AIRuntimeSettingsModel
 
 AIRuntimeSettingKey = Literal[
     "allow_group_initiative",
@@ -336,31 +339,28 @@ def default_ai_runtime_settings() -> AIRuntimeSettings:
 
 
 class AIRuntimeSettingsRepository:
-    """SQLite persistence for AI-owned runtime settings overrides."""
+    """Async persistence for AI-owned runtime settings overrides."""
 
-    def get_overrides(self) -> tuple[dict[AIRuntimeSettingKey, object], str | None]:
-        with database_runtime.connect_sync() as connection:
-            row = connection.execute(
-                f"""
-                SELECT
-                    {", ".join(AI_RUNTIME_SETTING_KEYS)},
-                    updated_at
-                FROM ai_runtime_settings
-                WHERE id = 1
-                """
-            ).fetchone()
-        if row is None:
+    async def get_overrides(
+        self,
+    ) -> tuple[dict[AIRuntimeSettingKey, object], str | None]:
+        async with get_session() as session:
+            result = await session.execute(
+                select(AIRuntimeSettingsModel).where(AIRuntimeSettingsModel.id == 1)
+            )
+            model = result.scalars().first()
+        if model is None:
             return {}, None
 
         overrides: dict[AIRuntimeSettingKey, object] = {}
-        for index, key in enumerate(AI_RUNTIME_SETTING_KEYS):
-            value = row[index]
+        for key in AI_RUNTIME_SETTING_KEYS:
+            value = getattr(model, key, None)
             if value is None:
                 continue
             overrides[key] = _decode_storage_value(key, value)
-        return overrides, str(row[-1])
+        return overrides, str(model.updated_at)
 
-    def update_overrides(
+    async def update_overrides(
         self,
         values: dict[AIRuntimeSettingKey, object],
         *,
@@ -370,35 +370,26 @@ class AIRuntimeSettingsRepository:
         for key in clear or []:
             updates[key] = None
         if not updates:
-            return self.get_overrides()
+            return await self.get_overrides()
 
-        timestamp = _utcnow_text()
-        columns = [*AI_RUNTIME_SETTING_KEYS, "updated_at"]
-        assignments = ", ".join(f"{key} = excluded.{key}" for key in updates)
-        if assignments:
-            assignments = f"{assignments}, updated_at = excluded.updated_at"
-        else:
-            assignments = "updated_at = excluded.updated_at"
-        insert_values = [
-            _encode_storage_value(key, updates.get(key))
-            for key in AI_RUNTIME_SETTING_KEYS
-        ]
-        insert_values.append(timestamp)
-        with database_runtime.connect_sync() as connection:
-            connection.execute(
-                f"""
-                INSERT INTO ai_runtime_settings (
-                    id,
-                    {", ".join(columns)}
-                ) VALUES (
-                    1,
-                    {", ".join("?" for _ in columns)}
-                )
-                ON CONFLICT(id) DO UPDATE SET {assignments}
-                """,
-                tuple(insert_values),
-            )
-        return self.get_overrides()
+        now = _epoch_ms()
+        insert_values: dict[str, object] = {"id": 1, "updated_at": now}
+        for key in AI_RUNTIME_SETTING_KEYS:
+            insert_values[key] = _encode_storage_value(key, updates.get(key))
+
+        set_clause: dict[str, object] = {"updated_at": now}
+        for key, value in updates.items():
+            set_clause[key] = _encode_storage_value(key, value)
+
+        stmt = insert(AIRuntimeSettingsModel).values(**insert_values)
+        stmt = stmt.on_conflict_do_update(
+            index_elements=[AIRuntimeSettingsModel.id],
+            set_=set_clause,
+        )
+        async with get_session() as session:
+            await session.execute(stmt)
+            await session.commit()
+        return await self.get_overrides()
 
 
 class AIRuntimeSettingsService:
@@ -410,9 +401,9 @@ class AIRuntimeSettingsService:
     ) -> None:
         self._repository = repository or AIRuntimeSettingsRepository()
 
-    def get_view(self) -> AIRuntimeSettingsView:
+    async def get_view(self) -> AIRuntimeSettingsView:
         defaults = default_ai_runtime_settings()
-        overrides, updated_at = self._repository.get_overrides()
+        overrides, updated_at = await self._repository.get_overrides()
         effective = _build_effective_settings(defaults, overrides)
         return AIRuntimeSettingsView(
             effective=effective,
@@ -422,12 +413,12 @@ class AIRuntimeSettingsService:
             updated_at=updated_at,
         )
 
-    def get_settings(self) -> AIRuntimeSettings:
+    async def get_settings(self) -> AIRuntimeSettings:
         """Return effective runtime settings for runtime callers."""
 
-        return self.get_view().effective
+        return (await self.get_view()).effective
 
-    def update_settings(
+    async def update_settings(
         self,
         values: dict[str, object],
         *,
@@ -439,8 +430,9 @@ class AIRuntimeSettingsService:
         normalized_clear: list[AIRuntimeSettingKey] = [
             _coerce_setting_key(key) for key in clear or []
         ]
+        current_overrides, _ = await self._repository.get_overrides()
         next_overrides: dict[AIRuntimeSettingKey, object | None] = {
-            **self._repository.get_overrides()[0],
+            **current_overrides,
             **normalized_values,
             **dict.fromkeys(normalized_clear, None),
         }
@@ -448,11 +440,11 @@ class AIRuntimeSettingsService:
             default_ai_runtime_settings(),
             next_overrides,
         )
-        self._repository.update_overrides(
+        await self._repository.update_overrides(
             normalized_values,
             clear=normalized_clear,
         )
-        return self.get_view()
+        return await self.get_view()
 
 
 def _build_effective_settings(
@@ -493,10 +485,6 @@ def _decode_storage_value(key: AIRuntimeSettingKey, value: object) -> object:
 def _locale_key(key: AIRuntimeSettingKey) -> str:
     parts = str(key).split("_")
     return parts[0] + "".join(part.capitalize() for part in parts[1:])
-
-
-def _utcnow_text() -> str:
-    return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
 ai_runtime_settings_service = AIRuntimeSettingsService()
