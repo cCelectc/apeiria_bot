@@ -61,7 +61,7 @@ class KnowledgeRetrievalService:
                 ),
             )
         )
-        self._index_chunks(document_id=document.document_id)
+        await self._index_chunks(document_id=document.document_id)
         diagnostics = await self.rebuild_embeddings(document_id=document.document_id)
         chunks = tuple(self._repository.list_chunks(document_id=document.document_id))
         refreshed = self._repository.get_document(document_id=document.document_id)
@@ -72,7 +72,7 @@ class KnowledgeRetrievalService:
             diagnostics=diagnostics,
         )
 
-    def replace_document_content(
+    async def replace_document_content(
         self,
         *,
         document_id: str,
@@ -100,7 +100,7 @@ class KnowledgeRetrievalService:
         )
         if document is None:
             return None
-        self._retrieval.delete_documents(
+        await self._retrieval.delete_documents(
             tuple(
                 retrieval_document_id(domain="knowledge", source_id=chunk.chunk_id)
                 for chunk in existing_chunks
@@ -108,7 +108,7 @@ class KnowledgeRetrievalService:
         )
         for chunk in existing_chunks:
             chunk_embedding_store.delete(chunk_id=chunk.chunk_id)
-        self._index_chunks(document_id=document_id)
+        await self._index_chunks(document_id=document_id)
         chunks = tuple(self._repository.list_chunks(document_id=document_id))
         return KnowledgeUploadResult(
             document=document,
@@ -264,7 +264,7 @@ class KnowledgeRetrievalService:
             ),
         )
 
-    def delete_document(self, *, document_id: str) -> bool:
+    async def delete_document(self, *, document_id: str) -> bool:
         """Delete one knowledge document and associated retrieval index records."""
 
         chunk_ids = tuple(
@@ -273,7 +273,7 @@ class KnowledgeRetrievalService:
         )
         deleted = self._repository.delete_document(document_id=document_id)
         if deleted:
-            self._retrieval.delete_documents(
+            await self._retrieval.delete_documents(
                 tuple(
                     retrieval_document_id(domain="knowledge", source_id=chunk_id)
                     for chunk_id in chunk_ids
@@ -283,7 +283,7 @@ class KnowledgeRetrievalService:
                 chunk_embedding_store.delete(chunk_id=chunk_id)
         return deleted
 
-    def _index_chunks(self, *, document_id: str | None = None) -> None:
+    async def _index_chunks(self, *, document_id: str | None = None) -> None:
         documents = {
             document.document_id: document
             for document in self._repository.list_documents()
@@ -295,7 +295,7 @@ class KnowledgeRetrievalService:
             )
             for chunk in self._repository.list_chunks(document_id=document_id)
         )
-        self._retrieval.index_documents(retrieval_documents)
+        await self._retrieval.index_documents(retrieval_documents)
 
     @staticmethod
     def _to_retrieval_item(  # noqa: PLR0913

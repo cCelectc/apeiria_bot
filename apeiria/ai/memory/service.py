@@ -438,7 +438,7 @@ class AIMemoryService:
         self._knowledge.delete_memory_embedding(memory_id=memory_id)
         deleted = self._repository.delete_memory(memory_id=memory_id)
         if deleted:
-            self._retrieval.delete_documents(
+            await self._retrieval.delete_documents(
                 (
                     retrieval_document_id(
                         domain="memory",
@@ -499,7 +499,7 @@ class AIMemoryService:
         memory: AIMemoryDefinition,
     ) -> None:
         document = _memory_to_retrieval_document(memory)
-        self._retrieval.index_documents((document,))
+        await self._retrieval.index_documents((document,))
         await self._knowledge.upsert_memory_embedding(
             memory_id=memory.memory_id,
             content=memory.content,
@@ -512,10 +512,10 @@ class AIMemoryService:
         if _is_memory_retrievable(memory):
             await self._refresh_memory_retrieval_index(memory)
             return
-        self._delete_memory_retrieval_index(memory.memory_id)
+        await self._delete_memory_retrieval_index(memory.memory_id)
 
-    def _delete_memory_retrieval_index(self, memory_id: str) -> None:
-        self._retrieval.delete_documents(
+    async def _delete_memory_retrieval_index(self, memory_id: str) -> None:
+        await self._retrieval.delete_documents(
             (
                 retrieval_document_id(
                     domain="memory",
@@ -606,7 +606,7 @@ class AIMemoryService:
             await self._refresh_memory_retrieval_index(memory)
         removed_ids = before_ids - after_ids
         if removed_ids:
-            self._retrieval.delete_documents(
+            await self._retrieval.delete_documents(
                 tuple(
                     retrieval_document_id(domain="memory", source_id=memory_id)
                     for memory_id in removed_ids

@@ -3,12 +3,17 @@
 from __future__ import annotations
 
 import re
-import sqlite3
 import unicodedata
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
+
+from sqlalchemy import text
 
 from apeiria.ai.retrieval.models import RetrievalCandidate, RetrievalDocument
-from apeiria.db.runtime import database_runtime
+from apeiria.db.engine import get_session
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
 
 _MAX_TERMS = 24
 _ASCII_NGRAM_MIN_LENGTH = 4
@@ -28,61 +33,63 @@ class SparseSearchResult:
 class RetrievalSparseIndex:
     """Own the local sparse retrieval index."""
 
-    def upsert_many(self, documents: tuple[RetrievalDocument, ...]) -> None:
+    async def upsert_many(self, documents: tuple[RetrievalDocument, ...]) -> None:
         """Upsert searchable document projections into the sparse index."""
 
         if not documents:
             return
-        with database_runtime.connect_sync() as connection:
-            if not _try_ensure_schema(connection):
+        async with get_session() as session:
+            if not await _try_ensure_schema(session):
                 return
             for document in documents:
                 searchable_title = _indexed_text(document.title or "")
                 searchable_body = _indexed_text(document.text)
-                connection.execute(
-                    """
+                await session.execute(
+                    text("""
                     DELETE FROM ai_retrieval_sparse_fts
-                    WHERE document_id = ?
-                    """,
-                    (document.document_id,),
+                    WHERE document_id = :document_id
+                    """),
+                    {"document_id": document.document_id},
                 )
-                connection.execute(
-                    """
+                await session.execute(
+                    text("""
                     INSERT INTO ai_retrieval_sparse_fts (
                         document_id,
                         domain,
                         title,
                         body,
                         searchable
-                    ) VALUES (?, ?, ?, ?, ?)
-                    """,
-                    (
-                        document.document_id,
-                        document.domain,
-                        searchable_title,
-                        searchable_body,
-                        f"{searchable_title} {searchable_body}".strip(),
-                    ),
+                    ) VALUES (:document_id, :domain, :title, :body, :searchable)
+                    """),
+                    {
+                        "document_id": document.document_id,
+                        "domain": document.domain,
+                        "title": searchable_title,
+                        "body": searchable_body,
+                        "searchable": f"{searchable_title} {searchable_body}".strip(),
+                    },
                 )
+            await session.commit()
 
-    def delete_many(self, document_ids: tuple[str, ...]) -> None:
+    async def delete_many(self, document_ids: tuple[str, ...]) -> None:
         """Delete sparse index rows by retrieval document id."""
 
         if not document_ids:
             return
-        with database_runtime.connect_sync() as connection:
-            if not _try_ensure_schema(connection):
+        async with get_session() as session:
+            if not await _try_ensure_schema(session):
                 return
             for document_id in document_ids:
-                connection.execute(
-                    """
+                await session.execute(
+                    text("""
                     DELETE FROM ai_retrieval_sparse_fts
-                    WHERE document_id = ?
-                    """,
-                    (document_id,),
+                    WHERE document_id = :document_id
+                    """),
+                    {"document_id": document_id},
                 )
+            await session.commit()
 
-    def search(
+    async def search(
         self,
         *,
         query_text: str,
@@ -99,27 +106,33 @@ class RetrievalSparseIndex:
         document_map = {document.document_id: document for document in documents}
         escaped = [term.replace('"', '""') for term in terms]
         query = " OR ".join(f'"{esc}"' for esc in escaped)
-        placeholders = ",".join("?" for _ in document_map)
+        placeholders = ",".join(f":id_{i}" for i in range(len(document_map)))
+        params: dict[str, object] = {
+            f"id_{i}": doc_id for i, doc_id in enumerate(document_map.keys())
+        }
+        params["query"] = query
+        params["limit"] = limit
         try:
-            with database_runtime.connect_sync() as connection:
-                if not _try_ensure_schema(connection):
+            async with get_session() as session:
+                if not await _try_ensure_schema(session):
                     return _fallback_search(
                         query_terms=terms,
                         documents=documents,
                         limit=limit,
                     )
-                rows = connection.execute(
-                    f"""
+                result = await session.execute(
+                    text(f"""
                     SELECT document_id, bm25(ai_retrieval_sparse_fts) AS rank
                     FROM ai_retrieval_sparse_fts
                     WHERE document_id IN ({placeholders})
-                        AND ai_retrieval_sparse_fts MATCH ?
+                        AND ai_retrieval_sparse_fts MATCH :query
                     ORDER BY rank ASC, rowid ASC
-                    LIMIT ?
-                    """,
-                    (*document_map.keys(), query, limit),
-                ).fetchall()
-        except sqlite3.Error:
+                    LIMIT :limit
+                    """),
+                    params,
+                )
+                rows = result.fetchall()
+        except Exception:  # noqa: BLE001
             return _fallback_search(
                 query_terms=terms,
                 documents=documents,
@@ -144,9 +157,9 @@ class RetrievalSparseIndex:
         return SparseSearchResult(candidates=tuple(candidates))
 
 
-def _ensure_schema(connection: sqlite3.Connection) -> None:
-    connection.execute(
-        """
+async def _ensure_schema(session: AsyncSession) -> None:
+    await session.execute(
+        text("""
         CREATE VIRTUAL TABLE IF NOT EXISTS ai_retrieval_sparse_fts
         USING fts5(
             document_id UNINDEXED,
@@ -155,8 +168,9 @@ def _ensure_schema(connection: sqlite3.Connection) -> None:
             body,
             searchable
         )
-        """
+        """)
     )
+    await session.commit()
 
 
 def _fallback_search(
@@ -190,10 +204,10 @@ def _fallback_search(
     return SparseSearchResult(candidates=candidates, used_fallback=True)
 
 
-def _try_ensure_schema(connection: sqlite3.Connection) -> bool:
+async def _try_ensure_schema(session: AsyncSession) -> bool:
     try:
-        _ensure_schema(connection)
-    except sqlite3.Error:
+        await _ensure_schema(session)
+    except Exception:  # noqa: BLE001
         return False
     return True
 

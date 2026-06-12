@@ -9,11 +9,19 @@ from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING
 
 from nonebot.log import logger
+from sqlalchemy import delete, select, text
 
-from apeiria.db.runtime import database_runtime
+from apeiria.db.engine import get_session
+from apeiria.db.models.ai_memory import AIMemoryItem
+from apeiria.db.models.conversation import ChatMessage, ChatSession
 
 if TYPE_CHECKING:
     from apeiria.ai.runtime_settings import AIRuntimeSettings
+
+
+def _epoch_ms_cutoff(days: int) -> int:
+    cutoff_dt = datetime.now(timezone.utc) - timedelta(days=max(days, 1))
+    return int(cutoff_dt.timestamp() * 1000)
 
 
 def _iso_cutoff(days: int) -> str:
@@ -95,14 +103,14 @@ class AIRetentionService:
         *,
         settings: "AIRuntimeSettings",
     ) -> AIRetentionCleanupResult:
-        conversation_result = self.cleanup_conversations(
+        conversation_result = await self.cleanup_conversations(
             conversation_retention_days=settings.conversation_retention_days,
             raw_event_retention_days=settings.raw_event_retention_days,
         )
-        deleted_tool_execution_count = self.cleanup_tool_executions(
+        deleted_tool_execution_count = await self.cleanup_tool_executions(
             retention_days=settings.tool_execution_retention_days
         )
-        deleted_memory_count = self.cleanup_suppressed_memories(
+        deleted_memory_count = await self.cleanup_suppressed_memories(
             retention_days=settings.suppressed_memory_retention_days
         )
         return AIRetentionCleanupResult(
@@ -113,84 +121,103 @@ class AIRetentionService:
             deleted_memories=deleted_memory_count,
         )
 
-    def cleanup_conversations(
+    async def cleanup_conversations(
         self,
         *,
         conversation_retention_days: int,
         raw_event_retention_days: int,
     ) -> AIRetentionCleanupResult:
-        """Delete old SQLite-backed conversation rows and raw payloads."""
+        """Delete old conversation rows and clear raw payloads."""
 
-        with database_runtime.connect_sync() as connection:
-            deleted_messages = connection.execute(
-                """
-                DELETE FROM chat_message
-                WHERE created_at < ?
-                """,
-                (_iso_cutoff(conversation_retention_days),),
+        cutoff = _epoch_ms_cutoff(conversation_retention_days)
+        raw_cutoff = _epoch_ms_cutoff(raw_event_retention_days)
+
+        async with get_session() as session:
+            msg_result = await session.execute(
+                delete(ChatMessage).where(ChatMessage.created_at < cutoff)
             )
-            deleted_sessions = connection.execute(
-                """
-                DELETE FROM chat_session
-                WHERE NOT EXISTS (
-                    SELECT 1
-                    FROM chat_message
-                    WHERE chat_message.session_pk = chat_session.id
+            deleted_messages = msg_result.rowcount or 0
+
+            active_session_ids = (
+                select(ChatMessage.session_id).distinct().scalar_subquery()
+            )
+            sess_result = await session.execute(
+                delete(ChatSession).where(
+                    ChatSession.session_id.notin_(active_session_ids)
                 )
-                """
             )
-            cleared_raw_payloads = connection.execute(
-                """
-                UPDATE chat_message
-                SET raw_data_json = NULL
-                WHERE raw_data_json IS NOT NULL AND created_at < ?
-                """,
-                (_iso_cutoff(raw_event_retention_days),),
-            )
+            deleted_sessions = sess_result.rowcount or 0
+
+            try:
+                raw_result = await session.execute(
+                    text("""
+                    UPDATE chat_message
+                    SET raw_data_json = NULL
+                    WHERE raw_data_json IS NOT NULL AND created_at < :cutoff
+                    """),
+                    {"cutoff": raw_cutoff},
+                )
+                cleared_raw_payloads = raw_result.rowcount or 0
+            except Exception:  # noqa: BLE001
+                cleared_raw_payloads = 0
+
+            await session.commit()
+
         return AIRetentionCleanupResult(
-            deleted_messages=int(deleted_messages.rowcount or 0),
-            deleted_sessions=int(deleted_sessions.rowcount or 0),
-            cleared_raw_payloads=int(cleared_raw_payloads.rowcount or 0),
+            deleted_messages=int(deleted_messages),
+            deleted_sessions=int(deleted_sessions),
+            cleared_raw_payloads=int(cleared_raw_payloads),
         )
 
-    def cleanup_tool_executions(self, *, retention_days: int) -> int:
-        """Delete old SQLite-backed tool execution audit rows."""
+    async def cleanup_tool_executions(self, *, retention_days: int) -> int:
+        """Delete old tool execution audit rows."""
 
-        with database_runtime.connect_sync() as connection:
-            cursor = connection.execute(
-                """
+        cutoff = _iso_cutoff(retention_days)
+        async with get_session() as session:
+            result = await session.execute(
+                text("""
                 DELETE FROM ai_tool_execution
-                WHERE created_at < ?
-                """,
-                (_iso_cutoff(retention_days),),
+                WHERE created_at < :cutoff
+                """),
+                {"cutoff": cutoff},
             )
-            return int(cursor.rowcount or 0)
+            await session.commit()
+            return int(result.rowcount or 0)
 
-    def cleanup_suppressed_memories(self, *, retention_days: int) -> int:
-        """Delete old suppressed SQLite-backed memory rows and embeddings."""
+    async def cleanup_suppressed_memories(self, *, retention_days: int) -> int:
+        """Delete old suppressed memory rows and embeddings."""
 
         from apeiria.ai.memory.embedding_store import ai_memory_embedding_store
 
-        cutoff = _iso_cutoff(retention_days)
-        with database_runtime.connect_sync() as connection:
-            rows = connection.execute(
-                """
-                SELECT memory_id
-                FROM ai_memory_item
-                WHERE created_at < ? AND lifecycle_state = 'suppressed'
-                """,
-                (cutoff,),
-            ).fetchall()
-            memory_ids = [str(row[0]) for row in rows]
-            if not memory_ids:
-                return 0
-            cursor = connection.execute(
-                """
-                DELETE FROM ai_memory_item
-                WHERE created_at < ? AND lifecycle_state = 'suppressed'
-                """,
-                (cutoff,),
+        cutoff = _epoch_ms_cutoff(retention_days)
+        async with get_session() as session:
+            rows = (
+                (
+                    await session.execute(
+                        select(AIMemoryItem.memory_id).where(
+                            AIMemoryItem.created_at < cutoff,
+                            AIMemoryItem.lifecycle_state == "suppressed",
+                        )
+                    )
+                )
+                .scalars()
+                .all()
             )
+
+            if not rows:
+                return 0
+
+            memory_ids = [str(mid) for mid in rows]
+
+            result = await session.execute(
+                delete(AIMemoryItem).where(
+                    AIMemoryItem.created_at < cutoff,
+                    AIMemoryItem.lifecycle_state == "suppressed",
+                )
+            )
+            await session.commit()
+
         for memory_id in memory_ids:
             ai_memory_embedding_store.delete(memory_id=memory_id)
-        return int(cursor.rowcount or 0)
+
+        return int(result.rowcount or 0)

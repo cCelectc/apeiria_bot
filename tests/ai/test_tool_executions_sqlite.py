@@ -89,6 +89,7 @@ def test_tool_execution_retention_deletes_old_sqlite_rows(
     monkeypatch: "MonkeyPatch",
 ) -> None:
     from apeiria.ai.retention import AIRetentionService
+    from apeiria.db.engine import close_engine, init_engine
 
     monkeypatch.setattr(database_runtime, "_project_root", tmp_path)
     database_runtime.ensure_ready()
@@ -123,13 +124,22 @@ def test_tool_execution_retention_deletes_old_sqlite_rows(
             ("tool_exec_new", "session-1", "memory.search", "success", new_time),
         )
 
-    deleted = AIRetentionService().cleanup_tool_executions(retention_days=1)
+    async def run() -> None:
+        await init_engine(database_runtime.database_path())
+        try:
+            deleted = await AIRetentionService().cleanup_tool_executions(
+                retention_days=1
+            )
+            assert deleted == 1
+        finally:
+            await close_engine()
+
+    asyncio.run(run())
 
     with database_runtime.connect_sync() as connection:
         rows = connection.execute(
             "SELECT execution_id FROM ai_tool_execution ORDER BY execution_id"
         ).fetchall()
-    assert deleted == 1
     assert rows == [("tool_exec_new",)]
 
 

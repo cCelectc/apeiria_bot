@@ -100,7 +100,7 @@ class RetrievalCandidateService:
                 fallback_reason = "no_comparable_dense_vectors"
 
         if not candidates:
-            sparse_result = self._sparse_index.search(
+            sparse_result = await self._sparse_index.search(
                 query_text=query_text,
                 documents=documents,
                 limit=bounded_candidate_limit,
@@ -141,15 +141,15 @@ class RetrievalCandidateService:
         embedding = await self._build_embedding(content=document.search_text)
         return embedding.result
 
-    def index_documents(self, documents: tuple[RetrievalDocument, ...]) -> None:
+    async def index_documents(self, documents: tuple[RetrievalDocument, ...]) -> None:
         """Update the sparse retrieval index for already-projected documents."""
 
-        self._sparse_index.upsert_many(documents)
+        await self._sparse_index.upsert_many(documents)
 
-    def delete_documents(self, document_ids: tuple[str, ...]) -> None:
+    async def delete_documents(self, document_ids: tuple[str, ...]) -> None:
         """Remove documents from the sparse retrieval index."""
 
-        self._sparse_index.delete_many(document_ids)
+        await self._sparse_index.delete_many(document_ids)
 
     async def _build_embedding(self, *, content: str) -> "_EmbeddingAttempt":
         selected = await self._capability_selection_service.select_default_model(

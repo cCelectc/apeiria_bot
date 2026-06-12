@@ -125,7 +125,9 @@ class KnowledgeAdminMixin:
         document_id: str,
         actor_username: str | None = None,
     ) -> bool:
-        deleted = ai_wiring.knowledge_service.delete_document(document_id=document_id)
+        deleted = await ai_wiring.knowledge_service.delete_document(
+            document_id=document_id
+        )
         if deleted:
             record_ai_admin_audit(
                 "ai_knowledge_document_deleted",
