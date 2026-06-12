@@ -26,9 +26,10 @@ from apeiria.ai.relationship.scoring import (
     clamp_relationship_score,
     project_emotion,
 )
+from apeiria.db.engine import get_session
 
 if TYPE_CHECKING:
-    from sqlite3 import Connection
+    from sqlalchemy.ext.asyncio import AsyncSession
 
     from apeiria.ai.relationship.models import AIRelationshipEventType
 
@@ -67,7 +68,7 @@ class AIRelationshipService:
         user_id: str,
     ) -> AIRelationshipState:
         """Load or initialize relationship state."""
-        row = self._find_row(
+        row = await self._find_row(
             platform=platform,
             user_id=user_id,
         )
@@ -85,7 +86,7 @@ class AIRelationshipService:
         user_id: str,
     ) -> AIRelationshipState:
         """Load one relationship state with read-time decay applied in memory."""
-        row = self._find_row(
+        row = await self._find_row(
             platform=platform,
             user_id=user_id,
         )
@@ -105,19 +106,20 @@ class AIRelationshipService:
         delta: AIRelationshipDelta,
     ) -> AIRelationshipState:
         """Apply one deterministic delta and persist the updated state."""
-        with self._repository.transaction_sync() as connection:
-            row = self._repository.get_or_create_row(
-                connection,
+        async with get_session() as session:
+            row = await self._repository.get_or_create_row(
+                session,
                 platform=platform,
                 user_id=user_id,
             )
-            state = self._persist_inactivity_decay(connection, row)
-            delta = self._apply_anti_farming(
+            state = await self._persist_inactivity_decay(session, row)
+            delta = await self._apply_anti_farming(
                 row=row,
                 state=state,
                 delta=delta,
             )
             if delta.score_delta == 0 and delta.event_type == "message":
+                await session.commit()
                 return state
 
             updated = apply_relationship_delta(state, delta)
@@ -126,9 +128,9 @@ class AIRelationshipService:
             row.mood_tags_json = serialize_mood_tags(updated.mood_tags)
             row.last_event_at = now
             row.last_decay_at = None
-            self._repository.update_row(connection, row)
-            self._repository.record_event(
-                connection,
+            await self._repository.update_row(session, row)
+            await self._repository.record_event(
+                session,
                 affinity_id=row.affinity_id,
                 platform=row.platform,
                 user_id=row.user_id,
@@ -140,6 +142,7 @@ class AIRelationshipService:
                 reason=delta.reason,
                 created_at=now,
             )
+            await session.commit()
         return self._to_state(row)
 
     async def set_manual_score(
@@ -151,21 +154,21 @@ class AIRelationshipService:
         scene_id: str | None = None,
     ) -> AIRelationshipState:
         """Persist an operator override for relationship score."""
-        with self._repository.transaction_sync() as connection:
-            row = self._repository.get_or_create_row(
-                connection,
+        async with get_session() as session:
+            row = await self._repository.get_or_create_row(
+                session,
                 platform=platform,
                 user_id=user_id,
             )
-            state = self._persist_inactivity_decay(connection, row)
+            state = await self._persist_inactivity_decay(session, row)
             now = utcnow()
             next_score = clamp_relationship_score(score)
             row.score = next_score
             row.last_event_at = now
             row.last_decay_at = None
-            self._repository.update_row(connection, row)
-            self._repository.record_event(
-                connection,
+            await self._repository.update_row(session, row)
+            await self._repository.record_event(
+                session,
                 affinity_id=row.affinity_id,
                 platform=row.platform,
                 user_id=row.user_id,
@@ -177,6 +180,7 @@ class AIRelationshipService:
                 reason="manual score override",
                 created_at=now,
             )
+            await session.commit()
         return self._to_state(row)
 
     async def list_states(
@@ -185,7 +189,9 @@ class AIRelationshipService:
         limit: int,
     ) -> list[AIRelationshipState]:
         """List recent relationship states for owner-facing management."""
-        return [self._to_state(row) for row in self._repository.list_rows(limit=limit)]
+        return [
+            self._to_state(row) for row in await self._repository.list_rows(limit=limit)
+        ]
 
     async def list_events_for_target(
         self,
@@ -195,7 +201,7 @@ class AIRelationshipService:
         limit: int,
     ) -> list[AIRelationshipEvent]:
         """List recent events for one relationship target."""
-        row = self._find_row(
+        row = await self._find_row(
             platform=platform,
             user_id=user_id,
         )
@@ -212,7 +218,7 @@ class AIRelationshipService:
         """List recent persisted events for one affinity state."""
         return [
             self._to_event(row)
-            for row in self._repository.list_event_rows(
+            for row in await self._repository.list_event_rows(
                 affinity_id=affinity_id,
                 limit=limit,
             )
@@ -225,7 +231,7 @@ class AIRelationshipService:
         user_id: str,
     ) -> EmotionProjection:
         """Build the current emotion projection for one user."""
-        row = self._find_row(
+        row = await self._find_row(
             platform=platform,
             user_id=user_id,
         )
@@ -238,20 +244,20 @@ class AIRelationshipService:
             )
         return project_emotion(self._build_effective_state(row))
 
-    def _find_row(
+    async def _find_row(
         self,
         *,
         platform: str,
         user_id: str,
     ) -> AffinityRow | None:
-        return self._repository.find_row(
+        return await self._repository.find_row(
             platform=platform,
             user_id=user_id,
         )
 
-    def _persist_inactivity_decay(
+    async def _persist_inactivity_decay(
         self,
-        connection: "Connection",
+        session: "AsyncSession",
         row: AffinityRow,
     ) -> AIRelationshipState:
         state = self._to_state(row)
@@ -266,9 +272,9 @@ class AIRelationshipService:
         row.score = decayed.score
         row.mood_tags_json = serialize_mood_tags(decayed.mood_tags)
         row.last_decay_at = decayed.last_decay_at
-        self._repository.update_row(connection, row)
-        self._repository.record_event(
-            connection,
+        await self._repository.update_row(session, row)
+        await self._repository.record_event(
+            session,
             affinity_id=row.affinity_id,
             platform=row.platform,
             user_id=row.user_id,
@@ -282,7 +288,7 @@ class AIRelationshipService:
         )
         return decayed
 
-    def _apply_anti_farming(
+    async def _apply_anti_farming(
         self,
         *,
         row: AffinityRow,
@@ -301,7 +307,7 @@ class AIRelationshipService:
         recent_since = utcnow() - timedelta(hours=_REPEATED_POSITIVE_WINDOW_HOURS)
         recent_positive_count = sum(
             1
-            for event in self._repository.list_event_rows_since(
+            for event in await self._repository.list_event_rows_since(
                 affinity_id=row.affinity_id,
                 since=recent_since,
                 limit=6,

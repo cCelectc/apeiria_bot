@@ -50,7 +50,7 @@ class KnowledgeRetrievalService:
             source_file_name=source_file_name,
             content=content,
         )
-        document = self._repository.create_document(
+        document = await self._repository.create_document(
             KnowledgeDocumentCreate(
                 title=uploaded.title,
                 source_file_name=uploaded.source_file_name,
@@ -63,8 +63,12 @@ class KnowledgeRetrievalService:
         )
         await self._index_chunks(document_id=document.document_id)
         diagnostics = await self.rebuild_embeddings(document_id=document.document_id)
-        chunks = tuple(self._repository.list_chunks(document_id=document.document_id))
-        refreshed = self._repository.get_document(document_id=document.document_id)
+        chunks = tuple(
+            await self._repository.list_chunks(document_id=document.document_id)
+        )
+        refreshed = await self._repository.get_document(
+            document_id=document.document_id
+        )
         assert refreshed is not None
         return KnowledgeUploadResult(
             document=refreshed,
@@ -81,12 +85,14 @@ class KnowledgeRetrievalService:
     ) -> KnowledgeUploadResult | None:
         """Replace one knowledge document and refresh retrieval indexes."""
 
-        existing_chunks = tuple(self._repository.list_chunks(document_id=document_id))
+        existing_chunks = tuple(
+            await self._repository.list_chunks(document_id=document_id)
+        )
         uploaded = chunk_uploaded_document(
             source_file_name=source_file_name,
             content=content,
         )
-        document = self._repository._replace_document_content(
+        document = await self._repository._replace_document_content(
             document_id=document_id,
             create_input=KnowledgeDocumentCreate(
                 title=uploaded.title,
@@ -109,7 +115,7 @@ class KnowledgeRetrievalService:
         for chunk in existing_chunks:
             chunk_embedding_store.delete(chunk_id=chunk.chunk_id)
         await self._index_chunks(document_id=document_id)
-        chunks = tuple(self._repository.list_chunks(document_id=document_id))
+        chunks = tuple(await self._repository.list_chunks(document_id=document_id))
         return KnowledgeUploadResult(
             document=document,
             chunks=chunks,
@@ -121,7 +127,7 @@ class KnowledgeRetrievalService:
         *,
         document_id: str | None = None,
     ) -> KnowledgeRebuildDiagnostics:
-        chunks = self._repository.list_chunks(document_id=document_id)
+        chunks = await self._repository.list_chunks(document_id=document_id)
         processed = 0
         skipped = 0
         failed = 0
@@ -129,7 +135,7 @@ class KnowledgeRetrievalService:
         embedded_chunk_ids: list[str] = []
         documents = {
             document.document_id: document
-            for document in self._repository.list_documents()
+            for document in await self._repository.list_documents()
         }
         for chunk in chunks:
             try:
@@ -159,13 +165,13 @@ class KnowledgeRetrievalService:
             embedded_chunk_ids.append(chunk.chunk_id)
 
         if document_id is not None:
-            self._repository.mark_chunk_embeddings(
+            await self._repository.mark_chunk_embeddings(
                 document_id=document_id,
                 chunk_ids=embedded_chunk_ids,
                 embedding_model=model_name or "",
                 status="embedded",
             )
-            self._repository.mark_document_status(
+            await self._repository.mark_document_status(
                 document_id=document_id,
                 status=_document_status_for_rebuild(
                     processed=processed,
@@ -179,7 +185,7 @@ class KnowledgeRetrievalService:
                 if chunk.chunk_id in embedded_chunk_ids:
                     by_document.setdefault(chunk.document_id, []).append(chunk.chunk_id)
             for chunk_document_id, chunk_ids in by_document.items():
-                self._repository.mark_chunk_embeddings(
+                await self._repository.mark_chunk_embeddings(
                     document_id=chunk_document_id,
                     chunk_ids=chunk_ids,
                     embedding_model=model_name,
@@ -215,10 +221,10 @@ class KnowledgeRetrievalService:
 
         documents = {
             document.document_id: document
-            for document in self._repository.list_documents()
+            for document in await self._repository.list_documents()
         }
         chunks = _available_chunks(
-            chunks=self._repository.list_chunks(),
+            chunks=await self._repository.list_chunks(),
             documents=documents,
         )
         retrieval_documents = tuple(
@@ -269,9 +275,9 @@ class KnowledgeRetrievalService:
 
         chunk_ids = tuple(
             chunk.chunk_id
-            for chunk in self._repository.list_chunks(document_id=document_id)
+            for chunk in await self._repository.list_chunks(document_id=document_id)
         )
-        deleted = self._repository.delete_document(document_id=document_id)
+        deleted = await self._repository.delete_document(document_id=document_id)
         if deleted:
             await self._retrieval.delete_documents(
                 tuple(
@@ -286,14 +292,14 @@ class KnowledgeRetrievalService:
     async def _index_chunks(self, *, document_id: str | None = None) -> None:
         documents = {
             document.document_id: document
-            for document in self._repository.list_documents()
+            for document in await self._repository.list_documents()
         }
         retrieval_documents = tuple(
             _chunk_to_retrieval_document(
                 chunk=chunk,
                 document=documents.get(chunk.document_id),
             )
-            for chunk in self._repository.list_chunks(document_id=document_id)
+            for chunk in await self._repository.list_chunks(document_id=document_id)
         )
         await self._retrieval.index_documents(retrieval_documents)
 

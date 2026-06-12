@@ -31,7 +31,7 @@ class MemorySummaryCoordinator:
         anchor_type: AIMemoryAnchorType,
         anchor_id: str,
     ) -> None:
-        memories = self._repository.list_memories(
+        memories = await self._repository.list_memories(
             anchor_type=anchor_type,
             anchor_id=anchor_id,
             lifecycle_states=(),
@@ -48,13 +48,15 @@ class MemorySummaryCoordinator:
 
         if summary_content is None:
             if existing_summary is not None:
-                self._repository.delete_memory(memory_id=existing_summary.memory_id)
+                await self._repository.delete_memory(
+                    memory_id=existing_summary.memory_id
+                )
             return
 
         if existing_summary is not None:
             if existing_summary.content == summary_content:
                 return
-            self._repository.update_memory_content(
+            await self._repository.update_memory_content(
                 memory_id=existing_summary.memory_id,
                 update_input=AIMemoryUpdateInput(
                     content=summary_content,
@@ -65,7 +67,7 @@ class MemorySummaryCoordinator:
             )
             return
 
-        self._repository.create_memory(
+        await self._repository.create_memory(
             AIMemoryCreateInput(
                 anchor_type=anchor_type,
                 anchor_id=anchor_id,

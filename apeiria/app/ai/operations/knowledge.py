@@ -34,8 +34,8 @@ class KnowledgeAdminMixin:
 
     async def get_knowledge_state(self) -> KnowledgeState:
         repository = KnowledgeRepository()
-        documents = repository.list_documents()
-        chunks = repository.list_chunks()
+        documents = await repository.list_documents()
+        chunks = await repository.list_chunks()
         settings = knowledge_settings_store.get()
         return KnowledgeState(
             rag_enabled=settings.rag_enabled,
@@ -76,21 +76,21 @@ class KnowledgeAdminMixin:
         return result
 
     async def list_knowledge_documents(self) -> list[KnowledgeDocumentDefinition]:
-        return KnowledgeRepository().list_documents()
+        return await KnowledgeRepository().list_documents()
 
     async def get_knowledge_document(
         self,
         *,
         document_id: str,
     ) -> KnowledgeDocumentDefinition | None:
-        return KnowledgeRepository().get_document(document_id=document_id)
+        return await KnowledgeRepository().get_document(document_id=document_id)
 
     async def list_knowledge_chunks(
         self,
         *,
         document_id: str | None = None,
     ) -> list[KnowledgeChunkDefinition]:
-        return KnowledgeRepository().list_chunks(document_id=document_id)
+        return await KnowledgeRepository().list_chunks(document_id=document_id)
 
     async def rebuild_knowledge_embeddings(
         self,

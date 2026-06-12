@@ -82,21 +82,29 @@ def test_memory_source_message_reference_is_enforced(
     tmp_path: Path,
     monkeypatch: "MonkeyPatch",
 ) -> None:
+    from sqlalchemy.exc import IntegrityError as SAIntegrityError
+
+    from apeiria.db.engine import close_engine, init_engine
+
     monkeypatch.setattr(database_runtime, "_project_root", tmp_path)
     database_runtime.ensure_ready()
 
     async def scenario() -> None:
-        with raises(sqlite3.IntegrityError):
-            await ai_wiring.memory_service.create_memory_if_absent(
-                AIMemoryCreateInput(
-                    anchor_type="user",
-                    anchor_id="user-1",
-                    memory_layer="long_term",
-                    memory_kind="note",
-                    content="orphan memory",
-                    source_message_id="missing-message",
-                ),
-            )
+        await init_engine(database_runtime.database_path())
+        try:
+            with raises((sqlite3.IntegrityError, SAIntegrityError)):
+                await ai_wiring.memory_service.create_memory_if_absent(
+                    AIMemoryCreateInput(
+                        anchor_type="user",
+                        anchor_id="user-1",
+                        memory_layer="long_term",
+                        memory_kind="note",
+                        content="orphan memory",
+                        source_message_id="missing-message",
+                    ),
+                )
+        finally:
+            await close_engine()
 
     asyncio.run(scenario())
 

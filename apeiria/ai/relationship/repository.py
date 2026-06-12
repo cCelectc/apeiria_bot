@@ -1,26 +1,28 @@
-"""SQLite persistence for AI relationship state and events."""
+"""Async SQLAlchemy persistence for AI relationship state and events."""
 
 from __future__ import annotations
 
 import json
-from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
-from apeiria.db.runtime import database_runtime
+from sqlalchemy import select, update
+from sqlalchemy.dialects.sqlite import insert
+
+from apeiria.db.base import _epoch_ms
+from apeiria.db.engine import get_session
+from apeiria.db.models.ai_relationship import AIAffinity, AIRelationshipEvent
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
-    from sqlite3 import Connection
+    from sqlalchemy.ext.asyncio import AsyncSession
 
     from apeiria.ai.relationship.models import AIRelationshipEventType
 
 
 @dataclass
 class AffinityRow:
-    id: int
     affinity_id: str
     platform: str
     user_id: str
@@ -32,7 +34,6 @@ class AffinityRow:
 
 @dataclass(frozen=True)
 class RelationshipEventRow:
-    id: int
     event_id: str
     affinity_id: str
     platform: str
@@ -49,249 +50,165 @@ class RelationshipEventRow:
 class RelationshipRepository:
     """Own low-level SQL operations for relationship persistence."""
 
-    @contextmanager
-    def transaction_sync(self) -> "Iterator[Connection]":
-        with database_runtime.transaction_sync() as connection:
-            yield connection
-
-    def find_row(
+    async def find_row(
         self,
         *,
         platform: str,
         user_id: str,
     ) -> AffinityRow | None:
-        with database_runtime.connect_sync() as connection:
-            return self.find_row_with_connection(
-                connection,
-                platform=platform,
-                user_id=user_id,
+        async with get_session() as session:
+            result = await session.execute(
+                select(AIAffinity).where(
+                    AIAffinity.platform == platform,
+                    AIAffinity.user_id == user_id,
+                )
             )
+            item = result.scalar_one_or_none()
+        if item is None:
+            return None
+        return _orm_to_affinity_row(item)
 
-    def get_or_create_row(
+    async def get_or_create_row(
         self,
-        connection: "Connection",
+        session: "AsyncSession",
         *,
         platform: str,
         user_id: str,
     ) -> AffinityRow:
-        row = self.find_row_with_connection(
-            connection,
+        result = await session.execute(
+            select(AIAffinity).where(
+                AIAffinity.platform == platform,
+                AIAffinity.user_id == user_id,
+            )
+        )
+        item = result.scalar_one_or_none()
+        if item is not None:
+            return _orm_to_affinity_row(item)
+
+        now = _epoch_ms()
+        stmt = insert(AIAffinity).values(
+            affinity_id=f"aff_{uuid4().hex}",
             platform=platform,
             user_id=user_id,
+            score=0,
+            mood_tags_json="[]",
+            last_event_at=now,
+            last_decay_at=None,
         )
-        if row is not None:
-            return row
-
-        now = utcnow()
-        connection.execute(
-            """
-            INSERT INTO ai_affinity (
-                affinity_id,
-                platform,
-                user_id,
-                score,
-                mood_tags_json,
-                last_event_at,
-                last_decay_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(platform, user_id) DO NOTHING
-            """,
-            (
-                f"aff_{uuid4().hex}",
-                platform,
-                user_id,
-                0,
-                "[]",
-                datetime_to_text(now),
-                None,
-            ),
+        stmt = stmt.on_conflict_do_nothing(
+            index_elements=[AIAffinity.platform, AIAffinity.user_id],
         )
-        row = self.find_row_with_connection(
-            connection,
-            platform=platform,
-            user_id=user_id,
+        await session.execute(stmt)
+        await session.flush()
+        result = await session.execute(
+            select(AIAffinity).where(
+                AIAffinity.platform == platform,
+                AIAffinity.user_id == user_id,
+            )
         )
-        assert row is not None
-        return row
+        item = result.scalar_one()
+        return _orm_to_affinity_row(item)
 
-    def find_row_with_connection(
-        self,
-        connection: "Connection",
-        *,
-        platform: str,
-        user_id: str,
-    ) -> AffinityRow | None:
-        row = connection.execute(
-            """
-            SELECT
-                id,
-                affinity_id,
-                platform,
-                user_id,
-                score,
-                mood_tags_json,
-                last_event_at,
-                last_decay_at
-            FROM ai_affinity
-            WHERE platform = ? AND user_id = ?
-            """,
-            (platform, user_id),
-        ).fetchone()
-        return None if row is None else row_to_affinity(row)
-
-    def list_rows(
+    async def list_rows(
         self,
         *,
         limit: int,
     ) -> list[AffinityRow]:
-        with database_runtime.connect_sync() as connection:
-            rows = connection.execute(
-                """
-                SELECT
-                    id,
-                    affinity_id,
-                    platform,
-                    user_id,
-                    score,
-                    mood_tags_json,
-                    last_event_at,
-                    last_decay_at
-                FROM ai_affinity
-                ORDER BY last_event_at DESC, id DESC
-                LIMIT ?
-                """,
-                (limit,),
-            ).fetchall()
-        return [row_to_affinity(row) for row in rows]
+        async with get_session() as session:
+            result = await session.execute(
+                select(AIAffinity)
+                .order_by(
+                    AIAffinity.last_event_at.desc(), AIAffinity.affinity_id.desc()
+                )
+                .limit(limit)
+            )
+            items = result.scalars().all()
+        return [_orm_to_affinity_row(item) for item in items]
 
-    def list_event_rows(
+    async def list_event_rows(
         self,
         *,
         affinity_id: str,
         limit: int,
     ) -> list[RelationshipEventRow]:
-        with database_runtime.connect_sync() as connection:
-            rows = connection.execute(
-                """
-                SELECT
-                    id,
-                    event_id,
-                    affinity_id,
-                    platform,
-                    user_id,
-                    scene_id,
-                    event_type,
-                    score_delta,
-                    score_after,
-                    mood_tag,
-                    reason,
-                    created_at
-                FROM ai_relationship_event
-                WHERE affinity_id = ?
-                ORDER BY created_at DESC, id DESC
-                LIMIT ?
-                """,
-                (affinity_id, limit),
-            ).fetchall()
-        return [row_to_relationship_event(row) for row in rows]
+        async with get_session() as session:
+            result = await session.execute(
+                select(AIRelationshipEvent)
+                .where(AIRelationshipEvent.affinity_id == affinity_id)
+                .order_by(
+                    AIRelationshipEvent.created_at.desc(),
+                    AIRelationshipEvent.event_id.desc(),
+                )
+                .limit(limit)
+            )
+            items = result.scalars().all()
+        return [_orm_to_event_row(item) for item in items]
 
-    def list_event_rows_since(
+    async def list_event_rows_since(
         self,
         *,
         affinity_id: str,
         since: datetime,
         limit: int,
     ) -> list[RelationshipEventRow]:
-        with database_runtime.connect_sync() as connection:
-            rows = connection.execute(
-                """
-                SELECT
-                    id,
-                    event_id,
-                    affinity_id,
-                    platform,
-                    user_id,
-                    scene_id,
-                    event_type,
-                    score_delta,
-                    score_after,
-                    mood_tag,
-                    reason,
-                    created_at
-                FROM ai_relationship_event
-                WHERE affinity_id = ? AND created_at >= ?
-                ORDER BY created_at DESC, id DESC
-                LIMIT ?
-                """,
-                (affinity_id, datetime_to_text(since), limit),
-            ).fetchall()
-        return [row_to_relationship_event(row) for row in rows]
+        since_ms = int(since.timestamp() * 1000)
+        async with get_session() as session:
+            result = await session.execute(
+                select(AIRelationshipEvent)
+                .where(
+                    AIRelationshipEvent.affinity_id == affinity_id,
+                    AIRelationshipEvent.created_at >= since_ms,
+                )
+                .order_by(
+                    AIRelationshipEvent.created_at.desc(),
+                    AIRelationshipEvent.event_id.desc(),
+                )
+                .limit(limit)
+            )
+            items = result.scalars().all()
+        return [_orm_to_event_row(item) for item in items]
 
-    def update_row(self, connection: "Connection", row: AffinityRow) -> None:
-        connection.execute(
-            """
-            UPDATE ai_affinity
-            SET
-                score = ?,
-                mood_tags_json = ?,
-                last_event_at = ?,
-                last_decay_at = ?
-            WHERE affinity_id = ?
-            """,
-            (
-                row.score,
-                row.mood_tags_json,
-                datetime_to_text(row.last_event_at),
-                datetime_to_text(row.last_decay_at),
-                row.affinity_id,
-            ),
+    async def update_row(self, session: "AsyncSession", row: AffinityRow) -> None:
+        await session.execute(
+            update(AIAffinity)
+            .where(AIAffinity.affinity_id == row.affinity_id)
+            .values(
+                score=row.score,
+                mood_tags_json=row.mood_tags_json,
+                last_event_at=_datetime_to_epoch_ms(row.last_event_at),
+                last_decay_at=_optional_datetime_to_epoch_ms(row.last_decay_at),
+            )
         )
 
-    def record_event(  # noqa: PLR0913
+    async def record_event(  # noqa: PLR0913
         self,
-        connection: "Connection",
+        session: "AsyncSession",
         *,
         affinity_id: str,
         platform: str,
         user_id: str,
         scene_id: str | None,
-        event_type: AIRelationshipEventType,
+        event_type: "AIRelationshipEventType",
         score_delta: int,
         score_after: int,
         mood_tag: str | None,
         reason: str | None,
         created_at: datetime,
     ) -> None:
-        connection.execute(
-            """
-            INSERT INTO ai_relationship_event (
-                event_id,
-                affinity_id,
-                platform,
-                user_id,
-                scene_id,
-                event_type,
-                score_delta,
-                score_after,
-                mood_tag,
-                reason,
-                created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                f"rel_evt_{uuid4().hex}",
-                affinity_id,
-                platform,
-                user_id,
-                scene_id,
-                event_type,
-                score_delta,
-                score_after,
-                mood_tag,
-                reason,
-                datetime_to_text(created_at),
-            ),
+        event = AIRelationshipEvent(
+            event_id=f"rel_evt_{uuid4().hex}",
+            affinity_id=affinity_id,
+            platform=platform,
+            user_id=user_id,
+            scene_id=scene_id,
+            event_type=event_type,
+            score_delta=score_delta,
+            score_after=score_after,
+            mood_tag=mood_tag,
+            reason=reason,
+            created_at=_datetime_to_epoch_ms(created_at),
         )
+        session.add(event)
 
 
 def serialize_mood_tags(mood_tags: tuple[str, ...]) -> str:
@@ -312,50 +229,47 @@ def utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
 
-def datetime_to_text(value: datetime | None) -> str | None:
-    if value is None:
-        return None
-    if value.tzinfo is None:
-        value = value.replace(tzinfo=timezone.utc)
-    return value.astimezone(timezone.utc).isoformat(timespec="seconds")
-
-
-def datetime_from_text(value: object) -> datetime:
-    parsed = datetime.fromisoformat(str(value))
-    if parsed.tzinfo is None:
-        return parsed.replace(tzinfo=timezone.utc)
-    return parsed
-
-
-def optional_datetime_from_text(value: object | None) -> datetime | None:
-    return None if value is None else datetime_from_text(value)
-
-
-def row_to_affinity(row: tuple[object, ...]) -> AffinityRow:
+def _orm_to_affinity_row(item: AIAffinity) -> AffinityRow:
     return AffinityRow(
-        id=int(str(row[0])),
-        affinity_id=str(row[1]),
-        platform=str(row[2]),
-        user_id=str(row[3]),
-        score=int(str(row[4])),
-        mood_tags_json=str(row[5] or "[]"),
-        last_event_at=datetime_from_text(row[6]),
-        last_decay_at=optional_datetime_from_text(row[7]),
+        affinity_id=item.affinity_id,
+        platform=item.platform,
+        user_id=item.user_id,
+        score=item.score,
+        mood_tags_json=item.mood_tags_json or "[]",
+        last_event_at=_epoch_ms_to_datetime(item.last_event_at),
+        last_decay_at=_epoch_ms_to_datetime(item.last_decay_at)
+        if item.last_decay_at is not None
+        else None,
     )
 
 
-def row_to_relationship_event(row: tuple[object, ...]) -> RelationshipEventRow:
+def _orm_to_event_row(item: AIRelationshipEvent) -> RelationshipEventRow:
     return RelationshipEventRow(
-        id=int(str(row[0])),
-        event_id=str(row[1]),
-        affinity_id=str(row[2]),
-        platform=str(row[3]),
-        user_id=str(row[4]),
-        scene_id=str(row[5]) if row[5] is not None else None,
-        event_type=str(row[6]),
-        score_delta=int(str(row[7])),
-        score_after=int(str(row[8])),
-        mood_tag=str(row[9]) if row[9] is not None else None,
-        reason=str(row[10]) if row[10] is not None else None,
-        created_at=datetime_from_text(row[11]),
+        event_id=item.event_id,
+        affinity_id=item.affinity_id,
+        platform=item.platform,
+        user_id=item.user_id,
+        scene_id=item.scene_id,
+        event_type=item.event_type,
+        score_delta=item.score_delta,
+        score_after=item.score_after,
+        mood_tag=item.mood_tag,
+        reason=item.reason,
+        created_at=_epoch_ms_to_datetime(item.created_at),
     )
+
+
+def _epoch_ms_to_datetime(ms: int | str) -> datetime:
+    return datetime.fromtimestamp(int(ms) / 1000, tz=timezone.utc)
+
+
+def _datetime_to_epoch_ms(dt: datetime) -> int:
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return int(dt.timestamp() * 1000)
+
+
+def _optional_datetime_to_epoch_ms(dt: datetime | None) -> int | None:
+    if dt is None:
+        return None
+    return _datetime_to_epoch_ms(dt)

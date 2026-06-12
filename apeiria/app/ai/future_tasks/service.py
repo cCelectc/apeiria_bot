@@ -89,7 +89,7 @@ class AIFutureTaskService:
             created_at=now,
             updated_at=now,
         )
-        self._repository.create_task(task)
+        await self._repository.create_task(task)
 
         scheduler_job_id = self.schedule_task(task_id, task.trigger_at)
         if scheduler_job_id is None:
@@ -105,7 +105,7 @@ class AIFutureTaskService:
                 scheduler_job_id=scheduler_job_id,
                 updated_at=_utcnow(),
             )
-        self._repository.save_task(task)
+        await self._repository.save_task(task)
 
         return AIFutureTaskCreateResult(
             task=task,
@@ -142,7 +142,7 @@ class AIFutureTaskService:
         current_time = _coerce_utc(now) if now is not None else _utcnow()
         rescheduled_task_ids: list[str] = []
         failed_task_ids: list[str] = []
-        for task in self._repository.list_recoverable_tasks(now=current_time):
+        for task in await self._repository.list_recoverable_tasks(now=current_time):
             if task.status == "pending":
                 run_at = max(current_time, task.trigger_at)
                 scheduler_job_id = self.schedule_task(task.task_id, run_at)
@@ -155,10 +155,10 @@ class AIFutureTaskService:
                         recovery_reason="scheduler_recovery_failed",
                         updated_at=current_time,
                     )
-                    self._repository.save_task(failed)
+                    await self._repository.save_task(failed)
                     failed_task_ids.append(task.task_id)
                     continue
-                self._repository.save_task(
+                await self._repository.save_task(
                     replace(
                         task,
                         scheduler_job_id=scheduler_job_id,
@@ -177,7 +177,7 @@ class AIFutureTaskService:
                     recovery_reason="stale_running_recovered",
                     updated_at=current_time,
                 )
-                self._repository.save_task(failed)
+                await self._repository.save_task(failed)
                 failed_task_ids.append(task.task_id)
 
         return AIFutureTaskRecoveryResult(
@@ -191,14 +191,14 @@ class AIFutureTaskService:
         limit: int,
         session_id: str | None = None,
     ) -> list[AIFutureTaskDefinition]:
-        return self._repository.list_tasks(limit=limit, session_id=session_id)
+        return await self._repository.list_tasks(limit=limit, session_id=session_id)
 
     async def get_task(
         self,
         *,
         task_id: str,
     ) -> AIFutureTaskDefinition | None:
-        return self._repository.get_task(task_id=task_id)
+        return await self._repository.get_task(task_id=task_id)
 
     async def cancel_task(
         self,
@@ -208,7 +208,7 @@ class AIFutureTaskService:
         task = await self.get_task(task_id=task_id)
         if task is None:
             return None
-        task = self._update_task_status(
+        task = await self._update_task_status(
             task_id=task_id,
             status="cancelled",
             last_error=None,
@@ -230,7 +230,7 @@ class AIFutureTaskService:
         *,
         task_id: str,
     ) -> AIFutureTaskDefinition | None:
-        return self._repository.claim_task(task_id=task_id, claimed_at=_utcnow())
+        return await self._repository.claim_task(task_id=task_id, claimed_at=_utcnow())
 
     async def mark_task_running(
         self,
@@ -244,7 +244,7 @@ class AIFutureTaskService:
         *,
         task_id: str,
     ) -> AIFutureTaskDefinition | None:
-        return self._update_task_status(
+        return await self._update_task_status(
             task_id=task_id,
             status="sent",
             last_error=None,
@@ -257,7 +257,7 @@ class AIFutureTaskService:
         error: str,
     ) -> AIFutureTaskDefinition | None:
         sanitized_error = sanitize_runtime_diagnostic(error)
-        return self._update_task_status(
+        return await self._update_task_status(
             task_id=task_id,
             status="failed",
             last_error=(
@@ -274,14 +274,14 @@ class AIFutureTaskService:
     def build_schedule_failed_message(task: AIFutureTaskDefinition) -> str:
         return f"我记下了这个提醒，但这次没有成功安排任务：{task.description}"
 
-    def _update_task_status(
+    async def _update_task_status(
         self,
         *,
         task_id: str,
         status: AIFutureTaskStatus,
         last_error: str | None,
     ) -> AIFutureTaskDefinition | None:
-        return self._repository.update_status(
+        return await self._repository.update_status(
             task_id=task_id,
             status=status,
             last_error=last_error,

@@ -17,13 +17,11 @@ from apeiria.ai.memory.governance import (
 )
 from apeiria.ai.memory.knowledge import KnowledgeMemoryCoordinator
 from apeiria.ai.memory.models import (
-    AIMemoryBeliefAction,
     AIMemoryRetrievalDiagnostics,
     AIMemoryRetrievalSelection,
     AIMemoryUseMode,
 )
 from apeiria.ai.memory.repository import (
-    AIMemoryActorType,
     AIMemoryRepository,
     utcnow,
 )
@@ -72,92 +70,62 @@ class AIMemoryService:
     async def create_memory(
         self,
         create_input: AIMemoryCreateInput,
-    ) -> AIMemoryDefinition:
+    ) -> "AIMemoryDefinition":
         """Create one governed memory item."""
 
         governed_input = _with_default_governance(create_input)
-        memory = self._repository.create_memory(
+        memory = await self._repository.create_memory(
             governed_input,
             ignore_existing=False,
         )
         assert memory is not None
-        self._repository.record_belief_action(
-            memory_id=memory.memory_id,
-            action=_creation_action_for_state(memory.lifecycle_state),
-            actor_type=_actor_for_memory(memory),
-            reason=memory.governance_reason,
-            source_message_id=memory.source_message_id,
-            next_state=memory.lifecycle_state,
-        )
         await self._sync_memory_retrieval_index(memory)
         return memory
 
     async def create_memory_if_absent(
         self,
         create_input: AIMemoryCreateInput,
-    ) -> AIMemoryDefinition | None:
+    ) -> "AIMemoryDefinition | None":
         """Create one memory item only when an identical item does not exist."""
 
         governed_input = _with_default_governance(create_input)
-        memory = self._repository.create_memory(
+        memory = await self._repository.create_memory(
             governed_input,
             ignore_existing=True,
         )
         if memory is not None:
-            self._repository.record_belief_action(
-                memory_id=memory.memory_id,
-                action=_creation_action_for_state(memory.lifecycle_state),
-                actor_type=_actor_for_memory(memory),
-                reason=memory.governance_reason,
-                source_message_id=memory.source_message_id,
-                next_state=memory.lifecycle_state,
-            )
             await self._sync_memory_retrieval_index(memory)
         return memory
 
     async def get_memory_by_identity(
         self,
         create_input: AIMemoryCreateInput,
-    ) -> AIMemoryDefinition | None:
+    ) -> "AIMemoryDefinition | None":
         """Load one exact memory row for the given identity tuple."""
 
-        return self._repository.get_memory_by_identity(create_input)
+        return await self._repository.get_memory_by_identity(create_input)
 
     async def get_memory(
         self,
         *,
         memory_id: str,
-    ) -> AIMemoryDefinition | None:
+    ) -> "AIMemoryDefinition | None":
         """Load one memory row by stable id."""
 
-        return self._repository.get_memory(memory_id=memory_id)
+        return await self._repository.get_memory(memory_id=memory_id)
 
     async def update_memory_content(
         self,
         *,
         memory_id: str,
         update_input: AIMemoryUpdateInput,
-        record_action: bool = True,
-    ) -> AIMemoryDefinition | None:
+    ) -> "AIMemoryDefinition | None":
         """Update one existing memory item in place."""
 
-        existing = await self.get_memory(memory_id=memory_id)
-        row = self._repository.update_memory_content(
+        row = await self._repository.update_memory_content(
             memory_id=memory_id,
             update_input=update_input,
         )
-        if row is not None and record_action:
-            self._repository.record_belief_action(
-                memory_id=memory_id,
-                action="revise",
-                actor_type=_actor_for_memory(row),
-                reason="memory content revised",
-                source_message_id=update_input.source_message_id,
-                previous_state=(
-                    existing.lifecycle_state if existing is not None else None
-                ),
-                next_state=row.lifecycle_state,
-            )
         if row is not None:
             await self._sync_memory_retrieval_index(row)
         return row
@@ -165,12 +133,12 @@ class AIMemoryService:
     async def remember_candidates(
         self,
         *,
-        anchor_type: AIMemoryAnchorType,
+        anchor_type: "AIMemoryAnchorType",
         anchor_id: str,
         source_message_id: str | None,
-        candidates: list[AIMemoryExtractionCandidate],
+        candidates: "list[AIMemoryExtractionCandidate]",
         scene_type: str = "private",
-    ) -> list[AIMemoryDefinition]:
+    ) -> "list[AIMemoryDefinition]":
         """Persist extracted long-term memory candidates while avoiding duplicates."""
 
         existing_memories = await self.list_memories(
@@ -185,31 +153,10 @@ class AIMemoryService:
             candidate = plan.candidate
             decision = govern_extracted_memory(candidate, scene_type=scene_type)
             if decision.lifecycle_state is None:
-                self._repository.record_belief_action(
-                    memory_id=None,
-                    action="reject",
-                    actor_type="system",
-                    reason=decision.reason,
-                    source_message_id=source_message_id,
-                    next_state=None,
-                )
                 continue
             if decision.target_scope != anchor_type:
-                self._repository.record_belief_action(
-                    memory_id=None,
-                    action="reject",
-                    actor_type="system",
-                    reason=(
-                        "candidate target scope "
-                        f"{decision.target_scope} does not match write scope "
-                        f"{anchor_type}"
-                    ),
-                    source_message_id=source_message_id,
-                    next_state=None,
-                )
                 continue
             if plan.action == "update" and plan.target_memory_id is not None:
-                existing = await self.get_memory(memory_id=plan.target_memory_id)
                 row = await self.update_memory_content(
                     memory_id=plan.target_memory_id,
                     update_input=AIMemoryUpdateInput(
@@ -218,7 +165,6 @@ class AIMemoryService:
                         confidence=candidate.confidence,
                         source_message_id=source_message_id,
                     ),
-                    record_action=False,
                 )
                 if row is not None:
                     updated = await self.set_memory_state(
@@ -226,12 +172,6 @@ class AIMemoryService:
                         lifecycle_state=decision.lifecycle_state,
                         default_use_mode=decision.use_mode,
                         governance_reason=decision.reason,
-                        action="revise",
-                        actor_type="system",
-                        source_message_id=source_message_id,
-                        previous_state=(
-                            existing.lifecycle_state if existing is not None else None
-                        ),
                     )
                     row = updated or row
                     created.append(row)
@@ -259,15 +199,15 @@ class AIMemoryService:
     async def list_memories(
         self,
         *,
-        anchor_type: AIMemoryAnchorType,
+        anchor_type: "AIMemoryAnchorType",
         anchor_id: str,
-        memory_layer: AIMemoryLayer | None = None,
-        memory_kind: AIMemoryKind | None = None,
-        lifecycle_states: tuple[AIMemoryLifecycleState, ...] = ("active",),
-    ) -> list[AIMemoryDefinition]:
+        memory_layer: "AIMemoryLayer | None" = None,
+        memory_kind: "AIMemoryKind | None" = None,
+        lifecycle_states: "tuple[AIMemoryLifecycleState, ...]" = ("active",),
+    ) -> "list[AIMemoryDefinition]":
         """List all memories for one anchor boundary."""
 
-        return self._repository.list_memories(
+        return await self._repository.list_memories(
             anchor_type=anchor_type,
             anchor_id=anchor_id,
             memory_layer=memory_layer,
@@ -277,8 +217,8 @@ class AIMemoryService:
 
     async def retrieve_memories(
         self,
-        query: AIMemoryQuery,
-    ) -> list[AIMemoryDefinition]:
+        query: "AIMemoryQuery",
+    ) -> "list[AIMemoryDefinition]":
         """Retrieve relevance-ranked memories for one query."""
 
         memories = await self.list_memories(
@@ -298,7 +238,7 @@ class AIMemoryService:
 
     async def retrieve_memory_selections(
         self,
-        query: AIMemoryQuery,
+        query: "AIMemoryQuery",
     ) -> AIMemoryRetrievalDiagnostics:
         """Retrieve active memories with use-mode diagnostics for one query."""
 
@@ -346,11 +286,11 @@ class AIMemoryService:
     async def _retrieve_ranked_memories(
         self,
         *,
-        memories: list[AIMemoryDefinition],
+        memories: "list[AIMemoryDefinition]",
         query_text: str,
         limit: int,
         allow_rerank: bool,
-    ) -> list[AIMemoryDefinition]:
+    ) -> "list[AIMemoryDefinition]":
         if limit <= 0 or not query_text.strip() or not memories:
             return []
         documents = tuple(_memory_to_retrieval_document(memory) for memory in memories)
@@ -373,7 +313,7 @@ class AIMemoryService:
     async def create_knowledge_memory(
         self,
         create_input: AIMemoryCreateInput,
-    ) -> AIMemoryDefinition:
+    ) -> "AIMemoryDefinition":
         """Create one knowledge memory and persist its embedding."""
 
         memory = await self._knowledge.create_knowledge_memory(create_input)
@@ -396,10 +336,10 @@ class AIMemoryService:
     async def retrieve_knowledge_memories(
         self,
         *,
-        targets: list[tuple[AIMemoryAnchorType, str]],
+        targets: "list[tuple[AIMemoryAnchorType, str]]",
         query_text: str,
         limit: int,
-    ) -> list[AIMemoryDefinition]:
+    ) -> "list[AIMemoryDefinition]":
         """Retrieve top-k knowledge memories through local embedding similarity."""
 
         return await self._knowledge.retrieve_knowledge_memories(
@@ -410,8 +350,8 @@ class AIMemoryService:
 
     async def recall_memories(
         self,
-        query: AIMemoryQuery,
-    ) -> list[AIMemoryDefinition]:
+        query: "AIMemoryQuery",
+    ) -> "list[AIMemoryDefinition]":
         """Retrieve memories for live AI use and stamp recall time."""
 
         recalled = await self.retrieve_memories(query)
@@ -432,11 +372,11 @@ class AIMemoryService:
     ) -> bool:
         """Delete one memory item by stable id."""
 
-        memory = self._repository.get_memory(memory_id=memory_id)
+        memory = await self._repository.get_memory(memory_id=memory_id)
         if memory is None:
             return False
         self._knowledge.delete_memory_embedding(memory_id=memory_id)
-        deleted = self._repository.delete_memory(memory_id=memory_id)
+        deleted = await self._repository.delete_memory(memory_id=memory_id)
         if deleted:
             await self._retrieval.delete_documents(
                 (
@@ -446,33 +386,19 @@ class AIMemoryService:
                     ),
                 )
             )
-            self._repository.record_belief_action(
-                memory_id=None,
-                action="delete",
-                actor_type=_actor_for_memory(memory),
-                reason=f"deleted memory {memory_id}",
-                source_message_id=memory.source_message_id,
-                previous_state=memory.lifecycle_state,
-                next_state=None,
-            )
         return deleted
 
-    async def set_memory_state(  # noqa: PLR0913
+    async def set_memory_state(
         self,
         *,
         memory_id: str,
-        lifecycle_state: AIMemoryLifecycleState,
-        default_use_mode: AIMemoryUseMode | None = None,
+        lifecycle_state: "AIMemoryLifecycleState",
+        default_use_mode: "AIMemoryUseMode | None" = None,
         governance_reason: str | None = None,
-        action: AIMemoryBeliefAction | None = None,
-        actor_type: AIMemoryActorType = "operator",
-        source_message_id: str | None = None,
-        previous_state: AIMemoryLifecycleState | None = None,
-    ) -> AIMemoryDefinition | None:
+    ) -> "AIMemoryDefinition | None":
         """Set lifecycle state for one governed memory belief."""
 
-        existing = await self.get_memory(memory_id=memory_id)
-        row = self._repository.set_memory_state(
+        row = await self._repository.set_memory_state(
             memory_id=memory_id,
             update_input=AIMemoryStateUpdateInput(
                 lifecycle_state=lifecycle_state,
@@ -481,22 +407,12 @@ class AIMemoryService:
             ),
         )
         if row is not None:
-            self._repository.record_belief_action(
-                memory_id=memory_id,
-                action=action or _action_for_state(lifecycle_state),
-                actor_type=actor_type,
-                reason=governance_reason,
-                source_message_id=source_message_id,
-                previous_state=previous_state
-                or (existing.lifecycle_state if existing is not None else None),
-                next_state=lifecycle_state,
-            )
             await self._sync_memory_retrieval_index(row)
         return row
 
     async def _refresh_memory_retrieval_index(
         self,
-        memory: AIMemoryDefinition,
+        memory: "AIMemoryDefinition",
     ) -> None:
         document = _memory_to_retrieval_document(memory)
         await self._retrieval.index_documents((document,))
@@ -507,7 +423,7 @@ class AIMemoryService:
 
     async def _sync_memory_retrieval_index(
         self,
-        memory: AIMemoryDefinition,
+        memory: "AIMemoryDefinition",
     ) -> None:
         if _is_memory_retrievable(memory):
             await self._refresh_memory_retrieval_index(memory)
@@ -541,18 +457,13 @@ class AIMemoryService:
         self,
         *,
         memory_ids: list[str],
-        lifecycle_state: AIMemoryLifecycleState,
-        default_use_mode: AIMemoryUseMode | None = None,
+        lifecycle_state: "AIMemoryLifecycleState",
+        default_use_mode: "AIMemoryUseMode | None" = None,
         governance_reason: str | None = None,
     ) -> int:
         """Set lifecycle state on multiple memories. Returns count updated."""
 
-        existing = {
-            memory_id: memory
-            for memory_id in memory_ids
-            if (memory := await self.get_memory(memory_id=memory_id)) is not None
-        }
-        count = self._repository.bulk_set_memory_state(
+        count = await self._repository.bulk_set_memory_state(
             memory_ids=memory_ids,
             update_input=AIMemoryStateUpdateInput(
                 lifecycle_state=lifecycle_state,
@@ -560,16 +471,8 @@ class AIMemoryService:
                 governance_reason=governance_reason,
             ),
         )
-        for memory_id, memory in existing.items():
-            self._repository.record_belief_action(
-                memory_id=memory_id,
-                action=_action_for_state(lifecycle_state),
-                actor_type="operator",
-                reason=governance_reason,
-                previous_state=memory.lifecycle_state,
-                next_state=lifecycle_state,
-            )
-            updated = self._repository.get_memory(memory_id=memory_id)
+        for memory_id in memory_ids:
+            updated = await self._repository.get_memory(memory_id=memory_id)
             if updated is not None:
                 await self._sync_memory_retrieval_index(updated)
         return count
@@ -577,14 +480,14 @@ class AIMemoryService:
     async def consolidate_anchor_summary(
         self,
         *,
-        anchor_type: AIMemoryAnchorType,
+        anchor_type: "AIMemoryAnchorType",
         anchor_id: str,
     ) -> None:
         """Build or refresh one deterministic summary memory for the anchor."""
 
         before_ids = {
             memory.memory_id
-            for memory in self._repository.list_memories(
+            for memory in await self._repository.list_memories(
                 anchor_type=anchor_type,
                 anchor_id=anchor_id,
                 memory_layer=self.SUMMARY_MEMORY_LAYER,
@@ -595,7 +498,7 @@ class AIMemoryService:
             anchor_type=anchor_type,
             anchor_id=anchor_id,
         )
-        summaries = self._repository.list_memories(
+        summaries = await self._repository.list_memories(
             anchor_type=anchor_type,
             anchor_id=anchor_id,
             memory_layer=self.SUMMARY_MEMORY_LAYER,
@@ -619,11 +522,11 @@ class AIMemoryService:
         self,
         *,
         memory_ids: list[str],
-        recalled_at: datetime,
+        recalled_at: "datetime",
     ) -> None:
         """Stamp recall timestamps for selected memories."""
 
-        self._repository.mark_memories_recalled(
+        await self._repository.mark_memories_recalled(
             memory_ids=memory_ids,
             recalled_at=recalled_at,
         )
@@ -651,7 +554,7 @@ def _with_default_governance(create_input: AIMemoryCreateInput) -> AIMemoryCreat
     )
 
 
-def _memory_to_retrieval_document(memory: AIMemoryDefinition) -> RetrievalDocument:
+def _memory_to_retrieval_document(memory: "AIMemoryDefinition") -> RetrievalDocument:
     title = f"{memory.memory_layer}:{memory.memory_kind}"
     return RetrievalDocument(
         document_id=retrieval_document_id(domain="memory", source_id=memory.memory_id),
@@ -677,7 +580,7 @@ def _memory_to_retrieval_document(memory: AIMemoryDefinition) -> RetrievalDocume
     )
 
 
-def _memory_to_dense_record(memory: AIMemoryDefinition) -> DenseVectorRecord:
+def _memory_to_dense_record(memory: "AIMemoryDefinition") -> DenseVectorRecord:
     from apeiria.ai.memory.embedding_store import ai_memory_embedding_store
 
     document_id = retrieval_document_id(domain="memory", source_id=memory.memory_id)
@@ -699,7 +602,7 @@ def _memory_to_dense_record(memory: AIMemoryDefinition) -> DenseVectorRecord:
     )
 
 
-def _is_memory_retrievable(memory: AIMemoryDefinition) -> bool:
+def _is_memory_retrievable(memory: "AIMemoryDefinition") -> bool:
     return memory.lifecycle_state == "active" and memory.default_use_mode != "ignore"
 
 
@@ -711,27 +614,3 @@ def _memory_id_from_document(document: RetrievalDocument) -> str:
     if document.document_id.startswith(prefix):
         return document.document_id[len(prefix) :]
     return document.document_id
-
-
-def _action_for_state(state: AIMemoryLifecycleState) -> AIMemoryBeliefAction:
-    if state == "active":
-        return "activate"
-    if state == "suppressed":
-        return "suppress"
-    if state == "archived":
-        return "archive"
-    return "revise"
-
-
-def _creation_action_for_state(
-    state: AIMemoryLifecycleState,
-) -> AIMemoryBeliefAction:
-    if state in {"active", "candidate"}:
-        return "accept"
-    if state == "suppressed":
-        return "suppress"
-    return "archive"
-
-
-def _actor_for_memory(memory: AIMemoryDefinition) -> AIMemoryActorType:
-    return "operator" if memory.memory_layer == "operator" else "system"

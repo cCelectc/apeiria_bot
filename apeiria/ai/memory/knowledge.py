@@ -32,12 +32,12 @@ class KnowledgeMemoryCoordinator:
         self,
         create_input: "AIMemoryCreateInput",
     ) -> "AIMemoryDefinition":
-        memory = self._repository.create_memory(
+        memory = await self._repository.create_memory(
             create_input,
             ignore_existing=True,
         )
         if memory is None:
-            existing = self._repository.get_memory_by_identity(create_input)
+            existing = await self._repository.get_memory_by_identity(create_input)
             assert existing is not None
             memory = existing
         return memory
@@ -48,7 +48,7 @@ class KnowledgeMemoryCoordinator:
         memory_id: str,
         content: str,
     ) -> "AIMemoryEmbeddingRecord | None":
-        memory = self._repository.get_memory(memory_id=memory_id)
+        memory = await self._repository.get_memory(memory_id=memory_id)
         document = _memory_to_retrieval_document(
             memory_id=memory_id,
             content=content,
@@ -85,7 +85,7 @@ class KnowledgeMemoryCoordinator:
         seen_memory_ids: set[str] = set()
         memories: list[AIMemoryDefinition] = []
         for anchor_type, anchor_id in targets:
-            for memory in self._repository.list_memories(
+            for memory in await self._repository.list_memories(
                 anchor_type=anchor_type,
                 anchor_id=anchor_id,
                 memory_layer="knowledge",

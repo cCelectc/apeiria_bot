@@ -1,4 +1,4 @@
-"""SQLite persistence for default knowledge-base documents and chunks."""
+"""Async SQLAlchemy persistence for default knowledge-base documents and chunks."""
 
 from __future__ import annotations
 
@@ -6,347 +6,239 @@ from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
+from sqlalchemy import delete, select, update
+
 from apeiria.ai.knowledge.models import (
     KnowledgeChunkDefinition,
     KnowledgeDocumentCreate,
     KnowledgeDocumentDefinition,
 )
-from apeiria.db.runtime import database_runtime
+from apeiria.db.base import _epoch_ms
+from apeiria.db.engine import get_session
+from apeiria.db.models.ai_knowledge import AIKnowledgeChunk, AIKnowledgeDocument
 
 if TYPE_CHECKING:
-    import sqlite3
-
     from apeiria.ai.knowledge.models import KnowledgeChunkEmbeddingStatus
-
-
-def utcnow() -> datetime:
-    return datetime.now(timezone.utc)
 
 
 class KnowledgeRepository:
     """Own SQL operations for the default knowledge base."""
 
-    def create_document(
+    async def create_document(
         self,
         create_input: KnowledgeDocumentCreate,
     ) -> KnowledgeDocumentDefinition:
         document_id = f"kdoc_{uuid4().hex}"
-        now = utcnow()
-        with database_runtime.transaction_sync() as connection:
-            self._insert_document(
-                connection,
+        now = _epoch_ms()
+        async with get_session() as session:
+            doc = AIKnowledgeDocument(
                 document_id=document_id,
-                create_input=create_input,
+                title=create_input.title,
+                source_file_name=create_input.source_file_name,
+                content_hash=create_input.content_hash,
+                content_text=create_input.content_text,
+                status="pending",
+                chunk_count=len(create_input.chunks),
                 created_at=now,
                 updated_at=now,
             )
-            self._insert_chunks(
-                connection,
-                document_id=document_id,
-                chunks=create_input.chunks,
-                timestamp=now,
-            )
-        document = self.get_document(document_id=document_id)
+            session.add(doc)
+            for ordinal, (chunk_hash, text) in enumerate(create_input.chunks):
+                chunk = AIKnowledgeChunk(
+                    chunk_id=_chunk_id(
+                        document_id=document_id,
+                        ordinal=ordinal,
+                        chunk_hash=chunk_hash,
+                    ),
+                    document_id=document_id,
+                    ordinal=ordinal,
+                    chunk_hash=chunk_hash,
+                    text=text,
+                    char_count=len(text),
+                    embedding_status="missing",
+                    created_at=now,
+                    updated_at=now,
+                )
+                session.add(chunk)
+            await session.commit()
+        document = await self.get_document(document_id=document_id)
         assert document is not None
         return document
 
-    def _replace_document_content(
+    async def _replace_document_content(
         self,
         *,
         document_id: str,
         create_input: KnowledgeDocumentCreate,
     ) -> KnowledgeDocumentDefinition | None:
-        existing = self.get_document(document_id=document_id)
+        existing = await self.get_document(document_id=document_id)
         if existing is None:
             return None
-        now = utcnow()
-        with database_runtime.transaction_sync() as connection:
-            connection.execute(
-                """
-                DELETE FROM ai_knowledge_chunk
-                WHERE document_id = ?
-                """,
-                (document_id,),
+        now = _epoch_ms()
+        async with get_session() as session:
+            await session.execute(
+                delete(AIKnowledgeChunk).where(
+                    AIKnowledgeChunk.document_id == document_id
+                )
             )
-            connection.execute(
-                """
-                UPDATE ai_knowledge_document
-                SET
-                    title = ?,
-                    source_file_name = ?,
-                    content_text = ?,
-                    content_hash = ?,
-                    status = 'pending',
-                    chunk_count = ?,
-                    last_error = NULL,
-                    updated_at = ?
-                WHERE document_id = ?
-                """,
-                (
-                    create_input.title,
-                    create_input.source_file_name,
-                    create_input.content_text,
-                    create_input.content_hash,
-                    len(create_input.chunks),
-                    _datetime_to_text(now),
-                    document_id,
-                ),
+            await session.execute(
+                update(AIKnowledgeDocument)
+                .where(AIKnowledgeDocument.document_id == document_id)
+                .values(
+                    title=create_input.title,
+                    source_file_name=create_input.source_file_name,
+                    content_text=create_input.content_text,
+                    content_hash=create_input.content_hash,
+                    status="pending",
+                    chunk_count=len(create_input.chunks),
+                    last_error=None,
+                    updated_at=now,
+                )
             )
-            self._insert_chunks(
-                connection,
-                document_id=document_id,
-                chunks=create_input.chunks,
-                timestamp=now,
-            )
-        return self.get_document(document_id=document_id)
+            for ordinal, (chunk_hash, text) in enumerate(create_input.chunks):
+                chunk = AIKnowledgeChunk(
+                    chunk_id=_chunk_id(
+                        document_id=document_id,
+                        ordinal=ordinal,
+                        chunk_hash=chunk_hash,
+                    ),
+                    document_id=document_id,
+                    ordinal=ordinal,
+                    chunk_hash=chunk_hash,
+                    text=text,
+                    char_count=len(text),
+                    embedding_status="missing",
+                    created_at=now,
+                    updated_at=now,
+                )
+                session.add(chunk)
+            await session.commit()
+        return await self.get_document(document_id=document_id)
 
-    def list_documents(self) -> list[KnowledgeDocumentDefinition]:
-        with database_runtime.connect_sync() as connection:
-            rows = connection.execute(
-                _SELECT_DOCUMENT_FIELDS
-                + """
-                ORDER BY updated_at DESC, id DESC
-                """
-            ).fetchall()
-        return [_document_from_row(row) for row in rows]
+    async def list_documents(self) -> list[KnowledgeDocumentDefinition]:
+        async with get_session() as session:
+            result = await session.execute(
+                select(AIKnowledgeDocument).order_by(
+                    AIKnowledgeDocument.updated_at.desc(),
+                    AIKnowledgeDocument.document_id.desc(),
+                )
+            )
+            rows = result.scalars().all()
+        return [_document_from_orm(row) for row in rows]
 
-    def get_document(self, *, document_id: str) -> KnowledgeDocumentDefinition | None:
-        with database_runtime.connect_sync() as connection:
-            row = connection.execute(
-                _SELECT_DOCUMENT_FIELDS
-                + """
-                WHERE document_id = ?
-                """,
-                (document_id,),
-            ).fetchone()
+    async def get_document(
+        self, *, document_id: str
+    ) -> KnowledgeDocumentDefinition | None:
+        async with get_session() as session:
+            result = await session.execute(
+                select(AIKnowledgeDocument).where(
+                    AIKnowledgeDocument.document_id == document_id
+                )
+            )
+            row = result.scalar_one_or_none()
         if row is None:
             return None
-        return _document_from_row(row)
+        return _document_from_orm(row)
 
-    def list_chunks(
+    async def list_chunks(
         self, *, document_id: str | None = None
     ) -> list[KnowledgeChunkDefinition]:
-        params: tuple[object, ...] = ()
-        where = ""
+        stmt = select(AIKnowledgeChunk)
         if document_id is not None:
-            where = "WHERE document_id = ?"
-            params = (document_id,)
-        with database_runtime.connect_sync() as connection:
-            rows = connection.execute(
-                _SELECT_CHUNK_FIELDS
-                + f"""
-                {where}
-                ORDER BY document_id ASC, ordinal ASC
-                """,
-                params,
-            ).fetchall()
-        return [_chunk_from_row(row) for row in rows]
+            stmt = stmt.where(AIKnowledgeChunk.document_id == document_id)
+        stmt = stmt.order_by(
+            AIKnowledgeChunk.document_id.asc(), AIKnowledgeChunk.ordinal.asc()
+        )
+        async with get_session() as session:
+            result = await session.execute(stmt)
+            rows = result.scalars().all()
+        return [_chunk_from_orm(row) for row in rows]
 
-    def mark_chunk_embeddings(
+    async def mark_chunk_embeddings(
         self,
         *,
         document_id: str,
         chunk_ids: list[str],
         embedding_model: str,
-        status: KnowledgeChunkEmbeddingStatus,
+        status: "KnowledgeChunkEmbeddingStatus",
     ) -> None:
         if not chunk_ids:
             return
-        now_text = _datetime_to_text(utcnow())
-        placeholders = ",".join("?" for _ in chunk_ids)
-        with database_runtime.connect_sync() as connection:
-            connection.execute(
-                f"""
-                UPDATE ai_knowledge_chunk
-                SET
-                    embedding_model = ?,
-                    embedding_status = ?,
-                    updated_at = ?
-                WHERE document_id = ?
-                    AND chunk_id IN ({placeholders})
-                """,
-                (embedding_model, status, now_text, document_id, *chunk_ids),
+        now = _epoch_ms()
+        async with get_session() as session:
+            await session.execute(
+                update(AIKnowledgeChunk)
+                .where(
+                    AIKnowledgeChunk.document_id == document_id,
+                    AIKnowledgeChunk.chunk_id.in_(chunk_ids),
+                )
+                .values(
+                    embedding_model=embedding_model,
+                    embedding_status=status,
+                    updated_at=now,
+                )
             )
+            await session.commit()
 
-    def mark_document_status(
+    async def mark_document_status(
         self,
         *,
         document_id: str,
         status: str,
         last_error: str | None = None,
     ) -> None:
-        with database_runtime.connect_sync() as connection:
-            connection.execute(
-                """
-                UPDATE ai_knowledge_document
-                SET
-                    status = ?,
-                    last_error = ?,
-                    updated_at = ?
-                WHERE document_id = ?
-                """,
-                (
-                    status,
-                    last_error,
-                    _datetime_to_text(utcnow()),
-                    document_id,
-                ),
+        now = _epoch_ms()
+        async with get_session() as session:
+            await session.execute(
+                update(AIKnowledgeDocument)
+                .where(AIKnowledgeDocument.document_id == document_id)
+                .values(
+                    status=status,
+                    last_error=last_error,
+                    updated_at=now,
+                )
             )
+            await session.commit()
 
-    def delete_document(self, *, document_id: str) -> bool:
-        with database_runtime.connect_sync() as connection:
-            cursor = connection.execute(
-                """
-                DELETE FROM ai_knowledge_document
-                WHERE document_id = ?
-                """,
-                (document_id,),
+    async def delete_document(self, *, document_id: str) -> bool:
+        async with get_session() as session:
+            result = await session.execute(
+                delete(AIKnowledgeDocument).where(
+                    AIKnowledgeDocument.document_id == document_id
+                )
             )
-        return int(cursor.rowcount or 0) > 0
-
-    def _insert_document(
-        self,
-        connection: "sqlite3.Connection",
-        *,
-        document_id: str,
-        create_input: KnowledgeDocumentCreate,
-        created_at: datetime,
-        updated_at: datetime,
-    ) -> None:
-        connection.execute(
-            """
-            INSERT INTO ai_knowledge_document (
-                document_id,
-                title,
-                source_file_name,
-                content_text,
-                content_hash,
-                status,
-                chunk_count,
-                created_at,
-                updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                document_id,
-                create_input.title,
-                create_input.source_file_name,
-                create_input.content_text,
-                create_input.content_hash,
-                "pending",
-                len(create_input.chunks),
-                _datetime_to_text(created_at),
-                _datetime_to_text(updated_at),
-            ),
-        )
-
-    def _insert_chunks(
-        self,
-        connection: "sqlite3.Connection",
-        *,
-        document_id: str,
-        chunks: tuple[tuple[str, str], ...],
-        timestamp: datetime,
-    ) -> None:
-        timestamp_text = _datetime_to_text(timestamp)
-        for ordinal, (chunk_hash, text) in enumerate(chunks):
-            connection.execute(
-                """
-                INSERT INTO ai_knowledge_chunk (
-                    chunk_id,
-                    document_id,
-                    ordinal,
-                    chunk_hash,
-                    text,
-                    char_count,
-                    embedding_status,
-                    created_at,
-                    updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    _chunk_id(
-                        document_id=document_id,
-                        ordinal=ordinal,
-                        chunk_hash=chunk_hash,
-                    ),
-                    document_id,
-                    ordinal,
-                    chunk_hash,
-                    text,
-                    len(text),
-                    "missing",
-                    timestamp_text,
-                    timestamp_text,
-                ),
-            )
+            await session.commit()
+        return (result.rowcount or 0) > 0
 
 
-_SELECT_DOCUMENT_FIELDS = """
-SELECT
-    id,
-    document_id,
-    title,
-    source_file_name,
-    content_text,
-    content_hash,
-    status,
-    chunk_count,
-    last_error,
-    created_at,
-    updated_at
-FROM ai_knowledge_document
-"""
-
-_SELECT_CHUNK_FIELDS = """
-SELECT
-    id,
-    chunk_id,
-    document_id,
-    ordinal,
-    chunk_hash,
-    text,
-    char_count,
-    embedding_model,
-    embedding_status,
-    created_at,
-    updated_at
-FROM ai_knowledge_chunk
-"""
-
-
-def _document_from_row(row: tuple[object, ...]) -> KnowledgeDocumentDefinition:
+def _document_from_orm(row: AIKnowledgeDocument) -> KnowledgeDocumentDefinition:
     return KnowledgeDocumentDefinition(
-        document_id=str(row[1]),
-        title=str(row[2]),
-        source_file_name=str(row[3]),
-        content_text=str(row[4]),
-        content_hash=str(row[5]),
-        status=row[6],  # type: ignore[arg-type]
-        chunk_count=int(str(row[7])),
-        last_error=str(row[8]) if row[8] is not None else None,
-        created_at=_text_to_datetime(str(row[9])),
-        updated_at=_text_to_datetime(str(row[10])),
+        document_id=row.document_id,
+        title=row.title,
+        source_file_name=row.source_file_name,
+        content_text=row.content_text,
+        content_hash=row.content_hash,
+        status=row.status,  # type: ignore[arg-type]
+        chunk_count=row.chunk_count,
+        last_error=row.last_error,
+        created_at=_epoch_ms_to_datetime(row.created_at),
+        updated_at=_epoch_ms_to_datetime(row.updated_at),
     )
 
 
-def _chunk_from_row(row: tuple[object, ...]) -> KnowledgeChunkDefinition:
+def _chunk_from_orm(row: AIKnowledgeChunk) -> KnowledgeChunkDefinition:
     return KnowledgeChunkDefinition(
-        chunk_id=str(row[1]),
-        document_id=str(row[2]),
-        ordinal=int(str(row[3])),
-        chunk_hash=str(row[4]),
-        text=str(row[5]),
-        char_count=int(str(row[6])),
-        embedding_model=str(row[7]) if row[7] is not None else None,
-        embedding_status=row[8],  # type: ignore[arg-type]
-        created_at=_text_to_datetime(str(row[9])),
-        updated_at=_text_to_datetime(str(row[10])),
+        chunk_id=row.chunk_id,
+        document_id=row.document_id,
+        ordinal=row.ordinal,
+        chunk_hash=row.chunk_hash,
+        text=row.text,
+        char_count=row.char_count,
+        embedding_model=row.embedding_model,
+        embedding_status=row.embedding_status,  # type: ignore[arg-type]
+        created_at=_epoch_ms_to_datetime(row.created_at),
+        updated_at=_epoch_ms_to_datetime(row.updated_at),
     )
-
-
-def _datetime_to_text(value: datetime) -> str:
-    return value.astimezone(timezone.utc).isoformat(timespec="seconds")
 
 
 def _chunk_id(*, document_id: str, ordinal: int, chunk_hash: str) -> str:
@@ -354,8 +246,5 @@ def _chunk_id(*, document_id: str, ordinal: int, chunk_hash: str) -> str:
     return f"kchunk_{document_id}_{ordinal}_{safe_hash}"
 
 
-def _text_to_datetime(value: str) -> datetime:
-    parsed = datetime.fromisoformat(value)
-    if parsed.tzinfo is None:
-        return parsed.replace(tzinfo=timezone.utc)
-    return parsed
+def _epoch_ms_to_datetime(ms: int | str) -> datetime:
+    return datetime.fromtimestamp(int(ms) / 1000, tz=timezone.utc)
