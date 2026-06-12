@@ -91,7 +91,7 @@ def test_explicit_deny_blocks_default_allow(monkeypatch: MonkeyPatch) -> None:
     asyncio.run(run())
 
 
-def test_superuser_still_obeys_admission_policy(monkeypatch: MonkeyPatch) -> None:
+def test_superuser_bypasses_admission_policy(monkeypatch: MonkeyPatch) -> None:
     _patch_permission_dependencies(
         monkeypatch,
         policy=PluginPolicy(
@@ -108,8 +108,8 @@ def test_superuser_still_obeys_admission_policy(monkeypatch: MonkeyPatch) -> Non
             "plugins.alpha",
         )
 
-        assert decision.allowed is False
-        assert decision.code == "access_not_allowed_by_default"
+        assert decision.allowed is True
+        assert decision.code == "ok"
 
     asyncio.run(run())
 

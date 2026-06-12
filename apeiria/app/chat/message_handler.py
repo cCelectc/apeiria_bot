@@ -8,7 +8,6 @@ from typing import TYPE_CHECKING
 from nonebot.log import logger
 from nonebot.message import handle_event
 
-from apeiria.app.chat.gateway import ChatSessionForbiddenError
 from apeiria.i18n import t
 
 from .adapter import WebChatAdapter
@@ -56,6 +55,8 @@ class WebChatMessageHandler:
         """Process one client message frame for an already-authenticated session."""
         session = self._state.get_session(payload.session_id)
         if not connection.principal:
+            from apeiria.app.chat.gateway import ChatSessionForbiddenError
+
             raise ChatSessionForbiddenError(t("web_ui.sessions.owner_mismatch"))
         self._state.ensure_owner(session, connection.principal)
         connection.active_session_id = session.session_id
