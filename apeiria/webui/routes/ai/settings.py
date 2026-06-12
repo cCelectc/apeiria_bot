@@ -23,7 +23,7 @@ router = APIRouter()
 async def get_ai_runtime_settings(
     _: Annotated[Any, Depends(require_auth)],
 ) -> AIRuntimeSettingsResponse:
-    return to_ai_runtime_settings_response(ai_runtime_settings_service.get_view())
+    return to_ai_runtime_settings_response(await ai_runtime_settings_service.get_view())
 
 
 @router.patch("/runtime-settings", response_model=AIRuntimeSettingsResponse)
@@ -32,7 +32,7 @@ async def update_ai_runtime_settings(
     _: Annotated[Any, Depends(require_auth)],
 ) -> AIRuntimeSettingsResponse:
     try:
-        view = ai_runtime_settings_service.update_settings(
+        view = await ai_runtime_settings_service.update_settings(
             payload.values,
             clear=payload.clear,
         )

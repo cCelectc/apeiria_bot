@@ -6,6 +6,8 @@ import pytest
 from fastapi import HTTPException
 
 from apeiria.access.principal import AuthSession, Principal, PrincipalRole
+from apeiria.db.base import Base
+from apeiria.db.engine import close_engine, get_engine, init_engine
 from apeiria.db.runtime import database_runtime
 
 if TYPE_CHECKING:
@@ -25,7 +27,6 @@ def test_ai_runtime_settings_routes_read_and_update(
     tmp_path: Path,
 ) -> None:
     monkeypatch.setattr(database_runtime, "_project_root", tmp_path)
-    database_runtime.ensure_ready()
 
     from apeiria.webui.routes.ai.settings import (
         get_ai_runtime_settings,
@@ -35,61 +36,71 @@ def test_ai_runtime_settings_routes_read_and_update(
         AIRuntimeSettingsUpdateRequest,
     )
 
+    db_path = tmp_path / "data" / "db" / "apeiria.sqlite3"
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+
     async def scenario() -> None:
-        initial = await get_ai_runtime_settings(_control_panel_session())
-        assert (
-            initial.effective["tool_execution_timeout_seconds"]
-            == DEFAULT_TOOL_TIMEOUT_SECONDS
-        )
-        assert initial.effective["quiet_hours_enabled"] is False
-        assert initial.overrides == {}
-        assert any(
-            item.key == "quiet_hours_enabled" and item.visibility == "default"
-            for item in initial.fields
-        )
+        await init_engine(db_path)
+        try:
+            async with get_engine().begin() as conn:
+                await conn.run_sync(Base.metadata.create_all)
 
-        updated = await update_ai_runtime_settings(
-            AIRuntimeSettingsUpdateRequest(
-                values={
-                    "allow_group_initiative": True,
-                    "quiet_hours_enabled": True,
-                    "quiet_hours_start_minute": UPDATED_QUIET_HOURS_START_MINUTE,
-                    "quiet_hours_end_minute": UPDATED_QUIET_HOURS_END_MINUTE,
-                    "night_awake_lease_minutes": UPDATED_NIGHT_AWAKE_LEASE_MINUTES,
-                    "tool_execution_timeout_seconds": UPDATED_TOOL_TIMEOUT_SECONDS,
-                }
-            ),
-            _control_panel_session(),
-        )
+            initial = await get_ai_runtime_settings(_control_panel_session())
+            assert (
+                initial.effective["tool_execution_timeout_seconds"]
+                == DEFAULT_TOOL_TIMEOUT_SECONDS
+            )
+            assert initial.effective["quiet_hours_enabled"] is False
+            assert initial.overrides == {}
+            assert any(
+                item.key == "quiet_hours_enabled" and item.visibility == "default"
+                for item in initial.fields
+            )
 
-        assert updated.effective["allow_group_initiative"] is True
-        assert updated.effective["quiet_hours_enabled"] is True
-        assert (
-            updated.effective["tool_execution_timeout_seconds"]
-            == UPDATED_TOOL_TIMEOUT_SECONDS
-        )
-        assert updated.overrides == {
-            "allow_group_initiative": True,
-            "quiet_hours_enabled": True,
-            "quiet_hours_start_minute": UPDATED_QUIET_HOURS_START_MINUTE,
-            "quiet_hours_end_minute": UPDATED_QUIET_HOURS_END_MINUTE,
-            "night_awake_lease_minutes": UPDATED_NIGHT_AWAKE_LEASE_MINUTES,
-            "tool_execution_timeout_seconds": UPDATED_TOOL_TIMEOUT_SECONDS,
-        }
+            updated = await update_ai_runtime_settings(
+                AIRuntimeSettingsUpdateRequest(
+                    values={
+                        "allow_group_initiative": True,
+                        "quiet_hours_enabled": True,
+                        "quiet_hours_start_minute": UPDATED_QUIET_HOURS_START_MINUTE,
+                        "quiet_hours_end_minute": UPDATED_QUIET_HOURS_END_MINUTE,
+                        "night_awake_lease_minutes": UPDATED_NIGHT_AWAKE_LEASE_MINUTES,
+                        "tool_execution_timeout_seconds": UPDATED_TOOL_TIMEOUT_SECONDS,
+                    }
+                ),
+                _control_panel_session(),
+            )
 
-        cleared = await update_ai_runtime_settings(
-            AIRuntimeSettingsUpdateRequest(clear=["allow_group_initiative"]),
-            _control_panel_session(),
-        )
+            assert updated.effective["allow_group_initiative"] is True
+            assert updated.effective["quiet_hours_enabled"] is True
+            assert (
+                updated.effective["tool_execution_timeout_seconds"]
+                == UPDATED_TOOL_TIMEOUT_SECONDS
+            )
+            assert updated.overrides == {
+                "allow_group_initiative": True,
+                "quiet_hours_enabled": True,
+                "quiet_hours_start_minute": UPDATED_QUIET_HOURS_START_MINUTE,
+                "quiet_hours_end_minute": UPDATED_QUIET_HOURS_END_MINUTE,
+                "night_awake_lease_minutes": UPDATED_NIGHT_AWAKE_LEASE_MINUTES,
+                "tool_execution_timeout_seconds": UPDATED_TOOL_TIMEOUT_SECONDS,
+            }
 
-        assert cleared.effective["allow_group_initiative"] is False
-        assert cleared.overrides == {
-            "quiet_hours_enabled": True,
-            "quiet_hours_start_minute": UPDATED_QUIET_HOURS_START_MINUTE,
-            "quiet_hours_end_minute": UPDATED_QUIET_HOURS_END_MINUTE,
-            "night_awake_lease_minutes": UPDATED_NIGHT_AWAKE_LEASE_MINUTES,
-            "tool_execution_timeout_seconds": UPDATED_TOOL_TIMEOUT_SECONDS,
-        }
+            cleared = await update_ai_runtime_settings(
+                AIRuntimeSettingsUpdateRequest(clear=["allow_group_initiative"]),
+                _control_panel_session(),
+            )
+
+            assert cleared.effective["allow_group_initiative"] is False
+            assert cleared.overrides == {
+                "quiet_hours_enabled": True,
+                "quiet_hours_start_minute": UPDATED_QUIET_HOURS_START_MINUTE,
+                "quiet_hours_end_minute": UPDATED_QUIET_HOURS_END_MINUTE,
+                "night_awake_lease_minutes": UPDATED_NIGHT_AWAKE_LEASE_MINUTES,
+                "tool_execution_timeout_seconds": UPDATED_TOOL_TIMEOUT_SECONDS,
+            }
+        finally:
+            await close_engine()
 
     import asyncio
 
@@ -101,22 +112,31 @@ def test_ai_runtime_settings_route_rejects_invalid_update(
     tmp_path: Path,
 ) -> None:
     monkeypatch.setattr(database_runtime, "_project_root", tmp_path)
-    database_runtime.ensure_ready()
 
     from apeiria.webui.routes.ai.settings import update_ai_runtime_settings
     from apeiria.webui.routes.ai.settings_schemas import (
         AIRuntimeSettingsUpdateRequest,
     )
 
+    db_path = tmp_path / "data" / "db" / "apeiria.sqlite3"
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+
     async def scenario() -> None:
-        with pytest.raises(HTTPException) as exc_info:
-            await update_ai_runtime_settings(
-                AIRuntimeSettingsUpdateRequest(
-                    values={"conversation_retention_days": -1}
-                ),
-                _control_panel_session(),
-            )
-        assert exc_info.value.status_code == HTTP_BAD_REQUEST
+        await init_engine(db_path)
+        try:
+            async with get_engine().begin() as conn:
+                await conn.run_sync(Base.metadata.create_all)
+
+            with pytest.raises(HTTPException) as exc_info:
+                await update_ai_runtime_settings(
+                    AIRuntimeSettingsUpdateRequest(
+                        values={"conversation_retention_days": -1}
+                    ),
+                    _control_panel_session(),
+                )
+            assert exc_info.value.status_code == HTTP_BAD_REQUEST
+        finally:
+            await close_engine()
 
     import asyncio
 
