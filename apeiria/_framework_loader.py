@@ -169,6 +169,10 @@ def load_framework() -> None:
 
     register_bot_hooks()
 
+    from apeiria.ai.trace_broker import trace_broker
+
+    trace_broker.enable_file_sink()
+
     from nonebot import get_driver
 
     from apeiria.db.engine import close_engine, init_engine

@@ -5,6 +5,7 @@ import json
 from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING
 
+from apeiria.ai.trace_broker import trace_broker
 from apeiria.db.runtime import database_runtime
 
 if TYPE_CHECKING:
@@ -24,6 +25,7 @@ def test_tool_executions_use_sqlite_runtime(
     _seed_chat_session("session-1")
 
     async def scenario() -> None:
+        trace_broker.clear()
         service = AIToolService()
         created = await service.record_observation(
             AIToolObservationCreateInput(
@@ -55,6 +57,7 @@ def test_tool_execution_payloads_are_sanitized(
     _seed_chat_session("session-1")
 
     async def scenario() -> None:
+        trace_broker.clear()
         service = AIToolService()
         await service.record_observation(
             AIToolObservationCreateInput(

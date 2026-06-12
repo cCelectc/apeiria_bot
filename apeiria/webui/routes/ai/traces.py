@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+import asyncio
+import json
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi.responses import StreamingResponse
 
+from apeiria.ai.trace_broker import _to_dict, trace_broker
 from apeiria.app.ai import ai_application
 from apeiria.webui.auth import require_auth
 
@@ -41,6 +45,32 @@ async def list_ai_turn_traces(  # noqa: PLR0913
         )
         for record in records
     ]
+
+
+@router.get("/traces/stream")
+async def stream_traces(request: Request) -> StreamingResponse:
+    queue = trace_broker.subscribe()
+
+    async def generate():
+        try:
+            for record in trace_broker.snapshot(limit=50):
+                payload = json.dumps(_to_dict(record), ensure_ascii=False)
+                yield f"data: {payload}\n\n"
+            while True:
+                if await request.is_disconnected():
+                    break
+                try:
+                    record = await asyncio.wait_for(queue.get(), timeout=30.0)
+                    payload = json.dumps(_to_dict(record), ensure_ascii=False)
+                    yield f"data: {payload}\n\n"
+                except asyncio.TimeoutError:
+                    yield ": keepalive\n\n"
+        except asyncio.CancelledError:
+            pass
+        finally:
+            trace_broker.unsubscribe(queue)
+
+    return StreamingResponse(generate(), media_type="text/event-stream")
 
 
 @router.get("/traces/{trace_id}", response_model=AITurnTraceItem)

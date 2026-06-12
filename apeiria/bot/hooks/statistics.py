@@ -1,9 +1,7 @@
-"""Statistics hook — record command usage after execution."""
+"""Statistics hook — no-op placeholder (DB write removed in TraceBroker redesign)."""
 
 from nonebot.adapters import Event
 from nonebot.matcher import Matcher
-
-from apeiria.utils.statistics import statistics_service
 
 
 async def stats_hook(
@@ -11,9 +9,4 @@ async def stats_hook(
     exception: Exception | None,
     event: Event,
 ) -> None:
-    """Record command usage to CommandStatistics table."""
-    await statistics_service.record_matcher_execution(
-        matcher,
-        event,
-        success=exception is None,
-    )
+    pass

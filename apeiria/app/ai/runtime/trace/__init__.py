@@ -2,16 +2,12 @@
 
 from __future__ import annotations
 
-import json
-import sqlite3
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Protocol
 
-from nonebot.log import logger
-
 from apeiria.ai.diagnostics import sanitize_runtime_diagnostics
-from apeiria.db.runtime import database_runtime
+from apeiria.ai.trace_broker import TraceRecord, trace_broker
 
 _MAX_MEMORY_DIAGNOSTIC_ITEMS = 8
 
@@ -742,7 +738,7 @@ class TurnTraceRecord:
 
 
 class TurnTraceRepository:
-    """Own SQL operations for compact AI turn traces."""
+    """In-memory trace storage backed by TraceBroker."""
 
     def store_trace(
         self,
@@ -779,58 +775,21 @@ class TurnTraceRepository:
             diagnostics=metadata,
             created_at=_utcnow(),
         )
-        try:
-            with database_runtime.connect_sync() as connection:
-                connection.execute(
-                    """
-                    INSERT INTO ai_turn_trace (
-                        trace_id,
-                        session_id,
-                        runtime_mode,
-                        terminal_status,
-                        strategy_action,
-                        strategy_reason_codes_json,
-                        model_attempt_count,
-                        tool_attempt_count,
-                        final_response_source,
-                        skip_reason,
-                        delivery_status,
-                        commit_status,
-                        diagnostics_json,
-                        created_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    ON CONFLICT(trace_id) DO UPDATE SET
-                        session_id = excluded.session_id,
-                        runtime_mode = excluded.runtime_mode,
-                        terminal_status = excluded.terminal_status,
-                        strategy_action = excluded.strategy_action,
-                        strategy_reason_codes_json =
-                            excluded.strategy_reason_codes_json,
-                        model_attempt_count = excluded.model_attempt_count,
-                        tool_attempt_count = excluded.tool_attempt_count,
-                        final_response_source = excluded.final_response_source,
-                        skip_reason = excluded.skip_reason,
-                        delivery_status = excluded.delivery_status,
-                        commit_status = excluded.commit_status,
-                        diagnostics_json = excluded.diagnostics_json,
-                        created_at = excluded.created_at
-                    """,
-                    _record_values(record),
-                )
-        except sqlite3.DatabaseError as exc:
-            logger.opt(exception=exc).warning(
-                "Failed to persist AI turn trace {}",
-                trace.trace_id,
+        trace_broker.record(
+            TraceRecord(
+                trace_id=record.trace_id,
+                record_type="turn_trace",
+                session_id=record.session_id,
+                data=_record_to_data(record),
             )
+        )
         return record
 
     def get_trace(self, *, trace_id: str) -> TurnTraceRecord | None:
-        with database_runtime.connect_sync() as connection:
-            row = connection.execute(
-                _SELECT_TRACE_FIELDS + " WHERE trace_id = ?",
-                (trace_id,),
-            ).fetchone()
-        return None if row is None else row_to_record(row)
+        for item in trace_broker.snapshot(record_type="turn_trace", limit=1000):
+            if item.data.get("trace_id") == trace_id:
+                return _data_to_record(item.data)
+        return None
 
     def list_traces(  # noqa: PLR0913
         self,
@@ -842,86 +801,66 @@ class TurnTraceRepository:
         terminal_status: str | None = None,
         commit_status: str | None = None,
     ) -> list[TurnTraceRecord]:
-        clauses: list[str] = []
-        params: list[object] = []
-        for column_name, value in (
-            ("trace_id", trace_id),
-            ("session_id", session_id),
-            ("runtime_mode", runtime_mode),
-            ("terminal_status", terminal_status),
-            ("commit_status", commit_status),
-        ):
-            if value is not None:
-                clauses.append(f"{column_name} = ?")
-                params.append(value)
-        where = " WHERE " + " AND ".join(clauses) if clauses else ""
-        bounded_limit = min(max(limit, 1), 100)
-        params.append(bounded_limit)
-        with database_runtime.connect_sync() as connection:
-            rows = connection.execute(
-                _SELECT_TRACE_FIELDS
-                + where
-                + " ORDER BY created_at DESC, id DESC LIMIT ?",
-                tuple(params),
-            ).fetchall()
-        return [row_to_record(row) for row in rows]
+        items = trace_broker.snapshot(record_type="turn_trace", limit=1000)
+        results: list[TurnTraceRecord] = []
+        for item in reversed(items):
+            data = item.data
+            if trace_id is not None and data.get("trace_id") != trace_id:
+                continue
+            if session_id is not None and data.get("session_id") != session_id:
+                continue
+            if runtime_mode is not None and data.get("runtime_mode") != runtime_mode:
+                continue
+            if (
+                terminal_status is not None
+                and data.get("terminal_status") != terminal_status
+            ):
+                continue
+            if commit_status is not None and data.get("commit_status") != commit_status:
+                continue
+            results.append(_data_to_record(data))
+            if len(results) >= min(max(limit, 1), 100):
+                break
+        return results
 
 
-_SELECT_TRACE_FIELDS = """
-SELECT
-    trace_id,
-    session_id,
-    runtime_mode,
-    terminal_status,
-    strategy_action,
-    strategy_reason_codes_json,
-    model_attempt_count,
-    tool_attempt_count,
-    final_response_source,
-    skip_reason,
-    delivery_status,
-    commit_status,
-    diagnostics_json,
-    created_at
-FROM ai_turn_trace
-"""
+def _record_to_data(record: TurnTraceRecord) -> dict:
+    return {
+        "trace_id": record.trace_id,
+        "session_id": record.session_id,
+        "runtime_mode": record.runtime_mode,
+        "terminal_status": record.terminal_status,
+        "strategy_action": record.strategy_action,
+        "strategy_reason_codes": list(record.strategy_reason_codes),
+        "model_attempt_count": record.model_attempt_count,
+        "tool_attempt_count": record.tool_attempt_count,
+        "final_response_source": record.final_response_source,
+        "skip_reason": record.skip_reason,
+        "delivery_status": record.delivery_status,
+        "commit_status": record.commit_status,
+        "diagnostics": record.diagnostics,
+        "created_at": datetime_to_text(record.created_at),
+    }
 
 
-def _record_values(record: TurnTraceRecord) -> tuple[object, ...]:
-    return (
-        record.trace_id,
-        record.session_id,
-        record.runtime_mode,
-        record.terminal_status,
-        record.strategy_action,
-        json.dumps(list(record.strategy_reason_codes), ensure_ascii=False),
-        record.model_attempt_count,
-        record.tool_attempt_count,
-        record.final_response_source,
-        record.skip_reason,
-        record.delivery_status,
-        record.commit_status,
-        json.dumps(record.diagnostics, ensure_ascii=False, sort_keys=True),
-        datetime_to_text(record.created_at),
-    )
-
-
-def row_to_record(row: tuple[object, ...]) -> TurnTraceRecord:
+def _data_to_record(data: dict) -> TurnTraceRecord:
     return TurnTraceRecord(
-        trace_id=str(row[0]),
-        session_id=str(row[1]),
-        runtime_mode=str(row[2]),
-        terminal_status=str(row[3]),
-        strategy_action=str(row[4]),
-        strategy_reason_codes=tuple(str(item) for item in _load_json_list(row[5])),
-        model_attempt_count=int(str(row[6])),
-        tool_attempt_count=int(str(row[7])),
-        final_response_source=str(row[8]) if row[8] is not None else None,
-        skip_reason=str(row[9]) if row[9] is not None else None,
-        delivery_status=str(row[10]) if row[10] is not None else None,
-        commit_status=str(row[11]) if row[11] is not None else None,
-        diagnostics=_load_json_dict(row[12]),
-        created_at=datetime_from_text(row[13]),
+        trace_id=str(data.get("trace_id", "")),
+        session_id=str(data.get("session_id", "")),
+        runtime_mode=str(data.get("runtime_mode", "")),
+        terminal_status=str(data.get("terminal_status", "")),
+        strategy_action=str(data.get("strategy_action", "")),
+        strategy_reason_codes=tuple(
+            str(item) for item in (data.get("strategy_reason_codes") or [])
+        ),
+        model_attempt_count=int(data.get("model_attempt_count", 0)),
+        tool_attempt_count=int(data.get("tool_attempt_count", 0)),
+        final_response_source=data.get("final_response_source"),
+        skip_reason=data.get("skip_reason"),
+        delivery_status=data.get("delivery_status"),
+        commit_status=data.get("commit_status"),
+        diagnostics=data.get("diagnostics") or {},
+        created_at=datetime_from_text(data.get("created_at", "")),
     )
 
 
@@ -933,22 +872,6 @@ def _terminal_status_for_trace(trace: TurnTrace) -> str:
     if trace.model_attempts or trace.tool_attempts or trace.final_response_source:
         return "generated"
     return "terminal"
-
-
-def _load_json_list(value: object) -> list[object]:
-    try:
-        payload = json.loads(str(value))
-    except json.JSONDecodeError:
-        return []
-    return payload if isinstance(payload, list) else []
-
-
-def _load_json_dict(value: object) -> dict[str, object]:
-    try:
-        payload = json.loads(str(value))
-    except json.JSONDecodeError:
-        return {}
-    return payload if isinstance(payload, dict) else {}
 
 
 def _utcnow() -> datetime:
@@ -981,6 +904,5 @@ __all__ = [
     "datetime_from_text",
     "datetime_to_text",
     "project_turn_trace",
-    "row_to_record",
     "turn_trace_repository",
 ]

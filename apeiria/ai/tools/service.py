@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import json
 from dataclasses import asdict, is_dataclass
+from datetime import datetime, timezone
 from typing import Any
+from uuid import uuid4
 
+from apeiria.ai.diagnostics import sanitize_runtime_diagnostic
 from apeiria.ai.tools.contracts import AIToolObservationCreateInput
 from apeiria.ai.tools.execution import AIToolIntentExecutor
-from apeiria.ai.tools.execution_repository import AIToolExecutionRepository
 from apeiria.ai.tools.models import (
     AIToolDefinition,
     AIToolExecutionRequest,
@@ -19,6 +22,7 @@ from apeiria.ai.tools.models import (
 )
 from apeiria.ai.tools.policy import evaluate_tool_policy
 from apeiria.ai.tools.registry import AIToolRegistry, AIToolRegistrySnapshot
+from apeiria.ai.trace_broker import TraceRecord, trace_broker
 
 
 class AIToolService:
@@ -27,11 +31,9 @@ class AIToolService:
     def __init__(
         self,
         *,
-        execution_repository: AIToolExecutionRepository | None = None,
         intent_executor: AIToolIntentExecutor | None = None,
     ) -> None:
         self.registry = AIToolRegistry()
-        self._execution_repository = execution_repository or AIToolExecutionRepository()
         self._intent_executor = intent_executor or AIToolIntentExecutor()
 
     def list_tool_specs(
@@ -105,27 +107,97 @@ class AIToolService:
         self,
         create_input: AIToolObservationCreateInput,
     ) -> AIToolExecutionView:
-        return self._execution_repository.record_observation(create_input)
+        execution_id = f"tool_obs_{uuid4().hex}"
+        created_at = datetime.now(timezone.utc).replace(microsecond=0)
+        input_json = _serialize_execution_payload(create_input.input_payload)
+        output_json = _serialize_execution_payload(create_input.output_payload)
+
+        trace_broker.record(
+            TraceRecord(
+                trace_id=create_input.trace_id or execution_id,
+                record_type="tool_execution",
+                session_id=create_input.session_id,
+                data={
+                    "execution_id": execution_id,
+                    "session_id": create_input.session_id,
+                    "tool_name": create_input.tool_name,
+                    "status": create_input.status,
+                    "trace_id": create_input.trace_id,
+                    "call_id": create_input.call_id,
+                    "reason": create_input.reason,
+                    "input_json": input_json,
+                    "output_json": output_json,
+                    "created_at": created_at.isoformat(timespec="seconds"),
+                },
+            )
+        )
+
+        return AIToolExecutionView(
+            execution_id=execution_id,
+            session_id=create_input.session_id,
+            tool_name=create_input.tool_name,
+            status=create_input.status,
+            trace_id=create_input.trace_id,
+            call_id=create_input.call_id,
+            reason=create_input.reason,
+            input_json=input_json,
+            output_json=output_json,
+            created_at=created_at,
+        )
 
     async def list_executions(
         self,
         *,
         session_id: str,
     ) -> list[AIToolExecutionView]:
-        return self._execution_repository.list_executions(session_id=session_id)
+        items = trace_broker.snapshot(record_type="tool_execution", limit=1000)
+        return [
+            _data_to_execution_view(item.data)
+            for item in items
+            if item.session_id == session_id
+        ]
 
     async def list_recent_executions(
         self,
         *,
         limit: int,
     ) -> list[AIToolExecutionView]:
-        return self._execution_repository.list_recent_executions(limit=limit)
+        items = trace_broker.snapshot(record_type="tool_execution", limit=limit)
+        return [_data_to_execution_view(item.data) for item in reversed(items)]
 
 
 def _to_jsonable_payload(payload: Any) -> Any:
     if is_dataclass(payload) and not isinstance(payload, type):
         return asdict(payload)
     return payload
+
+
+def _serialize_execution_payload(payload: Any | None) -> str | None:
+    if payload is None:
+        return None
+    return json.dumps(
+        sanitize_runtime_diagnostic(_to_jsonable_payload(payload)),
+        ensure_ascii=False,
+        sort_keys=True,
+        default=str,
+    )
+
+
+def _data_to_execution_view(data: dict) -> AIToolExecutionView:
+    return AIToolExecutionView(
+        execution_id=str(data.get("execution_id", "")),
+        session_id=str(data.get("session_id", "")),
+        tool_name=str(data.get("tool_name", "")),
+        status=data.get("status", "unknown"),
+        trace_id=data.get("trace_id"),
+        call_id=data.get("call_id"),
+        reason=data.get("reason"),
+        input_json=data.get("input_json"),
+        output_json=data.get("output_json"),
+        created_at=datetime.fromisoformat(data["created_at"])
+        if data.get("created_at")
+        else datetime.now(timezone.utc),
+    )
 
 
 __all__ = [
