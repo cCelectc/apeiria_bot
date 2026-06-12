@@ -214,9 +214,24 @@ class MessageCodec:
         return RawSegment(segment_type=segment.type, data=dict(segment.data))
 
     def _resolve_local_file(self, value: str) -> Path | None:
-        if value.startswith("file://"):
-            parsed = urlparse(value)
-            return Path(unquote(parsed.path))
         if "://" in value:
+            if not value.startswith("file://"):
+                return None
+            parsed = urlparse(value)
+            candidate = Path(unquote(parsed.path))
+        else:
+            candidate = Path(value)
+        return self._validate_path(candidate)
+
+    @staticmethod
+    def _validate_path(candidate: Path) -> Path | None:
+        try:
+            resolved = candidate.resolve(strict=False)
+        except (OSError, ValueError):
             return None
-        return Path(value)
+        from apeiria.utils.project_context import current_project_root
+
+        project_root = current_project_root()
+        if not resolved.is_relative_to(project_root):
+            return None
+        return resolved
