@@ -37,6 +37,12 @@ class ApeiriaDatabase:
 
     @contextmanager
     def connect_sync(self) -> Iterator[sqlite3.Connection]:
+        """Open a synchronous SQLite connection.
+
+        Intended for startup bootstrap (schema.py) and CLI-only paths.
+        Runtime database access should use the async engine via
+        ``apeiria.db.engine.get_session()``.
+        """
         self.ensure_parent_dir()
         connection = sqlite3.connect(self.database_path())
         try:
@@ -51,7 +57,12 @@ class ApeiriaDatabase:
 
     @contextmanager
     def transaction_sync(self) -> Iterator[sqlite3.Connection]:
-        """Open one SQLite transaction for a logical write operation."""
+        """Open one SQLite transaction for a logical write operation.
+
+        Intended for startup bootstrap (schema.py) and CLI-only paths.
+        Runtime database access should use the async engine via
+        ``apeiria.db.engine.get_session()``.
+        """
 
         with self.connect_sync() as connection:
             connection.execute("BEGIN IMMEDIATE")

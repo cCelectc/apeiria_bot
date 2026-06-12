@@ -1,4 +1,10 @@
-"""Bootstrap and validate the Apeiria SQLite schema."""
+"""Bootstrap and validate the Apeiria SQLite schema.
+
+LEGACY MODULE — scheduled for removal after all deployments migrate to
+Alembic-managed schema.  The sync startup path (ensure_database_ready_sync)
+is still required for first-run bootstrapping and the plugin repository's
+sync startup methods.  Do not add new functionality here.
+"""
 
 from __future__ import annotations
 

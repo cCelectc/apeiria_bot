@@ -1,12 +1,22 @@
 from __future__ import annotations
 
+import asyncio
+
 import click
 
-from apeiria.app.access.webui_auth.secrets import (
-    list_accounts,
-    recover_owner_account,
-)
 from apeiria.cli.i18n import _
+
+
+async def _run_with_engine(coro_factory):  # noqa: ANN001
+    from apeiria.db.engine import close_engine, init_engine
+    from apeiria.db.runtime import database_runtime
+
+    database_runtime.ensure_ready()
+    await init_engine(database_runtime.database_path())
+    try:
+        return await coro_factory()
+    finally:
+        await close_engine()
 
 
 @click.group(
@@ -41,7 +51,13 @@ def accounts() -> None:
 def recover(*, username: str, password: str) -> None:
     """Create or recover one owner account with a host-only password reset."""
     try:
-        normalized_username, created = recover_owner_account(username, password)
+
+        async def _op():
+            from apeiria.app.access.webui_auth.secrets import recover_owner_account
+
+            return await recover_owner_account(username, password)
+
+        normalized_username, created = asyncio.run(_run_with_engine(_op))
     except ValueError as exc:
         if str(exc) == "username_invalid":
             raise click.ClickException(_("username is required")) from None
@@ -66,7 +82,13 @@ webui.add_command(recover)
 @accounts.command("list", help=_("List Web UI accounts."))
 def list_accounts_command() -> None:
     """List Web UI accounts from the host."""
-    items = list_accounts()
+
+    async def _op():
+        from apeiria.app.access.webui_auth.secrets import list_accounts
+
+        return await list_accounts()
+
+    items = asyncio.run(_run_with_engine(_op))
     if not items:
         click.echo(_("no webui accounts"))
         return

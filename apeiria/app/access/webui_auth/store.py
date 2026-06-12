@@ -1,4 +1,4 @@
-"""Low-level persistent Web UI auth storage primitives."""
+"""Low-level persistent Web UI auth storage primitives (SQLAlchemy async)."""
 
 from __future__ import annotations
 
@@ -12,8 +12,11 @@ from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 
 from nonebot.log import logger
+from sqlalchemy import select
 
-from apeiria.db.runtime import ApeiriaDatabase
+from apeiria.db.engine import get_session
+from apeiria.db.models.auth import WebUIAccount as WebUIAccountModel
+from apeiria.db.models.auth import WebUIAuthSecret as WebUIAuthSecretModel
 from apeiria.i18n import t
 from apeiria.utils.project_context import current_project_root
 
@@ -25,9 +28,10 @@ _PASSWORD_MIN_LENGTH = 8
 _PASSWORD_MAX_LENGTH = 128
 
 if TYPE_CHECKING:
-    import sqlite3
-    from collections.abc import Callable
+    from collections.abc import Awaitable, Callable
     from pathlib import Path
+
+    from sqlalchemy.ext.asyncio import AsyncSession
 
 
 @dataclass(frozen=True)
@@ -43,10 +47,6 @@ def _apply_secret_permissions(secret_file: "Path") -> None:
 
 def _get_secret_file() -> "Path":
     return current_project_root() / "data" / "web_ui" / "secret.json"
-
-
-def _database() -> ApeiriaDatabase:
-    return ApeiriaDatabase(project_root=current_project_root())
 
 
 def hash_password(password: str, *, salt: str | None = None) -> str:
@@ -93,61 +93,54 @@ def count_enabled_accounts(users: list[dict[str, Any]]) -> int:
     return sum(1 for item in users if not bool(item.get("is_disabled", False)))
 
 
-def load_store_data() -> WebUIAuthStoreData:
+async def load_store_data() -> WebUIAuthStoreData:
     """Load auth storage from SQLite, importing legacy JSON once when present."""
-    database = _database()
-    database.ensure_ready()
     imported_secret_file: Path | None = None
-    with database.transaction_sync() as connection:
-        imported_secret_file = _import_legacy_json_if_needed(connection)
-        data = _load_store_data_from_connection(connection)
+    async with get_session() as session:
+        imported_secret_file = await _import_legacy_json_if_needed(session)
+        data = await _load_store_data_from_session(session)
         if not data.token_secret:
             token_secret = secrets.token_urlsafe(32)
             timestamp = iso_now()
-            connection.execute(
-                """
-                INSERT INTO webui_auth_secret (
-                    id,
-                    token_secret,
-                    created_at,
-                    updated_at
-                ) VALUES (1, ?, ?, ?)
-                """,
-                (token_secret, timestamp, timestamp),
+            row = WebUIAuthSecretModel(
+                id=1,
+                token_secret=token_secret,
+                created_at=timestamp,  # type: ignore[arg-type]
+                updated_at=timestamp,  # type: ignore[arg-type]
             )
+            await session.merge(row)
             logger.info("{}", t("web_ui.secrets.generated"))
+        await session.commit()
     if imported_secret_file is not None:
         _backup_legacy_secret_file(imported_secret_file)
-    return load_store_data_readonly()
+    return await load_store_data_readonly()
 
 
-def load_store_data_readonly() -> WebUIAuthStoreData:
+async def load_store_data_readonly() -> WebUIAuthStoreData:
     """Load auth storage from SQLite without mutating on read."""
-    database = _database()
-    database.ensure_ready()
-    with database.connect_sync() as connection:
-        return _load_store_data_from_connection(connection)
+    async with get_session() as session:
+        return await _load_store_data_from_session(session)
 
 
-def with_auth_transaction(
-    operation: "Callable[[sqlite3.Connection], Any]",
+async def with_auth_transaction(
+    operation: "Callable[[AsyncSession], Awaitable[Any]]",
 ) -> Any:
-    """Run one auth mutation within a SQLite transaction."""
-    database = _database()
-    database.ensure_ready()
+    """Run one auth mutation within an async session transaction."""
     imported_secret_file: Path | None = None
-    with database.transaction_sync() as connection:
-        imported_secret_file = _import_legacy_json_if_needed(connection)
-        _ensure_token_secret(connection)
-        result = operation(connection)
+    async with get_session() as session:
+        imported_secret_file = await _import_legacy_json_if_needed(session)
+        await _ensure_token_secret(session)
+        result = await operation(session)
+        await session.commit()
     if imported_secret_file is not None:
         _backup_legacy_secret_file(imported_secret_file)
     return result
 
 
-def get_token_secret() -> str:
+async def get_token_secret() -> str:
     """Return the JWT signing secret."""
-    return load_store_data().token_secret
+    data = await load_store_data()
+    return data.token_secret
 
 
 def get_secret_file_path() -> "Path":
@@ -155,141 +148,117 @@ def get_secret_file_path() -> "Path":
     return _get_secret_file()
 
 
-def list_user_items(connection: "sqlite3.Connection") -> list[dict[str, Any]]:
-    return _load_user_items(connection)
+async def list_user_items(session: "AsyncSession") -> list[dict[str, Any]]:
+    return await _load_user_items(session)
 
 
-def _ensure_token_secret(connection: "sqlite3.Connection") -> str:
-    token_secret = _read_token_secret(connection)
+async def _ensure_token_secret(session: "AsyncSession") -> str:
+    token_secret = await _read_token_secret(session)
     if token_secret:
         return token_secret
     token_secret = secrets.token_urlsafe(32)
     timestamp = iso_now()
-    connection.execute(
-        """
-        INSERT INTO webui_auth_secret (id, token_secret, created_at, updated_at)
-        VALUES (1, ?, ?, ?)
-        ON CONFLICT(id) DO UPDATE SET
-            token_secret = excluded.token_secret,
-            updated_at = excluded.updated_at
-        """,
-        (token_secret, timestamp, timestamp),
+    row = WebUIAuthSecretModel(
+        id=1,
+        token_secret=token_secret,
+        created_at=timestamp,  # type: ignore[arg-type]
+        updated_at=timestamp,  # type: ignore[arg-type]
     )
+    await session.merge(row)
     return token_secret
 
 
-def _load_store_data_from_connection(
-    connection: "sqlite3.Connection",
+async def _load_store_data_from_session(
+    session: "AsyncSession",
 ) -> WebUIAuthStoreData:
     return WebUIAuthStoreData(
-        token_secret=_read_token_secret(connection),
-        users=_load_user_items(connection),
+        token_secret=await _read_token_secret(session),
+        users=await _load_user_items(session),
     )
 
 
-def _read_token_secret(connection: "sqlite3.Connection") -> str:
-    row = connection.execute(
-        """
-        SELECT token_secret
-        FROM webui_auth_secret
-        WHERE id = 1
-        """
-    ).fetchone()
-    return str(row[0]) if row is not None else ""
+async def _read_token_secret(session: "AsyncSession") -> str:
+    result = await session.execute(
+        select(WebUIAuthSecretModel.token_secret).where(WebUIAuthSecretModel.id == 1)
+    )
+    value = result.scalar_one_or_none()
+    return str(value) if value is not None else ""
 
 
-def _load_user_items(connection: "sqlite3.Connection") -> list[dict[str, Any]]:
-    rows = connection.execute(
-        """
-        SELECT
-            user_id,
-            username,
-            password_hash,
-            is_disabled,
-            last_login_at,
-            password_changed_at,
-            session_version
-        FROM webui_account
-        ORDER BY username
-        """
-    ).fetchall()
+async def _load_user_items(session: "AsyncSession") -> list[dict[str, Any]]:
+    result = await session.execute(
+        select(WebUIAccountModel).order_by(WebUIAccountModel.username)
+    )
+    rows = result.scalars().all()
     return [
         {
-            "user_id": str(row[0]),
-            "username": str(row[1]),
-            "password_hash": str(row[2]),
-            "is_disabled": bool(row[3]),
-            "last_login_at": str(row[4]) if row[4] is not None else None,
-            "password_changed_at": str(row[5]) if row[5] is not None else None,
-            "session_version": int(row[6] or 0),
+            "user_id": str(row.user_id),
+            "username": str(row.username),
+            "password_hash": str(row.password_hash),
+            "is_disabled": bool(row.is_disabled),
+            "last_login_at": (
+                str(row.last_login_at) if row.last_login_at is not None else None
+            ),
+            "password_changed_at": (
+                str(row.password_changed_at)
+                if row.password_changed_at is not None
+                else None
+            ),
+            "session_version": int(row.session_version or 0),
         }
         for row in rows
     ]
 
 
-def _replace_user_items(
-    connection: "sqlite3.Connection",
+async def _replace_user_items(
+    session: "AsyncSession",
     users: list[dict[str, Any]],
 ) -> None:
-    connection.execute("DELETE FROM webui_account")
+    from sqlalchemy import delete
+
+    await session.execute(delete(WebUIAccountModel))
     for item in users:
         timestamp = iso_now()
-        connection.execute(
-            """
-            INSERT INTO webui_account (
-                user_id,
-                username,
-                password_hash,
-                is_disabled,
-                last_login_at,
-                password_changed_at,
-                session_version,
-                created_at,
-                updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                str(item["user_id"]),
-                normalize_username(str(item["username"])),
-                str(item["password_hash"]),
-                1 if bool(item.get("is_disabled", False)) else 0,
-                str(item.get("last_login_at"))
-                if item.get("last_login_at") is not None
-                else None,
-                str(item.get("password_changed_at"))
-                if item.get("password_changed_at") is not None
-                else None,
-                int(item.get("session_version") or 0),
-                timestamp,
-                timestamp,
+        last_login = item.get("last_login_at")
+        pwd_changed = item.get("password_changed_at")
+        row = WebUIAccountModel(
+            user_id=str(item["user_id"]),
+            username=normalize_username(str(item["username"])),
+            password_hash=str(item["password_hash"]),
+            is_disabled=1 if bool(item.get("is_disabled", False)) else 0,
+            last_login_at=(  # type: ignore[arg-type]
+                str(last_login) if last_login is not None else None
             ),
+            password_changed_at=(  # type: ignore[arg-type]
+                str(pwd_changed) if pwd_changed is not None else None
+            ),
+            session_version=int(item.get("session_version") or 0),
+            created_at=timestamp,  # type: ignore[arg-type]
+            updated_at=timestamp,  # type: ignore[arg-type]
         )
+        session.add(row)
 
 
-def _import_legacy_json_if_needed(connection: "sqlite3.Connection") -> "Path | None":
+async def _import_legacy_json_if_needed(session: "AsyncSession") -> "Path | None":
     secret_file = _get_secret_file()
     if not secret_file.is_file():
         return None
-    if _has_sqlite_auth_state(connection):
+    if await _has_sqlite_auth_state(session):
         return None
 
     data = _load_legacy_json(secret_file)
-    connection.execute(
-        """
-        INSERT INTO webui_auth_secret (id, token_secret, created_at, updated_at)
-        VALUES (1, ?, ?, ?)
-        ON CONFLICT(id) DO UPDATE SET
-            token_secret = excluded.token_secret,
-            updated_at = excluded.updated_at
-        """,
-        (
-            str(data.get("token_secret") or "").strip() or secrets.token_urlsafe(32),
-            iso_now(),
-            iso_now(),
-        ),
+    timestamp = iso_now()
+    raw_secret = str(data.get("token_secret") or "").strip()
+    token_secret = raw_secret or secrets.token_urlsafe(32)
+    row = WebUIAuthSecretModel(
+        id=1,
+        token_secret=token_secret,
+        created_at=timestamp,  # type: ignore[arg-type]
+        updated_at=timestamp,  # type: ignore[arg-type]
     )
-    _replace_user_items(
-        connection,
+    await session.merge(row)
+    await _replace_user_items(
+        session,
         [
             item
             for item in data.get("users", [])
@@ -302,24 +271,15 @@ def _import_legacy_json_if_needed(connection: "sqlite3.Connection") -> "Path | N
     return secret_file
 
 
-def _has_sqlite_auth_state(connection: "sqlite3.Connection") -> bool:
-    row = connection.execute(
-        """
-        SELECT token_secret
-        FROM webui_auth_secret
-        WHERE id = 1
-        """
-    ).fetchone()
-    if row is not None and bool(str(row[0]).strip()):
+async def _has_sqlite_auth_state(session: "AsyncSession") -> bool:
+    result = await session.execute(
+        select(WebUIAuthSecretModel.token_secret).where(WebUIAuthSecretModel.id == 1)
+    )
+    value = result.scalar_one_or_none()
+    if value is not None and bool(str(value).strip()):
         return True
-    row = connection.execute(
-        """
-        SELECT user_id
-        FROM webui_account
-        LIMIT 1
-        """
-    ).fetchone()
-    return row is not None
+    result = await session.execute(select(WebUIAccountModel.user_id).limit(1))
+    return result.scalar_one_or_none() is not None
 
 
 def _load_legacy_json(secret_file: "Path") -> dict[str, Any]:

@@ -58,7 +58,7 @@ class AuthSessionService:
             attributes=dict(resolved_context.attributes),
         )
 
-    def create_token(self, session: AuthSession) -> str:
+    async def create_token(self, session: AuthSession) -> str:
         payload = {
             "exp": session.expires_at,
             "iat": session.issued_at,
@@ -70,12 +70,14 @@ class AuthSessionService:
             "client_ip": session.client_ip,
             **session.attributes,
         }
-        return jwt.encode(payload, get_token_secret(), algorithm="HS256")
+        secret = await get_token_secret()
+        return jwt.encode(payload, secret, algorithm="HS256")
 
-    def verify_token(self, token: str) -> AuthSession:
-        claims = jwt.decode(token, get_token_secret(), algorithms=["HS256"])
+    async def verify_token(self, token: str) -> AuthSession:
+        secret = await get_token_secret()
+        claims = jwt.decode(token, secret, algorithms=["HS256"])
         user_id = str(claims.get("user_id") or "")
-        account = get_account_by_id(user_id) if user_id else None
+        account = await get_account_by_id(user_id) if user_id else None
         if account is None or account.is_disabled:
             raise jwt.InvalidTokenError
         token_session_version = int(claims.get("session_version") or 0)

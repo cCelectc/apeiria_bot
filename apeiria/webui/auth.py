@@ -17,11 +17,11 @@ if TYPE_CHECKING:
 _AUTH_COOKIE_NAME = "apeiria_webui_session"
 
 
-def _verify_auth_session_token(token: str) -> AuthSession:
+async def _verify_auth_session_token(token: str) -> AuthSession:
     """Verify one JWT token and return the structured auth session."""
 
     try:
-        return auth_session_service.verify_token(token)
+        return await auth_session_service.verify_token(token)
     except jwt.ExpiredSignatureError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -34,7 +34,7 @@ def _verify_auth_session_token(token: str) -> AuthSession:
         ) from None
 
 
-def set_auth_session_cookie(
+async def set_auth_session_cookie(
     response: Response,
     session: AuthSession,
     *,
@@ -42,7 +42,7 @@ def set_auth_session_cookie(
 ) -> None:
     """Persist the session token in a browser-managed HttpOnly cookie."""
 
-    token = auth_session_service.create_token(session)
+    token = await auth_session_service.create_token(session)
     response.set_cookie(
         _AUTH_COOKIE_NAME,
         token,
@@ -76,7 +76,7 @@ async def require_auth(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=t("web_ui.auth.token_invalid"),
         )
-    return _verify_auth_session_token(token)
+    return await _verify_auth_session_token(token)
 
 
 async def require_connection_auth(connection: "HTTPConnection") -> AuthSession:
@@ -88,7 +88,7 @@ async def require_connection_auth(connection: "HTTPConnection") -> AuthSession:
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=t("web_ui.auth.token_invalid"),
         )
-    return _verify_auth_session_token(token)
+    return await _verify_auth_session_token(token)
 
 
 def _session_token_from_cookie(connection: "HTTPConnection") -> str:

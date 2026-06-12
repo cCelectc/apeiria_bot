@@ -79,11 +79,11 @@ def _to_webui_account_item(account: Any) -> WebUIAccountItem:
     )
 
 
-def _require_actor_password(
+async def _require_actor_password(
     session: "AuthSession",
     actor_password: str,
 ) -> None:
-    account = verify_account_password(session.username, actor_password)
+    account = await verify_account_password(session.username, actor_password)
     if account is None or account.user_id != session.user_id:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -104,7 +104,7 @@ async def login(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail=t("web_ui.auth.login_temporarily_locked"),
         )
-    account = verify_account_password(body.username, body.password)
+    account = await verify_account_password(body.username, body.password)
     if account is None:
         record_login_failure(body.username, client_ip)
         raise HTTPException(
@@ -112,13 +112,13 @@ async def login(
             detail=t("web_ui.auth.invalid_credentials"),
         )
     clear_login_failures(account.username, client_ip)
-    account = record_login_success(account.user_id) or account
+    account = await record_login_success(account.user_id) or account
     session = auth_session_service.create_session(
         account,
         auth_method="password",
         context=AuthSessionContext(client_ip=client_ip),
     )
-    set_auth_session_cookie(response, session, request=request)
+    await set_auth_session_cookie(response, session, request=request)
     return LoginResponse(
         principal=_to_webui_principal_response(session.principal),
     )
@@ -143,7 +143,7 @@ async def get_current_user(
 async def get_webui_bootstrap(
     session: Annotated[AuthSession, Depends(require_auth)],
 ) -> WebUIBootstrapResponse:
-    account = get_account_by_id(session.user_id)
+    account = await get_account_by_id(session.user_id)
     if account is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -166,7 +166,7 @@ async def get_accounts(
     _: Annotated[AuthSession, Depends(require_auth)],
 ) -> list[WebUIAccountItem]:
     """Return all account records."""
-    return [_to_webui_account_item(account) for account in list_accounts()]
+    return [_to_webui_account_item(account) for account in await list_accounts()]
 
 
 @router.post("/accounts", response_model=WebUIAccountItem)
@@ -174,9 +174,9 @@ async def create_managed_account(
     body: AccountCreateRequest,
     session: Annotated[AuthSession, Depends(require_auth)],
 ) -> WebUIAccountItem:
-    _require_actor_password(session, body.actor_password)
+    await _require_actor_password(session, body.actor_password)
     try:
-        normalized_username = create_account(body.username, body.password)
+        normalized_username = await create_account(body.username, body.password)
     except ValueError as exc:
         error_code = str(exc)
         detail_key = {
@@ -188,8 +188,9 @@ async def create_managed_account(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=t(detail_key),
         ) from None
+    all_accounts = await list_accounts()
     account = next(
-        (item for item in list_accounts() if item.username == normalized_username),
+        (item for item in all_accounts if item.username == normalized_username),
         None,
     )
     if account is None:
@@ -206,9 +207,9 @@ async def update_managed_account_status(
     body: AccountDisableRequest,
     session: Annotated[AuthSession, Depends(require_auth)],
 ) -> WebUIAccountItem:
-    _require_actor_password(session, body.actor_password)
+    await _require_actor_password(session, body.actor_password)
     try:
-        account = set_account_disabled(
+        account = await set_account_disabled(
             user_id,
             disabled=body.is_disabled,
             actor_user_id=session.user_id,
@@ -236,9 +237,9 @@ async def delete_managed_account(
     body: AccountDeleteRequest,
     session: Annotated[AuthSession, Depends(require_auth)],
 ) -> RegisterResponse:
-    _require_actor_password(session, body.actor_password)
+    await _require_actor_password(session, body.actor_password)
     try:
-        deleted = delete_account(user_id, actor_user_id=session.user_id)
+        deleted = await delete_account(user_id, actor_user_id=session.user_id)
     except ValueError as exc:
         detail_key = {
             "self_delete_forbidden": "web_ui.auth.self_delete_forbidden",
@@ -262,14 +263,14 @@ async def reset_managed_account_password(
     body: AccountPasswordResetRequest,
     session: Annotated[AuthSession, Depends(require_auth)],
 ) -> WebUIAccountItem:
-    _require_actor_password(session, body.actor_password)
+    await _require_actor_password(session, body.actor_password)
     if user_id == session.user_id:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=t("web_ui.auth.self_password_reset_forbidden"),
         )
     try:
-        account = reset_account_password(user_id, body.new_password)
+        account = await reset_account_password(user_id, body.new_password)
     except ValueError:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -298,13 +299,13 @@ async def change_password(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=t("web_ui.auth.current_password_required"),
         )
-    account = verify_account_password(username, body.current_password)
+    account = await verify_account_password(username, body.current_password)
     if account is None or account.user_id != user_id:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=t("web_ui.auth.invalid_credentials"),
         )
-    updated_account = update_account_password(user_id, body.new_password)
+    updated_account = await update_account_password(user_id, body.new_password)
     if updated_account is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -314,7 +315,7 @@ async def change_password(
         updated_account,
         auth_method="session_refresh",
     )
-    set_auth_session_cookie(response, updated_session, request=request)
+    await set_auth_session_cookie(response, updated_session, request=request)
     return SessionRefreshResponse(
         detail=t("web_ui.auth.password_changed"),
         principal=_to_webui_principal_response(updated_session.principal),
@@ -328,7 +329,7 @@ async def revoke_other_sessions(
     session: Annotated[AuthSession, Depends(require_auth)],
 ) -> SessionRefreshResponse:
     """Invalidate previous sessions and rotate the current account session."""
-    updated_account = rotate_account_session_version(session.user_id)
+    updated_account = await rotate_account_session_version(session.user_id)
     if updated_account is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -338,7 +339,7 @@ async def revoke_other_sessions(
         updated_account,
         auth_method="session_refresh",
     )
-    set_auth_session_cookie(response, updated_session, request=request)
+    await set_auth_session_cookie(response, updated_session, request=request)
     return SessionRefreshResponse(
         detail=t("web_ui.auth.sessions_revoked"),
         principal=_to_webui_principal_response(updated_session.principal),
