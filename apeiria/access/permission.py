@@ -33,6 +33,8 @@ class PermissionService:
         context: AccessContext,
         plugin_module: str,
     ) -> PermissionDecision:
+        if context.is_superuser:
+            return self._allow()
         policy = await plugin_policy_service.get_policy(plugin_module)
         decision = await self._check_plugin_state(context.group_id, policy)
         if decision is not None:
