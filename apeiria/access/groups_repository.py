@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
 
-from apeiria.db.runtime import database_runtime
+from sqlalchemy import select
+from sqlalchemy.dialects.sqlite import insert
 
-
-def _utcnow_text() -> str:
-    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+from apeiria.db.base import _epoch_ms
+from apeiria.db.engine import get_session
+from apeiria.db.models.governance import GroupState
 
 
 @dataclass(frozen=True)
@@ -24,94 +24,60 @@ class GroupStateRow:
 
 
 class GroupRepository:
-    """Own group-state persistence without relying on NoneBot ORM."""
+    """Own group-state persistence via SQLAlchemy async session."""
 
     async def get_group(self, group_id: str) -> GroupStateRow | None:
-        return self._get_group_sync(group_id)
-
-    def _get_group_sync(self, group_id: str) -> GroupStateRow | None:
-        with database_runtime.connect_sync() as connection:
-            row = connection.execute(
-                """
-                SELECT
-                    group_id,
-                    group_name,
-                    bot_enabled,
-                    disabled_plugins_json,
-                    updated_at
-                FROM group_state
-                WHERE group_id = ?
-                """,
-                (group_id,),
-            ).fetchone()
+        async with get_session() as session:
+            result = await session.execute(
+                select(GroupState).where(GroupState.group_id == group_id)
+            )
+            row = result.scalars().first()
         if row is None:
             return None
-        return GroupStateRow(
-            group_id=str(row[0]),
-            group_name=str(row[1]) if row[1] is not None else None,
-            bot_status=bool(row[2]),
-            disabled_plugins=str(row[3]),
-            updated_at=str(row[4]),
-        )
+        return self._to_row(row)
 
     async def list_groups(self) -> list[GroupStateRow]:
-        return self._list_groups_sync()
-
-    def _list_groups_sync(self) -> list[GroupStateRow]:
-        with database_runtime.connect_sync() as connection:
-            rows = connection.execute(
-                """
-                SELECT
-                    group_id,
-                    group_name,
-                    bot_enabled,
-                    disabled_plugins_json,
-                    updated_at
-                FROM group_state
-                ORDER BY updated_at DESC, group_id ASC
-                """
-            ).fetchall()
-        return [
-            GroupStateRow(
-                group_id=str(row[0]),
-                group_name=str(row[1]) if row[1] is not None else None,
-                bot_status=bool(row[2]),
-                disabled_plugins=str(row[3]),
-                updated_at=str(row[4]),
+        async with get_session() as session:
+            result = await session.execute(
+                select(GroupState).order_by(
+                    GroupState.updated_at.desc(),
+                    GroupState.group_id,
+                )
             )
-            for row in rows
-        ]
+            rows = result.scalars().all()
+        return [self._to_row(r) for r in rows]
 
     async def save_group(self, row: GroupStateRow) -> None:
-        self._save_group_sync(row)
+        now = _epoch_ms()
+        stmt = insert(GroupState).values(
+            group_id=row.group_id,
+            group_name=row.group_name,
+            bot_enabled=1 if row.bot_status else 0,
+            disabled_plugins_json=row.disabled_plugins,
+            updated_at=now,
+        )
+        stmt = stmt.on_conflict_do_update(
+            index_elements=[GroupState.group_id],
+            set_={
+                "group_name": stmt.excluded.group_name,
+                "bot_enabled": stmt.excluded.bot_enabled,
+                "disabled_plugins_json": stmt.excluded.disabled_plugins_json,
+                "updated_at": stmt.excluded.updated_at,
+            },
+        )
+        async with get_session() as session:
+            await session.execute(stmt)
+            await session.commit()
 
-    def _save_group_sync(self, row: GroupStateRow) -> None:
-        updated_at = row.updated_at or _utcnow_text()
-        with database_runtime.connect_sync() as connection:
-            connection.execute(
-                """
-                INSERT INTO group_state (
-                    group_id,
-                    group_name,
-                    bot_enabled,
-                    disabled_plugins_json,
-                    updated_at
-                ) VALUES (?, ?, ?, ?, ?)
-                ON CONFLICT(group_id)
-                DO UPDATE SET
-                    group_name = excluded.group_name,
-                    bot_enabled = excluded.bot_enabled,
-                    disabled_plugins_json = excluded.disabled_plugins_json,
-                    updated_at = excluded.updated_at
-                """,
-                (
-                    row.group_id,
-                    row.group_name,
-                    1 if row.bot_status else 0,
-                    row.disabled_plugins,
-                    updated_at,
-                ),
-            )
+    @staticmethod
+    def _to_row(model: GroupState) -> GroupStateRow:
+        return GroupStateRow(
+            group_id=model.group_id,
+            group_name=model.group_name,
+            bot_status=bool(model.bot_enabled),
+            disabled_plugins=model.disabled_plugins_json,
+            updated_at=str(model.updated_at) if model.updated_at else None,
+        )
 
 
 group_repository = GroupRepository()

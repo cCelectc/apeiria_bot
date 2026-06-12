@@ -3,14 +3,14 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
 
-from apeiria.db.runtime import database_runtime
+from sqlalchemy import delete, select
+from sqlalchemy.dialects.sqlite import insert
+
+from apeiria.db.base import _epoch_ms
+from apeiria.db.engine import get_session
+from apeiria.db.models.governance import AccessRule, GroupState
 from apeiria.utils.group_state import decode_disabled_plugins
-
-
-def _utcnow_text() -> str:
-    return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
 @dataclass(frozen=True)
@@ -25,59 +25,45 @@ class AccessRuleRow:
 
 
 class AccessRepository:
-    """Own access persistence without relying on NoneBot ORM."""
+    """Own access persistence via SQLAlchemy async session."""
 
     async def get_group_bot_enabled(self, group_id: str) -> bool:
-        return self._get_group_bot_enabled_sync(group_id)
-
-    def _get_group_bot_enabled_sync(self, group_id: str) -> bool:
-        with database_runtime.connect_sync() as connection:
-            row = connection.execute(
-                """
-                SELECT bot_enabled
-                FROM group_state
-                WHERE group_id = ?
-                """,
-                (group_id,),
-            ).fetchone()
-        return row is None or bool(row[0])
+        async with get_session() as session:
+            result = await session.execute(
+                select(GroupState.bot_enabled).where(GroupState.group_id == group_id)
+            )
+            row = result.scalar_one_or_none()
+        return row is None or bool(row)
 
     async def get_group_disabled_plugins(self, group_id: str) -> list[str]:
-        return self._get_group_disabled_plugins_sync(group_id)
-
-    def _get_group_disabled_plugins_sync(self, group_id: str) -> list[str]:
-        with database_runtime.connect_sync() as connection:
-            row = connection.execute(
-                """
-                SELECT disabled_plugins_json
-                FROM group_state
-                WHERE group_id = ?
-                """,
-                (group_id,),
-            ).fetchone()
-        return decode_disabled_plugins(row[0] if row is not None else None)
+        async with get_session() as session:
+            result = await session.execute(
+                select(GroupState.disabled_plugins_json).where(
+                    GroupState.group_id == group_id
+                )
+            )
+            raw = result.scalar_one_or_none()
+        return decode_disabled_plugins(raw)
 
     async def list_access_rules(self) -> list[AccessRuleRow]:
-        return self._list_access_rules_sync()
-
-    def _list_access_rules_sync(self) -> list[AccessRuleRow]:
-        with database_runtime.connect_sync() as connection:
-            rows = connection.execute(
-                """
-                SELECT subject_type, subject_id, plugin_id, effect, note
-                FROM access_rule
-                ORDER BY subject_type ASC, subject_id ASC, plugin_id ASC
-                """
-            ).fetchall()
+        async with get_session() as session:
+            result = await session.execute(
+                select(AccessRule).order_by(
+                    AccessRule.subject_type,
+                    AccessRule.subject_id,
+                    AccessRule.plugin_id,
+                )
+            )
+            rows = result.scalars().all()
         return [
             AccessRuleRow(
-                subject_type=str(row[0]),
-                subject_id=str(row[1]),
-                plugin_module=str(row[2]),
-                effect=str(row[3]),
-                note=str(row[4]) if row[4] is not None else None,
+                subject_type=r.subject_type,
+                subject_id=r.subject_id,
+                plugin_module=r.plugin_id,
+                effect=r.effect,
+                note=r.note,
             )
-            for row in rows
+            for r in rows
         ]
 
     async def get_explicit_rules_for_subjects(
@@ -87,42 +73,38 @@ class AccessRepository:
         user_id: str,
         group_id: str | None,
     ) -> list[AccessRuleRow]:
-        return self._get_explicit_rules_for_subjects_sync(
-            plugin_module,
-            user_id,
-            group_id,
-        )
+        from sqlalchemy import and_, or_
 
-    def _get_explicit_rules_for_subjects_sync(
-        self,
-        plugin_module: str,
-        user_id: str,
-        group_id: str | None,
-    ) -> list[AccessRuleRow]:
-        clauses = ["(subject_type = ? AND subject_id = ?)"]
-        params: list[object] = ["user", user_id, plugin_module]
+        conditions = [
+            and_(
+                AccessRule.subject_type == "user",
+                AccessRule.subject_id == user_id,
+            )
+        ]
         if group_id is not None:
-            clauses.append("(subject_type = ? AND subject_id = ?)")
-            params = ["user", user_id, "group", group_id, plugin_module]
-        where_sql = " OR ".join(clauses)
-        with database_runtime.connect_sync() as connection:
-            rows = connection.execute(
-                f"""
-                SELECT subject_type, subject_id, plugin_id, effect, note
-                FROM access_rule
-                WHERE ({where_sql}) AND plugin_id = ?
-                """,
-                tuple(params),
-            ).fetchall()
+            conditions.append(
+                and_(
+                    AccessRule.subject_type == "group",
+                    AccessRule.subject_id == group_id,
+                )
+            )
+        async with get_session() as session:
+            result = await session.execute(
+                select(AccessRule).where(
+                    AccessRule.plugin_id == plugin_module,
+                    or_(*conditions),
+                )
+            )
+            rows = result.scalars().all()
         return [
             AccessRuleRow(
-                subject_type=str(row[0]),
-                subject_id=str(row[1]),
-                plugin_module=str(row[2]),
-                effect=str(row[3]),
-                note=str(row[4]) if row[4] is not None else None,
+                subject_type=r.subject_type,
+                subject_id=r.subject_id,
+                plugin_module=r.plugin_id,
+                effect=r.effect,
+                note=r.note,
             )
-            for row in rows
+            for r in rows
         ]
 
     async def upsert_access_rule(
@@ -134,51 +116,31 @@ class AccessRepository:
         effect: str,
         note: str | None = None,
     ) -> None:
-        self._upsert_access_rule_sync(
-            subject_type,
-            subject_id,
-            plugin_module,
-            effect,
-            note,
+        now = _epoch_ms()
+        stmt = insert(AccessRule).values(
+            subject_type=subject_type,
+            subject_id=subject_id,
+            plugin_id=plugin_module,
+            effect=effect,
+            note=note,
+            created_at=now,
+            updated_at=now,
         )
-
-    def _upsert_access_rule_sync(
-        self,
-        subject_type: str,
-        subject_id: str,
-        plugin_module: str,
-        effect: str,
-        note: str | None,
-    ) -> None:
-        timestamp = _utcnow_text()
-        with database_runtime.connect_sync() as connection:
-            connection.execute(
-                """
-                INSERT INTO access_rule (
-                    subject_type,
-                    subject_id,
-                    plugin_id,
-                    effect,
-                    note,
-                    created_at,
-                    updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(subject_type, subject_id, plugin_id)
-                DO UPDATE SET
-                    effect = excluded.effect,
-                    note = excluded.note,
-                    updated_at = excluded.updated_at
-                """,
-                (
-                    subject_type,
-                    subject_id,
-                    plugin_module,
-                    effect,
-                    note,
-                    timestamp,
-                    timestamp,
-                ),
-            )
+        stmt = stmt.on_conflict_do_update(
+            index_elements=[
+                AccessRule.subject_type,
+                AccessRule.subject_id,
+                AccessRule.plugin_id,
+            ],
+            set_={
+                "effect": stmt.excluded.effect,
+                "note": stmt.excluded.note,
+                "updated_at": stmt.excluded.updated_at,
+            },
+        )
+        async with get_session() as session:
+            await session.execute(stmt)
+            await session.commit()
 
     async def delete_access_rule(
         self,
@@ -187,27 +149,16 @@ class AccessRepository:
         subject_id: str,
         plugin_module: str,
     ) -> bool:
-        return self._delete_access_rule_sync(
-            subject_type,
-            subject_id,
-            plugin_module,
-        )
-
-    def _delete_access_rule_sync(
-        self,
-        subject_type: str,
-        subject_id: str,
-        plugin_module: str,
-    ) -> bool:
-        with database_runtime.connect_sync() as connection:
-            cursor = connection.execute(
-                """
-                DELETE FROM access_rule
-                WHERE subject_type = ? AND subject_id = ? AND plugin_id = ?
-                """,
-                (subject_type, subject_id, plugin_module),
+        async with get_session() as session:
+            result = await session.execute(
+                delete(AccessRule).where(
+                    AccessRule.subject_type == subject_type,
+                    AccessRule.subject_id == subject_id,
+                    AccessRule.plugin_id == plugin_module,
+                )
             )
-        return cursor.rowcount > 0
+            await session.commit()
+        return result.rowcount > 0
 
 
 access_repository = AccessRepository()

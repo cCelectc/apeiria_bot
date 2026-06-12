@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from sqlalchemy import CheckConstraint, ForeignKey, Index, Integer, Text
+from sqlalchemy import CheckConstraint, ForeignKey, Index, Integer, Text, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from apeiria.db.base import Base, TimestampMixin
@@ -91,14 +91,14 @@ class AIDeliveryAttempt(TimestampMixin, Base):
             "ix_ai_delivery_attempt_pending",
             "task_id",
             "delivery_intent",
-            sqlite_where="status = 'pending'",
+            sqlite_where=text("status = 'pending'"),
             unique=True,
         ),
         Index(
             "ix_ai_delivery_attempt_delivered",
             "task_id",
             "delivery_intent",
-            sqlite_where="status = 'delivered'",
+            sqlite_where=text("status = 'delivered'"),
             unique=True,
         ),
         Index("ix_ai_delivery_attempt_updated_at", "updated_at"),
