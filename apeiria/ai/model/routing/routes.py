@@ -31,7 +31,7 @@ from apeiria.ai.model.routing.selection import (
     selected_model_diagnostics,
 )
 from apeiria.ai.model.sources.service import AISourceService
-from apeiria.db.base import _utcnow_text
+from apeiria.db.base import _epoch_ms
 from apeiria.db.engine import get_session, rowcount
 from apeiria.db.models.ai_routing import (
     AIModelRoute,
@@ -118,7 +118,7 @@ class AIModelRouteService:
             fallback_on_failure=create_input.fallback_on_failure,
             enabled=create_input.enabled,
         )
-        now = _utcnow_text()
+        now = _epoch_ms()
         async with get_session() as session:
             instance = AIModelRoute(
                 route_id=route.route_id,
@@ -159,7 +159,7 @@ class AIModelRouteService:
             row.algorithm = updated.algorithm
             row.fallback_on_failure = 1 if updated.fallback_on_failure else 0
             row.enabled = 1 if updated.enabled else 0
-            row.updated_at = _utcnow_text()
+            row.updated_at = _epoch_ms()
             await session.commit()
         return updated
 
@@ -201,7 +201,7 @@ class AIModelRouteService:
             weight=create_input.weight,
             enabled=create_input.enabled,
         )
-        now = _utcnow_text()
+        now = _epoch_ms()
         async with get_session() as session:
             instance = AIModelRouteMember(
                 route_member_id=member.route_member_id,
@@ -239,7 +239,7 @@ class AIModelRouteService:
             row.position = updated.position
             row.weight = updated.weight
             row.enabled = 1 if updated.enabled else 0
-            row.updated_at = _utcnow_text()
+            row.updated_at = _epoch_ms()
             await session.commit()
         return updated
 
@@ -279,7 +279,7 @@ class AIModelRouteService:
             task_class=create_input.task_class,
             route_id=create_input.route_id,
         )
-        now = _utcnow_text()
+        now = _epoch_ms()
         async with get_session() as session:
             stmt = insert(AIModelRouteBinding).values(
                 binding_id=binding.binding_id,

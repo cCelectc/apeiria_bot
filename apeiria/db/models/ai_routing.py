@@ -10,7 +10,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
-from apeiria.db.base import Base, LegacyTextTimestampMixin
+from apeiria.db.base import Base, _epoch_ms
 
 _TASK_CLASS_CHECK = (
     "task_class IN ("
@@ -20,7 +20,7 @@ _TASK_CLASS_CHECK = (
 _SCOPE_TYPE_CHECK = "scope_type IN ('global', 'group', 'user', 'conversation')"
 
 
-class AIModelProfile(LegacyTextTimestampMixin, Base):
+class AIModelProfile(Base):
     __tablename__ = "ai_model_profile"
 
     profile_id: Mapped[str] = mapped_column(Text, primary_key=True)
@@ -35,6 +35,9 @@ class AIModelProfile(LegacyTextTimestampMixin, Base):
         Text,
         ForeignKey("ai_model_profile.profile_id", ondelete="SET NULL"),
     )
+    updated_at: Mapped[int] = mapped_column(
+        Integer, default=_epoch_ms, onupdate=_epoch_ms
+    )
 
     __table_args__ = (
         CheckConstraint(_TASK_CLASS_CHECK, name="ck_ai_model_profile_task_class"),
@@ -42,7 +45,7 @@ class AIModelProfile(LegacyTextTimestampMixin, Base):
     )
 
 
-class AIModelBinding(LegacyTextTimestampMixin, Base):
+class AIModelBinding(Base):
     __tablename__ = "ai_model_binding"
 
     binding_id: Mapped[str] = mapped_column(Text, primary_key=True)
@@ -50,6 +53,9 @@ class AIModelBinding(LegacyTextTimestampMixin, Base):
     scope_id: Mapped[str] = mapped_column(Text)
     profile_id: Mapped[str] = mapped_column(
         Text, ForeignKey("ai_model_profile.profile_id", ondelete="CASCADE")
+    )
+    updated_at: Mapped[int] = mapped_column(
+        Integer, default=_epoch_ms, onupdate=_epoch_ms
     )
 
     __table_args__ = (
@@ -65,7 +71,7 @@ class AIModelBinding(LegacyTextTimestampMixin, Base):
     )
 
 
-class AIModelRoute(LegacyTextTimestampMixin, Base):
+class AIModelRoute(Base):
     __tablename__ = "ai_model_route"
 
     route_id: Mapped[str] = mapped_column(Text, primary_key=True)
@@ -75,6 +81,9 @@ class AIModelRoute(LegacyTextTimestampMixin, Base):
     algorithm: Mapped[str] = mapped_column(Text)
     fallback_on_failure: Mapped[int] = mapped_column(Integer, default=1)
     enabled: Mapped[int] = mapped_column(Integer, default=1)
+    updated_at: Mapped[int] = mapped_column(
+        Integer, default=_epoch_ms, onupdate=_epoch_ms
+    )
 
     __table_args__ = (
         CheckConstraint("length(name) > 0", name="ck_ai_model_route_name_len"),
@@ -104,7 +113,7 @@ class AIModelRoute(LegacyTextTimestampMixin, Base):
     )
 
 
-class AIModelRouteMember(LegacyTextTimestampMixin, Base):
+class AIModelRouteMember(Base):
     __tablename__ = "ai_model_route_member"
 
     route_member_id: Mapped[str] = mapped_column(Text, primary_key=True)
@@ -117,6 +126,9 @@ class AIModelRouteMember(LegacyTextTimestampMixin, Base):
     position: Mapped[int] = mapped_column(Integer)
     weight: Mapped[int] = mapped_column(Integer, default=1)
     enabled: Mapped[int] = mapped_column(Integer, default=1)
+    updated_at: Mapped[int] = mapped_column(
+        Integer, default=_epoch_ms, onupdate=_epoch_ms
+    )
 
     __table_args__ = (
         CheckConstraint("position >= 0", name="ck_ai_model_route_member_position"),
@@ -128,7 +140,7 @@ class AIModelRouteMember(LegacyTextTimestampMixin, Base):
     )
 
 
-class AIModelRouteBinding(LegacyTextTimestampMixin, Base):
+class AIModelRouteBinding(Base):
     __tablename__ = "ai_model_route_binding"
 
     binding_id: Mapped[str] = mapped_column(Text, primary_key=True)
@@ -137,6 +149,9 @@ class AIModelRouteBinding(LegacyTextTimestampMixin, Base):
     task_class: Mapped[str] = mapped_column(Text)
     route_id: Mapped[str] = mapped_column(
         Text, ForeignKey("ai_model_route.route_id", ondelete="CASCADE")
+    )
+    updated_at: Mapped[int] = mapped_column(
+        Integer, default=_epoch_ms, onupdate=_epoch_ms
     )
 
     __table_args__ = (

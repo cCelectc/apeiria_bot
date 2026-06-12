@@ -11,10 +11,10 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, declared_attr, mapped_column
 
-from apeiria.db.base import Base, LegacyTextTimestampMixin
+from apeiria.db.base import Base, _epoch_ms
 
 
-class AISource(LegacyTextTimestampMixin, Base):
+class AISource(Base):
     __tablename__ = "ai_source"
 
     source_id: Mapped[str] = mapped_column(Text, primary_key=True)
@@ -31,6 +31,9 @@ class AISource(LegacyTextTimestampMixin, Base):
     capability_metadata_json: Mapped[str] = mapped_column(Text, default="{}")
     default_options_json: Mapped[str] = mapped_column(Text, default="{}")
     capability_provenance_json: Mapped[str] = mapped_column(Text, default="{}")
+    updated_at: Mapped[int] = mapped_column(
+        Integer, default=_epoch_ms, onupdate=_epoch_ms
+    )
 
     __table_args__ = (
         CheckConstraint(
@@ -87,7 +90,7 @@ class AISource(LegacyTextTimestampMixin, Base):
     )
 
 
-class _SourceModelMixin(LegacyTextTimestampMixin):
+class _SourceModelMixin:
     @declared_attr
     def model_id(self) -> Mapped[str]:
         return mapped_column(Text, primary_key=True)
@@ -130,6 +133,10 @@ class _SourceModelMixin(LegacyTextTimestampMixin):
     @declared_attr
     def capability_provenance_json(self) -> Mapped[str]:
         return mapped_column(Text, default="{}")
+
+    @declared_attr
+    def updated_at(self) -> Mapped[int]:
+        return mapped_column(Integer, default=_epoch_ms, onupdate=_epoch_ms)
 
     @declared_attr
     def __table_args__(self) -> tuple:  # type: ignore[override]

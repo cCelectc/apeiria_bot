@@ -18,7 +18,7 @@ from apeiria.ai.model.sources.models import (
     AISourcePresetType,
     resolve_adapter_kind_for_client_type,
 )
-from apeiria.db.base import _utcnow_text
+from apeiria.db.base import _epoch_ms
 from apeiria.db.engine import get_session, rowcount
 from apeiria.db.models.ai_source import AISource
 from apeiria.utils.json_utils import safe_json_loads
@@ -104,7 +104,7 @@ class AISourceService:
             default_options=create_input.default_options or {},
             capability_provenance=create_input.capability_provenance or {},
         )
-        now = _utcnow_text()
+        now = _epoch_ms()
         async with get_session() as session:
             instance = AISource(
                 source_id=source.source_id,
@@ -228,7 +228,7 @@ class AISourceService:
             row.capability_provenance_json = dumps(
                 updated.capability_provenance or {}, ensure_ascii=False
             )
-            row.updated_at = _utcnow_text()
+            row.updated_at = _epoch_ms()
             await session.commit()
         return updated
 

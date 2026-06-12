@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from sqlalchemy import Integer, Text
+from sqlalchemy import Integer
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -14,10 +14,6 @@ class Base(DeclarativeBase):
 
 def _epoch_ms() -> int:
     return int(datetime.now(timezone.utc).timestamp() * 1000)
-
-
-def _utcnow_text() -> str:
-    return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
 class TimestampMixin:
@@ -31,9 +27,3 @@ class TimestampMixin:
     updated_at: Mapped[int] = mapped_column(
         Integer, default=_epoch_ms, onupdate=_epoch_ms
     )
-
-
-class LegacyTextTimestampMixin:
-    """Timestamp mixin for tables using TEXT updated_at (no created_at)."""
-
-    updated_at: Mapped[str] = mapped_column(Text, default=_utcnow_text)

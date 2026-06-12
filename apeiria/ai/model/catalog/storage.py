@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, TypeAlias
 
 from sqlalchemy import delete, select, update
 
-from apeiria.db.base import _utcnow_text
+from apeiria.db.base import _epoch_ms
 from apeiria.db.engine import get_session, rowcount
 from apeiria.db.models.ai_source import (
     AIChatModel,
@@ -125,7 +125,7 @@ async def create_source_model(  # noqa: PLR0913
     capability_provenance: dict[str, object] | None = None,
 ) -> SourceModelRecord:
     _validate_model_cls(model_cls)
-    now = _utcnow_text()
+    now = _epoch_ms()
     async with get_session() as session:
         if is_default:
             await _clear_default_source_model(session, model_cls, source_id=source_id)
@@ -196,7 +196,7 @@ async def update_source_model(  # noqa: PLR0913
         existing.capability_provenance_json = dumps(
             capability_provenance or {}, ensure_ascii=False
         )
-        existing.updated_at = _utcnow_text()
+        existing.updated_at = _epoch_ms()
         await session.commit()
     return SourceModelRecord(
         model_id=model_id,
@@ -274,7 +274,7 @@ async def _clear_default_source_model(
     await session.execute(
         update(model_cls)
         .where(model_cls.source_id == source_id)
-        .values(is_default=0, updated_at=_utcnow_text())
+        .values(is_default=0, updated_at=_epoch_ms())
     )
 
 

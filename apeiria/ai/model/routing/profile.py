@@ -29,7 +29,7 @@ from apeiria.ai.model.routing.selection import (
     resolve_source_selected_model_with_fallback,
 )
 from apeiria.ai.model.sources.service import AISourceService
-from apeiria.db.base import _utcnow_text
+from apeiria.db.base import _epoch_ms
 from apeiria.db.engine import get_session
 from apeiria.db.models.ai_routing import AIModelBinding, AIModelProfile
 
@@ -116,7 +116,7 @@ class AIModelProfileService:
             enabled=create_input.enabled,
             fallback_profile_id=None,
         )
-        now = _utcnow_text()
+        now = _epoch_ms()
         async with get_session() as session:
             instance = AIModelProfile(
                 profile_id=profile.profile_id,
@@ -167,7 +167,7 @@ class AIModelProfileService:
             row.priority = updated.priority
             row.enabled = 1 if updated.enabled else 0
             row.fallback_profile_id = updated.fallback_profile_id
-            row.updated_at = _utcnow_text()
+            row.updated_at = _epoch_ms()
             await session.commit()
         return updated
 
