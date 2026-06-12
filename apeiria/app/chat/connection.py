@@ -42,13 +42,11 @@ class WebChatConnection:
                 raise WebChatConnectionClosed(code=1006) from exc
             raise
 
-    @staticmethod
-    def _is_closed_runtime_error(exc: RuntimeError) -> bool:
-        return str(exc) in {
-            'Cannot call "send" once a close message has been sent.',
-            'WebSocket is not connected. Need to call "accept" first.',
-            'Cannot call "receive" once a disconnect message has been received.',
-        }
+    def _is_closed_runtime_error(self, exc: RuntimeError) -> bool:
+        if self._is_disconnected():
+            return True
+        msg = str(exc).lower()
+        return "close" in msg or "not connected" in msg or "disconnect" in msg
 
     def _is_disconnected(self) -> bool:
         disconnected = WebSocketState.DISCONNECTED

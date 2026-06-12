@@ -23,10 +23,17 @@ class BotConfig(BaseModel):
     log_retention: str = "30 days"
 
 
-bot_config = nonebot.get_plugin_config(BotConfig)
+_bot_config: BotConfig | None = None
+
+
+def _get_bot_config() -> BotConfig:
+    global _bot_config  # noqa: PLW0603
+    if _bot_config is None:
+        _bot_config = nonebot.get_plugin_config(BotConfig)
+    return _bot_config
 
 
 def get_error_message() -> str:
     """Resolve configured error message, supporting either i18n key or raw text."""
-    message = bot_config.error_message
+    message = _get_bot_config().error_message
     return t(message) if "." in message else message
