@@ -168,3 +168,18 @@ def load_framework() -> None:
     from apeiria.bot.hooks.registry import register_bot_hooks
 
     register_bot_hooks()
+
+    from nonebot import get_driver
+
+    from apeiria.db.engine import close_engine, init_engine
+    from apeiria.db.runtime import database_runtime
+
+    driver = get_driver()
+
+    @driver.on_startup
+    async def _init_async_engine() -> None:
+        await init_engine(database_runtime.database_path())
+
+    @driver.on_shutdown
+    async def _close_async_engine() -> None:
+        await close_engine()
