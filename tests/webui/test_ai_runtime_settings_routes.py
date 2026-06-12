@@ -6,9 +6,8 @@ import pytest
 from fastapi import HTTPException
 
 from apeiria.access.principal import AuthSession, Principal, PrincipalRole
-from apeiria.db.base import Base
-from apeiria.db.engine import close_engine, get_engine, init_engine
 from apeiria.db.runtime import database_runtime
+from tests.db_helpers import async_db
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -40,11 +39,7 @@ def test_ai_runtime_settings_routes_read_and_update(
     db_path.parent.mkdir(parents=True, exist_ok=True)
 
     async def scenario() -> None:
-        await init_engine(db_path)
-        try:
-            async with get_engine().begin() as conn:
-                await conn.run_sync(Base.metadata.create_all)
-
+        async with async_db(db_path):
             initial = await get_ai_runtime_settings(_control_panel_session())
             assert (
                 initial.effective["tool_execution_timeout_seconds"]
@@ -99,8 +94,6 @@ def test_ai_runtime_settings_routes_read_and_update(
                 "night_awake_lease_minutes": UPDATED_NIGHT_AWAKE_LEASE_MINUTES,
                 "tool_execution_timeout_seconds": UPDATED_TOOL_TIMEOUT_SECONDS,
             }
-        finally:
-            await close_engine()
 
     import asyncio
 
@@ -122,11 +115,7 @@ def test_ai_runtime_settings_route_rejects_invalid_update(
     db_path.parent.mkdir(parents=True, exist_ok=True)
 
     async def scenario() -> None:
-        await init_engine(db_path)
-        try:
-            async with get_engine().begin() as conn:
-                await conn.run_sync(Base.metadata.create_all)
-
+        async with async_db(db_path):
             with pytest.raises(HTTPException) as exc_info:
                 await update_ai_runtime_settings(
                     AIRuntimeSettingsUpdateRequest(
@@ -135,8 +124,6 @@ def test_ai_runtime_settings_route_rejects_invalid_update(
                     _control_panel_session(),
                 )
             assert exc_info.value.status_code == HTTP_BAD_REQUEST
-        finally:
-            await close_engine()
 
     import asyncio
 

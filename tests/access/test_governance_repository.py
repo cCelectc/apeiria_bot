@@ -3,8 +3,7 @@ from __future__ import annotations
 import asyncio
 from typing import TYPE_CHECKING
 
-from apeiria.db.base import Base
-from apeiria.db.engine import close_engine, init_engine
+from tests.db_helpers import async_db
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -19,13 +18,7 @@ def test_access_and_group_repositories_use_new_database(
     db_path = tmp_path / "test.db"
 
     async def run() -> None:
-        await init_engine(db_path)
-        try:
-            from apeiria.db.engine import get_engine
-
-            async with get_engine().begin() as conn:
-                await conn.run_sync(Base.metadata.create_all)
-
+        async with async_db(db_path):
             await access_repository.upsert_access_rule(
                 subject_type="group",
                 subject_id="group-1",
@@ -62,7 +55,5 @@ def test_access_and_group_repositories_use_new_database(
                 )
                 is True
             )
-        finally:
-            await close_engine()
 
     asyncio.run(run())

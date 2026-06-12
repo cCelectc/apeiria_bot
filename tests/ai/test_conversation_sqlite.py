@@ -14,18 +14,13 @@ RETENTION_DAYS = 1
 def test_conversation_service_uses_sqlite(
     tmp_path: Path,
 ) -> None:
-    from apeiria.db.base import Base
-    from apeiria.db.engine import close_engine, get_engine, init_engine
     from apeiria.db.models.conversation import ChatMessage, ChatSession  # noqa: F401
+    from tests.db_helpers import async_db
 
     db_path = tmp_path / "test.db"
 
     async def run() -> None:
-        await init_engine(db_path)
-        try:
-            async with get_engine().begin() as conn:
-                await conn.run_sync(Base.metadata.create_all)
-
+        async with async_db(db_path):
             from apeiria.conversation.contracts import ChatMessageCreate
             from apeiria.conversation.models import ChatSessionIdentity
             from apeiria.conversation.service import chat_session_service
@@ -70,8 +65,6 @@ def test_conversation_service_uses_sqlite(
                 session_id=identity.session_id,
             )
             assert user_ids == ["user-1"]
-        finally:
-            await close_engine()
 
     asyncio.run(run())
 
@@ -79,22 +72,17 @@ def test_conversation_service_uses_sqlite(
 def test_conversation_context_summary_uses_dedicated_storage(
     tmp_path: Path,
 ) -> None:
-    from apeiria.db.base import Base
-    from apeiria.db.engine import close_engine, get_engine, init_engine
     from apeiria.db.models.conversation import (  # noqa: F401
         ChatMessage,
         ChatSession,
         ChatSessionContextSummary,
     )
+    from tests.db_helpers import async_db
 
     db_path = tmp_path / "test.db"
 
     async def run() -> None:
-        await init_engine(db_path)
-        try:
-            async with get_engine().begin() as conn:
-                await conn.run_sync(Base.metadata.create_all)
-
+        async with async_db(db_path):
             from apeiria.conversation.models import ChatSessionIdentity
             from apeiria.conversation.service import chat_session_service
 
@@ -130,8 +118,6 @@ def test_conversation_context_summary_uses_dedicated_storage(
             assert summary.source_until_message_id == "msg-2"
             assert summary.source_until_created_at == second_boundary
             assert [session.session_id for session in sessions] == [identity.session_id]
-        finally:
-            await close_engine()
 
     asyncio.run(run())
 
@@ -139,18 +125,13 @@ def test_conversation_context_summary_uses_dedicated_storage(
 def test_recent_target_title_uses_latest_message_excerpt(
     tmp_path: Path,
 ) -> None:
-    from apeiria.db.base import Base
-    from apeiria.db.engine import close_engine, get_engine, init_engine
     from apeiria.db.models.conversation import ChatMessage, ChatSession  # noqa: F401
+    from tests.db_helpers import async_db
 
     db_path = tmp_path / "test.db"
 
     async def run() -> None:
-        await init_engine(db_path)
-        try:
-            async with get_engine().begin() as conn:
-                await conn.run_sync(Base.metadata.create_all)
-
+        async with async_db(db_path):
             from apeiria.app.ai.sessions.targets import list_recent_targets
             from apeiria.conversation.contracts import ChatMessageCreate
             from apeiria.conversation.models import ChatSessionIdentity
@@ -178,8 +159,6 @@ def test_recent_target_title_uses_latest_message_excerpt(
 
             assert targets[0].target_type == "scene"
             assert targets[0].title == "latest useful message"
-        finally:
-            await close_engine()
 
     asyncio.run(run())
 
@@ -187,18 +166,13 @@ def test_recent_target_title_uses_latest_message_excerpt(
 def test_conversation_disposition_defaults_and_observed_reads(
     tmp_path: Path,
 ) -> None:
-    from apeiria.db.base import Base
-    from apeiria.db.engine import close_engine, get_engine, init_engine
     from apeiria.db.models.conversation import ChatMessage, ChatSession  # noqa: F401
+    from tests.db_helpers import async_db
 
     db_path = tmp_path / "test.db"
 
     async def run() -> None:
-        await init_engine(db_path)
-        try:
-            async with get_engine().begin() as conn:
-                await conn.run_sync(Base.metadata.create_all)
-
+        async with async_db(db_path):
             from apeiria.conversation.contracts import ChatMessageCreate
             from apeiria.conversation.models import ChatSessionIdentity
             from apeiria.conversation.service import chat_session_service
@@ -288,8 +262,6 @@ def test_conversation_disposition_defaults_and_observed_reads(
             ]
             assert detail[1].is_observed_context is True
             assert detail[1].raw_data is None
-        finally:
-            await close_engine()
 
     asyncio.run(run())
 
@@ -297,18 +269,15 @@ def test_conversation_disposition_defaults_and_observed_reads(
 def test_session_upsert_uses_scene_identity_and_cascades_session_id_updates(
     tmp_path: Path,
 ) -> None:
-    from apeiria.db.base import Base, _epoch_ms
-    from apeiria.db.engine import close_engine, get_engine, get_session, init_engine
+    from apeiria.db.base import _epoch_ms
+    from apeiria.db.engine import get_session
     from apeiria.db.models.conversation import ChatSession
+    from tests.db_helpers import async_db
 
     db_path = tmp_path / "test.db"
 
     async def run() -> None:
-        await init_engine(db_path)
-        try:
-            async with get_engine().begin() as conn:
-                await conn.run_sync(Base.metadata.create_all)
-
+        async with async_db(db_path):
             old_ms = _epoch_ms() - 86_400_000
 
             async with get_session() as session:
@@ -355,8 +324,6 @@ def test_session_upsert_uses_scene_identity_and_cascades_session_id_updates(
                 session_ids = result.scalars().all()
 
             assert session_ids == ["session-new"]
-        finally:
-            await close_engine()
 
     asyncio.run(run())
 
@@ -365,9 +332,9 @@ def test_conversation_retention_deletes_sqlite_rows(
     tmp_path: Path,
 ) -> None:
     from apeiria.ai.retention import AIRetentionService
-    from apeiria.db.base import Base
-    from apeiria.db.engine import close_engine, get_engine, get_session, init_engine
+    from apeiria.db.engine import get_session
     from apeiria.db.models.conversation import ChatMessage, ChatSession
+    from tests.db_helpers import async_db
 
     db_path = tmp_path / "test.db"
 
@@ -378,11 +345,7 @@ def test_conversation_retention_deletes_sqlite_rows(
     new_epoch_ms = int(datetime.now(timezone.utc).timestamp() * 1000)
 
     async def run() -> None:
-        await init_engine(db_path)
-        try:
-            async with get_engine().begin() as conn:
-                await conn.run_sync(Base.metadata.create_all)
-
+        async with async_db(db_path):
             async with get_session() as session:
                 session.add(
                     ChatSession(
@@ -453,7 +416,5 @@ def test_conversation_retention_deletes_sqlite_rows(
             assert result.deleted_sessions == 0
             assert result.cleared_raw_payloads == 0
             assert rows == ["msg-new"]
-        finally:
-            await close_engine()
 
     asyncio.run(run())

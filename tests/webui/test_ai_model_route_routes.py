@@ -49,13 +49,10 @@ def test_ai_model_route_routes_manage_routes_members_bindings_and_audit(
         monkeypatch.setattr(audit_module, "_mirror_to_governance_audit", _noop_mirror)
 
         async def scenario() -> None:
-            from apeiria.db.engine import close_engine, init_engine
+            from tests.db_helpers import async_db
 
-            await init_engine(database_runtime.database_path())
-            try:
+            async with async_db(database_runtime.database_path(), create_tables=False):
                 await _run_route_scenario()
-            finally:
-                await close_engine()
 
         async def _run_route_scenario() -> None:
             session = _control_panel_session()

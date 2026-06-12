@@ -84,14 +84,13 @@ def test_memory_source_message_reference_is_enforced(
 ) -> None:
     from sqlalchemy.exc import IntegrityError as SAIntegrityError
 
-    from apeiria.db.engine import close_engine, init_engine
+    from tests.db_helpers import async_db
 
     monkeypatch.setattr(database_runtime, "_project_root", tmp_path)
     database_runtime.ensure_ready()
 
     async def scenario() -> None:
-        await init_engine(database_runtime.database_path())
-        try:
+        async with async_db(database_runtime.database_path(), create_tables=False):
             with raises((sqlite3.IntegrityError, SAIntegrityError)):
                 await ai_wiring.memory_service.create_memory_if_absent(
                     AIMemoryCreateInput(
@@ -103,8 +102,6 @@ def test_memory_source_message_reference_is_enforced(
                         source_message_id="missing-message",
                     ),
                 )
-        finally:
-            await close_engine()
 
     asyncio.run(scenario())
 
@@ -163,12 +160,11 @@ def test_default_source_model_can_be_replaced_atomically(
     _seed_source()
 
     from apeiria.ai.model.catalog.storage import create_source_model
-    from apeiria.db.engine import close_engine, init_engine
     from apeiria.db.models.ai_source import AIChatModel
+    from tests.db_helpers import async_db
 
     async def scenario() -> None:
-        await init_engine(database_runtime.database_path())
-        try:
+        async with async_db(database_runtime.database_path(), create_tables=False):
             await create_source_model(
                 AIChatModel,
                 model_id="model_primary",
@@ -189,8 +185,6 @@ def test_default_source_model_can_be_replaced_atomically(
                 is_default=True,
                 extra_params={},
             )
-        finally:
-            await close_engine()
 
     asyncio.run(scenario())
 

@@ -25,11 +25,10 @@ def test_memory_items_use_sqlite(
     from apeiria.ai.memory.models import AIMemoryQuery
     from apeiria.ai.memory.service import AIMemoryCreateInput
     from apeiria.app.ai.wiring import ai_wiring
-    from apeiria.db.engine import close_engine, init_engine
+    from tests.db_helpers import async_db
 
     async def scenario() -> None:
-        await init_engine(database_runtime.database_path())
-        try:
+        async with async_db(database_runtime.database_path(), create_tables=False):
             created = await ai_wiring.memory_service.create_memory(
                 AIMemoryCreateInput(
                     anchor_type="user",
@@ -101,8 +100,6 @@ def test_memory_items_use_sqlite(
                 await ai_wiring.memory_service.get_memory(memory_id=created.memory_id)
                 is None
             )
-        finally:
-            await close_engine()
 
     asyncio.run(scenario())
 
@@ -120,7 +117,7 @@ def test_memory_lifecycle_changes_sync_sparse_index(
     )
     from apeiria.ai.retrieval.sparse import retrieval_sparse_index
     from apeiria.app.ai.wiring import ai_wiring
-    from apeiria.db.engine import close_engine, init_engine
+    from tests.db_helpers import async_db
 
     async def select_default_model(*, capability_type: str) -> object | None:
         del capability_type
@@ -133,8 +130,7 @@ def test_memory_lifecycle_changes_sync_sparse_index(
     )
 
     async def scenario() -> None:
-        await init_engine(database_runtime.database_path())
-        try:
+        async with async_db(database_runtime.database_path(), create_tables=False):
             memory = await ai_wiring.memory_service.create_memory(
                 AIMemoryCreateInput(
                     anchor_type="user",
@@ -183,8 +179,6 @@ def test_memory_lifecycle_changes_sync_sparse_index(
                 candidate.document.document_id
                 for candidate in reactivated_result.candidates
             ] == [reactivated_document.document_id]
-        finally:
-            await close_engine()
 
     asyncio.run(scenario())
 
@@ -198,11 +192,10 @@ def test_consolidate_anchor_summary_creates_first_summary_memory(
 
     from apeiria.ai.memory.service import AIMemoryCreateInput
     from apeiria.app.ai.wiring import ai_wiring
-    from apeiria.db.engine import close_engine, init_engine
+    from tests.db_helpers import async_db
 
     async def scenario() -> None:
-        await init_engine(database_runtime.database_path())
-        try:
+        async with async_db(database_runtime.database_path(), create_tables=False):
             for content in ("likes concise answers", "works on Apeiria"):
                 await ai_wiring.memory_service.create_memory(
                     AIMemoryCreateInput(
@@ -228,8 +221,6 @@ def test_consolidate_anchor_summary_creates_first_summary_memory(
             assert len(summaries) == 1
             assert summaries[0].is_editable is False
             assert "likes concise answers" in summaries[0].content
-        finally:
-            await close_engine()
 
     asyncio.run(scenario())
 
@@ -239,9 +230,9 @@ def test_suppressed_memory_retention_deletes_sqlite_rows_and_embedding(
 ) -> None:
     from apeiria.ai.memory.embedding_store import ai_memory_embedding_store
     from apeiria.ai.retention import AIRetentionService
-    from apeiria.db.base import Base
-    from apeiria.db.engine import close_engine, get_engine, get_session, init_engine
+    from apeiria.db.engine import get_session
     from apeiria.db.models.ai_memory import AIMemoryItem
+    from tests.db_helpers import async_db
 
     db_path = tmp_path / "test.db"
 
@@ -252,11 +243,7 @@ def test_suppressed_memory_retention_deletes_sqlite_rows_and_embedding(
     new_epoch_ms = int(datetime.now(timezone.utc).timestamp() * 1000)
 
     async def run() -> None:
-        await init_engine(db_path)
-        try:
-            async with get_engine().begin() as conn:
-                await conn.run_sync(Base.metadata.create_all)
-
+        async with async_db(db_path):
             async with get_session() as session:
                 for memory_id, lifecycle_state, created_at in (
                     ("mem_old", "suppressed", old_epoch_ms),
@@ -313,7 +300,5 @@ def test_suppressed_memory_retention_deletes_sqlite_rows_and_embedding(
             assert deleted == 1
             assert list(rows) == ["mem_new", "mem_visible"]
             assert ai_memory_embedding_store.get(memory_id="mem_old") is None
-        finally:
-            await close_engine()
 
     asyncio.run(run())

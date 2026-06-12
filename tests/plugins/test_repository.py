@@ -3,9 +3,8 @@ from __future__ import annotations
 import asyncio
 from typing import TYPE_CHECKING
 
-from apeiria.db.base import Base
-from apeiria.db.engine import close_engine, get_engine, init_engine
 from apeiria.db.runtime import database_runtime
+from tests.db_helpers import async_db
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -24,11 +23,7 @@ def test_plugin_repository_persists_enabled_state_and_policy(
     db_path.parent.mkdir(parents=True, exist_ok=True)
 
     async def run() -> None:
-        await init_engine(db_path)
-        try:
-            async with get_engine().begin() as conn:
-                await conn.run_sync(Base.metadata.create_all)
-
+        async with async_db(db_path):
             await plugin_catalog_repository.ensure_plugin_record_by_module_name(
                 "plugins.alpha"
             )
@@ -63,8 +58,6 @@ def test_plugin_repository_persists_enabled_state_and_policy(
             assert enabled_map == {"plugins.alpha": False}
             assert info_map["plugins.alpha"].module_name == "plugins.alpha"
             assert info_map["plugins.alpha"].is_global_enabled is False
-        finally:
-            await close_engine()
 
     asyncio.run(run())
 
@@ -80,11 +73,7 @@ def test_plugin_repository_deletes_only_existing_plugin_records(
     db_path.parent.mkdir(parents=True, exist_ok=True)
 
     async def run() -> None:
-        await init_engine(db_path)
-        try:
-            async with get_engine().begin() as conn:
-                await conn.run_sync(Base.metadata.create_all)
-
+        async with async_db(db_path):
             await plugin_catalog_repository.ensure_plugin_record_by_module_name(
                 "plugins.alpha"
             )
@@ -99,7 +88,5 @@ def test_plugin_repository_deletes_only_existing_plugin_records(
             assert plugin_catalog_repository.get_persisted_plugin_modules_sync() == {
                 "plugins.alpha"
             }
-        finally:
-            await close_engine()
 
     asyncio.run(run())

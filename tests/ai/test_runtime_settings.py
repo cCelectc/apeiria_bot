@@ -6,8 +6,7 @@ from typing import TYPE_CHECKING
 import pytest
 from pydantic import ValidationError
 
-from apeiria.db.base import Base
-from apeiria.db.engine import close_engine, get_engine, init_engine
+from tests.db_helpers import async_db
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -31,11 +30,7 @@ def test_ai_runtime_settings_defaults_without_saved_row(
     db_path = tmp_path / "test.db"
 
     async def run() -> None:
-        await init_engine(db_path)
-        try:
-            async with get_engine().begin() as conn:
-                await conn.run_sync(Base.metadata.create_all)
-
+        async with async_db(db_path):
             view = await AIRuntimeSettingsService().get_view()
 
             assert view.effective.allow_group_initiative is False
@@ -45,8 +40,6 @@ def test_ai_runtime_settings_defaults_without_saved_row(
             )
             assert view.overrides == {}
             assert view.updated_at is None
-        finally:
-            await close_engine()
 
     asyncio.run(run())
 
@@ -59,11 +52,7 @@ def test_ai_runtime_settings_metadata_classifies_operator_visibility(
     db_path = tmp_path / "test.db"
 
     async def run() -> None:
-        await init_engine(db_path)
-        try:
-            async with get_engine().begin() as conn:
-                await conn.run_sync(Base.metadata.create_all)
-
+        async with async_db(db_path):
             fields = {
                 field.key: field
                 for field in (await AIRuntimeSettingsService().get_view()).fields
@@ -73,8 +62,6 @@ def test_ai_runtime_settings_metadata_classifies_operator_visibility(
             assert fields["quiet_hours_enabled"].visibility == "default"
             assert fields["quiet_hours_start_minute"].visibility == "advanced"
             assert fields["night_awake_lease_minutes"].visibility == "advanced"
-        finally:
-            await close_engine()
 
     asyncio.run(run())
 
@@ -87,11 +74,7 @@ def test_ai_runtime_settings_persist_across_service_recreation(
     db_path = tmp_path / "test.db"
 
     async def run() -> None:
-        await init_engine(db_path)
-        try:
-            async with get_engine().begin() as conn:
-                await conn.run_sync(Base.metadata.create_all)
-
+        async with async_db(db_path):
             first = AIRuntimeSettingsService()
             updated = await first.update_settings(
                 {
@@ -120,8 +103,6 @@ def test_ai_runtime_settings_persist_across_service_recreation(
                 "tool_execution_timeout_seconds": UPDATED_TOOL_TIMEOUT_SECONDS,
             }
             assert reloaded.updated_at is not None
-        finally:
-            await close_engine()
 
     asyncio.run(run())
 
@@ -134,11 +115,7 @@ def test_ai_runtime_settings_can_clear_override(
     db_path = tmp_path / "test.db"
 
     async def run() -> None:
-        await init_engine(db_path)
-        try:
-            async with get_engine().begin() as conn:
-                await conn.run_sync(Base.metadata.create_all)
-
+        async with async_db(db_path):
             service = AIRuntimeSettingsService()
             await service.update_settings({"allow_group_initiative": True})
             cleared = await service.update_settings(
@@ -147,8 +124,6 @@ def test_ai_runtime_settings_can_clear_override(
 
             assert cleared.effective.allow_group_initiative is False
             assert cleared.overrides == {}
-        finally:
-            await close_engine()
 
     asyncio.run(run())
 
@@ -161,11 +136,7 @@ def test_hidden_ai_runtime_settings_still_persist_and_apply(
     db_path = tmp_path / "test.db"
 
     async def run() -> None:
-        await init_engine(db_path)
-        try:
-            async with get_engine().begin() as conn:
-                await conn.run_sync(Base.metadata.create_all)
-
+        async with async_db(db_path):
             service = AIRuntimeSettingsService()
             updated = await service.update_settings(
                 {"duplicate_event_ttl_seconds": UPDATED_DUPLICATE_EVENT_TTL_SECONDS}
@@ -183,8 +154,6 @@ def test_hidden_ai_runtime_settings_still_persist_and_apply(
                 cleared.effective.duplicate_event_ttl_seconds
                 == DEFAULT_DUPLICATE_EVENT_TTL_SECONDS
             )
-        finally:
-            await close_engine()
 
     asyncio.run(run())
 
@@ -197,11 +166,7 @@ def test_ai_runtime_settings_reject_invalid_values(
     db_path = tmp_path / "test.db"
 
     async def run() -> None:
-        await init_engine(db_path)
-        try:
-            async with get_engine().begin() as conn:
-                await conn.run_sync(Base.metadata.create_all)
-
+        async with async_db(db_path):
             service = AIRuntimeSettingsService()
 
             with pytest.raises(ValidationError):
@@ -220,8 +185,6 @@ def test_ai_runtime_settings_reject_invalid_values(
                 await service.update_settings({"night_awake_lease_minutes": 0})
 
             assert (await service.get_view()).overrides == {}
-        finally:
-            await close_engine()
 
     asyncio.run(run())
 
@@ -244,16 +207,10 @@ conversation_retention_days = 2
     db_path = tmp_path / "test.db"
 
     async def run() -> None:
-        await init_engine(db_path)
-        try:
-            async with get_engine().begin() as conn:
-                await conn.run_sync(Base.metadata.create_all)
-
+        async with async_db(db_path):
             view = await AIRuntimeSettingsService().get_view()
 
             assert view.effective.allow_group_initiative is False
             assert view.overrides == {}
-        finally:
-            await close_engine()
 
     asyncio.run(run())

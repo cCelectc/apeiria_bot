@@ -3,9 +3,8 @@ from __future__ import annotations
 import asyncio
 from typing import TYPE_CHECKING, Protocol
 
-from apeiria.db.base import Base
-from apeiria.db.engine import close_engine, get_engine, init_engine
 from apeiria.db.runtime import database_runtime
+from tests.db_helpers import async_db
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -37,10 +36,7 @@ def test_cleanup_orphan_plugin_state_removes_only_true_orphans(
     db_path = tmp_path / "data" / "db" / "apeiria.sqlite3"
 
     async def run() -> None:
-        await init_engine(db_path)
-        try:
-            async with get_engine().begin() as conn:
-                await conn.run_sync(Base.metadata.create_all)
+        async with async_db(db_path):
             await _ensure_records(
                 plugin_catalog_repository,
                 [
@@ -52,8 +48,6 @@ def test_cleanup_orphan_plugin_state_removes_only_true_orphans(
                     "nonebot_plugin_waiter",
                 ],
             )
-        finally:
-            await close_engine()
 
     asyncio.run(run())
 
@@ -85,10 +79,7 @@ def test_cleanup_orphan_plugin_state_removes_importable_unreferenced_module(
     db_path = tmp_path / "data" / "db" / "apeiria.sqlite3"
 
     async def run() -> None:
-        await init_engine(db_path)
-        try:
-            async with get_engine().begin() as conn:
-                await conn.run_sync(Base.metadata.create_all)
+        async with async_db(db_path):
             await _ensure_records(
                 plugin_catalog_repository,
                 [
@@ -96,8 +87,6 @@ def test_cleanup_orphan_plugin_state_removes_importable_unreferenced_module(
                     "nonebot_plugin_parser",
                 ],
             )
-        finally:
-            await close_engine()
 
     asyncio.run(run())
 
@@ -124,10 +113,7 @@ def test_cleanup_orphan_plugin_state_is_noop_when_all_rows_are_valid(
     db_path = tmp_path / "data" / "db" / "apeiria.sqlite3"
 
     async def run() -> None:
-        await init_engine(db_path)
-        try:
-            async with get_engine().begin() as conn:
-                await conn.run_sync(Base.metadata.create_all)
+        async with async_db(db_path):
             await _ensure_records(
                 plugin_catalog_repository,
                 [
@@ -135,8 +121,6 @@ def test_cleanup_orphan_plugin_state_is_noop_when_all_rows_are_valid(
                     "apeiria.builtin_plugins.help",
                 ],
             )
-        finally:
-            await close_engine()
 
     asyncio.run(run())
 
