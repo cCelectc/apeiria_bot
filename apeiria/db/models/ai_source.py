@@ -11,10 +11,10 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, declared_attr, mapped_column
 
-from apeiria.db.base import Base, TimestampMixin
+from apeiria.db.base import Base, LegacyTextTimestampMixin
 
 
-class AISource(TimestampMixin, Base):
+class AISource(LegacyTextTimestampMixin, Base):
     __tablename__ = "ai_source"
 
     source_id: Mapped[str] = mapped_column(Text, primary_key=True)
@@ -87,7 +87,7 @@ class AISource(TimestampMixin, Base):
     )
 
 
-class _SourceModelMixin(TimestampMixin):
+class _SourceModelMixin(LegacyTextTimestampMixin):
     @declared_attr
     def model_id(self) -> Mapped[str]:
         return mapped_column(Text, primary_key=True)

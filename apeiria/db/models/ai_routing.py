@@ -10,7 +10,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
-from apeiria.db.base import Base, TimestampMixin
+from apeiria.db.base import Base, LegacyTextTimestampMixin
 
 _TASK_CLASS_CHECK = (
     "task_class IN ("
@@ -20,7 +20,7 @@ _TASK_CLASS_CHECK = (
 _SCOPE_TYPE_CHECK = "scope_type IN ('global', 'group', 'user', 'conversation')"
 
 
-class AIModelProfile(TimestampMixin, Base):
+class AIModelProfile(LegacyTextTimestampMixin, Base):
     __tablename__ = "ai_model_profile"
 
     profile_id: Mapped[str] = mapped_column(Text, primary_key=True)
@@ -42,7 +42,7 @@ class AIModelProfile(TimestampMixin, Base):
     )
 
 
-class AIModelBinding(TimestampMixin, Base):
+class AIModelBinding(LegacyTextTimestampMixin, Base):
     __tablename__ = "ai_model_binding"
 
     binding_id: Mapped[str] = mapped_column(Text, primary_key=True)
@@ -65,7 +65,7 @@ class AIModelBinding(TimestampMixin, Base):
     )
 
 
-class AIModelRoute(TimestampMixin, Base):
+class AIModelRoute(LegacyTextTimestampMixin, Base):
     __tablename__ = "ai_model_route"
 
     route_id: Mapped[str] = mapped_column(Text, primary_key=True)
@@ -104,7 +104,7 @@ class AIModelRoute(TimestampMixin, Base):
     )
 
 
-class AIModelRouteMember(TimestampMixin, Base):
+class AIModelRouteMember(LegacyTextTimestampMixin, Base):
     __tablename__ = "ai_model_route_member"
 
     route_member_id: Mapped[str] = mapped_column(Text, primary_key=True)
@@ -128,7 +128,7 @@ class AIModelRouteMember(TimestampMixin, Base):
     )
 
 
-class AIModelRouteBinding(TimestampMixin, Base):
+class AIModelRouteBinding(LegacyTextTimestampMixin, Base):
     __tablename__ = "ai_model_route_binding"
 
     binding_id: Mapped[str] = mapped_column(Text, primary_key=True)

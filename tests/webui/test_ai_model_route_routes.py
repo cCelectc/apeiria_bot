@@ -4,7 +4,6 @@ import asyncio
 from typing import TYPE_CHECKING
 
 from apeiria.access.principal import AuthSession, Principal, PrincipalRole
-from apeiria.ai.model.catalog.storage import create_source_model
 from apeiria.db.runtime import database_runtime
 from apeiria.utils.project_context import (
     reset_active_project_root,
@@ -50,6 +49,15 @@ def test_ai_model_route_routes_manage_routes_members_bindings_and_audit(
         monkeypatch.setattr(audit_module, "_mirror_to_governance_audit", _noop_mirror)
 
         async def scenario() -> None:
+            from apeiria.db.engine import close_engine, init_engine
+
+            await init_engine(database_runtime.database_path())
+            try:
+                await _run_route_scenario()
+            finally:
+                await close_engine()
+
+        async def _run_route_scenario() -> None:
             session = _control_panel_session()
             route = await upsert_ai_model_route(
                 AIModelRouteUpsertRequest(
@@ -195,17 +203,36 @@ def _seed_chat_profile(profile_id: str, *, model_id: str) -> None:
                 "2026-05-21T00:00:00",
             ),
         )
-    create_source_model(
-        "ai_chat_model",
-        model_id=model_id,
-        source_id="source-1",
-        model_identifier=model_id,
-        display_name=model_id,
-        enabled=True,
-        is_default=False,
-        extra_params={},
-    )
-    with database_runtime.connect_sync() as connection:
+        connection.execute(
+            """
+            INSERT INTO ai_chat_model (
+                model_id,
+                source_id,
+                model_identifier,
+                display_name,
+                enabled,
+                is_default,
+                extra_params_json,
+                capability_metadata_json,
+                default_options_json,
+                capability_provenance_json,
+                updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                model_id,
+                "source-1",
+                model_id,
+                model_id,
+                1,
+                0,
+                "{}",
+                "{}",
+                "{}",
+                "{}",
+                "2026-05-21T00:00:00",
+            ),
+        )
         connection.execute(
             """
             INSERT INTO ai_model_profile (

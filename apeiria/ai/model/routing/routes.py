@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
-from datetime import datetime, timezone
 from typing import TYPE_CHECKING, cast
 from uuid import uuid4
+
+from sqlalchemy import delete, select
+from sqlalchemy.dialects.sqlite import insert
 
 from apeiria.ai.model.catalog.chat import AIChatModelService
 from apeiria.ai.model.routing.bindings import (
@@ -29,7 +31,13 @@ from apeiria.ai.model.routing.selection import (
     selected_model_diagnostics,
 )
 from apeiria.ai.model.sources.service import AISourceService
-from apeiria.db.runtime import database_runtime
+from apeiria.db.base import _utcnow_text
+from apeiria.db.engine import get_session
+from apeiria.db.models.ai_routing import (
+    AIModelRoute,
+    AIModelRouteBinding,
+    AIModelRouteMember,
+)
 
 if TYPE_CHECKING:
     from random import Random
@@ -86,22 +94,16 @@ class AIModelRouteService:
         )
 
     async def list_routes(self) -> list[AIModelRouteDefinition]:
-        with database_runtime.connect_sync() as connection:
-            rows = connection.execute(
-                """
-                SELECT
-                    route_id,
-                    name,
-                    task_class,
-                    mode,
-                    algorithm,
-                    fallback_on_failure,
-                    enabled
-                FROM ai_model_route
-                ORDER BY task_class ASC, name ASC, route_id ASC
-                """
-            ).fetchall()
-        return [_row_to_route(row) for row in rows]
+        async with get_session() as session:
+            result = await session.execute(
+                select(AIModelRoute).order_by(
+                    AIModelRoute.task_class.asc(),
+                    AIModelRoute.name.asc(),
+                    AIModelRoute.route_id.asc(),
+                )
+            )
+            rows = result.scalars().all()
+        return [_orm_to_route(row) for row in rows]
 
     async def create_route(
         self,
@@ -116,31 +118,20 @@ class AIModelRouteService:
             fallback_on_failure=create_input.fallback_on_failure,
             enabled=create_input.enabled,
         )
-        with database_runtime.connect_sync() as connection:
-            connection.execute(
-                """
-                INSERT INTO ai_model_route (
-                    route_id,
-                    name,
-                    task_class,
-                    mode,
-                    algorithm,
-                    fallback_on_failure,
-                    enabled,
-                    updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    route.route_id,
-                    route.name,
-                    route.task_class,
-                    route.mode,
-                    route.algorithm,
-                    1 if route.fallback_on_failure else 0,
-                    1 if route.enabled else 0,
-                    _utcnow_text(),
-                ),
+        now = _utcnow_text()
+        async with get_session() as session:
+            instance = AIModelRoute(
+                route_id=route.route_id,
+                name=route.name,
+                task_class=route.task_class,
+                mode=route.mode,
+                algorithm=route.algorithm,
+                fallback_on_failure=1 if route.fallback_on_failure else 0,
+                enabled=1 if route.enabled else 0,
+                updated_at=now,
             )
+            session.add(instance)
+            await session.commit()
         return route
 
     async def update_route(
@@ -158,65 +149,45 @@ class AIModelRouteService:
             fallback_on_failure=create_input.fallback_on_failure,
             enabled=create_input.enabled,
         )
-        with database_runtime.connect_sync() as connection:
-            cursor = connection.execute(
-                """
-                UPDATE ai_model_route
-                SET
-                    name = ?,
-                    task_class = ?,
-                    mode = ?,
-                    algorithm = ?,
-                    fallback_on_failure = ?,
-                    enabled = ?,
-                    updated_at = ?
-                WHERE route_id = ?
-                """,
-                (
-                    updated.name,
-                    updated.task_class,
-                    updated.mode,
-                    updated.algorithm,
-                    1 if updated.fallback_on_failure else 0,
-                    1 if updated.enabled else 0,
-                    _utcnow_text(),
-                    route_id,
-                ),
-            )
-        return updated if cursor.rowcount > 0 else None
+        async with get_session() as session:
+            row = await session.get(AIModelRoute, route_id)
+            if row is None:
+                return None
+            row.name = updated.name
+            row.task_class = updated.task_class
+            row.mode = updated.mode
+            row.algorithm = updated.algorithm
+            row.fallback_on_failure = 1 if updated.fallback_on_failure else 0
+            row.enabled = 1 if updated.enabled else 0
+            row.updated_at = _utcnow_text()
+            await session.commit()
+        return updated
 
     async def delete_route(self, *, route_id: str) -> bool:
-        with database_runtime.connect_sync() as connection:
-            cursor = connection.execute(
-                "DELETE FROM ai_model_route WHERE route_id = ?",
-                (route_id,),
+        async with get_session() as session:
+            result = await session.execute(
+                delete(AIModelRoute).where(AIModelRoute.route_id == route_id)
             )
-        return cursor.rowcount > 0
+            await session.commit()
+        return result.rowcount > 0
 
     async def list_members(
         self,
         *,
         route_id: str | None = None,
     ) -> list[AIModelRouteMemberDefinition]:
-        where = "WHERE route_id = ?" if route_id else ""
-        params = (route_id,) if route_id else ()
-        with database_runtime.connect_sync() as connection:
-            rows = connection.execute(
-                f"""
-                SELECT
-                    route_member_id,
-                    route_id,
-                    profile_id,
-                    position,
-                    weight,
-                    enabled
-                FROM ai_model_route_member
-                {where}
-                ORDER BY route_id ASC, position ASC, route_member_id ASC
-                """,
-                params,
-            ).fetchall()
-        return [_row_to_member(row) for row in rows]
+        stmt = select(AIModelRouteMember)
+        if route_id:
+            stmt = stmt.where(AIModelRouteMember.route_id == route_id)
+        stmt = stmt.order_by(
+            AIModelRouteMember.route_id.asc(),
+            AIModelRouteMember.position.asc(),
+            AIModelRouteMember.route_member_id.asc(),
+        )
+        async with get_session() as session:
+            result = await session.execute(stmt)
+            rows = result.scalars().all()
+        return [_orm_to_member(row) for row in rows]
 
     async def create_member(
         self,
@@ -230,29 +201,19 @@ class AIModelRouteService:
             weight=create_input.weight,
             enabled=create_input.enabled,
         )
-        with database_runtime.connect_sync() as connection:
-            connection.execute(
-                """
-                INSERT INTO ai_model_route_member (
-                    route_member_id,
-                    route_id,
-                    profile_id,
-                    position,
-                    weight,
-                    enabled,
-                    updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    member.route_member_id,
-                    member.route_id,
-                    member.profile_id,
-                    member.position,
-                    member.weight,
-                    1 if member.enabled else 0,
-                    _utcnow_text(),
-                ),
+        now = _utcnow_text()
+        async with get_session() as session:
+            instance = AIModelRouteMember(
+                route_member_id=member.route_member_id,
+                route_id=member.route_id,
+                profile_id=member.profile_id,
+                position=member.position,
+                weight=member.weight,
+                enabled=1 if member.enabled else 0,
+                updated_at=now,
             )
+            session.add(instance)
+            await session.commit()
         return member
 
     async def update_member(
@@ -269,49 +230,38 @@ class AIModelRouteService:
             weight=create_input.weight,
             enabled=create_input.enabled,
         )
-        with database_runtime.connect_sync() as connection:
-            cursor = connection.execute(
-                """
-                UPDATE ai_model_route_member
-                SET
-                    route_id = ?,
-                    profile_id = ?,
-                    position = ?,
-                    weight = ?,
-                    enabled = ?,
-                    updated_at = ?
-                WHERE route_member_id = ?
-                """,
-                (
-                    updated.route_id,
-                    updated.profile_id,
-                    updated.position,
-                    updated.weight,
-                    1 if updated.enabled else 0,
-                    _utcnow_text(),
-                    route_member_id,
-                ),
-            )
-        return updated if cursor.rowcount > 0 else None
+        async with get_session() as session:
+            row = await session.get(AIModelRouteMember, route_member_id)
+            if row is None:
+                return None
+            row.route_id = updated.route_id
+            row.profile_id = updated.profile_id
+            row.position = updated.position
+            row.weight = updated.weight
+            row.enabled = 1 if updated.enabled else 0
+            row.updated_at = _utcnow_text()
+            await session.commit()
+        return updated
 
     async def delete_member(self, *, route_member_id: str) -> bool:
-        with database_runtime.connect_sync() as connection:
-            cursor = connection.execute(
-                "DELETE FROM ai_model_route_member WHERE route_member_id = ?",
-                (route_member_id,),
+        async with get_session() as session:
+            result = await session.execute(
+                delete(AIModelRouteMember).where(
+                    AIModelRouteMember.route_member_id == route_member_id
+                )
             )
-        return cursor.rowcount > 0
+            await session.commit()
+        return result.rowcount > 0
 
     async def list_bindings(self) -> list[AIModelRouteBindingSpec]:
-        with database_runtime.connect_sync() as connection:
-            rows = connection.execute(
-                """
-                SELECT binding_id, scope_type, scope_id, task_class, route_id
-                FROM ai_model_route_binding
-                ORDER BY binding_id ASC
-                """
-            ).fetchall()
-        return [_row_to_binding(row) for row in rows]
+        async with get_session() as session:
+            result = await session.execute(
+                select(AIModelRouteBinding).order_by(
+                    AIModelRouteBinding.binding_id.asc()
+                )
+            )
+            rows = result.scalars().all()
+        return [_orm_to_binding(row) for row in rows]
 
     async def upsert_binding(
         self,
@@ -329,31 +279,25 @@ class AIModelRouteService:
             task_class=create_input.task_class,
             route_id=create_input.route_id,
         )
-        with database_runtime.connect_sync() as connection:
-            connection.execute(
-                """
-                INSERT INTO ai_model_route_binding (
-                    binding_id,
-                    scope_type,
-                    scope_id,
-                    task_class,
-                    route_id,
-                    updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?)
-                ON CONFLICT(scope_type, scope_id, task_class)
-                DO UPDATE SET
-                    route_id = excluded.route_id,
-                    updated_at = excluded.updated_at
-                """,
-                (
-                    binding.binding_id,
-                    binding.scope_type,
-                    binding.scope_id,
-                    binding.task_class,
-                    binding.route_id,
-                    _utcnow_text(),
-                ),
+        now = _utcnow_text()
+        async with get_session() as session:
+            stmt = insert(AIModelRouteBinding).values(
+                binding_id=binding.binding_id,
+                scope_type=binding.scope_type,
+                scope_id=binding.scope_id,
+                task_class=binding.task_class,
+                route_id=binding.route_id,
+                updated_at=now,
             )
+            stmt = stmt.on_conflict_do_update(
+                index_elements=["scope_type", "scope_id", "task_class"],
+                set_={
+                    "route_id": stmt.excluded.route_id,
+                    "updated_at": stmt.excluded.updated_at,
+                },
+            )
+            await session.execute(stmt)
+            await session.commit()
         return binding
 
     async def delete_binding(
@@ -363,15 +307,16 @@ class AIModelRouteService:
         scope_id: str,
         task_class: AIModelTaskClass,
     ) -> bool:
-        with database_runtime.connect_sync() as connection:
-            cursor = connection.execute(
-                """
-                DELETE FROM ai_model_route_binding
-                WHERE scope_type = ? AND scope_id = ? AND task_class = ?
-                """,
-                (scope_type, scope_id, task_class),
+        async with get_session() as session:
+            result = await session.execute(
+                delete(AIModelRouteBinding).where(
+                    AIModelRouteBinding.scope_type == scope_type,
+                    AIModelRouteBinding.scope_id == scope_id,
+                    AIModelRouteBinding.task_class == task_class,
+                )
             )
-        return cursor.rowcount > 0
+            await session.commit()
+        return result.rowcount > 0
 
     async def resolve_attempt_plan(
         self,
@@ -434,41 +379,37 @@ class AIModelRouteService:
         return None
 
 
-def _row_to_route(row: tuple[object, ...]) -> AIModelRouteDefinition:
+def _orm_to_route(row: AIModelRoute) -> AIModelRouteDefinition:
     return AIModelRouteDefinition(
-        route_id=str(row[0]),
-        name=str(row[1]),
-        task_class=cast("AIModelTaskClass", str(row[2])),
-        mode=cast("AIModelRouteMode", str(row[3])),
-        algorithm=cast("AIModelRouteAlgorithm", str(row[4])),
-        fallback_on_failure=bool(row[5]),
-        enabled=bool(row[6]),
+        route_id=str(row.route_id),
+        name=str(row.name),
+        task_class=cast("AIModelTaskClass", str(row.task_class)),
+        mode=cast("AIModelRouteMode", str(row.mode)),
+        algorithm=cast("AIModelRouteAlgorithm", str(row.algorithm)),
+        fallback_on_failure=bool(row.fallback_on_failure),
+        enabled=bool(row.enabled),
     )
 
 
-def _row_to_member(row: tuple[object, ...]) -> AIModelRouteMemberDefinition:
+def _orm_to_member(row: AIModelRouteMember) -> AIModelRouteMemberDefinition:
     return AIModelRouteMemberDefinition(
-        route_member_id=str(row[0]),
-        route_id=str(row[1]),
-        profile_id=str(row[2]),
-        position=_row_int(row[3]),
-        weight=_row_int(row[4]),
-        enabled=bool(row[5]),
+        route_member_id=str(row.route_member_id),
+        route_id=str(row.route_id),
+        profile_id=str(row.profile_id),
+        position=int(row.position),
+        weight=int(row.weight),
+        enabled=bool(row.enabled),
     )
 
 
-def _row_to_binding(row: tuple[object, ...]) -> AIModelRouteBindingSpec:
+def _orm_to_binding(row: AIModelRouteBinding) -> AIModelRouteBindingSpec:
     return AIModelRouteBindingSpec(
-        binding_id=str(row[0]),
-        scope_type=cast("AIModelRouteScopeType", str(row[1])),
-        scope_id=str(row[2]),
-        task_class=cast("AIModelTaskClass", str(row[3])),
-        route_id=str(row[4]),
+        binding_id=str(row.binding_id),
+        scope_type=cast("AIModelRouteScopeType", str(row.scope_type)),
+        scope_id=str(row.scope_id),
+        task_class=cast("AIModelTaskClass", str(row.task_class)),
+        route_id=str(row.route_id),
     )
-
-
-def _row_int(value: object) -> int:
-    return int(cast("int | str", value))
 
 
 def _route_by_id(
@@ -511,7 +452,3 @@ def _route_source_diagnostics(
         }
     )
     return diagnostics
-
-
-def _utcnow_text() -> str:
-    return datetime.now(timezone.utc).isoformat(timespec="seconds")

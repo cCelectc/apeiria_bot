@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING
 from pytest import raises
 
 from apeiria.ai.memory.service import AIMemoryCreateInput
-from apeiria.ai.model.catalog.storage import create_source_model
 from apeiria.app.ai.wiring import ai_wiring
 from apeiria.db.runtime import database_runtime
 
@@ -24,16 +23,17 @@ def test_source_model_requires_existing_source(
     monkeypatch.setattr(database_runtime, "_project_root", tmp_path)
     database_runtime.ensure_ready()
 
-    with raises(sqlite3.IntegrityError):
-        create_source_model(
-            "ai_chat_model",
+    with database_runtime.connect_sync() as connection, raises(
+        sqlite3.IntegrityError
+    ):
+        _insert_source_model_raw(
+            connection,
             model_id="model_orphan",
             source_id="missing-source",
             model_identifier="gpt-orphan",
             display_name="GPT Orphan",
             enabled=True,
             is_default=False,
-            extra_params={},
         )
 
 
@@ -117,27 +117,28 @@ def test_default_source_model_insert_rolls_back_on_constraint_failure(
     database_runtime.ensure_ready()
     _seed_source()
 
-    create_source_model(
-        "ai_chat_model",
-        model_id="model_primary",
-        source_id="source-1",
-        model_identifier="gpt-primary",
-        display_name="GPT Primary",
-        enabled=True,
-        is_default=True,
-        extra_params={},
-    )
+    with database_runtime.connect_sync() as connection:
+        _insert_source_model_raw(
+            connection,
+            model_id="model_primary",
+            source_id="source-1",
+            model_identifier="gpt-primary",
+            display_name="GPT Primary",
+            enabled=True,
+            is_default=True,
+        )
 
-    with raises(sqlite3.IntegrityError):
-        create_source_model(
-            "ai_chat_model",
+    with database_runtime.connect_sync() as connection, raises(
+        sqlite3.IntegrityError
+    ):
+        _insert_source_model_raw(
+            connection,
             model_id="model_duplicate_identifier",
             source_id="source-1",
             model_identifier="gpt-primary",
             display_name="GPT Duplicate",
             enabled=True,
             is_default=True,
-            extra_params={},
         )
 
     with database_runtime.connect_sync() as connection:
@@ -161,26 +162,37 @@ def test_default_source_model_can_be_replaced_atomically(
     database_runtime.ensure_ready()
     _seed_source()
 
-    create_source_model(
-        "ai_chat_model",
-        model_id="model_primary",
-        source_id="source-1",
-        model_identifier="gpt-primary",
-        display_name="GPT Primary",
-        enabled=True,
-        is_default=True,
-        extra_params={},
-    )
-    create_source_model(
-        "ai_chat_model",
-        model_id="model_secondary",
-        source_id="source-1",
-        model_identifier="gpt-secondary",
-        display_name="GPT Secondary",
-        enabled=True,
-        is_default=True,
-        extra_params={},
-    )
+    from apeiria.ai.model.catalog.storage import create_source_model
+    from apeiria.db.engine import close_engine, init_engine
+    from apeiria.db.models.ai_source import AIChatModel
+
+    async def scenario() -> None:
+        await init_engine(database_runtime.database_path())
+        try:
+            await create_source_model(
+                AIChatModel,
+                model_id="model_primary",
+                source_id="source-1",
+                model_identifier="gpt-primary",
+                display_name="GPT Primary",
+                enabled=True,
+                is_default=True,
+                extra_params={},
+            )
+            await create_source_model(
+                AIChatModel,
+                model_id="model_secondary",
+                source_id="source-1",
+                model_identifier="gpt-secondary",
+                display_name="GPT Secondary",
+                enabled=True,
+                is_default=True,
+                extra_params={},
+            )
+        finally:
+            await close_engine()
+
+    asyncio.run(scenario())
 
     with database_runtime.connect_sync() as connection:
         rows = connection.execute(
@@ -491,16 +503,16 @@ def _seed_model_profile(
     fallback_profile_id: str | None = None,
 ) -> None:
     _seed_source()
-    create_source_model(
-        "ai_chat_model",
-        model_id=f"model-{profile_id}",
-        source_id="source-1",
-        model_identifier=f"gpt-{profile_id}",
-        display_name=f"GPT {profile_id}",
-        enabled=True,
-        is_default=False,
-        extra_params={},
-    )
+    with database_runtime.connect_sync() as connection:
+        _insert_source_model_raw(
+            connection,
+            model_id=f"model-{profile_id}",
+            source_id="source-1",
+            model_identifier=f"gpt-{profile_id}",
+            display_name=f"GPT {profile_id}",
+            enabled=True,
+            is_default=False,
+        )
     with database_runtime.connect_sync() as connection:
         connection.execute(
             """
@@ -530,3 +542,45 @@ def _seed_model_profile(
                 "2026-05-21T00:00:00",
             ),
         )
+
+
+def _insert_source_model_raw(
+    connection: sqlite3.Connection,
+    *,
+    model_id: str,
+    source_id: str,
+    model_identifier: str,
+    display_name: str,
+    enabled: bool,
+    is_default: bool,
+) -> None:
+    connection.execute(
+        """
+        INSERT INTO ai_chat_model (
+            model_id,
+            source_id,
+            model_identifier,
+            display_name,
+            enabled,
+            is_default,
+            extra_params_json,
+            capability_metadata_json,
+            default_options_json,
+            capability_provenance_json,
+            updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            model_id,
+            source_id,
+            model_identifier,
+            display_name,
+            1 if enabled else 0,
+            1 if is_default else 0,
+            "{}",
+            "{}",
+            "{}",
+            "{}",
+            "2026-05-21T00:00:00",
+        ),
+    )

@@ -14,6 +14,7 @@ from apeiria.ai.model.catalog.storage import (
     list_source_models,
     update_source_model,
 )
+from apeiria.db.models.ai_source import AISTTModel
 
 
 @dataclass(frozen=True)
@@ -39,7 +40,7 @@ class AISTTModelService:
         *,
         model_id: str,
     ) -> AISpeechToTextModelDefinition | None:
-        record = get_source_model("ai_stt_model", model_id=model_id)
+        record = await get_source_model(AISTTModel, model_id=model_id)
         return (
             None if record is None else AISpeechToTextModelDefinition(**record.__dict__)
         )
@@ -51,28 +52,27 @@ class AISTTModelService:
     ) -> list[AISpeechToTextModelDefinition]:
         return [
             AISpeechToTextModelDefinition(**row.__dict__)
-            for row in list_source_models("ai_stt_model", source_id=source_id)
+            for row in await list_source_models(AISTTModel, source_id=source_id)
         ]
 
     async def create_model(
         self,
         create_input: AISTTModelCreateInput,
     ) -> AISpeechToTextModelDefinition:
-        return AISpeechToTextModelDefinition(
-            **create_source_model(
-                "ai_stt_model",
-                model_id=f"stt_model_{uuid4().hex}",
-                source_id=create_input.source_id,
-                model_identifier=create_input.model_identifier,
-                display_name=create_input.display_name,
-                enabled=create_input.enabled,
-                is_default=create_input.is_default,
-                extra_params=create_input.extra_params,
-                capability_metadata=create_input.capability_metadata,
-                default_options=create_input.default_options,
-                capability_provenance=create_input.capability_provenance,
-            ).__dict__
+        record = await create_source_model(
+            AISTTModel,
+            model_id=f"stt_model_{uuid4().hex}",
+            source_id=create_input.source_id,
+            model_identifier=create_input.model_identifier,
+            display_name=create_input.display_name,
+            enabled=create_input.enabled,
+            is_default=create_input.is_default,
+            extra_params=create_input.extra_params,
+            capability_metadata=create_input.capability_metadata,
+            default_options=create_input.default_options,
+            capability_provenance=create_input.capability_provenance,
         )
+        return AISpeechToTextModelDefinition(**record.__dict__)
 
     async def update_model(
         self,
@@ -80,8 +80,8 @@ class AISTTModelService:
         model_id: str,
         create_input: AISTTModelCreateInput,
     ) -> AISpeechToTextModelDefinition | None:
-        record = update_source_model(
-            "ai_stt_model",
+        record = await update_source_model(
+            AISTTModel,
             model_id=model_id,
             source_id=create_input.source_id,
             model_identifier=create_input.model_identifier,
@@ -102,4 +102,4 @@ class AISTTModelService:
         *,
         model_id: str,
     ) -> bool:
-        return delete_source_model("ai_stt_model", model_id=model_id)
+        return await delete_source_model(AISTTModel, model_id=model_id)

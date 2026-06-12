@@ -1,29 +1,49 @@
-"""SQLite storage helpers for admin-managed source models."""
+"""SQLAlchemy async storage helpers for admin-managed source models."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
 from json import dumps
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, TypeAlias
 
-from apeiria.db.runtime import database_runtime
-from apeiria.db.schema import SOURCE_MODEL_TABLE_NAMES
+from sqlalchemy import delete, select, update
+
+from apeiria.db.base import _utcnow_text
+from apeiria.db.engine import get_session
+from apeiria.db.models.ai_source import (
+    AIChatModel,
+    AIEmbeddingModel,
+    AIRerankModel,
+    AISTTModel,
+    AITTSModel,
+)
 from apeiria.utils.json_utils import safe_json_loads
 
 if TYPE_CHECKING:
-    from sqlite3 import Connection
+    from apeiria.db.base import Base
 
-_CAPABILITY_METADATA_COLUMN_INDEX = 7
-_DEFAULT_OPTIONS_COLUMN_INDEX = 8
-_CAPABILITY_PROVENANCE_COLUMN_INDEX = 9
+SourceModelClass: TypeAlias = (
+    type[AIChatModel]
+    | type[AIEmbeddingModel]
+    | type[AISTTModel]
+    | type[AITTSModel]
+    | type[AIRerankModel]
+)
+
+_ALLOWED_MODEL_CLASSES: set[type] = {
+    AIChatModel,
+    AIEmbeddingModel,
+    AISTTModel,
+    AITTSModel,
+    AIRerankModel,
+}
 
 
 class UnsupportedSourceModelTableError(ValueError):
-    """Raised when source model storage is asked to use an unknown table."""
+    """Raised when source model storage is asked to use an unknown model class."""
 
-    def __init__(self, table_name: str) -> None:
-        super().__init__(f"unsupported source model table: {table_name}")
+    def __init__(self, model_cls: type) -> None:
+        super().__init__(f"unsupported source model class: {model_cls}")
 
 
 @dataclass(frozen=True)
@@ -42,84 +62,56 @@ class SourceModelRecord:
     capability_provenance: dict[str, object]
 
 
-def get_source_model(table_name: str, *, model_id: str) -> SourceModelRecord | None:
-    table_name = _coerce_table_name(table_name)
-    with database_runtime.connect_sync() as connection:
-        row = connection.execute(
-            f"""
-            SELECT
-                model_id,
-                source_id,
-                model_identifier,
-                display_name,
-                enabled,
-                is_default,
-                extra_params_json,
-                capability_metadata_json,
-                default_options_json,
-                capability_provenance_json
-            FROM {table_name}
-            WHERE model_id = ?
-            """,
-            (model_id,),
-        ).fetchone()
-    return _row_to_record(row)
+async def get_source_model(
+    model_cls: SourceModelClass,
+    *,
+    model_id: str,
+) -> SourceModelRecord | None:
+    _validate_model_cls(model_cls)
+    async with get_session() as session:
+        row = await session.get(model_cls, model_id)
+    return _orm_to_record(row)
 
 
-def list_source_models(
-    table_name: str,
+async def list_source_models(
+    model_cls: SourceModelClass,
     *,
     source_id: str,
 ) -> list[SourceModelRecord]:
-    table_name = _coerce_table_name(table_name)
-    with database_runtime.connect_sync() as connection:
-        rows = connection.execute(
-            f"""
-            SELECT
-                model_id,
-                source_id,
-                model_identifier,
-                display_name,
-                enabled,
-                is_default,
-                extra_params_json,
-                capability_metadata_json,
-                default_options_json,
-                capability_provenance_json
-            FROM {table_name}
-            WHERE source_id = ?
-            ORDER BY is_default DESC, display_name ASC, model_id ASC
-            """,
-            (source_id,),
-        ).fetchall()
-    return [record for row in rows if (record := _row_to_record(row)) is not None]
+    _validate_model_cls(model_cls)
+    async with get_session() as session:
+        result = await session.execute(
+            select(model_cls)
+            .where(model_cls.source_id == source_id)
+            .order_by(
+                model_cls.is_default.desc(),
+                model_cls.display_name.asc(),
+                model_cls.model_id.asc(),
+            )
+        )
+        rows = result.scalars().all()
+    return [r for row in rows if (r := _orm_to_record(row)) is not None]
 
 
-def list_all_source_models(table_name: str) -> list[SourceModelRecord]:
-    table_name = _coerce_table_name(table_name)
-    with database_runtime.connect_sync() as connection:
-        rows = connection.execute(
-            f"""
-            SELECT
-                model_id,
-                source_id,
-                model_identifier,
-                display_name,
-                enabled,
-                is_default,
-                extra_params_json,
-                capability_metadata_json,
-                default_options_json,
-                capability_provenance_json
-            FROM {table_name}
-            ORDER BY source_id ASC, is_default DESC, display_name ASC, model_id ASC
-            """
-        ).fetchall()
-    return [record for row in rows if (record := _row_to_record(row)) is not None]
+async def list_all_source_models(
+    model_cls: SourceModelClass,
+) -> list[SourceModelRecord]:
+    _validate_model_cls(model_cls)
+    async with get_session() as session:
+        result = await session.execute(
+            select(model_cls).order_by(
+                model_cls.source_id.asc(),
+                model_cls.is_default.desc(),
+                model_cls.display_name.asc(),
+                model_cls.model_id.asc(),
+            )
+        )
+        rows = result.scalars().all()
+    return [r for row in rows if (r := _orm_to_record(row)) is not None]
 
 
-def create_source_model(  # noqa: PLR0913
-    table_name: str,
+async def create_source_model(  # noqa: PLR0913
+    model_cls: SourceModelClass,
     *,
     model_id: str,
     source_id: str,
@@ -132,40 +124,30 @@ def create_source_model(  # noqa: PLR0913
     default_options: dict[str, object] | None = None,
     capability_provenance: dict[str, object] | None = None,
 ) -> SourceModelRecord:
-    table_name = _coerce_table_name(table_name)
-    with database_runtime.transaction_sync() as connection:
+    _validate_model_cls(model_cls)
+    now = _utcnow_text()
+    async with get_session() as session:
         if is_default:
-            _clear_default_source_model(connection, table_name, source_id=source_id)
-        connection.execute(
-            f"""
-            INSERT INTO {table_name} (
-                model_id,
-                source_id,
-                model_identifier,
-                display_name,
-                enabled,
-                is_default,
-                extra_params_json,
-                capability_metadata_json,
-                default_options_json,
-                capability_provenance_json,
-                updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                model_id,
-                source_id,
-                model_identifier,
-                display_name,
-                1 if enabled else 0,
-                1 if is_default else 0,
-                dumps(extra_params or {}, ensure_ascii=False),
-                dumps(capability_metadata or {}, ensure_ascii=False),
-                dumps(default_options or {}, ensure_ascii=False),
-                dumps(capability_provenance or {}, ensure_ascii=False),
-                _utcnow_text(),
+            await _clear_default_source_model(session, model_cls, source_id=source_id)
+        instance = model_cls(
+            model_id=model_id,
+            source_id=source_id,
+            model_identifier=model_identifier,
+            display_name=display_name,
+            enabled=1 if enabled else 0,
+            is_default=1 if is_default else 0,
+            extra_params_json=dumps(extra_params or {}, ensure_ascii=False),
+            capability_metadata_json=dumps(
+                capability_metadata or {}, ensure_ascii=False
             ),
+            default_options_json=dumps(default_options or {}, ensure_ascii=False),
+            capability_provenance_json=dumps(
+                capability_provenance or {}, ensure_ascii=False
+            ),
+            updated_at=now,
         )
+        session.add(instance)
+        await session.commit()
     return SourceModelRecord(
         model_id=model_id,
         source_id=source_id,
@@ -180,8 +162,8 @@ def create_source_model(  # noqa: PLR0913
     )
 
 
-def update_source_model(  # noqa: PLR0913
-    table_name: str,
+async def update_source_model(  # noqa: PLR0913
+    model_cls: SourceModelClass,
     *,
     model_id: str,
     source_id: str,
@@ -194,46 +176,28 @@ def update_source_model(  # noqa: PLR0913
     default_options: dict[str, object] | None = None,
     capability_provenance: dict[str, object] | None = None,
 ) -> SourceModelRecord | None:
-    table_name = _coerce_table_name(table_name)
-    with database_runtime.transaction_sync() as connection:
-        existing = connection.execute(
-            f"SELECT model_id FROM {table_name} WHERE model_id = ?",
-            (model_id,),
-        ).fetchone()
+    _validate_model_cls(model_cls)
+    async with get_session() as session:
+        existing = await session.get(model_cls, model_id)
         if existing is None:
             return None
         if is_default:
-            _clear_default_source_model(connection, table_name, source_id=source_id)
-        connection.execute(
-            f"""
-            UPDATE {table_name}
-            SET
-                source_id = ?,
-                model_identifier = ?,
-                display_name = ?,
-                enabled = ?,
-                is_default = ?,
-                extra_params_json = ?,
-                capability_metadata_json = ?,
-                default_options_json = ?,
-                capability_provenance_json = ?,
-                updated_at = ?
-            WHERE model_id = ?
-            """,
-            (
-                source_id,
-                model_identifier,
-                display_name,
-                1 if enabled else 0,
-                1 if is_default else 0,
-                dumps(extra_params or {}, ensure_ascii=False),
-                dumps(capability_metadata or {}, ensure_ascii=False),
-                dumps(default_options or {}, ensure_ascii=False),
-                dumps(capability_provenance or {}, ensure_ascii=False),
-                _utcnow_text(),
-                model_id,
-            ),
+            await _clear_default_source_model(session, model_cls, source_id=source_id)
+        existing.source_id = source_id
+        existing.model_identifier = model_identifier
+        existing.display_name = display_name
+        existing.enabled = 1 if enabled else 0
+        existing.is_default = 1 if is_default else 0
+        existing.extra_params_json = dumps(extra_params or {}, ensure_ascii=False)
+        existing.capability_metadata_json = dumps(
+            capability_metadata or {}, ensure_ascii=False
         )
+        existing.default_options_json = dumps(default_options or {}, ensure_ascii=False)
+        existing.capability_provenance_json = dumps(
+            capability_provenance or {}, ensure_ascii=False
+        )
+        existing.updated_at = _utcnow_text()
+        await session.commit()
     return SourceModelRecord(
         model_id=model_id,
         source_id=source_id,
@@ -248,63 +212,45 @@ def update_source_model(  # noqa: PLR0913
     )
 
 
-def delete_source_model(table_name: str, *, model_id: str) -> bool:
-    table_name = _coerce_table_name(table_name)
-    with database_runtime.connect_sync() as connection:
-        cursor = connection.execute(
-            f"DELETE FROM {table_name} WHERE model_id = ?",
-            (model_id,),
+async def delete_source_model(
+    model_cls: SourceModelClass,
+    *,
+    model_id: str,
+) -> bool:
+    _validate_model_cls(model_cls)
+    async with get_session() as session:
+        result = await session.execute(
+            delete(model_cls).where(model_cls.model_id == model_id)
         )
-    return cursor.rowcount > 0
+        await session.commit()
+    return result.rowcount > 0
 
 
-def clear_default_source_model(table_name: str, *, source_id: str) -> None:
-    table_name = _coerce_table_name(table_name)
-    with database_runtime.transaction_sync() as connection:
-        _clear_default_source_model(connection, table_name, source_id=source_id)
+async def clear_default_source_model(
+    model_cls: SourceModelClass,
+    *,
+    source_id: str,
+) -> None:
+    _validate_model_cls(model_cls)
+    async with get_session() as session:
+        await _clear_default_source_model(session, model_cls, source_id=source_id)
+        await session.commit()
 
 
-def _row_to_record(row: tuple[object, ...] | None) -> SourceModelRecord | None:
+def _orm_to_record(row: "Base | None") -> SourceModelRecord | None:
     if row is None:
         return None
-    extra_params = safe_json_loads(
-        str(row[6]) if row[6] is not None else None,
-        default={},
-    )
-    capability_metadata = safe_json_loads(
-        (
-            str(row[_CAPABILITY_METADATA_COLUMN_INDEX])
-            if len(row) > _CAPABILITY_METADATA_COLUMN_INDEX
-            and row[_CAPABILITY_METADATA_COLUMN_INDEX] is not None
-            else None
-        ),
-        default={},
-    )
-    default_options = safe_json_loads(
-        (
-            str(row[_DEFAULT_OPTIONS_COLUMN_INDEX])
-            if len(row) > _DEFAULT_OPTIONS_COLUMN_INDEX
-            and row[_DEFAULT_OPTIONS_COLUMN_INDEX] is not None
-            else None
-        ),
-        default={},
-    )
-    capability_provenance = safe_json_loads(
-        (
-            str(row[_CAPABILITY_PROVENANCE_COLUMN_INDEX])
-            if len(row) > _CAPABILITY_PROVENANCE_COLUMN_INDEX
-            and row[_CAPABILITY_PROVENANCE_COLUMN_INDEX] is not None
-            else None
-        ),
-        default={},
-    )
+    extra_params = safe_json_loads(row.extra_params_json, default={})
+    capability_metadata = safe_json_loads(row.capability_metadata_json, default={})
+    default_options = safe_json_loads(row.default_options_json, default={})
+    capability_provenance = safe_json_loads(row.capability_provenance_json, default={})
     return SourceModelRecord(
-        model_id=str(row[0]),
-        source_id=str(row[1]),
-        model_identifier=str(row[2]),
-        display_name=str(row[3]),
-        enabled=bool(row[4]),
-        is_default=bool(row[5]),
+        model_id=str(row.model_id),
+        source_id=str(row.source_id),
+        model_identifier=str(row.model_identifier),
+        display_name=str(row.display_name),
+        enabled=bool(row.enabled),
+        is_default=bool(row.is_default),
         extra_params=extra_params if isinstance(extra_params, dict) else {},
         capability_metadata=(
             capability_metadata if isinstance(capability_metadata, dict) else {}
@@ -316,27 +262,22 @@ def _row_to_record(row: tuple[object, ...] | None) -> SourceModelRecord | None:
     )
 
 
-def _clear_default_source_model(
-    connection: "Connection",
-    table_name: str,
+async def _clear_default_source_model(
+    session: object,
+    model_cls: SourceModelClass,
     *,
     source_id: str,
 ) -> None:
-    connection.execute(
-        f"""
-        UPDATE {table_name}
-        SET is_default = 0, updated_at = ?
-        WHERE source_id = ?
-        """,
-        (_utcnow_text(), source_id),
+    from sqlalchemy.ext.asyncio import AsyncSession
+
+    assert isinstance(session, AsyncSession)
+    await session.execute(
+        update(model_cls)
+        .where(model_cls.source_id == source_id)
+        .values(is_default=0, updated_at=_utcnow_text())
     )
 
 
-def _coerce_table_name(table_name: str) -> str:
-    if table_name not in SOURCE_MODEL_TABLE_NAMES:
-        raise UnsupportedSourceModelTableError(table_name)
-    return table_name
-
-
-def _utcnow_text() -> str:
-    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+def _validate_model_cls(model_cls: type) -> None:
+    if model_cls not in _ALLOWED_MODEL_CLASSES:
+        raise UnsupportedSourceModelTableError(model_cls)

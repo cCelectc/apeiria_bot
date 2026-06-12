@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
 from typing import cast
 from uuid import uuid4
+
+from sqlalchemy import select
 
 from apeiria.ai.model.catalog.chat import AIChatModelService
 from apeiria.ai.model.routing.bindings import (
@@ -28,7 +29,9 @@ from apeiria.ai.model.routing.selection import (
     resolve_source_selected_model_with_fallback,
 )
 from apeiria.ai.model.sources.service import AISourceService
-from apeiria.db.runtime import database_runtime
+from apeiria.db.base import _utcnow_text
+from apeiria.db.engine import get_session
+from apeiria.db.models.ai_routing import AIModelBinding, AIModelProfile
 
 
 @dataclass(frozen=True)
@@ -57,30 +60,27 @@ class AIModelProfileService:
     async def list_profiles(
         self,
     ) -> list[AIModelProfileDefinition]:
-        with database_runtime.connect_sync() as connection:
-            rows = connection.execute(
-                """
-                SELECT
-                    profile_id,
-                    name,
-                    model_id,
-                    task_class,
-                    priority,
-                    enabled,
-                    fallback_profile_id
-                FROM ai_model_profile
-                ORDER BY priority ASC, profile_id ASC
-                """
-            ).fetchall()
+        async with get_session() as session:
+            result = await session.execute(
+                select(AIModelProfile).order_by(
+                    AIModelProfile.priority.asc(),
+                    AIModelProfile.profile_id.asc(),
+                )
+            )
+            rows = result.scalars().all()
         return [
             AIModelProfileDefinition(
-                profile_id=str(row[0]),
-                name=str(row[1]),
-                model_id=str(row[2]),
-                task_class=cast("AIModelTaskClass", str(row[3])),
-                priority=int(row[4]),
-                enabled=bool(row[5]),
-                fallback_profile_id=(str(row[6]) if row[6] is not None else None),
+                profile_id=str(row.profile_id),
+                name=str(row.name),
+                model_id=str(row.model_id),
+                task_class=cast("AIModelTaskClass", str(row.task_class)),
+                priority=int(row.priority),
+                enabled=bool(row.enabled),
+                fallback_profile_id=(
+                    str(row.fallback_profile_id)
+                    if row.fallback_profile_id is not None
+                    else None
+                ),
             )
             for row in rows
         ]
@@ -88,20 +88,17 @@ class AIModelProfileService:
     async def list_bindings(
         self,
     ) -> list[AIModelBindingSpec]:
-        with database_runtime.connect_sync() as connection:
-            rows = connection.execute(
-                """
-                SELECT binding_id, scope_type, scope_id, profile_id
-                FROM ai_model_binding
-                ORDER BY binding_id ASC
-                """
-            ).fetchall()
+        async with get_session() as session:
+            result = await session.execute(
+                select(AIModelBinding).order_by(AIModelBinding.binding_id.asc())
+            )
+            rows = result.scalars().all()
         return [
             AIModelBindingSpec(
-                binding_id=str(row[0]),
-                scope_type=str(row[1]),
-                scope_id=str(row[2]),
-                profile_id=str(row[3]),
+                binding_id=str(row.binding_id),
+                scope_type=str(row.scope_type),
+                scope_id=str(row.scope_id),
+                profile_id=str(row.profile_id),
             )
             for row in rows
         ]
@@ -119,31 +116,20 @@ class AIModelProfileService:
             enabled=create_input.enabled,
             fallback_profile_id=None,
         )
-        with database_runtime.connect_sync() as connection:
-            connection.execute(
-                """
-                INSERT INTO ai_model_profile (
-                    profile_id,
-                    name,
-                    model_id,
-                    task_class,
-                    priority,
-                    enabled,
-                    fallback_profile_id,
-                    updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    profile.profile_id,
-                    profile.name,
-                    profile.model_id,
-                    profile.task_class,
-                    profile.priority,
-                    1 if profile.enabled else 0,
-                    profile.fallback_profile_id,
-                    _utcnow_text(),
-                ),
+        now = _utcnow_text()
+        async with get_session() as session:
+            instance = AIModelProfile(
+                profile_id=profile.profile_id,
+                name=profile.name,
+                model_id=profile.model_id,
+                task_class=profile.task_class,
+                priority=profile.priority,
+                enabled=1 if profile.enabled else 0,
+                fallback_profile_id=profile.fallback_profile_id,
+                updated_at=now,
             )
+            session.add(instance)
+            await session.commit()
         return profile
 
     async def update_profile(
@@ -171,31 +157,18 @@ class AIModelProfileService:
             enabled=create_input.enabled,
             fallback_profile_id=None,
         )
-        with database_runtime.connect_sync() as connection:
-            connection.execute(
-                """
-                UPDATE ai_model_profile
-                SET
-                    name = ?,
-                    model_id = ?,
-                    task_class = ?,
-                    priority = ?,
-                    enabled = ?,
-                    fallback_profile_id = ?,
-                    updated_at = ?
-                WHERE profile_id = ?
-                """,
-                (
-                    updated.name,
-                    updated.model_id,
-                    updated.task_class,
-                    updated.priority,
-                    1 if updated.enabled else 0,
-                    updated.fallback_profile_id,
-                    _utcnow_text(),
-                    profile_id,
-                ),
-            )
+        async with get_session() as session:
+            row = await session.get(AIModelProfile, profile_id)
+            if row is None:
+                return None
+            row.name = updated.name
+            row.model_id = updated.model_id
+            row.task_class = updated.task_class
+            row.priority = updated.priority
+            row.enabled = 1 if updated.enabled else 0
+            row.fallback_profile_id = updated.fallback_profile_id
+            row.updated_at = _utcnow_text()
+            await session.commit()
         return updated
 
     async def resolve_profile(
@@ -255,7 +228,3 @@ class AIModelProfileService:
             source_models,
             query=query,
         )
-
-
-def _utcnow_text() -> str:
-    return datetime.now(timezone.utc).isoformat(timespec="seconds")

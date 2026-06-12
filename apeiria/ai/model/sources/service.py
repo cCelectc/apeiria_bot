@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
 from json import dumps
 from typing import TYPE_CHECKING, Any, cast
 from uuid import uuid4
+
+from sqlalchemy import delete, select
 
 from apeiria.ai.model.sources.models import (
     SOURCE_PRESETS,
@@ -17,16 +18,13 @@ from apeiria.ai.model.sources.models import (
     AISourcePresetType,
     resolve_adapter_kind_for_client_type,
 )
-from apeiria.db.runtime import database_runtime
+from apeiria.db.base import _utcnow_text
+from apeiria.db.engine import get_session
+from apeiria.db.models.ai_source import AISource
 from apeiria.utils.json_utils import safe_json_loads
 
 if TYPE_CHECKING:
     from apeiria.ai.model.runtime.capabilities import AIModelAdapterKind
-
-_ADAPTER_KIND_COLUMN_INDEX = 10
-_CAPABILITY_METADATA_COLUMN_INDEX = 11
-_DEFAULT_OPTIONS_COLUMN_INDEX = 12
-_CAPABILITY_PROVENANCE_COLUMN_INDEX = 13
 
 
 @dataclass(frozen=True)
@@ -64,61 +62,23 @@ class AISourceService:
         return SOURCE_PRESETS
 
     async def list_sources(self) -> list[AISourceDefinition]:
-        with database_runtime.connect_sync() as connection:
-            rows = connection.execute(
-                """
-                SELECT
-                    source_id,
-                    name,
-                    capability_type,
-                    client_type,
-                    preset_type,
-                    api_base,
-                    enabled,
-                    timeout_seconds,
-                    custom_headers_json,
-                    extra_config_json,
-                    adapter_kind,
-                    capability_metadata_json,
-                    default_options_json,
-                    capability_provenance_json
-                FROM ai_source
-                ORDER BY name ASC, source_id ASC
-                """
-            ).fetchall()
-        return [self._row_to_definition(row) for row in rows]
+        async with get_session() as session:
+            result = await session.execute(
+                select(AISource).order_by(AISource.name.asc(), AISource.source_id.asc())
+            )
+            rows = result.scalars().all()
+        return [self._orm_to_definition(row) for row in rows]
 
     async def get_source(
         self,
         *,
         source_id: str,
     ) -> AISourceDefinition | None:
-        with database_runtime.connect_sync() as connection:
-            row = connection.execute(
-                """
-                SELECT
-                    source_id,
-                    name,
-                    capability_type,
-                    client_type,
-                    preset_type,
-                    api_base,
-                    enabled,
-                    timeout_seconds,
-                    custom_headers_json,
-                    extra_config_json,
-                    adapter_kind,
-                    capability_metadata_json,
-                    default_options_json,
-                    capability_provenance_json
-                FROM ai_source
-                WHERE source_id = ?
-                """,
-                (source_id,),
-            ).fetchone()
+        async with get_session() as session:
+            row = await session.get(AISource, source_id)
         if row is None:
             return None
-        return self._row_to_definition(row)
+        return self._orm_to_definition(row)
 
     async def create_source(
         self,
@@ -144,45 +104,35 @@ class AISourceService:
             default_options=create_input.default_options or {},
             capability_provenance=create_input.capability_provenance or {},
         )
-        with database_runtime.connect_sync() as connection:
-            connection.execute(
-                """
-                INSERT INTO ai_source (
-                    source_id,
-                    name,
-                    capability_type,
-                    client_type,
-                    preset_type,
-                    api_base,
-                    enabled,
-                    timeout_seconds,
-                    custom_headers_json,
-                    extra_config_json,
-                    adapter_kind,
-                    capability_metadata_json,
-                    default_options_json,
-                    capability_provenance_json,
-                    updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    source.source_id,
-                    source.name,
-                    source.capability_type,
-                    source.client_type,
-                    source.preset_type,
-                    source.api_base,
-                    1 if source.enabled else 0,
-                    source.timeout_seconds,
-                    dumps(source.custom_headers or {}, ensure_ascii=False),
-                    dumps(source.extra_config or {}, ensure_ascii=False),
-                    source.adapter_kind,
-                    dumps(source.capability_metadata or {}, ensure_ascii=False),
-                    dumps(source.default_options or {}, ensure_ascii=False),
-                    dumps(source.capability_provenance or {}, ensure_ascii=False),
-                    _utcnow_text(),
+        now = _utcnow_text()
+        async with get_session() as session:
+            instance = AISource(
+                source_id=source.source_id,
+                name=source.name,
+                capability_type=source.capability_type,
+                client_type=source.client_type,
+                preset_type=source.preset_type,
+                api_base=source.api_base,
+                enabled=1 if source.enabled else 0,
+                timeout_seconds=source.timeout_seconds,
+                custom_headers_json=dumps(
+                    source.custom_headers or {}, ensure_ascii=False
                 ),
+                extra_config_json=dumps(source.extra_config or {}, ensure_ascii=False),
+                adapter_kind=source.adapter_kind,
+                capability_metadata_json=dumps(
+                    source.capability_metadata or {}, ensure_ascii=False
+                ),
+                default_options_json=dumps(
+                    source.default_options or {}, ensure_ascii=False
+                ),
+                capability_provenance_json=dumps(
+                    source.capability_provenance or {}, ensure_ascii=False
+                ),
+                updated_at=now,
             )
+            session.add(instance)
+            await session.commit()
         return source
 
     @staticmethod
@@ -251,45 +201,35 @@ class AISourceService:
             default_options=create_input.default_options or {},
             capability_provenance=create_input.capability_provenance or {},
         )
-        with database_runtime.connect_sync() as connection:
-            connection.execute(
-                """
-                UPDATE ai_source
-                SET
-                    name = ?,
-                    capability_type = ?,
-                    client_type = ?,
-                    preset_type = ?,
-                    api_base = ?,
-                    enabled = ?,
-                    timeout_seconds = ?,
-                    custom_headers_json = ?,
-                    extra_config_json = ?,
-                    adapter_kind = ?,
-                    capability_metadata_json = ?,
-                    default_options_json = ?,
-                    capability_provenance_json = ?,
-                    updated_at = ?
-                WHERE source_id = ?
-                """,
-                (
-                    updated.name,
-                    updated.capability_type,
-                    updated.client_type,
-                    updated.preset_type,
-                    updated.api_base,
-                    1 if updated.enabled else 0,
-                    updated.timeout_seconds,
-                    dumps(updated.custom_headers or {}, ensure_ascii=False),
-                    dumps(updated.extra_config or {}, ensure_ascii=False),
-                    updated.adapter_kind,
-                    dumps(updated.capability_metadata or {}, ensure_ascii=False),
-                    dumps(updated.default_options or {}, ensure_ascii=False),
-                    dumps(updated.capability_provenance or {}, ensure_ascii=False),
-                    _utcnow_text(),
-                    source_id,
-                ),
+        async with get_session() as session:
+            row = await session.get(AISource, source_id)
+            if row is None:
+                return None
+            row.name = updated.name
+            row.capability_type = updated.capability_type
+            row.client_type = updated.client_type
+            row.preset_type = updated.preset_type
+            row.api_base = updated.api_base
+            row.enabled = 1 if updated.enabled else 0
+            row.timeout_seconds = updated.timeout_seconds
+            row.custom_headers_json = dumps(
+                updated.custom_headers or {}, ensure_ascii=False
             )
+            row.extra_config_json = dumps(
+                updated.extra_config or {}, ensure_ascii=False
+            )
+            row.adapter_kind = updated.adapter_kind
+            row.capability_metadata_json = dumps(
+                updated.capability_metadata or {}, ensure_ascii=False
+            )
+            row.default_options_json = dumps(
+                updated.default_options or {}, ensure_ascii=False
+            )
+            row.capability_provenance_json = dumps(
+                updated.capability_provenance or {}, ensure_ascii=False
+            )
+            row.updated_at = _utcnow_text()
+            await session.commit()
         return updated
 
     async def delete_source(
@@ -297,12 +237,12 @@ class AISourceService:
         *,
         source_id: str,
     ) -> bool:
-        with database_runtime.connect_sync() as connection:
-            cursor = connection.execute(
-                "DELETE FROM ai_source WHERE source_id = ?",
-                (source_id,),
+        async with get_session() as session:
+            result = await session.execute(
+                delete(AISource).where(AISource.source_id == source_id)
             )
-        return cursor.rowcount > 0
+            await session.commit()
+        return result.rowcount > 0
 
     async def build_delete_dependency_report(
         self,
@@ -336,48 +276,16 @@ class AISourceService:
         return None
 
     @staticmethod
-    def _row_to_definition(row: tuple[object, ...]) -> AISourceDefinition:
-        custom_headers = safe_json_loads(
-            str(row[8]) if row[8] is not None else None,
-            default={},
-        )
-        extra_config = safe_json_loads(
-            str(row[9]) if row[9] is not None else None,
-            default={},
-        )
-        capability_metadata = safe_json_loads(
-            (
-                str(row[_CAPABILITY_METADATA_COLUMN_INDEX])
-                if len(row) > _CAPABILITY_METADATA_COLUMN_INDEX
-                and row[_CAPABILITY_METADATA_COLUMN_INDEX] is not None
-                else None
-            ),
-            default={},
-        )
-        default_options = safe_json_loads(
-            (
-                str(row[_DEFAULT_OPTIONS_COLUMN_INDEX])
-                if len(row) > _DEFAULT_OPTIONS_COLUMN_INDEX
-                and row[_DEFAULT_OPTIONS_COLUMN_INDEX] is not None
-                else None
-            ),
-            default={},
-        )
+    def _orm_to_definition(row: AISource) -> AISourceDefinition:
+        custom_headers = safe_json_loads(row.custom_headers_json, default={})
+        extra_config = safe_json_loads(row.extra_config_json, default={})
+        capability_metadata = safe_json_loads(row.capability_metadata_json, default={})
+        default_options = safe_json_loads(row.default_options_json, default={})
         capability_provenance = safe_json_loads(
-            (
-                str(row[_CAPABILITY_PROVENANCE_COLUMN_INDEX])
-                if len(row) > _CAPABILITY_PROVENANCE_COLUMN_INDEX
-                and row[_CAPABILITY_PROVENANCE_COLUMN_INDEX] is not None
-                else None
-            ),
-            default={},
+            row.capability_provenance_json, default={}
         )
-        client_type = cast("AISourceClientType", str(row[3]))
-        raw_adapter_kind = (
-            row[_ADAPTER_KIND_COLUMN_INDEX]
-            if len(row) > _ADAPTER_KIND_COLUMN_INDEX
-            else None
-        )
+        client_type = cast("AISourceClientType", str(row.client_type))
+        raw_adapter_kind = row.adapter_kind
         adapter_kind = cast(
             "AIModelAdapterKind",
             (
@@ -387,14 +295,14 @@ class AISourceService:
             ),
         )
         return AISourceDefinition(
-            source_id=str(row[0]),
-            name=str(row[1]),
-            capability_type=cast("AISourceCapabilityType", str(row[2])),
+            source_id=str(row.source_id),
+            name=str(row.name),
+            capability_type=cast("AISourceCapabilityType", str(row.capability_type)),
             client_type=client_type,
-            preset_type=cast("AISourcePresetType", str(row[4])),
-            api_base=str(row[5]) if row[5] is not None else None,
-            enabled=bool(row[6]),
-            timeout_seconds=_coerce_optional_int(row[7]),
+            preset_type=cast("AISourcePresetType", str(row.preset_type)),
+            api_base=str(row.api_base) if row.api_base is not None else None,
+            enabled=bool(row.enabled),
+            timeout_seconds=row.timeout_seconds,
             custom_headers=(custom_headers if isinstance(custom_headers, dict) else {}),
             extra_config=extra_config if isinstance(extra_config, dict) else {},
             adapter_kind=adapter_kind,
@@ -418,18 +326,4 @@ def _extract_inline_api_key(source: AISourceDefinition) -> str | None:
     for value in raw_api_keys:
         if isinstance(value, str) and value.strip():
             return value.strip()
-    return None
-
-
-def _utcnow_text() -> str:
-    return datetime.now(timezone.utc).isoformat(timespec="seconds")
-
-
-def _coerce_optional_int(value: object) -> int | None:
-    if value is None:
-        return None
-    if isinstance(value, int):
-        return value
-    if isinstance(value, str) and value.strip():
-        return int(value.strip())
     return None
