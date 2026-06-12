@@ -3,9 +3,14 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
+from sqlalchemy import select, update
+from sqlalchemy.dialects.sqlite import insert
+
+from apeiria.db.base import _epoch_ms
+from apeiria.db.engine import get_session
+from apeiria.db.models.governance import PluginState
 from apeiria.db.runtime import database_runtime
 from apeiria.exceptions import ResourceNotFoundError
 
@@ -13,10 +18,6 @@ if TYPE_CHECKING:
     from collections.abc import Collection
 
     from nonebot.plugin import Plugin
-
-
-def _utcnow_text() -> str:
-    return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
 @dataclass(frozen=True)
@@ -44,18 +45,36 @@ class PluginStateRow:
 
 
 class PluginCatalogRepository:
-    """Own plugin governance persistence without relying on NoneBot ORM."""
+    """Plugin governance persistence — async runtime + sync startup methods."""
 
-    async def get_persisted_plugin_modules(self) -> set[str]:
-        return self.get_persisted_plugin_modules_sync()
+    # ─── Startup-only sync methods (called before event loop) ───
 
     def get_persisted_plugin_modules_sync(self) -> set[str]:
         with database_runtime.connect_sync() as connection:
             rows = connection.execute("SELECT plugin_id FROM plugin_state").fetchall()
         return {str(row[0]) for row in rows}
 
-    async def get_enabled_map(self) -> dict[str, bool]:
-        return self._get_enabled_map_sync()
+    def delete_plugin_records_sync(self, module_names: "Collection[str]") -> list[str]:
+        normalized = sorted(
+            {m.strip() for m in module_names if isinstance(m, str) and m.strip()}
+        )
+        if not normalized:
+            return []
+        placeholders = ", ".join("?" for _ in normalized)
+        with database_runtime.connect_sync() as connection:
+            rows = connection.execute(
+                f"SELECT plugin_id FROM plugin_state"
+                f" WHERE plugin_id IN ({placeholders})",
+                normalized,
+            ).fetchall()
+            existing = sorted(str(row[0]) for row in rows)
+            if not existing:
+                return []
+            connection.executemany(
+                "DELETE FROM plugin_state WHERE plugin_id = ?",
+                [(m,) for m in existing],
+            )
+        return existing
 
     def _get_enabled_map_sync(self) -> dict[str, bool]:
         with database_runtime.connect_sync() as connection:
@@ -64,149 +83,80 @@ class PluginCatalogRepository:
             ).fetchall()
         return {str(row[0]): bool(row[1]) for row in rows}
 
+    # ─── Runtime async methods (use SQLAlchemy session) ───
+
+    async def get_persisted_plugin_modules(self) -> set[str]:
+        async with get_session() as session:
+            result = await session.execute(select(PluginState.plugin_id))
+            return {row[0] for row in result.all()}
+
+    async def get_enabled_map(self) -> dict[str, bool]:
+        async with get_session() as session:
+            result = await session.execute(
+                select(PluginState.plugin_id, PluginState.enabled)
+            )
+            return {row[0]: bool(row[1]) for row in result.all()}
+
     async def get_plugin_enabled(self, module_name: str) -> bool:
-        row = self._get_plugin_state_sync(module_name)
+        row = await self.get_plugin_policy(module_name)
         return True if row is None else row.is_global_enabled
 
     async def get_plugin_info_map(self) -> dict[str, PluginStateRow]:
-        return self._get_plugin_info_map_sync()
+        async with get_session() as session:
+            result = await session.execute(select(PluginState))
+            rows = result.scalars().all()
+        return {r.plugin_id: self._to_row(r) for r in rows}
 
-    def _get_plugin_info_map_sync(self) -> dict[str, PluginStateRow]:
-        with database_runtime.connect_sync() as connection:
-            rows = connection.execute(
-                """
-                SELECT
-                    plugin_id,
-                    enabled,
-                    access_mode,
-                    protection_mode,
-                    ui_hidden_override
-                FROM plugin_state
-                """
-            ).fetchall()
-        return {
-            str(row[0]): PluginStateRow(
-                module_name=str(row[0]),
-                is_global_enabled=bool(row[1]),
-                access_mode=str(row[2]),
-                protection_mode=str(row[3]),
-                ui_hidden_override=(None if row[4] is None else bool(row[4])),
+    async def get_plugin_policy_map(self) -> dict[str, PluginStateRow]:
+        return await self.get_plugin_info_map()
+
+    async def get_plugin_policy(self, module_name: str) -> PluginStateRow | None:
+        async with get_session() as session:
+            result = await session.execute(
+                select(PluginState).where(PluginState.plugin_id == module_name)
             )
-            for row in rows
-        }
+            model = result.scalars().first()
+        if model is None:
+            return None
+        return self._to_row(model)
 
     async def set_plugin_enabled(self, module_name: str, *, enabled: bool) -> bool:
-        return self._set_plugin_enabled_sync(module_name, enabled=enabled)
-
-    def _set_plugin_enabled_sync(self, module_name: str, *, enabled: bool) -> bool:
-        with database_runtime.connect_sync() as connection:
-            existing = connection.execute(
-                "SELECT enabled FROM plugin_state WHERE plugin_id = ?",
-                (module_name,),
-            ).fetchone()
+        async with get_session() as session:
+            result = await session.execute(
+                select(PluginState.enabled).where(PluginState.plugin_id == module_name)
+            )
+            existing = result.scalar_one_or_none()
             if existing is None:
                 raise ResourceNotFoundError(module_name)
-            changed = bool(existing[0]) != enabled
-            if not changed:
+            if bool(existing) == enabled:
                 return False
-            connection.execute(
-                """
-                UPDATE plugin_state
-                SET enabled = ?, updated_at = ?
-                WHERE plugin_id = ?
-                """,
-                (1 if enabled else 0, _utcnow_text(), module_name),
+            await session.execute(
+                update(PluginState)
+                .where(PluginState.plugin_id == module_name)
+                .values(enabled=1 if enabled else 0, updated_at=_epoch_ms())
             )
+            await session.commit()
         return True
 
     async def delete_plugin_records(self, module_names: "Collection[str]") -> list[str]:
         return self.delete_plugin_records_sync(module_names)
 
-    def delete_plugin_records_sync(self, module_names: "Collection[str]") -> list[str]:
-        normalized = sorted(
-            {
-                module_name.strip()
-                for module_name in module_names
-                if isinstance(module_name, str) and module_name.strip()
-            }
-        )
-        if not normalized:
-            return []
-
-        placeholders = ", ".join("?" for _ in normalized)
-        with database_runtime.connect_sync() as connection:
-            rows = connection.execute(
-                f"""
-                SELECT plugin_id
-                FROM plugin_state
-                WHERE plugin_id IN ({placeholders})
-                """,
-                normalized,
-            ).fetchall()
-            existing = sorted(str(row[0]) for row in rows)
-            if not existing:
-                return []
-            connection.executemany(
-                "DELETE FROM plugin_state WHERE plugin_id = ?",
-                [(module_name,) for module_name in existing],
-            )
-        return existing
-
     async def ensure_plugin_record_by_module_name(self, module_name: str) -> None:
-        self._ensure_plugin_record_sync(module_name)
-
-    async def ensure_plugin_record(self, plugin: Plugin) -> None:
-        await self.ensure_plugin_record_by_module_name(plugin.module_name)
-
-    def _ensure_plugin_record_sync(self, module_name: str) -> None:
-        with database_runtime.connect_sync() as connection:
-            connection.execute(
-                """
-                INSERT INTO plugin_state (
-                    plugin_id,
-                    enabled,
-                    access_mode,
-                    protection_mode,
-                    updated_at
-                ) VALUES (?, 1, 'default_allow', 'normal', ?)
-                ON CONFLICT(plugin_id) DO NOTHING
-                """,
-                (module_name, _utcnow_text()),
-            )
-
-    async def get_plugin_policy_map(self) -> dict[str, PluginStateRow]:
-        return await self.get_plugin_info_map()
-
-    async def get_plugin_policy(
-        self,
-        module_name: str,
-    ) -> PluginStateRow | None:
-        return self._get_plugin_state_sync(module_name)
-
-    def _get_plugin_state_sync(self, module_name: str) -> PluginStateRow | None:
-        with database_runtime.connect_sync() as connection:
-            row = connection.execute(
-                """
-                SELECT
-                    plugin_id,
-                    enabled,
-                    access_mode,
-                    protection_mode,
-                    ui_hidden_override
-                FROM plugin_state
-                WHERE plugin_id = ?
-                """,
-                (module_name,),
-            ).fetchone()
-        if row is None:
-            return None
-        return PluginStateRow(
-            module_name=str(row[0]),
-            is_global_enabled=bool(row[1]),
-            access_mode=str(row[2]),
-            protection_mode=str(row[3]),
-            ui_hidden_override=None if row[4] is None else bool(row[4]),
+        now = _epoch_ms()
+        stmt = insert(PluginState).values(
+            plugin_id=module_name,
+            enabled=1,
+            access_mode="default_allow",
+            protection_mode="normal",
+            updated_at=now,
         )
+        stmt = stmt.on_conflict_do_nothing(index_elements=[PluginState.plugin_id])
+        async with get_session() as session:
+            await session.execute(stmt)
+            await session.commit()
+
+    async def ensure_plugin_record(self, plugin: "Plugin") -> None:
+        await self.ensure_plugin_record_by_module_name(plugin.module_name)
 
     async def ensure_plugin_policy(
         self,
@@ -215,75 +165,45 @@ class PluginCatalogRepository:
         access_mode: str = "default_allow",
         protection_mode: str = "normal",
     ) -> None:
-        self._ensure_plugin_policy_sync(
-            module_name,
-            access_mode,
-            protection_mode,
-        )
-
-    def _ensure_plugin_policy_sync(
-        self,
-        module_name: str,
-        access_mode: str,
-        protection_mode: str,
-    ) -> None:
-        with database_runtime.connect_sync() as connection:
-            existing = connection.execute(
-                """
-                SELECT access_mode, protection_mode
-                FROM plugin_state
-                WHERE plugin_id = ?
-                """,
-                (module_name,),
-            ).fetchone()
+        async with get_session() as session:
+            result = await session.execute(
+                select(PluginState.access_mode, PluginState.protection_mode).where(
+                    PluginState.plugin_id == module_name
+                )
+            )
+            existing = result.first()
+            now = _epoch_ms()
             if existing is None:
-                connection.execute(
-                    """
-                    INSERT INTO plugin_state (
-                        plugin_id,
-                        enabled,
-                        access_mode,
-                        protection_mode,
-                        updated_at
-                    ) VALUES (?, 1, ?, ?, ?)
-                    """,
-                    (
-                        module_name,
-                        access_mode,
-                        protection_mode,
-                        _utcnow_text(),
-                    ),
+                session.add(
+                    PluginState(
+                        plugin_id=module_name,
+                        enabled=1,
+                        access_mode=access_mode,
+                        protection_mode=protection_mode,
+                        updated_at=now,
+                    )
                 )
-                return
-            next_access_mode = (
-                access_mode
-                if (
-                    str(existing[0]) == "default_allow"
-                    and access_mode != "default_allow"
+            else:
+                next_access = (
+                    access_mode
+                    if existing[0] == "default_allow" and access_mode != "default_allow"
+                    else existing[0]
                 )
-                else str(existing[0])
-            )
-            next_protection_mode = (
-                protection_mode
-                if str(existing[1]) == "normal" and protection_mode != "normal"
-                else str(existing[1])
-            )
-            connection.execute(
-                """
-                UPDATE plugin_state
-                SET
-                    access_mode = ?,
-                    protection_mode = ?,
-                    updated_at = ?
-                WHERE plugin_id = ?
-                """,
-                (
-                    next_access_mode,
-                    next_protection_mode,
-                    _utcnow_text(),
-                    module_name,
-                ),
-            )
+                next_protection = (
+                    protection_mode
+                    if existing[1] == "normal" and protection_mode != "normal"
+                    else existing[1]
+                )
+                await session.execute(
+                    update(PluginState)
+                    .where(PluginState.plugin_id == module_name)
+                    .values(
+                        access_mode=next_access,
+                        protection_mode=next_protection,
+                        updated_at=now,
+                    )
+                )
+            await session.commit()
 
     async def update_plugin_policy(
         self,
@@ -292,46 +212,40 @@ class PluginCatalogRepository:
         access_mode: str | None = None,
         protection_mode: str | None = None,
     ) -> None:
-        self._update_plugin_policy_sync(
-            module_name,
-            access_mode,
-            protection_mode,
-        )
-
-    def _update_plugin_policy_sync(
-        self,
-        module_name: str,
-        access_mode: str | None,
-        protection_mode: str | None,
-    ) -> None:
-        existing = self._get_plugin_state_sync(module_name)
+        existing = await self.get_plugin_policy(module_name)
         if existing is None:
-            self._ensure_plugin_policy_sync(
+            await self.ensure_plugin_policy(
                 module_name,
-                access_mode or "default_allow",
-                protection_mode or "normal",
+                access_mode=access_mode or "default_allow",
+                protection_mode=protection_mode or "normal",
             )
             return
-        with database_runtime.connect_sync() as connection:
-            connection.execute(
-                """
-                UPDATE plugin_state
-                SET access_mode = ?,
-                    protection_mode = ?,
-                    updated_at = ?
-                WHERE plugin_id = ?
-                """,
-                (
-                    access_mode if access_mode is not None else existing.access_mode,
-                    (
-                        protection_mode
-                        if protection_mode is not None
-                        else existing.protection_mode
-                    ),
-                    _utcnow_text(),
-                    module_name,
-                ),
+        now = _epoch_ms()
+        async with get_session() as session:
+            await session.execute(
+                update(PluginState)
+                .where(PluginState.plugin_id == module_name)
+                .values(
+                    access_mode=access_mode or existing.access_mode,
+                    protection_mode=protection_mode or existing.protection_mode,
+                    updated_at=now,
+                )
             )
+            await session.commit()
+
+    @staticmethod
+    def _to_row(model: PluginState) -> PluginStateRow:
+        return PluginStateRow(
+            module_name=model.plugin_id,
+            is_global_enabled=bool(model.enabled),
+            access_mode=model.access_mode,
+            protection_mode=model.protection_mode,
+            ui_hidden_override=(
+                None
+                if model.ui_hidden_override is None
+                else bool(model.ui_hidden_override)
+            ),
+        )
 
 
 plugin_catalog_repository = PluginCatalogRepository()
