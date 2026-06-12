@@ -167,9 +167,16 @@ def _migrate_chat_message() -> None:
         columns_to_drop.append("session_pk")
 
     if columns_to_drop:
+        op.execute(sa.text("DROP INDEX IF EXISTS idx_chat_message_session_pk"))
+        op.execute(sa.text("DROP INDEX IF EXISTS idx_chat_message_session_created"))
         with op.batch_alter_table("chat_message", schema=None) as batch_op:
             for col in columns_to_drop:
                 batch_op.drop_column(col)
+
+    op.execute(sa.text(
+        "CREATE INDEX IF NOT EXISTS idx_chat_message_session_created "
+        "ON chat_message(session_id, created_at)"
+    ))
 
 
 def upgrade() -> None:

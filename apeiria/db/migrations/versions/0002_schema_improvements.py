@@ -31,10 +31,7 @@ def upgrade() -> None:
     op.execute("DROP TABLE IF EXISTS ai_memory_belief_action")
 
     # 2. Add missing indexes (idempotent via IF NOT EXISTS)
-    op.execute(
-        "CREATE INDEX IF NOT EXISTS idx_chat_message_session_created "
-        "ON chat_message(session_id, created_at)"
-    )
+    # NOTE: idx_chat_message_session_created deferred to 0003 (session_id column added there)
     op.execute(
         "CREATE INDEX IF NOT EXISTS idx_chat_message_platform_message_id "
         "ON chat_message(platform_message_id)"
