@@ -732,26 +732,46 @@ def _create_webui_auth_tables(connection: sqlite3.Connection) -> None:
     )
 
 
+_WEBUI_ACCOUNT_EXPECTED_COLUMNS = {
+    "user_id",
+    "username",
+    "password_hash",
+    "is_disabled",
+    "last_login_at",
+    "password_changed_at",
+    "session_version",
+    "created_at",
+    "updated_at",
+}
+
+_WEBUI_ACCOUNT_ADDABLE_COLUMNS: dict[str, str] = {
+    "is_disabled": "INTEGER NOT NULL DEFAULT 0 CHECK(is_disabled IN (0, 1))",
+    "last_login_at": "TEXT",
+    "password_changed_at": "TEXT",
+    "session_version": "INTEGER NOT NULL DEFAULT 0 CHECK(session_version >= 0)",
+}
+
+
 def _replace_webui_auth_tables_v3(connection: sqlite3.Connection) -> None:
     connection.execute("DROP TABLE IF EXISTS webui_registration_code")
     connection.execute("DROP TABLE IF EXISTS webui_security_audit_event")
     account_columns = _column_names(connection, "webui_account")
-    expected_columns = {
-        "user_id",
-        "username",
-        "password_hash",
-        "is_disabled",
-        "last_login_at",
-        "password_changed_at",
-        "session_version",
-        "created_at",
-        "updated_at",
-    }
-    if account_columns == expected_columns:
+    if not account_columns:
+        _create_webui_auth_tables(connection)
         return
-    connection.execute("DROP INDEX IF EXISTS idx_webui_account_username")
-    connection.execute("DROP TABLE IF EXISTS webui_account")
-    _create_webui_auth_tables(connection)
+    if account_columns >= _WEBUI_ACCOUNT_EXPECTED_COLUMNS:
+        return
+    missing = _WEBUI_ACCOUNT_EXPECTED_COLUMNS - account_columns
+    for col in sorted(missing):
+        col_def = _WEBUI_ACCOUNT_ADDABLE_COLUMNS.get(col)
+        if col_def is not None:
+            connection.execute(f"ALTER TABLE webui_account ADD COLUMN {col} {col_def}")
+    connection.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_webui_account_username
+        ON webui_account(username)
+        """
+    )
 
 
 def _create_governance_tables(connection: sqlite3.Connection) -> None:
