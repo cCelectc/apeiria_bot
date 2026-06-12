@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
 from sqlalchemy import (
     CheckConstraint,
     ForeignKey,
@@ -13,9 +11,6 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from apeiria.db.base import Base, TimestampMixin, _epoch_ms
-
-if TYPE_CHECKING:
-    from collections.abc import Sequence
 
 
 class ChatSession(TimestampMixin, Base):
@@ -44,7 +39,7 @@ class ChatSession(TimestampMixin, Base):
     extra_json: Mapped[str | None] = mapped_column(Text)
     last_message_at: Mapped[int] = mapped_column(Integer, nullable=False)
 
-    messages: Mapped[Sequence[ChatMessage]] = relationship(
+    messages: Mapped[list["ChatMessage"]] = relationship(
         back_populates="session", cascade="all, delete-orphan"
     )
 
