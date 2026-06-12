@@ -39,8 +39,15 @@ def _utcnow_text() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
+_CACHE_MAX_SIZE = 512
+_SENTINEL = object()
+
+
 class AIMemoryEmbeddingStore:
     """Read and write memory embedding payloads outside the database."""
+
+    def __init__(self) -> None:
+        self._cache: dict[str, AIMemoryEmbeddingRecord | None] = {}
 
     def upsert(
         self,
@@ -80,17 +87,32 @@ class AIMemoryEmbeddingStore:
             encoding="utf-8",
         )
         tmp_target.replace(target)
+        self._cache[memory_id] = record
+        self._evict_if_needed()
         return record
 
     def get(self, *, memory_id: str) -> AIMemoryEmbeddingRecord | None:
+        cached = self._cache.get(memory_id, _SENTINEL)
+        if cached is not _SENTINEL:
+            return cached  # type: ignore[return-value]
         target = _record_path(memory_id)
         if not target.is_file():
+            self._cache[memory_id] = None
+            self._evict_if_needed()
             return None
         try:
             payload = json.loads(target.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
             return None
-        return self._record_from_payload(memory_id=memory_id, payload=payload)
+        record = self._record_from_payload(memory_id=memory_id, payload=payload)
+        self._cache[memory_id] = record
+        self._evict_if_needed()
+        return record
+
+    def get_many(
+        self, memory_ids: list[str]
+    ) -> dict[str, AIMemoryEmbeddingRecord | None]:
+        return {mid: self.get(memory_id=mid) for mid in memory_ids}
 
     def _record_from_payload(
         self,
@@ -134,12 +156,20 @@ class AIMemoryEmbeddingStore:
         )
 
     def delete(self, *, memory_id: str) -> bool:
+        self._cache.pop(memory_id, None)
         target = _record_path(memory_id)
         try:
             target.unlink()
         except FileNotFoundError:
             return False
         return True
+
+    def _evict_if_needed(self) -> None:
+        if len(self._cache) > _CACHE_MAX_SIZE:
+            evict_count = len(self._cache) - _CACHE_MAX_SIZE
+            keys = list(self._cache)[:evict_count]
+            for key in keys:
+                del self._cache[key]
 
 
 ai_memory_embedding_store = AIMemoryEmbeddingStore()
