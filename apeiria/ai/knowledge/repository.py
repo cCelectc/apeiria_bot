@@ -14,7 +14,7 @@ from apeiria.ai.knowledge.models import (
     KnowledgeDocumentDefinition,
 )
 from apeiria.db.base import _epoch_ms
-from apeiria.db.engine import get_session
+from apeiria.db.engine import get_session, rowcount
 from apeiria.db.models.ai_knowledge import AIKnowledgeChunk, AIKnowledgeDocument
 
 if TYPE_CHECKING:
@@ -208,7 +208,7 @@ class KnowledgeRepository:
                 )
             )
             await session.commit()
-        return (result.rowcount or 0) > 0
+        return (rowcount(result) or 0) > 0
 
 
 def _document_from_orm(row: AIKnowledgeDocument) -> KnowledgeDocumentDefinition:

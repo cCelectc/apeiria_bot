@@ -10,7 +10,7 @@ from uuid import uuid4
 from sqlalchemy import delete, select, update
 
 from apeiria.db.base import _epoch_ms
-from apeiria.db.engine import get_session
+from apeiria.db.engine import get_session, rowcount
 from apeiria.db.models.ai_relationship import AIProfile
 
 if TYPE_CHECKING:
@@ -134,7 +134,7 @@ class ProfileRepository:
                 delete(AIProfile).where(AIProfile.profile_id == profile_id)
             )
             await session.commit()
-        return result.rowcount > 0
+        return rowcount(result) > 0
 
 
 def _model_to_row(model: AIProfile) -> ProfileRow:

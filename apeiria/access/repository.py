@@ -8,7 +8,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.dialects.sqlite import insert
 
 from apeiria.db.base import _epoch_ms
-from apeiria.db.engine import get_session
+from apeiria.db.engine import get_session, rowcount
 from apeiria.db.models.governance import AccessRule, GroupState
 from apeiria.utils.group_state import decode_disabled_plugins
 
@@ -158,7 +158,7 @@ class AccessRepository:
                 )
             )
             await session.commit()
-        return result.rowcount > 0
+        return rowcount(result) > 0
 
 
 access_repository = AccessRepository()

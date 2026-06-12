@@ -13,7 +13,7 @@ from apeiria.app.ai.future_tasks.models import (
     AIFutureTaskStatus,
 )
 from apeiria.db.base import _epoch_ms
-from apeiria.db.engine import get_session
+from apeiria.db.engine import get_session, rowcount
 from apeiria.db.models.ai_tasks import AIFutureTask
 
 if TYPE_CHECKING:
@@ -130,7 +130,7 @@ class AIFutureTaskRepository:
                     updated_at=claimed_ms,
                 )
             )
-            if (result.rowcount or 0) != 1:
+            if (rowcount(result) or 0) != 1:
                 return None
             await session.commit()
             row = await session.execute(

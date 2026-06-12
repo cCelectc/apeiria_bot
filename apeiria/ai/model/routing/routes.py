@@ -32,7 +32,7 @@ from apeiria.ai.model.routing.selection import (
 )
 from apeiria.ai.model.sources.service import AISourceService
 from apeiria.db.base import _utcnow_text
-from apeiria.db.engine import get_session
+from apeiria.db.engine import get_session, rowcount
 from apeiria.db.models.ai_routing import (
     AIModelRoute,
     AIModelRouteBinding,
@@ -169,7 +169,7 @@ class AIModelRouteService:
                 delete(AIModelRoute).where(AIModelRoute.route_id == route_id)
             )
             await session.commit()
-        return result.rowcount > 0
+        return rowcount(result) > 0
 
     async def list_members(
         self,
@@ -251,7 +251,7 @@ class AIModelRouteService:
                 )
             )
             await session.commit()
-        return result.rowcount > 0
+        return rowcount(result) > 0
 
     async def list_bindings(self) -> list[AIModelRouteBindingSpec]:
         async with get_session() as session:
@@ -316,7 +316,7 @@ class AIModelRouteService:
                 )
             )
             await session.commit()
-        return result.rowcount > 0
+        return rowcount(result) > 0
 
     async def resolve_attempt_plan(
         self,

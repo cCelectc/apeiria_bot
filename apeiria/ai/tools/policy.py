@@ -17,7 +17,7 @@ from apeiria.ai.tools.models import (
     tool_level_allows,
 )
 from apeiria.db.base import _epoch_ms
-from apeiria.db.engine import get_session
+from apeiria.db.engine import get_session, rowcount
 from apeiria.db.models.ai_tools import AIToolPolicy as AIToolPolicyModel
 
 
@@ -224,7 +224,7 @@ class AIToolPolicyBindingService:
                 )
             )
             await session.commit()
-        return result.rowcount > 0
+        return rowcount(result) > 0
 
     async def resolve_scene_policy(
         self,

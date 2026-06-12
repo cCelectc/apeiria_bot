@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, TypeAlias
 from sqlalchemy import delete, select, update
 
 from apeiria.db.base import _utcnow_text
-from apeiria.db.engine import get_session
+from apeiria.db.engine import get_session, rowcount
 from apeiria.db.models.ai_source import (
     AIChatModel,
     AIEmbeddingModel,
@@ -223,7 +223,7 @@ async def delete_source_model(
             delete(model_cls).where(model_cls.model_id == model_id)
         )
         await session.commit()
-    return result.rowcount > 0
+    return rowcount(result) > 0
 
 
 async def clear_default_source_model(

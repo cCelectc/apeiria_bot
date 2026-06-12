@@ -19,7 +19,7 @@ from apeiria.ai.model.sources.models import (
     resolve_adapter_kind_for_client_type,
 )
 from apeiria.db.base import _utcnow_text
-from apeiria.db.engine import get_session
+from apeiria.db.engine import get_session, rowcount
 from apeiria.db.models.ai_source import AISource
 from apeiria.utils.json_utils import safe_json_loads
 
@@ -242,7 +242,7 @@ class AISourceService:
                 delete(AISource).where(AISource.source_id == source_id)
             )
             await session.commit()
-        return result.rowcount > 0
+        return rowcount(result) > 0
 
     async def build_delete_dependency_report(
         self,

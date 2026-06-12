@@ -11,7 +11,7 @@ from sqlalchemy.dialects.sqlite import insert
 
 from apeiria.ai.memory.models import AIMemoryDefinition
 from apeiria.db.base import _epoch_ms
-from apeiria.db.engine import get_session
+from apeiria.db.engine import get_session, rowcount
 from apeiria.db.models.ai_memory import AIMemoryItem
 
 if TYPE_CHECKING:
@@ -77,7 +77,7 @@ class AIMemoryRepository:
         async with get_session() as session:
             result = await session.execute(stmt)
             await session.commit()
-            if result.rowcount == 0:
+            if rowcount(result) == 0:
                 return None
             row = await session.execute(
                 select(AIMemoryItem).where(AIMemoryItem.memory_id == memory_id)
@@ -183,7 +183,7 @@ class AIMemoryRepository:
                 delete(AIMemoryItem).where(AIMemoryItem.memory_id == memory_id)
             )
             await session.commit()
-        return (result.rowcount or 0) > 0
+        return (rowcount(result) or 0) > 0
 
     async def set_memory_state(
         self,
@@ -235,7 +235,7 @@ class AIMemoryRepository:
                 )
             )
             await session.commit()
-        return result.rowcount or 0
+        return rowcount(result) or 0
 
     async def mark_memories_recalled(
         self,

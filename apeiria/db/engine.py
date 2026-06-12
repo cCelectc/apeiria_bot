@@ -67,3 +67,8 @@ def get_engine() -> AsyncEngine:
         msg = "Database engine not initialized"
         raise RuntimeError(msg)
     return _engine
+
+
+def rowcount(result: object) -> int:
+    """Extract rowcount from a DML execution result (type-safe wrapper)."""
+    return int(getattr(result, "rowcount", 0))

@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING
 from nonebot.log import logger
 from sqlalchemy import delete, select, text
 
-from apeiria.db.engine import get_session
+from apeiria.db.engine import get_session, rowcount
 from apeiria.db.models.ai_memory import AIMemoryItem
 from apeiria.db.models.conversation import ChatMessage, ChatSession
 
@@ -135,7 +135,7 @@ class AIRetentionService:
             msg_result = await session.execute(
                 delete(ChatMessage).where(ChatMessage.created_at < cutoff)
             )
-            deleted_messages = msg_result.rowcount or 0
+            deleted_messages = rowcount(msg_result) or 0
 
             active_session_ids = (
                 select(ChatMessage.session_id).distinct().scalar_subquery()
@@ -145,7 +145,7 @@ class AIRetentionService:
                     ChatSession.session_id.notin_(active_session_ids)
                 )
             )
-            deleted_sessions = sess_result.rowcount or 0
+            deleted_sessions = rowcount(sess_result) or 0
 
             await session.commit()
 
@@ -168,7 +168,7 @@ class AIRetentionService:
                 {"cutoff": cutoff},
             )
             await session.commit()
-            return int(result.rowcount or 0)
+            return int(rowcount(result) or 0)
 
     async def cleanup_suppressed_memories(self, *, retention_days: int) -> int:
         """Delete old suppressed memory rows and embeddings."""
@@ -206,4 +206,4 @@ class AIRetentionService:
         for memory_id in memory_ids:
             ai_memory_embedding_store.delete(memory_id=memory_id)
 
-        return int(result.rowcount or 0)
+        return int(rowcount(result) or 0)
