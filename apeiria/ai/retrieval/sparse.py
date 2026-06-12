@@ -97,7 +97,8 @@ class RetrievalSparseIndex:
         if not terms:
             return SparseSearchResult(candidates=())
         document_map = {document.document_id: document for document in documents}
-        query = " OR ".join(f'"{term}"' for term in terms)
+        escaped = [term.replace('"', '""') for term in terms]
+        query = " OR ".join(f'"{esc}"' for esc in escaped)
         placeholders = ",".join("?" for _ in document_map)
         try:
             with database_runtime.connect_sync() as connection:

@@ -123,6 +123,7 @@ class AIToolIntentExecutor:
         arguments = (
             intent.input_payload if isinstance(intent.input_payload, dict) else {}
         )
+        arguments = {k: v for k, v in arguments.items() if k != "context"}
 
         try:
             execution = tool.executor(**arguments, context=context)

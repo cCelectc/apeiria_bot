@@ -73,9 +73,13 @@ def score_dense_candidates(
 def _cosine_similarity(left: tuple[float, ...], right: tuple[float, ...]) -> float:
     if not left or not right or len(left) != len(right):
         return 0.0
-    dot = sum(a * b for a, b in zip(left, right, strict=True))
-    left_norm = math.sqrt(sum(value * value for value in left))
-    right_norm = math.sqrt(sum(value * value for value in right))
-    if left_norm == 0 or right_norm == 0:
+    dot = 0.0
+    left_sq = 0.0
+    right_sq = 0.0
+    for a, b in zip(left, right, strict=True):
+        dot += a * b
+        left_sq += a * a
+        right_sq += b * b
+    if left_sq == 0.0 or right_sq == 0.0:
         return 0.0
-    return dot / (left_norm * right_norm)
+    return dot / (math.sqrt(left_sq) * math.sqrt(right_sq))

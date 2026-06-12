@@ -43,9 +43,10 @@ def ensure_group() -> Rule:
     async def _check(event: "Event") -> bool:
         try:
             user_id = event.get_user_id()
+            session_id = event.get_session_id()
         except Exception:  # noqa: BLE001
             return False
-        return extract_group_id(event.get_session_id(), user_id) is not None
+        return extract_group_id(session_id, user_id) is not None
 
     return Rule(_check)
 
@@ -56,9 +57,10 @@ def ensure_private() -> Rule:
     async def _check(event: "Event") -> bool:
         try:
             user_id = event.get_user_id()
+            session_id = event.get_session_id()
         except Exception:  # noqa: BLE001
             return False
-        return event.get_session_id() == user_id
+        return session_id == user_id
 
     return Rule(_check)
 

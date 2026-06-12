@@ -569,7 +569,9 @@ def _ensure_context_summary_shape(
         return
     chat_session_columns = _column_names(connection, "chat_session")
     if "summary_text" in chat_session_columns:
-        connection.execute("UPDATE chat_session SET summary_text = NULL")
+        connection.execute(
+            "UPDATE chat_session SET summary_text = NULL WHERE summary_text IS NOT NULL"
+        )
 
 
 def _sqlite_supports_json_valid(connection: sqlite3.Connection) -> bool:
@@ -644,7 +646,7 @@ def _ensure_memory_belief_shape(connection: sqlite3.Connection) -> None:
         """
         UPDATE ai_memory_item
         SET default_use_mode = 'ignore'
-        WHERE lifecycle_state != 'active'
+        WHERE lifecycle_state != 'active' AND default_use_mode != 'ignore'
         """
     )
 
