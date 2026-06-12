@@ -41,7 +41,7 @@ async def serve_chat_websocket(
         pass
     except Exception as exc:  # noqa: BLE001
         logger.opt(exception=exc).error("Web UI chat websocket loop crashed")
-        await _emit_internal_error(websocket, connection, exc, accepted=accepted)
+        await _emit_internal_error(websocket, connection, accepted=accepted)
     finally:
         if connection.active_session_id:
             web_chat_service.close_session(connection.active_session_id)
@@ -60,10 +60,11 @@ async def _receive_frame(
             raise WebChatConnectionClosed(code=1006) from exc
         raise
     except ValidationError as exc:
+        logger.debug("Invalid websocket frame: {}", exc)
         await web_chat_service.emit_error(
             connection,
             code="INVALID_FRAME",
-            message=f"{t('web_ui.chat.invalid_frame')}: {exc}",
+            message=t("web_ui.chat.invalid_frame"),
             type_="system.error",
         )
         return None
@@ -72,7 +73,6 @@ async def _receive_frame(
 async def _emit_internal_error(
     websocket: WebSocket,
     connection: WebChatConnection,
-    exc: Exception,
     *,
     accepted: bool,
 ) -> None:
@@ -80,7 +80,7 @@ async def _emit_internal_error(
         await web_chat_service.emit_error(
             connection,
             code="INTERNAL_ERROR",
-            message=f"{t('web_ui.chat.internal_error')}: {exc}",
+            message=t("web_ui.chat.internal_error"),
             type_="system.error",
         )
     except WebChatConnectionClosed:

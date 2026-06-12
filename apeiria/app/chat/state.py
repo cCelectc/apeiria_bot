@@ -5,8 +5,6 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from uuid import uuid4
 
-from fastapi import HTTPException, status
-
 from apeiria.i18n import t
 
 from .protocol import (
@@ -129,10 +127,9 @@ class WebChatStateManager:
     def get_session(self, session_id: str) -> ChatSession:
         session = self._sessions.get(session_id)
         if session is None:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=t("web_ui.sessions.not_found"),
-            )
+            from apeiria.app.chat.gateway import ChatSessionNotFoundError
+
+            raise ChatSessionNotFoundError(t("web_ui.sessions.not_found"))
         return session
 
     def find_session(
@@ -153,10 +150,9 @@ class WebChatStateManager:
     def ensure_owner(self, session: ChatSession, principal: WebUIPrincipal) -> None:
         """Enforce that only the session creator can mutate that session."""
         if session.created_by.id != principal.id:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail=t("web_ui.sessions.owner_mismatch"),
-            )
+            from apeiria.app.chat.gateway import ChatSessionForbiddenError
+
+            raise ChatSessionForbiddenError(t("web_ui.sessions.owner_mismatch"))
 
     def persist(self) -> None:
         self.store.save(self._sessions, self._history)

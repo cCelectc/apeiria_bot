@@ -4,6 +4,9 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from nonebot.log import logger
+from pydantic import ValidationError
+
 from apeiria.app.chat.gateway_protocol import (
     ChatEnvelope,
     MessageSendPayload,
@@ -31,6 +34,14 @@ class ChatAssetFileMissingError(ValueError):
 
 class ChatAuthError(ValueError):
     """Raised when a chat auth flow fails."""
+
+
+class ChatSessionNotFoundError(ValueError):
+    """Raised when a referenced chat session does not exist."""
+
+
+class ChatSessionForbiddenError(ValueError):
+    """Raised when the caller is not the session owner."""
 
 
 class ChatGatewayService:
@@ -69,6 +80,29 @@ class ChatGatewayService:
                 request_id=frame.request_id,
             )
             return
+        try:
+            await self._dispatch_frame(connection, frame)
+        except (ChatSessionNotFoundError, ChatSessionForbiddenError) as exc:
+            await web_chat_service.emit_error(
+                connection,
+                code="SESSION_ERROR",
+                message=str(exc),
+                request_id=frame.request_id,
+            )
+        except ValidationError as exc:
+            logger.debug("Invalid payload for frame type={}: {}", frame.type, exc)
+            await web_chat_service.emit_error(
+                connection,
+                code="INVALID_PAYLOAD",
+                message=t("web_ui.chat.invalid_frame"),
+                request_id=frame.request_id,
+            )
+
+    async def _dispatch_frame(
+        self,
+        connection: "WebChatConnection",
+        frame: ChatEnvelope,
+    ) -> None:
         if frame.type in {
             "session.create",
             "session.select",

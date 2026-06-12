@@ -5,10 +5,10 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
-from fastapi import HTTPException, status
 from nonebot.log import logger
 from nonebot.message import handle_event
 
+from apeiria.app.chat.gateway import ChatSessionForbiddenError
 from apeiria.i18n import t
 
 from .adapter import WebChatAdapter
@@ -56,10 +56,7 @@ class WebChatMessageHandler:
         """Process one client message frame for an already-authenticated session."""
         session = self._state.get_session(payload.session_id)
         if not connection.principal:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail=t("web_ui.sessions.owner_mismatch"),
-            )
+            raise ChatSessionForbiddenError(t("web_ui.sessions.owner_mismatch"))
         self._state.ensure_owner(session, connection.principal)
         connection.active_session_id = session.session_id
 
@@ -107,8 +104,12 @@ class WebChatMessageHandler:
                 session.session_id,
             )
         except Exception as exc:  # noqa: BLE001
+            logger.opt(exception=exc).warning(
+                "Unhandled error in web chat message handling for session={}",
+                session.session_id,
+            )
             try:
-                await bot.emit_error(str(exc))
+                await bot.emit_error(t("web_ui.chat.internal_error"))
             except WebChatConnectionClosed:
                 logger.debug(
                     "Web UI chat closed before error delivery for session={}",
