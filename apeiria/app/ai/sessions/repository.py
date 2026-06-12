@@ -1,11 +1,16 @@
-"""SQLite repository for managed AI session state."""
+"""Async SQLAlchemy repository for managed AI session state."""
 
 from __future__ import annotations
 
 import json
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING, cast
+from typing import cast
+
+from sqlalchemy import select
+from sqlalchemy import update as sa_update
+from sqlalchemy.dialects.sqlite import insert
+from sqlalchemy.orm import Session as SyncSession
 
 from apeiria.app.ai.sessions.models import (
     AISessionManagementRecord,
@@ -15,10 +20,9 @@ from apeiria.app.ai.sessions.models import (
     NormalizedAISessionIdentity,
     UnknownAISessionPersonaError,
 )
-from apeiria.db.runtime import database_runtime
-
-if TYPE_CHECKING:
-    from sqlite3 import Connection
+from apeiria.db.base import _epoch_ms
+from apeiria.db.engine import get_engine, get_session
+from apeiria.db.models.ai_session import AIManagedSession
 
 
 @dataclass(frozen=True)
@@ -32,63 +36,62 @@ class AISessionManagementRepository:
         actor_id: str | None = None,
         observed_at: datetime | None = None,
     ) -> AISessionManagementRecord:
-        timestamp = observed_at or _utcnow()
-        timestamp_text = _datetime_to_text(timestamp)
+        now = int((observed_at or _utcnow()).timestamp() * 1000)
         identity = source_identity.identity
-        with database_runtime.transaction_sync() as connection:
-            connection.execute(
-                """
-                INSERT INTO ai_managed_session (
-                    session_id,
-                    platform_id,
-                    platform_type,
-                    message_type,
-                    subject_id,
-                    source_labels_json,
-                    diagnostic_raw_ids_json,
-                    ai_enabled,
-                    last_observed_at,
-                    created_at,
-                    updated_at,
-                    audit_created_by,
-                    audit_updated_by
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(session_id) DO UPDATE SET
-                    platform_id = excluded.platform_id,
-                    platform_type = excluded.platform_type,
-                    message_type = excluded.message_type,
-                    subject_id = excluded.subject_id,
-                    source_labels_json = excluded.source_labels_json,
-                    diagnostic_raw_ids_json = excluded.diagnostic_raw_ids_json,
-                    last_observed_at = excluded.last_observed_at,
-                    updated_at = excluded.updated_at,
-                    audit_updated_by = excluded.audit_updated_by
-                """,
-                (
-                    identity.session_id,
-                    identity.platform_id,
-                    identity.platform_type,
-                    identity.message_type,
-                    identity.subject_id,
-                    _serialize_json_payload(source_identity.source_labels),
-                    _serialize_json_payload(source_identity.diagnostic_raw_ids),
-                    1,
-                    timestamp_text,
-                    timestamp_text,
-                    timestamp_text,
-                    actor_id,
-                    actor_id,
-                ),
+        stmt = insert(AIManagedSession).values(
+            session_id=identity.session_id,
+            platform_id=identity.platform_id,
+            platform_type=identity.platform_type,
+            message_type=identity.message_type,
+            subject_id=identity.subject_id,
+            source_labels_json=_serialize_json_payload(source_identity.source_labels),
+            diagnostic_raw_ids_json=_serialize_json_payload(
+                source_identity.diagnostic_raw_ids
+            ),
+            ai_enabled=1,
+            last_observed_at=now,
+            created_at=now,
+            updated_at=now,
+            audit_created_by=actor_id,
+            audit_updated_by=actor_id,
+        )
+        stmt = stmt.on_conflict_do_update(
+            index_elements=[AIManagedSession.session_id],
+            set_={
+                "platform_id": stmt.excluded.platform_id,
+                "platform_type": stmt.excluded.platform_type,
+                "message_type": stmt.excluded.message_type,
+                "subject_id": stmt.excluded.subject_id,
+                "source_labels_json": stmt.excluded.source_labels_json,
+                "diagnostic_raw_ids_json": stmt.excluded.diagnostic_raw_ids_json,
+                "last_observed_at": stmt.excluded.last_observed_at,
+                "updated_at": stmt.excluded.updated_at,
+                "audit_updated_by": stmt.excluded.audit_updated_by,
+            },
+        )
+        async with get_session() as session:
+            await session.execute(stmt)
+            await session.commit()
+            result = await session.execute(
+                select(AIManagedSession).where(
+                    AIManagedSession.session_id == identity.session_id
+                )
             )
-            row = _select_session_row(connection, session_id=identity.session_id)
-        assert row is not None
+            row = result.scalar_one()
         return _row_to_record(row)
 
     async def get_session(
         self,
         session_id: str,
     ) -> AISessionManagementRecord | None:
-        return self.get_session_sync(session_id)
+        async with get_session() as session:
+            result = await session.execute(
+                select(AIManagedSession).where(
+                    AIManagedSession.session_id == session_id
+                )
+            )
+            row = result.scalar_one_or_none()
+        return None if row is None else _row_to_record(row)
 
     def get_session_sync(
         self,
@@ -96,8 +99,13 @@ class AISessionManagementRepository:
     ) -> AISessionManagementRecord | None:
         """Synchronously load one session for sync policy boundaries."""
 
-        with database_runtime.connect_sync() as connection:
-            row = _select_session_row(connection, session_id=session_id)
+        with SyncSession(get_engine().sync_engine) as session:
+            result = session.execute(
+                select(AIManagedSession).where(
+                    AIManagedSession.session_id == session_id
+                )
+            )
+            row = result.scalar_one_or_none()
         return None if row is None else _row_to_record(row)
 
     async def list_sessions(
@@ -105,18 +113,22 @@ class AISessionManagementRepository:
         *,
         limit: int = 50,
     ) -> list[AISessionManagementRecord]:
-        with database_runtime.connect_sync() as connection:
-            rows = connection.execute(
-                _SELECT_MANAGED_SESSION_FIELDS
-                + """
-                ORDER BY
-                    COALESCE(last_observed_at, updated_at) DESC,
-                    id DESC
-                LIMIT ?
-                """,
-                (limit,),
-            ).fetchall()
-        return [_row_to_record(row) for row in rows]
+        from sqlalchemy import func
+
+        async with get_session() as session:
+            result = await session.execute(
+                select(AIManagedSession)
+                .order_by(
+                    func.coalesce(
+                        AIManagedSession.last_observed_at,
+                        AIManagedSession.updated_at,
+                    ).desc(),
+                    AIManagedSession.session_id.desc(),
+                )
+                .limit(limit)
+            )
+            rows = result.scalars().all()
+        return [_row_to_record(r) for r in rows]
 
     async def update_session(
         self,
@@ -125,30 +137,29 @@ class AISessionManagementRepository:
         update: AISessionManagementUpdate,
     ) -> AISessionManagementRecord | None:
         if update.updates_persona and update.normalized_persona_id is not None:
-            _ensure_persona_exists(update.normalized_persona_id)
+            await _ensure_persona_exists(update.normalized_persona_id)
 
-        assignments: list[str] = []
-        values: list[object] = []
+        values: dict[str, object] = {}
         if update.ai_enabled is not None:
-            assignments.append("ai_enabled = ?")
-            values.append(1 if update.ai_enabled else 0)
+            values["ai_enabled"] = 1 if update.ai_enabled else 0
         if update.updates_persona:
-            assignments.append("persona_id = ?")
-            values.append(update.normalized_persona_id)
-        assignments.extend(["updated_at = ?", "audit_updated_by = ?"])
-        values.extend([_datetime_to_text(_utcnow()), update.actor_id])
-        values.append(session_id)
+            values["persona_id"] = update.normalized_persona_id
+        values["updated_at"] = _epoch_ms()
+        values["audit_updated_by"] = update.actor_id
 
-        with database_runtime.transaction_sync() as connection:
-            connection.execute(
-                f"""
-                UPDATE ai_managed_session
-                SET {", ".join(assignments)}
-                WHERE session_id = ?
-                """,
-                tuple(values),
+        async with get_session() as session:
+            await session.execute(
+                sa_update(AIManagedSession)
+                .where(AIManagedSession.session_id == session_id)
+                .values(**values)
             )
-            row = _select_session_row(connection, session_id=session_id)
+            await session.commit()
+            result = await session.execute(
+                select(AIManagedSession).where(
+                    AIManagedSession.session_id == session_id
+                )
+            )
+            row = result.scalar_one_or_none()
         return None if row is None else _row_to_record(row)
 
     async def mark_context_reset(
@@ -158,115 +169,74 @@ class AISessionManagementRepository:
         actor_id: str | None = None,
         reset_at: datetime | None = None,
     ) -> AISessionManagementRecord | None:
-        timestamp = reset_at or _utcnow()
-        timestamp_text = _datetime_to_text(timestamp)
-        with database_runtime.transaction_sync() as connection:
-            connection.execute(
-                """
-                UPDATE ai_managed_session
-                SET
-                    context_reset_at = ?,
-                    context_reset_by = ?,
-                    updated_at = ?,
-                    audit_updated_by = ?
-                WHERE session_id = ?
-                """,
-                (
-                    timestamp_text,
-                    actor_id,
-                    timestamp_text,
-                    actor_id,
-                    session_id,
-                ),
+        now_ms = int((reset_at or _utcnow()).timestamp() * 1000)
+        async with get_session() as session:
+            await session.execute(
+                sa_update(AIManagedSession)
+                .where(AIManagedSession.session_id == session_id)
+                .values(
+                    context_reset_at=now_ms,
+                    context_reset_by=actor_id,
+                    updated_at=now_ms,
+                    audit_updated_by=actor_id,
+                )
             )
-            row = _select_session_row(connection, session_id=session_id)
+            await session.commit()
+            result = await session.execute(
+                select(AIManagedSession).where(
+                    AIManagedSession.session_id == session_id
+                )
+            )
+            row = result.scalar_one_or_none()
         return None if row is None else _row_to_record(row)
 
 
-_SELECT_MANAGED_SESSION_FIELDS = """
-SELECT
-    id,
-    session_id,
-    platform_id,
-    platform_type,
-    message_type,
-    subject_id,
-    source_labels_json,
-    diagnostic_raw_ids_json,
-    ai_enabled,
-    persona_id,
-    context_reset_at,
-    context_reset_by,
-    last_observed_at,
-    last_user_message_at,
-    last_ai_message_at,
-    created_at,
-    updated_at,
-    audit_created_by,
-    audit_updated_by
-FROM ai_managed_session
-"""
-
-
-def _select_session_row(
-    connection: "Connection",
-    *,
-    session_id: str,
-) -> tuple[object, ...] | None:
-    return connection.execute(
-        _SELECT_MANAGED_SESSION_FIELDS + " WHERE session_id = ?",
-        (session_id,),
-    ).fetchone()
-
-
-def _row_to_record(row: tuple[object, ...]) -> AISessionManagementRecord:
+def _row_to_record(row: AIManagedSession) -> AISessionManagementRecord:
     identity = NormalizedAISessionIdentity(
-        session_id=str(row[1]),
-        platform_id=str(row[2]),
-        platform_type=str(row[3]),
-        message_type=cast("AISessionMessageType", str(row[4])),
-        subject_id=str(row[5]),
+        session_id=row.session_id,
+        platform_id=row.platform_id,
+        platform_type=row.platform_type,
+        message_type=cast("AISessionMessageType", row.message_type),
+        subject_id=row.subject_id,
     )
     return AISessionManagementRecord(
         session_id=identity.session_id,
         source_identity=AISessionSourceIdentity(
             identity=identity,
-            source_labels=_deserialize_string_mapping(row[6]),
-            diagnostic_raw_ids=_deserialize_string_mapping(row[7]),
+            source_labels=_deserialize_string_mapping(row.source_labels_json),
+            diagnostic_raw_ids=_deserialize_string_mapping(row.diagnostic_raw_ids_json),
         ),
-        ai_enabled=bool(row[8]),
-        persona_id=str(row[9]) if row[9] is not None else None,
-        context_reset_at=_datetime_from_optional_text(row[10]),
-        context_reset_by=str(row[11]) if row[11] is not None else None,
-        last_observed_at=_datetime_from_optional_text(row[12]),
-        last_user_message_at=_datetime_from_optional_text(row[13]),
-        last_ai_message_at=_datetime_from_optional_text(row[14]),
-        created_at=_datetime_from_text(row[15]),
-        updated_at=_datetime_from_text(row[16]),
-        audit_created_by=str(row[17]) if row[17] is not None else None,
-        audit_updated_by=str(row[18]) if row[18] is not None else None,
+        ai_enabled=bool(row.ai_enabled),
+        persona_id=row.persona_id,
+        context_reset_at=_optional_epoch_ms_to_datetime(row.context_reset_at),
+        context_reset_by=row.context_reset_by,
+        last_observed_at=_optional_epoch_ms_to_datetime(row.last_observed_at),
+        last_user_message_at=_optional_epoch_ms_to_datetime(row.last_user_message_at),
+        last_ai_message_at=_optional_epoch_ms_to_datetime(row.last_ai_message_at),
+        created_at=_epoch_ms_to_datetime(row.created_at),
+        updated_at=_epoch_ms_to_datetime(row.updated_at),
+        audit_created_by=row.audit_created_by,
+        audit_updated_by=row.audit_updated_by,
     )
 
 
-def _ensure_persona_exists(persona_id: str) -> None:
-    with database_runtime.connect_sync() as connection:
-        row = connection.execute(
-            """
-            SELECT 1
-            FROM ai_persona
-            WHERE persona_id = ?
-            """,
-            (persona_id,),
-        ).fetchone()
+async def _ensure_persona_exists(persona_id: str) -> None:
+    from apeiria.db.models.ai_persona import AIPersona
+
+    async with get_session() as session:
+        result = await session.execute(
+            select(AIPersona.persona_id).where(AIPersona.persona_id == persona_id)
+        )
+        row = result.scalar_one_or_none()
     if row is None:
         raise UnknownAISessionPersonaError.for_persona_id(persona_id)
 
 
-def _deserialize_string_mapping(value: object) -> dict[str, str]:
+def _deserialize_string_mapping(value: str | None) -> dict[str, str]:
     if value is None:
         return {}
     try:
-        payload = json.loads(str(value))
+        payload = json.loads(value)
     except json.JSONDecodeError:
         return {}
     if not isinstance(payload, dict):
@@ -287,23 +257,14 @@ def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
 
-def _datetime_to_text(value: datetime) -> str:
-    if value.tzinfo is None:
-        value = value.replace(tzinfo=timezone.utc)
-    return value.astimezone(timezone.utc).isoformat(timespec="seconds")
+def _epoch_ms_to_datetime(ms: int) -> datetime:
+    return datetime.fromtimestamp(ms / 1000, tz=timezone.utc)
 
 
-def _datetime_from_text(value: object) -> datetime:
-    parsed = datetime.fromisoformat(str(value))
-    if parsed.tzinfo is None:
-        return parsed.replace(tzinfo=timezone.utc)
-    return parsed
-
-
-def _datetime_from_optional_text(value: object) -> datetime | None:
-    if value is None:
+def _optional_epoch_ms_to_datetime(ms: int | None) -> datetime | None:
+    if ms is None:
         return None
-    return _datetime_from_text(value)
+    return _epoch_ms_to_datetime(ms)
 
 
 __all__ = ["AISessionManagementRepository"]

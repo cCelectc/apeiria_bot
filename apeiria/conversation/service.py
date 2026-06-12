@@ -66,7 +66,7 @@ class ChatSessionService:
     ) -> ChatSessionContextSummary | None:
         """Load the prompt-facing context summary for one session."""
 
-        row = self._repository.get_context_summary_row(
+        row = await self._repository.get_context_summary_row(
             session_id=identity.session_id,
         )
         if row is None:
@@ -162,7 +162,6 @@ class ChatSessionService:
         return await self._repository.update_message_disposition(
             message_id=message_id,
             turn_disposition="observed",
-            clear_raw_data=True,
         )
 
     async def list_recent_messages(
@@ -173,7 +172,7 @@ class ChatSessionService:
     ) -> list[ChatContextMessageView]:
         """List recent messages for one chat session identity."""
 
-        message_rows = self._repository.list_recent_message_rows(
+        message_rows = await self._repository.list_recent_message_rows(
             identity,
             max_messages=max_messages,
         )
@@ -186,7 +185,7 @@ class ChatSessionService:
         *,
         limit: int,
     ) -> list[ChatSessionAdminView]:
-        rows = self._repository.list_recent_session_rows(limit=limit)
+        rows = await self._repository.list_recent_session_rows(limit=limit)
         return [self._to_session_admin_view(row) for row in rows]
 
     async def get_session_view(
@@ -194,7 +193,7 @@ class ChatSessionService:
         *,
         session_id: str,
     ) -> ChatSessionAdminView | None:
-        row = self._repository.get_session_row(session_id=session_id)
+        row = await self._repository.get_session_row(session_id=session_id)
         if row is None:
             return None
         return self._to_session_admin_view(row)
@@ -205,7 +204,7 @@ class ChatSessionService:
         session_id: str,
         limit: int,
     ) -> list[ChatMessageDetailView]:
-        rows = self._repository.list_message_rows_for_session(
+        rows = await self._repository.list_message_rows_for_session(
             session_id=session_id,
             limit=limit,
         )
@@ -225,7 +224,7 @@ class ChatSessionService:
         session_id: str,
         platform_message_id: str,
     ) -> ChatMessageDetailView | None:
-        row = self._repository.get_message_row_by_platform_message_id(
+        row = await self._repository.get_message_row_by_platform_message_id(
             session_id=session_id,
             platform_message_id=platform_message_id,
         )
@@ -244,7 +243,7 @@ class ChatSessionService:
     ) -> list[str]:
         """List distinct recent user author ids for one session."""
 
-        return self._repository.list_recent_user_ids_for_session(
+        return await self._repository.list_recent_user_ids_for_session(
             session_id=session_id,
             limit=limit,
         )
@@ -256,7 +255,7 @@ class ChatSessionService:
     ) -> ChatSessionIdentity | None:
         """Load the canonical identity for one stored session id."""
 
-        row = self._repository.get_session_row(session_id=session_id)
+        row = await self._repository.get_session_row(session_id=session_id)
         if row is None:
             return None
         return ChatSessionIdentity(
@@ -306,8 +305,6 @@ class ChatSessionService:
         session_id: str,
     ) -> ChatMessageDetailView:
         content = self._deserialize_json_payload(message.content_json)
-        meta = self._deserialize_json_payload(message.meta_json)
-        raw_data = self._deserialize_json_payload(message.raw_data_json)
         return ChatMessageDetailView(
             message_id=message.message_id,
             session_id=session_id,
@@ -323,8 +320,8 @@ class ChatSessionService:
             has_media=message.has_media,
             text_content=message.text_content,
             content=content,
-            meta=meta,
-            raw_data=raw_data,
+            meta=None,
+            raw_data=None,
             created_at=message.created_at,
             turn_disposition=cast("TurnDisposition", message.turn_disposition),
         )

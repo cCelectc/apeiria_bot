@@ -125,12 +125,11 @@ class AIRetentionService:
         self,
         *,
         conversation_retention_days: int,
-        raw_event_retention_days: int,
+        raw_event_retention_days: int,  # noqa: ARG002
     ) -> AIRetentionCleanupResult:
-        """Delete old conversation rows and clear raw payloads."""
+        """Delete old conversation rows."""
 
         cutoff = _epoch_ms_cutoff(conversation_retention_days)
-        raw_cutoff = _epoch_ms_cutoff(raw_event_retention_days)
 
         async with get_session() as session:
             msg_result = await session.execute(
@@ -148,25 +147,12 @@ class AIRetentionService:
             )
             deleted_sessions = sess_result.rowcount or 0
 
-            try:
-                raw_result = await session.execute(
-                    text("""
-                    UPDATE chat_message
-                    SET raw_data_json = NULL
-                    WHERE raw_data_json IS NOT NULL AND created_at < :cutoff
-                    """),
-                    {"cutoff": raw_cutoff},
-                )
-                cleared_raw_payloads = raw_result.rowcount or 0
-            except Exception:  # noqa: BLE001
-                cleared_raw_payloads = 0
-
             await session.commit()
 
         return AIRetentionCleanupResult(
             deleted_messages=int(deleted_messages),
             deleted_sessions=int(deleted_sessions),
-            cleared_raw_payloads=int(cleared_raw_payloads),
+            cleared_raw_payloads=0,
         )
 
     async def cleanup_tool_executions(self, *, retention_days: int) -> int:

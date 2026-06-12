@@ -56,7 +56,9 @@ class ChatMessage(Base):
             name="ck_chat_message_message_kind",
         ),
         CheckConstraint(
-            "turn_disposition IN ('active', 'pruned', 'summarized', 'archived')",
+            "turn_disposition IN ("
+            "'active', 'observed', 'generated', 'tool', "
+            "'system', 'pruned', 'summarized', 'archived')",
             name="ck_chat_message_turn_disposition",
         ),
         CheckConstraint(
