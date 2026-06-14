@@ -21,10 +21,10 @@ from .store import WebChatStore
 
 
 class WebChatStateManager:
-    """Own in-memory sessions/history and persist them via WebChatStore.
+    """Own in-memory sessions/history — ephemeral, backed by SQLite for messages.
 
     This layer contains the canonical mutation rules for chat session state,
-    including ownership checks, session reuse, history trimming, and persistence.
+    including ownership checks, session reuse, history trimming.
     """
 
     def __init__(self, store: WebChatStore | None = None) -> None:
@@ -155,4 +155,4 @@ class WebChatStateManager:
             raise ChatSessionForbiddenError(t("web_ui.sessions.owner_mismatch"))
 
     def persist(self) -> None:
-        self.store.save(self._sessions, self._history)
+        """No-op: sessions/messages are persisted in SQLite conversation layer."""
