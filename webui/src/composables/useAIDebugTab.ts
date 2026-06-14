@@ -15,6 +15,8 @@ import {
   getAITurnTraces,
 } from '@/api/ai'
 import { getErrorMessage } from '@/api/client'
+import { ALL_FILTER } from '@/constants'
+import { optionalFilter } from '@/composables/useTabHelpers'
 import { useNoticeStore } from '@/stores/notice'
 
 export interface PromptChannelSection {
@@ -40,11 +42,11 @@ export function useAIDebugTab(t: (key: string) => string) {
     turnLimit: 50,
   })
   const traceFilter = reactive({
-    commit_status: '__all__',
+    commit_status: ALL_FILTER,
     limit: 20,
-    runtime_mode: '__all__',
+    runtime_mode: ALL_FILTER,
     session_id: '',
-    terminal_status: '__all__',
+    terminal_status: ALL_FILTER,
     trace_id: '',
   })
 
@@ -125,11 +127,11 @@ export function useAIDebugTab(t: (key: string) => string) {
     loadingTraces.value = true
     try {
       const params = {
-        commit_status: optionalTraceFilter(traceFilter.commit_status),
+        commit_status: optionalFilter(traceFilter.commit_status),
         limit: traceFilter.limit,
-        runtime_mode: optionalTraceFilter(traceFilter.runtime_mode),
+        runtime_mode: optionalFilter(traceFilter.runtime_mode),
         session_id: traceFilter.session_id.trim() || undefined,
-        terminal_status: optionalTraceFilter(traceFilter.terminal_status),
+        terminal_status: optionalFilter(traceFilter.terminal_status),
         trace_id: traceFilter.trace_id.trim() || undefined,
       }
       const [traceResponse, usageResponse] = await Promise.all([
@@ -182,10 +184,6 @@ export function useAIDebugTab(t: (key: string) => string) {
     turns,
     usageByResponseSource,
   }
-}
-
-function optionalTraceFilter(value: string) {
-  return value === '__all__' ? undefined : value
 }
 
 function buildPromptChannelSections(

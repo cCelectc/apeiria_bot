@@ -1,18 +1,17 @@
 import { createI18n } from 'vue-i18n'
+import { STORAGE_KEYS } from '@/constants'
 import enUS from '@/app/locales/en_US'
 import zhCN from '@/app/locales/zh_CN'
 
 export const SUPPORTED_LOCALES = ['zh_CN', 'en_US'] as const
 export type SupportedLocale = (typeof SUPPORTED_LOCALES)[number]
 
-const LOCALE_STORAGE_KEY = 'apeiria-locale'
-
 export function normalizeLocale(value: unknown): SupportedLocale {
   return value === 'en_US' || value === 'zh_CN' ? value : 'zh_CN'
 }
 
 function readInitialLocale(): SupportedLocale {
-  const stored = localStorage.getItem(LOCALE_STORAGE_KEY)
+  const stored = localStorage.getItem(STORAGE_KEYS.locale)
   if (stored === 'zh_CN' || stored === 'en_US') {
     return stored
   }

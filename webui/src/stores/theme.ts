@@ -1,12 +1,11 @@
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
+import { STORAGE_KEYS } from '@/constants'
 
 export type ThemeMode = 'light' | 'dark'
 
-const STORAGE_KEY = 'apeiria-theme'
-
 function readInitialTheme(): ThemeMode {
-  return localStorage.getItem(STORAGE_KEY) === 'light' ? 'light' : 'dark'
+  return localStorage.getItem(STORAGE_KEYS.theme) === 'light' ? 'light' : 'dark'
 }
 
 export const useThemeStore = defineStore('theme', () => {
@@ -20,7 +19,7 @@ export const useThemeStore = defineStore('theme', () => {
 
   function setTheme(nextMode: ThemeMode) {
     mode.value = nextMode
-    localStorage.setItem(STORAGE_KEY, nextMode)
+    localStorage.setItem(STORAGE_KEYS.theme, nextMode)
     applyTheme()
   }
 

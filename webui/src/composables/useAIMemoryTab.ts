@@ -11,6 +11,8 @@ import {
   updateAIMemory,
 } from '@/api/ai'
 import { getErrorMessage } from '@/api/client'
+import { ALL_FILTER } from '@/constants'
+import { optionalFilter } from '@/composables/useTabHelpers'
 import { useNoticeStore } from '@/stores/notice'
 
 export interface MemoryFormState {
@@ -53,8 +55,8 @@ export function useAIMemoryTab(t: (key: string) => string) {
     anchor_id: '',
     anchor_type: 'scene',
     limit: 20,
-    memory_kind: '__all__',
-    memory_layer: '__all__',
+    memory_kind: ALL_FILTER,
+    memory_layer: ALL_FILTER,
     query: '',
   })
   const memoryDraft = reactive<MemoryDraftState>({
@@ -330,10 +332,6 @@ export function useAIMemoryTab(t: (key: string) => string) {
     toggleSelectAll,
     settingLifecycleId,
   }
-}
-
-function optionalFilter(value: string) {
-  return value === '__all__' ? undefined : value
 }
 
 function clamp01(value: number) {

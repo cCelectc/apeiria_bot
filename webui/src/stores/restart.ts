@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
+import { STORAGE_KEYS } from '@/constants'
 import {
   filterPendingEntriesForRuntime,
   runtimeStartedAtFromUptime,
@@ -28,7 +29,6 @@ export type ReversibleRestartPendingEntry = RestartPendingEntry & {
   undo: RestartUndoAction
 }
 
-const STORAGE_KEY = 'apeiria-restart-pending'
 
 export const useRestartStore = defineStore('restart', () => {
   const entries = ref<RestartPendingEntry[]>(readEntries())
@@ -92,11 +92,11 @@ function hasUndoAction(
 }
 
 function persistEntries(entries: RestartPendingEntry[]) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(entries))
+  localStorage.setItem(STORAGE_KEYS.restart, JSON.stringify(entries))
 }
 
 function readEntries() {
-  const raw = localStorage.getItem(STORAGE_KEY)
+  const raw = localStorage.getItem(STORAGE_KEYS.restart)
   if (!raw) {
     return [] as RestartPendingEntry[]
   }
@@ -112,7 +112,7 @@ function readEntries() {
         )
       : []
   } catch {
-    localStorage.removeItem(STORAGE_KEY)
+    localStorage.removeItem(STORAGE_KEYS.restart)
     return [] as RestartPendingEntry[]
   }
 }
