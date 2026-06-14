@@ -43,6 +43,7 @@ class KnowledgeRepository:
                 updated_at=now,
             )
             session.add(doc)
+            await session.flush()
             for ordinal, (chunk_hash, text) in enumerate(create_input.chunks):
                 chunk = AIKnowledgeChunk(
                     chunk_id=_chunk_id(
@@ -95,6 +96,7 @@ class KnowledgeRepository:
                     updated_at=now,
                 )
             )
+            await session.flush()
             for ordinal, (chunk_hash, text) in enumerate(create_input.chunks):
                 chunk = AIKnowledgeChunk(
                     chunk_id=_chunk_id(

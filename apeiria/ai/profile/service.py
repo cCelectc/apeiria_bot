@@ -124,7 +124,7 @@ class AIProfileService:
     ) -> AIProfileDefinition | None:
         """Update profile metadata from high-confidence profile signals."""
 
-        row = self._repository.get_profile_row(
+        row = await self._repository.get_profile_row(
             platform=platform,
             user_id=user_id,
         )
@@ -143,7 +143,7 @@ class AIProfileService:
             row.name_visibility = (
                 "private_only" if scene_type == "private" else "public_allowed"
             )
-        self._repository.update_profile_row(row)
+        await self._repository.update_profile_row(row)
         return self._to_definition(row)
 
     async def build_profile_card(
