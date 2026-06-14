@@ -1,10 +1,12 @@
-"""Long-term memory domain exports with lazy service loading."""
+"""Long-term memory domain exports."""
 
 from __future__ import annotations
 
-from importlib import import_module
-from typing import TYPE_CHECKING, Any
-
+from .contracts import (
+    AIMemoryCreateInput,
+    AIMemoryStateUpdateInput,
+    AIMemoryUpdateInput,
+)
 from .models import (
     AIMemoryAnchorType,
     AIMemoryBeliefAction,
@@ -24,14 +26,7 @@ from .models import (
     AIMessageSentiment,
     AIObservationLevel,
 )
-
-if TYPE_CHECKING:
-    from .contracts import (
-        AIMemoryCreateInput,
-        AIMemoryStateUpdateInput,
-        AIMemoryUpdateInput,
-    )
-    from .service import AIMemoryService
+from .service import AIMemoryService
 
 __all__ = [
     "AIMemoryAnchorType",
@@ -56,18 +51,3 @@ __all__ = [
     "AIMessageSentiment",
     "AIObservationLevel",
 ]
-
-_LAZY_EXPORTS = {
-    "AIMemoryCreateInput": ".contracts",
-    "AIMemoryService": ".service",
-    "AIMemoryStateUpdateInput": ".contracts",
-    "AIMemoryUpdateInput": ".contracts",
-}
-
-
-def __getattr__(name: str) -> Any:
-    module_name = _LAZY_EXPORTS.get(name)
-    if module_name is None:
-        raise AttributeError(name)
-    module = import_module(module_name, __name__)
-    return getattr(module, name)

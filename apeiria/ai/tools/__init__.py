@@ -1,10 +1,9 @@
-"""Tool boundary exports with lazy runtime/service loading."""
+"""Tool boundary exports."""
 
 from __future__ import annotations
 
-from importlib import import_module
-from typing import TYPE_CHECKING, Any
-
+from .contracts import AIToolObservationCreateInput
+from .loop.projection import ToolResult
 from .models import (
     AIRelationshipInspectObservationOutput,
     AIToolDefinition,
@@ -26,22 +25,18 @@ from .models import (
     coerce_tool_level,
     tool_level_allows,
 )
-
-if TYPE_CHECKING:
-    from .contracts import AIToolObservationCreateInput
-    from .loop.projection import ToolResult
-    from .policy import (
-        AIToolPolicyBindingCreateInput,
-        AIToolPolicyBindingService,
-        AIToolPolicyBindingSpec,
-        AIToolPolicyBindingTarget,
-        AIToolSceneContext,
-        evaluate_tool_policy,
-        resolve_default_tool_policy,
-        resolve_tool_policy_binding,
-        summarize_tool_policy,
-    )
-    from .service import AIToolService
+from .policy import (
+    AIToolPolicyBindingCreateInput,
+    AIToolPolicyBindingService,
+    AIToolPolicyBindingSpec,
+    AIToolPolicyBindingTarget,
+    AIToolSceneContext,
+    evaluate_tool_policy,
+    resolve_default_tool_policy,
+    resolve_tool_policy_binding,
+    summarize_tool_policy,
+)
+from .service import AIToolService
 
 __all__ = [
     "AIRelationshipInspectObservationOutput",
@@ -76,26 +71,3 @@ __all__ = [
     "summarize_tool_policy",
     "tool_level_allows",
 ]
-
-_LAZY_EXPORTS = {
-    "AIToolObservationCreateInput": ".contracts",
-    "AIToolPolicyBindingCreateInput": ".policy",
-    "AIToolPolicyBindingService": ".policy",
-    "AIToolPolicyBindingSpec": ".policy",
-    "AIToolPolicyBindingTarget": ".policy",
-    "AIToolSceneContext": ".policy",
-    "AIToolService": ".service",
-    "ToolResult": ".loop.projection",
-    "evaluate_tool_policy": ".policy",
-    "resolve_default_tool_policy": ".policy",
-    "resolve_tool_policy_binding": ".policy",
-    "summarize_tool_policy": ".policy",
-}
-
-
-def __getattr__(name: str) -> Any:
-    module_name = _LAZY_EXPORTS.get(name)
-    if module_name is None:
-        raise AttributeError(name)
-    module = import_module(module_name, __name__)
-    return getattr(module, name)
