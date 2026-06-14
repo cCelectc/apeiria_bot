@@ -21,30 +21,18 @@ if TYPE_CHECKING:
 
 
 class TestScoringFunctions:
-    def test_clamp_upper(self) -> None:
+    def test_clamp(self) -> None:
         assert clamp_relationship_score(150) == 100  # noqa: PLR2004
-
-    def test_clamp_lower(self) -> None:
         assert clamp_relationship_score(-200) == -100  # noqa: PLR2004
-
-    def test_clamp_passthrough(self) -> None:
         assert clamp_relationship_score(42) == 42  # noqa: PLR2004
 
-    def test_tier_close(self) -> None:
+    def test_tier_boundaries(self) -> None:
         assert relationship_tier(65) == "close"
-
-    def test_tier_warm(self) -> None:
         assert relationship_tier(30) == "warm"
-
-    def test_tier_neutral(self) -> None:
         assert relationship_tier(0) == "neutral"
         assert relationship_tier(-15) == "neutral"
-
-    def test_tier_cold(self) -> None:
-        assert relationship_tier(-80) == "cold"
-
-    def test_tier_guarded(self) -> None:
         assert relationship_tier(-45) == "guarded"
+        assert relationship_tier(-80) == "cold"
 
     def test_apply_delta_updates_score_and_mood(self) -> None:
         now = datetime.now(timezone.utc)
@@ -106,36 +94,22 @@ class TestRelationshipService:
             loaded = await svc.get_state(platform="qq", user_id="user123")
             assert loaded.score == 3  # noqa: PLR2004
 
+            await svc.apply_delta(
+                platform="qq",
+                user_id="user123",
+                scene_id="s2",
+                delta=AIRelationshipDelta(score_delta=2, event_type="message"),
+            )
+            state = await svc.get_state(platform="qq", user_id="user123")
+            assert state.score == 5  # noqa: PLR2004
+
     @pytest.mark.anyio
-    async def test_project_state(self, tmp_path: Path) -> None:
+    async def test_project_and_list(self, tmp_path: Path) -> None:
         async with async_db(tmp_path / "test.db"):
             svc = AIRelationshipService()
             proj = await svc.project_state(platform="qq", user_id="user_new")
             assert proj.tone in ("neutral", "cold", "guarded", "warm", "close")
 
-    @pytest.mark.anyio
-    async def test_multiple_deltas_accumulate(self, tmp_path: Path) -> None:
-        async with async_db(tmp_path / "test.db"):
-            svc = AIRelationshipService()
-            await svc.apply_delta(
-                platform="qq",
-                user_id="u1",
-                scene_id="s1",
-                delta=AIRelationshipDelta(score_delta=4, event_type="message"),
-            )
-            await svc.apply_delta(
-                platform="qq",
-                user_id="u1",
-                scene_id="s2",
-                delta=AIRelationshipDelta(score_delta=2, event_type="message"),
-            )
-            state = await svc.get_state(platform="qq", user_id="u1")
-            assert state.score == 6  # noqa: PLR2004
-
-    @pytest.mark.anyio
-    async def test_list_states(self, tmp_path: Path) -> None:
-        async with async_db(tmp_path / "test.db"):
-            svc = AIRelationshipService()
             await svc.apply_delta(
                 platform="qq",
                 user_id="u1",

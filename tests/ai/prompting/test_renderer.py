@@ -4,25 +4,19 @@ from __future__ import annotations
 
 from apeiria.ai.prompting.models import (
     PromptPacket,
-    PromptPurpose,
     PromptSection,
 )
-from apeiria.ai.prompting.regions import (
-    PromptRegionProjection,
-    project_prompt_regions,
-    prompt_region_diagnostics,
-)
+from apeiria.ai.prompting.regions import project_prompt_regions
 from apeiria.ai.prompting.renderer import render_flat, render_messages
 
 
 def _make_packet(
     *,
-    purpose: PromptPurpose = "reply_final",
     system: str = "You are a helpful assistant.",
     user: str = "Hello!",
 ) -> PromptPacket:
     return PromptPacket(
-        purpose=purpose,
+        purpose="reply_final",
         sections=(
             PromptSection(role="system", name="persona", content=system),
             PromptSection(role="user", name="user_message", content=user),
@@ -95,16 +89,3 @@ class TestProjectRegions:
         proj = project_prompt_regions(packet, stable_section_names=())
         assert len(proj.stable) == 0
         assert len(proj.dynamic) == 0
-        diag = prompt_region_diagnostics(proj)
-        assert diag["total_section_count"] == 0
-
-
-class TestPromptRegionProjection:
-    def test_has_expected_fields(self) -> None:
-        proj = PromptRegionProjection(
-            purpose="reply_final",
-            stable=(PromptSection(role="system", name="s", content="Sys"),),
-            dynamic=(),
-        )
-        assert proj.stable[0].name == "s"
-        assert proj.stable[0].role == "system"

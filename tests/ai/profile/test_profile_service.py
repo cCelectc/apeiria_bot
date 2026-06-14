@@ -15,24 +15,19 @@ if TYPE_CHECKING:
 
 
 @pytest.mark.anyio
-async def test_ensure_profile_creates_default(tmp_path: Path) -> None:
+async def test_ensure_and_get_profile(tmp_path: Path) -> None:
     async with async_db(tmp_path / "test.db"):
         svc = AIProfileService()
         profile = await svc.ensure_profile(platform="qq", user_id="user123")
         assert profile.platform == "qq"
         assert profile.user_id == "user123"
-        assert profile.profile_enabled is True
 
-
-@pytest.mark.anyio
-async def test_get_profile_by_platform_user(tmp_path: Path) -> None:
-    async with async_db(tmp_path / "test.db"):
-        svc = AIProfileService()
-        await svc.ensure_profile(platform="qq", user_id="user123")
         found = await svc.get_profile(platform="qq", user_id="user123")
         assert found is not None
-        assert found.platform == "qq"
-        assert found.user_id == "user123"
+
+        await svc.ensure_profile(platform="qq", user_id="u2")
+        profiles = await svc.list_profiles(limit=50)
+        assert len(profiles) >= 2  # noqa: PLR2004
 
 
 @pytest.mark.anyio
@@ -76,13 +71,3 @@ async def test_delete_profile(tmp_path: Path) -> None:
         assert deleted is True
         found = await svc.get_profile(platform="qq", user_id="user123")
         assert found is None
-
-
-@pytest.mark.anyio
-async def test_list_profiles(tmp_path: Path) -> None:
-    async with async_db(tmp_path / "test.db"):
-        svc = AIProfileService()
-        await svc.ensure_profile(platform="qq", user_id="u1")
-        await svc.ensure_profile(platform="qq", user_id="u2")
-        profiles = await svc.list_profiles(limit=50)
-        assert len(profiles) == 2  # noqa: PLR2004

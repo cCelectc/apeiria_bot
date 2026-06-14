@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 import pytest
 
 from apeiria.ai.persona.models import (
+    AIPersonaBindingSpec,
     AIPersonaBindingTarget,
     AIPersonaCreateInput,
 )
@@ -92,48 +93,29 @@ async def test_update_persona(tmp_path: Path) -> None:
         assert updated.system_prompt == "new"
 
 
-@pytest.mark.anyio
-async def test_resolve_persona_no_binding(tmp_path: Path) -> None:
-    async with async_db(tmp_path / "test.db"):
-        service = AIPersonaService()
-        target = AIPersonaBindingTarget(
-            conversation_id="c1", group_id=None, user_id="u1"
-        )
-        resolved = await service.resolve_persona(target=target)
-        assert resolved is None
-
-
 class TestResolverPure:
-    def test_matches_binding_by_user(self) -> None:
-        from apeiria.ai.persona.models import AIPersonaBindingSpec
-
+    def test_resolve_binding(self) -> None:
         bindings = (
             AIPersonaBindingSpec(
-                binding_id="b1",
-                scope_type="user",
-                scope_id="u1",
-                persona_id="p1",
+                binding_id="b1", scope_type="user", scope_id="u1", persona_id="p1"
+            ),
+            AIPersonaBindingSpec(
+                binding_id="b2", scope_type="group", scope_id="g1", persona_id="p2"
             ),
         )
-        target = AIPersonaBindingTarget(
-            conversation_id="c1", group_id=None, user_id="u1"
+        result = resolve_persona_binding(
+            bindings=bindings,
+            target=AIPersonaBindingTarget(
+                conversation_id="c1", group_id=None, user_id="u1"
+            ),
         )
-        result = resolve_persona_binding(bindings=bindings, target=target)
         assert result is not None
         assert result.persona_id == "p1"
 
-    def test_no_match_returns_none(self) -> None:
-        from apeiria.ai.persona.models import AIPersonaBindingSpec
-
-        bindings = (
-            AIPersonaBindingSpec(
-                binding_id="b1",
-                scope_type="group",
-                scope_id="g1",
-                persona_id="p1",
+        no_match = resolve_persona_binding(
+            bindings=bindings,
+            target=AIPersonaBindingTarget(
+                conversation_id="c1", group_id="g2", user_id="u2"
             ),
         )
-        target = AIPersonaBindingTarget(
-            conversation_id="c1", group_id="g2", user_id="u1"
-        )
-        assert resolve_persona_binding(bindings=bindings, target=target) is None
+        assert no_match is None

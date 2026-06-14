@@ -79,10 +79,11 @@ class TestParseSkillFile:
 
 
 class TestSkillRuntime:
-    def test_register_and_activate_skill(self) -> None:
+    def test_register_and_activate_skills(self) -> None:
         rt = AISkillRuntime()
-        skill = parse_skill_file(_VALID_SKILL, file_path="test/SKILL.md")
-        rt.register_file_skills([skill])
+        a = parse_skill_file(_VALID_SKILL, file_path="a/SKILL.md")
+        b = parse_skill_file(_MINIMAL, file_path="b/SKILL.md")
+        rt.register_file_skills([a, b])
         assert rt.has_file_skills()
 
         activation = rt.activate_skill_explicit("test-skill")
@@ -90,15 +91,8 @@ class TestSkillRuntime:
         assert activation.skill_name == "test-skill"
         assert "body content" in activation.body_markdown
 
+        assert rt.activate_skill_explicit("minimal") is not None
+
     def test_activate_nonexistent_skill(self) -> None:
         rt = AISkillRuntime()
         assert rt.activate_skill_explicit("nope") is None
-
-    def test_register_multiple_skills(self) -> None:
-        rt = AISkillRuntime()
-        a = parse_skill_file(_VALID_SKILL, file_path="a/SKILL.md")
-        b = parse_skill_file(_MINIMAL, file_path="b/SKILL.md")
-        rt.register_file_skills([a, b])
-
-        assert rt.activate_skill_explicit("test-skill") is not None
-        assert rt.activate_skill_explicit("minimal") is not None

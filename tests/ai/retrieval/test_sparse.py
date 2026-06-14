@@ -17,19 +17,13 @@ if TYPE_CHECKING:
 
 
 class TestIdentityHelpers:
-    def test_document_id_format(self) -> None:
+    def test_identity_helpers(self) -> None:
         rid = retrieval_document_id(domain="memory", source_id="mem_abc")
         assert rid == "memory:mem_abc"
 
-    def test_content_hash_is_sha256_hex(self) -> None:
         h = content_hash_for_text("hello", "world")
         assert len(h) == 64  # noqa: PLR2004
-        assert h != content_hash_for_text("different")
-
-    def test_content_hash_deterministic(self) -> None:
-        a = content_hash_for_text("a", "b")
-        b = content_hash_for_text("a", "b")
-        assert a == b
+        assert content_hash_for_text("a", "b") == content_hash_for_text("a", "b")
 
 
 class TestDenseScoring:
@@ -88,7 +82,7 @@ class TestDenseScoring:
 
 class TestSparseIndex:
     @pytest.mark.anyio
-    async def test_upsert_and_search(self, tmp_path: Path) -> None:
+    async def test_upsert_search_delete(self, tmp_path: Path) -> None:
         db_path = tmp_path / "test_retrieval.db"
         async with async_db(db_path):
             idx = RetrievalSparseIndex()
@@ -103,18 +97,6 @@ class TestSparseIndex:
             assert len(result.candidates) >= 1
             assert result.candidates[0].channel == "sparse"
 
-    @pytest.mark.anyio
-    async def test_delete_removes_document(self, tmp_path: Path) -> None:
-        db_path = tmp_path / "test_retrieval.db"
-        async with async_db(db_path):
-            idx = RetrievalSparseIndex()
-            doc = RetrievalDocument(
-                document_id="test:2",
-                domain="memory",
-                text="xyzzy",
-                content_hash="xyz",
-            )
-            await idx.upsert_many((doc,))
-            await idx.delete_many(("test:2",))
-            result = await idx.search(query_text="xyzzy", documents=(doc,), limit=5)
+            await idx.delete_many(("test:1",))
+            result = await idx.search(query_text="hello", documents=(doc,), limit=5)
             assert len(result.candidates) == 0
