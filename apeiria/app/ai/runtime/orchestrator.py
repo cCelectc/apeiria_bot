@@ -203,6 +203,7 @@ class ReplyPath:
     ) -> AIRuntimeResult:
         """Run one reply turn through policy, context, planning, execution, commit."""
 
+        # ── Phase 1: Policy evaluation ──
         stage_reports: list[RuntimeStageReport] = []
         identity = turn.identity
         wake_context = wake_context or self._build_fallback_wake_context(turn)
@@ -228,6 +229,8 @@ class ReplyPath:
         )
         hard_decision = policy.decision
         observation_level = classify_observation_level(hard_decision)
+
+        # ── Phase 2: Hard-rule skip check ──
         if not policy.should_continue:
             await self._apply_pre_context_observation(
                 ingress_input=ingress_input,
@@ -265,6 +268,7 @@ class ReplyPath:
                 turn=turn,
             )
 
+        # ── Phase 3: Observation + Context ──
         ingress_input = await self._apply_pre_context_observation(
             ingress_input=ingress_input,
             observation_level=observation_level,
@@ -292,6 +296,7 @@ class ReplyPath:
                 },
             )
         )
+        # ── Phase 4: Social decision ──
         social_decision = await self.policy_stage.decide_reply(
             social_input=RuntimeSocialDecisionInput(
                 stage="policy",
@@ -339,6 +344,7 @@ class ReplyPath:
                 turn=turn,
                 context=context,
             )
+        # ── Phase 5: Planning ──
 
         planning = await self.plan_turn(
             trace_id=trace_id,
@@ -376,6 +382,7 @@ class ReplyPath:
             )
         )
 
+        # ── Phase 6: Execution ──
         turn_context = build_turn_context(
             trace_id=trace_id,
             turn=turn,
@@ -432,6 +439,7 @@ class ReplyPath:
                 ),
             )
 
+        # ── Phase 7: Commit ──
         commit = await self.commit_turn(
             commit_input=RuntimeCommitInput(
                 stage="commit",

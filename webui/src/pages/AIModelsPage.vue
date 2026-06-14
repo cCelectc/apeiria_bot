@@ -91,6 +91,11 @@ defineProps<{
 }>()
 const route = useRoute()
 const router = useRouter()
+
+// ═══════════════════════════════════════════════════════════════════════
+// CORE REACTIVE STATE
+// ═══════════════════════════════════════════════════════════════════════
+
 const loading = ref(false)
 const errorMessage = ref('')
 const sourceCapabilityTab = ref<AISourceCapabilityRouteValue>('chat')
@@ -105,6 +110,10 @@ const modelAdvancedDialog = ref(false)
 const modelDeleteDialog = ref(false)
 const pendingDeleteModel = ref<{ label: string, modelId: string } | null>(null)
 let applyingRouteState = false
+
+// ═══════════════════════════════════════════════════════════════════════
+// COMPOSABLE: AIModelsTab (shared state, forms, CRUD)
+// ═══════════════════════════════════════════════════════════════════════
 
 const {
   canFetchSourceModels,
@@ -184,6 +193,10 @@ const {
   touchSourceField,
   workflowResults,
 } = useAIModelsTab(sourceCapabilityTab, t)
+
+// ═══════════════════════════════════════════════════════════════════════
+// DERIVED / COMPUTED PROPERTIES
+// ═══════════════════════════════════════════════════════════════════════
 
 const sourceCapabilityOptions = computed(() => [
   { title: t('ai.sourceCapabilityChat'), value: 'chat' as const },
@@ -381,6 +394,10 @@ const ttsResponseFormatOptions = [
   { title: 'pcm', value: 'pcm' },
 ]
 
+// ═══════════════════════════════════════════════════════════════════════
+// DATA LOADING & ROUTE STATE
+// ═══════════════════════════════════════════════════════════════════════
+
 async function loadData() {
   loading.value = true
   errorMessage.value = ''
@@ -395,6 +412,10 @@ async function loadData() {
     loading.value = false
   }
 }
+
+// ═══════════════════════════════════════════════════════════════════════
+// DISPLAY HELPERS & UTILITIES
+// ═══════════════════════════════════════════════════════════════════════
 
 function sourcePresetLabel(value: string) {
   return sourcePresets.value.find(item => item.preset_type === value)?.display_name ?? value
@@ -607,6 +628,10 @@ function stringQuery(query: Record<string, unknown>) {
   return result
 }
 
+// ═══════════════════════════════════════════════════════════════════════
+// LIFECYCLE & ROUTE WATCHERS
+// ═══════════════════════════════════════════════════════════════════════
+
 applyRouteState()
 
 onMounted(() => {
@@ -637,6 +662,8 @@ watch(sourceCapabilityTab, () => {
     :subtitle="t('ai.pageSubtitle.models')"
     :title="t('ai.modelsTitle')"
   >
+    <!-- ====== SECTION: Capability Switcher Toolbar ====== -->
+
     <div class="ai-model-local-toolbar">
       <ToggleGroup
         :aria-label="t('ai.sourceCapabilitySwitcherLabel')"
@@ -667,6 +694,8 @@ watch(sourceCapabilityTab, () => {
     </div>
 
     <LoadingSkeleton v-if="loading && loadingSources" rows="8" />
+
+    <!-- ====== SECTION: Source/Provider Panel (sidebar + main form) ====== -->
 
     <div v-else class="ai-model-page">
       <SplitPane class="ai-model-workbench" wide-sidebar>
@@ -927,6 +956,8 @@ watch(sourceCapabilityTab, () => {
               </div>
             </Panel>
 
+            <!-- ====== SECTION: Source Models Panel ====== -->
+
             <Panel
               v-if="sourceForm.source_id"
               :title="t('ai.sourceModelsTitle')"
@@ -1059,6 +1090,8 @@ watch(sourceCapabilityTab, () => {
             </Panel>
           </div>
 
+          <!-- ====== SECTION: Model Editor ====== -->
+
           <Panel v-if="sourceForm.source_id" :title="isCreatingModel ? t('ai.createModel') : t('ai.editModel')">
             <template #actions>
               <Button variant="secondary" @click="modelAdvancedDialog = true">
@@ -1131,6 +1164,8 @@ watch(sourceCapabilityTab, () => {
               </div>
             </template>
           </Panel>
+
+          <!-- ====== SECTION: Model Profiles ====== -->
 
           <Panel
             v-if="isChatCapability"
@@ -1273,6 +1308,8 @@ watch(sourceCapabilityTab, () => {
               </div>
             </template>
           </Panel>
+
+          <!-- ====== SECTION: Model Routes ====== -->
 
           <Panel
             v-if="isChatCapability"
@@ -1487,6 +1524,8 @@ watch(sourceCapabilityTab, () => {
             </template>
           </Panel>
 
+          <!-- ====== SECTION: Model Validation Panel ====== -->
+
           <Panel
             v-if="setupWorkflow.selectedModel"
             :subtitle="t('ai.modelValidationHint', { model: setupWorkflow.selectedModel.display_name })"
@@ -1519,6 +1558,8 @@ watch(sourceCapabilityTab, () => {
         </div>
       </SplitPane>
     </div>
+
+    <!-- ====== SECTION: Source API Keys Dialog ====== -->
 
     <Dialog v-model:open="sourceApiKeysDialog">
       <DialogContent class="ai-dialog-wide">
@@ -1561,6 +1602,8 @@ watch(sourceCapabilityTab, () => {
         </DialogFooter>
       </DialogContent>
     </Dialog>
+
+    <!-- ====== SECTION: Source Advanced Config Dialog ====== -->
 
     <Dialog v-model:open="sourceAdvancedDialog">
       <DialogContent class="ai-dialog-wide">
@@ -1652,6 +1695,8 @@ watch(sourceCapabilityTab, () => {
       </DialogContent>
     </Dialog>
 
+    <!-- ====== SECTION: Model Advanced Config Dialog ====== -->
+
     <Dialog v-model:open="modelAdvancedDialog">
       <DialogContent class="ai-dialog-wide">
         <DialogHeader>
@@ -1675,6 +1720,8 @@ watch(sourceCapabilityTab, () => {
         </div>
       </DialogContent>
     </Dialog>
+
+    <!-- ====== SECTION: Model Delete Confirm Dialog ====== -->
 
     <Dialog v-model:open="modelDeleteDialog">
       <DialogContent>

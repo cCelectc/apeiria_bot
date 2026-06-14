@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Annotated, cast
+from typing import TYPE_CHECKING, Annotated
 
 from apeiria.ai.tools.decorators import ai_tool
 from apeiria.ai.tools.models import (
@@ -177,7 +177,7 @@ async def _load_chat_identity(
 def _resolve_future_tasks_entry() -> "AIFutureTasksEntry":
     from apeiria.app.ai import ai_application
 
-    return cast("AIFutureTasksEntry", ai_application.future_tasks)
+    return ai_application.future_tasks
 
 
 def _future_task_item(task: "AIFutureTaskDefinition") -> dict[str, object]:

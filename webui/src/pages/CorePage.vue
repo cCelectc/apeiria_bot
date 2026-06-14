@@ -90,6 +90,10 @@ import {
 
 type CoreTab = 'core' | 'adapters' | 'drivers'
 
+// ═══════════════════════════════════════════════════════════════════════
+// COMPOSABLES & REACTIVE STATE
+// ═══════════════════════════════════════════════════════════════════════
+
 const { t } = useI18n()
 const noticeStore = useNoticeStore()
 const restartStore = useRestartStore()
@@ -171,6 +175,11 @@ const unavailableAdapterCount = computed(() =>
 const activeDriverCount = computed(() =>
   driverBuiltin.value.filter(item => item.is_active).length,
 )
+
+// ═══════════════════════════════════════════════════════════════════════
+// DERIVED / COMPUTED
+// ═══════════════════════════════════════════════════════════════════════
+
 const metrics = computed<WorkbenchMetricItem[]>(() => [
   {
     key: 'settings',
@@ -225,6 +234,10 @@ const {
   validate: async text => (await validateCoreSettingsRaw({ text })).data,
 })
 
+// ═══════════════════════════════════════════════════════════════════════
+// DATA LOADING & REFRESH
+// ═══════════════════════════════════════════════════════════════════════
+
 async function refreshCorePage() {
   loading.value = true
   errorMessage.value = ''
@@ -248,6 +261,10 @@ async function loadDriverManagement() {
     errorMessage.value = getErrorMessage(error, t('core.loadFailed'))
   }
 }
+
+// ═══════════════════════════════════════════════════════════════════════
+// CORE SETTINGS: DIALOG / RAW / PREVIEW / SAVE
+// ═══════════════════════════════════════════════════════════════════════
 
 function openCoreSettingsPreview() {
   if (corePreviewItems.value.length === 0) {
@@ -331,6 +348,10 @@ async function confirmCoreSettingsSave() {
   }
 }
 
+// ═══════════════════════════════════════════════════════════════════════
+// ADAPTER SELECTION: POPUP, CANDIDATE, EXPERT CONFIG
+// ═══════════════════════════════════════════════════════════════════════
+
 function openAdapterExpertConfig() {
   adapterConfigDialogVisible.value = true
 }
@@ -353,6 +374,10 @@ async function confirmAdapterPreviewSave() {
 function clearCoreField(field: SettingField) {
   coreEditor.clearField(field)
 }
+
+// ═══════════════════════════════════════════════════════════════════════
+// DISPLAY HELPERS (sources, tones, labels)
+// ═══════════════════════════════════════════════════════════════════════
 
 function fieldSourceLabel(source: string) {
   const map: Record<string, string> = {
@@ -494,6 +519,10 @@ function driverStatusText(item: DriverConfigItem) {
   return item.is_active ? t('plugins.driverActive') : t('plugins.driverRegisteredOnly')
 }
 
+// ═══════════════════════════════════════════════════════════════════════
+// LIFECYCLE
+// ═══════════════════════════════════════════════════════════════════════
+
 onMounted(() => {
   void refreshCorePage()
 })
@@ -507,13 +536,18 @@ onMounted(() => {
     :title="t('core.title')"
   >
     <template #actions>
+      <!-- ====== SECTION: Toolbar ====== -->
       <Button :disabled="loading" variant="secondary" @click="refreshCorePage">
         <RefreshCw :class="{ 'animate-spin': loading }" :size="16" />
         {{ t('common.refresh') }}
       </Button>
     </template>
 
+    <!-- ====== SECTION: Metrics ====== -->
+
     <MetricStrip :items="metrics" />
+
+    <!-- ====== SECTION: Tabs (Core / Adapters / Drivers) ====== -->
 
     <Tabs v-model="activeTab" class="core-workbench">
       <TabsList class="core-tabs-list">
@@ -530,6 +564,8 @@ onMounted(() => {
           {{ t('core.driversTab') }}
         </TabsTrigger>
       </TabsList>
+
+      <!-- ====== TAB SECTION: Core Settings Editor ====== -->
 
       <TabsContent value="core">
         <Panel
@@ -654,6 +690,8 @@ onMounted(() => {
           </div>
         </Panel>
       </TabsContent>
+
+      <!-- ====== TAB SECTION: Adapters Overview & List ====== -->
 
       <TabsContent value="adapters">
         <Panel
@@ -866,6 +904,8 @@ onMounted(() => {
         </Panel>
       </TabsContent>
 
+      <!-- ====== TAB SECTION: Drivers ====== -->
+
       <TabsContent value="drivers">
         <Panel
           :subtitle="t('core.driverConfigDescription')"
@@ -892,6 +932,8 @@ onMounted(() => {
         </Panel>
       </TabsContent>
     </Tabs>
+
+    <!-- ====== DIALOG: Settings Preview ====== -->
 
     <Dialog v-model:open="previewDialogVisible">
       <DialogContent class="settings-preview-dialog">
@@ -931,6 +973,8 @@ onMounted(() => {
       </DialogContent>
     </Dialog>
 
+    <!-- ====== DIALOG: Raw Settings Editor ====== -->
+
     <Dialog v-model:open="coreRawDialogVisible">
       <DialogContent class="core-raw-settings-dialog">
         <DialogHeader>
@@ -962,6 +1006,8 @@ onMounted(() => {
         </DialogFooter>
       </DialogContent>
     </Dialog>
+
+    <!-- ====== DIALOG: Raw Settings Preview ====== -->
 
     <Dialog v-model:open="coreRawPreviewVisible">
       <DialogContent class="settings-preview-dialog">
@@ -996,6 +1042,8 @@ onMounted(() => {
         </DialogFooter>
       </DialogContent>
     </Dialog>
+
+    <!-- ====== DIALOG: Adapter Selection Popup ====== -->
 
     <Dialog v-model:open="adapterSelection.popupVisible.value">
       <DialogContent class="adapter-selection-dialog">
@@ -1170,6 +1218,8 @@ onMounted(() => {
       </DialogContent>
     </Dialog>
 
+    <!-- ====== DIALOG: Adapter Expert Config ====== -->
+
     <Dialog v-model:open="adapterConfigDialogVisible">
       <DialogContent class="adapter-config-dialog">
         <DialogHeader>
@@ -1249,6 +1299,8 @@ onMounted(() => {
       </DialogContent>
     </Dialog>
 
+    <!-- ====== DIALOG: Adapter Preview ====== -->
+
     <Dialog v-model:open="adapterPreviewVisible">
       <DialogContent class="adapter-preview-dialog">
         <DialogHeader>
@@ -1278,6 +1330,8 @@ onMounted(() => {
         </DialogFooter>
       </DialogContent>
     </Dialog>
+
+    <!-- ====== DIALOG: Adapter Settings ====== -->
 
     <Dialog v-model:open="adapterSettings.settingsDialogVisible.value">
       <DialogContent class="plugin-settings-dialog">
@@ -1430,6 +1484,8 @@ onMounted(() => {
       </DialogContent>
     </Dialog>
 
+    <!-- ====== DIALOG: Adapter Settings Preview ====== -->
+
     <Dialog v-model:open="adapterSettings.previewDialogVisible.value">
       <DialogContent class="settings-preview-dialog">
         <DialogHeader>
@@ -1485,6 +1541,8 @@ onMounted(() => {
         </DialogFooter>
       </DialogContent>
     </Dialog>
+
+    <!-- ====== SECTION: Adapter Task Dialog ====== -->
 
     <TaskDialog
       v-model="adapterSelection.taskDialogVisible.value"

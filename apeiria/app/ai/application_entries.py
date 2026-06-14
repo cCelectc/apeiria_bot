@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Generic, TypeVar
+from typing import TYPE_CHECKING, Generic, TypeVar
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -18,13 +18,10 @@ class LazyApplicationEntry(Generic[EntryT]):
     factory: "Callable[[], EntryT]"
     _entry: EntryT | None = field(default=None, init=False, repr=False)
 
-    def _resolve(self) -> EntryT:
+    def resolve(self) -> EntryT:
         if self._entry is None:
             self._entry = self.factory()
         return self._entry
-
-    def __getattr__(self, name: str) -> Any:
-        return getattr(self._resolve(), name)
 
 
 __all__ = ["LazyApplicationEntry"]

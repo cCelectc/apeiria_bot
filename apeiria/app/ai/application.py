@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Protocol, cast
+from typing import TYPE_CHECKING, Protocol
 
 from .application_entries import LazyApplicationEntry
 
@@ -74,43 +74,53 @@ def _default_diagnostics_entry() -> "AIDiagnosticsEntry":
 class AIApplication:
     """Composition root for AI application entries."""
 
-    runtime: "LiveRuntimeEntry" = field(
-        default_factory=lambda: cast(
-            "LiveRuntimeEntry",
-            LazyApplicationEntry(_default_runtime_entry),
-        )
+    _lifecycle: AILifecycleEntry = field(default_factory=_default_lifecycle_entry)
+    _runtime: LazyApplicationEntry = field(
+        default_factory=lambda: LazyApplicationEntry(_default_runtime_entry)
     )
-    sessions: "AISessionsEntry" = field(
-        default_factory=lambda: cast(
-            "AISessionsEntry",
-            LazyApplicationEntry(_default_sessions_entry),
-        )
+    _sessions: LazyApplicationEntry = field(
+        default_factory=lambda: LazyApplicationEntry(_default_sessions_entry)
     )
-    future_tasks: "AIFutureTasksEntry" = field(
-        default_factory=lambda: cast(
-            "AIFutureTasksEntry",
-            LazyApplicationEntry(_default_future_tasks_entry),
-        )
+    _future_tasks: LazyApplicationEntry = field(
+        default_factory=lambda: LazyApplicationEntry(_default_future_tasks_entry)
     )
-    skills: "AISkillsEntry" = field(
-        default_factory=lambda: cast(
-            "AISkillsEntry",
-            LazyApplicationEntry(_default_skills_entry),
-        )
+    _skills: LazyApplicationEntry = field(
+        default_factory=lambda: LazyApplicationEntry(_default_skills_entry)
     )
-    operations: "AIOperationsEntry" = field(
-        default_factory=lambda: cast(
-            "AIOperationsEntry",
-            LazyApplicationEntry(_default_operations_entry),
-        )
+    _operations: LazyApplicationEntry = field(
+        default_factory=lambda: LazyApplicationEntry(_default_operations_entry)
     )
-    diagnostics: "AIDiagnosticsEntry" = field(
-        default_factory=lambda: cast(
-            "AIDiagnosticsEntry",
-            LazyApplicationEntry(_default_diagnostics_entry),
-        )
+    _diagnostics: LazyApplicationEntry = field(
+        default_factory=lambda: LazyApplicationEntry(_default_diagnostics_entry)
     )
-    lifecycle: AILifecycleEntry = field(default_factory=_default_lifecycle_entry)
+
+    @property
+    def lifecycle(self) -> AILifecycleEntry:
+        return self._lifecycle
+
+    @property
+    def runtime(self) -> "LiveRuntimeEntry":
+        return self._runtime.resolve()
+
+    @property
+    def sessions(self) -> "AISessionsEntry":
+        return self._sessions.resolve()
+
+    @property
+    def future_tasks(self) -> "AIFutureTasksEntry":
+        return self._future_tasks.resolve()
+
+    @property
+    def skills(self) -> "AISkillsEntry":
+        return self._skills.resolve()
+
+    @property
+    def operations(self) -> "AIOperationsEntry":
+        return self._operations.resolve()
+
+    @property
+    def diagnostics(self) -> "AIDiagnosticsEntry":
+        return self._diagnostics.resolve()
 
 
 ai_application = AIApplication()

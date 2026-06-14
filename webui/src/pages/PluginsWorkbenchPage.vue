@@ -127,6 +127,8 @@ import {
 type PluginFilter = 'all' | 'enabled' | 'disabled' | 'attention'
 type InstallMode = 'store_item' | 'requirement' | 'local_path'
 
+// ── Global refs / composables ──────────────────────────────────────────
+
 const { t } = useI18n()
 const router = useRouter()
 const noticeStore = useNoticeStore()
@@ -148,7 +150,7 @@ const toggleConfirmItem = ref<PluginWorkbenchItem | null>(null)
 const toggleConfirmPreview = ref<PluginTogglePreview | null>(null)
 const toggleConfirmNextValue = ref(false)
 
-const installDialogVisible = ref(false)
+// ── Install dialog state ──────────────────────────────────────────────
 const installMode = ref<InstallMode>('requirement')
 const installSourceValue = ref('')
 const installStoreSources = ref<PluginStoreSource[]>([])
@@ -177,7 +179,7 @@ const uninstallConfirmItem = ref<PluginWorkbenchItem | null>(null)
 const uninstallRemoveConfig = ref(false)
 const uninstallingModule = ref('')
 
-const packageTaskDialogVisible = ref(false)
+// ── Package update state ──────────────────────────────────────────────
 const packageTask = ref<PluginStoreTask | null>(null)
 const packageTaskModule = ref('')
 const packageUpdateConfirmVisible = ref(false)
@@ -191,7 +193,7 @@ const pluginSettings = usePluginSettingsDialog({
 })
 const pluginReadme = usePluginReadmeDialog((key, params) => t(key, params || {}))
 
-const plugins = computed(() => workbench.value?.plugins || [])
+// ── Derived: plugins, summary, maintenance ────────────────────────────
 const summary = computed(() => workbench.value?.summary)
 const maintenance = computed(() => workbench.value?.maintenance)
 
@@ -334,6 +336,8 @@ const installNeedsManualModule = computed(() =>
 const installNeedsCandidateChoice = computed(() =>
   installResolution.value?.status === 'ambiguous',
 )
+
+// ── Derived: install action & confirmation ────────────────────────────
 const installAction = computed<PluginInstallAction | null>(() => {
   const resolution = installResolution.value
   if (!resolution) {
@@ -404,6 +408,10 @@ const canResolveInstall = computed(() =>
     : Boolean(installSourceValue.value.trim()),
 )
 
+// ═══════════════════════════════════════════════════════════════════════
+// DATA LOADING & REFRESH
+// ═══════════════════════════════════════════════════════════════════════
+
 async function loadWorkbench() {
   loading.value = true
   errorMessage.value = ''
@@ -416,6 +424,10 @@ async function loadWorkbench() {
     loading.value = false
   }
 }
+
+// ═══════════════════════════════════════════════════════════════════════
+// DISPLAY HELPERS
+// ═══════════════════════════════════════════════════════════════════════
 
 function pluginLabel(moduleName: string) {
   const match = plugins.value.find(item => item.module_name === moduleName)
@@ -464,6 +476,10 @@ function restartHint(item: PluginWorkbenchItem) {
   }
   return ''
 }
+
+// ═══════════════════════════════════════════════════════════════════════
+// INSTALL DIALOG
+// ═══════════════════════════════════════════════════════════════════════
 
 function openInstallDialog() {
   installMode.value = 'requirement'
@@ -609,6 +625,10 @@ function stopInstallTaskPolling() {
   }
 }
 
+// ═══════════════════════════════════════════════════════════════════════
+// PACKAGE UPDATE
+// ═══════════════════════════════════════════════════════════════════════
+
 function openPackageUpdateConfirm(item: PluginWorkbenchItem) {
   if (
     !item.installed_package
@@ -653,6 +673,10 @@ async function updatePluginItem(item: PluginWorkbenchItem) {
     packageTaskModule.value = ''
   }
 }
+
+// ═══════════════════════════════════════════════════════════════════════
+// UNINSTALL
+// ═══════════════════════════════════════════════════════════════════════
 
 function openUninstallConfirm(item: PluginWorkbenchItem) {
   uninstallConfirmItem.value = item
@@ -728,6 +752,10 @@ function stopPackageTaskPolling() {
   }
 }
 
+// ═══════════════════════════════════════════════════════════════════════
+// TOGGLE PLUGIN (ENABLE / DISABLE)
+// ═══════════════════════════════════════════════════════════════════════
+
 async function requestTogglePlugin(item: PluginWorkbenchItem, enabled: boolean) {
   if (!item.policy.can_change || item.is_pending_uninstall) {
     return
@@ -800,6 +828,10 @@ async function confirmToggleAction() {
   }
 }
 
+// ═══════════════════════════════════════════════════════════════════════
+// UPDATE CHECK
+// ═══════════════════════════════════════════════════════════════════════
+
 async function runUpdateCheck(
   options: { forceRefresh?: boolean, showNotice?: boolean } = {},
 ) {
@@ -828,6 +860,10 @@ async function runUpdateCheck(
     checkingUpdates.value = false
   }
 }
+
+// ═══════════════════════════════════════════════════════════════════════
+// SETTINGS / README / DETAIL DELEGATION
+// ═══════════════════════════════════════════════════════════════════════
 
 function openPluginSettings(item: PluginWorkbenchItem) {
   void pluginSettings.openSettings(item)
@@ -944,6 +980,10 @@ function handleToggleChecked(item: PluginWorkbenchItem, value: boolean) {
   void requestTogglePlugin(item, value)
 }
 
+// ═══════════════════════════════════════════════════════════════════════
+// LIFECYCLE
+// ═══════════════════════════════════════════════════════════════════════
+
 onMounted(() => {
   void loadWorkbench()
 })
@@ -978,6 +1018,8 @@ onBeforeUnmount(() => {
       </Button>
     </template>
 
+    <!-- ====== SECTION: Metrics & Orphan Config Alert ====== -->
+
     <MetricStrip :items="metrics" />
 
     <Alert v-if="maintenance?.orphan_config_count">
@@ -986,6 +1028,8 @@ onBeforeUnmount(() => {
         {{ t('plugins.orphanConfigCount', { count: maintenance.orphan_config_count }) }}
       </AlertDescription>
     </Alert>
+
+    <!-- ====== SECTION: Plugin List Panel ====== -->
 
     <Panel :title="t('plugins.title')" :subtitle="t('plugins.workbenchListDescription')">
       <template #actions>
@@ -1137,6 +1181,8 @@ onBeforeUnmount(() => {
       </div>
     </Panel>
 
+    <!-- ====== SECTION: Package Update Confirm Dialog ====== -->
+
     <AlertDialog v-model:open="packageUpdateConfirmVisible">
       <AlertDialogContent>
         <AlertDialogHeader>
@@ -1184,6 +1230,8 @@ onBeforeUnmount(() => {
       </AlertDialogContent>
     </AlertDialog>
 
+    <!-- ====== SECTION: Toggle (Enable/Disable) Confirm Dialog ====== -->
+
     <AlertDialog v-model:open="toggleConfirmVisible">
       <AlertDialogContent>
         <AlertDialogHeader>
@@ -1228,6 +1276,8 @@ onBeforeUnmount(() => {
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>
+
+    <!-- ====== SECTION: Install Dialog ====== -->
 
     <Dialog v-model:open="installDialogVisible">
       <DialogContent class="plugin-install-dialog">
@@ -1434,6 +1484,8 @@ onBeforeUnmount(() => {
       </DialogContent>
     </Dialog>
 
+    <!-- ====== SECTION: Install Task Dialog ====== -->
+
     <TaskDialog
       v-model="installTaskDialogVisible"
       :binding-value="installTask?.binding_value"
@@ -1456,6 +1508,8 @@ onBeforeUnmount(() => {
       :waiting-text="t('plugins.manualInstallWaiting')"
     />
 
+    <!-- ====== SECTION: Package Update Task Dialog ====== -->
+
     <TaskDialog
       v-model="packageTaskDialogVisible"
       :binding-value="packageTask?.binding_value"
@@ -1477,6 +1531,8 @@ onBeforeUnmount(() => {
       :title="packageTask?.title || t('plugins.packageUpdateTaskTitle')"
       :waiting-text="t('plugins.packageUpdateWaiting')"
     />
+
+    <!-- ====== SECTION: Uninstall Confirm Dialog ====== -->
 
     <AlertDialog v-model:open="uninstallConfirmVisible">
       <AlertDialogContent>
@@ -1518,6 +1574,8 @@ onBeforeUnmount(() => {
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>
+
+    <!-- ====== SECTION: Plugin Detail Dialog ====== -->
 
     <Dialog v-model:open="detailDialogVisible">
       <DialogContent class="plugin-detail-dialog">
@@ -1615,6 +1673,8 @@ onBeforeUnmount(() => {
       </DialogContent>
     </Dialog>
 
+    <!-- ====== SECTION: Plugin Readme Dialog ====== -->
+
     <Dialog v-model:open="pluginReadme.readmeDialogVisible.value">
       <DialogContent class="plugin-readme-dialog">
         <DialogHeader>
@@ -1642,6 +1702,8 @@ onBeforeUnmount(() => {
         </DialogFooter>
       </DialogContent>
     </Dialog>
+
+    <!-- ====== SECTION: Plugin Settings Dialog ====== -->
 
     <Dialog v-model:open="pluginSettings.settingsDialogVisible.value">
       <DialogContent class="plugin-settings-dialog">
@@ -1803,6 +1865,8 @@ onBeforeUnmount(() => {
         </DialogFooter>
       </DialogContent>
     </Dialog>
+
+    <!-- ====== SECTION: Plugin Settings Preview Dialog ====== -->
 
     <Dialog v-model:open="pluginSettings.previewDialogVisible.value">
       <DialogContent class="settings-preview-dialog">

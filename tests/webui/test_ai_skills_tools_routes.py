@@ -35,7 +35,7 @@ def test_ai_skill_routes_list_and_reload(monkeypatch: "MonkeyPatch") -> None:
     )
 
     monkeypatch.setattr(
-        ai_application.skills,
+        ai_application._skills,
         "_entry",
         SimpleNamespace(
             list_skills=lambda: [
@@ -96,7 +96,7 @@ def test_ai_tools_routes_list_catalog_and_recent_executions(
         ]
 
     monkeypatch.setattr(
-        ai_application.operations,
+        ai_application._operations,
         "_entry",
         SimpleNamespace(
             list_tools=lambda **_kwargs: [

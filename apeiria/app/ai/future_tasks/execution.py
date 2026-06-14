@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 from nonebot.log import logger
 
@@ -70,4 +70,4 @@ __all__ = ["execute_future_task"]
 def _resolve_ai_runtime() -> "LiveRuntimeEntry":
     from apeiria.app.ai import ai_application
 
-    return cast("LiveRuntimeEntry", ai_application.runtime)
+    return ai_application.runtime

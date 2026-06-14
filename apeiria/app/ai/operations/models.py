@@ -6,9 +6,12 @@ from typing import TYPE_CHECKING, cast
 
 from apeiria.ai.model import (
     AIModelProfileCreateInput,
+    AIModelRouteAlgorithm,
     AIModelRouteBindingCreateInput,
     AIModelRouteCreateInput,
     AIModelRouteMemberCreateInput,
+    AIModelRouteMode,
+    AIModelTaskClass,
     AISourceCapabilityType,
 )
 from apeiria.ai.model.catalog.capability_templates import enrich_model_capabilities
@@ -21,6 +24,39 @@ from apeiria.app.ai.operations.errors import (
     AISourceModelDeleteBlockedError,
 )
 from apeiria.app.ai.wiring import ai_wiring
+
+_TASK_CLASS_VALUES: frozenset[str] = frozenset({
+    "planner_light",
+    "reply_default",
+    "reply_roleplay",
+    "reasoning_heavy",
+    "memory_extraction",
+    "tool_orchestration",
+})
+_ROUTE_MODE_VALUES: frozenset[str] = frozenset({"primary_fallback", "load_balance"})
+_ROUTE_ALGORITHM_VALUES: frozenset[str] = frozenset({"ordered", "weighted_random"})
+
+
+def _task_class(value: str) -> AIModelTaskClass:
+    """Validate and coerce a raw string into an AIModelTaskClass."""
+    if value not in _TASK_CLASS_VALUES:
+        raise ValueError(f"Invalid task_class {value!r}")  # noqa: TRY003
+    return value  # type: ignore[return-value]
+
+
+def _route_mode(value: str) -> AIModelRouteMode:
+    """Validate and coerce a raw string into an AIModelRouteMode."""
+    if value not in _ROUTE_MODE_VALUES:
+        raise ValueError(f"Invalid route mode {value!r}")  # noqa: TRY003
+    return value  # type: ignore[return-value]
+
+
+def _route_algorithm(value: str) -> AIModelRouteAlgorithm:
+    """Validate and coerce a raw string into an AIModelRouteAlgorithm."""
+    if value not in _ROUTE_ALGORITHM_VALUES:
+        raise ValueError(f"Invalid route algorithm {value!r}")  # noqa: TRY003
+    return value  # type: ignore[return-value]
+
 
 if TYPE_CHECKING:
     from apeiria.ai.model import (
@@ -130,9 +166,9 @@ class ModelsAdminMixin:
         route = await ai_wiring.model.route_service.create_route(
             AIModelRouteCreateInput(
                 name=name,
-                task_class=task_class,  # type: ignore[arg-type]
-                mode=mode,  # type: ignore[arg-type]
-                algorithm=algorithm,  # type: ignore[arg-type]
+                task_class=_task_class(task_class),
+                mode=_route_mode(mode),
+                algorithm=_route_algorithm(algorithm),
                 fallback_on_failure=fallback_on_failure,
                 enabled=enabled,
             )
@@ -160,9 +196,9 @@ class ModelsAdminMixin:
             route_id=route_id,
             create_input=AIModelRouteCreateInput(
                 name=name,
-                task_class=task_class,  # type: ignore[arg-type]
-                mode=mode,  # type: ignore[arg-type]
-                algorithm=algorithm,  # type: ignore[arg-type]
+                task_class=_task_class(task_class),
+                mode=_route_mode(mode),
+                algorithm=_route_algorithm(algorithm),
                 fallback_on_failure=fallback_on_failure,
                 enabled=enabled,
             ),
@@ -285,7 +321,7 @@ class ModelsAdminMixin:
             AIModelRouteBindingCreateInput(
                 scope_type=cast("AIModelRouteScopeType", scope_type),
                 scope_id=scope_id,
-                task_class=task_class,  # type: ignore[arg-type]
+                task_class=_task_class(task_class),
                 route_id=route_id,
             )
         )
@@ -307,7 +343,7 @@ class ModelsAdminMixin:
         deleted = await ai_wiring.model.route_service.delete_binding(
             scope_type=scope_type,
             scope_id=scope_id,
-            task_class=task_class,  # type: ignore[arg-type]
+            task_class=_task_class(task_class),
         )
         if deleted:
             record_ai_admin_audit(
@@ -543,7 +579,7 @@ class ModelsAdminMixin:
         return AIModelProfileCreateInput(
             name=name,
             model_id=model_id,
-            task_class=task_class,  # type: ignore[arg-type]
+            task_class=_task_class(task_class),
             priority=priority,
             enabled=enabled,
         )
