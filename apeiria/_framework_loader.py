@@ -143,13 +143,18 @@ def load_framework() -> None:
     """Load framework plugins, builtins, and core side effects."""
     from nonebot.log import logger
 
+    from apeiria.config.bot_config import _get_bot_config
     from apeiria.db.schema import ensure_database_ready_sync
     from apeiria.log import setup_logging
     from apeiria.plugins.state import (
         get_disabled_plugin_modules_sync,
     )
 
-    setup_logging()
+    bot_config = _get_bot_config()
+    setup_logging(
+        rotation=bot_config.log_rotation,
+        retention=bot_config.log_retention,
+    )
 
     for plugin in FRAMEWORK_PLUGIN_MODULES:
         nonebot.load_plugin(plugin)

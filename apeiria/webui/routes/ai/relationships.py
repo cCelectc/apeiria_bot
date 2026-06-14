@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, Query
 
 from apeiria.app.ai import ai_application
 from apeiria.webui.auth import require_auth
+from apeiria.webui.routes.ai._auth_helpers import actor_username_from_claims
 
 from .relationships_schemas import (
     AIRelationshipEventItem,
@@ -22,11 +23,6 @@ if TYPE_CHECKING:
 
 
 router = APIRouter()
-
-
-def _actor_username_from_claims(session: "AuthSession") -> str | None:
-    username = session.username.strip()
-    return username or None
 
 
 @router.get("/relationships/list", response_model=list[AIRelationshipStateItem])
@@ -76,7 +72,7 @@ async def update_ai_relationship_score(
         user_id=payload.user_id,
         score=payload.score,
         scene_id=payload.scene_id,
-        actor_username=_actor_username_from_claims(session),
+        actor_username=actor_username_from_claims(session),
     )
     return to_ai_relationship_state_item(state)
 

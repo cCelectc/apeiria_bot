@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, Query
 
 from apeiria.app.ai import ai_application
 from apeiria.webui.auth import require_auth
+from apeiria.webui.routes.ai._auth_helpers import actor_username_from_claims
 
 from .memories_schemas import (
     AIMemoryBulkActionRequest,
@@ -26,11 +27,6 @@ if TYPE_CHECKING:
 
 
 router = APIRouter()
-
-
-def _actor_username_from_claims(session: "AuthSession") -> str | None:
-    username = session.username.strip()
-    return username or None
 
 
 @router.get("/memories", response_model=list[AIMemoryItem])
@@ -70,7 +66,7 @@ async def create_ai_memory(
         content=payload.content,
         salience=payload.salience,
         confidence=payload.confidence,
-        actor_username=_actor_username_from_claims(session),
+        actor_username=actor_username_from_claims(session),
     )
     return to_ai_memory_item(memory)
 
@@ -85,7 +81,7 @@ async def update_ai_memory(
         content=payload.content,
         salience=payload.salience,
         confidence=payload.confidence,
-        actor_username=_actor_username_from_claims(session),
+        actor_username=actor_username_from_claims(session),
     )
     return to_ai_memory_item(memory) if memory is not None else None
 
@@ -98,7 +94,7 @@ async def delete_ai_memory(
     return AIMemoryDeleteResult(
         deleted=await ai_application.operations.delete_memory(
             memory_id=memory_id,
-            actor_username=_actor_username_from_claims(session),
+            actor_username=actor_username_from_claims(session),
         )
     )
 
@@ -111,7 +107,7 @@ async def set_ai_memory_lifecycle(
     memory = await ai_application.operations.set_memory_lifecycle(
         memory_id=payload.memory_id,
         lifecycle_state=payload.lifecycle_state,
-        actor_username=_actor_username_from_claims(session),
+        actor_username=actor_username_from_claims(session),
     )
     return to_ai_memory_item(memory) if memory is not None else None
 
@@ -123,7 +119,7 @@ async def bulk_delete_ai_memories(
 ) -> AIMemoryBulkActionResult:
     count = await ai_application.operations.bulk_delete_memories(
         memory_ids=payload.memory_ids,
-        actor_username=_actor_username_from_claims(session),
+        actor_username=actor_username_from_claims(session),
     )
     return AIMemoryBulkActionResult(affected=count)
 
@@ -136,7 +132,7 @@ async def bulk_set_ai_memory_lifecycle(
     count = await ai_application.operations.bulk_set_memory_lifecycle(
         memory_ids=payload.memory_ids,
         lifecycle_state=payload.lifecycle_state,
-        actor_username=_actor_username_from_claims(session),
+        actor_username=actor_username_from_claims(session),
     )
     return AIMemoryBulkActionResult(affected=count)
 

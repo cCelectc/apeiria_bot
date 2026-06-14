@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, Query
 
 from apeiria.app.ai import ai_application
 from apeiria.webui.auth import require_auth
+from apeiria.webui.routes.ai._auth_helpers import actor_username_from_claims
 
 from .future_tasks_schemas import AIFutureTaskItem, to_ai_future_task_item
 
@@ -16,11 +17,6 @@ if TYPE_CHECKING:
 
 
 router = APIRouter()
-
-
-def _actor_username_from_claims(session: "AuthSession") -> str | None:
-    username = session.username.strip()
-    return username or None
 
 
 @router.get("/future-tasks", response_model=list[AIFutureTaskItem])
@@ -39,7 +35,7 @@ async def cancel_ai_future_task(
 ) -> AIFutureTaskItem | None:
     task = await ai_application.future_tasks.cancel_task(
         task_id=task_id,
-        actor_username=_actor_username_from_claims(session),
+        actor_username=actor_username_from_claims(session),
     )
     if task is None:
         return None

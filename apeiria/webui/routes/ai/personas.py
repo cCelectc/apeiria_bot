@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends
 
 from apeiria.app.ai import ai_application
 from apeiria.webui.auth import require_auth
+from apeiria.webui.routes.ai._auth_helpers import actor_username_from_claims
 
 from .personas_schemas import (
     AIPersonaBindingItem,
@@ -22,11 +23,6 @@ if TYPE_CHECKING:
 
 
 router = APIRouter()
-
-
-def _actor_username_from_claims(session: "AuthSession") -> str | None:
-    username = session.username.strip()
-    return username or None
 
 
 @router.get("/personas", response_model=list[AIPersonaItem])
@@ -50,7 +46,7 @@ async def upsert_ai_persona(
             system_prompt=payload.system_prompt,
             style_prompt=payload.style_prompt,
             enabled=payload.enabled,
-            actor_username=_actor_username_from_claims(session),
+            actor_username=actor_username_from_claims(session),
         )
         if payload.persona_id
         else await ai_application.operations.create_persona(
@@ -59,7 +55,7 @@ async def upsert_ai_persona(
             system_prompt=payload.system_prompt,
             style_prompt=payload.style_prompt,
             enabled=payload.enabled,
-            actor_username=_actor_username_from_claims(session),
+            actor_username=actor_username_from_claims(session),
         )
     )
     return to_ai_persona_item(persona) if persona is not None else None

@@ -11,6 +11,7 @@ from apeiria.app.ai.operations import (
     AISourceDeleteBlockedError,
 )
 from apeiria.webui.auth import require_auth
+from apeiria.webui.routes.ai._auth_helpers import actor_username_from_claims
 
 from .sources_schemas import (
     AISourceItem,
@@ -25,11 +26,6 @@ if TYPE_CHECKING:
 
 
 router = APIRouter()
-
-
-def _actor_username_from_claims(session: "AuthSession") -> str | None:
-    username = session.username.strip()
-    return username or None
 
 
 @router.get("/source-presets", response_model=list[AISourcePresetItem])
@@ -70,7 +66,7 @@ async def create_ai_source(
         capability_metadata=payload.capability_metadata,
         default_options=payload.default_options,
         capability_provenance=payload.capability_provenance,
-        actor_username=_actor_username_from_claims(session),
+        actor_username=actor_username_from_claims(session),
     )
     return to_ai_source_item(item)
 
@@ -98,7 +94,7 @@ async def update_ai_source(
         capability_metadata=payload.capability_metadata,
         default_options=payload.default_options,
         capability_provenance=payload.capability_provenance,
-        actor_username=_actor_username_from_claims(session),
+        actor_username=actor_username_from_claims(session),
     )
     return to_ai_source_item(item) if item is not None else None
 
@@ -111,7 +107,7 @@ async def delete_ai_source(
     try:
         return await ai_application.operations.delete_source(
             source_id=source_id,
-            actor_username=_actor_username_from_claims(session),
+            actor_username=actor_username_from_claims(session),
         )
     except AISourceDeleteBlockedError as exc:
         raise HTTPException(

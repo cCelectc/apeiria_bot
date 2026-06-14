@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, Query
 from apeiria.ai.profile import AIProfileUpdateInput
 from apeiria.app.ai import ai_application
 from apeiria.webui.auth import require_auth
+from apeiria.webui.routes.ai._auth_helpers import actor_username_from_claims
 
 from .profiles_schemas import (
     AIProfileItem,
@@ -21,11 +22,6 @@ if TYPE_CHECKING:
 
 
 router = APIRouter()
-
-
-def _actor_username_from_claims(session: "AuthSession") -> str | None:
-    username = session.username.strip()
-    return username or None
 
 
 @router.get("/profiles", response_model=list[AIProfileItem])
@@ -65,7 +61,7 @@ async def update_ai_profile(
     profile = await ai_application.operations.update_user_profile(
         profile_id=payload.profile_id,
         update_input=AIProfileUpdateInput(**update_fields),
-        actor_username=_actor_username_from_claims(session),
+        actor_username=actor_username_from_claims(session),
     )
     return to_ai_profile_item(profile) if profile is not None else None
 
@@ -77,7 +73,7 @@ async def delete_ai_profile(
 ) -> bool:
     return await ai_application.operations.delete_user_profile(
         profile_id=profile_id,
-        actor_username=_actor_username_from_claims(session),
+        actor_username=actor_username_from_claims(session),
     )
 
 

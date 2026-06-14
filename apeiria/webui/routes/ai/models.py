@@ -15,6 +15,7 @@ from apeiria.app.ai.operations import (
     AISourceModelTestUpstreamError,
 )
 from apeiria.webui.auth import require_auth
+from apeiria.webui.routes.ai._auth_helpers import actor_username_from_claims
 
 from .models_schemas import (
     AIModelBindingItem,
@@ -46,11 +47,6 @@ if TYPE_CHECKING:
 
 
 router = APIRouter()
-
-
-def _actor_username_from_claims(session: "AuthSession") -> str | None:
-    username = session.username.strip()
-    return username or None
 
 
 @router.get("/sources/models", response_model=list[AISourceModelItem])
@@ -138,7 +134,7 @@ async def create_ai_source_model(
         capability_metadata=payload.capability_metadata,
         default_options=payload.default_options,
         capability_provenance=payload.capability_provenance,
-        actor_username=_actor_username_from_claims(session),
+        actor_username=actor_username_from_claims(session),
     )
     return to_ai_source_model_item(item)
 
@@ -161,7 +157,7 @@ async def update_ai_source_model(
         capability_metadata=payload.capability_metadata,
         default_options=payload.default_options,
         capability_provenance=payload.capability_provenance,
-        actor_username=_actor_username_from_claims(session),
+        actor_username=actor_username_from_claims(session),
     )
     return to_ai_source_model_item(item) if item is not None else None
 
@@ -176,7 +172,7 @@ async def delete_ai_source_model(
         return await ai_application.operations.delete_source_model(
             model_id=model_id,
             source_id=source_id,
-            actor_username=_actor_username_from_claims(session),
+            actor_username=actor_username_from_claims(session),
         )
     except AISourceModelDeleteBlockedError as exc:
         raise HTTPException(
@@ -206,7 +202,7 @@ async def upsert_ai_model_profile(
             task_class=payload.task_class,
             priority=payload.priority,
             enabled=payload.enabled,
-            actor_username=_actor_username_from_claims(session),
+            actor_username=actor_username_from_claims(session),
         )
         if payload.profile_id
         else await ai_application.operations.create_model_profile(
@@ -215,7 +211,7 @@ async def upsert_ai_model_profile(
             task_class=payload.task_class,
             priority=payload.priority,
             enabled=payload.enabled,
-            actor_username=_actor_username_from_claims(session),
+            actor_username=actor_username_from_claims(session),
         )
     )
     return to_ai_model_profile_item(item) if item is not None else None
@@ -251,7 +247,7 @@ async def upsert_ai_model_route(
             algorithm=payload.algorithm,
             fallback_on_failure=payload.fallback_on_failure,
             enabled=payload.enabled,
-            actor_username=_actor_username_from_claims(session),
+            actor_username=actor_username_from_claims(session),
         )
         if payload.route_id
         else await ai_application.operations.create_model_route(
@@ -261,7 +257,7 @@ async def upsert_ai_model_route(
             algorithm=payload.algorithm,
             fallback_on_failure=payload.fallback_on_failure,
             enabled=payload.enabled,
-            actor_username=_actor_username_from_claims(session),
+            actor_username=actor_username_from_claims(session),
         )
     )
     return to_ai_model_route_item(item) if item is not None else None
@@ -274,7 +270,7 @@ async def delete_ai_model_route(
 ) -> bool:
     return await ai_application.operations.delete_model_route(
         route_id=route_id,
-        actor_username=_actor_username_from_claims(session),
+        actor_username=actor_username_from_claims(session),
     )
 
 
@@ -305,7 +301,7 @@ async def upsert_ai_model_route_member(
             position=payload.position,
             weight=payload.weight,
             enabled=payload.enabled,
-            actor_username=_actor_username_from_claims(session),
+            actor_username=actor_username_from_claims(session),
         )
         if payload.route_member_id
         else await ai_application.operations.create_model_route_member(
@@ -314,7 +310,7 @@ async def upsert_ai_model_route_member(
             position=payload.position,
             weight=payload.weight,
             enabled=payload.enabled,
-            actor_username=_actor_username_from_claims(session),
+            actor_username=actor_username_from_claims(session),
         )
     )
     return to_ai_model_route_member_item(item) if item is not None else None
@@ -327,7 +323,7 @@ async def delete_ai_model_route_member(
 ) -> bool:
     return await ai_application.operations.delete_model_route_member(
         route_member_id=route_member_id,
-        actor_username=_actor_username_from_claims(session),
+        actor_username=actor_username_from_claims(session),
     )
 
 
@@ -349,7 +345,7 @@ async def upsert_ai_model_route_binding(
         scope_id=payload.scope_id,
         task_class=payload.task_class,
         route_id=payload.route_id,
-        actor_username=_actor_username_from_claims(session),
+        actor_username=actor_username_from_claims(session),
     )
     return to_ai_model_route_binding_item(item)
 
@@ -365,7 +361,7 @@ async def delete_ai_model_route_binding(
         scope_type=scope_type,
         scope_id=scope_id,
         task_class=task_class,
-        actor_username=_actor_username_from_claims(session),
+        actor_username=actor_username_from_claims(session),
     )
 
 

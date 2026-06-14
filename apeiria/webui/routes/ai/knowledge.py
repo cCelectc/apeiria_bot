@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from apeiria.ai.knowledge.chunking import KnowledgeUploadValidationError
 from apeiria.app.ai import ai_application
 from apeiria.webui.auth import require_auth
+from apeiria.webui.routes.ai._auth_helpers import actor_username_from_claims
 
 from .knowledge_schemas import (
     AIKnowledgeChunkItem,
@@ -36,14 +37,6 @@ if TYPE_CHECKING:
 router = APIRouter()
 
 
-def _actor_username_from_claims(session: "AuthSession") -> str | None:
-    username = getattr(session, "username", "")
-    if not isinstance(username, str):
-        return None
-    username = username.strip()
-    return username or None
-
-
 @router.get("/knowledge/state", response_model=AIKnowledgeStateItem)
 async def get_ai_knowledge_state(
     _: Annotated[object, Depends(require_auth)],
@@ -61,7 +54,7 @@ async def update_ai_knowledge_state(
     return to_knowledge_state_item(
         await ai_application.operations.set_knowledge_rag_enabled(
             enabled=payload.rag_enabled,
-            actor_username=_actor_username_from_claims(session),
+            actor_username=actor_username_from_claims(session),
         )
     )
 
@@ -75,7 +68,7 @@ async def upload_ai_knowledge_document(
         result = await ai_application.operations.upload_knowledge_document(
             source_file_name=payload.source_file_name,
             content=payload.content,
-            actor_username=_actor_username_from_claims(session),
+            actor_username=actor_username_from_claims(session),
         )
     except KnowledgeUploadValidationError as exc:
         raise HTTPException(status_code=400, detail=exc.reason) from exc
@@ -114,7 +107,7 @@ async def rebuild_ai_knowledge_document_embeddings(
 ) -> AIKnowledgeRebuildDiagnosticsItem:
     result = await ai_application.operations.rebuild_knowledge_embeddings(
         document_id=document_id,
-        actor_username=_actor_username_from_claims(session),
+        actor_username=actor_username_from_claims(session),
     )
     return to_rebuild_diagnostics_item(result)
 
@@ -128,7 +121,7 @@ async def delete_ai_knowledge_document(
 ) -> AIKnowledgeDeleteResult:
     deleted = await ai_application.operations.delete_knowledge_document(
         document_id=document_id,
-        actor_username=_actor_username_from_claims(session),
+        actor_username=actor_username_from_claims(session),
     )
     return AIKnowledgeDeleteResult(deleted=deleted)
 
