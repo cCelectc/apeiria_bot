@@ -186,4 +186,50 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    pass
+    connection = op.get_bind()
+
+    if not _table_exists(connection, "chat_message"):
+        return
+
+    missing_meta = not _column_exists(connection, "chat_message", "meta_json")
+    missing_raw = not _column_exists(connection, "chat_message", "raw_data_json")
+    missing_session_pk = not _column_exists(
+        connection, "chat_message", "session_pk"
+    )
+
+    columns_to_add = []
+    if missing_meta:
+        columns_to_add.append("meta_json")
+    if missing_raw:
+        columns_to_add.append("raw_data_json")
+    if missing_session_pk:
+        columns_to_add.append("session_pk")
+
+    if columns_to_add:
+        with op.batch_alter_table("chat_message", schema=None) as batch_op:
+            for col in columns_to_add:
+                if col == "session_pk":
+                    batch_op.add_column(
+                        sa.Column(col, sa.Integer(), nullable=True)
+                    )
+                else:
+                    batch_op.add_column(
+                        sa.Column(col, sa.Text(), nullable=True)
+                    )
+
+        op.execute(
+            sa.text("DROP INDEX IF EXISTS idx_chat_message_session_created")
+        )
+        if missing_session_pk:
+            op.execute(
+                sa.text(
+                    "CREATE INDEX IF NOT EXISTS idx_chat_message_session_pk "
+                    "ON chat_message(session_pk)"
+                )
+            )
+            op.execute(
+                sa.text(
+                    "CREATE INDEX IF NOT EXISTS idx_chat_message_session_created "
+                    "ON chat_message(session_pk, created_at)"
+                )
+            )
