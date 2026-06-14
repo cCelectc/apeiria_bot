@@ -93,15 +93,11 @@ async def test_webui_auth_account_flow_uses_current_storage(
             assert updated is not None
             assert updated.session_version == EXPECTED_UPDATED_SESSION_VERSION
             assert (
-                await secrets_module.verify_account_password(
-                    "alice", "strong-pass-123"
-                )
+                await secrets_module.verify_account_password("alice", "strong-pass-123")
                 is None
             )
             assert (
-                await secrets_module.verify_account_password(
-                    "alice", "fresh-pass-456"
-                )
+                await secrets_module.verify_account_password("alice", "fresh-pass-456")
                 is not None
             )
             assert rotated is not None
