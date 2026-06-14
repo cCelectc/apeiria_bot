@@ -20,7 +20,6 @@ import { getErrorMessage } from '@/api/client'
 import {
   buildRouteSnapshot,
   type RouteFormState,
-  type RouteMemberFormState,
 } from '@/composables/aiModels/formState'
 import type { NoticeLevel, RouteTouchedField } from './helpers'
 import { newRouteMember, taskClassValues } from './helpers'

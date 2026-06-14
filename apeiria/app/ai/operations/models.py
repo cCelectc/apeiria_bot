@@ -25,14 +25,16 @@ from apeiria.app.ai.operations.errors import (
 )
 from apeiria.app.ai.wiring import ai_wiring
 
-_TASK_CLASS_VALUES: frozenset[str] = frozenset({
-    "planner_light",
-    "reply_default",
-    "reply_roleplay",
-    "reasoning_heavy",
-    "memory_extraction",
-    "tool_orchestration",
-})
+_TASK_CLASS_VALUES: frozenset[str] = frozenset(
+    {
+        "planner_light",
+        "reply_default",
+        "reply_roleplay",
+        "reasoning_heavy",
+        "memory_extraction",
+        "tool_orchestration",
+    }
+)
 _ROUTE_MODE_VALUES: frozenset[str] = frozenset({"primary_fallback", "load_balance"})
 _ROUTE_ALGORITHM_VALUES: frozenset[str] = frozenset({"ordered", "weighted_random"})
 

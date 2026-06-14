@@ -41,7 +41,7 @@ class AIProfileService:
         *,
         profile_id: str,
     ) -> AIProfileDefinition | None:
-        row = self._repository.get_profile_row_by_id(profile_id=profile_id)
+        row = await self._repository.get_profile_row_by_id(profile_id=profile_id)
         if row is None:
             return None
         return self._to_definition(row)
@@ -52,7 +52,7 @@ class AIProfileService:
         platform: str,
         user_id: str,
     ) -> AIProfileDefinition | None:
-        row = self._repository.get_profile_row(platform=platform, user_id=user_id)
+        row = await self._repository.get_profile_row(platform=platform, user_id=user_id)
         if row is None:
             return None
         return self._to_definition(row)
@@ -63,17 +63,15 @@ class AIProfileService:
         platform: str,
         user_id: str,
     ) -> ProfileRow:
-        return self._repository.ensure_profile(platform=platform, user_id=user_id)
+        return await self._repository.ensure_profile(platform=platform, user_id=user_id)
 
     async def list_profiles(
         self,
         *,
         limit: int = 50,
     ) -> list[AIProfileDefinition]:
-        return [
-            self._to_definition(row)
-            for row in self._repository.list_profile_rows(limit=limit)
-        ]
+        rows = await self._repository.list_profile_rows(limit=limit)
+        return [self._to_definition(row) for row in rows]
 
     async def update_profile(
         self,
@@ -81,7 +79,7 @@ class AIProfileService:
         profile_id: str,
         update_input: AIProfileUpdateInput,
     ) -> AIProfileDefinition | None:
-        row = self._repository.get_profile_row_by_id(profile_id=profile_id)
+        row = await self._repository.get_profile_row_by_id(profile_id=profile_id)
         if row is None:
             return None
         if update_input.display_name is not AIProfileUnset:
@@ -106,7 +104,7 @@ class AIProfileService:
         if update_input.profile_enabled is not None:
             row.profile_enabled = update_input.profile_enabled
         row.updated_at = utcnow()
-        self._repository.update_profile_row(row)
+        await self._repository.update_profile_row(row)
         return self._to_definition(row)
 
     async def delete_profile(
@@ -114,7 +112,7 @@ class AIProfileService:
         *,
         profile_id: str,
     ) -> bool:
-        return self._repository.delete_profile(profile_id=profile_id)
+        return await self._repository.delete_profile(profile_id=profile_id)
 
     async def ingest_message(
         self,

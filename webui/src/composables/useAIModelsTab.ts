@@ -1,15 +1,8 @@
 import type {
-  AIModelBindingItem,
   AIModelProfileItem,
-  AIModelRouteBindingItem,
-  AIModelRouteItem,
-  AIModelRouteMemberItem,
-  AIModelCatalogItem,
-  AISourceItem,
   AISourceModelItem,
-  AISourcePresetItem,
 } from '@/api/ai'
-import { computed, reactive, ref, type Ref, watch } from 'vue'
+import { computed, reactive, type Ref, watch } from 'vue'
 import {
   getAIModelBindings,
   getAIModelProfiles,

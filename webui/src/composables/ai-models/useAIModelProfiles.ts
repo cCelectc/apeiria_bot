@@ -5,7 +5,6 @@ import type {
 } from '@/api/ai'
 import { computed, reactive, ref, type Ref } from 'vue'
 import {
-  getAIModelBindings,
   getAIModelProfiles,
   upsertAIModelProfile,
 } from '@/api/ai'

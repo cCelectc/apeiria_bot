@@ -164,6 +164,7 @@ const installResolving = ref(false)
 const installSubmitting = ref(false)
 const installManualModule = ref('')
 const installSelectedModule = ref('')
+const installDialogVisible = ref(false)
 const installTaskDialogVisible = ref(false)
 const installTask = ref<PluginStoreTask | null>(null)
 let installTaskPollTimer: number | null = null
@@ -184,6 +185,7 @@ const packageTask = ref<PluginStoreTask | null>(null)
 const packageTaskModule = ref('')
 const packageUpdateConfirmVisible = ref(false)
 const packageUpdateConfirmItem = ref<PluginWorkbenchItem | null>(null)
+const packageTaskDialogVisible = ref(false)
 let packageTaskPollTimer: number | null = null
 
 const pluginSettings = usePluginSettingsDialog({
@@ -196,6 +198,7 @@ const pluginReadme = usePluginReadmeDialog((key, params) => t(key, params || {})
 // ── Derived: plugins, summary, maintenance ────────────────────────────
 const summary = computed(() => workbench.value?.summary)
 const maintenance = computed(() => workbench.value?.maintenance)
+const plugins = computed(() => workbench.value?.plugins ?? [])
 
 const metrics = computed<WorkbenchMetricItem[]>(() => [
   {
@@ -1689,11 +1692,13 @@ onBeforeUnmount(() => {
           <AlertDescription>{{ pluginReadme.readmeErrorMessage.value }}</AlertDescription>
         </Alert>
         <LoadingSkeleton v-else-if="pluginReadme.readmeLoading.value" rows="8" />
+        <!-- eslint-disable vue/no-v-html -->
         <div
           v-else
           class="plugin-readme-content markdown-content"
           v-html="pluginReadme.readmeHtml.value"
         />
+        <!-- eslint-enable vue/no-v-html -->
 
         <DialogFooter>
           <Button variant="ghost" @click="pluginReadme.readmeDialogVisible.value = false">

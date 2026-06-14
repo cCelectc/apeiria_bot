@@ -62,6 +62,7 @@ dev = [
 [tool.ruff]
 line-length = 88
 target-version = "py310"
+exclude = ["apeiria/db/migrations/"]
 
 [tool.ruff.format]
 line-ending = "lf"

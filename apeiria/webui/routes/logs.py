@@ -78,9 +78,7 @@ async def get_log_sources(
 
     from apeiria.log import load_history_log_sources
 
-    return LogSourcesResponse(
-        items=await asyncio.to_thread(load_history_log_sources)
-    )
+    return LogSourcesResponse(items=await asyncio.to_thread(load_history_log_sources))
 
 
 @router.websocket("/ws")

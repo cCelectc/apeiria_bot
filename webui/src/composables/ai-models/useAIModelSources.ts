@@ -12,8 +12,6 @@ import {
   deleteAISourceModel,
   fetchAISourceModels,
   getAISourceModels,
-  getAISourcePresets,
-  getAISources,
   testAISourceModel,
   updateAISource,
   updateAISourceModel,
