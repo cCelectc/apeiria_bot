@@ -67,7 +67,17 @@ class ChatMessage(Base):
         CheckConstraint("mentions_bot IN (0, 1)", name="ck_chat_message_mentions_bot"),
         CheckConstraint("has_media IN (0, 1)", name="ck_chat_message_has_media"),
         Index("idx_chat_message_session_created", "session_id", "created_at"),
-        Index("idx_chat_message_platform_message_id", "platform_message_id"),
+        Index(
+            "idx_chat_message_session_role_created",
+            "session_id",
+            "author_role",
+            "created_at",
+        ),
+        Index(
+            "idx_chat_message_session_platform_msg",
+            "session_id",
+            "platform_message_id",
+        ),
         Index("idx_chat_message_created_at", "created_at"),
     )
 
