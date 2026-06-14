@@ -41,9 +41,12 @@ async def get_log_history(
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
     filters: Annotated[LogHistoryQuery, Depends()] = LogHistoryQuery(),
 ) -> LogHistoryResponse:
+    import asyncio
+
     from apeiria.log import HistoryLogFilters, load_history_logs
 
-    items, has_more, total = load_history_logs(
+    items, has_more, total = await asyncio.to_thread(
+        load_history_logs,
         before=before,
         limit=limit,
         filters=HistoryLogFilters(**filters.model_dump()),
@@ -71,9 +74,13 @@ async def get_log_history(
 async def get_log_sources(
     _: Annotated[Any, Depends(require_auth)],
 ) -> LogSourcesResponse:
+    import asyncio
+
     from apeiria.log import load_history_log_sources
 
-    return LogSourcesResponse(items=load_history_log_sources())
+    return LogSourcesResponse(
+        items=await asyncio.to_thread(load_history_log_sources)
+    )
 
 
 @router.websocket("/ws")

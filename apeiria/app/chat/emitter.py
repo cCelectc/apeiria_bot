@@ -158,7 +158,6 @@ class WebChatEmitter:
         self._state.append_history(payload)
         self.prune_assets()
         await connection.send_envelope("message.receive", payload)
-        await self.emit_session_snapshot(connection)
 
     async def emit_partial_reply_start(
         self,
