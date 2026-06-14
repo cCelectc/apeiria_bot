@@ -3,21 +3,30 @@
 from __future__ import annotations
 
 import inspect
+from contextvars import ContextVar
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
 from apeiria.ai.contributions import ai_contributions
 from apeiria.ai.tools.decorators import ai_tool as define_ai_tool
 from apeiria.ai.tools.models import AIToolLevel
-from apeiria.bot.live_context import get_live_platform_context
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
 
     from apeiria.ai.tools.models import AIToolDefinition, AIToolResult
-    from apeiria.bot.live_context import LivePlatformContext
 
     AIToolHandler = Callable[..., Awaitable[AIToolResult]]
+
+
+_live_platform_context: ContextVar[Any | None] = ContextVar(
+    "apeiria_live_platform_context",
+    default=None,
+)
+
+
+def _get_live_platform_context() -> Any | None:
+    return _live_platform_context.get()
 
 
 def ai_tool(
@@ -58,10 +67,10 @@ def ai_skill_source(
     ).path
 
 
-def live_platform_context() -> "LivePlatformContext | None":
+def live_platform_context() -> Any | None:
     """Return the current live platform context for this AI tool turn."""
 
-    return get_live_platform_context()
+    return _get_live_platform_context()
 
 
 def _caller_directory() -> Path:

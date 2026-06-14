@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 from contextlib import contextmanager
-from contextvars import ContextVar
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
+
+from apeiria.ai.plugin_api import _live_platform_context
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -19,12 +20,6 @@ class LivePlatformContext:
 
     bot: "Bot"
     event: "Event"
-
-
-_live_platform_context: ContextVar[LivePlatformContext | None] = ContextVar(
-    "apeiria_live_platform_context",
-    default=None,
-)
 
 
 def get_live_platform_context() -> LivePlatformContext | None:
