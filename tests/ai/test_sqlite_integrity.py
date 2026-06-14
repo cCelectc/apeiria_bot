@@ -23,9 +23,7 @@ def test_source_model_requires_existing_source(
     monkeypatch.setattr(database_runtime, "_project_root", tmp_path)
     database_runtime.ensure_ready()
 
-    with database_runtime.connect_sync() as connection, raises(
-        sqlite3.IntegrityError
-    ):
+    with database_runtime.connect_sync() as connection, raises(sqlite3.IntegrityError):
         _insert_source_model_raw(
             connection,
             model_id="model_orphan",
@@ -125,9 +123,7 @@ def test_default_source_model_insert_rolls_back_on_constraint_failure(
             is_default=True,
         )
 
-    with database_runtime.connect_sync() as connection, raises(
-        sqlite3.IntegrityError
-    ):
+    with database_runtime.connect_sync() as connection, raises(sqlite3.IntegrityError):
         _insert_source_model_raw(
             connection,
             model_id="model_duplicate_identifier",
@@ -538,7 +534,7 @@ def _seed_model_profile(
         )
 
 
-def _insert_source_model_raw(
+def _insert_source_model_raw(  # noqa: PLR0913
     connection: sqlite3.Connection,
     *,
     model_id: str,

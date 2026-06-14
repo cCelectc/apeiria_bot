@@ -18,7 +18,7 @@ if TYPE_CHECKING:
     from pytest import MonkeyPatch
 
 
-def test_ai_model_route_routes_manage_routes_members_bindings_and_audit(
+def test_ai_model_route_routes_manage_routes_members_bindings_and_audit(  # noqa: PLR0915
     tmp_path: Path,
     monkeypatch: MonkeyPatch,
 ) -> None:

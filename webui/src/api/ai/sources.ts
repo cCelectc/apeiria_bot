@@ -9,7 +9,7 @@ import type {
   AISourcePresetItem,
 } from './types'
 
-export { AIBootstrapResponse, AIRuntimeStatusResponse, AIRuntimeSettingsResponse, AIRuntimeSettingsUpdateRequest }
+export type { AIBootstrapResponse, AIRuntimeStatusResponse, AIRuntimeSettingsResponse, AIRuntimeSettingsUpdateRequest }
 
 export function getAIBootstrap() {
   return client.get<AIBootstrapResponse>('/ai/bootstrap')
