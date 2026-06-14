@@ -22,10 +22,10 @@ from apeiria.ai.model.runtime.client import AIModelClient
 from apeiria.ai.model.runtime.factory import build_source_adapter
 from apeiria.ai.model.runtime.planning import plan_model_call
 from apeiria.ai.model.sources.service import AISourceService
-from apeiria.app.ai.usage_recording import (
+from apeiria.ai.token_usage import (
     AIModelUsageRecorder,
-    ai_model_usage_recorder,
-    record_source_usage_safely,
+    build_source_usage_create_input,
+    get_default_usage_recorder,
 )
 
 if TYPE_CHECKING:
@@ -59,7 +59,7 @@ class ModelInvoker:
         self._client = client or AIModelClient()
         self._source_service = source_service or AISourceService()
         self._usage_recorder: AIModelUsageRecorder | None = (
-            usage_recorder or ai_model_usage_recorder
+            usage_recorder or get_default_usage_recorder()
         )
 
     async def list_source_models(
@@ -438,10 +438,12 @@ class ModelInvoker:
         operation: str,
         response: object,
     ) -> None:
-        record_source_usage_safely(
-            recorder=self._usage_recorder,
+        if self._usage_recorder is None:
+            return
+        create_input = build_source_usage_create_input(
             source=source,
             model_name=model_name,
             operation=operation,
             response=response,
         )
+        self._usage_recorder.record_model_usage(create_input)

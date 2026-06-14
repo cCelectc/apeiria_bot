@@ -3,14 +3,19 @@
 from __future__ import annotations
 
 import json
+from contextvars import ContextVar
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Literal
+from typing import TYPE_CHECKING, Literal, Protocol
 from uuid import uuid4
 
 from sqlalchemy import text
 
 from apeiria.db.engine import get_session
+
+if TYPE_CHECKING:
+    from apeiria.ai.model.routing.selection import AISelectedModel
+    from apeiria.ai.model.sources.models import AISourceDefinition
 
 AIModelUsageMeasurementSource = Literal["provider", "missing"]
 AIModelUsageGroupBy = Literal[
@@ -21,6 +26,46 @@ AIModelUsageGroupBy = Literal[
     "response_source",
     "operation",
 ]
+
+
+@dataclass(frozen=True, slots=True)
+class AIModelUsageRecordContext:
+    """Runtime context for one completed provider response."""
+
+    trace_id: str | None
+    session_id: str
+    runtime_mode: str
+    response_source: str
+    selected: "AISelectedModel"
+    operation: str
+    attempt_index: int
+    status: str
+
+
+class AIModelUsageRecorder(Protocol):
+    """Protocol for runtime usage recording collaborators."""
+
+    def record_model_usage(
+        self,
+        create_input: "AIModelUsageCreateInput",
+    ) -> "AIModelUsageRecord | None":
+        """Persist one normalized model usage event."""
+
+
+_default_usage_recorder: ContextVar[AIModelUsageRecorder | None] = ContextVar(
+    "apeiria_default_usage_recorder",
+    default=None,
+)
+
+
+def get_default_usage_recorder() -> AIModelUsageRecorder | None:
+    """Return the ambient default usage recorder, or None."""
+    return _default_usage_recorder.get()
+
+
+def set_default_usage_recorder(recorder: AIModelUsageRecorder) -> None:
+    """Set the ambient default usage recorder."""
+    _default_usage_recorder.set(recorder)
 
 
 @dataclass(frozen=True, slots=True)
@@ -309,6 +354,52 @@ class AIModelUsageRepository:
         ]
 
 
+def build_source_usage_create_input(  # noqa: PLR0913
+    *,
+    source: "AISourceDefinition",
+    model_name: str,
+    operation: str,
+    response: object,
+    trace_id: str | None = None,
+    session_id: str | None = None,
+    runtime_mode: str = "model_operation",
+    response_source: str | None = None,
+    attempt_index: int = 1,
+    status: str = "success",
+) -> AIModelUsageCreateInput:
+    """Build usage input for source-level operations without turn context."""
+
+    from apeiria.ai.model.sources.models import (
+        resolve_adapter_kind_for_client_type,
+    )
+
+    adapter_kind = source.adapter_kind or resolve_adapter_kind_for_client_type(
+        source.client_type
+    )
+    return AIModelUsageCreateInput(
+        trace_id=trace_id or "",
+        session_id=session_id or "",
+        runtime_mode=runtime_mode,
+        response_source=response_source or operation,
+        source_id=source.source_id,
+        model_name=model_name,
+        operation=operation,
+        attempt_index=attempt_index,
+        status=status,
+        usage=normalize_provider_usage(
+            adapter_kind=adapter_kind,
+            usage=_extract_response_usage(response),
+        ),
+        provider_response_id=None,
+        finish_reason=None,
+    )
+
+
+def _extract_response_usage(response: object) -> dict[str, object] | None:
+    usage = getattr(response, "usage", None)
+    return usage if isinstance(usage, dict) else None
+
+
 def normalize_provider_usage(
     *,
     adapter_kind: str,
@@ -564,10 +655,15 @@ __all__ = [
     "AIModelUsageGroupBy",
     "AIModelUsageMeasurementSource",
     "AIModelUsageRecord",
+    "AIModelUsageRecordContext",
+    "AIModelUsageRecorder",
     "AIModelUsageRepository",
     "AIModelUsageSummary",
     "NormalizedAIModelUsage",
     "ai_model_usage_repository",
+    "build_source_usage_create_input",
+    "get_default_usage_recorder",
     "normalize_provider_usage",
     "row_to_usage_record",
+    "set_default_usage_recorder",
 ]

@@ -2,48 +2,25 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING
 
 from nonebot.log import logger
 
 from apeiria.ai.model.sources.models import resolve_adapter_kind_for_client_type
 from apeiria.ai.token_usage import (
     AIModelUsageCreateInput,
+    AIModelUsageRecordContext,
+    AIModelUsageRecorder,
     AIModelUsageRepository,
+    build_source_usage_create_input,
     normalize_provider_usage,
+    set_default_usage_recorder,
 )
 
 if TYPE_CHECKING:
-    from apeiria.ai.model.routing.selection import AISelectedModel
     from apeiria.ai.model.runtime.adapter import AIModelGenerateResponse
-    from apeiria.ai.model.runtime.capabilities import AIModelAdapterKind
     from apeiria.ai.model.sources.models import AISourceDefinition
     from apeiria.ai.token_usage import AIModelUsageRecord
-
-
-@dataclass(frozen=True, slots=True)
-class AIModelUsageRecordContext:
-    """Runtime context for one completed provider response."""
-
-    trace_id: str | None
-    session_id: str
-    runtime_mode: str
-    response_source: str
-    selected: "AISelectedModel"
-    operation: str
-    attempt_index: int
-    status: str
-
-
-class AIModelUsageRecorder(Protocol):
-    """Protocol for runtime usage recording collaborators."""
-
-    def record_model_usage(
-        self,
-        create_input: AIModelUsageCreateInput,
-    ) -> "AIModelUsageRecord | None":
-        """Persist one normalized model usage event."""
 
 
 class RepositoryAIModelUsageRecorder:
@@ -96,41 +73,6 @@ def build_model_usage_create_input(
         ),
         provider_response_id=response.response_id,
         finish_reason=response.finish_reason,
-    )
-
-
-def build_source_usage_create_input(  # noqa: PLR0913
-    *,
-    source: "AISourceDefinition",
-    model_name: str,
-    operation: str,
-    response: object,
-    trace_id: str | None = None,
-    session_id: str | None = None,
-    runtime_mode: str = "model_operation",
-    response_source: str | None = None,
-    attempt_index: int = 1,
-    status: str = "success",
-) -> AIModelUsageCreateInput:
-    """Build usage input for source-level operations without turn context."""
-
-    adapter_kind = _adapter_kind_for_source(source)
-    return AIModelUsageCreateInput(
-        trace_id=trace_id or "",
-        session_id=session_id or "",
-        runtime_mode=runtime_mode,
-        response_source=response_source or operation,
-        source_id=source.source_id,
-        model_name=model_name,
-        operation=operation,
-        attempt_index=attempt_index,
-        status=status,
-        usage=normalize_provider_usage(
-            adapter_kind=adapter_kind,
-            usage=_response_usage(response),
-        ),
-        provider_response_id=None,
-        finish_reason=None,
     )
 
 
@@ -205,20 +147,9 @@ def record_source_usage_safely(  # noqa: PLR0913
         )
 
 
-def _adapter_kind_for_source(
-    source: "AISourceDefinition",
-) -> "AIModelAdapterKind":
-    return source.adapter_kind or resolve_adapter_kind_for_client_type(
-        source.client_type
-    )
-
-
-def _response_usage(response: object) -> dict[str, object] | None:
-    usage = getattr(response, "usage", None)
-    return usage if isinstance(usage, dict) else None
-
-
 ai_model_usage_recorder = RepositoryAIModelUsageRecorder()
+
+set_default_usage_recorder(ai_model_usage_recorder)
 
 __all__ = [
     "AIModelUsageRecordContext",
