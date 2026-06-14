@@ -240,17 +240,17 @@ async def clear_default_source_model(
 def _orm_to_record(row: "Base | None") -> SourceModelRecord | None:
     if row is None:
         return None
-    extra_params = safe_json_loads(row.extra_params_json, default={})
-    capability_metadata = safe_json_loads(row.capability_metadata_json, default={})
-    default_options = safe_json_loads(row.default_options_json, default={})
-    capability_provenance = safe_json_loads(row.capability_provenance_json, default={})
+    extra_params = safe_json_loads(row.extra_params_json, default={})  # type: ignore[attr-defined]
+    capability_metadata = safe_json_loads(row.capability_metadata_json, default={})  # type: ignore[attr-defined]
+    default_options = safe_json_loads(row.default_options_json, default={})  # type: ignore[attr-defined]
+    capability_provenance = safe_json_loads(row.capability_provenance_json, default={})  # type: ignore[attr-defined]
     return SourceModelRecord(
-        model_id=str(row.model_id),
-        source_id=str(row.source_id),
-        model_identifier=str(row.model_identifier),
-        display_name=str(row.display_name),
-        enabled=bool(row.enabled),
-        is_default=bool(row.is_default),
+        model_id=str(row.model_id),  # type: ignore[attr-defined]
+        source_id=str(row.source_id),  # type: ignore[attr-defined]
+        model_identifier=str(row.model_identifier),  # type: ignore[attr-defined]
+        display_name=str(row.display_name),  # type: ignore[attr-defined]
+        enabled=bool(row.enabled),  # type: ignore[attr-defined]
+        is_default=bool(row.is_default),  # type: ignore[attr-defined]
         extra_params=extra_params if isinstance(extra_params, dict) else {},
         capability_metadata=(
             capability_metadata if isinstance(capability_metadata, dict) else {}

@@ -85,5 +85,5 @@ def build_runtime() -> ApeiriaRuntime:
         access=svc.access,
         system=svc.system,
         project_update=svc.project_update,
-        ai=svc.ai,
+        ai=svc.ai,  # type: ignore[arg-type]
     )

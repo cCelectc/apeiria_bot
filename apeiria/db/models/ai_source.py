@@ -138,9 +138,9 @@ class _SourceModelMixin:
     def updated_at(self) -> Mapped[int]:
         return mapped_column(Integer, default=_epoch_ms, onupdate=_epoch_ms)
 
-    @declared_attr
+    @declared_attr  # pyright: ignore[reportArgumentType]
     def __table_args__(self) -> tuple:  # type: ignore[override]
-        table = self.__tablename__
+        table = self.__tablename__  # type: ignore[attr-defined]
         return (
             UniqueConstraint("source_id", "model_identifier"),
             CheckConstraint("enabled IN (0, 1)", name=f"ck_{table}_enabled"),

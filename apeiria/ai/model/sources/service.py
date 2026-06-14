@@ -218,7 +218,7 @@ class AISourceService:
             row.extra_config_json = dumps(
                 updated.extra_config or {}, ensure_ascii=False
             )
-            row.adapter_kind = updated.adapter_kind
+            row.adapter_kind = updated.adapter_kind  # type: ignore[assignment]
             row.capability_metadata_json = dumps(
                 updated.capability_metadata or {}, ensure_ascii=False
             )

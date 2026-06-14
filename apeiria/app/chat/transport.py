@@ -15,6 +15,7 @@ from apeiria.i18n import t
 
 if TYPE_CHECKING:
     from apeiria.access.principal import AuthSession
+    from apeiria.app.chat.gateway_protocol import ChatEnvelope
 
 
 async def serve_chat_websocket(
@@ -50,7 +51,7 @@ async def serve_chat_websocket(
 async def _receive_frame(
     websocket: WebSocket,
     connection: WebChatConnection,
-) -> object | None:
+) -> "ChatEnvelope | None":
     try:
         return chat_gateway_service.parse_frame(await websocket.receive_json())
     except WebSocketDisconnect:

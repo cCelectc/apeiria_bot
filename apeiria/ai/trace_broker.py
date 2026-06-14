@@ -40,7 +40,7 @@ class TraceBroker:
     ) -> None:
         self._file_sink_id = logger.add(
             path,
-            filter=lambda record: record["extra"].get("is_trace"),
+            filter=lambda record: record["extra"].get("is_trace"),  # type: ignore[return-value]
             format="{message}",
             rotation=rotation,
             retention=retention,

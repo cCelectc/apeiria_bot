@@ -9,6 +9,9 @@ from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any, Literal
 from uuid import uuid4
 
+if TYPE_CHECKING:
+    import asyncio
+
 from nonebot.log import logger
 
 from apeiria.ai.runtime_settings import ai_runtime_settings_service
@@ -419,7 +422,7 @@ def _webchat_stream_sink(
     return publish
 
 
-def _discard_completed_partial_reply_task(task: object) -> None:
+def _discard_completed_partial_reply_task(task: "asyncio.Task[Any]") -> None:
     try:
         exc = task.exception()
     except Exception:  # noqa: BLE001

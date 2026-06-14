@@ -6,7 +6,7 @@ import json
 from contextvars import ContextVar
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING, Literal, Protocol
+from typing import TYPE_CHECKING, Any, Literal, Protocol
 from uuid import uuid4
 
 from sqlalchemy import text
@@ -48,7 +48,7 @@ class AIModelUsageRecorder(Protocol):
     def record_model_usage(
         self,
         create_input: "AIModelUsageCreateInput",
-    ) -> object:
+    ) -> Any:
         """Persist one normalized model usage event."""
         ...
 

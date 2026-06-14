@@ -360,7 +360,7 @@ async def _set_account_disabled_in_session(
             updated_at=iso_now(),
         )
     )
-    if not result.rowcount:
+    if not result.rowcount:  # type: ignore[union-attr]
         return None
     await session.flush()
     return await _load_account_by_user_id(session, user_id)
@@ -382,7 +382,7 @@ async def _delete_account_in_session(
     result = await session.execute(
         delete(WebUIAccountModel).where(WebUIAccountModel.user_id == user_id)
     )
-    return bool(result.rowcount)
+    return bool(result.rowcount)  # type: ignore[union-attr]
 
 
 async def _rotate_account_session_version_in_session(
