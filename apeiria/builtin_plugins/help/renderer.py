@@ -205,8 +205,8 @@ async def _render_with_cache(
     )
     cache_file = get_cache_dir() / f"{key}.png"
 
-    if use_disk_cache and cache_file.is_file():
-        content = cache_file.read_bytes()
+    if use_disk_cache and await asyncio.to_thread(cache_file.is_file):
+        content = await asyncio.to_thread(cache_file.read_bytes)
         if content:
             return content
     if not use_disk_cache:
@@ -216,8 +216,8 @@ async def _render_with_cache(
 
     lock = _RENDER_LOCKS.setdefault(key, asyncio.Lock())
     async with lock:
-        if use_disk_cache and cache_file.is_file():
-            content = cache_file.read_bytes()
+        if use_disk_cache and await asyncio.to_thread(cache_file.is_file):
+            content = await asyncio.to_thread(cache_file.read_bytes)
             if content:
                 return content
         if not use_disk_cache:
@@ -241,7 +241,7 @@ async def _render_with_cache(
         )
 
         if use_disk_cache:
-            cache_file.write_bytes(rendered)
+            await asyncio.to_thread(cache_file.write_bytes, rendered)
         else:
             _MEMORY_CACHE[key] = rendered
         return rendered

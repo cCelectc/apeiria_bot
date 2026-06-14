@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import urllib.request
 from dataclasses import dataclass, replace
 from pathlib import Path
@@ -216,7 +217,7 @@ async def prepare_speech_input(  # noqa: PLR0911
 
     runtime_selected = _runtime_selected_model(selected)
     for audio in audio_parts:
-        resolved = audio_resolver.resolve_audio(audio)
+        resolved = await asyncio.to_thread(audio_resolver.resolve_audio, audio)
         if resolved is None:
             return _with_diagnostics(
                 turn,
