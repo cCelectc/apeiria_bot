@@ -1377,8 +1377,6 @@ def _create_command_statistics_tables(connection: sqlite3.Connection) -> None:
 def _create_conversation_tables(connection: sqlite3.Connection) -> None:
     extra_json_check = _optional_json_check(connection, "extra_json")
     content_json_check = _optional_json_check(connection, "content_json")
-    meta_json_check = _optional_json_check(connection, "meta_json")
-    raw_data_json_check = _optional_json_check(connection, "raw_data_json")
     connection.execute(
         f"""
         CREATE TABLE chat_session (
@@ -1408,9 +1406,8 @@ def _create_conversation_tables(connection: sqlite3.Connection) -> None:
     connection.execute(
         f"""
         CREATE TABLE chat_message (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            message_id TEXT NOT NULL UNIQUE,
-            session_pk INTEGER NOT NULL,
+            message_id TEXT PRIMARY KEY,
+            session_id TEXT NOT NULL,
             platform_message_id TEXT,
             reply_to_message_id TEXT,
             platform_reply_id TEXT,
@@ -1430,19 +1427,17 @@ def _create_conversation_tables(connection: sqlite3.Connection) -> None:
             has_media INTEGER NOT NULL DEFAULT 0 CHECK(has_media IN (0, 1)),
             text_content TEXT NOT NULL,
             content_json TEXT CHECK({content_json_check}),
-            meta_json TEXT CHECK({meta_json_check}),
-            raw_data_json TEXT CHECK({raw_data_json_check}),
             created_at TEXT NOT NULL,
-            FOREIGN KEY(session_pk)
-                REFERENCES chat_session(id)
+            FOREIGN KEY(session_id)
+                REFERENCES chat_session(session_id)
                 ON DELETE CASCADE
         )
         """
     )
     connection.execute(
         """
-        CREATE INDEX idx_chat_message_session_pk
-        ON chat_message(session_pk)
+        CREATE INDEX idx_chat_message_session_id
+        ON chat_message(session_id)
         """
     )
     connection.execute(

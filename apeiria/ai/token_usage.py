@@ -48,8 +48,9 @@ class AIModelUsageRecorder(Protocol):
     def record_model_usage(
         self,
         create_input: "AIModelUsageCreateInput",
-    ) -> "AIModelUsageRecord | None":
+    ) -> object:
         """Persist one normalized model usage event."""
+        ...
 
 
 _default_usage_recorder: ContextVar[AIModelUsageRecorder | None] = ContextVar(

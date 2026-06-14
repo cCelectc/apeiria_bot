@@ -16,7 +16,7 @@ if TYPE_CHECKING:
     from apeiria.app.plugins.management import PluginManagementService
     from apeiria.app.system.management import SystemManagementService
     from apeiria.app.system.project_update import ProjectUpdateService
-    from apeiria.config import ProjectConfigService
+    from apeiria.config.project import ProjectConfigService
     from apeiria.conversation.service import ChatSessionService
     from apeiria.db.runtime import ApeiriaDatabase
     from apeiria.plugins.catalog import PluginGovernanceService

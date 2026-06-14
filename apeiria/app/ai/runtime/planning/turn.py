@@ -88,8 +88,8 @@ async def plan_runtime_turn(
 
     identity = turn.identity
     tool_execution_timeout_seconds = (
-        ai_runtime_settings_service.get_settings().tool_execution_timeout_seconds
-    )
+        await ai_runtime_settings_service.get_settings()
+    ).tool_execution_timeout_seconds
     allowed_tool_specs = (
         () if social_decision.tool_mode == "avoid" else tuple(context.allowed_tools)
     )

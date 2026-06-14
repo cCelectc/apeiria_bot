@@ -47,7 +47,7 @@ class AIModelSelector(Protocol):
 
 
 class RuntimeReadinessProbe(Protocol):
-    def inspect(self) -> tuple[AIRuntimeDependencyStatus, ...]: ...
+    async def inspect(self) -> tuple[AIRuntimeDependencyStatus, ...]: ...
 
 
 class AIRuntimeStatusDiagnostics:
@@ -66,7 +66,7 @@ class AIRuntimeStatusDiagnostics:
 
     async def get_status(self) -> AIRuntimeStatus:
         selected = await self._resolve_default_reply_model()
-        dependencies = self._runtime_readiness_probe.inspect()
+        dependencies = await self._runtime_readiness_probe.inspect()
         dependency_summary = _format_dependency_summary(dependencies)
         degraded_dependencies = [
             dependency for dependency in dependencies if not dependency.available
@@ -128,7 +128,7 @@ class AIRuntimeStatusDiagnostics:
 class AIRuntimeReadinessProbe:
     """Inspect production AI runtime dependencies without mutating state."""
 
-    def inspect(self) -> tuple[AIRuntimeDependencyStatus, ...]:
+    async def inspect(self) -> tuple[AIRuntimeDependencyStatus, ...]:
         return (
             self._future_task_storage_status(),
             self._delivery_attempt_storage_status(),
@@ -136,7 +136,7 @@ class AIRuntimeReadinessProbe:
             *self._plugin_lifecycle_statuses(),
             self._delivery_gateway_status(),
             self._trace_storage_status(),
-            self._speech_conversation_status(),
+            await self._speech_conversation_status(),
         )
 
     def _future_task_storage_status(self) -> AIRuntimeDependencyStatus:
@@ -229,8 +229,8 @@ class AIRuntimeReadinessProbe:
             next_step="Enable a proactive delivery adapter.",
         )
 
-    def _speech_conversation_status(self) -> AIRuntimeDependencyStatus:
-        settings = ai_runtime_settings_service.get_settings()
+    async def _speech_conversation_status(self) -> AIRuntimeDependencyStatus:
+        settings = await ai_runtime_settings_service.get_settings()
         if not settings.stt_input_enabled:
             return AIRuntimeDependencyStatus(
                 key="speech_conversation",

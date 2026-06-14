@@ -89,12 +89,11 @@ class AISessionManagementReader:
             _detail_message(message, record=record) for message in messages
         )
         latest_trace = traces[0] if traces else None
-        usage = _session_usage_totals(
-            self.usage_repository.summarize_usage(
-                group_by="session",
-                session_id=session_id,
-            )
+        summaries = await self.usage_repository.summarize_usage(
+            group_by="session",
+            session_id=session_id,
         )
+        usage = _session_usage_totals(summaries)
         return AISessionDetail(
             session_id=record.session_id,
             source_identity=record.source_identity,

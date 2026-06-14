@@ -592,7 +592,9 @@ class PromptPreviewReader:
             context=context,
             allowed_tool_specs=allowed_tool_specs,
             tool_execution_timeout_seconds=(
-                ai_runtime_settings_service.get_settings().tool_execution_timeout_seconds
+                (
+                    await ai_runtime_settings_service.get_settings()
+                ).tool_execution_timeout_seconds
             ),
             current_time=prompt_time,
         )

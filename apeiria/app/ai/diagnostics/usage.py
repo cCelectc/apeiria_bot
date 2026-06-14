@@ -60,7 +60,7 @@ class UsageDiagnosticsAdminMixin:
         created_from: "datetime | None" = None,
         created_to: "datetime | None" = None,
     ) -> list["AIModelUsageRecord"]:
-        return self._usage_repository.list_usage_events(
+        return await self._usage_repository.list_usage_events(
             limit=limit,
             trace_id=trace_id,
             session_id=session_id,
@@ -85,7 +85,7 @@ class UsageDiagnosticsAdminMixin:
         created_from: "datetime | None" = None,
         created_to: "datetime | None" = None,
     ) -> list["AIModelUsageSummary"]:
-        return self._usage_repository.summarize_usage(
+        return await self._usage_repository.summarize_usage(
             group_by=group_by,
             trace_id=trace_id,
             session_id=session_id,
@@ -98,20 +98,18 @@ class UsageDiagnosticsAdminMixin:
         )
 
     async def usage_totals_for_trace(self, *, trace_id: str) -> AIModelUsageTotals:
-        return _totals_from_summaries(
-            self._usage_repository.summarize_usage(
-                group_by="trace",
-                trace_id=trace_id,
-            )
+        summaries = await self._usage_repository.summarize_usage(
+            group_by="trace",
+            trace_id=trace_id,
         )
+        return _totals_from_summaries(summaries)
 
     async def usage_totals_for_session(self, *, session_id: str) -> AIModelUsageTotals:
-        return _totals_from_summaries(
-            self._usage_repository.summarize_usage(
-                group_by="session",
-                session_id=session_id,
-            )
+        summaries = await self._usage_repository.summarize_usage(
+            group_by="session",
+            session_id=session_id,
         )
+        return _totals_from_summaries(summaries)
 
 
 def _totals_from_summaries(

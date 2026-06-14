@@ -126,7 +126,7 @@ class DefaultAILiveRuntimeEntry:
         """Handle one runtime message and optionally return a reply."""
 
         ensure_ai_runtime_support_initialized(source="runtime_fallback")
-        settings = ai_runtime_settings_service.get_settings()
+        settings = await ai_runtime_settings_service.get_settings()
         wake_context = build_wake_context(
             bot,
             event,
@@ -166,7 +166,7 @@ class DefaultAILiveRuntimeEntry:
         )
         event_dedupe_key = _message_event_dedupe_key(turn)
         current_time = datetime.now(timezone.utc)
-        session_runtime = self._resolve_session_runtime(
+        session_runtime = await self._resolve_session_runtime(
             identity.session_id,
             now=current_time,
         )
@@ -232,7 +232,7 @@ class DefaultAILiveRuntimeEntry:
 
         ensure_ai_runtime_support_initialized(source="runtime_fallback")
         ai_wiring.retention_service.maybe_schedule_cleanup(
-            settings=ai_runtime_settings_service.get_settings()
+            settings=await ai_runtime_settings_service.get_settings()
         )
         task = await ai_future_task_service.get_task(task_id=task_id)
         if task is None or task.status != "running":
@@ -282,7 +282,7 @@ class DefaultAILiveRuntimeEntry:
         session_runtime: "InMemoryAISessionRuntime | None" = None,
     ) -> "AIRuntimeResult | None":
         if session_runtime is None:
-            session_runtime = self._resolve_session_runtime(
+            session_runtime = await self._resolve_session_runtime(
                 request.identity.session_id,
                 now=current_time,
             )
@@ -296,7 +296,7 @@ class DefaultAILiveRuntimeEntry:
                 ),
             )
         turn = request.to_runtime_turn_input()
-        settings = ai_runtime_settings_service.get_settings()
+        settings = await ai_runtime_settings_service.get_settings()
         if settings.stt_input_enabled:
             speech = await speech_input_preparer.prepare(turn, settings=settings)
             turn = speech.turn
@@ -311,16 +311,16 @@ class DefaultAILiveRuntimeEntry:
             )
         )
 
-    def _resolve_session_runtime(
+    async def _resolve_session_runtime(
         self,
         session_id: str,
         *,
         now: datetime,
     ) -> "InMemoryAISessionRuntime":
-        settings = ai_runtime_settings_service.get_settings()
+        settings = await ai_runtime_settings_service.get_settings()
         resolver = self.session_runtime_resolver
         if resolver is None:
-            resolver = create_session_runtime_resolver()
+            resolver = await create_session_runtime_resolver()
             object.__setattr__(self, "session_runtime_resolver", resolver)
         return resolver.resolve(
             session_id,

@@ -31,13 +31,12 @@ from apeiria.app.ai.runtime.trace import (
 )
 
 
-def create_session_runtime_resolver() -> InMemoryAISessionRuntimeResolver:
+async def create_session_runtime_resolver() -> InMemoryAISessionRuntimeResolver:
     """Build the default process-local session runtime resolver."""
 
+    settings = await ai_runtime_settings_service.get_settings()
     return InMemoryAISessionRuntimeResolver(
-        policy=SessionRuntimePolicy.from_settings(
-            ai_runtime_settings_service.get_settings()
-        )
+        policy=SessionRuntimePolicy.from_settings(settings)
     )
 
 

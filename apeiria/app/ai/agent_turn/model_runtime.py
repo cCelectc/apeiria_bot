@@ -66,7 +66,7 @@ class AgentTurnModelRuntime:
                     if response is None:
                         _raise_empty_stream_response()
                     assert response is not None
-                    _record_usage(
+                    await _record_usage(
                         recorder=self._usage_recorder,
                         request=request,
                         selected=selected,
@@ -142,7 +142,7 @@ class AgentTurnModelRuntime:
                 continue
 
             if is_empty_model_response(response):
-                _record_usage(
+                await _record_usage(
                     recorder=self._usage_recorder,
                     request=request,
                     selected=selected,
@@ -161,7 +161,7 @@ class AgentTurnModelRuntime:
                 last_diagnostic = "model returned empty response"
                 continue
 
-            _record_usage(
+            await _record_usage(
                 recorder=self._usage_recorder,
                 request=request,
                 selected=selected,
@@ -243,7 +243,7 @@ def _completed_finish_reason(response_source: str) -> str:
     return f"{response_source}_model_completed"
 
 
-def _record_usage(  # noqa: PLR0913
+async def _record_usage(  # noqa: PLR0913
     *,
     recorder: Any | None,
     request: AgentModelGenerationRequest,
@@ -252,7 +252,7 @@ def _record_usage(  # noqa: PLR0913
     attempt_index: int,
     status: str,
 ) -> None:
-    record_model_usage_safely(
+    await record_model_usage_safely(
         recorder=recorder,
         context=AIModelUsageRecordContext(
             trace_id=request.trace_id,

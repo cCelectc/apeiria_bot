@@ -247,8 +247,8 @@ def test_database_schema_declares_foreign_keys_and_delete_rules(
         ) in _foreign_keys(connection, "ai_tool_execution")
         assert (
             "chat_session",
-            "session_pk",
-            "id",
+            "session_id",
+            "session_id",
             "CASCADE",
         ) in _foreign_keys(connection, "chat_message")
         assert (

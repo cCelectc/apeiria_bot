@@ -174,7 +174,7 @@ async def _run_tool_loop(
         plan.reply_compose_input.memories if plan.reply_compose_input else ()
     )
     exposure_plan = plan.tool_exposure_plan
-    runtime_settings = ai_runtime_settings_service.get_settings()
+    runtime_settings = await ai_runtime_settings_service.get_settings()
     return await runtime_tool_loop_runner.run(
         RuntimeToolLoopInput(
             session_id=turn_context.session_id,

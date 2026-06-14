@@ -29,17 +29,17 @@ class RepositoryAIModelUsageRecorder:
     def __init__(self, repository: AIModelUsageRepository | None = None) -> None:
         self._repository = repository or AIModelUsageRepository()
 
-    def record_model_usage(
+    async def record_model_usage(
         self,
         create_input: AIModelUsageCreateInput,
     ) -> "AIModelUsageRecord":
-        return self._repository.record_usage(create_input)
+        return await self._repository.record_usage(create_input)
 
 
 class NoopAIModelUsageRecorder:
     """Test-friendly recorder that intentionally drops usage events."""
 
-    def record_model_usage(
+    async def record_model_usage(
         self,
         create_input: AIModelUsageCreateInput,
     ) -> None:
@@ -76,7 +76,7 @@ def build_model_usage_create_input(
     )
 
 
-def record_model_usage_safely(
+async def record_model_usage_safely(
     *,
     recorder: AIModelUsageRecorder | None,
     context: AIModelUsageRecordContext,
@@ -91,7 +91,7 @@ def record_model_usage_safely(
         response=response,
     )
     try:
-        recorder.record_model_usage(create_input)
+        await recorder.record_model_usage(create_input)
     except Exception as exc:  # noqa: BLE001
         logger.warning(
             "AI model usage recording failed trace_id={} session_id={} "
@@ -104,7 +104,7 @@ def record_model_usage_safely(
         )
 
 
-def record_source_usage_safely(  # noqa: PLR0913
+async def record_source_usage_safely(  # noqa: PLR0913
     *,
     recorder: AIModelUsageRecorder | None,
     source: "AISourceDefinition",
@@ -135,7 +135,7 @@ def record_source_usage_safely(  # noqa: PLR0913
         status=status,
     )
     try:
-        recorder.record_model_usage(create_input)
+        await recorder.record_model_usage(create_input)
     except Exception as exc:  # noqa: BLE001
         logger.warning(
             "AI source usage recording failed source_id={} model_name={} "

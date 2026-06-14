@@ -526,7 +526,7 @@ class RuntimeToolLoopRunner:
 
                 if is_empty_model_response(response):
                     attempt_index = loop_state.next_model_attempt_index()
-                    _record_tool_loop_usage(
+                    await _record_tool_loop_usage(
                         recorder=self._usage_recorder,
                         loop_input=loop_input,
                         selected=candidate,
@@ -548,7 +548,7 @@ class RuntimeToolLoopRunner:
                     break
 
                 attempt_index = loop_state.next_model_attempt_index()
-                _record_tool_loop_usage(
+                await _record_tool_loop_usage(
                     recorder=self._usage_recorder,
                     loop_input=loop_input,
                     selected=candidate,
@@ -665,7 +665,7 @@ def _record_response_degradations(
             loop_state.capability_degradations.append(dict(item))
 
 
-def _record_tool_loop_usage(  # noqa: PLR0913
+async def _record_tool_loop_usage(  # noqa: PLR0913
     *,
     recorder: Any | None,
     loop_input: RuntimeToolLoopInput,
@@ -675,7 +675,7 @@ def _record_tool_loop_usage(  # noqa: PLR0913
     attempt_index: int,
     status: str,
 ) -> None:
-    record_model_usage_safely(
+    await record_model_usage_safely(
         recorder=recorder,
         context=AIModelUsageRecordContext(
             trace_id=loop_input.trace_id,
