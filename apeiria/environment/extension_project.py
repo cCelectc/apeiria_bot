@@ -9,14 +9,13 @@ import re
 import site
 import subprocess
 import sys
-from importlib import import_module
 from pathlib import Path
 from shutil import which
 from typing import Final
 
 from apeiria.environment.package_progress import current_package_progress_reporter
 from apeiria.plugins.package_ids import normalize_package_id
-from apeiria.utils.files import atomic_write_text
+from apeiria.utils.files import _load_toml_module, atomic_write_text
 from apeiria.utils.project_context import current_project_root
 
 _PLUGIN_PROJECT_RELATIVE_PATH: Final = Path(".apeiria") / "extensions"
@@ -31,18 +30,6 @@ _logger = logging.getLogger("apeiria.environment.extension_project")
 
 def _project_root() -> Path:
     return current_project_root()
-
-
-def _load_toml_module():
-    try:
-        return import_module("tomllib")
-    except ModuleNotFoundError:
-        pass
-    try:
-        return import_module("tomli")
-    except ModuleNotFoundError:
-        pass
-    return None
 
 
 def plugin_project_root() -> Path:

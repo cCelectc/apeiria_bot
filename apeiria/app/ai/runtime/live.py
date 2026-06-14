@@ -420,8 +420,6 @@ def _webchat_stream_sink(
 
 
 def _discard_completed_partial_reply_task(task: object) -> None:
-    if not hasattr(task, "exception"):
-        return
     try:
         exc = task.exception()
     except Exception:  # noqa: BLE001

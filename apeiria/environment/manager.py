@@ -8,7 +8,6 @@ import os
 import shutil
 import sqlite3
 import subprocess
-from importlib import import_module
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -24,6 +23,7 @@ from apeiria.environment.models import (
     FrontendBuildStreamEvent,
     ProjectConfigBootstrapResult,
 )
+from apeiria.utils.files import _load_toml_module
 from apeiria.utils.project_context import current_project_root
 from apeiria.webui.frontend_build import (
     frontend_workspace_dir,
@@ -42,18 +42,6 @@ _PYTHON_VERSION_FALLBACK = ">=3.10, <4.0"
 
 def _uv_command_failed_error() -> RuntimeError:
     return RuntimeError("uv command failed")
-
-
-def _load_toml_module():
-    try:
-        return import_module("tomllib")
-    except ModuleNotFoundError:
-        pass
-    try:
-        return import_module("tomli")
-    except ModuleNotFoundError:
-        pass
-    return None
 
 
 class EnvironmentService:

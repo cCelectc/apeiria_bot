@@ -14,7 +14,6 @@ from nonebot.message import run_postprocessor, run_preprocessor
 from apeiria.bot.hooks.auth import auth_hook
 from apeiria.bot.hooks.error import error_hook
 from apeiria.bot.hooks.plugin_sync import sync_plugins
-from apeiria.bot.hooks.statistics import stats_hook
 
 
 def register_bot_hooks() -> None:
@@ -30,6 +29,5 @@ def register_bot_hooks() -> None:
     run_preprocessor(auth_hook)
 
     run_postprocessor(error_hook)
-    run_postprocessor(stats_hook)
 
     driver.on_startup(sync_plugins)

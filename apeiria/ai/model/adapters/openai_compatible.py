@@ -11,6 +11,13 @@ from uuid import uuid4
 import httpx
 from openai import AsyncOpenAI
 
+from apeiria.ai.model.adapters._common import (
+    _coerce_custom_headers,
+    _coerce_float,
+    _coerce_int,
+    _coerce_str,
+    _unsupported_part_text,
+)
 from apeiria.ai.model.runtime.adapter import (
     AIModelCatalogItem,
     AIModelEmbeddingRequest,
@@ -364,41 +371,6 @@ class OpenAICompatibleProvider:
         raise OpenAICompatibleProviderCapabilityError("rerank")
 
 
-def _coerce_str(extra: dict[str, Any] | None, key: str) -> str | None:
-    if not extra:
-        return None
-    value = extra.get(key)
-    return value if isinstance(value, str) and value.strip() else None
-
-
-def _coerce_int(extra: dict[str, Any] | None, key: str) -> int | None:
-    if not extra:
-        return None
-    value = extra.get(key)
-    if isinstance(value, int):
-        return value
-    if isinstance(value, str) and value.strip():
-        try:
-            return int(value.strip())
-        except ValueError:
-            return None
-    return None
-
-
-def _coerce_float(extra: dict[str, Any] | None, key: str) -> float | None:
-    if not extra:
-        return None
-    value = extra.get(key)
-    if isinstance(value, (int, float)):
-        return float(value)
-    if isinstance(value, str) and value.strip():
-        try:
-            return float(value.strip())
-        except ValueError:
-            return None
-    return None
-
-
 def _coerce_response_format(value: Any) -> dict[str, Any] | None:
     if not isinstance(value, dict):
         return None
@@ -502,25 +474,6 @@ def _build_openai_client(
         default_headers=_coerce_custom_headers(extra_config),
         http_client=http_client,
     )
-
-
-def _coerce_custom_headers(
-    extra: dict[str, Any] | None,
-) -> dict[str, str] | None:
-    if not extra:
-        return None
-    raw = extra.get("_custom_headers")
-    if not isinstance(raw, dict):
-        return None
-    headers = {
-        key.strip(): value.strip()
-        for key, value in raw.items()
-        if isinstance(key, str)
-        and key.strip()
-        and isinstance(value, str)
-        and value.strip()
-    }
-    return headers or None
 
 
 def _extract_openai_content(response: Any) -> str:
@@ -774,10 +727,6 @@ def _build_openai_content_parts(msg: AIModelMessage) -> list[dict[str, Any]] | s
         elif part.kind in {"image", "audio", "file"}:
             parts.append({"type": "text", "text": _unsupported_part_text(part.kind)})
     return parts or msg.text_content
-
-
-def _unsupported_part_text(kind: str) -> str:
-    return f"[{kind} omitted: unsupported content representation]"
 
 
 def _data_url(mime_type: str | None, data: bytes) -> str:

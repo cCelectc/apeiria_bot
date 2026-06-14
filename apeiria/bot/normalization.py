@@ -281,7 +281,7 @@ def _build_media_segment(
 
 def _has_safe_media_reference(segment: Mapping[str, Any]) -> bool:
     return any(
-        isinstance(segment.get(key), str) and str(segment.get(key)).strip()
+        isinstance(val := segment.get(key), str) and str(val).strip()
         for key in (
             "url",
             "asset_id",
