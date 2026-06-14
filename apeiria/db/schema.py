@@ -48,9 +48,14 @@ TURN_DISPOSITION_VALUES: tuple[str, ...] = (
     "generated",
     "tool",
     "system",
+    "pruned",
+    "summarized",
+    "archived",
 )
 TURN_DISPOSITION_CHECK = (
-    "turn_disposition IN ('active', 'observed', 'generated', 'tool', 'system')"
+    "turn_disposition IN ("
+    "'active', 'observed', 'generated', 'tool', "
+    "'system', 'pruned', 'summarized', 'archived')"
 )
 MEMORY_ANCHOR_VALUES: tuple[str, ...] = (
     "operator",

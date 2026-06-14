@@ -383,7 +383,9 @@ def test_database_schema_declares_value_checks(tmp_path: Path) -> None:
             "chat_message",
         )
         assert (
-            "turn_disposition IN ('active', 'observed', 'generated', 'tool', 'system')"
+            "turn_disposition IN ("
+            "'active', 'observed', 'generated', 'tool', "
+            "'system', 'pruned', 'summarized', 'archived')"
             in _table_sql(connection, "chat_message")
         )
         assert "message_type IN ('group', 'private', 'web_chat')" in _table_sql(
