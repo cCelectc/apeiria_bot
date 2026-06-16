@@ -1,4 +1,12 @@
 [nonebot]
+# 基础配置示例 — 取消注释并按需修改
+
+# host = "127.0.0.1"            # 服务监听地址（默认 127.0.0.1）
+# port = 8080                   # 服务监听端口（默认 8080）
+# superusers = ["123456789"]    # 管理员账号/QQ 号列表
+# nickname = "Bot"          # Bot 昵称
+# command_start = ["/"]         # 命令前缀（默认 ["/"]）
+# locale = "zh_CN"              # 语言：zh_CN 或 en_US
 
 [plugin_store.sources.example_json]
 kind = "json-http"

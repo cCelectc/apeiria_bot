@@ -141,6 +141,18 @@ MESSAGES_ZH_CN = {
     "hint: if you need local startup customization, see user_bot.example.py": (
         "提示：如需本地启动自定义，可参考 user_bot.example.py"
     ),
+    "Apeiria environment initialized": "Apeiria 环境已初始化",
+    "Configs": "配置",
+    "Python": "Python",
+    "Plugins": "插件",
+    "created": "已创建",
+    "dependencies synced": "依赖已同步",
+    "extension project ready": "扩展项目就绪",
+    "skipped (already exists)": "已跳过（已存在）",
+    "Next steps": "下一步",
+    "start the bot": "启动 bot",
+    "create admin account for Web UI": "创建 Web UI 管理员账号",
+    "project root": "项目根目录",
     "repaired environment": "已修复用户环境",
     "exported files: {count}": "已导出文件：{count}",
     "export target: {target}": "导出目标：{target}",

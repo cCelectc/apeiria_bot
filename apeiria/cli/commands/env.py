@@ -121,14 +121,32 @@ def env_init(*, no_dev: bool) -> None:
     except RuntimeError as exc:
         raise_click_runtime_error(exc)
         return
-    for filename in result.created:
-        click.echo(_("created config: {filename}").format(filename=filename))
-    for filename in result.skipped:
-        click.echo(_("skipped config: {filename}").format(filename=filename))
-    click.echo(_("initialized environment"))
+
+    click.echo("")
+    click.echo(f"  {_('Apeiria environment initialized')}")
+    click.echo("")
+
+    if result.created:
+        names = ", ".join(result.created)
+        click.echo(
+            f"  {_('Configs'):10s} {len(result.created)} {_('created')} ({names})"
+        )
+    if result.skipped:
+        click.echo(
+            f"  {_('Configs'):10s} {len(result.skipped)}"
+            f" {_('skipped (already exists)')}"
+        )
+
+    click.echo(f"  {_('Python'):10s} {_('dependencies synced')}")
+    click.echo(f"  {_('Plugins'):10s} {_('extension project ready')}")
+    click.echo("")
+
+    click.echo(f"  {_('Next steps')}:")
+    click.echo(f"    uv run apeiria run              # {_('start the bot')}")
     click.echo(
-        _("hint: if you need local startup customization, see user_bot.example.py")
+        f"    uv run apeiria webui recover    # {_('create admin account for Web UI')}"
     )
+    click.echo("")
 
 
 @env.command("repair", help=_("Repair Apeiria user environment with uv."))
