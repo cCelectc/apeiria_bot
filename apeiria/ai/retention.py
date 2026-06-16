@@ -24,12 +24,6 @@ def _epoch_ms_cutoff(days: int) -> int:
     return int(cutoff_dt.timestamp() * 1000)
 
 
-def _iso_cutoff(days: int) -> str:
-    return (datetime.now(timezone.utc) - timedelta(days=max(days, 1))).isoformat(
-        timespec="seconds"
-    )
-
-
 @dataclass(frozen=True)
 class AIRetentionCleanupResult:
     """Counts for one retention cleanup pass."""
@@ -158,7 +152,7 @@ class AIRetentionService:
     async def cleanup_tool_executions(self, *, retention_days: int) -> int:
         """Delete old tool execution audit rows."""
 
-        cutoff = _iso_cutoff(retention_days)
+        cutoff = _epoch_ms_cutoff(retention_days)
         async with get_session() as session:
             result = await session.execute(
                 text("""

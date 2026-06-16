@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from typing import Literal, get_args
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -358,7 +359,9 @@ class AIRuntimeSettingsRepository:
             if value is None:
                 continue
             overrides[key] = _decode_storage_value(key, value)
-        return overrides, str(model.updated_at)
+        return overrides, datetime.fromtimestamp(
+            model.updated_at / 1000, tz=timezone.utc
+        ).isoformat()
 
     async def update_overrides(
         self,

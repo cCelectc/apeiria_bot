@@ -222,7 +222,7 @@ class AIModelUsageRepository:
                     "provider_usage_json": _json_dumps(usage.provider_usage),
                     "provider_response_id": create_input.provider_response_id,
                     "finish_reason": create_input.finish_reason,
-                    "created_at": _datetime_to_text(created_at),
+                    "created_at": _datetime_to_epoch_ms(created_at),
                 },
             )
             await session.commit()
@@ -507,10 +507,10 @@ def _usage_filters(  # noqa: PLR0913
             params[column] = value
     if created_from is not None:
         clauses.append("created_at >= :created_from")
-        params["created_from"] = _datetime_to_text(created_from)
+        params["created_from"] = _datetime_to_epoch_ms(created_from)
     if created_to is not None:
         clauses.append("created_at <= :created_to")
-        params["created_to"] = _datetime_to_text(created_to)
+        params["created_to"] = _datetime_to_epoch_ms(created_to)
     return (" WHERE " + " AND ".join(clauses) if clauses else "", params)
 
 
@@ -538,7 +538,7 @@ def row_to_usage_record(row: tuple[object, ...]) -> AIModelUsageRecord:
         provider_usage=_json_loads(row[19]),
         provider_response_id=None if row[20] is None else str(row[20]),
         finish_reason=None if row[21] is None else str(row[21]),
-        created_at=_datetime_from_text(row[22]),
+        created_at=_epoch_ms_to_datetime(row[22]),
     )
 
 
@@ -599,17 +599,20 @@ def _utcnow() -> datetime:
     return datetime.now(timezone.utc).replace(microsecond=0)
 
 
-def _datetime_to_text(value: datetime) -> str:
+def _datetime_to_epoch_ms(value: datetime) -> int:
     if value.tzinfo is None:
         value = value.replace(tzinfo=timezone.utc)
-    return value.astimezone(timezone.utc).isoformat(timespec="seconds")
+    return int(value.timestamp() * 1000)
 
 
-def _datetime_from_text(value: object) -> datetime:
-    parsed = datetime.fromisoformat(str(value))
-    if parsed.tzinfo is None:
-        return parsed.replace(tzinfo=timezone.utc)
-    return parsed
+def _epoch_ms_to_datetime(value: object) -> datetime:
+    if isinstance(value, int | float):
+        return datetime.fromtimestamp(value / 1000, tz=timezone.utc)
+    return (
+        datetime.fromisoformat(str(value)).replace(tzinfo=timezone.utc)
+        if str(value)
+        else datetime.now(timezone.utc).replace(microsecond=0)
+    )
 
 
 _SELECT_USAGE_FIELDS = """

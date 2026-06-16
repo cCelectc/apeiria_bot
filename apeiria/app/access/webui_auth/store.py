@@ -197,10 +197,16 @@ async def _load_user_items(session: "AsyncSession") -> list[dict[str, Any]]:
             "password_hash": str(row.password_hash),
             "is_disabled": bool(row.is_disabled),
             "last_login_at": (
-                str(row.last_login_at) if row.last_login_at is not None else None
+                datetime.fromtimestamp(
+                    row.last_login_at / 1000, tz=timezone.utc
+                ).isoformat()
+                if row.last_login_at is not None
+                else None
             ),
             "password_changed_at": (
-                str(row.password_changed_at)
+                datetime.fromtimestamp(
+                    row.password_changed_at / 1000, tz=timezone.utc
+                ).isoformat()
                 if row.password_changed_at is not None
                 else None
             ),
