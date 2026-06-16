@@ -34,7 +34,7 @@ class TraceBroker:
 
     def enable_file_sink(
         self,
-        path: str = "logs/apeiria.trace.jsonl",
+        path: str = "data/logs/apeiria.trace.jsonl",
         rotation: str = "10 MB",
         retention: int = 3,
     ) -> None:
