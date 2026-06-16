@@ -28,6 +28,9 @@ class AIModelUsageEvent(Base):
     reasoning_tokens: Mapped[int | None] = mapped_column(Integer)
     audio_input_tokens: Mapped[int | None] = mapped_column(Integer)
     audio_output_tokens: Mapped[int | None] = mapped_column(Integer)
+    provider_usage_json: Mapped[str | None] = mapped_column(Text)
+    provider_response_id: Mapped[str | None] = mapped_column(Text)
+    finish_reason: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[int] = mapped_column(Integer)
 
     __table_args__ = (

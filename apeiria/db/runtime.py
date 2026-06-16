@@ -18,6 +18,7 @@ class ApeiriaDatabase:
         self._project_root = (
             project_root.resolve() if project_root is not None else None
         )
+        self._migrations_applied = False
 
     @property
     def project_root(self) -> Path:
@@ -35,11 +36,14 @@ class ApeiriaDatabase:
         parent.mkdir(parents=True, exist_ok=True)
         return parent
 
+    def alembic_config_path(self) -> Path:
+        return self.project_root / "alembic.ini"
+
     @contextmanager
     def connect_sync(self) -> Iterator[sqlite3.Connection]:
         """Open a synchronous SQLite connection.
 
-        Intended for startup bootstrap (schema.py) and CLI-only paths.
+        Intended for startup bootstrap and CLI-only paths.
         Runtime database access should use the async engine via
         ``apeiria.db.engine.get_session()``.
         """
@@ -59,7 +63,7 @@ class ApeiriaDatabase:
     def transaction_sync(self) -> Iterator[sqlite3.Connection]:
         """Open one SQLite transaction for a logical write operation.
 
-        Intended for startup bootstrap (schema.py) and CLI-only paths.
+        Intended for startup bootstrap and CLI-only paths.
         Runtime database access should use the async engine via
         ``apeiria.db.engine.get_session()``.
         """
@@ -69,9 +73,23 @@ class ApeiriaDatabase:
             yield connection
 
     def ensure_ready(self) -> None:
-        from apeiria.db.schema import ensure_database_ready_sync
+        """Run pending Alembic migrations on the control-plane database.
 
-        ensure_database_ready_sync(self)
+        Replacement for the legacy ``schema.py.ensure_database_ready_sync()``.
+        Idempotent — safe to call multiple times during a single process.
+        """
+        if self._migrations_applied:
+            return
+        self.ensure_parent_dir()
+        self._run_migrations()
+        self._migrations_applied = True
+
+    def _run_migrations(self) -> None:
+        from alembic import command
+        from alembic.config import Config
+
+        alembic_cfg = Config(str(self.alembic_config_path()))
+        command.upgrade(alembic_cfg, "head")
 
     @staticmethod
     def _configure_connection(connection: sqlite3.Connection) -> None:

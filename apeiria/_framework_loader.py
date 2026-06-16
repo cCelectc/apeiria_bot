@@ -148,7 +148,6 @@ def load_framework() -> None:
     from apeiria.config.bot_config import _get_bot_config
     from apeiria.db.engine import init_engine
     from apeiria.db.runtime import database_runtime
-    from apeiria.db.schema import ensure_database_ready_sync
     from apeiria.log import setup_logging
     from apeiria.plugins.state import (
         get_disabled_plugin_modules_sync,
@@ -163,7 +162,7 @@ def load_framework() -> None:
     for plugin in FRAMEWORK_PLUGIN_MODULES:
         nonebot.load_plugin(plugin)
 
-    ensure_database_ready_sync()
+    database_runtime.ensure_ready()
     asyncio.run(init_engine(database_runtime.database_path()))
 
     disabled_builtin_modules = get_disabled_plugin_modules_sync(
