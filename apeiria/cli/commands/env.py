@@ -89,15 +89,38 @@ def check_system_dependencies() -> None:
 
 
 def build_frontend() -> None:
+    import json
+
+    service = active_environment_service()
+    status = service.get_frontend_build_status()
+    if not status.can_build or status.build_tool is None:
+        raise click.ClickException(
+            _("frontend toolchain missing: {deps}").format(deps="pnpm-or-npm")
+        )
+
+    async def _stream() -> None:
+        failed = False
+        async for line_bytes in service.stream_frontend_rebuild():
+            try:
+                event = json.loads(line_bytes.decode("utf-8"))
+            except (json.JSONDecodeError, UnicodeDecodeError):
+                continue
+            if event.get("event") == "chunk":
+                click.echo(event.get("chunk", ""), nl=False, err=True)
+            elif event.get("event") == "error":
+                click.echo(event.get("detail", "build_failed"), err=True)
+                failed = True
+            elif event.get("event") == "done":
+                pass
+        if failed:
+            raise click.ClickException(_("frontend build failed"))
+
     try:
-        active_environment_service().build_frontend_sync()
+        import asyncio
+
+        asyncio.run(_stream())
     except RuntimeError as exc:
-        detail = str(exc)
-        if detail == "build_tool_unavailable":
-            raise click.ClickException(
-                _("frontend toolchain missing: {deps}").format(deps="pnpm-or-npm")
-            ) from exc
-        raise click.ClickException(detail) from exc
+        raise click.ClickException(str(exc)) from exc
 
 
 @click.group(
@@ -206,8 +229,6 @@ def run(
     reload: bool,
     extra_args: tuple[str, ...],
 ) -> None:
-    if build_frontend_first:
-        build_frontend()
     if entry_file is not None:
         raise click.ClickException(
             _(
@@ -216,6 +237,7 @@ def run(
             )
         )
     root = project_root()
+    _auto_prepare_run(root, build_frontend_first=build_frontend_first)
     if reload:
         raise click.exceptions.Exit(run_with_reload(cwd=root, extra_args=extra_args))
     env = _runtime_process_env(root)
@@ -227,6 +249,114 @@ def run(
     )
     if result.returncode != 0:
         raise click.exceptions.Exit(result.returncode)
+
+
+_AUTO_PREPARE_FRONTEND_DETAILS = frozenset(
+    {"dist_missing", "build_meta_missing", "fingerprint_missing", "stale"}
+)
+
+
+def _auto_prepare_run(
+    root: Path,
+    *,
+    build_frontend_first: bool,
+) -> None:
+    from apeiria.environment.health import HealthService
+    from apeiria.environment.manager import EnvironmentService
+
+    service = EnvironmentService(project_root=root)
+    snapshot = HealthService(service).get_snapshot()
+    checks = {check.key: check for check in snapshot.checks}
+
+    _auto_prepare_env(checks)
+    _auto_prepare_db(checks)
+    _auto_prepare_frontend(
+        checks,
+        build_frontend_first=build_frontend_first,
+    )
+
+
+def _auto_prepare_env(checks: dict[str, object]) -> None:
+    from apeiria.environment.models import HealthCheck
+
+    config_keys = ("main_config", "plugin_config", "adapter_config", "driver_config")
+    ok_check = HealthCheck(key="ok", ok=True, detail="ok", message="ok")
+
+    needs_init = any(
+        not getattr(checks.get(key, ok_check), "ok", True) for key in config_keys
+    )
+    if needs_init:
+        click.echo(_("preparing environment for first run ..."))
+        try:
+            initialize_user_environment()
+        except RuntimeError as exc:
+            raise_click_runtime_error(exc)
+            return
+        click.echo("")
+
+    venv_check = checks.get("main_venv")
+    if venv_check is not None and not getattr(venv_check, "ok", True):
+        click.echo(_("preparing environment for first run ..."))
+        try:
+            initialize_user_environment()
+        except RuntimeError as exc:
+            raise_click_runtime_error(exc)
+            return
+        click.echo("")
+
+    ext_check = checks.get("extension_project")
+    if ext_check is not None and not getattr(ext_check, "ok", True):
+        click.echo(_("repairing extension project ..."))
+        try:
+            repair_user_environment()
+        except RuntimeError as exc:
+            raise_click_runtime_error(exc)
+            return
+        click.echo("")
+
+
+def _auto_prepare_db(checks: dict[str, object]) -> None:
+    from apeiria.environment.models import HealthCheck
+
+    ok_check = HealthCheck(key="ok", ok=True, detail="ok", message="ok")
+    db_check = checks.get("database", ok_check)
+    if not getattr(db_check, "ok", True):
+        click.echo(_("repairing database ..."))
+        try:
+            repair_database_schema()
+        except click.ClickException:
+            raise
+        except Exception as exc:
+            raise click.ClickException(
+                _("database repair failed: {error}").format(error=str(exc))
+            ) from exc
+        click.echo("")
+
+
+def _auto_prepare_frontend(
+    checks: dict[str, object],
+    *,
+    build_frontend_first: bool,
+) -> None:
+    from apeiria.environment.models import HealthCheck
+
+    ok_check = HealthCheck(key="ok", ok=True, detail="ok", message="ok")
+    frontend_check = checks.get("frontend_build", ok_check)
+    frontend_needs_build = build_frontend_first or (
+        not getattr(frontend_check, "ok", True)
+        and getattr(frontend_check, "detail", "") in _AUTO_PREPARE_FRONTEND_DETAILS
+    )
+    if frontend_needs_build:
+        click.echo(_("building Web UI frontend ..."))
+        try:
+            build_frontend()
+        except click.ClickException:
+            raise
+        except Exception as exc:
+            raise click.ClickException(
+                _("frontend build failed: {error}").format(error=str(exc))
+            ) from exc
+        click.echo("")
 
 
 def run_with_reload(

@@ -8,8 +8,9 @@
 
 ## 快速开始
 
+首次运行会自动初始化环境、建库、构建前端：
+
 ```bash
-uv run apeiria env init
 uv run apeiria run
 ```
 
@@ -18,6 +19,8 @@ uv run apeiria run
 ```bash
 uv run apeiria run --reload
 ```
+
+> 也可以手动分步执行：`uv run apeiria env init` → `uv run apeiria run --build`
 
 ## 使用
 
