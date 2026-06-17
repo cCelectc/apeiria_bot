@@ -48,7 +48,10 @@ async def list_ai_turn_traces(  # noqa: PLR0913
 
 
 @router.get("/traces/stream")
-async def stream_traces(request: Request) -> StreamingResponse:
+async def stream_traces(
+    request: Request,
+    _: Annotated[Any, Depends(require_auth)],
+) -> StreamingResponse:
     queue = trace_broker.subscribe()
 
     async def generate():
