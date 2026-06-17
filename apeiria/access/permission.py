@@ -8,7 +8,6 @@ from apeiria.access.audit import AuditActor
 from apeiria.access.audit_service import audit_service
 from apeiria.access.models import AccessContext, PermissionDecision, PluginPolicy
 from apeiria.access.service import access_service
-from apeiria.i18n import t
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
@@ -98,7 +97,7 @@ class PermissionService:
         return PermissionDecision(
             allowed=False,
             code="plugin_disabled_in_group",
-            reason=t("auth.plugin_disabled"),
+            reason="plugin_disabled_in_group",
             source="group_plugin_state",
         )
 
@@ -114,7 +113,7 @@ class PermissionService:
                 return PermissionDecision(
                     allowed=False,
                     code="access_not_allowed_by_default",
-                    reason=t("auth.access_not_allowed"),
+                    reason="access_not_allowed_by_default",
                     source="plugin_policy",
                 )
             return None
