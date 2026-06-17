@@ -5,11 +5,11 @@ from __future__ import annotations
 from contextlib import suppress
 from typing import TYPE_CHECKING
 
-from nonebot import get_driver
 from nonebot.log import logger
 from nonebot.rule import Rule
 
 from apeiria.access.level import extract_group_id
+from apeiria.bot.superuser import is_superuser_id
 from apeiria.i18n import t
 
 if TYPE_CHECKING:
@@ -25,8 +25,7 @@ def owner_check() -> Rule:
         except Exception:  # noqa: BLE001
             return False
 
-        superusers = getattr(get_driver().config, "superusers", set())
-        if str(user_id) in {str(item) for item in superusers}:
+        if is_superuser_id(str(user_id)):
             return True
 
         with suppress(Exception):

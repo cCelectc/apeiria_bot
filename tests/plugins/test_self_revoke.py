@@ -5,7 +5,8 @@ from dataclasses import dataclass
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any
 
-import apeiria.builtin_plugins.self_revoke.service as self_revoke_service
+import nonebot
+
 from apeiria.builtin_plugins.self_revoke.config import (
     SelfRevokeConfig,
     normalize_self_revoke_config,
@@ -418,7 +419,7 @@ def test_service_superuser_mode_denies_without_text_feedback(
     registry = SelfRevokeProviderRegistry((provider,))
     config = SelfRevokeConfig(permission="superuser", feedback="reaction")
     monkeypatch.setattr(
-        self_revoke_service.nonebot,
+        nonebot,
         "get_driver",
         lambda: SimpleNamespace(config=SimpleNamespace(superusers=set())),
     )

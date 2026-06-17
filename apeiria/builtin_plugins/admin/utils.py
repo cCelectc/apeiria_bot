@@ -8,6 +8,7 @@ import nonebot
 from nonebot.adapters import Event  # noqa: TC002
 
 from apeiria.app.plugins.management import plugin_management_service
+from apeiria.bot.superuser import is_superuser_id
 from apeiria.i18n import t
 from apeiria.runtime.context import get_current_runtime
 from apeiria.utils.plugin_introspection import get_plugin_name
@@ -96,8 +97,7 @@ def is_owner_event(event: Event) -> bool:
         user_id = event.get_user_id()
     except Exception:  # noqa: BLE001
         return False
-    superusers = getattr(nonebot.get_driver().config, "superusers", set())
-    return str(user_id) in {str(item) for item in superusers}
+    return is_superuser_id(str(user_id))
 
 
 def ensure_owner_message(event: Event) -> str | None:

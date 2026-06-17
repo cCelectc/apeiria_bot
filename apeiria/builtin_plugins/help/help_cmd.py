@@ -2,13 +2,13 @@
 
 from collections.abc import Sequence
 
-import nonebot
 from arclet.alconna import Args, CommandMeta, MultiVar, Option
 from nonebot.adapters import Bot, Event
 from nonebot.log import logger
 from nonebot_plugin_alconna import Alconna, Match, on_alconna
 from nonebot_plugin_alconna.uniseg import UniMessage
 
+from apeiria.bot.superuser import is_superuser_id
 from apeiria.builtin_plugins.help.config import HelpConfig, get_help_config
 from apeiria.builtin_plugins.help.generator import (
     HelpViewRole,
@@ -40,8 +40,7 @@ def _is_console(bot: Bot) -> bool:
 
 def _is_superuser(event: Event) -> bool:
     user_id = event.get_user_id()
-    superusers = getattr(nonebot.get_driver().config, "superusers", set())
-    return str(user_id) in {str(item) for item in superusers}
+    return is_superuser_id(str(user_id))
 
 
 async def _resolve_help_role(

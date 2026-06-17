@@ -4,8 +4,9 @@ from contextlib import suppress
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal
 
-import nonebot
 from nonebot.log import logger
+
+from apeiria.bot.superuser import is_superuser_id
 
 from .config import SelfRevokeConfig, get_self_revoke_config
 from .providers import (
@@ -53,19 +54,11 @@ def is_superuser_event(bot: "Bot", event: "Event") -> bool:
     except Exception:  # noqa: BLE001
         return False
 
-    try:
-        superusers = getattr(nonebot.get_driver().config, "superusers", set())
-    except Exception:  # noqa: BLE001
-        superusers = set()
-
     adapter_name = ""
     with suppress(Exception):
         adapter_name = bot.adapter.get_name().split(maxsplit=1)[0].lower()
 
-    candidates = {user_id}
-    if adapter_name:
-        candidates.add(f"{adapter_name}:{user_id}")
-    return bool(candidates & {str(item) for item in superusers})
+    return is_superuser_id(user_id, adapter_prefix=adapter_name)
 
 
 async def handle_self_revoke_event(

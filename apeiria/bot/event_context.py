@@ -4,10 +4,9 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from nonebot import get_driver
-
 from apeiria.access.level import extract_group_id, resolve_conversation_type
 from apeiria.access.models import AccessContext
+from apeiria.bot.superuser import is_superuser_id
 from apeiria.conversation.identity import build_chat_session_identity
 
 if TYPE_CHECKING:
@@ -49,14 +48,11 @@ def build_access_context_from_event(
         group_id=group_id,
         detail_type=getattr(event, "detail_type", None),
     )
-    superusers = {
-        str(item) for item in getattr(get_driver().config, "superusers", set())
-    }
     return AccessContext(
         user_id=user_id,
         group_id=group_id,
         conversation_type=conversation_type,
-        is_superuser=str(user_id) in superusers,
+        is_superuser=is_superuser_id(str(user_id)),
     )
 
 
