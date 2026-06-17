@@ -72,9 +72,11 @@ def _mount_routes() -> None:
     app = nonebot.get_app()
     from nonebot_plugin_localstore import get_plugin_data_dir
 
+    from apeiria.webui.csrf_middleware import CSRFMiddleware
     from apeiria.webui.plugin_routers import iter_plugin_routers
     from apeiria.webui.routes.router import router
 
+    app.add_middleware(CSRFMiddleware)
     app.include_router(router, prefix="/api")
 
     # Plugin-owned HTTP routers (only present when the owning plugin loaded).
