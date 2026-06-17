@@ -69,3 +69,10 @@ class PluginPolicyService:
 
 
 plugin_policy_service = PluginPolicyService()
+
+from apeiria.access.permission import permission_service
+
+permission_service.wire(
+    get_policy=plugin_policy_service.get_policy,
+    is_globally_enabled=plugin_policy_service.is_globally_enabled,
+)

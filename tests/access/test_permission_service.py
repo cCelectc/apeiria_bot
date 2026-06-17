@@ -11,7 +11,7 @@ if TYPE_CHECKING:
 
 
 def test_default_deny_blocks_without_explicit_allow(monkeypatch: MonkeyPatch) -> None:
-    _patch_permission_dependencies(
+    service = _patch_permission_dependencies(
         monkeypatch,
         policy=PluginPolicy(
             plugin_module="plugins.alpha",
@@ -19,7 +19,6 @@ def test_default_deny_blocks_without_explicit_allow(monkeypatch: MonkeyPatch) ->
             protection_mode="normal",
         ),
     )
-    service = PermissionService()
 
     async def run() -> None:
         decision = await service.check_plugin_execution(
@@ -37,7 +36,7 @@ def test_default_deny_blocks_without_explicit_allow(monkeypatch: MonkeyPatch) ->
 def test_explicit_allow_admits_only_to_plugin_boundary(
     monkeypatch: MonkeyPatch,
 ) -> None:
-    _patch_permission_dependencies(
+    service = _patch_permission_dependencies(
         monkeypatch,
         policy=PluginPolicy(
             plugin_module="plugins.alpha",
@@ -51,7 +50,6 @@ def test_explicit_allow_admits_only_to_plugin_boundary(
             effect="allow",
         ),
     )
-    service = PermissionService()
     context = _context(is_superuser=False)
 
     async def run() -> None:
@@ -65,7 +63,7 @@ def test_explicit_allow_admits_only_to_plugin_boundary(
 
 
 def test_explicit_deny_blocks_default_allow(monkeypatch: MonkeyPatch) -> None:
-    _patch_permission_dependencies(
+    service = _patch_permission_dependencies(
         monkeypatch,
         policy=PluginPolicy(
             plugin_module="plugins.alpha",
@@ -79,7 +77,6 @@ def test_explicit_deny_blocks_default_allow(monkeypatch: MonkeyPatch) -> None:
             effect="deny",
         ),
     )
-    service = PermissionService()
 
     async def run() -> None:
         decision = await service._evaluate_plugin(_context(), "plugins.alpha")
@@ -92,7 +89,7 @@ def test_explicit_deny_blocks_default_allow(monkeypatch: MonkeyPatch) -> None:
 
 
 def test_superuser_bypasses_admission_policy(monkeypatch: MonkeyPatch) -> None:
-    _patch_permission_dependencies(
+    service = _patch_permission_dependencies(
         monkeypatch,
         policy=PluginPolicy(
             plugin_module="plugins.alpha",
@@ -100,7 +97,6 @@ def test_superuser_bypasses_admission_policy(monkeypatch: MonkeyPatch) -> None:
             protection_mode="normal",
         ),
     )
-    service = PermissionService()
 
     async def run() -> None:
         decision = await service._evaluate_plugin(
@@ -129,19 +125,21 @@ def _patch_permission_dependencies(
     policy: PluginPolicy,
     rule: AccessPolicyRule | None = None,
     globally_enabled: bool = True,
-) -> None:
+) -> PermissionService:
     import apeiria.access.permission as permission_module
 
-    monkeypatch.setattr(
-        permission_module,
-        "plugin_policy_service",
-        _FakePluginPolicyService(policy, globally_enabled=globally_enabled),
-    )
+    fake_policy = _FakePluginPolicyService(policy, globally_enabled=globally_enabled)
     monkeypatch.setattr(
         permission_module,
         "access_service",
         _FakeAccessService(rule),
     )
+    service = PermissionService()
+    service.wire(
+        get_policy=fake_policy.get_policy,
+        is_globally_enabled=fake_policy.is_globally_enabled,
+    )
+    return service
 
 
 class _FakePluginPolicyService:

@@ -2,16 +2,33 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from apeiria.access.audit import AuditActor
 from apeiria.access.audit_service import audit_service
 from apeiria.access.models import AccessContext, PermissionDecision, PluginPolicy
 from apeiria.access.service import access_service
 from apeiria.i18n import t
-from apeiria.plugins.policy import plugin_policy_service
+
+if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable
 
 
 class PermissionService:
     """Evaluate runtime permission decisions for plugin execution."""
+
+    def __init__(self) -> None:
+        self._get_policy: "Callable[[str], Awaitable[PluginPolicy]] | None" = None
+        self._is_globally_enabled: "Callable[[str], Awaitable[bool]] | None" = None
+
+    def wire(
+        self,
+        *,
+        get_policy: "Callable[[str], Awaitable[PluginPolicy]]",
+        is_globally_enabled: "Callable[[str], Awaitable[bool]]",
+    ) -> None:
+        self._get_policy = get_policy
+        self._is_globally_enabled = is_globally_enabled
 
     async def check_plugin_execution(
         self,
@@ -35,7 +52,9 @@ class PermissionService:
     ) -> PermissionDecision:
         if context.is_superuser:
             return self._allow()
-        policy = await plugin_policy_service.get_policy(plugin_module)
+        if self._get_policy is None:
+            return self._allow()
+        policy = await self._get_policy(plugin_module)
         decision = await self._check_plugin_state(context.group_id, policy)
         if decision is not None:
             return decision
@@ -54,8 +73,10 @@ class PermissionService:
         group_id: str | None,
         policy: PluginPolicy,
     ) -> PermissionDecision | None:
-        is_enabled = await plugin_policy_service.is_globally_enabled(
-            policy.plugin_module
+        is_enabled = (
+            await self._is_globally_enabled(policy.plugin_module)
+            if self._is_globally_enabled
+            else True
         )
         if policy.protection_mode != "required" and not is_enabled:
             return PermissionDecision(
