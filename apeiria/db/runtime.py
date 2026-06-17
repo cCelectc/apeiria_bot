@@ -77,12 +77,22 @@ class ApeiriaDatabase:
 
         Replacement for the legacy ``schema.py.ensure_database_ready_sync()``.
         Idempotent — safe to call multiple times during a single process.
+        Falls back to the legacy schema bootstrapper when alembic.ini is
+        not present (e.g. in test environments).
         """
         if self._migrations_applied:
             return
         self.ensure_parent_dir()
-        self._run_migrations()
+        if self.alembic_config_path().exists():
+            self._run_migrations()
+        else:
+            self._run_legacy_bootstrap()
         self._migrations_applied = True
+
+    def _run_legacy_bootstrap(self) -> None:
+        from apeiria.db.schema import ensure_database_ready_sync
+
+        ensure_database_ready_sync(self)
 
     def _run_migrations(self) -> None:
         from alembic import command
