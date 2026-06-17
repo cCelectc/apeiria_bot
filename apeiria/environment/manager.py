@@ -11,7 +11,7 @@ import subprocess
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from apeiria.db import ApeiriaDatabase, ensure_database_ready
+from apeiria.db import ApeiriaDatabase
 from apeiria.environment.extension_project import (
     find_uv_executable,
 )
@@ -311,7 +311,7 @@ class EnvironmentService:
 
     def validate_database_schema(self) -> None:
         database = ApeiriaDatabase(project_root=self.project_root)
-        asyncio.run(ensure_database_ready(database))
+        database.ensure_ready()
 
     def repair_database_schema(self) -> None:
         self.validate_database_schema()

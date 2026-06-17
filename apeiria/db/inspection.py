@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, cast
 
 from apeiria.db.runtime import ApeiriaDatabase
-from apeiria.db.schema import (
+from apeiria.db.schema_constants import (
     CURRENT_SCHEMA_LINE,
     CURRENT_SCHEMA_VERSION,
     SUPPORTED_MIGRATION_SOURCE_VERSIONS,

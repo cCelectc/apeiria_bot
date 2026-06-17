@@ -21,10 +21,13 @@ def test_transaction_sync_starts_transaction_before_first_write(tmp_path: Path) 
             """
             INSERT INTO plugin_state (
                 plugin_id,
+                enabled,
+                access_mode,
+                protection_mode,
                 updated_at
-            ) VALUES (?, ?)
+            ) VALUES (?, ?, ?, ?, ?)
             """,
-            ("plugin.test", "2026-04-25T00:00:00"),
+            ("plugin.test", 1, "default_allow", "normal", 1765967400000),
         )
 
     with database.connect_sync() as connection:

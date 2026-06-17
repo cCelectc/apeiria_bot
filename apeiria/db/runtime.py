@@ -73,12 +73,12 @@ class ApeiriaDatabase:
             yield connection
 
     def ensure_ready(self) -> None:
-        """Run pending Alembic migrations on the control-plane database.
+        """Initialize or migrate the control-plane database.
 
-        Replacement for the legacy ``schema.py.ensure_database_ready_sync()``.
+        Uses Alembic migrations when ``alembic.ini`` is present (production
+        path).  Falls back to SQLAlchemy ``Base.metadata.create_all()`` when
+        the config file is absent (test / first-run bootstrap path).
         Idempotent — safe to call multiple times during a single process.
-        Falls back to the legacy schema bootstrapper when alembic.ini is
-        not present (e.g. in test environments).
         """
         if self._migrations_applied:
             return
@@ -90,9 +90,20 @@ class ApeiriaDatabase:
         self._migrations_applied = True
 
     def _run_legacy_bootstrap(self) -> None:
-        from apeiria.db.schema import ensure_database_ready_sync
+        from sqlalchemy import create_engine, inspect
 
-        ensure_database_ready_sync(self)
+        import apeiria.db.models  # noqa: F401  # register all table models on Base.metadata
+        from apeiria.db.base import Base
+
+        sync_url = f"sqlite:///{self.database_path()}"
+        engine = create_engine(sync_url)
+        try:
+            inspector = inspect(engine)
+            existing = inspector.get_table_names()
+            if not existing:
+                Base.metadata.create_all(engine)
+        finally:
+            engine.dispose()
 
     def _run_migrations(self) -> None:
         from alembic import command
