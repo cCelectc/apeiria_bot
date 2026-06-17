@@ -122,7 +122,7 @@ class ChatSessionService:
         platform_reply_id: str | None = None,
         content: dict[str, Any] | None = None,
         meta: dict[str, Any] | None = None,
-        raw_data: dict[str, Any] | None = None,
+        raw_data: dict[str, Any] | None = None,  # noqa: ARG002
         message_kind: "MessageKind" = "text",
         directed_to_bot: bool = False,
         mentions_bot: bool = False,
@@ -130,7 +130,6 @@ class ChatSessionService:
     ) -> ChatMessageRow:
         """Append one ambient observed turn as a thin conversation fact."""
 
-        del raw_data
         return await self._repository.append_message(
             identity,
             _ChatMessageCreate(
@@ -305,6 +304,8 @@ class ChatSessionService:
         session_id: str,
     ) -> ChatMessageDetailView:
         content = self._deserialize_json_payload(message.content_json)
+        meta = self._deserialize_json_payload(message.meta_json)
+        raw_data = self._deserialize_json_payload(message.raw_data_json)
         return ChatMessageDetailView(
             message_id=message.message_id,
             session_id=session_id,
@@ -320,8 +321,8 @@ class ChatSessionService:
             has_media=message.has_media,
             text_content=message.text_content,
             content=content,
-            meta=None,
-            raw_data=None,
+            meta=meta,
+            raw_data=raw_data,
             created_at=message.created_at,
             turn_disposition=cast("TurnDisposition", message.turn_disposition),
         )

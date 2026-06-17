@@ -67,6 +67,8 @@ class ChatMessageRow:
     has_media: bool
     text_content: str
     content_json: str | None
+    meta_json: str | None
+    raw_data_json: str | None
     created_at: datetime
 
 
@@ -232,6 +234,8 @@ class ChatSessionRepository:
                 has_media=1 if message_data.has_media else 0,
                 text_content=message_data.text_content,
                 content_json=_serialize_json_payload(message_data.content),
+                meta_json=_serialize_json_payload(message_data.meta),
+                raw_data_json=_serialize_json_payload(message_data.raw_data),
                 created_at=now,
             )
             await session.execute(msg_stmt)
@@ -403,6 +407,8 @@ def _map_message_row(row: ChatMessage) -> ChatMessageRow:
         has_media=bool(row.has_media),
         text_content=row.text_content,
         content_json=row.content_json,
+        meta_json=row.meta_json,
+        raw_data_json=row.raw_data_json,
         created_at=_epoch_ms_to_datetime(row.created_at),
     )
 

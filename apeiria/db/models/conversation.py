@@ -102,6 +102,8 @@ class ChatMessage(Base):
     has_media: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     text_content: Mapped[str] = mapped_column(Text, nullable=False)
     content_json: Mapped[str | None] = mapped_column(Text)
+    meta_json: Mapped[str | None] = mapped_column(Text)
+    raw_data_json: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[int] = mapped_column(Integer, nullable=False, default=_epoch_ms)
 
     session: Mapped[ChatSession] = relationship(back_populates="messages")
