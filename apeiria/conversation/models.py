@@ -11,7 +11,16 @@ if TYPE_CHECKING:
 SceneType = Literal["group", "private"]
 AuthorRole = Literal["user", "assistant", "system", "tool"]
 MessageKind = Literal["text", "mixed", "media", "system", "tool"]
-TurnDisposition = Literal["active", "observed", "generated", "tool", "system"]
+TurnDisposition = Literal[
+    "active",
+    "observed",
+    "generated",
+    "tool",
+    "system",
+    "pruned",
+    "summarized",
+    "archived",
+]
 
 
 @dataclass(frozen=True)
