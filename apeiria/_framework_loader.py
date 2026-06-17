@@ -162,6 +162,10 @@ def load_framework() -> None:
     for plugin in FRAMEWORK_PLUGIN_MODULES:
         nonebot.load_plugin(plugin)
 
+    from apeiria.app.chat import _ensure_alconna_registrations
+
+    _ensure_alconna_registrations()
+
     database_runtime.ensure_ready()
     asyncio.run(init_engine(database_runtime.database_path()))
 

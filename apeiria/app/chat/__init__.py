@@ -37,8 +37,16 @@ from apeiria.app.chat.gateway_protocol import (
 )
 from apeiria.app.chat.service import WebChatService, web_chat_service
 
-register_webchat_uniseg()
-register_webchat_uninfo()
+
+def _ensure_alconna_registrations() -> None:
+    """Register webchat alconna extensions (safe to call once framework is loaded).
+
+    Called from the framework bootstrap phase after nonebot_plugin_alconna
+    is confirmed loaded, rather than at module import time.
+    """
+    register_webchat_uniseg()
+    register_webchat_uninfo()
+
 
 __all__ = [
     "AuthOkPayload",
