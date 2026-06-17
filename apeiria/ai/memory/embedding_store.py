@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
 from apeiria.db.runtime import database_runtime
+from apeiria.utils.files import atomic_write_text
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -67,10 +68,8 @@ class AIMemoryEmbeddingStore:
             dimension=len(vector),
             content_hash=content_hash,
         )
-        target = _record_path(memory_id)
-        target.parent.mkdir(parents=True, exist_ok=True)
-        tmp_target = target.with_suffix(".tmp")
-        tmp_target.write_text(
+        atomic_write_text(
+            _record_path(memory_id),
             json.dumps(
                 {
                     "memory_id": record.memory_id,
@@ -84,9 +83,7 @@ class AIMemoryEmbeddingStore:
                 ensure_ascii=False,
                 sort_keys=True,
             ),
-            encoding="utf-8",
         )
-        tmp_target.replace(target)
         self._cache[memory_id] = record
         self._evict_if_needed()
         return record

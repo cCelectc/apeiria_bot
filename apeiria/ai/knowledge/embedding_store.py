@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
 from apeiria.db.runtime import database_runtime
+from apeiria.utils.files import atomic_write_text
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -60,10 +61,8 @@ class ChunkEmbeddingStore:
             dimension=len(vector),
             content_hash=content_hash,
         )
-        target = _record_path(chunk_id)
-        target.parent.mkdir(parents=True, exist_ok=True)
-        tmp_target = target.with_suffix(".tmp")
-        tmp_target.write_text(
+        atomic_write_text(
+            _record_path(chunk_id),
             json.dumps(
                 {
                     "chunk_id": record.chunk_id,
@@ -77,9 +76,7 @@ class ChunkEmbeddingStore:
                 ensure_ascii=False,
                 sort_keys=True,
             ),
-            encoding="utf-8",
         )
-        tmp_target.replace(target)
         return record
 
     def get(self, *, chunk_id: str) -> ChunkEmbeddingRecord | None:
