@@ -1,193 +1,352 @@
 from __future__ import annotations
 
-from typing import Annotated, Any
+import hashlib
+import secrets
+from datetime import datetime, timedelta, timezone
+from typing import TYPE_CHECKING, Annotated, Any
 
-from fastapi import APIRouter, Depends, HTTPException, Response
-from pydantic import BaseModel
-from sqlalchemy import select
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from sqlalchemy import select, update
 
 from apeiria.db.engine import get_session
-from apeiria.db.models.auth import WebUIAccount
-from apeiria.webui.auth import (
-    clear_auth_session_cookie,
-    require_auth,
-    set_auth_session_cookie,
-)
+from apeiria.db.models.auth import RefreshToken as RefreshTokenModel
+from apeiria.i18n import t
 from apeiria.webui.auth.accounts import (
-    WebUIAccount as WebUIAccountDC,
-)
-from apeiria.webui.auth.accounts import (
+    create_account,
+    delete_account,
     get_account_by_id,
     get_account_by_username,
     reset_account_password,
+    update_account_password,
 )
-from apeiria.webui.auth.service import auth_session_service
-from apeiria.webui.auth.store import (
-    hash_password,
-    iso_now,
-    verify_password_hash,
+from apeiria.webui.auth.service import (
+    AuthSessionContext,
+    auth_session_service,
 )
+from apeiria.webui.auth.store import iso_now, verify_password_hash
+from apeiria.webui.routes.deps import (
+    _ACCESS_COOKIE,
+    _REFRESH_COOKIE,
+    _request_is_secure,
+    require_auth,
+)
+from apeiria.webui.schemas.auth import (
+    AccountCreate,
+    AccountResponse,
+    ChangePasswordRequest,
+    LoginRequest,
+    MeResponse,
+    MessageResponse,
+    ResetPasswordRequest,
+)
+
+if TYPE_CHECKING:
+    from apeiria.access.principal import AuthSession
 
 router = APIRouter()
+_ACCESS_TTL_MINUTES = 15
+_REFRESH_TTL_DAYS = 7
+_REFRESH_TOKEN_BYTES = 64
 
 
-class LoginRequest(BaseModel):
-    username: str
-    password: str
+def _hash_token(raw: str) -> str:
+    return hashlib.sha256(raw.encode()).hexdigest()
 
 
-class ChangePasswordRequest(BaseModel):
-    current_password: str
-    new_password: str
+def _set_auth_cookies(  # noqa: PLR0913
+    response: Response,
+    access_token: str,
+    access_expires: datetime,
+    refresh_token: str,
+    refresh_expires: datetime,
+    *,
+    request: Request | None = None,
+) -> None:
+    secure = _request_is_secure(request)
+    response.set_cookie(
+        _ACCESS_COOKIE,
+        access_token,
+        httponly=True,
+        secure=secure,
+        samesite="lax",
+        expires=access_expires,
+        path="/api",
+    )
+    response.set_cookie(
+        _REFRESH_COOKIE,
+        refresh_token,
+        httponly=True,
+        secure=secure,
+        samesite="lax",
+        expires=refresh_expires,
+        path="/api/auth",
+    )
 
 
-class LoginResponse(BaseModel):
-    success: bool
-    must_change_password: bool = False
-    principal: dict | None = None
+def _clear_auth_cookies(response: Response) -> None:
+    for name in (_ACCESS_COOKIE, _REFRESH_COOKIE):
+        response.delete_cookie(name, httponly=True, samesite="lax", path="/")
+
+
+async def _create_refresh_token(
+    db: Any,
+    user_id: int,
+) -> tuple[str, RefreshTokenModel]:
+    raw = secrets.token_hex(_REFRESH_TOKEN_BYTES)
+    expires_at = (
+        datetime.now(timezone.utc) + timedelta(days=_REFRESH_TTL_DAYS)
+    ).isoformat()
+    row = RefreshTokenModel(
+        user_id=user_id,
+        token_hash=_hash_token(raw),
+        expires_at=expires_at,
+    )
+    db.add(row)
+    await db.flush()
+    return raw, row
+
+
+async def _revoke_user_refresh_tokens(db: Any, user_id: int) -> None:
+    await db.execute(
+        update(RefreshTokenModel)
+        .where(
+            RefreshTokenModel.user_id == user_id,
+            RefreshTokenModel.revoked == 0,
+        )
+        .values(revoked=1)
+    )
+
+
+async def _build_access_session(account: Any) -> AuthSession:
+    now = datetime.now(timezone.utc)
+    return auth_session_service.create_session(
+        account,
+        auth_method="session_cookie",
+        context=AuthSessionContext(
+            issued_at=now,
+            expires_at=now + timedelta(minutes=_ACCESS_TTL_MINUTES),
+        ),
+    )
 
 
 @router.post("/login")
-async def login(body: LoginRequest, response: Response) -> LoginResponse:
+async def login(
+    body: LoginRequest,
+    response: Response,
+    request: Request,
+) -> MessageResponse:
     account = await get_account_by_username(body.username)
     if account is None:
-        raise HTTPException(status_code=401, detail="Invalid credentials")
-
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=t("web_ui.auth.invalid_credentials"),
+        )
     if not verify_password_hash(body.password, account.password_hash):
-        raise HTTPException(status_code=401, detail="Invalid credentials")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=t("web_ui.auth.invalid_credentials"),
+        )
 
-    session = auth_session_service.create_session(
-        account,
-        auth_method="password",
-    )
-    await set_auth_session_cookie(response, session)
+    session = await _build_access_session(account)
+    access_token = await auth_session_service.create_token(session)
 
     async with get_session() as db:
-        acc = (
-            await db.execute(
-                select(WebUIAccount).where(WebUIAccount.id == int(account.user_id))
-            )
-        ).scalar_one_or_none()
+        raw_refresh, _ = await _create_refresh_token(db, int(account.user_id))
+        await db.commit()
 
-    return LoginResponse(
-        success=True,
-        must_change_password=bool(acc.must_change_password) if acc else False,
-        principal={
-            "user_id": account.user_id,
-            "username": account.username,
-        },
+    refresh_expires = datetime.now(timezone.utc) + timedelta(days=_REFRESH_TTL_DAYS)
+    _set_auth_cookies(
+        response,
+        access_token,
+        session.expires_at or datetime.now(timezone.utc),
+        raw_refresh,
+        refresh_expires,
+        request=request,
     )
+    return MessageResponse(detail="ok")
 
 
 @router.post("/logout")
-async def logout(response: Response) -> dict:
-    clear_auth_session_cookie(response)
-    return {"success": True}
+async def logout(
+    response: Response,
+    _: Annotated[Any, Depends(require_auth)],
+) -> MessageResponse:
+    _clear_auth_cookies(response)
+    return MessageResponse(detail="ok")
 
 
-@router.get("/me")
-async def me(
-    _session: Annotated[Any, Depends(require_auth)],
-) -> dict:
-    return {
-        "id": _session.user_id,
-        "user_id": _session.user_id,
-        "username": _session.username,
-        "role": "admin",
-    }
-
-
-@router.post("/change_password")
-async def change_password(
-    body: ChangePasswordRequest,
-    _session: Annotated[Any, Depends(require_auth)],
-) -> dict:
-    account = await get_account_by_id(_session.user_id)
-    if account is None:
-        raise HTTPException(status_code=401)
-
-    if not verify_password_hash(body.current_password, account.password_hash):
+@router.post("/refresh")
+async def refresh(
+    request: Request,
+    response: Response,
+) -> MessageResponse:
+    raw_token = request.cookies.get(_REFRESH_COOKIE, "").strip()
+    if not raw_token:
         raise HTTPException(
-            status_code=401,
-            detail="Current password incorrect",
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=t("web_ui.auth.token_invalid"),
         )
 
-    new_hash = hash_password(body.new_password)
+    token_hash = _hash_token(raw_token)
 
     async with get_session() as db:
-        acc = (
+        row = (
             await db.execute(
-                select(WebUIAccount).where(WebUIAccount.id == int(account.user_id))
+                select(RefreshTokenModel).where(
+                    RefreshTokenModel.token_hash == token_hash,
+                    RefreshTokenModel.revoked == 0,
+                )
             )
         ).scalar_one_or_none()
-        if not acc:
-            raise HTTPException(status_code=401)
-        acc.password_hash = new_hash
-        acc.password_changed_at = iso_now()
-        acc.must_change_password = 0
+
+        if row is None:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail=t("web_ui.auth.token_invalid"),
+            )
+
+        if row.expires_at < iso_now():
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail=t("web_ui.auth.token_expired"),
+            )
+
+        await db.delete(row)
+
+        account = await get_account_by_id(str(row.user_id))
+        if account is None:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail=t("web_ui.auth.token_invalid"),
+            )
+
+        session = await _build_access_session(account)
+        access_token = await auth_session_service.create_token(session)
+        raw_refresh, _ = await _create_refresh_token(db, int(account.user_id))
         await db.commit()
 
-    return {"success": True}
+    refresh_expires = datetime.now(timezone.utc) + timedelta(days=_REFRESH_TTL_DAYS)
+    _set_auth_cookies(
+        response,
+        access_token,
+        session.expires_at or datetime.now(timezone.utc),
+        raw_refresh,
+        refresh_expires,
+        request=request,
+    )
+    return MessageResponse(detail="ok")
 
 
-class ResetPasswordRequest(BaseModel):
-    new_password: str
-    actor_password: str
+@router.get("/me", response_model=MeResponse)
+async def me(
+    auth: Annotated[AuthSession, Depends(require_auth)],
+) -> MeResponse:
+    return MeResponse(user_id=auth.user_id, username=auth.username)
 
 
-@router.post("/accounts/{user_id}/reset-password")
-async def route_reset_password(
-    user_id: str,
-    body: ResetPasswordRequest,
-    _session: Annotated[Any, Depends(require_auth)],
-) -> WebUIAccountDC:
-    actor = await get_account_by_id(_session.user_id)
-    if actor is None:
-        raise HTTPException(status_code=401)
-    if not verify_password_hash(body.actor_password, actor.password_hash):
-        raise HTTPException(status_code=401, detail="Invalid actor password")
-    return await reset_account_password(user_id, body.new_password)
+@router.post("/change-password")
+async def change_password(
+    body: ChangePasswordRequest,
+    auth: Annotated[AuthSession, Depends(require_auth)],
+) -> MessageResponse:
+    account = await get_account_by_id(auth.user_id)
+    if account is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=t("web_ui.auth.invalid_credentials"),
+        )
+    if not verify_password_hash(body.current_password, account.password_hash):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=t("web_ui.auth.invalid_credentials"),
+        )
+
+    await update_account_password(auth.user_id, body.new_password)
+
+    async with get_session() as db:
+        await _revoke_user_refresh_tokens(db, int(auth.user_id))
+        await db.commit()
+
+    return MessageResponse(detail="ok")
 
 
-class AccountDeleteRequest(BaseModel):
-    actor_password: str
+@router.get("/accounts", response_model=list[AccountResponse])
+async def list_accounts(
+    _: Annotated[Any, Depends(require_auth)],
+) -> list[AccountResponse]:
+    from apeiria.webui.auth.accounts import list_accounts as _list_accounts
+
+    return [
+        AccountResponse(id=a.user_id, username=a.username, created_at="")
+        for a in await _list_accounts()
+    ]
+
+
+@router.post("/accounts", response_model=AccountResponse, status_code=201)
+async def create_account_route(
+    body: AccountCreate,
+    _: Annotated[Any, Depends(require_auth)],
+) -> AccountResponse:
+    username = await create_account(body.username, body.password)
+    account = await get_account_by_username(username)
+    if account is None:
+        raise HTTPException(status_code=500, detail="account_not_found_after_create")
+    return AccountResponse(id=account.user_id, username=account.username, created_at="")
 
 
 @router.delete("/accounts/{user_id}")
-async def route_delete_account(
+async def delete_account_route(
     user_id: str,
-    body: AccountDeleteRequest,
-    _session: Annotated[Any, Depends(require_auth)],
-) -> dict:
-    actor = await get_account_by_id(_session.user_id)
-    if actor is None:
-        raise HTTPException(status_code=401)
-    if not verify_password_hash(body.actor_password, actor.password_hash):
-        raise HTTPException(status_code=401, detail="Invalid actor password")
+    auth: Annotated[AuthSession, Depends(require_auth)],
+) -> MessageResponse:
+    if user_id == auth.user_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=t("web_ui.auth.self_delete_forbidden"),
+        )
+    async with get_session() as db:
+        await _revoke_user_refresh_tokens(db, int(user_id))
+        await db.commit()
 
-    from apeiria.webui.auth.accounts import delete_account
-
-    ok = await delete_account(user_id, actor_user_id=_session.user_id)
-    if not ok:
-        raise HTTPException(status_code=404, detail="Account not found")
-    return {"status": "deleted"}
+    success = await delete_account(user_id, actor_user_id=auth.user_id)
+    if not success:
+        raise HTTPException(status_code=404, detail=t("web_ui.auth.account_not_found"))
+    return MessageResponse(detail="ok")
 
 
 @router.post("/accounts/{user_id}/disable")
-async def route_disable_account(
+async def disable_account(
     user_id: str,
-    _session: Annotated[Any, Depends(require_auth)],
-) -> dict:
-    if _session.user_id == user_id:
-        raise HTTPException(status_code=400, detail="Cannot disable self")
+    auth: Annotated[AuthSession, Depends(require_auth)],
+) -> MessageResponse:
+    if user_id == auth.user_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=t("web_ui.auth.self_disable_forbidden"),
+        )
+    account = await get_account_by_id(user_id)
+    if account is None:
+        raise HTTPException(status_code=404, detail=t("web_ui.auth.account_not_found"))
+
     async with get_session() as db:
-        acc = (
-            await db.execute(
-                select(WebUIAccount).where(WebUIAccount.id == int(user_id))
-            )
-        ).scalar_one_or_none()
-        if not acc:
-            raise HTTPException(status_code=404, detail="Not found")
-        await db.delete(acc)
+        await _revoke_user_refresh_tokens(db, int(user_id))
         await db.commit()
-    return {"status": "disabled"}
+
+    return MessageResponse(detail="ok")
+
+
+@router.post("/accounts/{user_id}/reset-password")
+async def reset_password_route(
+    user_id: str,
+    body: ResetPasswordRequest,
+    _: Annotated[Any, Depends(require_auth)],
+) -> MessageResponse:
+    account = await reset_account_password(user_id, body.password)
+    if account is None:
+        raise HTTPException(status_code=404, detail=t("web_ui.auth.account_not_found"))
+
+    async with get_session() as db:
+        await _revoke_user_refresh_tokens(db, int(user_id))
+        await db.commit()
+
+    return MessageResponse(detail="ok")
