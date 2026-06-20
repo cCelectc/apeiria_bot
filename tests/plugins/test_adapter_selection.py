@@ -2,13 +2,13 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, TypeVar
 
-from apeiria.app.plugins.adapter_selection import AdapterSelectionService
-from apeiria.app.plugins.store.models import StoreItem, StorePage
+from apeiria.plugins.adapter_selection import AdapterSelectionService
 from apeiria.plugins.registry import (
     AdapterConfigState,
     AdapterConfigStatus,
     PluginRegistrationConfigService,
 )
+from apeiria.plugins.store.models import StoreItem, StorePage
 from apeiria.webui.routes.adapter_selection import (
     disable_adapter,
     enable_adapter,
@@ -140,7 +140,7 @@ def test_enable_and_disable_adapter_update_project_modules(
         ],
     )
     monkeypatch.setattr(
-        "apeiria.app.plugins.adapter_selection.plugin_registration_config_service",
+        "apeiria.plugins.adapter_selection.plugin_registration_config_service",
         registration,
     )
     _patch_configurability(monkeypatch, {})
@@ -168,7 +168,7 @@ def _patch_config_state(
     items: list[AdapterConfigStatus],
 ) -> None:
     monkeypatch.setattr(
-        "apeiria.app.plugins.adapter_selection.plugin_registration_config_service.get_adapter_config",
+        "apeiria.plugins.adapter_selection.plugin_registration_config_service.get_adapter_config",
         lambda: AdapterConfigState(modules=items),
     )
 
@@ -178,7 +178,7 @@ def _patch_project_config(
     packages: dict[str, list[str]] | None = None,
 ) -> None:
     monkeypatch.setattr(
-        "apeiria.app.plugins.adapter_selection.adapter_config_service.read_project_adapter_config",
+        "apeiria.plugins.adapter_selection.adapter_config_service.read_project_adapter_config",
         lambda: {
             "modules": [],
             "packages": packages or {},
@@ -199,7 +199,7 @@ def _patch_store_page(
         )
 
     monkeypatch.setattr(
-        "apeiria.app.plugins.adapter_selection.package_store_workflow.list_items",
+        "apeiria.plugins.adapter_selection.package_store_workflow.list_items",
         list_items,
     )
 
@@ -209,7 +209,7 @@ def _patch_importability(
     values: dict[str, bool],
 ) -> None:
     monkeypatch.setattr(
-        "apeiria.app.plugins.adapter_selection._module_is_importable",
+        "apeiria.plugins.adapter_selection._module_is_importable",
         lambda module_name: values.get(module_name, False),
     )
 
@@ -219,7 +219,7 @@ def _patch_configurability(
     values: dict[str, bool],
 ) -> None:
     monkeypatch.setattr(
-        "apeiria.app.plugins.adapter_selection._module_is_configurable",
+        "apeiria.plugins.adapter_selection._module_is_configurable",
         lambda module_name: values.get(module_name, False),
     )
 

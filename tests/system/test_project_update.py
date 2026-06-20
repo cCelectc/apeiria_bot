@@ -5,14 +5,14 @@ import sys
 from types import SimpleNamespace
 from typing import TYPE_CHECKING
 
-from apeiria.app.system.project_update import (
+from apeiria.db.runtime import ApeiriaDatabase
+from apeiria.system.project_update import (
     ProjectUpdateMessage,
     ProjectUpdatePlanRequest,
     ProjectUpdateService,
     parse_semver_tag,
     sanitize_output,
 )
-from apeiria.db.runtime import ApeiriaDatabase
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -211,16 +211,10 @@ def test_release_missing_metadata_warns(tmp_path: Path) -> None:
 
 
 def test_refresh_remote_refs_fetches_remote_tags(
-    monkeypatch: object,
     tmp_path: Path,
 ) -> None:
     repo, remote = _create_repo_with_upstream(tmp_path)
     service = ProjectUpdateService(project_root=repo)
-
-    monkeypatch.setattr(
-        "apeiria.app.system.project_update.package_mutation_lock",
-        _noop_lock,
-    )
 
     _tag_remote_change(remote, "v1.0.0")
 
@@ -235,16 +229,10 @@ def test_refresh_remote_refs_fetches_remote_tags(
 
 
 def test_refresh_remote_refs_uses_ttl_cache(
-    monkeypatch: object,
     tmp_path: Path,
 ) -> None:
     repo, remote = _create_repo_with_upstream(tmp_path)
     service = ProjectUpdateService(project_root=repo)
-
-    monkeypatch.setattr(
-        "apeiria.app.system.project_update.package_mutation_lock",
-        _noop_lock,
-    )
 
     service.refresh_remote_refs(force=True)
     checked_at = service.inspect().remote_refresh.last_checked_at
@@ -284,11 +272,7 @@ def test_update_task_success_reports_restart_required(
     service = ProjectUpdateService(project_root=repo)
 
     monkeypatch.setattr(
-        "apeiria.app.system.project_update.package_mutation_lock",
-        _noop_lock,
-    )
-    monkeypatch.setattr(
-        "apeiria.app.system.project_update.environment_service",
+        "apeiria.system.project_update.environment_service",
         _fake_environment_service(),
     )
 
@@ -324,11 +308,7 @@ def test_update_task_rejects_concurrent_task(
     service = ProjectUpdateService(project_root=repo)
 
     monkeypatch.setattr(
-        "apeiria.app.system.project_update.package_mutation_lock",
-        _noop_lock,
-    )
-    monkeypatch.setattr(
-        "apeiria.app.system.project_update.environment_service",
+        "apeiria.system.project_update.environment_service",
         _slow_environment_service(),
     )
 
@@ -359,11 +339,7 @@ def test_update_task_failure_keeps_sanitized_diagnostics(
     service = ProjectUpdateService(project_root=repo)
 
     monkeypatch.setattr(
-        "apeiria.app.system.project_update.package_mutation_lock",
-        _noop_lock,
-    )
-    monkeypatch.setattr(
-        "apeiria.app.system.project_update.environment_service",
+        "apeiria.system.project_update.environment_service",
         _failing_environment_service(
             "https://user:pass@example.test/repo.git token=abc"
         ),
@@ -467,12 +443,6 @@ def os_environ_for_git() -> dict[str, str]:
         "GIT_COMMITTER_NAME": "Test User",
         "GIT_COMMITTER_EMAIL": "test@example.test",
     }
-
-
-def _noop_lock():
-    from contextlib import nullcontext
-
-    return nullcontext()
 
 
 def _fake_environment_service() -> object:

@@ -4,12 +4,15 @@ from __future__ import annotations
 
 import hashlib
 import json
+from typing import TYPE_CHECKING
 
-from apeiria.conversation.models import (
-    ChatContextMessageView,
-    ChatSessionIdentity,
-    SceneType,
-)
+from apeiria.conversation.models import ChatSessionIdentity
+
+if TYPE_CHECKING:
+    from apeiria.conversation.models import (
+        ChatContextMessageView,
+        SceneType,
+    )
 
 
 def _normalize_scene(group_id: str | None) -> tuple[SceneType, str]:

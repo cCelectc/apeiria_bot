@@ -53,7 +53,7 @@ def recover(*, username: str, password: str) -> None:
     try:
 
         async def _op():
-            from apeiria.app.access.webui_auth.secrets import recover_owner_account
+            from apeiria.webui.auth.secrets import recover_owner_account
 
             return await recover_owner_account(username, password)
 
@@ -84,7 +84,7 @@ def list_accounts_command() -> None:
     """List Web UI accounts from the host."""
 
     async def _op():
-        from apeiria.app.access.webui_auth.secrets import list_accounts
+        from apeiria.webui.auth.secrets import list_accounts
 
         return await list_accounts()
 

@@ -44,10 +44,10 @@ def load_toml_dict(
         with config_path.open("rb") as file:
             data = toml_module.load(file)
     except OSError as exc:
-        logger.warning("Skip loading %s: %s", config_path.name, exc)
+        logger.warning("Skip loading {}: {}", config_path.name, exc)
         return {}
     except ValueError as exc:
-        logger.warning("Skip loading %s: invalid TOML (%s)", config_path.name, exc)
+        logger.warning("Skip loading {}: invalid TOML ({})", config_path.name, exc)
         return {}
 
     return data if isinstance(data, dict) else {}

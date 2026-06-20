@@ -1,38 +1,46 @@
-"""AI prompt-skill routes."""
-
 from __future__ import annotations
 
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends
+from pydantic import BaseModel
 
-from apeiria.app.ai import ai_application
+from apeiria.ai.skills.catalog import get_skill_body, get_skill_names
 from apeiria.webui.auth import require_auth
-
-from .skills_schemas import (
-    AISkillItem,
-    to_ai_skill_item,
-)
 
 router = APIRouter()
 
 
-@router.get("/skills", response_model=list[AISkillItem])
-async def list_ai_skills(
+class SkillItem(BaseModel):
+    name: str
+    description: str
+
+
+class SkillDetail(BaseModel):
+    name: str
+    description: str
+    body: str
+
+
+@router.get("", response_model=list[SkillItem])
+async def list_skills(
     _: Annotated[Any, Depends(require_auth)],
-) -> list[AISkillItem]:
-    """List file-based prompt skills with runtime metadata."""
-
-    skills = ai_application.skills.list_skills()
-    return [to_ai_skill_item(item) for item in skills]
+) -> list[SkillItem]:
+    names = get_skill_names()
+    return [SkillItem(name=n, description=names[n]) for n in list(names)[:200]]
 
 
-@router.post("/skills/reload", response_model=list[AISkillItem])
-async def reload_ai_skills(
+@router.get("/{name:path}", response_model=SkillDetail)
+async def get_skill(
+    name: str,
     _: Annotated[Any, Depends(require_auth)],
-) -> list[AISkillItem]:
-    ai_application.skills.reload_skills()
-    return [to_ai_skill_item(item) for item in ai_application.skills.list_skills()]
-
-
-__all__ = ["router"]
+) -> SkillDetail:
+    body = get_skill_body(name)
+    if not body:
+        return SkillDetail(name=name, description="", body="")
+    names = get_skill_names()
+    return SkillDetail(
+        name=name,
+        description=names.get(name, ""),
+        body=body,
+    )

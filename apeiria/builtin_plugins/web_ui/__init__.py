@@ -71,12 +71,14 @@ def _mount_routes() -> None:
 
     app = nonebot.get_app()
     from nonebot_plugin_localstore import get_plugin_data_dir
+    from starlette.middleware import Middleware
 
     from apeiria.webui.csrf_middleware import CSRFMiddleware
     from apeiria.webui.plugin_routers import iter_plugin_routers
     from apeiria.webui.routes.router import router
 
-    app.add_middleware(CSRFMiddleware)
+    app.user_middleware.insert(0, Middleware(CSRFMiddleware))
+    app.middleware_stack = app.build_middleware_stack()
     app.include_router(router, prefix="/api")
 
     # Plugin-owned HTTP routers (only present when the owning plugin loaded).
@@ -123,7 +125,7 @@ def _mount_routes() -> None:
             t("web_ui.startup.ready", url=_web_ui_url()),
         )
 
-        from apeiria.app.access.webui_auth.secrets import get_secret_file_path
+        from apeiria.webui.auth.secrets import get_secret_file_path
 
         logger.info(
             "{}",
@@ -155,7 +157,33 @@ def _warm_plugin_management_caches() -> None:
     )
 
 
+async def _ensure_owner_account() -> None:
+    """Auto-create admin account if no accounts exist."""
+    from apeiria.webui.auth.accounts import list_accounts, recover_owner_account
+
+    accounts = await list_accounts()
+    if accounts:
+        logger.debug(
+            "Web UI accounts found ({}), skipping auto-provision",
+            len(accounts),
+        )
+        return
+
+    import secrets
+    import string
+
+    alphabet = string.ascii_letters + string.digits
+    password = "".join(secrets.choice(alphabet) for _ in range(24))
+
+    username, _created = await recover_owner_account("admin", password)
+    logger.warning("No Web UI accounts found — auto-created owner account")
+    logger.warning("  Username: {}", username)
+    logger.warning("  Password: {}", password)
+    logger.warning("  Log in at {} and change the password immediately", _web_ui_url())
+
+
 from nonebot import get_driver
 
 get_driver().on_startup(_mount_routes)
 get_driver().on_startup(_warm_plugin_management_caches)
+get_driver().on_startup(_ensure_owner_account)

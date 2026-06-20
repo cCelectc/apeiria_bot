@@ -6,8 +6,8 @@ from arclet.alconna import Args, CommandMeta
 from nonebot.adapters import Event  # noqa: TC002
 from nonebot_plugin_alconna import Alconna, Match, on_alconna
 
-from apeiria.app.plugins.management import plugin_management_service
 from apeiria.i18n import t
+from apeiria.plugins.management import plugin_management_service
 
 from .presenter import render_list_block, summarize_value
 from .utils import ensure_owner_message, resolve_plugin_catalog_query

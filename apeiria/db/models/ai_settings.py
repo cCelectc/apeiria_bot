@@ -1,139 +1,84 @@
 from __future__ import annotations
 
-from sqlalchemy import CheckConstraint, Float, Integer
+from sqlalchemy import CheckConstraint, Float, Integer, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
-from apeiria.db.base import Base, _epoch_ms
+from apeiria.db.base import Base, _now_iso
 
 
 class AIRuntimeSettings(Base):
     __tablename__ = "ai_runtime_settings"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    allow_group_initiative: Mapped[int | None] = mapped_column(Integer)
-    quiet_hours_enabled: Mapped[int | None] = mapped_column(Integer)
-    quiet_hours_start_minute: Mapped[int | None] = mapped_column(Integer)
-    quiet_hours_end_minute: Mapped[int | None] = mapped_column(Integer)
-    night_awake_lease_minutes: Mapped[int | None] = mapped_column(Integer)
-    stt_input_enabled: Mapped[int | None] = mapped_column(Integer)
-    persist_raw_event_payloads: Mapped[int | None] = mapped_column(Integer)
-    ambient_merge_window_ms: Mapped[int | None] = mapped_column(Integer)
-    max_pending_messages: Mapped[int | None] = mapped_column(Integer)
-    group_reply_cooldown_seconds: Mapped[int | None] = mapped_column(Integer)
-    max_consecutive_ambient_replies: Mapped[int | None] = mapped_column(Integer)
-    direct_bypass_ambient_budget: Mapped[int | None] = mapped_column(Integer)
-    duplicate_event_ttl_seconds: Mapped[int | None] = mapped_column(Integer)
-    tool_execution_timeout_seconds: Mapped[float | None] = mapped_column(Float)
-    cleanup_interval_minutes: Mapped[int | None] = mapped_column(Integer)
-    conversation_retention_days: Mapped[int | None] = mapped_column(Integer)
-    raw_event_retention_days: Mapped[int | None] = mapped_column(Integer)
-    tool_execution_retention_days: Mapped[int | None] = mapped_column(Integer)
-    suppressed_memory_retention_days: Mapped[int | None] = mapped_column(Integer)
-    relationship_event_retention_days: Mapped[int | None] = mapped_column(Integer)
-    future_task_retention_days: Mapped[int | None] = mapped_column(Integer)
-    trace_enabled: Mapped[int | None] = mapped_column(Integer)
-    updated_at: Mapped[int] = mapped_column(
-        Integer, default=_epoch_ms, onupdate=_epoch_ms
-    )
-
     __table_args__ = (
         CheckConstraint("id = 1", name="ck_ai_runtime_settings_singleton"),
         CheckConstraint(
-            "allow_group_initiative IS NULL OR allow_group_initiative IN (0, 1)",
-            name="ck_ai_runtime_settings_allow_group_initiative",
+            "talk_value > 0 AND talk_value <= 1.0",
+            name="ck_ai_runtime_settings_talk_value",
         ),
         CheckConstraint(
-            "quiet_hours_enabled IS NULL OR quiet_hours_enabled IN (0, 1)",
-            name="ck_ai_runtime_settings_quiet_hours_enabled",
+            "compaction_threshold > 0 AND compaction_threshold < 1.0",
+            name="ck_ai_runtime_settings_compaction_threshold",
         ),
         CheckConstraint(
-            "quiet_hours_start_minute IS NULL OR "
-            "(quiet_hours_start_minute >= 0 AND quiet_hours_start_minute <= 1439)",
-            name="ck_ai_runtime_settings_quiet_hours_start_minute",
+            "memory_isolate_by_session IN (0, 1)",
+            name="ck_ai_runtime_settings_memory_isolate_by_session",
         ),
         CheckConstraint(
-            "quiet_hours_end_minute IS NULL OR "
-            "(quiet_hours_end_minute >= 0 AND quiet_hours_end_minute <= 1439)",
-            name="ck_ai_runtime_settings_quiet_hours_end_minute",
+            "memory_half_life_days > 0",
+            name="ck_ai_runtime_settings_memory_half_life_days",
         ),
         CheckConstraint(
-            "night_awake_lease_minutes IS NULL OR "
-            "(night_awake_lease_minutes >= 1 AND night_awake_lease_minutes <= 120)",
-            name="ck_ai_runtime_settings_night_awake_lease_minutes",
+            "memory_floor_ratio >= 0 AND memory_floor_ratio <= 1.0",
+            name="ck_ai_runtime_settings_memory_floor_ratio",
         ),
         CheckConstraint(
-            "stt_input_enabled IS NULL OR stt_input_enabled IN (0, 1)",
-            name="ck_ai_runtime_settings_stt_input_enabled",
+            "relationship_isolate_by_session IN (0, 1)",
+            name="ck_ai_runtime_settings_relationship_isolate_by_session",
         ),
         CheckConstraint(
-            "persist_raw_event_payloads IS NULL "
-            "OR persist_raw_event_payloads IN (0, 1)",
-            name="ck_ai_runtime_settings_persist_raw_event_payloads",
+            "relationship_half_life_days > 0",
+            name="ck_ai_runtime_settings_relationship_half_life_days",
         ),
         CheckConstraint(
-            "ambient_merge_window_ms IS NULL OR ambient_merge_window_ms >= 0",
-            name="ck_ai_runtime_settings_ambient_merge_window_ms",
+            "rerank_enabled IN (0, 1)",
+            name="ck_ai_runtime_settings_rerank_enabled",
         ),
         CheckConstraint(
-            "max_pending_messages IS NULL OR max_pending_messages >= 1",
-            name="ck_ai_runtime_settings_max_pending_messages",
+            "segment_reply_enabled IN (0, 1)",
+            name="ck_ai_runtime_settings_segment_reply_enabled",
         ),
         CheckConstraint(
-            "group_reply_cooldown_seconds IS NULL OR group_reply_cooldown_seconds >= 0",
-            name="ck_ai_runtime_settings_group_reply_cooldown_seconds",
+            "segment_delay_seconds >= 0",
+            name="ck_ai_runtime_settings_segment_delay_seconds",
         ),
         CheckConstraint(
-            "max_consecutive_ambient_replies IS NULL "
-            "OR max_consecutive_ambient_replies >= 0",
-            name="ck_ai_runtime_settings_max_consecutive_ambient_replies",
+            "self_review_enabled IN (0, 1)",
+            name="ck_ai_runtime_settings_self_review_enabled",
         ),
         CheckConstraint(
-            "direct_bypass_ambient_budget IS NULL "
-            "OR direct_bypass_ambient_budget IN (0, 1)",
-            name="ck_ai_runtime_settings_direct_bypass_ambient_budget",
-        ),
-        CheckConstraint(
-            "duplicate_event_ttl_seconds IS NULL OR duplicate_event_ttl_seconds >= 1",
-            name="ck_ai_runtime_settings_duplicate_event_ttl_seconds",
-        ),
-        CheckConstraint(
-            "tool_execution_timeout_seconds IS NULL "
-            "OR tool_execution_timeout_seconds > 0",
-            name="ck_ai_runtime_settings_tool_execution_timeout_seconds",
-        ),
-        CheckConstraint(
-            "cleanup_interval_minutes IS NULL OR cleanup_interval_minutes >= 1",
-            name="ck_ai_runtime_settings_cleanup_interval_minutes",
-        ),
-        CheckConstraint(
-            "conversation_retention_days IS NULL OR conversation_retention_days >= 1",
-            name="ck_ai_runtime_settings_conversation_retention_days",
-        ),
-        CheckConstraint(
-            "raw_event_retention_days IS NULL OR raw_event_retention_days >= 1",
-            name="ck_ai_runtime_settings_raw_event_retention_days",
-        ),
-        CheckConstraint(
-            "tool_execution_retention_days IS NULL "
-            "OR tool_execution_retention_days >= 1",
-            name="ck_ai_runtime_settings_tool_execution_retention_days",
-        ),
-        CheckConstraint(
-            "suppressed_memory_retention_days IS NULL "
-            "OR suppressed_memory_retention_days >= 1",
-            name="ck_ai_runtime_settings_suppressed_memory_retention_days",
-        ),
-        CheckConstraint(
-            "relationship_event_retention_days IS NULL "
-            "OR relationship_event_retention_days >= 1",
-            name="ck_ai_runtime_settings_relationship_event_retention_days",
-        ),
-        CheckConstraint(
-            "future_task_retention_days IS NULL OR future_task_retention_days >= 1",
-            name="ck_ai_runtime_settings_future_task_retention_days",
-        ),
-        CheckConstraint(
-            "trace_enabled IS NULL OR trace_enabled IN (0, 1)",
-            name="ck_ai_runtime_settings_trace_enabled",
+            "acp_access_mode IN ('superuser_only', 'open')",
+            name="ck_ai_runtime_settings_acp_access_mode",
         ),
     )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    talk_value: Mapped[float] = mapped_column(Float, default=0.3)
+    cooldown_seconds: Mapped[int] = mapped_column(Integer, default=30)
+    max_replies_per_window: Mapped[int] = mapped_column(Integer, default=3)
+    reply_window_seconds: Mapped[int] = mapped_column(Integer, default=300)
+    no_action_backoff_base_seconds: Mapped[int] = mapped_column(Integer, default=60)
+    no_action_backoff_max_seconds: Mapped[int] = mapped_column(Integer, default=600)
+    compaction_threshold: Mapped[float] = mapped_column(Float, default=0.8)
+    memory_isolate_by_session: Mapped[int] = mapped_column(Integer, default=0)
+    memory_half_life_days: Mapped[float] = mapped_column(Float, default=30.0)
+    memory_floor_ratio: Mapped[float] = mapped_column(Float, default=0.1)
+    relationship_isolate_by_session: Mapped[int] = mapped_column(Integer, default=0)
+    relationship_half_life_days: Mapped[float] = mapped_column(Float, default=30.0)
+    rerank_enabled: Mapped[int] = mapped_column(Integer, default=0)
+    segment_reply_enabled: Mapped[int] = mapped_column(Integer, default=1)
+    segment_delay_seconds: Mapped[float] = mapped_column(Float, default=1.5)
+    self_review_enabled: Mapped[int] = mapped_column(Integer, default=0)
+    default_chat_model: Mapped[str | None] = mapped_column(Text)
+    reasoning_effort: Mapped[str] = mapped_column(Text, default="medium")
+    acp_access_mode: Mapped[str] = mapped_column(Text, default="superuser_only")
+    searxng_url: Mapped[str | None] = mapped_column(Text)
+    updated_at: Mapped[str] = mapped_column(Text, default=_now_iso, onupdate=_now_iso)

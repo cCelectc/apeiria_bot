@@ -170,3 +170,5 @@ apeiria.drivers.toml
 
 # Local OpenSpec workflow artifacts
 openspec/
+
+.planning/

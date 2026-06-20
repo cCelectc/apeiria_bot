@@ -6,7 +6,7 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from apeiria.app.plugins.adapter_selection import (
+from apeiria.plugins.adapter_selection import (
     AdapterSelectionRequest,
     adapter_selection_service,
 )

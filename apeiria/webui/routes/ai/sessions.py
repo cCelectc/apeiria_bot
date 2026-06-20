@@ -1,180 +1,109 @@
-"""AI session / scene / prompt-preview admin routes."""
-
 from __future__ import annotations
 
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
+from sqlalchemy import select
 
-from apeiria.app.ai import ai_application
+from apeiria.db.engine import get_session
+from apeiria.db.models.conversation import Message, Session
 from apeiria.webui.auth import require_auth
-
-from .sessions_schemas import (
-    AIChatMessageItem,
-    AIManagedSessionAIEnabledUpdate,
-    AIManagedSessionDetailItem,
-    AIManagedSessionItem,
-    AIManagedSessionPersonaUpdate,
-    AIRecentTargetItem,
-    AISessionItem,
-    AISessionPromptPreviewItem,
-    to_ai_chat_message_item,
-    to_ai_managed_session_detail_item,
-    to_ai_managed_session_item,
-    to_ai_recent_target_item,
-    to_ai_session_item,
-    to_ai_session_prompt_preview_item,
-)
 
 router = APIRouter()
 
 
-@router.get("/recent-targets", response_model=list[AIRecentTargetItem])
-async def list_ai_recent_targets(
-    _: Annotated[Any, Depends(require_auth)],
-    limit: Annotated[int, Query(ge=1, le=100)] = 20,
-) -> list[AIRecentTargetItem]:
-    targets = await ai_application.sessions.list_recent_targets(limit=limit)
-    return [to_ai_recent_target_item(item) for item in targets]
+# --- Pydantic models ---
 
 
-@router.get("/scenes", response_model=list[AISessionItem])
-async def list_ai_scenes(
-    _: Annotated[Any, Depends(require_auth)],
-    limit: Annotated[int, Query(ge=1, le=100)] = 20,
-) -> list[AISessionItem]:
-    conversations = await ai_application.sessions.list_recent_sessions(limit=limit)
-    return [to_ai_session_item(item) for item in conversations]
+class SessionResponse(BaseModel):
+    id: str
+    platform: str
+    scene_type: str
+    scene_id: str
+    model_override: str | None
+    created_at: str
+    last_active_at: str
+    last_compacted_message_id: int | None
 
 
-@router.get("/scenes/turns", response_model=list[AIChatMessageItem])
-async def list_ai_scene_turns(
-    _: Annotated[Any, Depends(require_auth)],
-    scene_id: Annotated[str, Query(min_length=1)],
-    limit: Annotated[int, Query(ge=1, le=200)] = 50,
-) -> list[AIChatMessageItem]:
-    turns = await ai_application.sessions.list_scene_turns(
-        scene_id=scene_id,
-        limit=limit,
+class MessageResponse(BaseModel):
+    id: int
+    session_id: str
+    role: str
+    type: str
+    user_id: str | None
+    content: str
+    message_id: str | None
+    meta_json: str | None
+    created_at: int
+
+
+class SessionDetailResponse(BaseModel):
+    session: SessionResponse
+    messages: list[MessageResponse]
+
+
+# --- Helpers ---
+
+
+def _session_to_response(s: Session) -> SessionResponse:
+    return SessionResponse(
+        id=s.id,
+        platform=s.platform,
+        scene_type=s.scene_type,
+        scene_id=s.scene_id,
+        model_override=s.model_override,
+        created_at=s.created_at,
+        last_active_at=s.last_active_at,
+        last_compacted_message_id=s.last_compacted_message_id,
     )
-    return [to_ai_chat_message_item(item) for item in turns]
 
 
-@router.get(
-    "/scenes/prompt-preview",
-    response_model=AISessionPromptPreviewItem | None,
-)
-async def get_ai_scene_prompt_preview(
-    _: Annotated[Any, Depends(require_auth)],
-    scene_id: Annotated[str, Query(min_length=1)],
-    turn_limit: Annotated[int, Query(ge=1, le=200)] = 50,
-) -> AISessionPromptPreviewItem | None:
-    preview = await ai_application.sessions.build_scene_prompt_preview(
-        scene_id=scene_id,
-        turn_limit=turn_limit,
+def _message_to_response(m: Message) -> MessageResponse:
+    return MessageResponse(
+        id=m.id,
+        session_id=m.session_id,
+        role=m.role,
+        type=m.type,
+        user_id=m.user_id,
+        content=m.content,
+        message_id=m.message_id,
+        meta_json=m.meta_json,
+        created_at=m.created_at,
     )
-    if preview is None:
-        return None
-    return to_ai_session_prompt_preview_item(preview)
 
 
-@router.get("/managed-sessions", response_model=list[AIManagedSessionItem])
-async def list_ai_managed_sessions(
+# --- Endpoints ---
+
+
+@router.get("", response_model=list[SessionResponse])
+async def list_sessions(
     _: Annotated[Any, Depends(require_auth)],
-    limit: Annotated[int, Query(ge=1, le=100)] = 50,
-) -> list[AIManagedSessionItem]:
-    sessions = await ai_application.sessions.list_managed_sessions(limit=limit)
-    return [to_ai_managed_session_item(item) for item in sessions]
-
-
-@router.get(
-    "/managed-sessions/{session_id:path}",
-    response_model=AIManagedSessionDetailItem,
-)
-async def get_ai_managed_session(
-    _: Annotated[Any, Depends(require_auth)],
-    session_id: str,
-    message_limit: Annotated[int, Query(ge=1, le=200)] = 50,
-) -> AIManagedSessionDetailItem:
-    detail = await ai_application.sessions.get_managed_session_detail(
-        session_id=session_id,
-        message_limit=message_limit,
-    )
-    if detail is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="managed_session_not_found",
+) -> list[SessionResponse]:
+    async with get_session() as db:
+        result = await db.execute(
+            select(Session).order_by(Session.last_active_at.desc()),
         )
-    return to_ai_managed_session_detail_item(detail)
+        return [_session_to_response(r) for r in result.scalars()]
 
 
-@router.patch(
-    "/managed-sessions/{session_id:path}/ai-enabled",
-    response_model=AIManagedSessionDetailItem,
-)
-async def update_ai_managed_session_enabled(
-    session: Annotated[Any, Depends(require_auth)],
+@router.get("/{session_id}", response_model=SessionDetailResponse)
+async def get_session_detail(
     session_id: str,
-    payload: AIManagedSessionAIEnabledUpdate,
-) -> AIManagedSessionDetailItem:
-    detail = await ai_application.sessions.set_managed_session_ai_enabled(
-        session_id=session_id,
-        ai_enabled=payload.ai_enabled,
-        actor_id=_session_actor_id(session),
-    )
-    if detail is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="managed_session_not_found",
+    _: Annotated[Any, Depends(require_auth)],
+) -> SessionDetailResponse:
+    async with get_session() as db:
+        s = await db.get(Session, session_id)
+        if not s:
+            raise HTTPException(404, "Session not found")
+        result = await db.execute(
+            select(Message)
+            .where(Message.session_id == session_id)
+            .order_by(Message.created_at.asc()),
         )
-    return to_ai_managed_session_detail_item(detail)
-
-
-@router.patch(
-    "/managed-sessions/{session_id:path}/persona",
-    response_model=AIManagedSessionDetailItem,
-)
-async def update_ai_managed_session_persona(
-    session: Annotated[Any, Depends(require_auth)],
-    session_id: str,
-    payload: AIManagedSessionPersonaUpdate,
-) -> AIManagedSessionDetailItem:
-    detail = await ai_application.sessions.set_managed_session_persona(
-        session_id=session_id,
-        persona_id=payload.persona_id,
-        actor_id=_session_actor_id(session),
-    )
-    if detail is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="managed_session_not_found",
+        messages = [_message_to_response(m) for m in result.scalars()]
+        return SessionDetailResponse(
+            session=_session_to_response(s),
+            messages=messages,
         )
-    return to_ai_managed_session_detail_item(detail)
-
-
-@router.post(
-    "/managed-sessions/{session_id:path}/context-reset",
-    response_model=AIManagedSessionDetailItem,
-)
-async def reset_ai_managed_session_context(
-    session: Annotated[Any, Depends(require_auth)],
-    session_id: str,
-) -> AIManagedSessionDetailItem:
-    detail = await ai_application.sessions.reset_managed_session_context(
-        session_id=session_id,
-        actor_id=_session_actor_id(session),
-    )
-    if detail is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="managed_session_not_found",
-        )
-    return to_ai_managed_session_detail_item(detail)
-
-
-def _session_actor_id(session: Any) -> str | None:
-    value = getattr(session, "user_id", None)
-    return value if isinstance(value, str) else None
-
-
-__all__ = ["router"]

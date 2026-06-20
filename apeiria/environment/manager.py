@@ -16,7 +16,6 @@ from apeiria.environment.extension_project import (
     find_uv_executable,
 )
 from apeiria.environment.models import (
-    EnvironmentRepairPlan,
     EnvironmentSnapshot,
     FrontendBuildRunResult,
     FrontendBuildSnapshot,
@@ -148,40 +147,6 @@ class EnvironmentService:
             frontend_build_is_stale=build_status.is_stale,
             frontend_build_detail=build_status.detail,
             frontend_build_tool=Path(build_tool).name if build_tool else None,
-        )
-
-    def build_repair_plan(self) -> EnvironmentRepairPlan:
-        snapshot = self.get_environment_snapshot()
-        blocking_issues: list[str] = []
-        warnings: list[str] = []
-        steps: list[str] = []
-
-        if not snapshot.uv_available:
-            blocking_issues.append("uv is not installed.")
-        if not snapshot.project_config_exists:
-            blocking_issues.append("Missing `apeiria.config.toml`.")
-        if not snapshot.plugin_project_exists:
-            warnings.append("Managed extension project is missing.")
-        if snapshot.frontend_workspace_exists and not snapshot.frontend_build_tool:
-            warnings.append("No frontend package manager was found.")
-
-        if not snapshot.main_virtualenv_exists:
-            steps.append("Run `uv sync --locked` or `apeiria env init`.")
-        if not snapshot.plugin_project_exists:
-            steps.append("Run `apeiria env init` to create `.apeiria/extensions`.")
-        if (
-            snapshot.frontend_workspace_exists
-            and snapshot.frontend_build_tool
-            and (
-                not snapshot.frontend_build_is_built or snapshot.frontend_build_is_stale
-            )
-        ):
-            steps.append("Run `apeiria run --build` before using the Web UI.")
-
-        return EnvironmentRepairPlan(
-            blocking_issues=blocking_issues,
-            warnings=warnings,
-            steps=steps,
         )
 
     def ensure_runtime_env_files(self) -> None:

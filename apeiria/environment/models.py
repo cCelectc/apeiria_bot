@@ -47,15 +47,6 @@ class EnvironmentSnapshot:
 
 
 @dataclass(frozen=True)
-class EnvironmentRepairPlan:
-    """Structured repair guidance for environment issues."""
-
-    blocking_issues: list[str] = field(default_factory=list)
-    warnings: list[str] = field(default_factory=list)
-    steps: list[str] = field(default_factory=list)
-
-
-@dataclass(frozen=True)
 class ProjectConfigBootstrapResult:
     """Created/skipped project config summary for first-run setup."""
 

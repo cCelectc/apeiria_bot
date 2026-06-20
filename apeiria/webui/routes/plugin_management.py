@@ -8,19 +8,19 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
-from apeiria.app.plugins.install_resolution import (
-    PluginInstallSource,
-    plugin_install_resolution_service,
-)
-from apeiria.app.plugins.management import plugin_management_service
-from apeiria.app.plugins.store.tasks import plugin_store_task_service
-from apeiria.app.plugins.store.update_check import (
-    plugin_update_check_service,
-    supports_plugin_update_check,
-)
 from apeiria.config.plugins import plugin_config_service
 from apeiria.exceptions import ProtectedPluginError, ResourceNotFoundError
 from apeiria.i18n import t
+from apeiria.plugins.install_resolution import (
+    PluginInstallSource,
+    plugin_install_resolution_service,
+)
+from apeiria.plugins.management import plugin_management_service
+from apeiria.plugins.store.tasks import plugin_store_task_service
+from apeiria.plugins.store.update_check import (
+    plugin_update_check_service,
+    supports_plugin_update_check,
+)
 from apeiria.webui.auth import require_auth
 from apeiria.webui.schemas.operations import OperationStatusResponse
 from apeiria.webui.schemas.plugin_management import (

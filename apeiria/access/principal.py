@@ -51,8 +51,8 @@ class AuthSession:
 
     principal: Principal
     auth_method: AuthMethod
-    session_version: int
     token_subject: str
+    session_version: int = 0
     issued_at: datetime | None = None
     expires_at: datetime | None = None
     client_ip: str | None = None

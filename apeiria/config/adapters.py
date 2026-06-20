@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-import logging
 from typing import TYPE_CHECKING, Any, TypedDict, cast
 
 import nonebot
+from nonebot.log import logger
 from nonebot.utils import resolve_dot_notation
 
 from apeiria.config.package_config import (
@@ -25,9 +25,6 @@ if TYPE_CHECKING:
 class AdapterConfig(TypedDict):
     modules: list[str]
     packages: dict[str, list[str]]
-
-
-logger = logging.getLogger("apeiria.config.adapters")
 
 
 class AdapterConfigService:
@@ -107,7 +104,7 @@ class AdapterConfigService:
             try:
                 adapter_cls = resolve_dot_notation(module_name, "Adapter")
             except (ImportError, AttributeError, ValueError) as exc:
-                logger.warning("Skip adapter %s: %s", module_name, exc)
+                logger.warning("Skip adapter {}: {}", module_name, exc)
                 continue
 
             if self._is_adapter_registered(adapter_cls):

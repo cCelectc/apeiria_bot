@@ -1,80 +1,101 @@
-"""AI profile admin routes."""
-
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Annotated, Any
+from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
+from sqlalchemy import select
 
-from apeiria.ai.profile import AIProfileUpdateInput
-from apeiria.app.ai import ai_application
+from apeiria.db.engine import get_session
+from apeiria.db.models.ai_relationship import AIProfile
 from apeiria.webui.auth import require_auth
-from apeiria.webui.routes.ai._auth_helpers import actor_username_from_claims
-
-from .profiles_schemas import (
-    AIProfileItem,
-    AIProfileUpdateRequest,
-    to_ai_profile_item,
-)
-
-if TYPE_CHECKING:
-    from apeiria.access.principal import AuthSession
-
 
 router = APIRouter()
 
 
-@router.get("/profiles", response_model=list[AIProfileItem])
-async def list_ai_profiles(
+class ProfileResponse(BaseModel):
+    id: int
+    platform: str
+    user_id: str
+    display_name: str | None
+    created_at: str
+    updated_at: str
+
+
+class ProfileCreate(BaseModel):
+    platform: str
+    user_id: str
+    display_name: str | None = None
+
+
+class ProfileUpdate(BaseModel):
+    display_name: str | None = None
+
+
+def _to_response(p: AIProfile) -> ProfileResponse:
+    return ProfileResponse(
+        id=p.id,
+        platform=p.platform,
+        user_id=p.user_id,
+        display_name=p.display_name,
+        created_at=p.created_at,
+        updated_at=p.updated_at,
+    )
+
+
+@router.get("", response_model=list[ProfileResponse])
+async def list_profiles(
     _: Annotated[Any, Depends(require_auth)],
-    limit: Annotated[int, Query(ge=1, le=200)] = 50,
-) -> list[AIProfileItem]:
-    profiles = await ai_application.operations.list_user_profiles(limit=limit)
-    return [to_ai_profile_item(item) for item in profiles]
+) -> list[ProfileResponse]:
+    async with get_session() as db:
+        result = await db.execute(
+            select(AIProfile).order_by(AIProfile.id.desc()),
+        )
+        return [_to_response(r) for r in result.scalars()]
 
 
-@router.get("/profiles/detail", response_model=AIProfileItem | None)
-async def get_ai_profile(
+@router.post("", response_model=ProfileResponse, status_code=201)
+async def create_profile(
+    body: ProfileCreate,
     _: Annotated[Any, Depends(require_auth)],
-    platform: Annotated[str, Query(min_length=1)],
-    user_id: Annotated[str, Query(min_length=1)],
-) -> AIProfileItem | None:
-    profile = await ai_application.operations.get_user_profile(
-        platform=platform,
-        user_id=user_id,
-    )
-    return to_ai_profile_item(profile) if profile is not None else None
+) -> ProfileResponse:
+    async with get_session() as db:
+        p = AIProfile(
+            platform=body.platform,
+            user_id=body.user_id,
+            display_name=body.display_name,
+        )
+        db.add(p)
+        await db.commit()
+        await db.refresh(p)
+        return _to_response(p)
 
 
-@router.patch("/profiles", response_model=AIProfileItem | None)
-async def update_ai_profile(
-    payload: AIProfileUpdateRequest,
-    session: Annotated["AuthSession", Depends(require_auth)],
-) -> AIProfileItem | None:
-    update_fields: dict[str, Any] = {
-        "name_visibility": payload.name_visibility,
-        "profile_enabled": payload.profile_enabled,
-    }
-    for field_name in ("display_name", "preferred_name", "name_source"):
-        if field_name in payload.model_fields_set:
-            update_fields[field_name] = getattr(payload, field_name)
-    profile = await ai_application.operations.update_user_profile(
-        profile_id=payload.profile_id,
-        update_input=AIProfileUpdateInput(**update_fields),
-        actor_username=actor_username_from_claims(session),
-    )
-    return to_ai_profile_item(profile) if profile is not None else None
+@router.patch("/{profile_id}", response_model=ProfileResponse)
+async def update_profile(
+    profile_id: int,
+    body: ProfileUpdate,
+    _: Annotated[Any, Depends(require_auth)],
+) -> ProfileResponse:
+    async with get_session() as db:
+        p = await db.get(AIProfile, profile_id)
+        if not p:
+            raise HTTPException(404, "Profile not found")
+        for key, val in body.model_dump(exclude_unset=True).items():
+            setattr(p, key, val)
+        await db.commit()
+        await db.refresh(p)
+        return _to_response(p)
 
 
-@router.delete("/profiles", response_model=bool)
-async def delete_ai_profile(
-    session: Annotated["AuthSession", Depends(require_auth)],
-    profile_id: Annotated[str, Query(min_length=1)],
-) -> bool:
-    return await ai_application.operations.delete_user_profile(
-        profile_id=profile_id,
-        actor_username=actor_username_from_claims(session),
-    )
-
-
-__all__ = ["router"]
+@router.delete("/{profile_id}", status_code=204)
+async def delete_profile(
+    profile_id: int,
+    _: Annotated[Any, Depends(require_auth)],
+) -> None:
+    async with get_session() as db:
+        p = await db.get(AIProfile, profile_id)
+        if not p:
+            raise HTTPException(404, "Profile not found")
+        await db.delete(p)
+        await db.commit()

@@ -1,368 +1,433 @@
-"""AI model profile / binding / source-model admin routes."""
-
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Annotated, Any
+from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
+from sqlalchemy import select
 
-from apeiria.app.ai import ai_application
-from apeiria.app.ai.operations import (
-    AISourceModelDeleteBlockedError,
-    AISourceModelFetchConfigError,
-    AISourceModelFetchUpstreamError,
-    AISourceModelTestConfigError,
-    AISourceModelTestUpstreamError,
+from apeiria.db.engine import get_session
+from apeiria.db.models.ai_source import (
+    AIChatModel,
+    AIEmbeddingModel,
+    AIRerankModel,
+    AISource,
 )
 from apeiria.webui.auth import require_auth
-from apeiria.webui.routes.ai._auth_helpers import actor_username_from_claims
-
-from .models_schemas import (
-    AIModelBindingItem,
-    AIModelCatalogItem,
-    AIModelProfileItem,
-    AIModelProfileUpsertRequest,
-    AIModelRouteBindingItem,
-    AIModelRouteBindingUpsertRequest,
-    AIModelRouteItem,
-    AIModelRouteMemberItem,
-    AIModelRouteMemberUpsertRequest,
-    AIModelRouteUpsertRequest,
-    AISourceModelFetchRequest,
-    AISourceModelItem,
-    AISourceModelTestRequest,
-    AISourceModelTestResult,
-    AISourceModelUpsertRequest,
-    to_ai_model_binding_item,
-    to_ai_model_catalog_item,
-    to_ai_model_profile_item,
-    to_ai_model_route_binding_item,
-    to_ai_model_route_item,
-    to_ai_model_route_member_item,
-    to_ai_source_model_item,
-)
-
-if TYPE_CHECKING:
-    from apeiria.access.principal import AuthSession
-
 
 router = APIRouter()
 
 
-@router.get("/sources/models", response_model=list[AISourceModelItem])
-async def list_ai_source_models(
-    _: Annotated[Any, Depends(require_auth)],
-    source_id: Annotated[str, Query(min_length=1)],
-) -> list[AISourceModelItem]:
-    items = await ai_application.operations.list_source_models(source_id=source_id)
-    return [to_ai_source_model_item(item) for item in items]
+# --- Source ---
 
 
-@router.post("/sources/models/fetch", response_model=list[AIModelCatalogItem])
-async def fetch_ai_source_models(
-    payload: AISourceModelFetchRequest,
-    _: Annotated[Any, Depends(require_auth)],
-) -> list[AIModelCatalogItem]:
-    try:
-        items = await ai_application.operations.fetch_source_models(
-            source_id=payload.source_id,
-            preset_type=payload.preset_type,
-            api_base=payload.api_base,
-            api_key=payload.api_key,
-            extra_config=payload.extra_config,
-        )
-    except AISourceModelFetchConfigError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(exc),
-        ) from exc
-    except AISourceModelFetchUpstreamError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=str(exc),
-        ) from exc
-    return [to_ai_model_catalog_item(item) for item in items]
+class SourceResponse(BaseModel):
+    source_id: str
+    name: str
+    adapter: str
+    api_base: str | None
+    api_key_env: str | None
+    enabled: bool
+    timeout_seconds: int | None
+    extra_config_json: str
+    created_at: str
+    updated_at: str
 
 
-@router.post("/sources/models/test", response_model=AISourceModelTestResult)
-async def test_ai_source_model(
-    payload: AISourceModelTestRequest,
-    _: Annotated[Any, Depends(require_auth)],
-) -> AISourceModelTestResult:
-    try:
-        (
-            model_identifier,
-            content,
-            tool_call_count,
-        ) = await ai_application.operations.test_source_model(
-            source_id=payload.source_id,
-            preset_type=payload.preset_type,
-            api_base=payload.api_base,
-            api_key=payload.api_key,
-            extra_config=payload.extra_config,
-            model_identifier=payload.model_identifier,
-        )
-    except AISourceModelTestConfigError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(exc),
-        ) from exc
-    except AISourceModelTestUpstreamError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=str(exc),
-        ) from exc
-    return AISourceModelTestResult(
-        model_identifier=model_identifier,
-        content=content,
-        tool_call_count=tool_call_count,
+class SourceCreate(BaseModel):
+    source_id: str
+    name: str
+    adapter: str
+    api_base: str | None = None
+    api_key_env: str | None = None
+    enabled: bool = True
+    timeout_seconds: int | None = None
+    extra_config_json: str = "{}"
+
+
+class SourceUpdate(BaseModel):
+    name: str | None = None
+    api_base: str | None = None
+    api_key_env: str | None = None
+    enabled: bool | None = None
+    timeout_seconds: int | None = None
+    extra_config_json: str | None = None
+
+
+def _source_to_response(s: AISource) -> SourceResponse:
+    return SourceResponse(
+        source_id=s.source_id,
+        name=s.name,
+        adapter=s.adapter,
+        api_base=s.api_base,
+        api_key_env=s.api_key_env,
+        enabled=bool(s.enabled),
+        timeout_seconds=s.timeout_seconds,
+        extra_config_json=s.extra_config_json,
+        created_at=s.created_at,
+        updated_at=s.updated_at,
     )
 
 
-@router.post("/sources/models", response_model=AISourceModelItem)
-async def create_ai_source_model(
-    payload: AISourceModelUpsertRequest,
-    session: Annotated["AuthSession", Depends(require_auth)],
-) -> AISourceModelItem:
-    item = await ai_application.operations.create_source_model(
-        source_id=payload.source_id,
-        model_identifier=payload.model_identifier,
-        display_name=payload.display_name,
-        enabled=payload.enabled,
-        is_default=payload.is_default,
-        extra_params=payload.extra_params,
-        capability_metadata=payload.capability_metadata,
-        default_options=payload.default_options,
-        capability_provenance=payload.capability_provenance,
-        actor_username=actor_username_from_claims(session),
-    )
-    return to_ai_source_model_item(item)
-
-
-@router.put("/sources/models", response_model=AISourceModelItem | None)
-async def update_ai_source_model(
-    payload: AISourceModelUpsertRequest,
-    session: Annotated["AuthSession", Depends(require_auth)],
-) -> AISourceModelItem | None:
-    if not payload.model_id:
-        return None
-    item = await ai_application.operations.update_source_model(
-        model_id=payload.model_id,
-        source_id=payload.source_id,
-        model_identifier=payload.model_identifier,
-        display_name=payload.display_name,
-        enabled=payload.enabled,
-        is_default=payload.is_default,
-        extra_params=payload.extra_params,
-        capability_metadata=payload.capability_metadata,
-        default_options=payload.default_options,
-        capability_provenance=payload.capability_provenance,
-        actor_username=actor_username_from_claims(session),
-    )
-    return to_ai_source_model_item(item) if item is not None else None
-
-
-@router.delete("/sources/models", response_model=bool)
-async def delete_ai_source_model(
-    session: Annotated["AuthSession", Depends(require_auth)],
-    model_id: Annotated[str, Query(min_length=1)],
-    source_id: Annotated[str | None, Query(max_length=64)] = None,
-) -> bool:
-    try:
-        return await ai_application.operations.delete_source_model(
-            model_id=model_id,
-            source_id=source_id,
-            actor_username=actor_username_from_claims(session),
-        )
-    except AISourceModelDeleteBlockedError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=str(exc),
-        ) from exc
-
-
-@router.get("/model-profiles", response_model=list[AIModelProfileItem])
-async def list_ai_model_profiles(
+@router.get("/sources", response_model=list[SourceResponse])
+async def list_sources(
     _: Annotated[Any, Depends(require_auth)],
-) -> list[AIModelProfileItem]:
-    profiles = await ai_application.operations.list_model_profiles()
-    return [to_ai_model_profile_item(item) for item in profiles]
-
-
-@router.put("/model-profiles", response_model=AIModelProfileItem | None)
-async def upsert_ai_model_profile(
-    payload: AIModelProfileUpsertRequest,
-    session: Annotated["AuthSession", Depends(require_auth)],
-) -> AIModelProfileItem | None:
-    item = (
-        await ai_application.operations.update_model_profile(
-            profile_id=payload.profile_id,
-            name=payload.name,
-            model_id=payload.model_id,
-            task_class=payload.task_class,
-            priority=payload.priority,
-            enabled=payload.enabled,
-            actor_username=actor_username_from_claims(session),
+) -> list[SourceResponse]:
+    async with get_session() as db:
+        result = await db.execute(
+            select(AISource).order_by(AISource.source_id),
         )
-        if payload.profile_id
-        else await ai_application.operations.create_model_profile(
-            name=payload.name,
-            model_id=payload.model_id,
-            task_class=payload.task_class,
-            priority=payload.priority,
-            enabled=payload.enabled,
-            actor_username=actor_username_from_claims(session),
-        )
-    )
-    return to_ai_model_profile_item(item) if item is not None else None
+        return [_source_to_response(r) for r in result.scalars()]
 
 
-@router.get("/model-bindings", response_model=list[AIModelBindingItem])
-async def list_ai_model_bindings(
+@router.post("/sources", response_model=SourceResponse, status_code=201)
+async def create_source(
+    body: SourceCreate,
     _: Annotated[Any, Depends(require_auth)],
-) -> list[AIModelBindingItem]:
-    bindings = await ai_application.operations.list_model_bindings()
-    return [to_ai_model_binding_item(item) for item in bindings]
-
-
-@router.get("/model-routes", response_model=list[AIModelRouteItem])
-async def list_ai_model_routes(
-    _: Annotated[Any, Depends(require_auth)],
-) -> list[AIModelRouteItem]:
-    routes = await ai_application.operations.list_model_routes()
-    return [to_ai_model_route_item(item) for item in routes]
-
-
-@router.put("/model-routes", response_model=AIModelRouteItem | None)
-async def upsert_ai_model_route(
-    payload: AIModelRouteUpsertRequest,
-    session: Annotated["AuthSession", Depends(require_auth)],
-) -> AIModelRouteItem | None:
-    item = (
-        await ai_application.operations.update_model_route(
-            route_id=payload.route_id,
-            name=payload.name,
-            task_class=payload.task_class,
-            mode=payload.mode,
-            algorithm=payload.algorithm,
-            fallback_on_failure=payload.fallback_on_failure,
-            enabled=payload.enabled,
-            actor_username=actor_username_from_claims(session),
+) -> SourceResponse:
+    async with get_session() as db:
+        s = AISource(
+            source_id=body.source_id,
+            name=body.name,
+            adapter=body.adapter,
+            api_base=body.api_base,
+            api_key_env=body.api_key_env,
+            enabled=int(body.enabled),
+            timeout_seconds=body.timeout_seconds,
+            extra_config_json=body.extra_config_json,
         )
-        if payload.route_id
-        else await ai_application.operations.create_model_route(
-            name=payload.name,
-            task_class=payload.task_class,
-            mode=payload.mode,
-            algorithm=payload.algorithm,
-            fallback_on_failure=payload.fallback_on_failure,
-            enabled=payload.enabled,
-            actor_username=actor_username_from_claims(session),
-        )
-    )
-    return to_ai_model_route_item(item) if item is not None else None
+        db.add(s)
+        await db.commit()
+        await db.refresh(s)
+        return _source_to_response(s)
 
 
-@router.delete("/model-routes", response_model=bool)
-async def delete_ai_model_route(
-    session: Annotated["AuthSession", Depends(require_auth)],
-    route_id: Annotated[str, Query(min_length=1)],
-) -> bool:
-    return await ai_application.operations.delete_model_route(
-        route_id=route_id,
-        actor_username=actor_username_from_claims(session),
-    )
-
-
-@router.get("/model-route-members", response_model=list[AIModelRouteMemberItem])
-async def list_ai_model_route_members(
+@router.patch("/sources/{source_id}", response_model=SourceResponse)
+async def update_source(
+    source_id: str,
+    body: SourceUpdate,
     _: Annotated[Any, Depends(require_auth)],
-    route_id: Annotated[str | None, Query(min_length=1)] = None,
-) -> list[AIModelRouteMemberItem]:
-    members = await ai_application.operations.list_model_route_members(
-        route_id=route_id
+) -> SourceResponse:
+    async with get_session() as db:
+        s = await db.get(AISource, source_id)
+        if not s:
+            raise HTTPException(404, "Source not found")
+        for key, val in body.model_dump(exclude_unset=True).items():
+            if val is None:
+                continue
+            if key == "enabled":
+                val = int(val)  # noqa: PLW2901
+            setattr(s, key, val)
+        await db.commit()
+        await db.refresh(s)
+        return _source_to_response(s)
+
+
+@router.delete("/sources/{source_id}", status_code=204)
+async def delete_source(
+    source_id: str,
+    _: Annotated[Any, Depends(require_auth)],
+) -> None:
+    async with get_session() as db:
+        s = await db.get(AISource, source_id)
+        if not s:
+            raise HTTPException(404, "Source not found")
+        await db.delete(s)
+        await db.commit()
+
+
+# --- Chat Model ---
+
+
+class ChatModelResponse(BaseModel):
+    model_id: str
+    source_id: str
+    model_identifier: str
+    display_name: str
+    context_window: int
+    supports_reasoning: bool
+    enabled: bool
+    is_default: bool
+    extra_params_json: str
+    created_at: str
+    updated_at: str
+
+
+class ChatModelCreate(BaseModel):
+    model_id: str
+    source_id: str
+    model_identifier: str
+    display_name: str
+    context_window: int = 128000
+    supports_reasoning: bool = False
+    enabled: bool = True
+    is_default: bool = False
+    extra_params_json: str = "{}"
+
+
+class ChatModelUpdate(BaseModel):
+    display_name: str | None = None
+    context_window: int | None = None
+    supports_reasoning: bool | None = None
+    enabled: bool | None = None
+    is_default: bool | None = None
+    extra_params_json: str | None = None
+
+
+def _chat_to_response(m: AIChatModel) -> ChatModelResponse:
+    return ChatModelResponse(
+        model_id=m.model_id,
+        source_id=m.source_id,
+        model_identifier=m.model_identifier,
+        display_name=m.display_name,
+        context_window=m.context_window,
+        supports_reasoning=bool(m.supports_reasoning),
+        enabled=bool(m.enabled),
+        is_default=bool(m.is_default),
+        extra_params_json=m.extra_params_json,
+        created_at=m.created_at,
+        updated_at=m.updated_at,
     )
-    return [to_ai_model_route_member_item(item) for item in members]
 
 
-@router.put(
-    "/model-route-members",
-    response_model=AIModelRouteMemberItem | None,
+@router.get("/chat", response_model=list[ChatModelResponse])
+async def list_chat_models(
+    _: Annotated[Any, Depends(require_auth)],
+) -> list[ChatModelResponse]:
+    async with get_session() as db:
+        result = await db.execute(
+            select(AIChatModel).order_by(AIChatModel.model_id),
+        )
+        return [_chat_to_response(r) for r in result.scalars()]
+
+
+@router.post("/chat", response_model=ChatModelResponse, status_code=201)
+async def create_chat_model(
+    body: ChatModelCreate,
+    _: Annotated[Any, Depends(require_auth)],
+) -> ChatModelResponse:
+    async with get_session() as db:
+        m = AIChatModel(
+            model_id=body.model_id,
+            source_id=body.source_id,
+            model_identifier=body.model_identifier,
+            display_name=body.display_name,
+            context_window=body.context_window,
+            supports_reasoning=int(body.supports_reasoning),
+            enabled=int(body.enabled),
+            is_default=int(body.is_default),
+            extra_params_json=body.extra_params_json,
+        )
+        db.add(m)
+        await db.commit()
+        await db.refresh(m)
+        return _chat_to_response(m)
+
+
+@router.patch("/chat/{model_id}", response_model=ChatModelResponse)
+async def update_chat_model(
+    model_id: str,
+    body: ChatModelUpdate,
+    _: Annotated[Any, Depends(require_auth)],
+) -> ChatModelResponse:
+    async with get_session() as db:
+        m = await db.get(AIChatModel, model_id)
+        if not m:
+            raise HTTPException(404, "Chat model not found")
+        bool_keys = {"enabled", "is_default", "supports_reasoning"}
+        for key, val in body.model_dump(exclude_unset=True).items():
+            if val is None:
+                continue
+            if key in bool_keys:
+                val = int(val)  # noqa: PLW2901
+            setattr(m, key, val)
+        await db.commit()
+        await db.refresh(m)
+        return _chat_to_response(m)
+
+
+@router.delete("/chat/{model_id}", status_code=204)
+async def delete_chat_model(
+    model_id: str,
+    _: Annotated[Any, Depends(require_auth)],
+) -> None:
+    async with get_session() as db:
+        m = await db.get(AIChatModel, model_id)
+        if not m:
+            raise HTTPException(404, "Chat model not found")
+        await db.delete(m)
+        await db.commit()
+
+
+# --- Embedding Model ---
+
+
+class EmbeddingModelResponse(BaseModel):
+    model_id: str
+    source_id: str
+    model_identifier: str
+    display_name: str
+    dimensions: int | None
+    enabled: bool
+    is_default: bool
+    extra_params_json: str
+
+
+class EmbeddingModelCreate(BaseModel):
+    model_id: str
+    source_id: str
+    model_identifier: str
+    display_name: str
+    dimensions: int | None = None
+    enabled: bool = True
+    is_default: bool = False
+    extra_params_json: str = "{}"
+
+
+def _emb_to_response(m: AIEmbeddingModel) -> EmbeddingModelResponse:
+    return EmbeddingModelResponse(
+        model_id=m.model_id,
+        source_id=m.source_id,
+        model_identifier=m.model_identifier,
+        display_name=m.display_name,
+        dimensions=m.dimensions,
+        enabled=bool(m.enabled),
+        is_default=bool(m.is_default),
+        extra_params_json=m.extra_params_json,
+    )
+
+
+@router.get("/embedding", response_model=list[EmbeddingModelResponse])
+async def list_embedding_models(
+    _: Annotated[Any, Depends(require_auth)],
+) -> list[EmbeddingModelResponse]:
+    async with get_session() as db:
+        result = await db.execute(
+            select(AIEmbeddingModel).order_by(
+                AIEmbeddingModel.model_id,
+            ),
+        )
+        return [_emb_to_response(r) for r in result.scalars()]
+
+
+@router.post(
+    "/embedding",
+    response_model=EmbeddingModelResponse,
+    status_code=201,
 )
-async def upsert_ai_model_route_member(
-    payload: AIModelRouteMemberUpsertRequest,
-    session: Annotated["AuthSession", Depends(require_auth)],
-) -> AIModelRouteMemberItem | None:
-    item = (
-        await ai_application.operations.update_model_route_member(
-            route_member_id=payload.route_member_id,
-            route_id=payload.route_id,
-            profile_id=payload.profile_id,
-            position=payload.position,
-            weight=payload.weight,
-            enabled=payload.enabled,
-            actor_username=actor_username_from_claims(session),
-        )
-        if payload.route_member_id
-        else await ai_application.operations.create_model_route_member(
-            route_id=payload.route_id,
-            profile_id=payload.profile_id,
-            position=payload.position,
-            weight=payload.weight,
-            enabled=payload.enabled,
-            actor_username=actor_username_from_claims(session),
-        )
-    )
-    return to_ai_model_route_member_item(item) if item is not None else None
-
-
-@router.delete("/model-route-members", response_model=bool)
-async def delete_ai_model_route_member(
-    session: Annotated["AuthSession", Depends(require_auth)],
-    route_member_id: Annotated[str, Query(min_length=1)],
-) -> bool:
-    return await ai_application.operations.delete_model_route_member(
-        route_member_id=route_member_id,
-        actor_username=actor_username_from_claims(session),
-    )
-
-
-@router.get("/model-route-bindings", response_model=list[AIModelRouteBindingItem])
-async def list_ai_model_route_bindings(
+async def create_embedding_model(
+    body: EmbeddingModelCreate,
     _: Annotated[Any, Depends(require_auth)],
-) -> list[AIModelRouteBindingItem]:
-    bindings = await ai_application.operations.list_model_route_bindings()
-    return [to_ai_model_route_binding_item(item) for item in bindings]
+) -> EmbeddingModelResponse:
+    async with get_session() as db:
+        m = AIEmbeddingModel(
+            model_id=body.model_id,
+            source_id=body.source_id,
+            model_identifier=body.model_identifier,
+            display_name=body.display_name,
+            dimensions=body.dimensions,
+            enabled=int(body.enabled),
+            is_default=int(body.is_default),
+            extra_params_json=body.extra_params_json,
+        )
+        db.add(m)
+        await db.commit()
+        await db.refresh(m)
+        return _emb_to_response(m)
 
 
-@router.put("/model-route-bindings", response_model=AIModelRouteBindingItem)
-async def upsert_ai_model_route_binding(
-    payload: AIModelRouteBindingUpsertRequest,
-    session: Annotated["AuthSession", Depends(require_auth)],
-) -> AIModelRouteBindingItem:
-    item = await ai_application.operations.upsert_model_route_binding(
-        scope_type=payload.scope_type,
-        scope_id=payload.scope_id,
-        task_class=payload.task_class,
-        route_id=payload.route_id,
-        actor_username=actor_username_from_claims(session),
+@router.delete("/embedding/{model_id}", status_code=204)
+async def delete_embedding_model(
+    model_id: str,
+    _: Annotated[Any, Depends(require_auth)],
+) -> None:
+    async with get_session() as db:
+        m = await db.get(AIEmbeddingModel, model_id)
+        if not m:
+            raise HTTPException(404, "Embedding model not found")
+        await db.delete(m)
+        await db.commit()
+
+
+# --- Rerank Model ---
+
+
+class RerankModelResponse(BaseModel):
+    model_id: str
+    source_id: str
+    model_identifier: str
+    display_name: str
+    enabled: bool
+    is_default: bool
+    extra_params_json: str
+
+
+class RerankModelCreate(BaseModel):
+    model_id: str
+    source_id: str
+    model_identifier: str
+    display_name: str
+    enabled: bool = True
+    is_default: bool = False
+    extra_params_json: str = "{}"
+
+
+def _rerank_to_response(m: AIRerankModel) -> RerankModelResponse:
+    return RerankModelResponse(
+        model_id=m.model_id,
+        source_id=m.source_id,
+        model_identifier=m.model_identifier,
+        display_name=m.display_name,
+        enabled=bool(m.enabled),
+        is_default=bool(m.is_default),
+        extra_params_json=m.extra_params_json,
     )
-    return to_ai_model_route_binding_item(item)
 
 
-@router.delete("/model-route-bindings", response_model=bool)
-async def delete_ai_model_route_binding(
-    session: Annotated["AuthSession", Depends(require_auth)],
-    scope_type: Annotated[str, Query(min_length=1)],
-    scope_id: Annotated[str, Query(min_length=1)],
-    task_class: Annotated[str, Query(min_length=1)],
-) -> bool:
-    return await ai_application.operations.delete_model_route_binding(
-        scope_type=scope_type,
-        scope_id=scope_id,
-        task_class=task_class,
-        actor_username=actor_username_from_claims(session),
-    )
+@router.get("/rerank", response_model=list[RerankModelResponse])
+async def list_rerank_models(
+    _: Annotated[Any, Depends(require_auth)],
+) -> list[RerankModelResponse]:
+    async with get_session() as db:
+        result = await db.execute(
+            select(AIRerankModel).order_by(AIRerankModel.model_id),
+        )
+        return [_rerank_to_response(r) for r in result.scalars()]
 
 
-__all__ = ["router"]
+@router.post(
+    "/rerank",
+    response_model=RerankModelResponse,
+    status_code=201,
+)
+async def create_rerank_model(
+    body: RerankModelCreate,
+    _: Annotated[Any, Depends(require_auth)],
+) -> RerankModelResponse:
+    async with get_session() as db:
+        m = AIRerankModel(
+            model_id=body.model_id,
+            source_id=body.source_id,
+            model_identifier=body.model_identifier,
+            display_name=body.display_name,
+            enabled=int(body.enabled),
+            is_default=int(body.is_default),
+            extra_params_json=body.extra_params_json,
+        )
+        db.add(m)
+        await db.commit()
+        await db.refresh(m)
+        return _rerank_to_response(m)
+
+
+@router.delete("/rerank/{model_id}", status_code=204)
+async def delete_rerank_model(
+    model_id: str,
+    _: Annotated[Any, Depends(require_auth)],
+) -> None:
+    async with get_session() as db:
+        m = await db.get(AIRerankModel, model_id)
+        if not m:
+            raise HTTPException(404, "Rerank model not found")
+        await db.delete(m)
+        await db.commit()

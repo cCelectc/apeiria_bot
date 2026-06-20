@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 from sqlalchemy import select, update
 from sqlalchemy.dialects.sqlite import insert
 
-from apeiria.db.base import _epoch_ms
+from apeiria.db.base import _now_iso
 from apeiria.db.engine import get_session
 from apeiria.db.models.governance import PluginState
 from apeiria.db.runtime import database_runtime
@@ -133,7 +133,7 @@ class PluginCatalogRepository:
             await session.execute(
                 update(PluginState)
                 .where(PluginState.plugin_id == module_name)
-                .values(enabled=1 if enabled else 0, updated_at=_epoch_ms())
+                .values(enabled=1 if enabled else 0, updated_at=_now_iso())
             )
             await session.commit()
         return True
@@ -142,7 +142,7 @@ class PluginCatalogRepository:
         return self.delete_plugin_records_sync(module_names)
 
     async def ensure_plugin_record_by_module_name(self, module_name: str) -> None:
-        now = _epoch_ms()
+        now = _now_iso()
         stmt = insert(PluginState).values(
             plugin_id=module_name,
             enabled=1,
@@ -172,7 +172,7 @@ class PluginCatalogRepository:
                 )
             )
             existing = result.first()
-            now = _epoch_ms()
+            now = _now_iso()
             if existing is None:
                 session.add(
                     PluginState(
@@ -220,7 +220,7 @@ class PluginCatalogRepository:
                 protection_mode=protection_mode or "normal",
             )
             return
-        now = _epoch_ms()
+        now = _now_iso()
         async with get_session() as session:
             await session.execute(
                 update(PluginState)
@@ -240,11 +240,6 @@ class PluginCatalogRepository:
             is_global_enabled=bool(model.enabled),
             access_mode=model.access_mode,
             protection_mode=model.protection_mode,
-            ui_hidden_override=(
-                None
-                if model.ui_hidden_override is None
-                else bool(model.ui_hidden_override)
-            ),
         )
 
 

@@ -1,16 +1,14 @@
 from __future__ import annotations
 
-import logging
 from pathlib import Path
 from typing import Any
 
 import tomlkit
 import tomlkit.items
+from nonebot.log import logger
 
 from apeiria.utils.files import atomic_write_text, load_toml_dict
 from apeiria.utils.project_context import current_project_root
-
-logger = logging.getLogger("apeiria.config.project")
 
 PROJECT_NONEBOT_DEFAULTS: dict[str, Any] = {
     "localstore_use_cwd": True,

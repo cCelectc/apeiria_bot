@@ -1,55 +1,67 @@
-"""Application-facing access service."""
-
 from __future__ import annotations
 
-from apeiria.access.models import AccessContext, AccessPolicyRule
-from apeiria.access.policy import resolve_explicit_rule
-from apeiria.access.repository import access_repository
+from dataclasses import dataclass
+
+from sqlalchemy import delete as sa_delete
+from sqlalchemy import select
+
+from apeiria.db.engine import get_session
+from apeiria.db.models.governance import AccessRule, PluginState
+
+
+async def check_access(
+    subject_type: str,
+    subject_id: str,
+    plugin_name: str,
+) -> bool:
+    async with get_session() as db:
+        rule = (
+            await db.execute(
+                select(AccessRule).where(
+                    AccessRule.subject_type == subject_type,
+                    AccessRule.subject_id == subject_id,
+                    AccessRule.plugin_name == plugin_name,
+                )
+            )
+        ).scalar_one_or_none()
+
+        if rule:
+            return rule.effect == "allow"
+
+        plugin = (
+            await db.execute(
+                select(PluginState).where(PluginState.plugin_id == plugin_name)
+            )
+        ).scalar_one_or_none()
+
+        if plugin:
+            return plugin.access_mode == "default_allow"
+
+        return True
+
+
+@dataclass(frozen=True)
+class AccessPolicyRule:
+    subject_type: str
+    subject_id: str
+    plugin_module: str
+    effect: str
+    note: str | None = None
 
 
 class AccessService:
-    """Facade for access context, group state, and explicit rules."""
-
-    async def is_group_bot_enabled(self, group_id: str) -> bool:
-        return await access_repository.get_group_bot_enabled(group_id)
-
-    async def is_group_plugin_enabled(self, group_id: str, plugin_module: str) -> bool:
-        disabled = await access_repository.get_group_disabled_plugins(group_id)
-        return plugin_module not in disabled
-
-    async def get_explicit_rule(
-        self,
-        context: AccessContext,
-        plugin_module: str,
-    ) -> AccessPolicyRule | None:
-        rows = await access_repository.get_explicit_rules_for_subjects(
-            plugin_module=plugin_module,
-            user_id=context.user_id,
-            group_id=context.group_id,
-        )
-        rules = [
-            AccessPolicyRule(
-                subject_type=row.subject_type,  # type: ignore[arg-type]
-                subject_id=row.subject_id,
-                plugin_module=row.plugin_module,
-                effect=row.effect,  # type: ignore[arg-type]
-                note=row.note,
-            )
-            for row in rows
-        ]
-        return resolve_explicit_rule(context, plugin_module, rules)
-
     async def list_access_rules(self) -> list[AccessPolicyRule]:
-        rows = await access_repository.list_access_rules()
+        async with get_session() as db:
+            rows = (await db.execute(select(AccessRule))).scalars().all()
         return [
             AccessPolicyRule(
-                subject_type=row.subject_type,  # type: ignore[arg-type]
-                subject_id=row.subject_id,
-                plugin_module=row.plugin_module,
-                effect=row.effect,  # type: ignore[arg-type]
-                note=row.note,
+                subject_type=r.subject_type,
+                subject_id=r.subject_id,
+                plugin_module=r.plugin_name,
+                effect=r.effect,
+                note=r.note,
             )
-            for row in rows
+            for r in rows
         ]
 
     async def upsert_access_rule(
@@ -61,13 +73,30 @@ class AccessService:
         effect: str,
         note: str | None = None,
     ) -> None:
-        await access_repository.upsert_access_rule(
-            subject_type=subject_type,
-            subject_id=subject_id,
-            plugin_module=plugin_module,
-            effect=effect,
-            note=note,
-        )
+        async with get_session() as db:
+            existing = (
+                await db.execute(
+                    select(AccessRule).where(
+                        AccessRule.subject_type == subject_type,
+                        AccessRule.subject_id == subject_id,
+                        AccessRule.plugin_name == plugin_module,
+                    )
+                )
+            ).scalar_one_or_none()
+            if existing:
+                existing.effect = effect
+                existing.note = note
+            else:
+                db.add(
+                    AccessRule(
+                        subject_type=subject_type,
+                        subject_id=subject_id,
+                        plugin_name=plugin_module,
+                        effect=effect,
+                        note=note,
+                    )
+                )
+            await db.commit()
 
     async def delete_access_rule(
         self,
@@ -76,11 +105,16 @@ class AccessService:
         subject_id: str,
         plugin_module: str,
     ) -> bool:
-        return await access_repository.delete_access_rule(
-            subject_type=subject_type,
-            subject_id=subject_id,
-            plugin_module=plugin_module,
-        )
+        async with get_session() as db:
+            result = await db.execute(
+                sa_delete(AccessRule).where(
+                    AccessRule.subject_type == subject_type,
+                    AccessRule.subject_id == subject_id,
+                    AccessRule.plugin_name == plugin_module,
+                )
+            )
+            await db.commit()
+            return (result.rowcount or 0) > 0
 
 
 access_service = AccessService()

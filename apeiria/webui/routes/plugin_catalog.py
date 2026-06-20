@@ -8,9 +8,9 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse
 
-from apeiria.app.plugins.management import plugin_management_service
 from apeiria.exceptions import ResourceNotFoundError
 from apeiria.i18n import t
+from apeiria.plugins.management import plugin_management_service
 from apeiria.runtime.context import get_current_runtime
 from apeiria.webui.auth import require_auth
 from apeiria.webui.schemas.plugin_catalog import (

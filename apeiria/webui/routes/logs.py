@@ -1,7 +1,9 @@
-"""Log routes — history + WebSocket real-time log streaming."""
+"""Log routes — history + SSE real-time log streaming."""
 
 from __future__ import annotations
 
+import asyncio
+import json
 from typing import Annotated, Any
 
 from fastapi import (
@@ -9,9 +11,11 @@ from fastapi import (
     Depends,
     HTTPException,
     Query,
+    Request,
     WebSocket,
     WebSocketDisconnect,
 )
+from fastapi.responses import StreamingResponse
 
 from apeiria.webui.auth import (
     require_auth,
@@ -27,7 +31,7 @@ from apeiria.webui.schemas.models import (
 router = APIRouter()
 
 
-def _ensure_log_stream_session(session: Any) -> None:
+def _ensure_log_stream_session(session: object | None) -> None:
     if session is not None:
         return
     msg = "forbidden"
@@ -41,11 +45,11 @@ async def get_log_history(
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
     filters: Annotated[LogHistoryQuery, Depends()] = LogHistoryQuery(),
 ) -> LogHistoryResponse:
-    import asyncio
+    import asyncio as _asyncio
 
     from apeiria.log import HistoryLogFilters, load_history_logs
 
-    items, has_more, total = await asyncio.to_thread(
+    items, has_more, total = await _asyncio.to_thread(
         load_history_logs,
         before=before,
         limit=limit,
@@ -74,19 +78,17 @@ async def get_log_history(
 async def get_log_sources(
     _: Annotated[Any, Depends(require_auth)],
 ) -> LogSourcesResponse:
-    import asyncio
+    import asyncio as _asyncio
 
     from apeiria.log import load_history_log_sources
 
-    return LogSourcesResponse(items=await asyncio.to_thread(load_history_log_sources))
+    return LogSourcesResponse(
+        items=await _asyncio.to_thread(load_history_log_sources),
+    )
 
 
 @router.websocket("/ws")
 async def log_websocket(websocket: WebSocket) -> None:
-    """WebSocket endpoint for real-time log streaming.
-
-    Browser sessions authenticate through the HttpOnly session cookie.
-    """
     await websocket.accept()
 
     try:
@@ -101,8 +103,46 @@ async def log_websocket(websocket: WebSocket) -> None:
     subscription = log_buffer.subscribe()
     try:
         while True:
-            await websocket.send_json((await subscription.queue.get()).to_payload())
+            await websocket.send_json(
+                (await subscription.queue.get()).to_payload(),
+            )
     except WebSocketDisconnect:
         pass
     finally:
         log_buffer.unsubscribe(subscription)
+
+
+@router.get("/stream")
+async def log_sse_stream(
+    req: Request,
+    _: Annotated[Any, Depends(require_auth)],
+) -> StreamingResponse:
+    """SSE endpoint for real-time log streaming."""
+    from apeiria.log import log_buffer
+
+    async def event_stream() -> Any:
+        subscription = log_buffer.subscribe()
+        try:
+            while True:
+                if await req.is_disconnected():
+                    break
+                try:
+                    entry = await asyncio.wait_for(
+                        subscription.queue.get(),
+                        timeout=30,
+                    )
+                    yield f"data: {json.dumps(entry.to_payload())}\n\n"
+                except asyncio.TimeoutError:
+                    yield ": keepalive\n\n"
+        finally:
+            log_buffer.unsubscribe(subscription)
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )

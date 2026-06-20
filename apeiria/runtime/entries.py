@@ -46,7 +46,7 @@ def resolve_message_entry_trigger(event: object | None) -> ApeiriaEntryTrigger:
     """Map a runtime message event to its lightweight trace trigger."""
 
     if event is not None:
-        from apeiria.app.chat.event import WebChatMessageEvent
+        from apeiria.webchat.event import WebChatMessageEvent
 
         if isinstance(event, WebChatMessageEvent):
             return ApeiriaEntryTrigger.WEB_CHAT_MESSAGE

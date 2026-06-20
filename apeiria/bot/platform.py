@@ -202,11 +202,51 @@ def _non_empty_string(value: object) -> str | None:
     return text or None
 
 
+def resolve_session(bot: "Bot", event: "Event") -> tuple[str, str, str]:
+    raw = adapter_name(bot)
+    if "onebot" in raw:
+        platform = "onebot"
+    elif "console" in raw:
+        platform = "console"
+    elif "kook" in raw or "kaiheila" in raw:
+        platform = "kook"
+    elif "discord" in raw:
+        platform = "discord"
+    elif "telegram" in raw:
+        platform = "telegram"
+    else:
+        platform = raw or "unknown"
+
+    group_id = string_attr(event, "group_id")
+    if group_id is not None:
+        return platform, "group", group_id
+
+    channel_id = string_attr(event, "channel_id")
+    if channel_id is not None:
+        return platform, "channel", channel_id
+
+    guild_id = string_attr(event, "guild_id")
+    if guild_id is not None:
+        return platform, "guild", guild_id
+
+    user_id = event_user_id(event)
+    if user_id is not None:
+        return platform, "private", user_id
+
+    return platform, "unknown", "0"
+
+
+def build_session_id(bot: "Bot", event: "Event") -> str:
+    platform, scene_type, scene_id = resolve_session(bot, event)
+    return f"{platform}:{scene_type}:{scene_id}"
+
+
 __all__ = [
     "ActionResult",
     "ActionStatus",
     "ProviderRegistry",
     "adapter_name",
+    "build_session_id",
     "call_platform_api",
     "event_group_id",
     "event_message_id",
@@ -214,5 +254,6 @@ __all__ = [
     "id_value",
     "mapping_string_attr",
     "nested_string_attr",
+    "resolve_session",
     "string_attr",
 ]

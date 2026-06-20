@@ -6,7 +6,7 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from apeiria.app.access.management import access_management_service
+from apeiria.access.management import access_management_service
 from apeiria.exceptions import ProtectedPluginError, ResourceNotFoundError
 from apeiria.i18n import t
 from apeiria.runtime.context import get_current_runtime

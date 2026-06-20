@@ -1,458 +1,303 @@
-"""Gemini native source adapter."""
-
 from __future__ import annotations
 
-import base64
+import json
 from http import HTTPStatus
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, ClassVar
 from urllib.parse import quote
 
 import httpx
 
-from apeiria.ai.model.adapters._common import (
-    _coerce_custom_headers,
-    _coerce_float,
-    _coerce_int,
-    _coerce_str,
-    _unsupported_part_text,
-)
-from apeiria.ai.model.runtime.adapter import (
-    AIModelCatalogItem,
-    AIModelEmbeddingRequest,
-    AIModelEmbeddingResponse,
-    AIModelGenerateRequest,
-    AIModelGenerateResponse,
-    AIModelMessage,
-    AIModelRerankRequest,
-    AIModelRerankResponse,
-    AIModelSpeechRequest,
-    AIModelSpeechResponse,
-    AIModelStreamRequest,
-    AIModelTranscriptionRequest,
-    AIModelTranscriptionResponse,
-)
+from apeiria.ai.model.registry import register_provider
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
 
-    from apeiria.ai.model.runtime.adapter import AIModelStreamEvent
+    from apeiria.ai.types import StreamEvent
+
+_DEFAULT_TIMEOUT_SECONDS = 120
 
 
-_DEFAULT_TIMEOUT_SECONDS = 20
-
-
-class GeminiNativeProviderConfigError(RuntimeError):
-    """Raised when required Gemini settings are missing."""
-
-    def __init__(self, field_name: str) -> None:
-        super().__init__(f"gemini-native source requires {field_name}")
-
-
-class GeminiNativeProviderCapabilityError(RuntimeError):
-    """Raised when Gemini native sources lack a requested operation."""
-
-    def __init__(self, capability: str) -> None:
-        super().__init__(f"gemini-native source does not support {capability}")
-
-
+@register_provider("gemini_native")
 class GeminiNativeProvider:
-    """Gemini native adapter using the public REST API."""
+    capabilities: ClassVar[set[str]] = {"chat"}
 
-    def __init__(
+    async def stream(
         self,
-        *,
-        api_base: str | None,
-        api_key: str | None = None,
-        timeout_seconds: int | None = None,
-        extra_config: dict[str, Any] | None = None,
-        request_func: Any | None = None,
-    ) -> None:
-        self.api_base = _normalize_api_base(api_base)
-        self.api_key = api_key
-        self.timeout_seconds = timeout_seconds
-        self.extra_config = extra_config or {}
-        self._request_func = request_func or _request_json
+        model_id: str,
+        messages: list[dict[str, Any]],
+        **kwargs: Any,
+    ) -> AsyncIterator[StreamEvent]:
+        from apeiria.ai.types import StreamEvent, StreamEventType, TokenUsage
 
-    async def list_models(
-        self,
-        *,
-        api_key: str | None = None,
-    ) -> list[AIModelCatalogItem]:
-        resolved_api_base = self.api_base
-        resolved_api_key = api_key or self.api_key
-        if not resolved_api_base:
-            raise GeminiNativeProviderConfigError("api_base")
-        if not resolved_api_key:
-            raise GeminiNativeProviderConfigError("api_key")
-
-        response = await self._request_func(
-            _RequestSpec(
-                method="GET",
-                url=_join_url(resolved_api_base, "/models"),
-                headers=_build_headers(
-                    resolved_api_key,
-                    custom_headers=_coerce_custom_headers(self.extra_config),
-                ),
-                timeout_seconds=self.timeout_seconds,
-                proxy=_coerce_str(self.extra_config, "proxy"),
-            )
+        source_config = await self._get_source_config(model_id, "ai_chat_models")
+        api_base = source_config.get(
+            "api_base", "https://generativelanguage.googleapis.com/v1beta"
         )
-        return _extract_gemini_models(response.json())
+        api_key = source_config.get("api_key", "")
+        model_identifier = source_config.get("model_identifier", model_id)
 
-    async def generate_text(
-        self,
-        request: AIModelGenerateRequest,
-    ) -> AIModelGenerateResponse:
-        api_base = _coerce_str(request.extra, "api_base") or self.api_base
-        api_key = _coerce_str(request.extra, "api_key") or self.api_key
-        if not api_base:
-            raise GeminiNativeProviderConfigError("api_base")
-        if not api_key:
-            raise GeminiNativeProviderConfigError("api_key")
-
-        options = request.options or request.extra or {}
-        payload = _build_gemini_generate_payload(
-            prompt=request.prompt,
-            messages=request.messages,
-            tools=request.tools,
-            temperature=request.temperature,
-            max_tokens=request.max_tokens,
-            options=options,
+        model_path = quote(_strip_model_prefix(model_identifier), safe="")
+        url = (
+            f"{api_base.rstrip('/')}/models/{model_path}:streamGenerateContent?alt=sse"
         )
-        response = await self._request_func(
-            _RequestSpec(
-                method="POST",
-                url=_join_url(
-                    api_base,
-                    f"/models/{quote(_strip_model_prefix(request.model_name), safe='')}"
-                    ":generateContent",
-                ),
-                headers=_build_headers(
-                    api_key,
-                    custom_headers=(
-                        _coerce_custom_headers(request.extra)
-                        or _coerce_custom_headers(self.extra_config)
-                    ),
-                ),
-                json=payload,
-                timeout_seconds=self.timeout_seconds,
-                proxy=_coerce_str(request.extra, "proxy")
-                or _coerce_str(self.extra_config, "proxy"),
-            )
-        )
-        raw = response.json()
-        return AIModelGenerateResponse(
-            source_id=request.source_id,
-            model_name=request.model_name,
-            content=_extract_gemini_text(raw),
-            raw=raw,
-            usage=raw.get("usageMetadata") if isinstance(raw, dict) else None,
-            finish_reason=_extract_gemini_finish_reason(raw),
-            response_id=str(raw.get("responseId")) if raw.get("responseId") else None,
-            provider_data=_extract_gemini_provider_data(raw),
-        ).with_sanitized_visible_text()
 
-    def stream_text(
-        self,
-        request: AIModelStreamRequest,
-    ) -> "AsyncIterator[AIModelStreamEvent]":
-        _ = request
-        raise GeminiNativeProviderCapabilityError("streaming")
+        payload = _build_gemini_payload(messages, kwargs.get("tools"))
+        headers = {"x-goog-api-key": api_key}
 
-    async def embed_texts(
-        self,
-        request: AIModelEmbeddingRequest,
-    ) -> AIModelEmbeddingResponse:
-        api_base = _coerce_str(request.extra, "api_base") or self.api_base
-        api_key = _coerce_str(request.extra, "api_key") or self.api_key
-        if not api_base:
-            raise GeminiNativeProviderConfigError("api_base")
-        if not api_key:
-            raise GeminiNativeProviderConfigError("api_key")
+        try:
+            tool_calls_collected: list[dict[str, Any]] = []
+            usage_data: dict[str, int] = {}
 
-        vectors: list[tuple[float, ...]] = []
-        raw_items: list[dict[str, Any]] = []
-        model_path = quote(_strip_model_prefix(request.model_name), safe="")
-        for text in request.texts:
-            response = await self._request_func(
-                _RequestSpec(
-                    method="POST",
-                    url=_join_url(
-                        api_base,
-                        f"/models/{model_path}:embedContent",
+            async with (
+                httpx.AsyncClient(
+                    timeout=float(_DEFAULT_TIMEOUT_SECONDS),
+                ) as client,
+                client.stream("POST", url, headers=headers, json=payload) as response,
+            ):
+                if response.status_code >= HTTPStatus.BAD_REQUEST:
+                    body = await response.aread()
+                    _raise_gemini_error(
+                        response.status_code,
+                        body.decode(errors="replace"),
+                    )
+
+                async for line in response.aiter_lines():
+                    chunk = _parse_sse_line(line)
+                    if chunk is None:
+                        continue
+                    text_events, new_tool_calls = _extract_chunk_data(chunk)
+                    for text in text_events:
+                        yield StreamEvent(type=StreamEventType.TEXT_DELTA, text=text)
+                    tool_calls_collected.extend(new_tool_calls)
+                    usage_meta = chunk.get("usageMetadata")
+                    if isinstance(usage_meta, dict):
+                        usage_data = _extract_usage_meta(usage_meta)
+
+            for tc_event in _emit_gemini_tool_calls(tool_calls_collected):
+                yield tc_event
+
+            if usage_data:
+                yield StreamEvent(
+                    type=StreamEventType.USAGE,
+                    usage=TokenUsage(
+                        prompt_tokens=usage_data.get("prompt_tokens", 0),
+                        completion_tokens=usage_data.get("completion_tokens", 0),
                     ),
-                    headers=_build_headers(
-                        api_key,
-                        custom_headers=(
-                            _coerce_custom_headers(request.extra)
-                            or _coerce_custom_headers(self.extra_config)
-                        ),
-                    ),
-                    json={"content": {"parts": [{"text": text}]}},
-                    timeout_seconds=self.timeout_seconds,
-                    proxy=_coerce_str(request.extra, "proxy")
-                    or _coerce_str(self.extra_config, "proxy"),
                 )
-            )
-            raw = response.json()
-            raw_items.append(raw)
-            vector = _extract_gemini_embedding(raw)
-            if vector:
-                vectors.append(vector)
 
-        return AIModelEmbeddingResponse(
-            source_id=request.source_id,
-            model_name=request.model_name,
-            vectors=tuple(vectors),
-            raw={"items": raw_items},
-            usage=_extract_last_gemini_usage(raw_items),
+            yield StreamEvent(type=StreamEventType.END)
+        except Exception as e:  # noqa: BLE001
+            _normalize_gemini_error(e)
+
+    async def _get_source_config(self, model_id: str, table: str) -> dict[str, Any]:
+        from apeiria.ai.model.adapters.openai_compatible import (
+            _resolve_source_config,
         )
 
-    async def transcribe_audio(
-        self,
-        request: AIModelTranscriptionRequest,
-    ) -> AIModelTranscriptionResponse:
-        _ = request
-        raise GeminiNativeProviderCapabilityError("speech_to_text")
-
-    async def synthesize_speech(
-        self,
-        request: AIModelSpeechRequest,
-    ) -> AIModelSpeechResponse:
-        _ = request
-        raise GeminiNativeProviderCapabilityError("text_to_speech")
-
-    async def rerank_documents(
-        self,
-        request: AIModelRerankRequest,
-    ) -> AIModelRerankResponse:
-        _ = request
-        raise GeminiNativeProviderCapabilityError("rerank")
-
-
-class _RequestSpec:
-    def __init__(  # noqa: PLR0913
-        self,
-        *,
-        method: str,
-        url: str,
-        headers: dict[str, str] | None = None,
-        json: dict[str, Any] | None = None,
-        timeout_seconds: int | None = None,
-        proxy: str | None = None,
-    ) -> None:
-        self.method = method
-        self.url = url
-        self.headers = headers
-        self.json = json
-        self.timeout_seconds = timeout_seconds
-        self.proxy = proxy
-
-
-def _normalize_api_base(api_base: str | None) -> str | None:
-    if not isinstance(api_base, str) or not api_base.strip():
-        return None
-    return api_base.strip().rstrip("/")
-
-
-def _join_url(api_base: str, path: str) -> str:
-    return f"{api_base.rstrip('/')}/{path.lstrip('/')}"
+        return await _resolve_source_config(model_id, table)
 
 
 def _strip_model_prefix(model_name: str) -> str:
-    normalized = model_name.strip()
-    return normalized.removeprefix("models/")
+    return model_name.strip().removeprefix("models/")
 
 
-def _build_headers(
-    api_key: str,
-    *,
-    custom_headers: dict[str, str] | None = None,
-) -> dict[str, str]:
+def _parse_sse_line(line: str) -> dict[str, Any] | None:
+    if not line.startswith("data: "):
+        return None
+    try:
+        return json.loads(line[6:])
+    except json.JSONDecodeError:
+        return None
+
+
+def _extract_chunk_data(
+    chunk: dict[str, Any],
+) -> tuple[list[str], list[dict[str, Any]]]:
+    texts: list[str] = []
+    tool_calls: list[dict[str, Any]] = []
+    for candidate in chunk.get("candidates", []):
+        content = candidate.get("content", {})
+        for part in content.get("parts", []):
+            text = part.get("text")
+            if text:
+                texts.append(text)
+            fc = part.get("functionCall")
+            if fc:
+                tool_calls.append(
+                    {"name": fc.get("name", ""), "arguments": fc.get("args", {})}
+                )
+    return texts, tool_calls
+
+
+def _extract_usage_meta(usage_meta: dict[str, Any]) -> dict[str, int]:
     return {
-        "x-goog-api-key": api_key,
-        **(custom_headers or {}),
+        "prompt_tokens": usage_meta.get("promptTokenCount", 0),
+        "completion_tokens": usage_meta.get("candidatesTokenCount", 0),
     }
 
 
-def _build_gemini_generate_payload(  # noqa: PLR0913
-    *,
-    prompt: str,
-    messages: tuple[AIModelMessage, ...],
-    tools: tuple[Any, ...] = (),
-    temperature: float | None,
-    max_tokens: int | None,
-    options: dict[str, Any],
+def _emit_gemini_tool_calls(
+    collected: list[dict[str, Any]],
+) -> list[StreamEvent]:
+    from apeiria.ai.types import StreamEvent, StreamEventType, ToolCall
+
+    events: list[StreamEvent] = []
+    for i, tc_data in enumerate(collected):
+        events.append(
+            StreamEvent(
+                type=StreamEventType.TOOL_CALL_END,
+                tool_call=ToolCall(
+                    id=f"gemini_tc_{i}",
+                    name=tc_data["name"],
+                    arguments=tc_data["arguments"]
+                    if isinstance(tc_data["arguments"], dict)
+                    else {},
+                ),
+            )
+        )
+    return events
+
+
+def _raise_gemini_error(status_code: int, body: str) -> None:
+    from apeiria.ai.model.exceptions import (
+        AIModelAuthError,
+        AIModelRateLimitError,
+    )
+
+    lower = body.lower()
+    if status_code == HTTPStatus.TOO_MANY_REQUESTS or "rate limit" in lower:
+        raise AIModelRateLimitError(body[:500])
+    if (
+        status_code in {HTTPStatus.UNAUTHORIZED, HTTPStatus.FORBIDDEN}
+        or "api key" in lower
+    ):
+        raise AIModelAuthError(body[:500])
+    msg = f"Gemini API error {status_code}: {body[:500]}"
+    raise RuntimeError(msg)
+
+
+def _normalize_gemini_error(e: Exception) -> None:
+    from apeiria.ai.model.exceptions import (
+        AIModelAuthError,
+        AIModelConnectionError,
+        AIModelContextLengthError,
+        AIModelRateLimitError,
+    )
+
+    if isinstance(
+        e,
+        (
+            AIModelRateLimitError,
+            AIModelAuthError,
+            AIModelContextLengthError,
+            AIModelConnectionError,
+        ),
+    ):
+        raise e
+    error_str = str(e).lower()
+    if "rate limit" in error_str or "429" in error_str:
+        raise AIModelRateLimitError(str(e)) from e
+    if "api key" in error_str or "401" in error_str or "403" in error_str:
+        raise AIModelAuthError(str(e)) from e
+    if "context length" in error_str or "token limit" in error_str:
+        raise AIModelContextLengthError(str(e)) from e
+    if "connection" in error_str or "timeout" in error_str:
+        raise AIModelConnectionError(str(e)) from e
+    raise e
+
+
+def _build_gemini_payload(
+    messages: list[dict[str, Any]],
+    tools: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
+    system_parts: list[str] = []
+    contents: list[dict[str, Any]] = []
+
+    for msg in messages:
+        role = msg.get("role", "user")
+        if role == "system":
+            content = msg.get("content", "")
+            if isinstance(content, str) and content:
+                system_parts.append(content)
+            continue
+        entry = _build_gemini_content_entry(msg, role)
+        if entry:
+            contents.append(entry)
+
     payload: dict[str, Any] = {
-        "contents": _build_gemini_contents(messages, prompt),
+        "contents": contents or [{"role": "user", "parts": [{"text": ""}]}],
     }
-    generation_config: dict[str, Any] = {}
-    resolved_temperature = temperature
-    if resolved_temperature is None:
-        resolved_temperature = _coerce_float(options, "temperature")
-    if resolved_temperature is not None:
-        generation_config["temperature"] = resolved_temperature
-    resolved_max_tokens = max_tokens or _coerce_int(options, "max_tokens")
-    if resolved_max_tokens is not None:
-        generation_config["maxOutputTokens"] = resolved_max_tokens
-    if generation_config:
-        payload["generationConfig"] = generation_config
-    system_text = "\n".join(
-        message.text_content for message in messages if message.role == "system"
-    ).strip()
-    if system_text:
-        payload["systemInstruction"] = {"parts": [{"text": system_text}]}
+    if system_parts:
+        payload["systemInstruction"] = {"parts": [{"text": "\n\n".join(system_parts)}]}
     if tools:
-        payload["tools"] = [
-            {
-                "functionDeclarations": [
-                    {
-                        "name": tool.name,
-                        "description": tool.description,
-                        "parameters": tool.parameters,
-                    }
-                    for tool in tools
-                ]
-            }
-        ]
+        func_declarations = _build_func_declarations(tools)
+        if func_declarations:
+            payload["tools"] = [{"functionDeclarations": func_declarations}]
+
     return payload
 
 
-def _build_gemini_contents(
-    messages: tuple[AIModelMessage, ...],
-    prompt: str,
-) -> list[dict[str, Any]]:
-    if not messages:
-        return [{"role": "user", "parts": [{"text": prompt}]}]
-    contents: list[dict[str, Any]] = []
-    for message in messages:
-        if message.role == "system":
-            continue
-        parts = _build_gemini_parts(message)
-        if not parts:
-            continue
-        role = "model" if message.role == "assistant" else "user"
-        contents.append({"role": role, "parts": parts})
-    return contents or [{"role": "user", "parts": [{"text": prompt}]}]
-
-
-def _build_gemini_parts(message: AIModelMessage) -> list[dict[str, Any]]:
-    if not message.parts:
-        text = message.text_content
-        return [{"text": text}] if text else []
-
+def _build_gemini_content_entry(
+    msg: dict[str, Any], role: str
+) -> dict[str, Any] | None:
+    content = msg.get("content", "")
+    gemini_role = "model" if role == "assistant" else "user"
     parts: list[dict[str, Any]] = []
-    for part in message.parts:
-        if part.kind == "text" and part.text:
-            parts.append({"text": part.text})
-        elif part.kind in {"image", "audio", "file"} and part.data:
-            parts.append(
+
+    if role == "tool":
+        return {
+            "role": "user",
+            "parts": [
                 {
-                    "inlineData": {
-                        "mimeType": part.mime_type or "application/octet-stream",
-                        "data": base64.b64encode(part.data).decode("ascii"),
+                    "functionResponse": {
+                        "name": msg.get("name", ""),
+                        "response": {"result": content},
                     }
                 }
-            )
-        elif part.kind in {"image", "audio", "file"} and part.url:
-            parts.append(
-                {
-                    "fileData": {
-                        "mimeType": part.mime_type or "application/octet-stream",
-                        "fileUri": part.url,
-                    }
-                }
-            )
-        elif part.kind in {"image", "audio", "file"}:
-            parts.append({"text": _unsupported_part_text(part.kind)})
-    return parts
+            ],
+        }
 
+    if isinstance(content, str) and content:
+        parts.append({"text": content})
+    elif isinstance(content, list):
+        parts.extend(
+            {"text": block.get("text", "")}
+            for block in content
+            if isinstance(block, dict) and block.get("type") == "text"
+        )
 
-def _extract_gemini_text(payload: Any) -> str:
-    candidates = payload.get("candidates") if isinstance(payload, dict) else None
-    if not isinstance(candidates, list) or not candidates:
-        return ""
-    content = candidates[0].get("content") if isinstance(candidates[0], dict) else None
-    parts = content.get("parts") if isinstance(content, dict) else None
-    if not isinstance(parts, list):
-        return ""
-    text_parts: list[str] = []
-    for part in parts:
-        text = part.get("text") if isinstance(part, dict) else None
-        if isinstance(text, str):
-            text_parts.append(text)
-    return "\n".join(text_parts)
+    tool_calls = msg.get("tool_calls")
+    if isinstance(tool_calls, list):
+        parts.extend(_build_function_call_part(tc) for tc in tool_calls)
 
-
-def _extract_gemini_finish_reason(payload: Any) -> str | None:
-    candidates = payload.get("candidates") if isinstance(payload, dict) else None
-    if not isinstance(candidates, list) or not candidates:
-        return None
-    reason = (
-        candidates[0].get("finishReason") if isinstance(candidates[0], dict) else None
-    )
-    return reason if isinstance(reason, str) else None
-
-
-def _extract_gemini_provider_data(payload: dict[str, Any]) -> dict[str, Any] | None:
-    data = {
-        key: payload[key]
-        for key in ("modelVersion",)
-        if key in payload and payload[key] is not None
-    }
-    return data or None
-
-
-def _extract_last_gemini_usage(payloads: list[dict[str, Any]]) -> dict[str, Any] | None:
-    for payload in reversed(payloads):
-        usage = payload.get("usageMetadata")
-        if isinstance(usage, dict):
-            return usage
+    if parts:
+        return {"role": gemini_role, "parts": parts}
     return None
 
 
-def _extract_gemini_embedding(payload: Any) -> tuple[float, ...]:
-    embedding = payload.get("embedding") if isinstance(payload, dict) else None
-    values = embedding.get("values") if isinstance(embedding, dict) else None
-    if not isinstance(values, list):
-        return ()
-    return tuple(float(value) for value in values if isinstance(value, (int, float)))
+def _build_function_call_part(tc: dict[str, Any]) -> dict[str, Any]:
+    fn = tc.get("function", {})
+    arguments = fn.get("arguments", "{}")
+    if isinstance(arguments, str):
+        try:
+            arguments = json.loads(arguments)
+        except json.JSONDecodeError:
+            arguments = {}
+    return {"functionCall": {"name": fn.get("name", ""), "args": arguments}}
 
 
-def _extract_gemini_models(payload: Any) -> list[AIModelCatalogItem]:
-    rows = payload.get("models") if isinstance(payload, dict) else None
-    if not isinstance(rows, list):
-        return []
-    models: list[AIModelCatalogItem] = []
-    for row in rows:
-        if not isinstance(row, dict):
-            continue
-        raw_name = row.get("name")
-        if not isinstance(raw_name, str) or not raw_name.strip():
-            continue
-        model_id = _strip_model_prefix(raw_name)
-        display_name = row.get("displayName")
-        models.append(
-            AIModelCatalogItem(
-                id=model_id,
-                name=display_name if isinstance(display_name, str) else model_id,
+def _build_func_declarations(
+    tools: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    declarations: list[dict[str, Any]] = []
+    for tool in tools:
+        if "function" in tool:
+            fn = tool["function"]
+            declarations.append(
+                {
+                    "name": fn.get("name", ""),
+                    "description": fn.get("description", ""),
+                    "parameters": fn.get("parameters", {}),
+                }
             )
-        )
-    return models
-
-
-async def _request_json(spec: _RequestSpec) -> httpx.Response:
-    async with httpx.AsyncClient(
-        timeout=float(spec.timeout_seconds or _DEFAULT_TIMEOUT_SECONDS),
-        proxy=spec.proxy,
-    ) as client:
-        response = await client.request(
-            spec.method,
-            spec.url,
-            headers=spec.headers,
-            json=spec.json,
-        )
-    if response.status_code >= HTTPStatus.BAD_REQUEST:
-        response.raise_for_status()
-    return response
+    return declarations

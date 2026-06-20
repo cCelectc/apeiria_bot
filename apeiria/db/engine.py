@@ -1,7 +1,6 @@
-"""Async SQLAlchemy engine and session factory for runtime database access."""
-
 from __future__ import annotations
 
+import asyncio
 from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import event
@@ -17,10 +16,11 @@ if TYPE_CHECKING:
 
 _engine: AsyncEngine | None = None
 _session_factory: async_sessionmaker[AsyncSession] | None = None
+_write_semaphore: asyncio.Semaphore | None = None
 
 
 async def init_engine(database_path: "Path") -> None:
-    global _engine, _session_factory  # noqa: PLW0603
+    global _engine, _session_factory, _write_semaphore  # noqa: PLW0603
     url = f"sqlite+aiosqlite:///{database_path}"
     _engine = create_async_engine(
         url,
@@ -46,13 +46,16 @@ async def init_engine(database_path: "Path") -> None:
         expire_on_commit=False,
     )
 
+    _write_semaphore = asyncio.Semaphore(3)
+
 
 async def close_engine() -> None:
-    global _engine, _session_factory  # noqa: PLW0603
+    global _engine, _session_factory, _write_semaphore  # noqa: PLW0603
     if _engine is not None:
         await _engine.dispose()
     _engine = None
     _session_factory = None
+    _write_semaphore = None
 
 
 def get_session() -> AsyncSession:
@@ -69,6 +72,12 @@ def get_engine() -> AsyncEngine:
     return _engine
 
 
+def get_write_semaphore() -> asyncio.Semaphore:
+    if _write_semaphore is None:
+        msg = "Database engine not initialized"
+        raise RuntimeError(msg)
+    return _write_semaphore
+
+
 def rowcount(result: object) -> int:
-    """Extract rowcount from a DML execution result (type-safe wrapper)."""
     return int(getattr(result, "rowcount", 0))

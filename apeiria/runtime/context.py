@@ -10,21 +10,21 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from apeiria.access.models import AccessPolicyRule
-    from apeiria.app.plugins.management import PluginWorkbenchState
-    from apeiria.app.system.management import (
+    from apeiria.plugins.management import PluginWorkbenchState
+    from apeiria.plugins.models import PluginCatalogEntry
+    from apeiria.runtime.control_plane import ApeiriaControlPlane
+    from apeiria.system.management import (
         DashboardEventSnapshot,
         DashboardStatusSnapshot,
         WebUIBuildRunSnapshot,
         WebUIBuildStatusSnapshot,
     )
-    from apeiria.app.system.project_update import (
+    from apeiria.system.project_update import (
         ProjectUpdatePlan,
         ProjectUpdatePlanRequest,
         ProjectUpdateStatus,
         ProjectUpdateTask,
     )
-    from apeiria.plugins.models import PluginCatalogEntry
-    from apeiria.runtime.control_plane import ApeiriaControlPlane
 
 
 class RuntimeConfigEntry(Protocol):
@@ -153,7 +153,7 @@ class ApeiriaRuntime:
     access: RuntimeAccessEntry
     system: RuntimeSystemManagementEntry
     project_update: RuntimeProjectUpdateEntry
-    ai: RuntimeAIEntry
+    ai: RuntimeAIEntry | None = field(default=None)
     control_plane: ApeiriaControlPlane | None = field(default=None)
 
 

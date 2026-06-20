@@ -1,9 +1,6 @@
 from __future__ import annotations
 
-"""Helpers for the managed extension runtime environment."""
-
 import json
-import logging
 import os
 import re
 import site
@@ -12,6 +9,8 @@ import sys
 from pathlib import Path
 from shutil import which
 from typing import Final
+
+from nonebot.log import logger as _logger
 
 from apeiria.environment.package_progress import current_package_progress_reporter
 from apeiria.plugins.package_ids import normalize_package_id
@@ -25,7 +24,6 @@ _PENDING_PLUGIN_UNINSTALLS_FILE: Final = "pending_plugin_uninstalls.json"
 _PENDING_PLUGIN_MODULE_UNINSTALLS_FILE: Final = "pending_plugin_module_uninstalls.json"
 _ANSI_RE: Final = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
 _OUTPUT_EXCERPT_LIMIT: Final = 4000
-_logger = logging.getLogger("apeiria.environment.extension_project")
 
 
 def _project_root() -> Path:

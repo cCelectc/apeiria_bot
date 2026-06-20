@@ -7,18 +7,18 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
 
-    from apeiria.app.system.management import (
+    from apeiria.runtime.context import ApeiriaRuntime
+    from apeiria.system.management import (
         DashboardStatusSnapshot,
         WebUIBuildRunSnapshot,
         WebUIBuildStatusSnapshot,
     )
-    from apeiria.app.system.project_update import (
+    from apeiria.system.project_update import (
         ProjectUpdatePlan,
         ProjectUpdatePlanRequest,
         ProjectUpdateStatus,
         ProjectUpdateTask,
     )
-    from apeiria.runtime.context import ApeiriaRuntime
 
 
 class ApeiriaControlPlane:
@@ -89,6 +89,8 @@ class ApeiriaControlPlane:
         return self._runtime.project_update.get_task(task_id)
 
     async def list_ai_managed_sessions(self, *, limit: int = 50) -> list[Any]:
+        if self._runtime.ai is None:
+            return []
         return await self._runtime.ai.sessions.list_managed_sessions(limit=limit)
 
     async def get_ai_managed_session_detail(
@@ -97,6 +99,8 @@ class ApeiriaControlPlane:
         session_id: str,
         message_limit: int = 50,
     ) -> Any:
+        if self._runtime.ai is None:
+            return None
         return await self._runtime.ai.sessions.get_managed_session_detail(
             session_id=session_id,
             message_limit=message_limit,

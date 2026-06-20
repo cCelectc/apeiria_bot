@@ -6,12 +6,11 @@ from types import SimpleNamespace
 import pytest
 from starlette.websockets import WebSocketDisconnect, WebSocketState
 
-from apeiria.app.ai.runtime.live import _discard_completed_partial_reply_task
-from apeiria.app.chat.bot import WebChatBot
-from apeiria.app.chat.connection import WebChatConnection, WebChatConnectionClosed
-from apeiria.app.chat.protocol import WebUIPrincipal
-from apeiria.app.chat.session import ChatSession
-from apeiria.app.chat.transport import serve_chat_websocket
+from apeiria.webchat.bot import WebChatBot
+from apeiria.webchat.connection import WebChatConnection, WebChatConnectionClosed
+from apeiria.webchat.protocol import WebUIPrincipal
+from apeiria.webchat.session import ChatSession
+from apeiria.webchat.transport import serve_chat_websocket
 
 
 class _FakeWebSocket:
@@ -84,11 +83,11 @@ def test_serve_chat_websocket_closes_session_on_disconnect(
 
     async def scenario() -> None:
         monkeypatch.setattr(
-            "apeiria.app.chat.transport.chat_gateway_service.authenticate_session",
+            "apeiria.webchat.transport.chat_gateway_service.authenticate_session",
             fake_authenticate_session,
         )
         monkeypatch.setattr(
-            "apeiria.app.chat.transport.web_chat_service.close_session",
+            "apeiria.webchat.transport.web_chat_service.close_session",
             closed_sessions.append,
         )
         await serve_chat_websocket(websocket, session=object())
@@ -138,12 +137,3 @@ def test_webchat_bot_send_returns_disconnected_on_closed_connection() -> None:
         assert result == {"status": "disconnected"}
 
     asyncio.run(scenario())
-
-
-def test_discard_completed_partial_reply_task_ignores_closed_connection() -> None:
-    class _Task:
-        @staticmethod
-        def exception() -> Exception:
-            return WebChatConnectionClosed(code=1006)
-
-    _discard_completed_partial_reply_task(_Task())

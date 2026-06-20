@@ -6,8 +6,8 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from apeiria.app.system.project_update import ProjectUpdateError
 from apeiria.runtime.context import get_current_runtime
+from apeiria.system.project_update import ProjectUpdateError
 from apeiria.webui.auth import require_auth
 from apeiria.webui.schemas.project_update import (
     ProjectUpdatePlanRequest,

@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import time
+
+import nonebot
 from arclet.alconna import CommandMeta
 from nonebot.adapters import Event  # noqa: TC002
 from nonebot_plugin_alconna import Alconna, on_alconna
@@ -10,7 +13,9 @@ from apeiria.i18n import t
 from apeiria.utils.time_format import format_duration
 
 from .presenter import render_block
-from .utils import ensure_owner_message, get_runtime_control_plane
+from .utils import ensure_owner_message
+
+_start_time = time.monotonic()
 
 _status = on_alconna(
     Alconna("status", meta=CommandMeta(description=t("admin.command.status"))),
@@ -26,16 +31,12 @@ async def handle_status(event: Event) -> None:
     if owner_error:
         await _status.finish(owner_error)
 
-    control_plane = get_runtime_control_plane()
-    if control_plane is None:
-        await _status.finish(t("admin.runtime_control_plane_unavailable"))
+    uptime = int(time.monotonic() - _start_time)
+    plugins_count = len(nonebot.get_loaded_plugins())
 
-    snapshot = await control_plane.get_dashboard_status()
-    adapters = (
-        ", ".join(snapshot.adapters)
-        if snapshot.adapters
-        else t("admin.status.adapters_none")
-    )
+    adapters = ", ".join(
+        type(a).__name__ for a in nonebot.get_driver()._adapters.values()
+    ) or t("admin.status.adapters_none")
 
     await _status.finish(
         render_block(
@@ -43,20 +44,10 @@ async def handle_status(event: Event) -> None:
             [
                 (
                     t("admin.status.field_runtime"),
-                    format_duration(int(snapshot.uptime)),
+                    format_duration(uptime),
                 ),
                 (t("admin.status.field_status"), t("admin.status.running")),
-                (t("admin.status.field_plugins"), snapshot.plugins_count),
-                (
-                    t("admin.status.field_disabled_plugins"),
-                    snapshot.disabled_plugins_count,
-                ),
-                (t("admin.status.field_groups"), snapshot.groups_count),
-                (
-                    t("admin.status.field_disabled_groups"),
-                    snapshot.disabled_groups_count,
-                ),
-                (t("admin.status.field_access_rules"), snapshot.access_rules_count),
+                (t("admin.status.field_plugins"), plugins_count),
                 (t("admin.status.field_adapters"), adapters),
             ],
         )

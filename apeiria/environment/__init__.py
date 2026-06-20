@@ -1,16 +1,11 @@
 """Operations-plane application services."""
 
-from apeiria.app.plugins.store.service import (
-    StoreService,
-    store_service,
-)
-from apeiria.environment.health import HealthService, health_service
+from apeiria.environment.health import HealthService
 from apeiria.environment.manager import (
     EnvironmentService,
     environment_service,
 )
 from apeiria.environment.models import (
-    EnvironmentRepairPlan,
     EnvironmentSnapshot,
     FrontendBuildRunResult,
     FrontendBuildSnapshot,
@@ -19,11 +14,6 @@ from apeiria.environment.models import (
     HealthSnapshot,
     PackageOperationRequest,
     PackageOperationResult,
-)
-from apeiria.environment.package_mutation import (
-    PackageMutationLockInfo,
-    package_mutation_lock,
-    package_mutation_lock_info,
 )
 from apeiria.environment.package_progress import (
     PackageProgressReporter,
@@ -35,9 +25,12 @@ from apeiria.plugins.install import (
     StoreInstallError,
     package_service,
 )
+from apeiria.plugins.store.service import (
+    StoreService,
+    store_service,
+)
 
 __all__ = [
-    "EnvironmentRepairPlan",
     "EnvironmentService",
     "EnvironmentSnapshot",
     "FrontendBuildRunResult",
@@ -46,7 +39,6 @@ __all__ = [
     "HealthCheck",
     "HealthService",
     "HealthSnapshot",
-    "PackageMutationLockInfo",
     "PackageOperationRequest",
     "PackageOperationResult",
     "PackageProgressReporter",
@@ -55,9 +47,6 @@ __all__ = [
     "StoreService",
     "current_package_progress_reporter",
     "environment_service",
-    "health_service",
-    "package_mutation_lock",
-    "package_mutation_lock_info",
     "package_service",
     "store_service",
     "use_package_progress_reporter",

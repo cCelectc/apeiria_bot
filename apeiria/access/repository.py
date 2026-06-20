@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from sqlalchemy import delete, select
 from sqlalchemy.dialects.sqlite import insert
 
-from apeiria.db.base import _epoch_ms
+from apeiria.db.base import _now_iso
 from apeiria.db.engine import get_session, rowcount
 from apeiria.db.models.governance import AccessRule, GroupState
 from apeiria.utils.group_state import decode_disabled_plugins
@@ -51,7 +51,7 @@ class AccessRepository:
                 select(AccessRule).order_by(
                     AccessRule.subject_type,
                     AccessRule.subject_id,
-                    AccessRule.plugin_id,
+                    AccessRule.plugin_name,
                 )
             )
             rows = result.scalars().all()
@@ -59,7 +59,7 @@ class AccessRepository:
             AccessRuleRow(
                 subject_type=r.subject_type,
                 subject_id=r.subject_id,
-                plugin_module=r.plugin_id,
+                plugin_module=r.plugin_name,
                 effect=r.effect,
                 note=r.note,
             )
@@ -91,7 +91,7 @@ class AccessRepository:
         async with get_session() as session:
             result = await session.execute(
                 select(AccessRule).where(
-                    AccessRule.plugin_id == plugin_module,
+                    AccessRule.plugin_name == plugin_module,
                     or_(*conditions),
                 )
             )
@@ -100,7 +100,7 @@ class AccessRepository:
             AccessRuleRow(
                 subject_type=r.subject_type,
                 subject_id=r.subject_id,
-                plugin_module=r.plugin_id,
+                plugin_module=r.plugin_name,
                 effect=r.effect,
                 note=r.note,
             )
@@ -116,11 +116,11 @@ class AccessRepository:
         effect: str,
         note: str | None = None,
     ) -> None:
-        now = _epoch_ms()
+        now = _now_iso()
         stmt = insert(AccessRule).values(
             subject_type=subject_type,
             subject_id=subject_id,
-            plugin_id=plugin_module,
+            plugin_name=plugin_module,
             effect=effect,
             note=note,
             created_at=now,
@@ -130,7 +130,7 @@ class AccessRepository:
             index_elements=[
                 AccessRule.subject_type,
                 AccessRule.subject_id,
-                AccessRule.plugin_id,
+                AccessRule.plugin_name,
             ],
             set_={
                 "effect": stmt.excluded.effect,
@@ -154,7 +154,7 @@ class AccessRepository:
                 delete(AccessRule).where(
                     AccessRule.subject_type == subject_type,
                     AccessRule.subject_id == subject_id,
-                    AccessRule.plugin_id == plugin_module,
+                    AccessRule.plugin_name == plugin_module,
                 )
             )
             await session.commit()

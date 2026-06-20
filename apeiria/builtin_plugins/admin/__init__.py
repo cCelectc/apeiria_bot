@@ -9,7 +9,6 @@ from apeiria.i18n import load_locales, t
 from apeiria.plugins.metadata.api import PluginExtraData, PluginType, UiExtra
 
 require("nonebot_plugin_alconna")
-require("nonebot_plugin_apscheduler")
 
 # Register plugin locales
 load_locales(Path(__file__).parent / "locales")
@@ -27,33 +26,23 @@ __plugin_meta__ = PluginMetadata(
         plugin_type=PluginType.SUPERUSER,
         ui=UiExtra(order=10),
         commands=[
-            "admin",
             "status",
             "sid",
-            "adapters",
-            "drivers",
             "plugins",
             "plugin",
             "config",
             "access",
             "restart",
-            "tasks",
-            "task",
         ],
         required_plugins=[
             "nonebot_plugin_alconna",
-            "nonebot_plugin_apscheduler",
         ],
     ).to_dict(),
 )
 
 from . import access_admin as access_admin
-from . import adapters as adapters
 from . import config_view as config_view
-from . import drivers as drivers
-from . import overview as overview
 from . import plugin_admin as plugin_admin
 from . import restart as restart
 from . import session_info as session_info
 from . import status as status
-from . import tasks as tasks

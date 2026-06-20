@@ -39,11 +39,11 @@ def test_project_update_status_reads_control_plane() -> None:
 
 
 def test_project_update_plan_preview_returns_blockers() -> None:
-    from apeiria.app.system.project_update import (
+    from apeiria.runtime.context import set_current_runtime
+    from apeiria.system.project_update import (
         ProjectUpdateMessage,
         ProjectUpdatePlan,
     )
-    from apeiria.runtime.context import set_current_runtime
     from apeiria.webui.routes import project_update
     from apeiria.webui.schemas.project_update import ProjectUpdatePlanRequest
 
@@ -113,8 +113,8 @@ def test_project_update_refresh_fetches_remote_refs() -> None:
 
 
 def test_project_update_task_creation_requires_unblocked_plan() -> None:
-    from apeiria.app.system.project_update import ProjectUpdateError
     from apeiria.runtime.context import set_current_runtime
+    from apeiria.system.project_update import ProjectUpdateError
     from apeiria.webui.routes import project_update
     from apeiria.webui.schemas.project_update import ProjectUpdatePlanRequest
 

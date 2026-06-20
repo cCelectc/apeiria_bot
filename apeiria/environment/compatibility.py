@@ -3,16 +3,15 @@
 from __future__ import annotations
 
 import json
-import logging
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
+
+from nonebot.log import logger
 
 from apeiria.utils.files import load_toml_dict
 
 if TYPE_CHECKING:
     from pathlib import Path
-
-logger = logging.getLogger("apeiria.environment.compatibility")
 
 _WEB_UI_TOKEN_KEY = "web_ui_token_expire_days"
 

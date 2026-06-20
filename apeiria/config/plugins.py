@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-import logging
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, TypedDict, cast
 
 import nonebot
+from nonebot.log import logger
 
 from apeiria.config.package_config import (
     add_unique_sorted_item,
@@ -29,9 +29,6 @@ class PluginConfig(TypedDict):
     modules: list[str]
     dirs: list[str]
     packages: dict[str, list[str]]
-
-
-logger = logging.getLogger("apeiria.config.plugins")
 
 
 class PluginConfigService:

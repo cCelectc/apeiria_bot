@@ -1,1 +1,0 @@
-"""Packaged prompt template files."""

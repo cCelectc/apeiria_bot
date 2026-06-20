@@ -1,140 +1,99 @@
-"""AI memory admin routes."""
-
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Annotated, Any, Literal
+from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel
+from sqlalchemy import delete as sqla_delete
+from sqlalchemy import func, select
 
-from apeiria.app.ai import ai_application
+from apeiria.db.engine import get_session
+from apeiria.db.models.ai_memory import Fact
 from apeiria.webui.auth import require_auth
-from apeiria.webui.routes.ai._auth_helpers import actor_username_from_claims
-
-from .memories_schemas import (
-    AIMemoryBulkActionRequest,
-    AIMemoryBulkActionResult,
-    AIMemoryBulkLifecycleRequest,
-    AIMemoryCreateRequest,
-    AIMemoryDeleteResult,
-    AIMemoryItem,
-    AIMemoryLifecycleRequest,
-    AIMemoryUpdateRequest,
-    to_ai_memory_item,
-)
-
-if TYPE_CHECKING:
-    from apeiria.access.principal import AuthSession
-
 
 router = APIRouter()
 
 
-@router.get("/memories", response_model=list[AIMemoryItem])
-async def list_ai_memories(  # noqa: PLR0913
+class MemoryResponse(BaseModel):
+    id: int
+    user_id: str
+    session_id: str
+    content: str
+    importance: float
+    embedding_status: str
+    last_reinforced_at: str
+    created_at: str
+
+
+class MemoryListResponse(BaseModel):
+    items: list[MemoryResponse]
+    total: int
+
+
+class MemoryBulkDelete(BaseModel):
+    ids: list[int]
+
+
+def _to_response(f: Fact) -> MemoryResponse:
+    return MemoryResponse(
+        id=f.id,
+        user_id=f.user_id,
+        session_id=f.session_id,
+        content=f.content,
+        importance=f.importance,
+        embedding_status=f.embedding_status,
+        last_reinforced_at=f.last_reinforced_at,
+        created_at=f.created_at,
+    )
+
+
+@router.get("", response_model=MemoryListResponse)
+async def list_memories(
     _: Annotated[Any, Depends(require_auth)],
-    anchor_type: Annotated[
-        Literal["scene", "participant", "user"],
-        Query(),
-    ],
-    anchor_id: Annotated[str, Query(min_length=1)],
-    query: str = "",
-    memory_layer: Annotated[str | None, Query(max_length=32)] = None,
-    memory_kind: Annotated[str | None, Query(max_length=32)] = None,
-    limit: Annotated[int, Query(ge=1, le=100)] = 20,
-) -> list[AIMemoryItem]:
-    memories = await ai_application.operations.list_memories(
-        anchor_type=anchor_type,
-        anchor_id=anchor_id,
-        query_text=query,
-        memory_layer=memory_layer,
-        memory_kind=memory_kind,
-        limit=limit,
-    )
-    return [to_ai_memory_item(item) for item in memories]
+    user_id: Annotated[str | None, Query()] = None,
+    session_id: Annotated[str | None, Query()] = None,
+    search: Annotated[str | None, Query()] = None,
+    offset: Annotated[int, Query(ge=0)] = 0,
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
+) -> MemoryListResponse:
+    async with get_session() as db:
+        q = select(Fact)
+        count_q = select(func.count()).select_from(Fact)
+        if user_id:
+            q = q.where(Fact.user_id == user_id)
+            count_q = count_q.where(Fact.user_id == user_id)
+        if session_id:
+            q = q.where(Fact.session_id == session_id)
+            count_q = count_q.where(Fact.session_id == session_id)
+        if search:
+            q = q.where(Fact.content.contains(search))
+            count_q = count_q.where(Fact.content.contains(search))
+        q = q.order_by(Fact.created_at.desc()).offset(offset).limit(limit)
+
+        total = (await db.execute(count_q)).scalar() or 0
+        result = await db.execute(q)
+        items = [_to_response(r) for r in result.scalars()]
+        return MemoryListResponse(items=items, total=total)
 
 
-@router.post("/memories", response_model=AIMemoryItem)
-async def create_ai_memory(
-    payload: AIMemoryCreateRequest,
-    session: Annotated["AuthSession", Depends(require_auth)],
-) -> AIMemoryItem:
-    memory = await ai_application.operations.create_memory(
-        memory_layer=payload.memory_layer,
-        memory_kind=payload.memory_kind,
-        anchor_type=payload.anchor_type,
-        anchor_id=payload.anchor_id,
-        content=payload.content,
-        salience=payload.salience,
-        confidence=payload.confidence,
-        actor_username=actor_username_from_claims(session),
-    )
-    return to_ai_memory_item(memory)
+@router.get("/{memory_id}", response_model=MemoryResponse)
+async def get_memory(
+    memory_id: int,
+    _: Annotated[Any, Depends(require_auth)],
+) -> MemoryResponse:
+    async with get_session() as db:
+        f = await db.get(Fact, memory_id)
+        if not f:
+            raise HTTPException(404, "Memory not found")
+        return _to_response(f)
 
 
-@router.patch("/memories", response_model=AIMemoryItem | None)
-async def update_ai_memory(
-    payload: AIMemoryUpdateRequest,
-    session: Annotated["AuthSession", Depends(require_auth)],
-) -> AIMemoryItem | None:
-    memory = await ai_application.operations.update_memory(
-        memory_id=payload.memory_id,
-        content=payload.content,
-        salience=payload.salience,
-        confidence=payload.confidence,
-        actor_username=actor_username_from_claims(session),
-    )
-    return to_ai_memory_item(memory) if memory is not None else None
-
-
-@router.delete("/memories", response_model=AIMemoryDeleteResult)
-async def delete_ai_memory(
-    session: Annotated["AuthSession", Depends(require_auth)],
-    memory_id: Annotated[str, Query(min_length=1)],
-) -> AIMemoryDeleteResult:
-    return AIMemoryDeleteResult(
-        deleted=await ai_application.operations.delete_memory(
-            memory_id=memory_id,
-            actor_username=actor_username_from_claims(session),
-        )
-    )
-
-
-@router.patch("/memories/lifecycle", response_model=AIMemoryItem | None)
-async def set_ai_memory_lifecycle(
-    payload: AIMemoryLifecycleRequest,
-    session: Annotated["AuthSession", Depends(require_auth)],
-) -> AIMemoryItem | None:
-    memory = await ai_application.operations.set_memory_lifecycle(
-        memory_id=payload.memory_id,
-        lifecycle_state=payload.lifecycle_state,
-        actor_username=actor_username_from_claims(session),
-    )
-    return to_ai_memory_item(memory) if memory is not None else None
-
-
-@router.post("/memories/bulk-delete", response_model=AIMemoryBulkActionResult)
-async def bulk_delete_ai_memories(
-    payload: AIMemoryBulkActionRequest,
-    session: Annotated["AuthSession", Depends(require_auth)],
-) -> AIMemoryBulkActionResult:
-    count = await ai_application.operations.bulk_delete_memories(
-        memory_ids=payload.memory_ids,
-        actor_username=actor_username_from_claims(session),
-    )
-    return AIMemoryBulkActionResult(affected=count)
-
-
-@router.post("/memories/bulk-lifecycle", response_model=AIMemoryBulkActionResult)
-async def bulk_set_ai_memory_lifecycle(
-    payload: AIMemoryBulkLifecycleRequest,
-    session: Annotated["AuthSession", Depends(require_auth)],
-) -> AIMemoryBulkActionResult:
-    count = await ai_application.operations.bulk_set_memory_lifecycle(
-        memory_ids=payload.memory_ids,
-        lifecycle_state=payload.lifecycle_state,
-        actor_username=actor_username_from_claims(session),
-    )
-    return AIMemoryBulkActionResult(affected=count)
-
-
-__all__ = ["router"]
+@router.post("/bulk-delete")
+async def bulk_delete_memories(
+    body: MemoryBulkDelete,
+    _: Annotated[Any, Depends(require_auth)],
+) -> dict[str, int]:
+    async with get_session() as db:
+        await db.execute(sqla_delete(Fact).where(Fact.id.in_(body.ids)))
+        await db.commit()
+    return {"deleted": len(body.ids)}

@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from sqlalchemy import select
 from sqlalchemy.dialects.sqlite import insert
 
-from apeiria.db.base import _epoch_ms
+from apeiria.db.base import _now_iso
 from apeiria.db.engine import get_session
 from apeiria.db.models.governance import GroupState
 
@@ -48,7 +48,7 @@ class GroupRepository:
         return [self._to_row(r) for r in rows]
 
     async def save_group(self, row: GroupStateRow) -> None:
-        now = _epoch_ms()
+        now = _now_iso()
         stmt = insert(GroupState).values(
             group_id=row.group_id,
             group_name=row.group_name,

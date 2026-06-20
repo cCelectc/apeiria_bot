@@ -6,7 +6,7 @@ from arclet.alconna import Args, CommandMeta
 from nonebot.adapters import Event  # noqa: TC002
 from nonebot_plugin_alconna import Alconna, Match, on_alconna
 
-from apeiria.app.access.management import access_management_service
+from apeiria.access.management import access_management_service
 from apeiria.exceptions import ProtectedPluginError, ResourceNotFoundError
 from apeiria.i18n import t
 

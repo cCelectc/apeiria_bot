@@ -25,7 +25,7 @@ HTTP_BAD_REQUEST = 400
 def test_update_plugin_package_rejects_without_available_update(
     monkeypatch: MonkeyPatch,
 ) -> None:
-    from apeiria.app.plugins.store.update_check import PluginUpdateCheckResult
+    from apeiria.plugins.store.update_check import PluginUpdateCheckResult
 
     _stub_nonebot_config(monkeypatch)
     from apeiria.webui.routes import plugin_management
@@ -90,7 +90,7 @@ def test_update_plugin_package_rejects_without_available_update(
 def test_update_plugin_package_creates_task_when_update_available(
     monkeypatch: MonkeyPatch,
 ) -> None:
-    from apeiria.app.plugins.store.update_check import PluginUpdateCheckResult
+    from apeiria.plugins.store.update_check import PluginUpdateCheckResult
 
     _stub_nonebot_config(monkeypatch)
     from apeiria.webui.routes import plugin_management

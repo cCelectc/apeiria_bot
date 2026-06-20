@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Any
 from pydantic import BaseModel, Field
 
 if TYPE_CHECKING:
-    from apeiria.app.plugins.store.models import StoreItem
+    from apeiria.plugins.store.models import StoreItem
 
 
 class AdapterStoreSourceItem(BaseModel):

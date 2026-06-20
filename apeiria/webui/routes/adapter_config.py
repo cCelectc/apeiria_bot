@@ -6,7 +6,7 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends
 
-from apeiria.app.plugins.management import plugin_management_service
+from apeiria.plugins.management import plugin_management_service
 from apeiria.webui.auth import require_auth
 from apeiria.webui.schemas.plugin_config import (
     AdapterConfigRequest,

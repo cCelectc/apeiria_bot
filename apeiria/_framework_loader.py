@@ -162,7 +162,7 @@ def load_framework() -> None:
     for plugin in FRAMEWORK_PLUGIN_MODULES:
         nonebot.load_plugin(plugin)
 
-    from apeiria.app.chat import _ensure_alconna_registrations
+    from apeiria.webchat import _ensure_alconna_registrations
 
     _ensure_alconna_registrations()
 
@@ -181,10 +181,6 @@ def load_framework() -> None:
     from apeiria.bot.hooks.registry import register_bot_hooks
 
     register_bot_hooks()
-
-    from apeiria.ai.trace_broker import trace_broker
-
-    trace_broker.enable_file_sink()
 
     from nonebot import get_driver
 

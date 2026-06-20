@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import importlib
-import logging
 from typing import TYPE_CHECKING, Any, TypedDict, cast
+
+from nonebot.log import logger
 
 from apeiria.config.package_config import (
     bind_package_item,
@@ -22,9 +23,6 @@ if TYPE_CHECKING:
 class DriverConfig(TypedDict):
     builtin: list[str]
     packages: dict[str, list[str]]
-
-
-logger = logging.getLogger("apeiria.config.drivers")
 
 
 class DriverConfigService:

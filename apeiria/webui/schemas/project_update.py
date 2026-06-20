@@ -165,7 +165,7 @@ def to_project_update_status_response(state: Any) -> ProjectUpdateStatusResponse
 
 
 def to_project_update_plan_request(payload: ProjectUpdatePlanRequest) -> Any:
-    from apeiria.app.system.project_update import ProjectUpdatePlanRequest as Domain
+    from apeiria.system.project_update import ProjectUpdatePlanRequest as Domain
 
     return Domain(
         channel=payload.channel,

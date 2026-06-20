@@ -110,9 +110,9 @@ class LogBuffer:
 
 log_buffer = LogBuffer()
 LOG_LINE_PATTERN = re.compile(
-    r"^\[(?P<timestamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\]\s"
+    r"^(?P<timestamp>\d{2}-\d{2} \d{2}:\d{2}:\d{2})\s"
     r"\[(?P<level>[^\]]+)\]\s"
-    r"\[(?P<source>[^\]]+)\]\s"
+    r"\[(?P<source>[^\]]+)\]\s\|\s"
     r"(?P<message>.*)$"
 )
 ACCESS_LOG_PATTERN = re.compile(
@@ -124,9 +124,7 @@ _DATE_ONLY_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 
 def _log_format(_record: Record) -> str:
-    return (
-        "[{time:YYYY-MM-DD HH:mm:ss}] [{level.name:<8}] [{name}] {message}\n{exception}"
-    )
+    return "{time:MM-DD HH:mm:ss} [{level}] [{name}] | {message}\n{exception}"
 
 
 def _log_dir() -> Path:

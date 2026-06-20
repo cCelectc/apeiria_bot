@@ -1,80 +1,93 @@
-"""AI relationship admin routes."""
-
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Annotated, Any
+from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel
+from sqlalchemy import func, select
 
-from apeiria.app.ai import ai_application
+from apeiria.db.engine import get_session
+from apeiria.db.models.ai_relationship import RelationshipScore
 from apeiria.webui.auth import require_auth
-from apeiria.webui.routes.ai._auth_helpers import actor_username_from_claims
-
-from .relationships_schemas import (
-    AIRelationshipEventItem,
-    AIRelationshipScoreUpdateRequest,
-    AIRelationshipStateItem,
-    to_ai_relationship_event_item,
-    to_ai_relationship_state_item,
-)
-
-if TYPE_CHECKING:
-    from apeiria.access.principal import AuthSession
-
 
 router = APIRouter()
 
 
-@router.get("/relationships/list", response_model=list[AIRelationshipStateItem])
-async def list_ai_relationships(
+class RelationshipResponse(BaseModel):
+    user_id: str
+    session_id: str
+    score: float
+    last_updated_at: str
+
+
+class RelationshipListResponse(BaseModel):
+    items: list[RelationshipResponse]
+    total: int
+
+
+@router.get("", response_model=RelationshipListResponse)
+async def list_relationships(
     _: Annotated[Any, Depends(require_auth)],
+    user_id: Annotated[str | None, Query()] = None,
+    offset: Annotated[int, Query(ge=0)] = 0,
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
-) -> list[AIRelationshipStateItem]:
-    states = await ai_application.operations.list_relationships(limit=limit)
-    return [to_ai_relationship_state_item(state) for state in states]
+) -> RelationshipListResponse:
+    async with get_session() as db:
+        q = select(RelationshipScore)
+        count_q = select(func.count()).select_from(RelationshipScore)
+        if user_id:
+            q = q.where(RelationshipScore.user_id == user_id)
+            count_q = count_q.where(RelationshipScore.user_id == user_id)
+        q = q.order_by(RelationshipScore.score.desc()).offset(offset)
+        q = q.limit(limit)
+
+        total = (await db.execute(count_q)).scalar() or 0
+        result = await db.execute(q)
+        items = [
+            RelationshipResponse(
+                user_id=r.user_id,
+                session_id=r.session_id,
+                score=r.score,
+                last_updated_at=r.last_updated_at,
+            )
+            for r in result.scalars()
+        ]
+        return RelationshipListResponse(items=items, total=total)
 
 
-@router.get("/relationships", response_model=AIRelationshipStateItem)
-async def get_ai_relationship_state(
+@router.get("/{user_id}/{session_id}", response_model=RelationshipResponse)
+async def get_relationship(
+    user_id: str,
+    session_id: str,
     _: Annotated[Any, Depends(require_auth)],
-    platform: Annotated[str, Query(min_length=1)],
-    user_id: Annotated[str, Query(min_length=1)],
-) -> AIRelationshipStateItem:
-    state = await ai_application.operations.get_relationship_state(
-        platform=platform,
-        user_id=user_id,
-    )
-    return to_ai_relationship_state_item(state)
+) -> RelationshipResponse:
+    async with get_session() as db:
+        r = await db.get(RelationshipScore, (user_id, session_id))
+        if not r:
+            raise HTTPException(404, "Relationship not found")
 
 
-@router.get("/relationships/events", response_model=list[AIRelationshipEventItem])
-async def list_ai_relationship_events(
+class RelationshipUpdate(BaseModel):
+    score: float
+
+
+@router.patch("/{user_id}/{session_id}", response_model=RelationshipResponse)
+async def update_relationship(
+    user_id: str,
+    session_id: str,
+    body: RelationshipUpdate,
     _: Annotated[Any, Depends(require_auth)],
-    platform: Annotated[str, Query(min_length=1)],
-    user_id: Annotated[str, Query(min_length=1)],
-    limit: Annotated[int, Query(ge=1, le=100)] = 20,
-) -> list[AIRelationshipEventItem]:
-    events = await ai_application.operations.list_relationship_events(
-        platform=platform,
-        user_id=user_id,
-        limit=limit,
-    )
-    return [to_ai_relationship_event_item(item) for item in events]
-
-
-@router.patch("/relationships", response_model=AIRelationshipStateItem)
-async def update_ai_relationship_score(
-    payload: AIRelationshipScoreUpdateRequest,
-    session: Annotated["AuthSession", Depends(require_auth)],
-) -> AIRelationshipStateItem:
-    state = await ai_application.operations.set_relationship_score(
-        platform=payload.platform,
-        user_id=payload.user_id,
-        score=payload.score,
-        scene_id=payload.scene_id,
-        actor_username=actor_username_from_claims(session),
-    )
-    return to_ai_relationship_state_item(state)
-
-
-__all__ = ["router"]
+) -> RelationshipResponse:
+    async with get_session() as db:
+        r = await db.get(RelationshipScore, (user_id, session_id))
+        if not r:
+            raise HTTPException(404, "Relationship not found")
+        r.score = body.score
+        await db.commit()
+        await db.refresh(r)
+        return RelationshipResponse(
+            user_id=r.user_id,
+            session_id=r.session_id,
+            score=r.score,
+            last_updated_at=r.last_updated_at,
+        )

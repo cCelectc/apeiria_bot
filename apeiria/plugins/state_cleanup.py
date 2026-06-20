@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-import logging
 from typing import TYPE_CHECKING
+
+from nonebot.log import logger
 
 from apeiria._framework_loader import iter_builtin_plugin_modules
 from apeiria.config.plugins import plugin_config_service
@@ -12,8 +13,6 @@ from apeiria.utils.plugin_introspection import get_module_required_plugins
 
 if TYPE_CHECKING:
     from collections.abc import Collection
-
-logger = logging.getLogger("apeiria.plugins.state_cleanup")
 
 
 class PluginStateCleanupService:

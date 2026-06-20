@@ -21,11 +21,9 @@ TOOL_OBSERVATION_STATUS_CHECK = (
 )
 
 SOURCE_MODEL_TABLE_NAMES: tuple[str, ...] = (
-    "ai_chat_model",
-    "ai_embedding_model",
-    "ai_stt_model",
-    "ai_tts_model",
-    "ai_rerank_model",
+    "ai_chat_models",
+    "ai_embedding_models",
+    "ai_rerank_models",
 )
 
 TURN_DISPOSITION_VALUES: tuple[str, ...] = (

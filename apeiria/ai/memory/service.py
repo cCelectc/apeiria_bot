@@ -1,616 +1,179 @@
-"""Memory CRUD and retrieval service."""
-
 from __future__ import annotations
 
-from dataclasses import replace
-from typing import TYPE_CHECKING, cast
+from datetime import datetime, timezone
+from typing import TYPE_CHECKING
 
-from apeiria.ai.memory.actions import build_memory_write_plans
-from apeiria.ai.memory.contracts import (
-    AIMemoryCreateInput,
-    AIMemoryStateUpdateInput,
-    AIMemoryUpdateInput,
-)
-from apeiria.ai.memory.governance import (
-    default_use_mode_for_manual_memory,
-    govern_extracted_memory,
-)
-from apeiria.ai.memory.knowledge import KnowledgeMemoryCoordinator
-from apeiria.ai.memory.models import (
-    AIMemoryRetrievalDiagnostics,
-    AIMemoryRetrievalSelection,
-    AIMemoryUseMode,
-)
-from apeiria.ai.memory.repository import (
-    AIMemoryRepository,
-    utcnow,
-)
-from apeiria.ai.memory.summaries import MemorySummaryCoordinator
-from apeiria.ai.retrieval.identity import content_hash_for_text, retrieval_document_id
-from apeiria.ai.retrieval.models import DenseVectorRecord, RetrievalDocument
-from apeiria.ai.retrieval.service import RetrievalCandidateService
+from nonebot.log import logger
+from sqlalchemy import select
+
+from apeiria.db.base import _now_iso
+from apeiria.db.engine import get_session
+from apeiria.db.models.ai_memory import Fact
 
 if TYPE_CHECKING:
-    from datetime import datetime
+    from apeiria.ai.embedding.index import VectorIndex
+    from apeiria.db.models.ai_settings import AIRuntimeSettings
 
-    from apeiria.ai.memory.embedding_store import AIMemoryEmbeddingRecord
-    from apeiria.ai.memory.models import (
-        AIMemoryAnchorType,
-        AIMemoryDefinition,
-        AIMemoryExtractionCandidate,
-        AIMemoryKind,
-        AIMemoryLayer,
-        AIMemoryLifecycleState,
-        AIMemoryQuery,
+_DEDUP_THRESHOLD = 0.85
+_SECONDS_PER_DAY = 86400
+
+
+async def remember(
+    user_id: str,
+    session_id: str,
+    content: str,
+    importance: float = 0.5,
+    *,
+    embedding_model_id: str | None = None,
+) -> Fact:
+    existing = await _similarity_dedup(
+        user_id, session_id, content, embedding_model_id=embedding_model_id
     )
+    if existing:
+        async with get_session() as db:
+            existing.content = content
+            existing.importance = importance
+            existing.last_reinforced_at = _now_iso()
+            db.add(existing)
+            await db.commit()
+            return existing
 
-
-class AIMemoryService:
-    """Long-term memory CRUD and retrieval service."""
-
-    SUMMARY_MEMORY_LAYER: AIMemoryLayer = MemorySummaryCoordinator.SUMMARY_MEMORY_LAYER
-    SUMMARY_MEMORY_KIND: AIMemoryKind = MemorySummaryCoordinator.SUMMARY_MEMORY_KIND
-
-    def __init__(
-        self,
-        *,
-        repository: AIMemoryRepository | None = None,
-        knowledge: KnowledgeMemoryCoordinator | None = None,
-        summaries: MemorySummaryCoordinator | None = None,
-        retrieval: RetrievalCandidateService | None = None,
-    ) -> None:
-        self._retrieval = retrieval or RetrievalCandidateService()
-        self._repository = repository or AIMemoryRepository()
-        self._knowledge = knowledge or KnowledgeMemoryCoordinator(
-            self._repository,
-            retrieval=self._retrieval,
-        )
-        self._summaries = summaries or MemorySummaryCoordinator(self._repository)
-
-    async def create_memory(
-        self,
-        create_input: AIMemoryCreateInput,
-    ) -> "AIMemoryDefinition":
-        """Create one governed memory item."""
-
-        governed_input = _with_default_governance(create_input)
-        memory = await self._repository.create_memory(
-            governed_input,
-            ignore_existing=False,
-        )
-        assert memory is not None
-        await self._sync_memory_retrieval_index(memory)
-        return memory
-
-    async def create_memory_if_absent(
-        self,
-        create_input: AIMemoryCreateInput,
-    ) -> "AIMemoryDefinition | None":
-        """Create one memory item only when an identical item does not exist."""
-
-        governed_input = _with_default_governance(create_input)
-        memory = await self._repository.create_memory(
-            governed_input,
-            ignore_existing=True,
-        )
-        if memory is not None:
-            await self._sync_memory_retrieval_index(memory)
-        return memory
-
-    async def get_memory_by_identity(
-        self,
-        create_input: AIMemoryCreateInput,
-    ) -> "AIMemoryDefinition | None":
-        """Load one exact memory row for the given identity tuple."""
-
-        return await self._repository.get_memory_by_identity(create_input)
-
-    async def get_memory(
-        self,
-        *,
-        memory_id: str,
-    ) -> "AIMemoryDefinition | None":
-        """Load one memory row by stable id."""
-
-        return await self._repository.get_memory(memory_id=memory_id)
-
-    async def update_memory_content(
-        self,
-        *,
-        memory_id: str,
-        update_input: AIMemoryUpdateInput,
-    ) -> "AIMemoryDefinition | None":
-        """Update one existing memory item in place."""
-
-        row = await self._repository.update_memory_content(
-            memory_id=memory_id,
-            update_input=update_input,
-        )
-        if row is not None:
-            await self._sync_memory_retrieval_index(row)
-        return row
-
-    async def remember_candidates(
-        self,
-        *,
-        anchor_type: "AIMemoryAnchorType",
-        anchor_id: str,
-        source_message_id: str | None,
-        candidates: "list[AIMemoryExtractionCandidate]",
-        scene_type: str = "private",
-    ) -> "list[AIMemoryDefinition]":
-        """Persist extracted long-term memory candidates while avoiding duplicates."""
-
-        existing_memories = await self.list_memories(
-            anchor_type=anchor_type,
-            anchor_id=anchor_id,
-            memory_layer="long_term",
-            lifecycle_states=("active", "candidate"),
-        )
-        plans = build_memory_write_plans(existing_memories, candidates)
-        created: list[AIMemoryDefinition] = []
-        for plan in plans:
-            candidate = plan.candidate
-            decision = govern_extracted_memory(candidate, scene_type=scene_type)
-            if decision.lifecycle_state is None:
-                continue
-            if decision.target_scope != anchor_type:
-                continue
-            if plan.action == "update" and plan.target_memory_id is not None:
-                row = await self.update_memory_content(
-                    memory_id=plan.target_memory_id,
-                    update_input=AIMemoryUpdateInput(
-                        content=candidate.content,
-                        salience=candidate.salience,
-                        confidence=candidate.confidence,
-                        source_message_id=source_message_id,
-                    ),
-                )
-                if row is not None:
-                    updated = await self.set_memory_state(
-                        memory_id=row.memory_id,
-                        lifecycle_state=decision.lifecycle_state,
-                        default_use_mode=decision.use_mode,
-                        governance_reason=decision.reason,
-                    )
-                    row = updated or row
-                    created.append(row)
-                continue
-            row = await self.create_memory_if_absent(
-                AIMemoryCreateInput(
-                    anchor_type=anchor_type,
-                    anchor_id=anchor_id,
-                    memory_layer="long_term",
-                    memory_kind=candidate.memory_kind,
-                    content=candidate.content,
-                    is_editable=True,
-                    lifecycle_state=decision.lifecycle_state,
-                    default_use_mode=decision.use_mode,
-                    governance_reason=decision.reason,
-                    source_message_id=source_message_id,
-                    salience=candidate.salience,
-                    confidence=candidate.confidence,
-                ),
-            )
-            if row is not None:
-                created.append(row)
-        return created
-
-    async def list_memories(
-        self,
-        *,
-        anchor_type: "AIMemoryAnchorType",
-        anchor_id: str,
-        memory_layer: "AIMemoryLayer | None" = None,
-        memory_kind: "AIMemoryKind | None" = None,
-        lifecycle_states: "tuple[AIMemoryLifecycleState, ...]" = ("active",),
-    ) -> "list[AIMemoryDefinition]":
-        """List all memories for one anchor boundary."""
-
-        return await self._repository.list_memories(
-            anchor_type=anchor_type,
-            anchor_id=anchor_id,
-            memory_layer=memory_layer,
-            memory_kind=memory_kind,
-            lifecycle_states=lifecycle_states,
-        )
-
-    async def retrieve_memories(
-        self,
-        query: "AIMemoryQuery",
-    ) -> "list[AIMemoryDefinition]":
-        """Retrieve relevance-ranked memories for one query."""
-
-        memories = await self.list_memories(
-            anchor_type=query.anchor_type,
-            anchor_id=query.anchor_id,
-            memory_layer=query.memory_layer,
-            memory_kind=query.memory_kind,
-        )
-        return await self._retrieve_ranked_memories(
-            memories=[
-                memory for memory in memories if memory.default_use_mode != "ignore"
-            ],
-            query_text=query.query_text,
-            limit=query.limit,
-            allow_rerank=True,
-        )
-
-    async def retrieve_memory_selections(
-        self,
-        query: "AIMemoryQuery",
-    ) -> AIMemoryRetrievalDiagnostics:
-        """Retrieve active memories with use-mode diagnostics for one query."""
-
-        active = await self.list_memories(
-            anchor_type=query.anchor_type,
-            anchor_id=query.anchor_id,
-            memory_layer=query.memory_layer,
-            memory_kind=query.memory_kind,
-            lifecycle_states=("active",),
-        )
-        inactive = await self.list_memories(
-            anchor_type=query.anchor_type,
-            anchor_id=query.anchor_id,
-            memory_layer=query.memory_layer,
-            memory_kind=query.memory_kind,
-            lifecycle_states=("candidate", "suppressed", "archived"),
-        )
-        ranked_active = await self._retrieve_ranked_memories(
-            memories=[
-                memory for memory in active if memory.default_use_mode != "ignore"
-            ],
-            query_text=query.query_text,
-            limit=query.limit,
-            allow_rerank=True,
-        )
-        selected = tuple(
-            AIMemoryRetrievalSelection(
-                memory=memory,
-                use_mode=memory.default_use_mode,
-                scope_rank=0,
-            )
-            for memory in ranked_active
-        )
-        excluded = tuple(
-            AIMemoryRetrievalSelection(
-                memory=memory,
-                use_mode="ignore",
-                scope_rank=0,
-                exclusion_reason=f"lifecycle_state:{memory.lifecycle_state}",
-            )
-            for memory in inactive[: query.limit]
-        )
-        return AIMemoryRetrievalDiagnostics(selected=selected, excluded=excluded)
-
-    async def _retrieve_ranked_memories(
-        self,
-        *,
-        memories: "list[AIMemoryDefinition]",
-        query_text: str,
-        limit: int,
-        allow_rerank: bool,
-    ) -> "list[AIMemoryDefinition]":
-        if limit <= 0 or not query_text.strip() or not memories:
-            return []
-        documents = tuple(_memory_to_retrieval_document(memory) for memory in memories)
-        memory_by_id = {memory.memory_id: memory for memory in memories}
-        result = await self._retrieval.retrieve_candidates(
-            query_text=query_text,
-            documents=documents,
-            limit=limit,
-            allow_rerank=allow_rerank,
-            dense_records=tuple(_memory_to_dense_record(memory) for memory in memories),
-        )
-        ranked: list[AIMemoryDefinition] = []
-        for candidate in result.candidates:
-            memory_id = _memory_id_from_document(candidate.document)
-            memory = memory_by_id.get(memory_id)
-            if memory is not None:
-                ranked.append(memory)
-        return ranked
-
-    async def create_knowledge_memory(
-        self,
-        create_input: AIMemoryCreateInput,
-    ) -> "AIMemoryDefinition":
-        """Create one knowledge memory and persist its embedding."""
-
-        memory = await self._knowledge.create_knowledge_memory(create_input)
-        await self._sync_memory_retrieval_index(memory)
-        return memory
-
-    async def upsert_memory_embedding(
-        self,
-        *,
-        memory_id: str,
-        content: str,
-    ) -> "AIMemoryEmbeddingRecord | None":
-        """Create or update one file-backed memory embedding."""
-
-        return await self._knowledge.upsert_memory_embedding(
-            memory_id=memory_id,
+    async with get_session() as db:
+        fact = Fact(
+            user_id=user_id,
+            session_id=session_id,
             content=content,
+            importance=importance,
+            last_reinforced_at=_now_iso(),
         )
+        db.add(fact)
+        await db.commit()
+        await db.refresh(fact)
 
-    async def retrieve_knowledge_memories(
-        self,
-        *,
-        targets: "list[tuple[AIMemoryAnchorType, str]]",
-        query_text: str,
-        limit: int,
-    ) -> "list[AIMemoryDefinition]":
-        """Retrieve top-k knowledge memories through local embedding similarity."""
+    if embedding_model_id:
+        try:
+            from apeiria.ai.embedding.embed import embed
 
-        return await self._knowledge.retrieve_knowledge_memories(
-            targets=targets,
-            query_text=query_text,
-            limit=limit,
-        )
+            vectors = await embed(embedding_model_id, [content])
+            index = _get_facts_index()
+            if index and vectors:
+                index.add([fact.id], vectors)
+        except Exception:  # noqa: BLE001
+            logger.warning("Failed to embed fact {}", fact.id, exc_info=True)
 
-    async def recall_memories(
-        self,
-        query: "AIMemoryQuery",
-    ) -> "list[AIMemoryDefinition]":
-        """Retrieve memories for live AI use and stamp recall time."""
+    return fact
 
-        recalled = await self.retrieve_memories(query)
-        if not recalled:
-            return []
 
-        recalled_at = utcnow()
-        await self.mark_memories_recalled(
-            memory_ids=[memory.memory_id for memory in recalled],
-            recalled_at=recalled_at,
-        )
-        return [replace(memory, last_recalled_at=recalled_at) for memory in recalled]
+async def search(  # noqa: PLR0913
+    user_id: str,
+    session_id: str,
+    query: str,
+    *,
+    settings: AIRuntimeSettings,
+    embedding_model_id: str | None = None,
+    top_k: int = 10,
+) -> list[Fact]:
+    facts: list[Fact] = []
 
-    async def delete_memory(
-        self,
-        *,
-        memory_id: str,
-    ) -> bool:
-        """Delete one memory item by stable id."""
+    if embedding_model_id:
+        try:
+            from apeiria.ai.embedding.embed import embed
 
-        memory = await self._repository.get_memory(memory_id=memory_id)
-        if memory is None:
-            return False
-        self._knowledge.delete_memory_embedding(memory_id=memory_id)
-        deleted = await self._repository.delete_memory(memory_id=memory_id)
-        if deleted:
-            await self._retrieval.delete_documents(
-                (
-                    retrieval_document_id(
-                        domain="memory",
-                        source_id=memory.memory_id,
-                    ),
-                )
+            vectors = await embed(embedding_model_id, [query])
+            index = _get_facts_index()
+            if index and vectors:
+                results = index.search(vectors[0], top_k=top_k * 3)
+                fact_ids = [r[0] for r in results]
+                if fact_ids:
+                    async with get_session() as db:
+                        stmt = select(Fact).where(Fact.id.in_(fact_ids))
+                        if settings.memory_isolate_by_session:
+                            stmt = stmt.where(
+                                Fact.user_id == user_id,
+                                Fact.session_id == session_id,
+                            )
+                        else:
+                            stmt = stmt.where(Fact.user_id == user_id)
+                        facts = list((await db.execute(stmt)).scalars().all())
+        except Exception:  # noqa: BLE001
+            logger.warning(
+                "Embedding search failed, falling back to text",
+                exc_info=True,
             )
-        return deleted
 
-    async def set_memory_state(
-        self,
-        *,
-        memory_id: str,
-        lifecycle_state: "AIMemoryLifecycleState",
-        default_use_mode: "AIMemoryUseMode | None" = None,
-        governance_reason: str | None = None,
-    ) -> "AIMemoryDefinition | None":
-        """Set lifecycle state for one governed memory belief."""
-
-        row = await self._repository.set_memory_state(
-            memory_id=memory_id,
-            update_input=AIMemoryStateUpdateInput(
-                lifecycle_state=lifecycle_state,
-                default_use_mode=default_use_mode,
-                governance_reason=governance_reason,
-            ),
-        )
-        if row is not None:
-            await self._sync_memory_retrieval_index(row)
-        return row
-
-    async def _refresh_memory_retrieval_index(
-        self,
-        memory: "AIMemoryDefinition",
-    ) -> None:
-        document = _memory_to_retrieval_document(memory)
-        await self._retrieval.index_documents((document,))
-        await self._knowledge.upsert_memory_embedding(
-            memory_id=memory.memory_id,
-            content=memory.content,
-        )
-
-    async def _sync_memory_retrieval_index(
-        self,
-        memory: "AIMemoryDefinition",
-    ) -> None:
-        if _is_memory_retrievable(memory):
-            await self._refresh_memory_retrieval_index(memory)
-            return
-        await self._delete_memory_retrieval_index(memory.memory_id)
-
-    async def _delete_memory_retrieval_index(self, memory_id: str) -> None:
-        await self._retrieval.delete_documents(
-            (
-                retrieval_document_id(
-                    domain="memory",
-                    source_id=memory_id,
-                ),
+    if not facts:
+        async with get_session() as db:
+            stmt = select(Fact).where(
+                Fact.user_id == user_id,
+                Fact.content.contains(query),
             )
-        )
+            if settings.memory_isolate_by_session:
+                stmt = stmt.where(Fact.session_id == session_id)
+            facts = list((await db.execute(stmt.limit(top_k))).scalars().all())
 
-    async def bulk_delete_memories(
-        self,
-        *,
-        memory_ids: list[str],
-    ) -> int:
-        """Delete multiple memory items by stable id. Returns count deleted."""
+    now = datetime.now(timezone.utc)
+    async with get_session() as db:
+        for fact in facts:
+            last = datetime.fromisoformat(fact.last_reinforced_at)
+            age_days = (now - last).total_seconds() / _SECONDS_PER_DAY
+            if age_days > 0:
+                decay_factor = 0.5 ** (age_days / settings.memory_half_life_days)
+                effective = fact.importance * decay_factor
+                floor = fact.importance * settings.memory_floor_ratio
+                fact.importance = max(floor, effective)
+                db.add(fact)
+        await db.commit()
 
-        deleted = 0
-        for memory_id in memory_ids:
-            if await self.delete_memory(memory_id=memory_id):
-                deleted += 1
-        return deleted
+    facts.sort(key=lambda f: f.importance, reverse=True)
+    return facts[:top_k]
 
-    async def bulk_set_memory_state(
-        self,
-        *,
-        memory_ids: list[str],
-        lifecycle_state: "AIMemoryLifecycleState",
-        default_use_mode: "AIMemoryUseMode | None" = None,
-        governance_reason: str | None = None,
-    ) -> int:
-        """Set lifecycle state on multiple memories. Returns count updated."""
 
-        count = await self._repository.bulk_set_memory_state(
-            memory_ids=memory_ids,
-            update_input=AIMemoryStateUpdateInput(
-                lifecycle_state=lifecycle_state,
-                default_use_mode=default_use_mode,
-                governance_reason=governance_reason,
-            ),
-        )
-        for memory_id in memory_ids:
-            updated = await self._repository.get_memory(memory_id=memory_id)
-            if updated is not None:
-                await self._sync_memory_retrieval_index(updated)
-        return count
+async def _similarity_dedup(
+    user_id: str,
+    session_id: str,
+    content: str,
+    *,
+    embedding_model_id: str | None = None,
+) -> Fact | None:
+    if not embedding_model_id:
+        return None
+    try:
+        from apeiria.ai.embedding.embed import embed
 
-    async def consolidate_anchor_summary(
-        self,
-        *,
-        anchor_type: "AIMemoryAnchorType",
-        anchor_id: str,
-    ) -> None:
-        """Build or refresh one deterministic summary memory for the anchor."""
-
-        before_ids = {
-            memory.memory_id
-            for memory in await self._repository.list_memories(
-                anchor_type=anchor_type,
-                anchor_id=anchor_id,
-                memory_layer=self.SUMMARY_MEMORY_LAYER,
-                lifecycle_states=(),
+        vectors = await embed(embedding_model_id, [content])
+        index = _get_facts_index()
+        if not index or not vectors:
+            return None
+        results = index.search(vectors[0], top_k=5)
+        if not results:
+            return None
+        candidate_ids = [r[0] for r in results if r[1] > _DEDUP_THRESHOLD]
+        if not candidate_ids:
+            return None
+        async with get_session() as db:
+            stmt = select(Fact).where(
+                Fact.id.in_(candidate_ids),
+                Fact.user_id == user_id,
+                Fact.session_id == session_id,
             )
-        }
-        await self._summaries.consolidate_anchor_summary(
-            anchor_type=anchor_type,
-            anchor_id=anchor_id,
-        )
-        summaries = await self._repository.list_memories(
-            anchor_type=anchor_type,
-            anchor_id=anchor_id,
-            memory_layer=self.SUMMARY_MEMORY_LAYER,
-            lifecycle_states=(),
-        )
-        after_ids = {memory.memory_id for memory in summaries}
-        for memory in summaries:
-            await self._refresh_memory_retrieval_index(memory)
-        removed_ids = before_ids - after_ids
-        if removed_ids:
-            await self._retrieval.delete_documents(
-                tuple(
-                    retrieval_document_id(domain="memory", source_id=memory_id)
-                    for memory_id in removed_ids
-                )
-            )
-            for memory_id in removed_ids:
-                self._knowledge.delete_memory_embedding(memory_id=memory_id)
-
-    async def mark_memories_recalled(
-        self,
-        *,
-        memory_ids: list[str],
-        recalled_at: "datetime",
-    ) -> None:
-        """Stamp recall timestamps for selected memories."""
-
-        await self._repository.mark_memories_recalled(
-            memory_ids=memory_ids,
-            recalled_at=recalled_at,
-        )
+            return (await db.execute(stmt)).scalars().first()
+    except Exception:  # noqa: BLE001
+        logger.warning("Dedup check failed", exc_info=True)
+        return None
 
 
-def _with_default_governance(create_input: AIMemoryCreateInput) -> AIMemoryCreateInput:
-    if create_input.default_use_mode != "context" or create_input.governance_reason:
-        return create_input
-    return AIMemoryCreateInput(
-        anchor_type=create_input.anchor_type,
-        anchor_id=create_input.anchor_id,
-        memory_layer=create_input.memory_layer,
-        memory_kind=create_input.memory_kind,
-        content=create_input.content,
-        is_editable=create_input.is_editable,
-        lifecycle_state=create_input.lifecycle_state,
-        default_use_mode=cast(
-            "AIMemoryUseMode",
-            default_use_mode_for_manual_memory(create_input.memory_kind),
-        ),
-        governance_reason="manual governed memory write",
-        source_message_id=create_input.source_message_id,
-        salience=create_input.salience,
-        confidence=create_input.confidence,
-    )
+_facts_index_instance: VectorIndex | None = None
 
 
-def _memory_to_retrieval_document(memory: "AIMemoryDefinition") -> RetrievalDocument:
-    title = f"{memory.memory_layer}:{memory.memory_kind}"
-    return RetrievalDocument(
-        document_id=retrieval_document_id(domain="memory", source_id=memory.memory_id),
-        domain="memory",
-        title=title,
-        text=memory.content,
-        content_hash=content_hash_for_text(
-            title,
-            memory.content,
-            memory.memory_layer,
-            memory.memory_kind,
-        ),
-        updated_at=memory.created_at.isoformat(),
-        filter_attrs={
-            "anchor_type": memory.anchor_type,
-            "anchor_id": memory.anchor_id,
-            "memory_layer": memory.memory_layer,
-            "memory_kind": memory.memory_kind,
-            "lifecycle_state": memory.lifecycle_state,
-            "default_use_mode": memory.default_use_mode,
-        },
-        metadata={"memory_id": memory.memory_id},
-    )
+def _get_facts_index(dimensions: int = 384) -> VectorIndex | None:
+    global _facts_index_instance  # noqa: PLW0603
+    if _facts_index_instance is None:
+        try:
+            from apeiria.ai.embedding.index import VectorIndex
 
-
-def _memory_to_dense_record(memory: "AIMemoryDefinition") -> DenseVectorRecord:
-    from apeiria.ai.memory.embedding_store import ai_memory_embedding_store
-
-    document_id = retrieval_document_id(domain="memory", source_id=memory.memory_id)
-    embedding = ai_memory_embedding_store.get(memory_id=memory.memory_id)
-    if embedding is None:
-        return DenseVectorRecord(
-            document_id=document_id,
-            embedding_space_id=None,
-            dimension=0,
-            vector=(),
-            content_hash=None,
-        )
-    return DenseVectorRecord(
-        document_id=document_id,
-        embedding_space_id=embedding.embedding_space_id,
-        dimension=embedding.dimension or len(embedding.vector),
-        vector=tuple(embedding.vector),
-        content_hash=embedding.content_hash,
-    )
-
-
-def _is_memory_retrievable(memory: "AIMemoryDefinition") -> bool:
-    return memory.lifecycle_state == "active" and memory.default_use_mode != "ignore"
-
-
-def _memory_id_from_document(document: RetrievalDocument) -> str:
-    memory_id = document.metadata.get("memory_id")
-    if isinstance(memory_id, str):
-        return memory_id
-    prefix = "memory:"
-    if document.document_id.startswith(prefix):
-        return document.document_id[len(prefix) :]
-    return document.document_id
+            _facts_index_instance = VectorIndex("facts", dimensions)
+            _facts_index_instance.load()
+        except Exception:  # noqa: BLE001
+            logger.warning("Failed to load facts index", exc_info=True)
+            return None
+    return _facts_index_instance

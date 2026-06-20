@@ -8,9 +8,9 @@ from arclet.alconna import Args, CommandMeta
 from nonebot.adapters import Event  # noqa: TC002
 from nonebot_plugin_alconna import Alconna, Match, on_alconna
 
-from apeiria.app.plugins.management import plugin_management_service
 from apeiria.exceptions import ProtectedPluginError, ResourceNotFoundError
 from apeiria.i18n import t
+from apeiria.plugins.management import plugin_management_service
 
 from .config_view import render_plugin_settings_summary
 from .presenter import render_block, render_list_block

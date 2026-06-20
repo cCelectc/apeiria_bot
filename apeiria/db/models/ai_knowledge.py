@@ -10,60 +10,55 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
-from apeiria.db.base import Base, TimestampMixin
+from apeiria.db.base import Base, ISOTimestampMixin, _now_iso
 
 
-class AIKnowledgeDocument(TimestampMixin, Base):
-    __tablename__ = "ai_knowledge_document"
+class KnowledgeDocument(ISOTimestampMixin, Base):
+    __tablename__ = "knowledge_documents"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('pending', 'embedded', 'degraded', 'failed')",
+            name="ck_knowledge_documents_status",
+        ),
+        CheckConstraint(
+            "chunk_count >= 0",
+            name="ck_knowledge_documents_chunk_count",
+        ),
+    )
 
-    document_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     title: Mapped[str] = mapped_column(Text)
     source_file_name: Mapped[str] = mapped_column(Text)
     content_hash: Mapped[str] = mapped_column(Text)
     content_text: Mapped[str] = mapped_column(Text)
-    status: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(Text, default="pending")
     chunk_count: Mapped[int] = mapped_column(Integer, default=0)
     last_error: Mapped[str | None] = mapped_column(Text)
 
+
+class KnowledgeChunk(Base):
+    __tablename__ = "knowledge_chunks"
     __table_args__ = (
         CheckConstraint(
-            "status IN ('pending', 'embedded', 'degraded', 'failed')",
-            name="ck_ai_knowledge_document_status",
+            "chunk_index >= 0",
+            name="ck_knowledge_chunks_chunk_index",
         ),
         CheckConstraint(
-            "chunk_count >= 0",
-            name="ck_ai_knowledge_document_chunk_count",
-        ),
-        Index("ix_ai_knowledge_document_updated_at", "updated_at"),
-    )
-
-
-class AIKnowledgeChunk(TimestampMixin, Base):
-    __tablename__ = "ai_knowledge_chunk"
-
-    chunk_id: Mapped[str] = mapped_column(Text, primary_key=True)
-    document_id: Mapped[str] = mapped_column(
-        Text, ForeignKey("ai_knowledge_document.document_id", ondelete="CASCADE")
-    )
-    ordinal: Mapped[int] = mapped_column(Integer)
-    chunk_hash: Mapped[str] = mapped_column(Text)
-    text: Mapped[str] = mapped_column(Text)
-    char_count: Mapped[int] = mapped_column(Integer)
-    embedding_model: Mapped[str | None] = mapped_column(Text)
-    embedding_status: Mapped[str] = mapped_column(Text, default="missing")
-
-    __table_args__ = (
-        CheckConstraint("ordinal >= 0", name="ck_ai_knowledge_chunk_ordinal"),
-        CheckConstraint("char_count >= 0", name="ck_ai_knowledge_chunk_char_count"),
-        CheckConstraint(
-            "embedding_status IN ('missing', 'embedded', 'stale', 'failed')",
-            name="ck_ai_knowledge_chunk_embedding_status",
+            "embedding_status IN ('pending', 'embedded', 'failed')",
+            name="ck_knowledge_chunks_embedding_status",
         ),
         UniqueConstraint(
-            "document_id",
-            "ordinal",
-            name="uq_ai_knowledge_chunk_doc_ordinal",
+            "document_id", "chunk_index", name="uq_knowledge_chunks_doc_index"
         ),
-        Index("ix_ai_knowledge_chunk_document", "document_id", "ordinal"),
-        Index("ix_ai_knowledge_chunk_embedding_status", "embedding_status"),
+        Index("idx_knowledge_chunks_document_id", "document_id"),
     )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    document_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("knowledge_documents.id", ondelete="CASCADE")
+    )
+    content: Mapped[str] = mapped_column(Text)
+    chunk_index: Mapped[int] = mapped_column(Integer)
+    embedding_model: Mapped[str | None] = mapped_column(Text)
+    embedding_status: Mapped[str] = mapped_column(Text, default="pending")
+    created_at: Mapped[str] = mapped_column(Text, default=_now_iso)

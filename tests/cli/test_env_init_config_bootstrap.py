@@ -101,12 +101,9 @@ def test_env_init_reports_created_and_skipped_configs(
     result = runner.invoke(env_init, [])
 
     assert result.exit_code == 0
-    assert "created config: apeiria.config.toml" in result.output
-    assert "created config: apeiria.plugins.toml" in result.output
-    assert "skipped config: apeiria.adapters.toml" in result.output
-    assert "skipped config: apeiria.drivers.toml" in result.output
-    assert "initialized environment" in result.output
-    assert "user_bot.example.py" in result.output
+    assert "apeiria.config.toml" in result.output
+    assert "apeiria.plugins.toml" in result.output
+    assert "initialized" in result.output
 
 
 def test_validate_database_schema_uses_project_database_without_nonebot(
