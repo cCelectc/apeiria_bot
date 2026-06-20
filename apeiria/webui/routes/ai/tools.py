@@ -32,7 +32,7 @@ async def list_tools(
             required_level=getattr(t, "required_level", "everyone"),
             enabled=getattr(t, "enabled", True),
             origin=getattr(t, "origin", "unknown"),
-            parameters_schema=getattr(t, "parameters_schema", None),
+            parameters_schema=t.parameters,
         )
         for t in tools
     ]

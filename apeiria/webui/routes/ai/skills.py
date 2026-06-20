@@ -26,7 +26,7 @@ class SkillDetail(BaseModel):
 async def list_skills(
     _: Annotated[Any, Depends(require_auth)],
 ) -> list[SkillItem]:
-    names = get_skill_names()
+    names = dict(get_skill_names())
     return [SkillItem(name=n, description=names[n]) for n in list(names)[:200]]
 
 
@@ -38,7 +38,7 @@ async def get_skill(
     body = get_skill_body(name)
     if not body:
         return SkillDetail(name=name, description="", body="")
-    names = get_skill_names()
+    names = dict(get_skill_names())
     return SkillDetail(
         name=name,
         description=names.get(name, ""),

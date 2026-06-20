@@ -1,11 +1,14 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException
+from typing import Annotated, Any
+
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import select
 
 from apeiria.db.engine import get_session
 from apeiria.db.models.ai_settings import AIRuntimeSettings
+from apeiria.webui.auth import require_auth
 
 router = APIRouter()
 
@@ -84,7 +87,9 @@ def _to_response(
 
 
 @router.get("")
-async def get_settings() -> AISettingsResponse:
+async def get_settings(
+    _: Annotated[Any, Depends(require_auth)],
+) -> AISettingsResponse:
     async with get_session() as db:
         settings = (
             await db.execute(select(AIRuntimeSettings).where(AIRuntimeSettings.id == 1))
@@ -100,6 +105,7 @@ async def get_settings() -> AISettingsResponse:
 @router.patch("")
 async def update_settings(
     body: AISettingsUpdate,
+    _: Annotated[Any, Depends(require_auth)],
 ) -> AISettingsResponse:
     async with get_session() as db:
         settings = (

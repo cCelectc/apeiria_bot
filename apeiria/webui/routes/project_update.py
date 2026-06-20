@@ -6,9 +6,9 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from apeiria.runtime.context import get_current_runtime
 from apeiria.system.project_update import ProjectUpdateError
 from apeiria.webui.auth import require_auth
+from apeiria.webui.routes._deps import require_runtime_control_plane
 from apeiria.webui.schemas.project_update import (
     ProjectUpdatePlanRequest,
     ProjectUpdatePlanResponse,
@@ -21,24 +21,13 @@ from apeiria.webui.schemas.project_update import (
 )
 
 router = APIRouter()
-_RUNTIME_UNAVAILABLE_DETAIL = "Apeiria runtime control plane is unavailable."
-
-
-def _require_runtime_control_plane() -> Any:
-    runtime = get_current_runtime()
-    if runtime is None or runtime.control_plane is None:
-        raise HTTPException(
-            status_code=503,
-            detail=_RUNTIME_UNAVAILABLE_DETAIL,
-        )
-    return runtime.control_plane
 
 
 @router.get("/status", response_model=ProjectUpdateStatusResponse)
 async def get_project_update_status(
     _: Annotated[Any, Depends(require_auth)],
 ) -> ProjectUpdateStatusResponse:
-    state = _require_runtime_control_plane().get_project_update_status()
+    state = require_runtime_control_plane().get_project_update_status()
     return to_project_update_status_response(state)
 
 
@@ -47,7 +36,7 @@ async def refresh_project_update_status(
     _: Annotated[Any, Depends(require_auth)],
 ) -> ProjectUpdateStatusResponse:
     try:
-        state = _require_runtime_control_plane().refresh_project_update_status(
+        state = require_runtime_control_plane().refresh_project_update_status(
             force=True
         )
     except ProjectUpdateError as exc:
@@ -60,7 +49,7 @@ async def preview_project_update_plan(
     payload: ProjectUpdatePlanRequest,
     _: Annotated[Any, Depends(require_auth)],
 ) -> ProjectUpdatePlanResponse:
-    plan = _require_runtime_control_plane().create_project_update_plan(
+    plan = require_runtime_control_plane().create_project_update_plan(
         to_project_update_plan_request(payload)
     )
     return to_project_update_plan_response(plan)
@@ -72,7 +61,7 @@ async def create_project_update_task(
     _: Annotated[Any, Depends(require_auth)],
 ) -> ProjectUpdateTaskItem:
     try:
-        task = await _require_runtime_control_plane().create_project_update_task(
+        task = await require_runtime_control_plane().create_project_update_task(
             to_project_update_plan_request(payload)
         )
     except ProjectUpdateError as exc:
@@ -85,7 +74,7 @@ async def get_project_update_task(
     task_id: str,
     _: Annotated[Any, Depends(require_auth)],
 ) -> ProjectUpdateTaskItem:
-    task = _require_runtime_control_plane().get_project_update_task(task_id)
+    task = require_runtime_control_plane().get_project_update_task(task_id)
     if task is None:
         raise HTTPException(status_code=404, detail="project_update_task_not_found")
     return to_project_update_task_item(task)

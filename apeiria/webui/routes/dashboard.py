@@ -8,8 +8,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 
 from apeiria.i18n import t
-from apeiria.runtime.context import get_current_runtime
 from apeiria.webui.auth import require_auth
+from apeiria.webui.routes._deps import require_runtime_control_plane
 from apeiria.webui.schemas.models import (
     DashboardEventItem,
     DashboardEventsResponse,
@@ -20,17 +20,6 @@ from apeiria.webui.schemas.models import (
 from apeiria.webui.schemas.operations import OperationStatusResponse
 
 router = APIRouter()
-_RUNTIME_UNAVAILABLE_DETAIL = "Apeiria runtime control plane is unavailable."
-
-
-def _require_runtime_control_plane() -> Any:
-    runtime = get_current_runtime()
-    if runtime is None or runtime.control_plane is None:
-        raise HTTPException(
-            status_code=503,
-            detail=_RUNTIME_UNAVAILABLE_DETAIL,
-        )
-    return runtime.control_plane
 
 
 @router.get("/status", response_model=StatusResponse)
@@ -38,7 +27,7 @@ async def get_status(
     _: Annotated[Any, Depends(require_auth)],
 ) -> StatusResponse:
     """Return the current dashboard status snapshot."""
-    snapshot = await _require_runtime_control_plane().get_dashboard_status()
+    snapshot = await require_runtime_control_plane().get_dashboard_status()
     return StatusResponse(
         status=snapshot.status,
         uptime=snapshot.uptime,
@@ -56,7 +45,7 @@ async def get_events(
     _: Annotated[Any, Depends(require_auth)],
 ) -> DashboardEventsResponse:
     """Return recent warning and error events for the dashboard."""
-    events = _require_runtime_control_plane().get_dashboard_events()
+    events = require_runtime_control_plane().get_dashboard_events()
     return DashboardEventsResponse(
         items=[
             DashboardEventItem(
@@ -74,7 +63,7 @@ async def get_events(
 async def get_webui_build_status(
     _: Annotated[Any, Depends(require_auth)],
 ) -> WebUIBuildStatusResponse:
-    status = _require_runtime_control_plane().get_web_ui_build_status()
+    status = require_runtime_control_plane().get_web_ui_build_status()
     return WebUIBuildStatusResponse(
         is_built=status.is_built,
         is_stale=status.is_stale,
@@ -89,7 +78,7 @@ async def rebuild_webui(
     _: Annotated[Any, Depends(require_auth)],
 ) -> WebUIBuildRunResponse:
     try:
-        status = await _require_runtime_control_plane().rebuild_web_ui()
+        status = await require_runtime_control_plane().rebuild_web_ui()
     except RuntimeError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return WebUIBuildRunResponse(
@@ -106,7 +95,7 @@ async def rebuild_webui(
 async def rebuild_webui_stream(
     _: Annotated[Any, Depends(require_auth)],
 ) -> StreamingResponse:
-    control_plane = _require_runtime_control_plane()
+    control_plane = require_runtime_control_plane()
     status = control_plane.get_web_ui_build_status()
     if not status.can_build:
         raise HTTPException(
@@ -123,5 +112,5 @@ async def rebuild_webui_stream(
 async def restart_bot(
     _: Annotated[Any, Depends(require_auth)],
 ) -> OperationStatusResponse:
-    _require_runtime_control_plane().schedule_restart()
+    require_runtime_control_plane().schedule_restart()
     return OperationStatusResponse(detail=t("web_ui.dashboard.restart_scheduled"))

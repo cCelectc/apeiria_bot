@@ -11,8 +11,8 @@ from fastapi.responses import FileResponse
 from apeiria.exceptions import ResourceNotFoundError
 from apeiria.i18n import t
 from apeiria.plugins.management import plugin_management_service
-from apeiria.runtime.context import get_current_runtime
 from apeiria.webui.auth import require_auth
+from apeiria.webui.routes._deps import require_runtime_control_plane
 from apeiria.webui.schemas.plugin_catalog import (
     OrphanPluginConfigResponse,
     PluginItem,
@@ -33,14 +33,6 @@ from apeiria.webui.schemas.plugin_workbench import (
 )
 
 router = APIRouter()
-_RUNTIME_UNAVAILABLE_DETAIL = "Apeiria runtime control plane is unavailable."
-
-
-def _require_runtime_control_plane() -> Any:
-    runtime = get_current_runtime()
-    if runtime is None or runtime.control_plane is None:
-        raise HTTPException(status_code=503, detail=_RUNTIME_UNAVAILABLE_DETAIL)
-    return runtime.control_plane
 
 
 @router.get("/{module_name}/readme", response_model=PluginReadmeResponse)
@@ -104,7 +96,7 @@ async def get_plugin_readme_asset(
 async def list_plugins(
     _: Annotated[Any, Depends(require_auth)],
 ) -> list[PluginItem]:
-    control_plane = _require_runtime_control_plane()
+    control_plane = require_runtime_control_plane()
     plugins = await control_plane.list_plugin_catalog_entries()
     return [
         to_plugin_item_response(
@@ -119,7 +111,7 @@ async def list_plugins(
 async def get_plugin_workbench(
     _: Annotated[Any, Depends(require_auth)],
 ) -> PluginWorkbenchResponse:
-    control_plane = _require_runtime_control_plane()
+    control_plane = require_runtime_control_plane()
     workspace = await control_plane.get_plugin_workbench()
     return to_plugin_workbench_response(workspace)
 

@@ -9,8 +9,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from apeiria.access.management import access_management_service
 from apeiria.exceptions import ProtectedPluginError, ResourceNotFoundError
 from apeiria.i18n import t
-from apeiria.runtime.context import get_current_runtime
 from apeiria.webui.auth import require_auth
+from apeiria.webui.routes._deps import require_runtime_control_plane
 from apeiria.webui.schemas.models import (
     AccessRuleCreateRequest,
     AccessRuleDeleteRequest,
@@ -19,21 +19,13 @@ from apeiria.webui.schemas.models import (
 )
 
 router = APIRouter()
-_RUNTIME_UNAVAILABLE_DETAIL = "Apeiria runtime control plane is unavailable."
-
-
-def _require_runtime_control_plane() -> Any:
-    runtime = get_current_runtime()
-    if runtime is None or runtime.control_plane is None:
-        raise HTTPException(status_code=503, detail=_RUNTIME_UNAVAILABLE_DETAIL)
-    return runtime.control_plane
 
 
 @router.get("/rules", response_model=list[AccessRuleItem])
 async def list_access_rules(
     _: Annotated[Any, Depends(require_auth)],
 ) -> list[AccessRuleItem]:
-    rows = await _require_runtime_control_plane().list_access_rules()
+    rows = await require_runtime_control_plane().list_access_rules()
     return [
         AccessRuleItem(
             subject_type=row.subject_type,

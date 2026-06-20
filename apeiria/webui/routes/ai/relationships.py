@@ -65,6 +65,12 @@ async def get_relationship(
         r = await db.get(RelationshipScore, (user_id, session_id))
         if not r:
             raise HTTPException(404, "Relationship not found")
+        return RelationshipResponse(
+            user_id=r.user_id,
+            session_id=r.session_id,
+            score=r.score,
+            last_updated_at=r.last_updated_at,
+        )
 
 
 class RelationshipUpdate(BaseModel):
