@@ -15,13 +15,6 @@ Apeiria is a Python chatbot framework built on [NoneBot2](https://nonebot.dev/) 
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│  Web UI (Vue 3 + shadcn-vue + Tailwind CSS)             │
-│  webui/src/  pages/  components/  composables/       │
-├─────────────────────────────────────────────────────────┤
-│  HTTP & WebSocket Layer                                  │
-│  apeiria/webui/routes/  (FastAPI endpoints)              │
-│  apeiria/webchat/       (WebSocket chat gateway)         │
-├─────────────────────────────────────────────────────────┤
 │  Domain Services (stable, framework-agnostic)            │
 │  apeiria/ai/agent/     agent lifecycle, turn loop        │
 │  apeiria/ai/acp/       Agent Communication Protocol      │
@@ -59,7 +52,7 @@ Apeiria is a Python chatbot framework built on [NoneBot2](https://nonebot.dev/) 
 | Layer | What belongs | What it must NOT import |
 |-------|-------------|------------------------|
 | **Domain** (`ai/agent/`, `ai/acp/`, `ai/mcp/`, `ai/embedding/`, `ai/knowledge/`, `ai/memory/`, `ai/model/`, `ai/tools/`, `ai/skills/`, `ai/persona/`, `ai/relationship/`, `ai/rerank/`, `access/`, `conversation/`) | Business logic, models, repositories, handlers | NoneBot, FastAPI, WebSocket objects |
-| **Surface** (`bot/`, `builtin_plugins/`, `webui/`, `webchat/`, `plugins/`) | NoneBot event handling, HTTP routes, plugin management | — (framework-aware code lives here) |
+| **Surface** (`bot/`, `builtin_plugins/`, `plugins/`) | NoneBot event handling, plugin management | — (framework-aware code lives here) |
 | **Infrastructure** (`runtime/`, `config/`, `db/`, `environment/`, `cli/`) | Cross-cutting concerns | — |
 
 ---
@@ -79,9 +72,6 @@ uv sync --group dev
 #    apeiria.adapters.example.toml    → apeiria.adapters.toml
 #    apeiria.drivers.example.toml     → apeiria.drivers.toml
 #    user_bot.example.py              → user_bot.py
-
-# 4. Install frontend dependencies (optional, for Web UI development)
-cd webui && pnpm install
 
 # 5. Run the bot
 ./.venv/bin/apeiria run     # or: ./.venv/bin/python bot.py
@@ -109,7 +99,7 @@ apeiria/
 │   ├── tools/             Tool registry, builtin tools, execution
 │   └── types.py           Shared domain type definitions
 ├── bot/                  NoneBot integration (event extraction, guards, rules)
-├── builtin_plugins/      NoneBot plugins (admin, ai, message_persist, web_ui)
+├── builtin_plugins/      NoneBot plugins (admin, ai, message_persist)
 ├── cli/                  CLI entry point & subcommands
 ├── config/               TOML configuration loading, mutator
 ├── conversation/         Conversation state, identity, persistence
@@ -119,20 +109,8 @@ apeiria/
 ├── plugins/              Plugin registry, installation, state management
 ├── runtime/              Bootstrapping, control plane, phased startup
 ├── utils/                Shared utilities (statistics, time, files, JSON)
-├── webchat/              WebSocket chat gateway, message handling, transport
-└── webui/                HTTP API routes, schemas, auth, frontend build
 
 tests/                    pytest suite (mirrors apeiria/ layout)
-webui/                    Legacy web UI (deprecated)
-webui/                 Vue 3 frontend (Vite + Tailwind + shadcn-vue)
-  src/api/                HTTP client layer
-  src/components/         Reusable components (ui/, shell/)
-  src/composables/        Vue composables (TanStack Query wrappers)
-  src/pages/              Page components (overview, runtime, system, etc.)
-  src/router/             Vue Router configuration
-  src/stores/             Pinia stores (auth, theme, toast, restart)
-  src/types/              TypeScript types (generated from OpenAPI)
-  src/utils/              Shared utilities (fastapiErrors, routeRedirect)
 ```
 
 ---
@@ -159,15 +137,9 @@ webui/                 Vue 3 frontend (Vite + Tailwind + shadcn-vue)
 
 | Command | Purpose |
 |---------|---------|
-| `pnpm install` | Install dependencies (in `webui/`) |
-| `pnpm dev` | Dev server with HMR |
-| `pnpm build` | Production build |
-| `pnpm type-check` | TypeScript type check |
-| `pnpm lint` | ESLint |
-
 ### CI (GitHub Actions)
 
-CI enforces `ruff check`, `ruff format --check`, and `pnpm build` on every push and PR. Pyright runs but does not block (advisory).
+CI enforces `ruff check` and `ruff format --check` on every push and PR. Pyright runs but does not block (advisory).
 
 ---
 
@@ -223,7 +195,7 @@ The project uses an extensive Ruff ruleset covering: Pyflakes (F), pycodestyle (
 1. **Identify the domain** — Is it AI logic, access control, bot integration, or infrastructure?
 2. **Keep one concern per file** — If a file does two things, split it
 3. **Match neighboring conventions** — Look at existing modules in the same directory for patterns
-4. **Stable vs. volatile separation** — `apeiria/ai/` and `apeiria/access/` are stable domain roots; new capabilities start there. Framework-aware code goes in `apeiria/bot/`, `apeiria/builtin_plugins/`, `apeiria/webui/`, or `apeiria/webchat/`.
+4. **Stable vs. volatile separation** — `apeiria/ai/` and `apeiria/access/` are stable domain roots; new capabilities start there. Framework-aware code goes in `apeiria/bot/` or `apeiria/builtin_plugins/`.
 
 ### Module size guidelines:
 - Prefer many small, focused modules over a few large ones
@@ -276,7 +248,7 @@ Follow [Conventional Commits](https://www.conventionalcommits.org/):
 
 Types: `feat`, `fix`, `refactor`, `chore`, `docs`, `test`, `perf`, `ci`, `build`
 
-Common scopes: `webui`, `db`, `ai`, `bot`, `runtime`, `cli`, `plugins`, `config`
+Common scopes: `db`, `ai`, `bot`, `runtime`, `cli`, `plugins`, `config`
 
 Examples:
 - `feat(ai): add memory handler`
@@ -317,39 +289,7 @@ Examples:
 
 ---
 
-## 11. WebUI (Frontend) Conventions
-
-### Tech Stack
-
-- **Framework:** Vue 3 (Composition API with `<script setup lang="ts">`)
-- **Language:** TypeScript (strict)
-- **Styling:** Tailwind CSS 4 + shadcn-vue component library
-- **State:** Pinia stores (client-only) + TanStack Query (server state)
-- **Routing:** Vue Router (`webui/src/router/`)
-- **Build:** Vite 8
-- **Forms:** vee-validate + Zod (declarative, Field pattern)
-- **Testing:** Vitest + jsdom
-
-### Code Style
-
-- 2-space indentation
-- Composables go in `webui/src/composables/`
-- API client modules go in `webui/src/api/`
-- Reusable components go in `webui/src/components/`
-- Form pattern: `useForm()` + `toTypedSchema(zodSchema)` + `<Field v-slot>` — never deprecated `<Form />`
-
-### Build Verification
-
-```bash
-cd webui
-pnpm install --frozen-lockfile
-pnpm type-check
-pnpm build
-```
-
----
-
-## 12. Pre-commit Hooks
+## 11. Pre-commit Hooks
 
 The project uses `pre-commit` with [ruff-pre-commit](https://github.com/astral-sh/ruff-pre-commit):
 
@@ -368,4 +308,4 @@ Build and run via Docker Compose:
 docker compose up --build    # Build and start (port 8080)
 ```
 
-The multi-stage `Dockerfile` builds the frontend (Node 24) and packages it with the Python runtime (3.14.3-slim). See `docker-compose.yml` for service configuration.
+See `docker-compose.yml` for service configuration.

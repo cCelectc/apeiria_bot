@@ -164,10 +164,6 @@ apeiria.drivers.toml
 **/node_modules/
 **/.vite/
 
-# shadcn-vue source utilities
-!webui/src/lib/
-!webui/src/lib/**
-
 # Local OpenSpec workflow artifacts
 openspec/
 

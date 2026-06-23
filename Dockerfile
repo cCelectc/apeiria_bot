@@ -1,23 +1,3 @@
-FROM node:24-bookworm-slim AS web-builder
-
-WORKDIR /frontend
-
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends python-is-python3 \
-    && npm install -g pnpm \
-    && rm -rf /var/lib/apt/lists/* \
-    && rm -rf /root/.npm
-
-COPY webui-new/package.json webui-new/pnpm-lock.yaml webui-new/pnpm-workspace.yaml ./webui-new/
-COPY scripts ./scripts
-COPY apeiria ./apeiria
-WORKDIR /frontend/webui-new
-RUN pnpm install --frozen-lockfile
-
-COPY webui-new/ ./
-RUN pnpm run build
-
-
 FROM python:3.14.3-slim-bookworm
 
 ENV PYTHONDONTWRITEBYTECODE=1
@@ -40,7 +20,6 @@ COPY --from=ghcr.io/astral-sh/uv:0.8.17 /uv /uvx /bin/
 
 COPY pyproject.toml uv.lock README.md bot.py ./
 COPY apeiria ./apeiria
-COPY --from=web-builder /frontend/webui-new/dist ./webui-new/dist
 
 RUN uv sync --locked --no-dev
 RUN .venv/bin/python -m playwright install --with-deps chromium \
@@ -50,4 +29,4 @@ RUN mkdir -p /app/.apeiria /app/data
 
 EXPOSE 8080
 
-CMD ["/bin/sh", "-lc", "APEIRIA_BUILD_FRONTEND_ON_START=false .venv/bin/apeiria env init --no-dev && exec env APEIRIA_BUILD_FRONTEND_ON_START=false .venv/bin/apeiria run"]
+CMD ["/bin/sh", "-lc", ".venv/bin/apeiria env init --no-dev && exec .venv/bin/apeiria run"]
