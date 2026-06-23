@@ -5,7 +5,6 @@ import click
 from apeiria.cli.commands.db import db
 from apeiria.cli.commands.env import check, env, init, repair, run, status
 from apeiria.cli.commands.resource import plugin
-from apeiria.cli.commands.webui import webui
 from apeiria.cli.context import initialize_cli_context
 from apeiria.cli.i18n import _
 
@@ -30,7 +29,6 @@ cli.add_command(status)
 cli.add_command(check)
 cli.add_command(db)
 cli.add_command(plugin)
-cli.add_command(webui)
 
 
 def main() -> None:

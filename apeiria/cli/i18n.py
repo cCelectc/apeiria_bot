@@ -6,29 +6,6 @@ import os
 MESSAGES_ZH_CN = {
     "Apeiria project tools.": "Apeiria 项目工具。",
     "Inspect and migrate Apeiria environments.": "查看并迁移 Apeiria 环境。",
-    "Manage Web UI accounts and recovery.": "管理 Web UI 账号与恢复。",
-    "Manage Web UI accounts from the host.": "在宿主机侧管理 Web UI 账号。",
-    "Manage Web UI registration codes from the host.": (
-        "在宿主机侧管理 Web UI 注册码。"
-    ),
-    "Create or recover one owner account from the host.": (
-        "在宿主机侧创建或恢复一个 Owner 账号。"
-    ),
-    "List Web UI accounts.": "列出 Web UI 账号。",
-    "Create one Web UI account from the host.": "在宿主机侧创建一个 Web UI 账号。",
-    "Reset one Web UI account password from the host.": (
-        "在宿主机侧重置一个 Web UI 账号密码。"
-    ),
-    "Disable one Web UI account from the host.": "在宿主机侧禁用一个 Web UI 账号。",
-    "Enable one Web UI account from the host.": "在宿主机侧启用一个 Web UI 账号。",
-    "Delete one Web UI account from the host.": "在宿主机侧删除一个 Web UI 账号。",
-    "List Web UI registration codes.": "列出 Web UI 注册码。",
-    "Create one Web UI registration code from the host.": (
-        "在宿主机侧创建一个 Web UI 注册码。"
-    ),
-    "Revoke one Web UI registration code from the host.": (
-        "在宿主机侧撤销一个 Web UI 注册码。"
-    ),
     "Owner username to create or recover.": "要创建或恢复的 Owner 用户名。",
     "Account username.": "账号用户名。",
     "Account password.": "账号密码。",
@@ -54,7 +31,6 @@ MESSAGES_ZH_CN = {
     ("code: {code} role={role} created_by={created_by} created_at={created_at}"): (
         "注册码：{code} role={role} created_by={created_by} created_at={created_at}"
     ),
-    "no webui accounts": "没有 Web UI 账号",
     "no registration codes": "没有注册码",
     "account not found": "账号不存在",
     "username already exists": "用户名已存在",
@@ -94,9 +70,6 @@ MESSAGES_ZH_CN = {
     "run `apeiria env init`": "执行 `apeiria env init`",
     "check plugin config conflicts in project plugins and rerun check": (
         "检查项目插件配置冲突后，重新执行校验"
-    ),
-    "fix or restore `data/web_ui/secret.json`, then rerun check": (
-        "移除旧版 `data/web_ui/secret.json` 或确认其可导入后，重新执行校验"
     ),
     "Export local runtime state for migration.": "导出本地运行态以便迁移。",
     "Import local runtime state from a migration bundle.": ("从迁移包导入本地运行态。"),
@@ -151,20 +124,15 @@ MESSAGES_ZH_CN = {
     "skipped (already exists)": "已跳过（已存在）",
     "Next steps": "下一步",
     "start the bot": "启动 bot",
-    "create admin account for Web UI": "创建 Web UI 管理员账号",
     "project root": "项目根目录",
     "preparing environment for first run ...": "正在准备首次运行环境 ...",
     "repairing extension project ...": "正在修复扩展项目 ...",
     "repairing database ...": "正在修复数据库 ...",
-    "building Web UI frontend ...": "正在构建 Web UI 前端 ...",
-    "frontend build failed": "前端构建失败",
-    "frontend build failed: {error}": "前端构建失败：{error}",
     "repaired environment": "已修复用户环境",
     "exported files: {count}": "已导出文件：{count}",
     "export target: {target}": "导出目标：{target}",
     "imported files: {count}": "已导入文件：{count}",
     "missing system dependencies: {deps}": "缺少系统依赖：{deps}",
-    "frontend toolchain missing: {deps}": "缺少前端工具链：{deps}",
     "registered module: {module}": "已注册模块：{module}",
     "unregistered module: {module}": "已取消注册模块：{module}",
     "installed package: {package}": "已安装包：{package}",
