@@ -11,7 +11,7 @@ from pathlib import Path
 BUILD_META_FILENAME = ".build-meta.json"
 BUILD_META_VERSION = 1
 FRONTEND_DIR_ENV_VAR = "APEIRIA_WEBUI_FRONTEND_DIR"
-DEFAULT_FRONTEND_DIRS = ("webui-v2", "webui", "web")
+DEFAULT_FRONTEND_DIRS = ("webui-new", "webui-v2", "webui", "web")
 
 
 @dataclass(frozen=True)

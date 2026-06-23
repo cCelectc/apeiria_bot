@@ -8,13 +8,13 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/* \
     && rm -rf /root/.npm
 
-COPY webui/package.json webui/pnpm-lock.yaml webui/pnpm-workspace.yaml ./webui/
+COPY webui-new/package.json webui-new/pnpm-lock.yaml webui-new/pnpm-workspace.yaml ./webui-new/
 COPY scripts ./scripts
 COPY apeiria ./apeiria
-WORKDIR /frontend/webui
+WORKDIR /frontend/webui-new
 RUN pnpm install --frozen-lockfile
 
-COPY webui/ ./
+COPY webui-new/ ./
 RUN pnpm run build
 
 
@@ -40,7 +40,7 @@ COPY --from=ghcr.io/astral-sh/uv:0.8.17 /uv /uvx /bin/
 
 COPY pyproject.toml uv.lock README.md bot.py ./
 COPY apeiria ./apeiria
-COPY --from=web-builder /frontend/webui/dist ./webui/dist
+COPY --from=web-builder /frontend/webui-new/dist ./webui-new/dist
 
 RUN uv sync --locked --no-dev
 RUN .venv/bin/python -m playwright install --with-deps chromium \
