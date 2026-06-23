@@ -12,7 +12,6 @@ from apeiria.db.models.ai_source import (
     AISource,
 )
 from apeiria.db.models.ai_usage import AIModelUsageEvent
-from apeiria.db.models.auth import WebUIAccount, WebUIAuthSecret
 from apeiria.db.models.conversation import Message, Session
 from apeiria.db.models.governance import AccessRule, PluginState
 from apeiria.db.models.infrastructure import ACPAgent, MCPServer
@@ -37,6 +36,4 @@ __all__ = [
     "PluginState",
     "RelationshipScore",
     "Session",
-    "WebUIAccount",
-    "WebUIAuthSecret",
 ]

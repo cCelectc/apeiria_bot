@@ -603,38 +603,8 @@ def upgrade() -> None:
         sa.UniqueConstraint("platform", "user_id"),
     )
 
-    op.create_table(
-        "webui_accounts",
-        sa.Column("id", sa.Integer, primary_key=True, autoincrement=True),
-        sa.Column("username", sa.Text, nullable=False, unique=True),
-        sa.Column("password_hash", sa.Text, nullable=False),
-        sa.Column("password_changed_at", sa.Text, nullable=True),
-        sa.Column(
-            "must_change_password",
-            sa.Integer,
-            nullable=False,
-            server_default=sa.text("1"),
-        ),
-        sa.Column("created_at", sa.Text, nullable=False),
-        sa.Column("updated_at", sa.Text, nullable=False),
-        sa.CheckConstraint(
-            "must_change_password IN (0, 1)",
-            name="ck_webui_accounts_must_change_password",
-        ),
-    )
-
-    op.create_table(
-        "webui_auth_secret",
-        sa.Column("id", sa.Integer, primary_key=True),
-        sa.Column("token_secret", sa.Text, nullable=False),
-        sa.Column("created_at", sa.Text, nullable=False),
-        sa.CheckConstraint("id = 1", name="ck_webui_auth_secret_id"),
-    )
-
 
 def downgrade() -> None:
-    op.drop_table("webui_auth_secret")
-    op.drop_table("webui_accounts")
     op.drop_table("ai_profiles")
     op.drop_table("plugin_state")
     op.drop_table("access_rules")
