@@ -191,7 +191,6 @@ async function submitCreate() {
     const response = await createAccount({
       username: createForm.username.trim(),
       password: createForm.password,
-      actor_password: createForm.actor_password,
     })
     noticeStore.show(
       t('accounts.accountCreated', { username: response.data.username }),
@@ -230,8 +229,8 @@ async function submitPassword() {
       current_password: passwordForm.current_password,
       new_password: passwordForm.new_password,
     })
-    authStore.acceptSession(response.data.principal)
-    noticeStore.show(response.data.detail || t('accounts.passwordChanged'), 'success')
+    authStore.acceptSession(response.data)
+    noticeStore.show(t('accounts.passwordChanged'), 'success')
     passwordForm.current_password = ''
     passwordForm.new_password = ''
     passwordForm.confirm_password = ''
@@ -248,7 +247,6 @@ async function handleRevokeOtherSessions() {
   errorMessage.value = ''
   try {
     const response = await revokeOtherSessions()
-    authStore.acceptSession(response.data.principal)
     noticeStore.show(response.data.detail || t('accounts.otherSessionsRevoked'), 'success')
     await loadData()
   } catch (error) {
@@ -268,7 +266,6 @@ async function toggleAccount(item: WebUIAccountItem) {
   try {
     const response = await updateAccountDisabled(item.user_id, {
       is_disabled: !item.is_disabled,
-      actor_password: actorPassword,
     })
     disableActorPasswords[item.user_id] = ''
     noticeStore.show(
@@ -291,7 +288,7 @@ async function handleDelete(item: WebUIAccountItem) {
   }
   errorMessage.value = ''
   try {
-    await deleteAccount(item.user_id, { actor_password: actorPassword })
+    await deleteAccount(item.user_id)
     deleteActorPasswords[item.user_id] = ''
     noticeStore.show(
       t('accounts.accountDeleted', { username: item.username }),
@@ -317,8 +314,7 @@ async function handleReset(item: WebUIAccountItem) {
   resetSavingFor.value = item.user_id
   try {
     const response = await resetAccountPassword(item.user_id, {
-      new_password: form.new_password,
-      actor_password: form.actor_password,
+      password: form.new_password,
     })
     resetForms[item.user_id] = {
       new_password: '',

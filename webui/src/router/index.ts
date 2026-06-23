@@ -11,6 +11,12 @@ const routes: RouteRecordRaw[] = [
     meta: { requiresAuth: false, titleKey: 'login.submit' },
   },
   {
+    path: '/setup',
+    name: 'setup',
+    component: () => import('@/pages/SetupPage.vue'),
+    meta: { requiresAuth: false, titleKey: 'setup.title' },
+  },
+  {
     path: '/',
     component: () => import('@/layouts/AppLayout.vue'),
     meta: { requiresAuth: true },
@@ -102,7 +108,7 @@ router.beforeEach(async to => {
   const isPublicRoute = to.meta.requiresAuth === false
 
   if (!authStore.isAuthenticated) {
-    await authStore.ensureInitialized({ unauthorizedStatus: 'anonymous' })
+    await authStore.ensureInitialized()
   }
 
   if (!isPublicRoute && !authStore.isAuthenticated) {
@@ -113,6 +119,10 @@ router.beforeEach(async to => {
   }
 
   if (to.name === 'login' && authStore.isAuthenticated) {
+    return { name: 'dashboard' }
+  }
+
+  if (to.name === 'setup' && authStore.isAuthenticated) {
     return { name: 'dashboard' }
   }
 

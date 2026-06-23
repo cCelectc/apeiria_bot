@@ -60,12 +60,12 @@ def _session_expires_at() -> datetime:
     return datetime.now(timezone.utc) + timedelta(days=_SESSION_TTL_DAYS)
 
 
-@router.post("/login")
+@router.post("/login", response_model=MeResponse)
 async def login(
     body: LoginRequest,
     response: Response,
     request: Request,
-) -> MessageResponse:
+) -> MeResponse:
     client_ip = _get_client_ip(request)
     username_normalized = body.username.strip().lower()
 
@@ -95,7 +95,7 @@ async def login(
         response, session_id, expires_at=expires_at, request=request
     )
     record_login_success(username_normalized, client_ip)
-    return MessageResponse(detail="ok")
+    return MeResponse(user_id=account.user_id, username=account.username)
 
 
 @router.post("/logout")
@@ -118,12 +118,12 @@ async def me(
     return MeResponse(user_id=auth.user_id, username=auth.username)
 
 
-@router.post("/change-password")
+@router.post("/change-password", response_model=MeResponse)
 async def change_password(
     body: ChangePasswordRequest,
     auth: Annotated[AuthSession, Depends(require_auth)],
     request: Request,
-) -> MessageResponse:
+) -> MeResponse:
     account = await get_account_by_id(auth.user_id)
     if account is None:
         raise HTTPException(
@@ -141,7 +141,7 @@ async def change_password(
     session_id = request.cookies.get("apeiria_webui_session", "").strip()
     await revoke_user_sessions(auth.user_id, except_session_id=session_id or None)
 
-    return MessageResponse(detail="ok")
+    return MeResponse(user_id=auth.user_id, username=auth.username)
 
 
 @router.get("/status", response_model=AuthStatusResponse)

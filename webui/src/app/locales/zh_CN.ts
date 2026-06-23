@@ -919,6 +919,15 @@ const zhCN = {
     passwordHelper: '密码不会保存在浏览器表单中。',
     sessionExpired: '登录状态已失效，请重新登录。',
   },
+  setup: {
+    title: '初始化管理员账户',
+    description: '这是首次启动，请创建管理员账户。',
+    submit: '创建账户',
+    confirmPassword: '确认密码',
+    passwordsMismatch: '两次输入的密码不一致',
+    fixErrors: '请完善表单信息',
+    failed: '创建账户失败',
+  },
   register: {
     description: '使用注册码创建后台账号',
     registrationCode: '注册码',

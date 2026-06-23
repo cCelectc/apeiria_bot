@@ -6,11 +6,6 @@ export type AuthStatus =
   | 'anonymous'
   | 'restoring'
   | 'authenticated'
-  | 'expired'
-
-interface RestoreOptions {
-  unauthorizedStatus?: Extract<AuthStatus, 'anonymous' | 'expired'>
-}
 
 export const useAuthStore = defineStore('auth', () => {
   const principal = ref<WebUIPrincipal | null>(null)
@@ -31,15 +26,15 @@ export const useAuthStore = defineStore('auth', () => {
     restorePromise.value = null
   }
 
-  function logout(nextStatus: AuthStatus = 'anonymous') {
-    clearSession(nextStatus)
-  }
-
   function handleUnauthorized() {
-    clearSession('expired')
+    clearSession('anonymous')
   }
 
-  async function initialize(options: RestoreOptions = {}) {
+  function logout() {
+    clearSession('anonymous')
+  }
+
+  async function initialize() {
     if (status.value === 'authenticated' && principal.value) {
       return
     }
@@ -49,25 +44,21 @@ export const useAuthStore = defineStore('auth', () => {
     }
 
     status.value = 'restoring'
-    restorePromise.value = restoreCurrentUser(
-      options.unauthorizedStatus ?? 'anonymous',
-    )
+    restorePromise.value = restoreCurrentUser()
     await restorePromise.value
   }
 
-  async function restoreCurrentUser(
-    unauthorizedStatus: Extract<AuthStatus, 'anonymous' | 'expired'>,
-  ) {
+  async function restoreCurrentUser() {
     try {
       const response = await fetch('/api/auth/me', {
         credentials: 'same-origin',
       })
       if (response.status === 401) {
-        clearSession(unauthorizedStatus)
+        clearSession('anonymous')
         return
       }
       if (!response.ok) {
-        clearSession(unauthorizedStatus)
+        clearSession('anonymous')
         return
       }
 
@@ -75,17 +66,17 @@ export const useAuthStore = defineStore('auth', () => {
       principal.value = nextPrincipal
       status.value = 'authenticated'
     } catch {
-      clearSession(unauthorizedStatus)
+      clearSession('anonymous')
     } finally {
       restorePromise.value = null
     }
   }
 
-  async function ensureInitialized(options: RestoreOptions = {}) {
+  async function ensureInitialized() {
     if (status.value === 'authenticated' && principal.value) {
       return
     }
-    await initialize(options)
+    await initialize()
   }
 
   return {
@@ -95,8 +86,8 @@ export const useAuthStore = defineStore('auth', () => {
     isAuthenticated,
     acceptSession,
     clearSession,
-    logout,
     handleUnauthorized,
+    logout,
     initialize,
     ensureInitialized,
   }

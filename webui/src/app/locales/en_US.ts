@@ -919,6 +919,15 @@ const enUS = {
     passwordHelper: 'The password is not stored by the browser form.',
     sessionExpired: 'Your session has expired. Sign in again.',
   },
+  setup: {
+    title: 'Create Administrator Account',
+    description: 'First-time setup — create the administrator account.',
+    submit: 'Create Account',
+    confirmPassword: 'Confirm Password',
+    passwordsMismatch: 'Passwords do not match',
+    fixErrors: 'Fix the form errors before continuing',
+    failed: 'Failed to create account',
+  },
   register: {
     description: 'Create a WebUI account with a registration code',
     registrationCode: 'Registration Code',

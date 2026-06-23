@@ -10,6 +10,8 @@ web_ui:
     permission_denied: "Your account cannot perform this action"
     invalid_credentials: "Incorrect username or password"
     login_temporarily_locked: "Too many login attempts. Please try again later."
+    login_throttled: "Too many login attempts. Please try again later."
+    setup_not_allowed: "Setup is only allowed when no accounts exist."
     username_invalid: "Username is required"
     username_taken: "Username already exists"
     current_password_required: "Current password is required"
