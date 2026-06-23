@@ -70,58 +70,6 @@ def check_system_dependencies() -> None:
             _("missing system dependencies: {deps}").format(deps="uv")
         )
 
-    frontend_missing: list[str] = []
-    needs_frontend_toolchain = (
-        snapshot.frontend_workspace_exists and not snapshot.frontend_dist_exists
-    )
-    if needs_frontend_toolchain:
-        if not snapshot.node_available:
-            frontend_missing.append("node")
-        if not snapshot.pnpm_available and not snapshot.npm_available:
-            frontend_missing.append("pnpm-or-npm")
-    if frontend_missing:
-        click.echo(
-            _("frontend toolchain missing: {deps}").format(
-                deps=", ".join(frontend_missing)
-            ),
-            err=True,
-        )
-
-
-def build_frontend() -> None:
-    import json
-
-    service = active_environment_service()
-    status = service.get_frontend_build_status()
-    if not status.can_build or status.build_tool is None:
-        raise click.ClickException(
-            _("frontend toolchain missing: {deps}").format(deps="pnpm-or-npm")
-        )
-
-    async def _stream() -> None:
-        failed = False
-        async for line_bytes in service.stream_frontend_rebuild():
-            try:
-                event = json.loads(line_bytes.decode("utf-8"))
-            except (json.JSONDecodeError, UnicodeDecodeError):
-                continue
-            if event.get("event") == "chunk":
-                click.echo(event.get("chunk", ""), nl=False, err=True)
-            elif event.get("event") == "error":
-                click.echo(event.get("detail", "build_failed"), err=True)
-                failed = True
-            elif event.get("event") == "done":
-                pass
-        if failed:
-            raise click.ClickException(_("frontend build failed"))
-
-    try:
-        import asyncio
-
-        asyncio.run(_stream())
-    except RuntimeError as exc:
-        raise click.ClickException(str(exc)) from exc
-
 
 @click.group(
     context_settings={"help_option_names": ["-h", "--help"]},
@@ -166,9 +114,6 @@ def env_init(*, no_dev: bool) -> None:
 
     click.echo(f"  {_('Next steps')}:")
     click.echo(f"    uv run apeiria run              # {_('start the bot')}")
-    click.echo(
-        f"    uv run apeiria webui recover    # {_('create admin account for Web UI')}"
-    )
     click.echo("")
 
 
@@ -205,12 +150,6 @@ def repair() -> None:
     help=_("Run the canonical Apeiria runtime entry."),
 )
 @click.option(
-    "--build",
-    "build_frontend_first",
-    is_flag=True,
-    help=_("Build Web UI frontend assets before running the bot."),
-)
-@click.option(
     "--entry",
     "entry_file",
     default=None,
@@ -224,7 +163,6 @@ def repair() -> None:
 @click.argument("extra_args", nargs=-1)
 def run(
     *,
-    build_frontend_first: bool,
     entry_file: str,
     reload: bool,
     extra_args: tuple[str, ...],
@@ -237,7 +175,7 @@ def run(
             )
         )
     root = project_root()
-    _auto_prepare_run(root, build_frontend_first=build_frontend_first)
+    _auto_prepare_run(root)
     if reload:
         raise click.exceptions.Exit(run_with_reload(cwd=root, extra_args=extra_args))
     env = _runtime_process_env(root)
@@ -251,15 +189,8 @@ def run(
         raise click.exceptions.Exit(result.returncode)
 
 
-_AUTO_PREPARE_FRONTEND_DETAILS = frozenset(
-    {"dist_missing", "build_meta_missing", "fingerprint_missing", "stale"}
-)
-
-
 def _auto_prepare_run(
     root: Path,
-    *,
-    build_frontend_first: bool,
 ) -> None:
     from apeiria.environment.health import HealthService
     from apeiria.environment.manager import EnvironmentService
@@ -270,10 +201,6 @@ def _auto_prepare_run(
 
     _auto_prepare_env(checks)
     _auto_prepare_db(checks)
-    _auto_prepare_frontend(
-        checks,
-        build_frontend_first=build_frontend_first,
-    )
 
 
 def _auto_prepare_env(checks: dict[str, object]) -> None:
@@ -333,32 +260,6 @@ def _auto_prepare_db(checks: dict[str, object]) -> None:
         click.echo("")
 
 
-def _auto_prepare_frontend(
-    checks: dict[str, object],
-    *,
-    build_frontend_first: bool,
-) -> None:
-    from apeiria.environment.models import HealthCheck
-
-    ok_check = HealthCheck(key="ok", ok=True, detail="ok", message="ok")
-    frontend_check = checks.get("frontend_build", ok_check)
-    frontend_needs_build = build_frontend_first or (
-        not getattr(frontend_check, "ok", True)
-        and getattr(frontend_check, "detail", "") in _AUTO_PREPARE_FRONTEND_DETAILS
-    )
-    if frontend_needs_build:
-        click.echo(_("building Web UI frontend ..."))
-        try:
-            build_frontend()
-        except click.ClickException:
-            raise
-        except Exception as exc:
-            raise click.ClickException(
-                _("frontend build failed: {error}").format(error=str(exc))
-            ) from exc
-        click.echo("")
-
-
 def run_with_reload(
     *,
     cwd: Path,
@@ -402,9 +303,6 @@ def env_info(*, json_output: bool) -> None:
     lines = [
         f"project_root={snapshot.project_root}",
         f"uv_available={snapshot.uv_available}",
-        f"node_available={snapshot.node_available}",
-        f"pnpm_available={snapshot.pnpm_available}",
-        f"npm_available={snapshot.npm_available}",
         f"main_lock_exists={snapshot.main_lock_exists}",
         f"plugin_project={snapshot.plugin_project_root}",
         f"plugin_project_exists={snapshot.plugin_project_exists}",
@@ -465,10 +363,6 @@ def _startup_check_hint(error_text: str) -> str | None:
         (
             "is not supported by this apeiria build",
             "move the current local database aside and rerun check to recreate it",
-        ),
-        (
-            "web_ui auth storage is corrupted",
-            ("fix or restore `data/web_ui/secret.json`, then rerun check"),
         ),
     )
     for pattern, hint in rules:
