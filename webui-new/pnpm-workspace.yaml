@@ -1,5 +1,0 @@
-allowBuilds:
-  esbuild: true
-  vue-demi: true
-minimumReleaseAgeExclude:
-  - axios@1.18.1
