@@ -4,59 +4,44 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-import jwt
 from fastapi import HTTPException, Request, Response, status
 
 from apeiria.access.principal import AuthSession  # noqa: TC001
 from apeiria.i18n import t
 from apeiria.webui.auth.service import auth_session_service
+from apeiria.webui.auth.sessions import (
+    SessionExpiredError,
+    SessionNotFoundError,
+    SessionRevokedError,
+)
 
 if TYPE_CHECKING:
+    from datetime import datetime
+
     from starlette.requests import HTTPConnection
 
 _AUTH_COOKIE_NAME = "apeiria_webui_session"
 
 
-async def _verify_auth_session_token(token: str) -> AuthSession:
-    """Verify one JWT token and return the structured auth session."""
-
-    try:
-        return await auth_session_service.verify_token(token)
-    except jwt.ExpiredSignatureError:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=t("web_ui.auth.token_expired"),
-        ) from None
-    except jwt.InvalidTokenError:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=t("web_ui.auth.token_invalid"),
-        ) from None
-
-
 async def set_auth_session_cookie(
     response: Response,
-    session: AuthSession,
+    session_id: str,
     *,
+    expires_at: datetime,
     request: Request | None = None,
 ) -> None:
-    """Persist the session token in a browser-managed HttpOnly cookie."""
-
-    token = await auth_session_service.create_token(session)
     response.set_cookie(
         _AUTH_COOKIE_NAME,
-        token,
+        session_id,
         httponly=True,
         secure=_request_is_secure(request),
         samesite="lax",
-        expires=session.expires_at,
+        expires=expires_at,
         path="/",
     )
 
 
 def clear_auth_session_cookie(response: Response) -> None:
-    """Clear the browser-managed auth session cookie."""
-
     response.delete_cookie(
         _AUTH_COOKIE_NAME,
         httponly=True,
@@ -68,32 +53,48 @@ def clear_auth_session_cookie(response: Response) -> None:
 async def require_auth(
     request: Request,
 ) -> AuthSession:
-    """Require a valid browser session cookie."""
-
-    token = _session_token_from_cookie(request)
-    if not token:
+    session_id = _session_id_from_cookie(request)
+    if not session_id:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=t("web_ui.auth.token_invalid"),
         )
-    return await _verify_auth_session_token(token)
+    try:
+        return await auth_session_service.verify_session(session_id)
+    except SessionExpiredError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=t("web_ui.auth.token_expired"),
+        ) from None
+    except (SessionNotFoundError, SessionRevokedError):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=t("web_ui.auth.token_invalid"),
+        ) from None
 
 
 async def require_connection_auth(connection: "HTTPConnection") -> AuthSession:
-    """Require a valid browser session cookie on HTTP or WebSocket connections."""
-
-    token = _session_token_from_cookie(connection)
-    if not token:
+    session_id = _session_id_from_cookie(connection)
+    if not session_id:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=t("web_ui.auth.token_invalid"),
         )
-    return await _verify_auth_session_token(token)
+    try:
+        return await auth_session_service.verify_session(session_id)
+    except SessionExpiredError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=t("web_ui.auth.token_expired"),
+        ) from None
+    except (SessionNotFoundError, SessionRevokedError):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=t("web_ui.auth.token_invalid"),
+        ) from None
 
 
-def _session_token_from_cookie(connection: "HTTPConnection") -> str:
-    """Read the current auth token from the browser-managed session cookie."""
-
+def _session_id_from_cookie(connection: "HTTPConnection") -> str:
     return connection.cookies.get(_AUTH_COOKIE_NAME, "").strip()
 
 

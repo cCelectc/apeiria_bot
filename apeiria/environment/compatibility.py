@@ -62,7 +62,7 @@ def _inspect_web_ui_config(
             message="Retired Web UI global config key is present.",
             hint=(
                 "Move `web_ui_token_expire_days` to "
-                "`[plugins.web_ui].token_expire_days`, then remove the global key."
+                "`[plugins.web_ui].session_ttl_days`, then remove the global key."
             ),
         ),
     )

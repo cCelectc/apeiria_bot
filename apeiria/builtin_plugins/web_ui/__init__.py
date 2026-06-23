@@ -41,9 +41,9 @@ __plugin_meta__ = PluginMetadata(
         config=ConfigExtra(
             fields=[
                 RegisterConfig(
-                    key="token_expire_days",
+                    key="session_ttl_days",
                     default=7,
-                    help=t("web_ui.meta.config_token_expire_days"),
+                    help=t("web_ui.meta.config_session_ttl_days"),
                     type=int,
                 )
             ]
@@ -157,33 +157,7 @@ def _warm_plugin_management_caches() -> None:
     )
 
 
-async def _ensure_owner_account() -> None:
-    """Auto-create admin account if no accounts exist."""
-    from apeiria.webui.auth.accounts import list_accounts, recover_owner_account
-
-    accounts = await list_accounts()
-    if accounts:
-        logger.debug(
-            "Web UI accounts found ({}), skipping auto-provision",
-            len(accounts),
-        )
-        return
-
-    import secrets
-    import string
-
-    alphabet = string.ascii_letters + string.digits
-    password = "".join(secrets.choice(alphabet) for _ in range(24))
-
-    username, _created = await recover_owner_account("admin", password)
-    logger.warning("No Web UI accounts found — auto-created owner account")
-    logger.warning("  Username: {}", username)
-    logger.warning("  Password: {}", password)
-    logger.warning("  Log in at {} and change the password immediately", _web_ui_url())
-
-
 from nonebot import get_driver
 
 get_driver().on_startup(_mount_routes)
 get_driver().on_startup(_warm_plugin_management_caches)
-get_driver().on_startup(_ensure_owner_account)

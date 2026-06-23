@@ -3,7 +3,7 @@ web_ui:
     name: "Web UI"
     description: "受保护的 Web UI 控制面板。"
     usage: "访问 http://host:port/ 打开受保护的控制面板"
-    config_token_expire_days: "Web UI 的 JWT 令牌有效期（天）"
+    config_session_ttl_days: "Web UI 会话最长有效期（天）"
   auth:
     token_expired: "登录已过期，请重新登录"
     token_invalid: "登录状态无效，请重新登录"

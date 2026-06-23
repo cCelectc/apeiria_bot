@@ -14,7 +14,7 @@ ModelT = TypeVar("ModelT", bound=BaseModel)
 class WebUIConfig(BaseModel):
     """Runtime configuration for the Web UI plugin."""
 
-    token_expire_days: int = 7
+    session_ttl_days: int = 7
 
 
 def _validate_config(model: type[ModelT], data: dict[str, object]) -> ModelT:

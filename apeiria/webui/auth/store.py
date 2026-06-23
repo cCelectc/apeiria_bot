@@ -128,18 +128,11 @@ async def with_auth_transaction(
     imported_secret_file: Path | None = None
     async with get_session() as session:
         imported_secret_file = await _import_legacy_json_if_needed(session)
-        await _ensure_token_secret(session)
         result = await operation(session)
         await session.commit()
     if imported_secret_file is not None:
         _backup_legacy_secret_file(imported_secret_file)
     return result
-
-
-async def get_token_secret() -> str:
-    """Return the JWT signing secret."""
-    data = await load_store_data()
-    return data.token_secret
 
 
 def get_secret_file_path() -> "Path":
@@ -333,7 +326,6 @@ __all__ = [
     "WebUIAuthStoreData",
     "count_enabled_accounts",
     "get_secret_file_path",
-    "get_token_secret",
     "hash_password",
     "iso_now",
     "list_user_items",

@@ -7,7 +7,8 @@ from sqlalchemy import Integer
 
 from apeiria.webui.admin_registry import get as _get_svc
 from apeiria.webui.admin_registry import list_types as _list_resource_types
-from apeiria.webui.routes.deps import get_db, require_auth
+from apeiria.webui.auth import require_auth
+from apeiria.webui.routes.deps import get_db
 from apeiria.webui.schemas.admin import (
     AdminListResponse,
     DeleteBatchRequest,

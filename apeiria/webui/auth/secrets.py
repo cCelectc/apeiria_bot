@@ -23,7 +23,6 @@ from apeiria.webui.auth.audit import (
 )
 from apeiria.webui.auth.store import (
     get_secret_file_path,
-    get_token_secret,
 )
 
 __all__ = [
@@ -34,7 +33,6 @@ __all__ = [
     "get_account_by_id",
     "get_account_by_username",
     "get_secret_file_path",
-    "get_token_secret",
     "list_accounts",
     "list_security_audit_events",
     "record_login_success",

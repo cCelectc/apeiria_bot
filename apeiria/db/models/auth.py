@@ -48,3 +48,22 @@ class WebUIAuthSecret(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     token_secret: Mapped[str] = mapped_column(Text)
     created_at: Mapped[str] = mapped_column(Text, default=_now_iso)
+
+
+class WebUISession(Base):
+    __tablename__ = "webui_sessions"
+    __table_args__ = (
+        CheckConstraint(
+            "revoked IN (0, 1)",
+            name="ck_webui_sessions_revoked",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(Text, primary_key=True)
+    user_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("webui_accounts.id", ondelete="CASCADE")
+    )
+    expires_at: Mapped[str] = mapped_column(Text)
+    last_active_at: Mapped[str] = mapped_column(Text)
+    revoked: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[str] = mapped_column(Text, default=_now_iso)
