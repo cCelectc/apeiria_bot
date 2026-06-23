@@ -6,7 +6,7 @@ from apeiria._framework_loader import (
     get_framework_dependency_plugin_modules,
 )
 
-ALWAYS_PROTECTED_PLUGIN_MODULES = frozenset({"apeiria.builtin_plugins.web_ui"})
+ALWAYS_PROTECTED_PLUGIN_MODULES: frozenset[str] = frozenset()
 
 
 @lru_cache(maxsize=1)

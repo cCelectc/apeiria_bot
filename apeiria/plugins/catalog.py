@@ -441,8 +441,6 @@ class PluginGovernanceService:
         reasons: list[str] = []
         if is_framework_dependency_plugin_module(module_name):
             reasons.append(t("common.framework_required"))
-        if module_name == "apeiria.builtin_plugins.web_ui":
-            reasons.append(t("common.control_panel_required"))
         return reasons
 
     def _collapse_child_plugins(

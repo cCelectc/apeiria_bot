@@ -24,7 +24,6 @@ BUILTIN_APPLICATION_PLUGIN_MODULES = (
     "apeiria.builtin_plugins.qq_tools",
     "apeiria.builtin_plugins.repeater",
     "apeiria.builtin_plugins.trigger_reply",
-    "apeiria.builtin_plugins.web_ui",
 )
 
 
@@ -161,10 +160,6 @@ def load_framework() -> None:
 
     for plugin in FRAMEWORK_PLUGIN_MODULES:
         nonebot.load_plugin(plugin)
-
-    from apeiria.webchat import _ensure_alconna_registrations
-
-    _ensure_alconna_registrations()
 
     database_runtime.ensure_ready()
     asyncio.run(init_engine(database_runtime.database_path()))

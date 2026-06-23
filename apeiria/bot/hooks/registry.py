@@ -4,7 +4,7 @@ All system-level NoneBot matcher/driver hooks are registered here explicitly,
 not via import side effects. Keeps NoneBot decorator usage confined to one
 module, making hook wiring ordered and auditable.
 
-Plugin-level lifecycle hooks (web_ui / render / help) continue to live in
+Plugin-level lifecycle hooks (render / help) continue to live in
 their own plugin modules — this registry only owns system-level hooks.
 """
 
