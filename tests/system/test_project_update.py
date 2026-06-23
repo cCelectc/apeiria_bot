@@ -289,7 +289,6 @@ def test_update_task_success_reports_restart_required(
             "validate_target",
             "git_transition",
             "dependency_sync",
-            "webui_build",
             "readiness",
         }
 
@@ -448,8 +447,6 @@ def os_environ_for_git() -> dict[str, str]:
 def _fake_environment_service() -> object:
     return SimpleNamespace(
         sync_main_project=lambda: None,
-        get_frontend_build_status=lambda: SimpleNamespace(can_build=False),
-        build_frontend_sync=lambda: SimpleNamespace(logs="built\n"),
     )
 
 
@@ -461,8 +458,6 @@ def _slow_environment_service() -> object:
 
     return SimpleNamespace(
         sync_main_project=sync_main_project,
-        get_frontend_build_status=lambda: SimpleNamespace(can_build=False),
-        build_frontend_sync=lambda: SimpleNamespace(logs="built\n"),
     )
 
 
@@ -472,8 +467,6 @@ def _failing_environment_service(message: str) -> object:
 
     return SimpleNamespace(
         sync_main_project=sync_main_project,
-        get_frontend_build_status=lambda: SimpleNamespace(can_build=False),
-        build_frontend_sync=lambda: SimpleNamespace(logs="built\n"),
     )
 
 
