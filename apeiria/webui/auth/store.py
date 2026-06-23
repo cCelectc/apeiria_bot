@@ -169,11 +169,19 @@ async def _load_store_data_from_session(
 
 
 async def _read_token_secret(session: "AsyncSession") -> str:
-    result = await session.execute(
-        select(WebUIAuthSecretModel.token_secret).where(WebUIAuthSecretModel.id == 1)
-    )
-    value = result.scalar_one_or_none()
-    return str(value) if value is not None else ""
+    import contextlib
+
+    from sqlalchemy.exc import OperationalError
+
+    with contextlib.suppress(OperationalError):
+        result = await session.execute(
+            select(WebUIAuthSecretModel.token_secret).where(
+                WebUIAuthSecretModel.id == 1
+            )
+        )
+        value = result.scalar_one_or_none()
+        return str(value) if value is not None else ""
+    return ""
 
 
 async def _load_user_items(session: "AsyncSession") -> list[dict[str, Any]]:
