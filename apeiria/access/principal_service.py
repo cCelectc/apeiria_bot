@@ -5,27 +5,13 @@ from __future__ import annotations
 from apeiria.access.principal import Principal, PrincipalRole
 
 _FULL_ACCESS_ROLE = PrincipalRole(
-    role_id="webui_local_account",
+    role_id="system_admin",
     capabilities=("control_panel", "account_manage"),
 )
 
 
 class PrincipalService:
     """Build and resolve governance principal objects."""
-
-    def build_webui_account_principal(
-        self,
-        *,
-        user_id: str,
-        username: str,
-    ) -> Principal:
-        return Principal(
-            principal_kind="webui_account",
-            principal_id=user_id,
-            display_name=username,
-            role=_FULL_ACCESS_ROLE,
-            metadata={"username": username},
-        )
 
     def build_system_actor(self, actor_name: str = "system") -> Principal:
         """Reserved for Phase 3 runtime ingress.

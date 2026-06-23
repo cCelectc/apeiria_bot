@@ -9,7 +9,6 @@ if TYPE_CHECKING:
     from datetime import datetime
 
 PrincipalKind = Literal[
-    "webui_account",
     "bot_subject",
     "system_actor",
     "host_operator",
