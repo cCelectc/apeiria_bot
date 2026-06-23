@@ -35,11 +35,10 @@ def upgrade() -> None:
         sa.Column("expires_at", sa.Text, nullable=False),
         sa.Column("revoked", sa.Integer, nullable=False, server_default="0"),
         sa.Column("created_at", sa.Text, nullable=False),
-    )
-    op.create_check_constraint(
-        "ck_auth_refresh_tokens_revoked",
-        "auth_refresh_tokens",
-        "revoked IN (0, 1)",
+        sa.CheckConstraint(
+            "revoked IN (0, 1)",
+            name="ck_auth_refresh_tokens_revoked",
+        ),
     )
 
 
