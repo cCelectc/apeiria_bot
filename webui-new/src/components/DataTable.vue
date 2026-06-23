@@ -20,7 +20,7 @@
             <span v-else class="text-sm text-muted-foreground">No data</span>
           </TableCell>
         </TableRow>
-        <TableRow v-for="(row, i) in rows" :key="i">
+        <TableRow v-for="(row, i) in rows" :key="i" class="even:bg-muted/30 hover:bg-muted/50">
           <TableCell v-for="col in columns" :key="col.key" :class="col.class">
             <slot :name="`cell-${col.key}`" :row="row" :value="row[col.key as keyof typeof row]">
               {{ row[col.key as keyof typeof row] }}

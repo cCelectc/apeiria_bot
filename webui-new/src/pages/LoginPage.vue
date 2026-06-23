@@ -1,6 +1,7 @@
 <template>
   <div class="flex min-h-[100dvh] items-center justify-center bg-muted/50">
-    <Card class="w-full max-w-md">
+    <Card class="w-full max-w-md overflow-hidden">
+      <div class="h-1.5 bg-primary" />
       <CardHeader class="text-center">
         <CardTitle class="text-2xl">Apeiria</CardTitle>
         <CardDescription>Sign in to the admin panel</CardDescription>

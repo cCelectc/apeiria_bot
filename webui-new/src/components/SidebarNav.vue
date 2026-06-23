@@ -20,7 +20,10 @@
 
     <SidebarContent>
       <SidebarGroup v-for="group in navGroups" :key="group.id">
-        <SidebarGroupLabel>{{ group.label }}</SidebarGroupLabel>
+            <SidebarGroupLabel>
+              <component :is="groupIcons[group.id]" class="size-3.5" />
+              <span>{{ group.label }}</span>
+            </SidebarGroupLabel>
         <SidebarMenu>
           <template v-for="item in group.children" :key="item.id">
             <SidebarMenuItem v-if="isLeaf(item)">
@@ -117,6 +120,10 @@ import {
   User,
   Heart,
   Sliders,
+  LayoutDashboard,
+  Settings2,
+  Sparkles,
+  Activity,
 } from "@lucide/vue"
 import type { Component } from "vue"
 import ThemeToggle from "./ThemeToggle.vue"
@@ -214,6 +221,13 @@ const navGroups: { id: string; label: string; children: NavItem[] }[] = [
 const expandedGroups = reactive<Record<string, boolean>>({
   "ai-studio": true,
 })
+
+const groupIcons: Record<string, Component> = {
+  overview: LayoutDashboard,
+  configuration: Settings2,
+  ai: Sparkles,
+  operations: Activity,
+}
 
 const route = useRoute()
 

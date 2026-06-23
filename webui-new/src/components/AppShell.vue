@@ -9,13 +9,14 @@
         <slot name="header-actions" />
       </header>
       <div class="flex-1 p-6">
-        <slot />
+        <RouterView />
       </div>
     </main>
   </SidebarProvider>
 </template>
 
 <script setup lang="ts">
+import { RouterView } from "vue-router"
 import SidebarNav from "@/components/SidebarNav.vue"
 import BreadcrumbNav from "@/components/BreadcrumbNav.vue"
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar"
