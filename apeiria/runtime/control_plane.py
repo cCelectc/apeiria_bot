@@ -5,13 +5,9 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator
-
     from apeiria.runtime.context import ApeiriaRuntime
     from apeiria.system.management import (
         DashboardStatusSnapshot,
-        WebUIBuildRunSnapshot,
-        WebUIBuildStatusSnapshot,
     )
     from apeiria.system.project_update import (
         ProjectUpdatePlan,
@@ -50,15 +46,6 @@ class ApeiriaControlPlane:
 
     def get_dashboard_events(self) -> list[Any]:
         return self._runtime.system.get_recent_events()
-
-    def get_web_ui_build_status(self) -> "WebUIBuildStatusSnapshot":
-        return self._runtime.system.get_web_ui_build_status()
-
-    async def rebuild_web_ui(self) -> "WebUIBuildRunSnapshot":
-        return await self._runtime.system.rebuild_web_ui()
-
-    def stream_web_ui_rebuild(self) -> "AsyncIterator[bytes]":
-        return self._runtime.system.stream_web_ui_rebuild()
 
     def schedule_restart(self) -> None:
         self._runtime.system.schedule_restart()

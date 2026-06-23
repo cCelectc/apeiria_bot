@@ -6,7 +6,6 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Protocol
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator
     from pathlib import Path
 
     from apeiria.access.models import AccessPolicyRule
@@ -16,8 +15,6 @@ if TYPE_CHECKING:
     from apeiria.system.management import (
         DashboardEventSnapshot,
         DashboardStatusSnapshot,
-        WebUIBuildRunSnapshot,
-        WebUIBuildStatusSnapshot,
     )
     from apeiria.system.project_update import (
         ProjectUpdatePlan,
@@ -46,10 +43,6 @@ class RuntimeDatabaseEntry(Protocol):
 
 class RuntimeConversationEntry(Protocol):
     """Conversation entry owned by the runtime kernel."""
-
-
-class RuntimeChatEntry(Protocol):
-    """Web chat entry owned by the runtime kernel."""
 
 
 class RuntimePluginGovernanceEntry(Protocol):
@@ -89,12 +82,6 @@ class RuntimeSystemManagementEntry(Protocol):
         *,
         limit: int = 8,
     ) -> list["DashboardEventSnapshot"]: ...
-
-    def get_web_ui_build_status(self) -> "WebUIBuildStatusSnapshot": ...
-
-    async def rebuild_web_ui(self) -> "WebUIBuildRunSnapshot": ...
-
-    def stream_web_ui_rebuild(self) -> "AsyncIterator[bytes]": ...
 
     def schedule_restart(self) -> None: ...
 
@@ -147,7 +134,6 @@ class ApeiriaRuntime:
     environment: RuntimeEnvironmentEntry
     database: RuntimeDatabaseEntry
     conversation: RuntimeConversationEntry
-    chat: RuntimeChatEntry
     plugins: RuntimePluginGovernanceEntry
     plugin_management: RuntimePluginManagementEntry
     access: RuntimeAccessEntry

@@ -261,7 +261,6 @@ def _init_runtime_context() -> None:
     from apeiria.runtime.control_plane import ApeiriaControlPlane
     from apeiria.system.management import system_management_service
     from apeiria.system.project_update import project_update_service
-    from apeiria.webchat.service import web_chat_service
 
     project_root = Path.cwd()
     runtime = ApeiriaRuntime(
@@ -270,7 +269,6 @@ def _init_runtime_context() -> None:
         environment=environment_service,
         database=database_runtime,
         conversation=_conv_ensure,  # type: ignore[arg-type]
-        chat=web_chat_service,
         plugins=plugin_governance_service,
         plugin_management=plugin_management_service,
         access=access_management_service,

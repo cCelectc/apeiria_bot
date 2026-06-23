@@ -125,11 +125,6 @@ PACKAGE_RULES: tuple[ApeiriaPackageRule, ...] = (
         band=ApeiriaPackageBand.SURFACE,
         description="CLI delivery surface.",
     ),
-    ApeiriaPackageRule(
-        prefix="apeiria.webui",
-        band=ApeiriaPackageBand.SURFACE,
-        description="FastAPI and Web UI delivery surface.",
-    ),
 )
 
 INFRASTRUCTURE_PREFIXES: tuple[str, ...] = tuple(

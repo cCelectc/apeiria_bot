@@ -19,9 +19,7 @@ class ApeiriaEntryTrigger(str, Enum):
     """Concrete triggers that describe how a runtime entry was initiated."""
 
     NONEBOT_MESSAGE = "nonebot_message"
-    WEB_CHAT_MESSAGE = "web_chat_message"
     AI_FUTURE_TASK = "ai_future_task"
-    WEBUI_ACTION = "webui_action"
     CLI_ACTION = "cli_action"
     STARTUP = "startup"
     CLEANUP = "cleanup"
@@ -29,7 +27,6 @@ class ApeiriaEntryTrigger(str, Enum):
 
 _CONVERSATION_TRIGGERS: Final[tuple[ApeiriaEntryTrigger, ...]] = (
     ApeiriaEntryTrigger.NONEBOT_MESSAGE,
-    ApeiriaEntryTrigger.WEB_CHAT_MESSAGE,
     ApeiriaEntryTrigger.AI_FUTURE_TASK,
 )
 
@@ -42,14 +39,8 @@ class ApeiriaEntry:
     trigger: ApeiriaEntryTrigger
 
 
-def resolve_message_entry_trigger(event: object | None) -> ApeiriaEntryTrigger:
+def resolve_message_entry_trigger(_event: object | None) -> ApeiriaEntryTrigger:
     """Map a runtime message event to its lightweight trace trigger."""
-
-    if event is not None:
-        from apeiria.webchat.event import WebChatMessageEvent
-
-        if isinstance(event, WebChatMessageEvent):
-            return ApeiriaEntryTrigger.WEB_CHAT_MESSAGE
     return ApeiriaEntryTrigger.NONEBOT_MESSAGE
 
 
