@@ -110,6 +110,24 @@ const router = createRouter({
               meta: { title: "Personas" },
             },
             {
+              path: "profiles",
+              name: "ai-profiles",
+              component: () => import("@/pages/AIProfilesPage.vue"),
+              meta: { title: "Profiles" },
+            },
+            {
+              path: "relationships",
+              name: "ai-relationships",
+              component: () => import("@/pages/AIRelationshipsPage.vue"),
+              meta: { title: "Relationships" },
+            },
+            {
+              path: "runtime",
+              name: "ai-runtime",
+              component: () => import("@/pages/AIRuntimeSettingsPage.vue"),
+              meta: { title: "Runtime Settings" },
+            },
+            {
               path: "debug",
               name: "ai-debug",
               component: () => import("@/pages/AIDebugPage.vue"),

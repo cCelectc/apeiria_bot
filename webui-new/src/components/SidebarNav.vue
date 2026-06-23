@@ -114,6 +114,9 @@ import {
   Terminal,
   RefreshCw,
   ChevronRight,
+  User,
+  Heart,
+  Sliders,
 } from "@lucide/vue"
 import type { Component } from "vue"
 import ThemeToggle from "./ThemeToggle.vue"
@@ -189,6 +192,9 @@ const navGroups: { id: string; label: string; children: NavItem[] }[] = [
           { id: "ai-memories", label: "Memories", icon: Brain, to: "/ai/memories" },
           { id: "ai-knowledge", label: "Knowledge", icon: BookOpen, to: "/ai/knowledge" },
           { id: "ai-personas", label: "Personas", icon: UserCircle, to: "/ai/personas" },
+          { id: "ai-profiles", label: "Profiles", icon: User, to: "/ai/profiles" },
+          { id: "ai-relationships", label: "Relationships", icon: Heart, to: "/ai/relationships" },
+          { id: "ai-runtime", label: "Runtime", icon: Sliders, to: "/ai/runtime" },
           { id: "ai-debug", label: "Debug", icon: Bug, to: "/ai/debug" },
         ],
       },
