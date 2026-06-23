@@ -1,5 +1,11 @@
-<template><div class="flex flex-col gap-6"><PageHeader title="Chat" /><Chat /></div></template>
+<template>
+  <div class="flex flex-col gap-6">
+    <PageHeader title="Chat" description="WebSocket chat interface" />
+    <ChatFeature />
+  </div>
+</template>
+
 <script setup lang="ts">
 import PageHeader from "@/components/PageHeader.vue"
-import Chat from "@/features/chat/index.vue"
+import ChatFeature from "@/features/chat/index.vue"
 </script>
