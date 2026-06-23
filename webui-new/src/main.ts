@@ -8,12 +8,14 @@ import "./assets/index.css"
 
 const app = createApp(App)
 
+import zhCN from "./i18n/zh_CN"
+
 const i18n = createI18n({
   legacy: false,
   locale: "zh-CN",
   fallbackLocale: "en",
   messages: {
-    "zh-CN": {},
+    "zh-CN": zhCN,
     en: {},
   },
 })

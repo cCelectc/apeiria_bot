@@ -1,6 +1,7 @@
 <template>
   <TooltipProvider>
     <RouterView />
+    <CommandPalette />
     <Toaster />
   </TooltipProvider>
 </template>
@@ -9,4 +10,5 @@
 import { RouterView } from "vue-router"
 import { Toaster } from "vue-sonner"
 import { TooltipProvider } from "@/components/ui/tooltip"
+import CommandPalette from "@/components/CommandPalette.vue"
 </script>
