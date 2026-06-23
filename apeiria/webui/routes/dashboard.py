@@ -9,7 +9,7 @@ from fastapi.responses import StreamingResponse
 
 from apeiria.i18n import t
 from apeiria.webui.auth import require_auth
-from apeiria.webui.routes._deps import require_runtime_control_plane
+from apeiria.webui.routes.deps import require_runtime_control_plane
 from apeiria.webui.schemas.models import (
     DashboardEventItem,
     DashboardEventsResponse,

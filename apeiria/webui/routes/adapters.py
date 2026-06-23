@@ -1,10 +1,100 @@
-"""Adapter package store routes."""
+"""Unified adapter routes."""
 
 from __future__ import annotations
 
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
+
+from apeiria.plugins.management import plugin_management_service
+from apeiria.webui.auth import require_auth
+from apeiria.webui.schemas.plugin_config import (
+    AdapterConfigRequest,
+    AdapterConfigResponse,
+    to_adapter_config_response,
+)
+
+config_router = APIRouter()
+
+
+@config_router.get("/config", response_model=AdapterConfigResponse)
+async def get_adapter_config(
+    _: Annotated[Any, Depends(require_auth)],
+) -> AdapterConfigResponse:
+    return to_adapter_config_response(plugin_management_service.get_adapter_config())
+
+
+@config_router.patch("/config", response_model=AdapterConfigResponse)
+async def update_adapter_config(
+    payload: AdapterConfigRequest,
+    _: Annotated[Any, Depends(require_auth)],
+) -> AdapterConfigResponse:
+    return to_adapter_config_response(
+        plugin_management_service.update_adapter_config(payload.modules)
+    )
+
+
+from fastapi import APIRouter, HTTPException
+
+from apeiria.plugins.adapter_selection import (
+    AdapterSelectionRequest,
+    adapter_selection_service,
+)
+from apeiria.webui.schemas.adapter_selection import (
+    AdapterSelectionEnableRequest,
+    AdapterSelectionItem,
+    AdapterSelectionQueryParams,
+    AdapterSelectionResponse,
+    to_adapter_selection_item,
+    to_adapter_selection_response,
+)
+
+selection_router = APIRouter()
+
+
+@selection_router.get("", response_model=AdapterSelectionResponse)
+async def get_adapter_selection(
+    params: Annotated[AdapterSelectionQueryParams, Depends()],
+    _: Annotated[Any, Depends(require_auth)],
+) -> AdapterSelectionResponse:
+    state = await adapter_selection_service.get_selection(
+        AdapterSelectionRequest(
+            search=params.search,
+            source=params.source,
+            category=params.category,
+            sort=params.sort,
+            unenabled_only=params.unenabled_only,
+            page=params.page,
+            per_page=params.per_page,
+        )
+    )
+    return to_adapter_selection_response(state)
+
+
+@selection_router.post("/enable", response_model=AdapterSelectionItem)
+async def enable_adapter(
+    payload: AdapterSelectionEnableRequest,
+    _: Annotated[Any, Depends(require_auth)],
+) -> AdapterSelectionItem:
+    try:
+        item = adapter_selection_service.enable_adapter(payload.module_name)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return to_adapter_selection_item(item)
+
+
+@selection_router.post("/disable", response_model=AdapterSelectionItem)
+async def disable_adapter(
+    payload: AdapterSelectionEnableRequest,
+    _: Annotated[Any, Depends(require_auth)],
+) -> AdapterSelectionItem:
+    item = adapter_selection_service.disable_adapter(payload.module_name)
+    if item is None:
+        raise HTTPException(status_code=404, detail="adapter is not enabled")
+    return to_adapter_selection_item(item)
+
+
+from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
 from apeiria.i18n import t
@@ -16,7 +106,6 @@ from apeiria.plugins.store.workflows import (
     PackageStoreRevertRequest,
     package_store_workflow,
 )
-from apeiria.webui.auth import require_auth
 from apeiria.webui.schemas.adapter_store import (
     AdapterStoreCategoryItem,
     AdapterStoreItem,
@@ -33,7 +122,7 @@ from apeiria.webui.schemas.adapter_store import (
 )
 from apeiria.webui.schemas.operations import OperationStatusResponse
 
-router = APIRouter()
+store_router = APIRouter()
 
 
 class AdapterStoreItemsQueryParams(BaseModel):
@@ -55,7 +144,7 @@ class AdapterStoreRefreshRequest(BaseModel):
     source_id: str = ""
 
 
-@router.get("/sources", response_model=list[AdapterStoreSourceItem])
+@store_router.get("/sources", response_model=list[AdapterStoreSourceItem])
 async def list_adapter_store_sources(
     _: Annotated[Any, Depends(require_auth)],
 ) -> list[AdapterStoreSourceItem]:
@@ -65,7 +154,7 @@ async def list_adapter_store_sources(
     ]
 
 
-@router.get("/items", response_model=AdapterStoreItemsResponse)
+@store_router.get("/items", response_model=AdapterStoreItemsResponse)
 async def list_adapter_store_items(
     _: Annotated[Any, Depends(require_auth)],
     params: Annotated[AdapterStoreItemsQueryParams, Depends()],
@@ -95,7 +184,7 @@ async def list_adapter_store_items(
     )
 
 
-@router.get("/items/{source_id}/{adapter_id}", response_model=AdapterStoreItem)
+@store_router.get("/items/{source_id}/{adapter_id}", response_model=AdapterStoreItem)
 async def get_adapter_store_item(
     source_id: str,
     adapter_id: str,
@@ -116,7 +205,7 @@ async def get_adapter_store_item(
     return to_adapter_store_item(item)
 
 
-@router.post("/refresh", response_model=list[AdapterStoreSourceItem])
+@store_router.post("/refresh", response_model=list[AdapterStoreSourceItem])
 async def refresh_adapter_store_sources(
     payload: AdapterStoreRefreshRequest,
     _: Annotated[Any, Depends(require_auth)],
@@ -130,7 +219,7 @@ async def refresh_adapter_store_sources(
     ]
 
 
-@router.post("/install", response_model=AdapterStoreTaskItem)
+@store_router.post("/install", response_model=AdapterStoreTaskItem)
 async def install_adapter_store_item(
     payload: AdapterStoreMutationRequest,
     _: Annotated[Any, Depends(require_auth)],
@@ -151,7 +240,7 @@ async def install_adapter_store_item(
     return to_adapter_store_task_item(task)
 
 
-@router.post("/install/manual", response_model=AdapterStoreTaskItem)
+@store_router.post("/install/manual", response_model=AdapterStoreTaskItem)
 async def install_adapter_manual(
     payload: AdapterStoreManualInstallRequest,
     _: Annotated[Any, Depends(require_auth)],
@@ -167,7 +256,7 @@ async def install_adapter_manual(
     return to_adapter_store_task_item(task)
 
 
-@router.post("/update", response_model=AdapterStoreTaskItem)
+@store_router.post("/update", response_model=AdapterStoreTaskItem)
 async def update_adapter_store_item(
     payload: AdapterStoreMutationRequest,
     _: Annotated[Any, Depends(require_auth)],
@@ -188,7 +277,7 @@ async def update_adapter_store_item(
     return to_adapter_store_task_item(task)
 
 
-@router.post("/uninstall", response_model=AdapterStoreTaskItem)
+@store_router.post("/uninstall", response_model=AdapterStoreTaskItem)
 async def uninstall_adapter_store_item(
     payload: AdapterStoreUninstallRequest,
     _: Annotated[Any, Depends(require_auth)],
@@ -204,7 +293,7 @@ async def uninstall_adapter_store_item(
     return to_adapter_store_task_item(task)
 
 
-@router.get("/tasks/{task_id}", response_model=AdapterStoreTaskItem)
+@store_router.get("/tasks/{task_id}", response_model=AdapterStoreTaskItem)
 async def get_adapter_store_task(
     task_id: str,
     _: Annotated[Any, Depends(require_auth)],
@@ -215,7 +304,7 @@ async def get_adapter_store_task(
     return to_adapter_store_task_item(task)
 
 
-@router.post("/revert-install", response_model=OperationStatusResponse)
+@store_router.post("/revert-install", response_model=OperationStatusResponse)
 async def revert_adapter_store_install(
     payload: AdapterStoreRevertInstallRequest,
     _: Annotated[Any, Depends(require_auth)],
@@ -231,3 +320,9 @@ async def revert_adapter_store_install(
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return OperationStatusResponse(status="ok")
+
+
+router = APIRouter()
+router.include_router(config_router)
+router.include_router(selection_router, prefix="/selection")
+router.include_router(store_router, prefix="/store")

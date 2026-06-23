@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from apeiria.system.project_update import ProjectUpdateError
 from apeiria.webui.auth import require_auth
-from apeiria.webui.routes._deps import require_runtime_control_plane
+from apeiria.webui.routes.deps import require_runtime_control_plane
 from apeiria.webui.schemas.project_update import (
     ProjectUpdatePlanRequest,
     ProjectUpdatePlanResponse,
