@@ -7,18 +7,13 @@ import os
 import sys
 import time
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
 
 import nonebot
 
-from apeiria.environment import environment_service
 from apeiria.utils.project_context import (
     current_project_root,
     runtime_project_root_env_var,
 )
-
-if TYPE_CHECKING:
-    from collections.abc import AsyncIterator
 
 
 @dataclass(frozen=True)
@@ -43,39 +38,6 @@ class DashboardEventSnapshot:
     level: str
     source: str
     message: str
-
-
-@dataclass(frozen=True)
-class WebUIBuildStatusSnapshot:
-    """Web UI frontend build status for owner-facing management surfaces."""
-
-    is_built: bool
-    is_stale: bool
-    can_build: bool
-    build_tool: str | None
-    detail: str | None
-
-
-@dataclass(frozen=True)
-class WebUIBuildRunSnapshot:
-    """Web UI frontend rebuild result."""
-
-    is_built: bool
-    is_stale: bool
-    can_build: bool
-    build_tool: str | None
-    detail: str | None
-    logs: str
-
-
-@dataclass(frozen=True)
-class WebUIBuildStreamEvent:
-    """Stream event emitted while rebuilding frontend assets."""
-
-    event: str
-    chunk: str = ""
-    detail: str | None = None
-    status: WebUIBuildStatusSnapshot | None = None
 
 
 class SystemManagementService:
@@ -141,34 +103,6 @@ class SystemManagementService:
             if entry.level in high_signal_levels
         ]
         return entries[-limit:][::-1]
-
-    def get_web_ui_build_status(self) -> WebUIBuildStatusSnapshot:
-        """Return Web UI build state for owner-facing surfaces."""
-        status = environment_service.get_frontend_build_status()
-        return WebUIBuildStatusSnapshot(
-            is_built=status.is_built,
-            is_stale=status.is_stale,
-            can_build=status.can_build,
-            build_tool=status.build_tool,
-            detail=status.detail,
-        )
-
-    async def rebuild_web_ui(self) -> WebUIBuildRunSnapshot:
-        """Build frontend assets for owner-facing surfaces."""
-        status = await environment_service.rebuild_frontend()
-        return WebUIBuildRunSnapshot(
-            is_built=status.is_built,
-            is_stale=status.is_stale,
-            can_build=status.can_build,
-            build_tool=status.build_tool,
-            detail=status.detail,
-            logs=status.logs,
-        )
-
-    async def stream_web_ui_rebuild(self) -> AsyncIterator[bytes]:
-        """Stream frontend build logs for owner-facing surfaces."""
-        async for event in environment_service.stream_frontend_rebuild():
-            yield event
 
     def schedule_restart(self) -> None:
         if self._restart_task is None or self._restart_task.done():

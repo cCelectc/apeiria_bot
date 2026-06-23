@@ -624,13 +624,6 @@ class ProjectUpdateService:
             )
             self._run_step(
                 task_id,
-                "webui_build",
-                "Build Web UI assets",
-                self._build_webui_if_available,
-                progress=88,
-            )
-            self._run_step(
-                task_id,
                 "readiness",
                 "Inspect runtime readiness",
                 self._inspect_readiness,
@@ -708,13 +701,6 @@ class ProjectUpdateService:
     def _sync_dependencies(self) -> str:
         environment_service.sync_main_project()
         return "Backend dependencies synced."
-
-    def _build_webui_if_available(self) -> str:
-        status = environment_service.get_frontend_build_status()
-        if not status.can_build:
-            return "Web UI build skipped because no build tool is available."
-        result = environment_service.build_frontend_sync()
-        return result.logs.strip() or "Web UI build completed."
 
     def _inspect_readiness(self) -> str:
         inspection = inspect_database(self.project_root)
