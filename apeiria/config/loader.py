@@ -75,7 +75,10 @@ def _collect_adapter_entries(*paths: str) -> list[dict]:
     return entries
 
 
-def load_adapters_from_toml(*paths: str) -> int:
+def load_adapters_from_toml(
+    *paths: str,
+    states: dict[str, dict] | None = None,
+) -> int:
     import importlib
 
     from nonebot import get_adapters, get_driver
@@ -93,6 +96,11 @@ def load_adapters_from_toml(*paths: str) -> int:
         name = entry.get("name", module_name)
         if name in existing:
             continue
+        if states is not None:
+            state_entry = states.get(name, {})
+            if not state_entry.get("enabled", True):
+                logger.debug("Skipped disabled adapter: {}", name)
+                continue
         try:
             mod = importlib.import_module(module_name)
             adapter_cls = getattr(mod, "Adapter", None)

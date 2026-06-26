@@ -7,6 +7,12 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse, JSONResponse
 
 from apeiria.config.loader import load_config, update_runtime_config
+from apeiria.plugin.adapter_manager import (
+    install_adapter,
+    set_adapter_state,
+    uninstall_adapter,
+)
+from apeiria.plugin.adapter_scanner import scan_adapters
 from apeiria.plugin.manager import install_plugin, set_plugin_state, uninstall_plugin
 from apeiria.plugin.metadata.resolver import resolve_config_namespace_contract
 from apeiria.plugin.scanner import scan_plugins
@@ -90,6 +96,53 @@ async def api_plugin_config(name: str) -> JSONResponse:
     return JSONResponse(content={"fields": fields})
 
 
+@router.get("/adapters/list")
+async def api_adapters_list() -> JSONResponse:
+    items = [
+        {
+            "name": a.name,
+            "source": a.source,
+            "enabled": a.enabled,
+            "module_name": a.module_name,
+        }
+        for a in scan_adapters()
+    ]
+    return JSONResponse(content={"adapters": items})
+
+
+@router.post("/adapters/install")
+async def api_adapters_install(data: dict) -> JSONResponse:
+    name = data.get("name", "")
+    pkg = data.get("pkg", "")
+    module_name = data.get("module_name", "")
+    if not name or not pkg or not module_name:
+        raise HTTPException(
+            status_code=400, detail="name, pkg and module_name required"
+        )
+    ok = await asyncio.to_thread(install_adapter, name, pkg, module_name)
+    return JSONResponse(content={"ok": ok})
+
+
+@router.post("/adapters/uninstall")
+async def api_adapters_uninstall(data: dict) -> JSONResponse:
+    name = data.get("name", "")
+    keep_config = data.get("keep_config", False)
+    if not name:
+        raise HTTPException(status_code=400, detail="name required")
+    ok = uninstall_adapter(name, keep_config=keep_config)
+    return JSONResponse(content={"ok": ok})
+
+
+@router.post("/adapters/state")
+async def api_adapters_state(data: dict) -> JSONResponse:
+    name = data.get("name", "")
+    enabled = data.get("enabled", True)
+    if not name:
+        raise HTTPException(status_code=400, detail="name required")
+    ok = set_adapter_state(name, enabled)
+    return JSONResponse(content={"ok": ok})
+
+
 @router.get("/config")
 async def api_config_get() -> JSONResponse:
     app = load_config("data/config.yaml")
@@ -164,6 +217,13 @@ async def api_store_get(pkg_name: str) -> JSONResponse:
     if item is None:
         raise HTTPException(status_code=404)
     return JSONResponse(content=item.to_dict())
+
+
+@router.get("/store/adapters")
+async def api_store_adapters_search(q: str = "") -> JSONResponse:
+    store = get_store()
+    items = await store.search_adapters(q)
+    return JSONResponse(content={"results": [it.to_dict() for it in items]})
 
 
 @router.get("/store/sources")

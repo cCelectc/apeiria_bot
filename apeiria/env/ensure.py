@@ -22,6 +22,10 @@ packages: {}
 states: {}
 """
 
+_TEMPLATE_ADAPTERS_YAML = """packages: {}
+states: {}
+"""
+
 
 def ensure_apeiria_env() -> Path:
     base = Path(".apeiria")
@@ -39,5 +43,10 @@ def ensure_apeiria_env() -> Path:
     if not plugins_yaml_path.exists():
         plugins_yaml_path.write_text(_TEMPLATE_PLUGINS_YAML, encoding="utf-8")
         logger.info("Created {}", plugins_yaml_path)
+
+    adapters_yaml_path = base / "adapters.yaml"
+    if not adapters_yaml_path.exists():
+        adapters_yaml_path.write_text(_TEMPLATE_ADAPTERS_YAML, encoding="utf-8")
+        logger.info("Created {}", adapters_yaml_path)
 
     return base

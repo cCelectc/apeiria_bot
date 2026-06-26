@@ -105,6 +105,44 @@ class NoneBotStoreSource:
                 return item
         return None
 
+    async def search_adapters(self, query: str) -> list[StoreItem]:
+        url = f"{self._base_url}/store/adapters.json"
+        try:
+            async with httpx.AsyncClient(timeout=10) as client:
+                resp = await client.get(url)
+                resp.raise_for_status()
+                data = resp.json()
+                results: list[StoreItem] = []
+                items = data if isinstance(data, list) else data.get("adapters", [])
+                for item in items:
+                    if not isinstance(item, dict):
+                        continue
+                    if query and query.lower() not in (
+                        json.dumps(item, ensure_ascii=False).lower()
+                    ):
+                        continue
+                    results.append(
+                        StoreItem(
+                            name=item.get("name", ""),
+                            version=item.get("version", ""),
+                            description=item.get("desc", item.get("description", "")),
+                            author=item.get("author", ""),
+                            homepage=item.get("homepage", ""),
+                            pypi_name=item.get(
+                                "project_link", item.get("pypi_name", "")
+                            ),
+                            module_names=(
+                                [item["module_name"]]
+                                if isinstance(item.get("module_name"), str)
+                                else item.get("module_names", [])
+                            ),
+                            supported_adapters=item.get("supported_adapters", []),
+                        )
+                    )
+                return results
+        except Exception:  # noqa: BLE001
+            return []
+
 
 _default_store = NoneBotStoreSource()
 

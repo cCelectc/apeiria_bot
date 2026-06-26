@@ -10,12 +10,14 @@ from apeiria.bootstrap.steps import (
     step_apeiria_sync,
     step_conversation,
     step_db_migrate,
+    step_load_adapters,
+    step_load_builtin_adapters,
     step_load_builtins,
     step_load_local,
     step_load_pypi,
     step_web,
 )
-from apeiria.config.loader import expand_config, load_adapters_from_toml, load_config
+from apeiria.config.loader import expand_config, load_config
 from apeiria.db.engine import init_db
 
 
@@ -29,8 +31,6 @@ def run_cmd(reload: bool) -> None:  # noqa: FBT001
 
     nonebot.init()
 
-    load_adapters_from_toml("pyproject.toml", ".apeiria/pyproject.toml")
-
     db_path = app.apeiria.database.path
     import asyncio
 
@@ -41,9 +41,27 @@ def run_cmd(reload: bool) -> None:  # noqa: FBT001
     plan.add_step("apeiria_ensure", step_apeiria_ensure)
     plan.add_step("apeiria_sync", step_apeiria_sync, depends=["apeiria_ensure"])
     plan.add_step("apeiria_inject", step_apeiria_inject, depends=["apeiria_sync"])
-    plan.add_step("load_builtins", step_load_builtins, depends=["apeiria_inject"])
-    plan.add_step("load_local", step_load_local, depends=["apeiria_inject"])
-    plan.add_step("load_pypi", step_load_pypi, depends=["apeiria_inject"])
+    plan.add_step(
+        "load_builtin_adapters",
+        step_load_builtin_adapters,
+        depends=["apeiria_ensure"],
+    )
+    plan.add_step("load_adapters", step_load_adapters, depends=["apeiria_inject"])
+    plan.add_step(
+        "load_builtins",
+        step_load_builtins,
+        depends=["load_adapters", "load_builtin_adapters"],
+    )
+    plan.add_step(
+        "load_local",
+        step_load_local,
+        depends=["load_adapters", "load_builtin_adapters"],
+    )
+    plan.add_step(
+        "load_pypi",
+        step_load_pypi,
+        depends=["load_adapters", "load_builtin_adapters"],
+    )
     plan.add_step(
         "conversation",
         step_conversation,
@@ -61,7 +79,9 @@ def run_cmd(reload: bool) -> None:  # noqa: FBT001
 
         click.echo("Hot reload enabled — watching for changes...")
         for _changes in watchfiles.watch(
-            Path("apeiria"), Path(".apeiria/plugins"), Path("data/config.yaml")
+            Path("apeiria"),
+            Path(".apeiria/plugins"),
+            Path("data/config.yaml"),
         ):
             click.echo("Changes detected — restart with 'apeiria run' again")
             break

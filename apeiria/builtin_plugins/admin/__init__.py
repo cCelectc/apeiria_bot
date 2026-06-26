@@ -21,6 +21,8 @@ __plugin_meta__ = PluginMetadata(
         plugin_type=PluginType.SUPERUSER,
         ui=UiExtra(order=10),
         commands=[
+            "adapters",
+            "adapter",
             "status",
             "sid",
             "plugins",
@@ -35,6 +37,7 @@ __plugin_meta__ = PluginMetadata(
 )
 
 from . import access_admin as access_admin
+from . import adapter_admin as adapter_admin
 from . import plugin_admin as plugin_admin
 from . import restart as restart
 from . import session_info as session_info

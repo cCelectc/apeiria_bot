@@ -45,6 +45,30 @@ def step_apeiria_inject() -> None:
     inject_apeiria_paths()
 
 
+def _read_adapter_states() -> dict[str, dict]:
+    import yaml
+
+    yaml_path = Path(".apeiria/adapters.yaml")
+    if not yaml_path.exists():
+        return {}
+    data = yaml.safe_load(yaml_path.read_text(encoding="utf-8")) or {}
+    return data.get("states") or {}
+
+
+def step_load_builtin_adapters() -> None:
+    from apeiria.config.loader import load_adapters_from_toml
+
+    states = _read_adapter_states()
+    load_adapters_from_toml("pyproject.toml", states=states)
+
+
+def step_load_adapters() -> None:
+    from apeiria.config.loader import load_adapters_from_toml
+
+    states = _read_adapter_states()
+    load_adapters_from_toml(".apeiria/pyproject.toml", states=states)
+
+
 def step_load_builtins() -> None:
     data = _load_plugins_yaml()
     for name in BUILTIN_LIST:
