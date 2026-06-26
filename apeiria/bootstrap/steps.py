@@ -144,3 +144,18 @@ def step_access() -> None:
         await _access_control.load_snapshot()
 
     logger.success("Access control initialized")
+
+
+def step_web() -> None:
+    from fastapi import FastAPI  # noqa: TC002
+
+    from apeiria.web.routes import router
+
+    driver = nonebot.get_driver()
+    app: FastAPI = getattr(driver, "server_app", None) or getattr(driver, "asgi", None)
+    if app is None:
+        logger.warning("Web app not available — driver does not support ASGI")
+        return
+
+    app.include_router(router)
+    logger.success("Web UI routes registered")

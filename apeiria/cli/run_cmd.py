@@ -13,6 +13,7 @@ from apeiria.bootstrap.steps import (
     step_load_builtins,
     step_load_local,
     step_load_pypi,
+    step_web,
 )
 from apeiria.config.loader import expand_config, load_config
 from apeiria.db.engine import init_db
@@ -49,6 +50,7 @@ def run_cmd(reload: bool) -> None:  # noqa: FBT001
         depends=["load_builtins", "load_local"],
     )
     plan.add_step("access", step_access, depends=["load_builtins", "load_local"])
+    plan.add_step("web", step_web, depends=["access"])
 
     plan.run("full")
 

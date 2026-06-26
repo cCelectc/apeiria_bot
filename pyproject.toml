@@ -106,6 +106,7 @@ ignore = [
     "ANN401",  # any-type
     "COM812",  # missing-trailing-comma
     "PLC0415", # import-outside-top-level
+    "ASYNC240",  # Path operations in FastAPI endpoints
 ]
 allowed-confusables = [
     "，",
