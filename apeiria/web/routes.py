@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
@@ -44,7 +45,7 @@ async def api_plugins_install(data: dict) -> JSONResponse:
     pkg = data.get("pkg", "")
     if not name or not pkg:
         raise HTTPException(status_code=400, detail="name and pkg required")
-    ok = install_plugin(name, pkg)
+    ok = await asyncio.to_thread(install_plugin, name, pkg)
     return JSONResponse(content={"ok": ok})
 
 
@@ -71,14 +72,14 @@ async def api_plugins_state(data: dict) -> JSONResponse:
 @router.get("/plugins/{name}/config")
 async def api_plugin_config(name: str) -> JSONResponse:
     contract = resolve_config_namespace_contract(name)
-    if contract is None:
+    if not contract.has_config_model and not contract.configs:
         raise HTTPException(status_code=404)
     fields = [
         {
             "key": c.key,
             "label": c.label or c.key,
             "help": c.help,
-            "type": str(c.type) if c.type else "str",
+            "type": _type_name(c.type),
             "default": c.default,
             "order": c.order,
             "secret": c.secret,
@@ -126,8 +127,27 @@ def _patch_config(section: str, data: dict) -> None:
 
     p = Path("data/config.yaml")
     raw = yaml.safe_load(p.read_text(encoding="utf-8")) or {} if p.exists() else {}
-    raw[section] = data
+    if section in raw and isinstance(raw[section], dict) and isinstance(data, dict):
+        raw[section] = {**raw[section], **data}
+    else:
+        raw[section] = data
     _write_yaml(raw)
+
+
+def _type_name(t: object) -> str:
+    mapping = {
+        str: "str",
+        int: "int",
+        float: "float",
+        bool: "bool",
+        list: "list",
+        dict: "dict",
+        type(None): "none",
+    }
+    if t in mapping:
+        return mapping[t]
+    name = getattr(t, "__name__", None)
+    return str(name) if isinstance(name, str) else str(t)
 
 
 @router.get("/store/plugins")

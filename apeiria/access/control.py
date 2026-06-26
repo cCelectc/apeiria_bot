@@ -26,7 +26,7 @@ class AccessControl:
         if is_superuser_id(user_id):
             return True
 
-        sorted_rules = sorted(self._rules, key=lambda r: r.priority)
+        sorted_rules = sorted(self._rules, key=lambda r: r.priority, reverse=True)
 
         for rule in sorted_rules:
             if not _subject_matches(rule, user_id, group_id):
