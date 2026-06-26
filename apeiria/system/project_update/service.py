@@ -4,224 +4,72 @@ from __future__ import annotations
 
 import asyncio
 import os
-import re
 import subprocess
-import sys
-from collections.abc import Mapping
-from dataclasses import dataclass, field, replace
+from dataclasses import replace
 from datetime import datetime, timedelta, timezone
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING
 from uuid import uuid4
 
 import tomlkit
-from packaging.specifiers import InvalidSpecifier, SpecifierSet
-from packaging.version import Version
 
 from apeiria.db.inspection import inspect_database
 from apeiria.environment import environment_service
 from apeiria.environment.package_mutation import package_mutation_lock
+from apeiria.system.project_update.execution import (
+    _blocked_update_plan_error,
+    _blocked_update_target_error,
+    _format_datetime,
+    _int_or_none,
+    _mapping_or_empty,
+    _missing_branch_remote_error,
+    _missing_branch_target_error,
+    _missing_release_target_error,
+    _now,
+    _parse_datetime,
+    _string_or_none,
+    _target_changed_after_fetch_error,
+    _task_already_running_error,
+)
+from apeiria.system.project_update.git import (
+    _bounded_output,
+    _command_error,
+    _compare_semver,
+    _semver_sort_key,
+    parse_semver_tag,
+    sanitize_output,
+)
+from apeiria.system.project_update.models import (
+    _AHEAD_BEHIND_PART_COUNT,
+    _DEPLOY_BRANCH,
+    _REMOTE_REFRESH_ERROR_BACKOFF_SECONDS,
+    _REMOTE_REFRESH_TTL_SECONDS,
+    BranchUpdateState,
+    GitCheckoutState,
+    GitCommandError,
+    ProjectReleaseCandidate,
+    ProjectReleaseMetadata,
+    ProjectUpdateMessage,
+    ProjectUpdatePlan,
+    ProjectUpdatePlanRequest,
+    ProjectUpdateRemoteRefreshState,
+    ProjectUpdateStatus,
+    ProjectUpdateTask,
+    ProjectUpdateTaskStep,
+    SemverTag,
+    _message,
+)
+from apeiria.system.project_update.planning import (
+    _blocked_plan,
+    _checkout_blockers,
+    _python_requirement_blocker,
+    _select_release_candidate,
+    _task_title,
+)
 from apeiria.utils.project_context import current_project_root
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
     from pathlib import Path
-
-ProjectUpdateChannel = Literal["branch", "release"]
-ProjectUpdateOperation = Literal["update", "rollback"]
-ProjectUpdateReleaseTrack = Literal["stable", "prerelease"]
-ProjectUpdateTaskStatus = Literal["queued", "running", "succeeded", "failed"]
-
-_SEMVER_TAG_RE = re.compile(
-    r"^v?"
-    r"(?P<major>0|[1-9]\d*)\."
-    r"(?P<minor>0|[1-9]\d*)\."
-    r"(?P<patch>0|[1-9]\d*)"
-    r"(?:-(?P<prerelease>[0-9A-Za-z.-]+))?"
-    r"(?:\+(?P<build>[0-9A-Za-z.-]+))?"
-    r"$"
-)
-_SECRET_VALUE_RE = re.compile(r"(?i)\b(token|password|secret|api[_-]?key)=([^\s&]+)")
-_URL_CREDENTIAL_RE = re.compile(r"([a-z][a-z0-9+.-]*://)([^/@\s]+)@")
-_OUTPUT_EXCERPT_LIMIT = 4000
-_DEPLOY_BRANCH = "apeiria-release-deploy"
-_AHEAD_BEHIND_PART_COUNT = 2
-_REMOTE_REFRESH_TTL_SECONDS = 30 * 60
-_REMOTE_REFRESH_ERROR_BACKOFF_SECONDS = 5 * 60
-
-
-@dataclass(frozen=True, slots=True)
-class ProjectUpdateMessage:
-    code: str
-    message: str
-    detail: str | None = None
-
-
-@dataclass(frozen=True, slots=True)
-class SemverTag:
-    raw: str
-    normalized: str
-    major: int
-    minor: int
-    patch: int
-    prerelease: tuple[str, ...] = ()
-    build: str | None = None
-
-    @property
-    def is_prerelease(self) -> bool:
-        return bool(self.prerelease)
-
-    @property
-    def public_version(self) -> str:
-        return self.normalized
-
-
-@dataclass(frozen=True, slots=True)
-class ProjectReleaseMetadata:
-    version: str | None = None
-    database_schema_min: int | None = None
-    database_schema_max: int | None = None
-    requires_python: str | None = None
-    source: str | None = None
-    available: bool = False
-
-
-@dataclass(frozen=True, slots=True)
-class ProjectReleaseCandidate:
-    tag: str
-    version: str
-    commit: str
-    prerelease: bool
-    metadata: ProjectReleaseMetadata
-    is_current: bool = False
-    is_rollback: bool = False
-    blockers: tuple[ProjectUpdateMessage, ...] = ()
-    warnings: tuple[ProjectUpdateMessage, ...] = ()
-
-
-@dataclass(frozen=True, slots=True)
-class GitCheckoutState:
-    project_root: Path
-    is_git: bool
-    is_detached: bool = False
-    branch: str | None = None
-    current_commit: str | None = None
-    short_commit: str | None = None
-    upstream_ref: str | None = None
-    upstream_commit: str | None = None
-    ahead: int | None = None
-    behind: int | None = None
-    dirty: bool = False
-    dirty_entries: tuple[str, ...] = ()
-    head_tags: tuple[str, ...] = ()
-    blockers: tuple[ProjectUpdateMessage, ...] = ()
-
-    @property
-    def diverged(self) -> bool:
-        return bool(self.ahead and self.behind)
-
-
-@dataclass(frozen=True, slots=True)
-class BranchUpdateState:
-    available: bool
-    target_ref: str | None = None
-    target_commit: str | None = None
-    blockers: tuple[ProjectUpdateMessage, ...] = ()
-    warnings: tuple[ProjectUpdateMessage, ...] = ()
-
-
-@dataclass(frozen=True, slots=True)
-class ProjectUpdateRemoteRefreshState:
-    ttl_seconds: int
-    stale: bool
-    last_checked_at: str | None = None
-    last_success_at: str | None = None
-    next_check_after: str | None = None
-    last_error_at: str | None = None
-    last_error: str | None = None
-    remotes: tuple[str, ...] = ()
-
-
-@dataclass(frozen=True, slots=True)
-class ProjectUpdateStatus:
-    project_root: Path
-    checkout: GitCheckoutState
-    branch: BranchUpdateState
-    remote_refresh: ProjectUpdateRemoteRefreshState
-    stable_releases: tuple[ProjectReleaseCandidate, ...] = ()
-    prerelease_releases: tuple[ProjectReleaseCandidate, ...] = ()
-    active_task: "ProjectUpdateTask | None" = None
-
-
-@dataclass(frozen=True, slots=True)
-class ProjectUpdatePlanRequest:
-    channel: ProjectUpdateChannel
-    release_track: ProjectUpdateReleaseTrack | None = None
-    target_tag: str | None = None
-    operation: ProjectUpdateOperation | None = None
-
-
-@dataclass(frozen=True, slots=True)
-class ProjectUpdatePlan:
-    channel: ProjectUpdateChannel
-    operation: ProjectUpdateOperation
-    target_ref: str | None
-    target_commit: str | None
-    release_track: ProjectUpdateReleaseTrack | None = None
-    target_tag: str | None = None
-    target_version: str | None = None
-    blockers: tuple[ProjectUpdateMessage, ...] = ()
-    warnings: tuple[ProjectUpdateMessage, ...] = ()
-    steps: tuple[str, ...] = ()
-    confirmation: str = "update"
-
-    @property
-    def allowed(self) -> bool:
-        return not self.blockers and bool(self.target_ref and self.target_commit)
-
-
-@dataclass(frozen=True, slots=True)
-class ProjectUpdateTaskStep:
-    phase: str
-    label: str
-    status: str
-    detail: str | None = None
-    command: str | None = None
-    output_excerpt: str | None = None
-    started_at: str | None = None
-    finished_at: str | None = None
-
-
-@dataclass(frozen=True, slots=True)
-class ProjectUpdateTask:
-    task_id: str
-    title: str
-    status: ProjectUpdateTaskStatus
-    logs: str
-    error: str | None = None
-    result: dict[str, object] = field(default_factory=dict)
-    created_at: str | None = None
-    started_at: str | None = None
-    finished_at: str | None = None
-    channel: ProjectUpdateChannel | None = None
-    operation: ProjectUpdateOperation | None = None
-    target_ref: str | None = None
-    target_commit: str | None = None
-    target_tag: str | None = None
-    target_version: str | None = None
-    current_phase: str | None = None
-    current_phase_label: str | None = None
-    progress_percent: int | None = None
-    restart_required: bool = False
-    steps: tuple[ProjectUpdateTaskStep, ...] = ()
-    diagnostics: tuple[dict[str, object], ...] = ()
-
-
-class ProjectUpdateError(RuntimeError):
-    """Raised when one project update operation cannot proceed."""
-
-
-class GitCommandError(ProjectUpdateError):
-    """Raised when a git command fails."""
 
 
 class ProjectUpdateService:
@@ -1053,259 +901,4 @@ class ProjectUpdateService:
         return self._git_lines("status", "--porcelain=v1")
 
 
-def parse_semver_tag(tag: str) -> SemverTag | None:
-    match = _SEMVER_TAG_RE.match(tag.strip())
-    if match is None:
-        return None
-    prerelease = tuple(
-        part for part in (match.group("prerelease") or "").split(".") if part
-    )
-    version = (
-        f"{match.group('major')}.{match.group('minor')}.{match.group('patch')}"
-        f"{('-' + '.'.join(prerelease)) if prerelease else ''}"
-    )
-    return SemverTag(
-        raw=tag,
-        normalized=version,
-        major=int(match.group("major")),
-        minor=int(match.group("minor")),
-        patch=int(match.group("patch")),
-        prerelease=prerelease,
-        build=match.group("build"),
-    )
-
-
-def sanitize_output(value: str) -> str:
-    sanitized = _URL_CREDENTIAL_RE.sub(r"\1***@", value)
-    return _SECRET_VALUE_RE.sub(lambda match: f"{match.group(1)}=***", sanitized)
-
-
-def _checkout_blockers(checkout: GitCheckoutState) -> tuple[ProjectUpdateMessage, ...]:
-    blockers: list[ProjectUpdateMessage] = []
-    if not checkout.is_git:
-        blockers.append(
-            _message("not_git_checkout", "Project root is not a git checkout.")
-        )
-    if checkout.is_detached:
-        blockers.append(
-            _message("detached_head", "Project checkout is in detached HEAD state.")
-        )
-    if checkout.dirty:
-        blockers.append(
-            _message("dirty_worktree", "Project worktree has local changes.")
-        )
-    return tuple(blockers)
-
-
-def _select_release_candidate(
-    candidates: tuple[ProjectReleaseCandidate, ...],
-    target_tag: str | None,
-) -> ProjectReleaseCandidate | None:
-    if target_tag is None:
-        return candidates[0] if candidates else None
-    for candidate in candidates:
-        if candidate.tag == target_tag:
-            return candidate
-    return None
-
-
-def _python_requirement_blocker(requirement: str) -> ProjectUpdateMessage | None:
-    try:
-        specifier = SpecifierSet(requirement)
-    except InvalidSpecifier:
-        return _message(
-            "python_requirement_invalid",
-            "Target release has an invalid Python requirement.",
-            requirement,
-        )
-    version = Version(
-        f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
-    )
-    if version not in specifier:
-        return _message(
-            "python_requirement_unsupported",
-            "Current Python version does not satisfy the target release.",
-            requirement,
-        )
-    return None
-
-
-def _compare_semver(left: SemverTag, right: SemverTag) -> int:
-    left_key = _semver_sort_key(left)
-    right_key = _semver_sort_key(right)
-    if left_key < right_key:
-        return -1
-    if left_key > right_key:
-        return 1
-    return 0
-
-
-def _semver_sort_key(value: SemverTag | None) -> tuple[object, ...]:
-    if value is None:
-        return (-1, -1, -1, -1)
-    return (
-        value.major,
-        value.minor,
-        value.patch,
-        1 if not value.prerelease else 0,
-        _prerelease_sort_key(value.prerelease),
-    )
-
-
-def _prerelease_sort_key(parts: tuple[str, ...]) -> tuple[tuple[int, object], ...]:
-    key: list[tuple[int, object]] = []
-    for part in parts:
-        if part.isdigit():
-            key.append((0, int(part)))
-        else:
-            key.append((1, part))
-    return tuple(key)
-
-
-def _blocked_plan(  # noqa: PLR0913
-    *,
-    channel: ProjectUpdateChannel,
-    operation: ProjectUpdateOperation,
-    blocker: ProjectUpdateMessage,
-    release_track: ProjectUpdateReleaseTrack | None = None,
-    target_tag: str | None = None,
-    target_commit: str | None = None,
-) -> ProjectUpdatePlan:
-    return ProjectUpdatePlan(
-        channel=channel,
-        operation=operation,
-        target_ref=f"refs/tags/{target_tag}" if target_tag else None,
-        target_commit=target_commit,
-        release_track=release_track,
-        target_tag=target_tag,
-        blockers=(blocker,),
-        confirmation="rollback" if operation == "rollback" else "update",
-    )
-
-
-def _task_title(plan: ProjectUpdatePlan) -> str:
-    if plan.channel == "branch":
-        return f"Update branch from {plan.target_ref}"
-    if plan.operation == "rollback":
-        return f"Rollback to {plan.target_tag}"
-    return f"Update to {plan.target_tag}"
-
-
-def _message(
-    code: str,
-    message: str,
-    detail: str | None = None,
-) -> ProjectUpdateMessage:
-    return ProjectUpdateMessage(code=code, message=message, detail=detail)
-
-
-def _now() -> str:
-    return datetime.now(timezone.utc).isoformat()
-
-
-def _format_datetime(value: datetime) -> str:
-    return value.isoformat()
-
-
-def _parse_datetime(value: str | None) -> datetime | None:
-    if not value:
-        return None
-    try:
-        parsed = datetime.fromisoformat(value)
-    except ValueError:
-        return None
-    if parsed.tzinfo is None:
-        return parsed.replace(tzinfo=timezone.utc)
-    return parsed
-
-
-def _string_or_none(value: object) -> str | None:
-    return value if isinstance(value, str) and value.strip() else None
-
-
-def _mapping_or_empty(value: object) -> Mapping[str, object]:
-    return value if isinstance(value, Mapping) else {}
-
-
-def _int_or_none(value: object) -> int | None:
-    if isinstance(value, bool):
-        return None
-    if isinstance(value, int):
-        return value
-    if isinstance(value, str):
-        try:
-            return int(value)
-        except ValueError:
-            return None
-    return None
-
-
-def _bounded_output(stdout: str | None, stderr: str | None) -> str:
-    output = "\n".join(
-        part.strip() for part in (stdout, stderr) if part and part.strip()
-    )
-    if len(output) <= _OUTPUT_EXCERPT_LIMIT:
-        return output
-    return output[-_OUTPUT_EXCERPT_LIMIT:]
-
-
-def _command_error(
-    args: Sequence[str],
-    result: subprocess.CompletedProcess[str],
-) -> str:
-    output = sanitize_output(_bounded_output(result.stdout, result.stderr))
-    summary = sanitize_output(" ".join(["git", *args]))
-    if output:
-        return f"{summary} failed with status {result.returncode}\n{output}"
-    return f"{summary} failed with status {result.returncode}"
-
-
-def _blocked_update_plan_error(message: str) -> ProjectUpdateError:
-    return ProjectUpdateError(message or "Project update plan is blocked.")
-
-
-def _task_already_running_error() -> ProjectUpdateError:
-    return ProjectUpdateError("project update task already running")
-
-
-def _blocked_update_target_error(message: str) -> ProjectUpdateError:
-    return ProjectUpdateError(message or "Project update target is blocked.")
-
-
-def _target_changed_after_fetch_error() -> ProjectUpdateError:
-    return ProjectUpdateError("Project update target changed after fetch.")
-
-
-def _missing_branch_target_error() -> ProjectUpdateError:
-    return ProjectUpdateError("Missing branch update target.")
-
-
-def _missing_release_target_error() -> ProjectUpdateError:
-    return ProjectUpdateError("Missing release update target.")
-
-
-def _missing_branch_remote_error() -> ProjectUpdateError:
-    return ProjectUpdateError("Missing branch upstream remote.")
-
-
 project_update_service = ProjectUpdateService()
-
-__all__ = [
-    "BranchUpdateState",
-    "GitCheckoutState",
-    "ProjectReleaseCandidate",
-    "ProjectReleaseMetadata",
-    "ProjectUpdateError",
-    "ProjectUpdateMessage",
-    "ProjectUpdatePlan",
-    "ProjectUpdatePlanRequest",
-    "ProjectUpdateRemoteRefreshState",
-    "ProjectUpdateService",
-    "ProjectUpdateStatus",
-    "ProjectUpdateTask",
-    "ProjectUpdateTaskStep",
-    "SemverTag",
-    "parse_semver_tag",
-    "project_update_service",
-    "sanitize_output",
-]

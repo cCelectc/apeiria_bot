@@ -272,7 +272,7 @@ def test_update_task_success_reports_restart_required(
     service = ProjectUpdateService(project_root=repo)
 
     monkeypatch.setattr(
-        "apeiria.system.project_update.environment_service",
+        "apeiria.system.project_update.service.environment_service",
         _fake_environment_service(),
     )
 
@@ -307,7 +307,7 @@ def test_update_task_rejects_concurrent_task(
     service = ProjectUpdateService(project_root=repo)
 
     monkeypatch.setattr(
-        "apeiria.system.project_update.environment_service",
+        "apeiria.system.project_update.service.environment_service",
         _slow_environment_service(),
     )
 
@@ -338,7 +338,7 @@ def test_update_task_failure_keeps_sanitized_diagnostics(
     service = ProjectUpdateService(project_root=repo)
 
     monkeypatch.setattr(
-        "apeiria.system.project_update.environment_service",
+        "apeiria.system.project_update.service.environment_service",
         _failing_environment_service(
             "https://user:pass@example.test/repo.git token=abc"
         ),

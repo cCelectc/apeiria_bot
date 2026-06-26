@@ -1,109 +1,30 @@
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable, Mapping, Sequence
-from dataclasses import dataclass
-from math import log1p
 from random import random
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING
 
 from nonebot.log import logger
 
-if TYPE_CHECKING:
-    from .config import RepeaterConfig
-
-ContentSegment = tuple[str, str]
-ContentKey = tuple[ContentSegment, ...]
-IGNORED_COMMAND_PREFIX = "/"
-SkipReason = Literal[
-    "inactive_config",
-    "not_group_message",
-    "platform_disabled",
-    "group_disallowed",
-    "bot_message",
-    "unsupported_message",
-    "ignored_prefix",
-    "same_user_duplicate",
-    "below_threshold",
-    "probability_not_met",
-    "round_already_triggered",
-]
-
-SUPPORTED_TEXT_TYPES = frozenset({"text", "plain"})
-SUPPORTED_EMOJI_TYPES = frozenset({"emoji", "face", "mface", "market_face", "sticker"})
-SUPPORTED_IMAGE_TYPES = frozenset({"image", "picture", "photo"})
-UNSUPPORTED_SEGMENT_TYPES = frozenset(
-    {
-        "reply",
-        "forward",
-        "node",
-        "json",
-        "xml",
-        "card",
-        "markdown",
-    }
+from .evaluation import (
+    IGNORED_COMMAND_PREFIX,
+    ContentKeyResult,
+    build_content_key,
+    iter_message_segments,
+    message_starts_with_ignored_prefix,
+    repeat_probability,
 )
-EMOJI_ID_KEYS = ("id", "emoji_id", "face_id", "file_id")
-IMAGE_ID_KEYS = ("file_id", "file", "id", "image_id", "uuid", "md5")
+from .state import (
+    ContentKey,
+    RepeatDecision,
+    RepeaterEvent,
+    RepeaterStateStore,
+    RepeatRoundState,
+)
 
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
-@dataclass(frozen=True, slots=True)
-class RepeaterEvent:
-    platform: str | None
-    group_id: str | None
-    user_id: str | None
-    bot_id: str | None
-    message: object
-
-    @property
-    def group_scope(self) -> str | None:
-        if self.platform is None or self.group_id is None:
-            return None
-        return f"{self.platform}:{self.group_id}"
-
-    @property
-    def is_bot_message(self) -> bool:
-        return (
-            self.user_id is not None
-            and self.bot_id is not None
-            and self.user_id == self.bot_id
-        )
-
-
-@dataclass(frozen=True, slots=True)
-class RepeatRoundState:
-    content_key: ContentKey
-    message: object
-    count: int
-    last_user_id: str
-    triggered: bool = False
-
-
-@dataclass(frozen=True, slots=True)
-class RepeatDecision:
-    should_send: bool = False
-    message: object | None = None
-    probability: float | None = None
-    reason: SkipReason | None = None
-    group_scope: str | None = None
-
-
-class RepeaterStateStore:
-    """In-memory repeater state."""
-
-    def __init__(self) -> None:
-        self._states: dict[str, RepeatRoundState] = {}
-
-    def get(self, group_scope: str) -> RepeatRoundState | None:
-        return self._states.get(group_scope)
-
-    def set(self, group_scope: str, state: RepeatRoundState) -> None:
-        self._states[group_scope] = state
-
-    def reset(self, group_scope: str) -> None:
-        self._states.pop(group_scope, None)
-
-    def clear(self) -> None:
-        self._states.clear()
+    from .config import RepeaterConfig
 
 
 class RepeaterService:
@@ -209,7 +130,7 @@ class RepeaterService:
 
     def _resolved_content_key(
         self,
-        content_result: "ContentKeyResult",
+        content_result: ContentKeyResult,
     ) -> ContentKey | None:
         if content_result.status == "supported":
             return content_result.key
@@ -218,7 +139,7 @@ class RepeaterService:
     def _unsupported_content_decision(
         self,
         event: RepeaterEvent,
-        content_result: "ContentKeyResult",
+        content_result: ContentKeyResult,
         *,
         config: "RepeaterConfig",
     ) -> RepeatDecision:
@@ -352,146 +273,6 @@ class RepeaterService:
             logger.debug(message, *args)
 
 
-@dataclass(frozen=True, slots=True)
-class ContentKeyResult:
-    status: Literal["supported", "unsupported"]
-    key: ContentKey | None = None
-    reason: SkipReason = "unsupported_message"
-
-
-def build_content_key(
-    message: object,
-) -> ContentKeyResult:
-    segments = tuple(iter_message_segments(message))
-    segments = segments or _text_segments_from_message(message)
-    if not segments:
-        return ContentKeyResult(status="unsupported")
-
-    if message_starts_with_ignored_prefix(segments):
-        return ContentKeyResult(status="unsupported", reason="ignored_prefix")
-
-    key_parts = tuple(
-        _content_segment(segment_type, data) for segment_type, data in segments
-    )
-    if any(part is None for part in key_parts):
-        return ContentKeyResult(status="unsupported")
-
-    if not key_parts:
-        return ContentKeyResult(status="unsupported")
-    return ContentKeyResult(
-        status="supported",
-        key=tuple(part for part in key_parts if part is not None),
-    )
-
-
-def iter_message_segments(
-    message: object,
-) -> Iterable[tuple[str, Mapping[str, object]]]:
-    if isinstance(message, str):
-        return ()
-
-    if isinstance(message, Mapping):
-        segment = _segment_from_object(message)
-        return (segment,) if segment is not None else ()
-
-    if isinstance(message, Iterable):
-        return tuple(
-            segment
-            for item in message
-            if (segment := _segment_from_object(item)) is not None
-        )
-
-    segment = _segment_from_object(message)
-    return (segment,) if segment is not None else ()
-
-
-def message_starts_with_ignored_prefix(
-    segments: Sequence[tuple[str, Mapping[str, object]]],
-) -> bool:
-    if not segments:
-        return False
-    first_type, first_data = segments[0]
-    if first_type.strip().lower() not in SUPPORTED_TEXT_TYPES:
-        return False
-    text = str(first_data.get("text", ""))
-    return text.startswith(IGNORED_COMMAND_PREFIX)
-
-
-def repeat_probability(
-    count: int,
-    *,
-    repeat_threshold: int,
-    base_probability: float,
-    max_probability: float,
-    saturation_extra: int,
-) -> float:
-    if count < repeat_threshold:
-        return 0.0
-    extra = count - repeat_threshold
-    if extra <= 0:
-        return base_probability
-    progress = min(1.0, log1p(extra) / log1p(saturation_extra))
-    return base_probability + (max_probability - base_probability) * progress
-
-
-def _segment_from_object(
-    value: object,
-) -> tuple[str, Mapping[str, object]] | None:
-    if isinstance(value, Mapping):
-        raw_type = value.get("type")
-        raw_data = value.get("data", {})
-    else:
-        raw_type = getattr(value, "type", None)
-        raw_data = getattr(value, "data", {})
-
-    if not isinstance(raw_type, str):
-        return None
-    data = dict(raw_data) if isinstance(raw_data, Mapping) else {}
-    return raw_type, data
-
-
-def _string_message_text(message: object) -> str | None:
-    if isinstance(message, str):
-        return message
-    return None
-
-
-def _text_segments_from_message(
-    message: object,
-) -> tuple[tuple[str, Mapping[str, object]], ...]:
-    text = _string_message_text(message)
-    if text is None:
-        return ()
-    return (("text", {"text": text}),)
-
-
-def _content_segment(
-    segment_type: str,
-    data: Mapping[str, object],
-) -> ContentSegment | None:
-    normalized_type = segment_type.strip().lower()
-    if normalized_type in UNSUPPORTED_SEGMENT_TYPES:
-        return None
-    if normalized_type in SUPPORTED_TEXT_TYPES:
-        return "text", str(data.get("text", ""))
-    if normalized_type in SUPPORTED_EMOJI_TYPES:
-        return _stable_segment("emoji", data, EMOJI_ID_KEYS)
-    if normalized_type in SUPPORTED_IMAGE_TYPES:
-        return _stable_segment("image", data, IMAGE_ID_KEYS)
-    return None
-
-
-def _stable_segment(
-    kind: str,
-    data: Mapping[str, object],
-    keys: tuple[str, ...],
-) -> ContentSegment | None:
-    stable_id = _first_stable_value(data, keys)
-    if stable_id is None:
-        return None
-    return kind, stable_id
-
-
 def _probability_for_state(
     state: RepeatRoundState,
     config: "RepeaterConfig",
@@ -503,20 +284,6 @@ def _probability_for_state(
         max_probability=config.max_probability,
         saturation_extra=config.saturation_extra,
     )
-
-
-def _first_stable_value(
-    data: Mapping[str, object],
-    keys: tuple[str, ...],
-) -> str | None:
-    for key in keys:
-        value = data.get(key)
-        if value is None:
-            continue
-        text = str(value).strip()
-        if text:
-            return text
-    return None
 
 
 default_repeater_service = RepeaterService()

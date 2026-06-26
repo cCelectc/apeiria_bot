@@ -10,7 +10,7 @@ if TYPE_CHECKING:
 
     from pytest import MonkeyPatch
 
-import apeiria.builtin_plugins.contact_approval.service as contact_approval_service
+import apeiria.builtin_plugins.contact_approval.workflow as contact_approval_workflow
 from apeiria.builtin_plugins.contact_approval.commands import parse_approval_command
 from apeiria.builtin_plugins.contact_approval.config import (
     DEFAULT_APPROVAL_PREFIX,
@@ -914,7 +914,7 @@ def test_owner_targets_can_fall_back_to_nonebot_superusers(
     monkeypatch: MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(
-        contact_approval_service.nonebot,
+        contact_approval_workflow.nonebot,
         "get_driver",
         lambda: SimpleNamespace(
             config=SimpleNamespace(superusers={"onebotv11:123456", "bad"}),
