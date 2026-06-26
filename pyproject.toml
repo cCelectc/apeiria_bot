@@ -107,6 +107,7 @@ ignore = [
     "COM812",  # missing-trailing-comma
     "PLC0415", # import-outside-top-level
     "ASYNC240",  # Path operations in FastAPI endpoints
+    "TC003",  # Path used at runtime in non-type-checking code
 ]
 allowed-confusables = [
     "，",
@@ -128,6 +129,10 @@ allowed-confusables = [
     "、",
 ]
 
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["ANN001", "PLR2004"]
+"alembic/versions/*" = ["ANN001", "ANN201", "ANN202"]
+
 [tool.ruff.lint.pyupgrade]
 keep-runtime-typing = true
 
@@ -144,4 +149,6 @@ venv = ".venv"
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "session"
 norecursedirs = [".venv", ".apeiria", "data"]
