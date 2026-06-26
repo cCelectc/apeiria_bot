@@ -113,7 +113,7 @@ def step_load_pypi() -> None:
 def step_conversation() -> None:
     from apeiria.conversation.store import append_message
 
-    @nonebot.on_message(block=False)  # pyright: ignore[reportCallIssue]
+    @nonebot.on_message(None, block=False)  # pyright: ignore[reportCallIssue]
     async def _persist_inbound(event: nonebot.adapters.Event) -> None:  # pyright: ignore[reportAttributeAccessIssue]
         try:
             session_id = event.get_session_id()

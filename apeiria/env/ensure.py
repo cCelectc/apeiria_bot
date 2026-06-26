@@ -10,9 +10,8 @@ version = "0.1.0"
 requires-python = ">=3.12"
 dependencies = []
 
-[build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
+[tool.uv]
+package = false
 
 [tool.nonebot.plugins]
 """

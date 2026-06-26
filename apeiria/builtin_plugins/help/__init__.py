@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from nonebot import require
+from nonebot.adapters import Bot, Event  # noqa: TC002
 from nonebot.plugin import PluginMetadata, inherit_supported_adapters
 from nonebot_plugin_alconna import (
     Alconna,
@@ -35,8 +36,6 @@ from .renderer import (
 )
 
 if TYPE_CHECKING:
-    from nonebot.adapters import Bot, Event
-
     from .models import HelpViewRole
 
 # ── help command ───────────────────────────────────────────────────────────
