@@ -1,0 +1,15 @@
+.git
+.gitignore
+.venv
+**/__pycache__
+**/*.pyc
+node_modules
+webui/node_modules
+webui/dist
+.apeiria/.venv
+.beyond-code
+.planning
+.ruff_cache
+.pytest_cache
+cache
+*.log
