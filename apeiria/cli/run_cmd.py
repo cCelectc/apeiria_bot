@@ -15,7 +15,7 @@ from apeiria.bootstrap.steps import (
     step_load_pypi,
     step_web,
 )
-from apeiria.config.loader import expand_config, load_config
+from apeiria.config.loader import expand_config, load_adapters_from_toml, load_config
 from apeiria.db.engine import init_db
 
 
@@ -28,6 +28,8 @@ def run_cmd(reload: bool) -> None:  # noqa: FBT001
     import nonebot
 
     nonebot.init()
+
+    load_adapters_from_toml()
 
     db_path = app.apeiria.database.path
     import asyncio

@@ -46,6 +46,44 @@ def expand_config(app: AppConfig) -> None:
     logger.success("Config expanded from YAML to environment")
 
 
+def load_adapters_from_toml(path: str = "pyproject.toml") -> None:
+    import importlib
+    import tomllib
+
+    from nonebot import get_driver
+
+    toml_path = Path(path)
+    if not toml_path.exists():
+        return
+
+    raw = tomllib.loads(toml_path.read_text(encoding="utf-8"))
+    adapters_cfg = raw.get("tool", {}).get("nonebot", {}).get("adapters", {})
+    if not isinstance(adapters_cfg, dict):
+        return
+
+    driver = get_driver()
+    for entries in adapters_cfg.values():
+        if not isinstance(entries, list):
+            continue
+        for entry in entries:
+            if not isinstance(entry, dict):
+                continue
+            module_name = entry.get("module_name", "")
+            if not module_name:
+                continue
+            try:
+                mod = importlib.import_module(module_name)
+                adapter_cls = getattr(mod, "Adapter", None)
+                if adapter_cls is not None:
+                    driver.register_adapter(adapter_cls)
+                    name = entry.get("name", module_name)
+                    logger.info("Registered adapter: {}", name)
+            except Exception:  # noqa: BLE001
+                logger.opt(exception=True).warning(
+                    "Failed to load adapter: {}", module_name
+                )
+
+
 def update_runtime_config(app: AppConfig) -> None:
     from nonebot import get_driver
 
