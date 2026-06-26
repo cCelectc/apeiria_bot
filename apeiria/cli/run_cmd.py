@@ -29,7 +29,7 @@ def run_cmd(reload: bool) -> None:  # noqa: FBT001
 
     nonebot.init()
 
-    load_adapters_from_toml()
+    load_adapters_from_toml("pyproject.toml", ".apeiria/pyproject.toml")
 
     db_path = app.apeiria.database.path
     import asyncio

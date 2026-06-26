@@ -176,6 +176,14 @@ async def api_status() -> JSONResponse:
     return JSONResponse(content=get_status())
 
 
+@router.post("/adapters/reload")
+async def api_adapters_reload() -> JSONResponse:
+    from apeiria.config.loader import load_adapters_from_toml
+
+    count = load_adapters_from_toml("pyproject.toml", ".apeiria/pyproject.toml")
+    return JSONResponse(content={"registered": count})
+
+
 FRONTEND_DIR = Path("web/dist")
 
 

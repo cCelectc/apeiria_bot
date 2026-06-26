@@ -51,6 +51,13 @@ def install_plugin(name: str, pkg_requirement: str) -> bool:
     _write_plugins_yaml(data)
 
     sync_apeiria_env()
+
+    from apeiria.config.loader import load_adapters_from_toml
+
+    count = load_adapters_from_toml(".apeiria/pyproject.toml")
+    if count:
+        logger.info("Registered {} new adapter(s) from plugin install", count)
+
     return True
 
 
