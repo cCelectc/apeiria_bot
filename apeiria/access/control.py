@@ -14,7 +14,8 @@ class AccessControl:
     async def load_snapshot(self) -> None:
         db = get_db()
         async with db.gate.read() as sess:
-            self._rules = list((await sess.execute(select(AccessRule))).scalars().all())
+            rules = list((await sess.execute(select(AccessRule))).scalars().all())
+        self._rules = sorted(rules, key=lambda r: r.priority, reverse=True)
         self._loaded = True
 
     def evaluate(self, user_id: str, group_id: str | None, plugin_name: str) -> bool:
@@ -26,9 +27,7 @@ class AccessControl:
         if is_superuser_id(user_id):
             return True
 
-        sorted_rules = sorted(self._rules, key=lambda r: r.priority, reverse=True)
-
-        for rule in sorted_rules:
+        for rule in self._rules:
             if not _subject_matches(rule, user_id, group_id):
                 continue
             if rule.plugin_name is not None and rule.plugin_name != plugin_name:

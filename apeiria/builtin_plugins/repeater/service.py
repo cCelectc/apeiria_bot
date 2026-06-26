@@ -3,7 +3,7 @@ from __future__ import annotations
 import time
 from hashlib import sha256
 from random import random
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from .config import RepeaterConfig
@@ -21,7 +21,7 @@ class _RoundState:
     def __init__(
         self,
         content_hash: str,
-        message: object,
+        message: Any,
         count: int,
         last_user_id: str,
         last_triggered_at: float,
@@ -33,7 +33,7 @@ class _RoundState:
         self.last_triggered_at = last_triggered_at
 
 
-def hash_message(message: object) -> str:
+def hash_message(message: Any) -> str:
     raw = str(message)
     return sha256(raw.encode("utf-8")).hexdigest()
 
@@ -46,11 +46,11 @@ class RepeaterService:
         self,
         group_scope: str,
         content_hash: str,
-        message: object,
+        message: Any,
         user_id: str,
         *,
         config: RepeaterConfig,
-    ) -> object | None:
+    ) -> Any | None:
         now = time.monotonic()
         previous = self._states.get(group_scope)
 
