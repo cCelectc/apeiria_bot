@@ -4,6 +4,7 @@ import asyncio
 import contextlib
 import json
 import logging
+from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -30,6 +31,8 @@ _ACCESS_ARG_COUNT = 5
 _ACCESS_PATH_INDEX = 2
 _ACCESS_STATUS_INDEX = 4
 _HTTP_ERROR = 400
+_ACCESS_LOG_MAX_BYTES = 10 * 1024 * 1024
+_ACCESS_LOG_BACKUPS = 5
 
 
 class _StaticAccessFilter(logging.Filter):
@@ -46,9 +49,31 @@ class _StaticAccessFilter(logging.Filter):
         return not (is_muted and is_success)
 
 
-def mute_static_access_logs() -> None:
-    """Drop successful uvicorn access logs for static assets and the status poll."""
-    logging.getLogger("uvicorn.access").addFilter(_StaticAccessFilter())
+def route_access_logs(cfg: LogConfig) -> None:
+    """Route uvicorn access logs to a dedicated file, off the console and SSE."""
+    from nonebot import get_driver
+
+    path = Path(cfg.file).parent / "access.log"
+
+    def _apply() -> None:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        access = logging.getLogger("uvicorn.access")
+        for handler in list(access.handlers):
+            access.removeHandler(handler)
+        access.propagate = False
+        file_handler = RotatingFileHandler(
+            str(path),
+            maxBytes=_ACCESS_LOG_MAX_BYTES,
+            backupCount=_ACCESS_LOG_BACKUPS,
+            encoding="utf-8",
+        )
+        file_handler.setFormatter(
+            logging.Formatter("%(asctime)s %(levelname)s %(message)s"),
+        )
+        file_handler.addFilter(_StaticAccessFilter())
+        access.addHandler(file_handler)
+
+    get_driver().on_startup(_apply)
 
 
 class LogHub:
