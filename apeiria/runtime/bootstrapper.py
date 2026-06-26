@@ -252,7 +252,6 @@ def _init_runtime_context() -> None:
 
     from apeiria.access.management import access_management_service
     from apeiria.config.project import project_config_service
-    from apeiria.conversation.service import ensure_session as _conv_ensure
     from apeiria.db.runtime import database_runtime
     from apeiria.environment.manager import environment_service
     from apeiria.plugins.catalog import plugin_governance_service
@@ -268,7 +267,7 @@ def _init_runtime_context() -> None:
         config=project_config_service,
         environment=environment_service,
         database=database_runtime,
-        conversation=_conv_ensure,  # type: ignore[arg-type]
+        conversation=None,  # type: ignore[arg-type]  # retained for type compatibility, unused
         plugins=plugin_governance_service,
         plugin_management=plugin_management_service,
         access=access_management_service,

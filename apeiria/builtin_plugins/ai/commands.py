@@ -108,7 +108,6 @@ async def handle_model(bot: Bot, event: Event) -> None:
 
     from apeiria.db.engine import get_session
     from apeiria.db.models.ai_source import AIChatModel
-    from apeiria.db.models.conversation import Session
 
     args = str(event.message).strip().split(maxsplit=1)
     cmd_arg = args[1] if len(args) > 1 else ""
@@ -127,12 +126,9 @@ async def handle_model(bot: Bot, event: Event) -> None:
             if not model:
                 await bot.send(event, f"未找到模型: {cmd_arg}")
                 return
-            session = (
-                await db.execute(select(Session).where(Session.id == session_id))
-            ).scalar_one_or_none()
-            if session:
-                session.model_override = cmd_arg
-                await db.commit()
+        from apeiria.conversation.service import update_session_model_override
+
+        await update_session_model_override(session_id, cmd_arg)
         await bot.send(event, f"已切换模型: {model.display_name}")
         return
 

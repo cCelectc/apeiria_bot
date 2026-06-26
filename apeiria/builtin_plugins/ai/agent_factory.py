@@ -72,8 +72,11 @@ _MIN_MESSAGES_TO_COMPACT = 20
 
 
 async def _compact_session(session_id: str) -> None:
-    from apeiria.conversation.service import append_message, load_recent
-    from apeiria.db.models.conversation import Session
+    from apeiria.conversation.service import (
+        append_message,
+        load_recent,
+        update_session_compaction,
+    )
 
     messages = await load_recent(session_id, limit=200)
     if len(messages) < _MIN_MESSAGES_TO_COMPACT:
@@ -96,10 +99,4 @@ async def _compact_session(session_id: str) -> None:
         msg_type="system",
     )
 
-    async with get_session() as db:
-        session = (
-            await db.execute(select(Session).where(Session.id == session_id))
-        ).scalar_one_or_none()
-        if session:
-            session.last_compacted_message_id = boundary_msg.id
-            await db.commit()
+    await update_session_compaction(session_id, boundary_msg.id)

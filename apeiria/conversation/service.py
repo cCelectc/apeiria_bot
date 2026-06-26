@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 
 from apeiria.db.base import _now_iso
 from apeiria.db.engine import get_session
@@ -113,3 +113,57 @@ async def load_recent(
             .all()
         )
         return list(reversed(rows))
+
+
+async def get_session_by_id(session_id: str) -> Session | None:
+    async with get_session() as db:
+        result = await db.execute(select(Session).where(Session.id == session_id))
+        return result.scalar_one_or_none()
+
+
+async def update_session_model_override(
+    session_id: str,
+    model_override: str | None,
+) -> None:
+    async with get_session() as db:
+        await db.execute(
+            update(Session)
+            .where(Session.id == session_id)
+            .values(model_override=model_override)
+        )
+        await db.commit()
+
+
+async def update_session_compaction(
+    session_id: str,
+    last_compacted_message_id: int | None,
+) -> None:
+    async with get_session() as db:
+        await db.execute(
+            update(Session)
+            .where(Session.id == session_id)
+            .values(
+                last_compacted_message_id=last_compacted_message_id,
+                last_active_at=_now_iso(),
+            )
+        )
+        await db.commit()
+
+
+async def search_messages_by_keyword(
+    session_id: str,
+    keyword: str,
+    *,
+    limit: int = 20,
+) -> list[Message]:
+    async with get_session() as db:
+        result = await db.execute(
+            select(Message)
+            .where(
+                Message.session_id == session_id,
+                Message.content.contains(keyword),
+            )
+            .order_by(Message.created_at.desc())
+            .limit(limit)
+        )
+        return list(result.scalars().all())

@@ -16,22 +16,10 @@ async def _execute(
     session_id = _ctx.get("session_id", "") if _ctx else ""
     if not session_id:
         return ToolResult(success=False, error="No session context")
-    from sqlalchemy import select
 
-    from apeiria.db.engine import get_session
-    from apeiria.db.models.conversation import Message
+    from apeiria.conversation.service import search_messages_by_keyword
 
-    async with get_session() as db:
-        stmt = (
-            select(Message)
-            .where(
-                Message.session_id == session_id,
-                Message.content.contains(query),
-            )
-            .order_by(Message.created_at.desc())
-            .limit(limit)
-        )
-        messages = list((await db.execute(stmt)).scalars().all())
+    messages = await search_messages_by_keyword(session_id, query, limit=limit)
     if not messages:
         return ToolResult(success=True, content="No matching messages found.")
     lines: list[str] = []
