@@ -3,8 +3,8 @@ from __future__ import annotations
 import asyncio
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import JSONResponse
 
 from apeiria.config.loader import load_config, update_runtime_config
 from apeiria.plugin.adapter_manager import (
@@ -16,9 +16,10 @@ from apeiria.plugin.adapter_scanner import scan_adapters
 from apeiria.plugin.manager import install_plugin, set_plugin_state, uninstall_plugin
 from apeiria.plugin.metadata.resolver import resolve_config_namespace_contract
 from apeiria.plugin.scanner import scan_plugins
+from apeiria.web.auth import verify_token
 from apeiria.web.store import get_status, get_store
 
-router = APIRouter(prefix="/api")
+router = APIRouter(prefix="/api", dependencies=[Depends(verify_token)])
 
 
 def _write_yaml(raw: dict) -> None:
@@ -234,18 +235,3 @@ async def api_store_sources() -> JSONResponse:
 @router.get("/status")
 async def api_status() -> JSONResponse:
     return JSONResponse(content=get_status())
-
-
-FRONTEND_DIR = Path("web/dist")
-
-
-@router.get("/{full_path:path}")
-async def serve_frontend(full_path: str) -> FileResponse:
-    if not FRONTEND_DIR.exists():
-        raise HTTPException(status_code=404, detail="Frontend not built")
-    file_path = FRONTEND_DIR / full_path
-    if not file_path.exists() or not file_path.is_file():
-        file_path = FRONTEND_DIR / "index.html"
-    if not file_path.exists():
-        raise HTTPException(status_code=404)
-    return FileResponse(str(file_path))
