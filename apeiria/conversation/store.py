@@ -1,0 +1,117 @@
+from __future__ import annotations
+
+from sqlalchemy import select
+
+from apeiria.db.base import _now_iso
+from apeiria.db.engine import get_db
+from apeiria.db.models.conversation import Message, Session
+
+
+async def ensure_session(
+    session_id: str,
+    platform: str,
+    scene_type: str,
+    scene_id: str,
+) -> Session:
+    db = get_db()
+    now = _now_iso()
+    async with db.gate.write() as sess:
+        existing = (
+            await sess.execute(select(Session).where(Session.session_id == session_id))
+        ).scalar_one_or_none()
+        if existing:
+            existing.updated_at = now
+            return existing
+        new_session = Session(
+            session_id=session_id,
+            platform=platform,
+            scene_type=scene_type,
+            scene_id=scene_id,
+        )
+        sess.add(new_session)
+        await sess.flush()
+        return new_session
+
+
+async def append_message(  # noqa: PLR0913
+    session_id: str,
+    role: str,
+    content: str,
+    *,
+    user_id: str | None = None,
+    message_id: str | None = None,
+    meta_json: dict | None = None,
+) -> Message:
+    db = get_db()
+    now = _now_iso()
+    async with db.gate.write() as sess:
+        session = (
+            await sess.execute(select(Session).where(Session.session_id == session_id))
+        ).scalar_one_or_none()
+        if session is None:
+            session = Session(
+                session_id=session_id,
+                platform="unknown",
+                scene_type="unknown",
+                scene_id="unknown",
+            )
+            sess.add(session)
+            await sess.flush()
+
+        msg = Message(
+            session_id=session.id,
+            role=role,
+            content=content,
+            user_id=user_id,
+            message_id=message_id,
+            time=now,
+            meta_json=meta_json,
+        )
+        sess.add(msg)
+        session.updated_at = now
+        await sess.flush()
+        return msg
+
+
+async def load_recent(
+    session_id: str,
+    limit: int = 20,
+) -> list[Message]:
+    db = get_db()
+    async with db.gate.read() as sess:
+        session = (
+            await sess.execute(select(Session).where(Session.session_id == session_id))
+        ).scalar_one_or_none()
+        if session is None:
+            return []
+        result = await sess.execute(
+            select(Message)
+            .where(Message.session_id == session.id)
+            .order_by(Message.id.desc())
+            .limit(limit)
+        )
+        return list(result.scalars().all())
+
+
+async def search_messages(
+    session_id: str,
+    keyword: str,
+    limit: int = 10,
+) -> list[Message]:
+    db = get_db()
+    async with db.gate.read() as sess:
+        session = (
+            await sess.execute(select(Session).where(Session.session_id == session_id))
+        ).scalar_one_or_none()
+        if session is None:
+            return []
+        result = await sess.execute(
+            select(Message)
+            .where(
+                Message.session_id == session.id,
+                Message.content.contains(keyword),
+            )
+            .order_by(Message.id.desc())
+            .limit(limit)
+        )
+        return list(result.scalars().all())
