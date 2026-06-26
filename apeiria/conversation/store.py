@@ -57,6 +57,9 @@ async def append_message(  # noqa: PLR0913
             )
             sess.add(session)
             await sess.flush()
+            from nonebot.log import logger
+
+            logger.debug("Auto-created session with unknown metadata: {}", session_id)
 
         msg = Message(
             session_id=session.id,
