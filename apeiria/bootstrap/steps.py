@@ -178,8 +178,14 @@ def step_access() -> None:
 
 
 def step_web() -> None:
-    from fastapi import FastAPI  # noqa: TC002
+    from pathlib import Path
 
+    from fastapi import FastAPI, HTTPException
+    from fastapi.responses import FileResponse
+
+    from apeiria.config.loader import load_config
+    from apeiria.web.auth import auth_router, ensure_credentials
+    from apeiria.web.logs import get_log_hub, logs_router
     from apeiria.web.routes import router
 
     driver = nonebot.get_driver()
@@ -188,5 +194,26 @@ def step_web() -> None:
         logger.warning("Web app not available — driver does not support ASGI")
         return
     app: FastAPI = raw_app
+
+    app_config = load_config("data/config.yaml")
+    ensure_credentials()
+    get_log_hub().install_sinks(app_config.apeiria.logging)
+
+    app.include_router(auth_router)
+    app.include_router(logs_router)
     app.include_router(router)
+
+    frontend_dir = Path("webui/dist")
+
+    @app.get("/{full_path:path}")
+    async def _serve_frontend(full_path: str) -> FileResponse:
+        if not frontend_dir.exists():
+            raise HTTPException(status_code=404, detail="Frontend not built")
+        candidate = frontend_dir / full_path
+        if not candidate.exists() or not candidate.is_file():
+            candidate = frontend_dir / "index.html"
+        if not candidate.exists():
+            raise HTTPException(status_code=404, detail="Frontend not built")
+        return FileResponse(str(candidate))
+
     logger.success("Web UI routes registered")
