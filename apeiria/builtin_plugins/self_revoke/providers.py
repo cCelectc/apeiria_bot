@@ -36,7 +36,7 @@ def _nested_string_attr(obj: object, *names: str) -> str | None:
 
 def _event_message_id(event: Event) -> str | None:
     with suppress(Exception):
-        mid = event.get_message_id()
+        mid = event.get_message_id()  # pyright: ignore[reportAttributeAccessIssue]
         if mid is not None:
             return str(mid)
     return _string_attr(event, "message_id")

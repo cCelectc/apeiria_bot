@@ -113,8 +113,8 @@ def step_load_pypi() -> None:
 def step_conversation() -> None:
     from apeiria.conversation.store import append_message
 
-    @nonebot.on_message(block=False)
-    async def _persist_inbound(event: nonebot.adapters.Event) -> None:
+    @nonebot.on_message(block=False)  # pyright: ignore[reportCallIssue]
+    async def _persist_inbound(event: nonebot.adapters.Event) -> None:  # pyright: ignore[reportAttributeAccessIssue]
         try:
             session_id = event.get_session_id()
             user_id = event.get_user_id()
@@ -137,10 +137,12 @@ def step_access() -> None:
 
     @nonebot.get_driver().on_startup
     async def _load_rules() -> None:
+        assert _access_control is not None
         await _access_control.load_snapshot()
 
     @nonebot.get_driver().on_bot_connect
-    async def _reload_rules(bot: nonebot.adapters.Bot) -> None:  # noqa: ARG001
+    async def _reload_rules(bot: nonebot.adapters.Bot) -> None:  # noqa: ARG001  # pyright: ignore[reportAttributeAccessIssue]
+        assert _access_control is not None
         await _access_control.load_snapshot()
 
     logger.success("Access control initialized")
@@ -152,10 +154,10 @@ def step_web() -> None:
     from apeiria.web.routes import router
 
     driver = nonebot.get_driver()
-    app: FastAPI = getattr(driver, "server_app", None) or getattr(driver, "asgi", None)
-    if app is None:
+    raw_app = getattr(driver, "server_app", None) or getattr(driver, "asgi", None)
+    if raw_app is None:
         logger.warning("Web app not available — driver does not support ASGI")
         return
-
+    app: FastAPI = raw_app
     app.include_router(router)
     logger.success("Web UI routes registered")

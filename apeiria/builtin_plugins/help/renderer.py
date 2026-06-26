@@ -240,6 +240,7 @@ async def _show_detail(  # noqa: PLR0913
     info = find_plugin_by_name(name, config, role=role, show_all=show_all)
     if not info:
         await matcher.finish(f"未找到插件「{name}」")
+    assert info is not None
     data = _build_detail_data(info, prefix=prefix, config=config, role=role)
 
     if bot.adapter.get_name() == "Console":
