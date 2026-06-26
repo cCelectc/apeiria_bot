@@ -3,6 +3,7 @@ from __future__ import annotations
 import click
 
 from apeiria.cli.init_cmd import init_cmd
+from apeiria.cli.reset_password_cmd import reset_password_cmd
 from apeiria.cli.run_cmd import run_cmd
 
 
@@ -24,6 +25,7 @@ def cli(_ctx: click.Context, cwd: str | None) -> None:
 
 cli.add_command(init_cmd)
 cli.add_command(run_cmd)
+cli.add_command(reset_password_cmd)
 
 
 def main() -> None:
