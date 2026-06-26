@@ -50,13 +50,13 @@ class SystemManagementService:
 
     async def get_status_snapshot(self) -> DashboardStatusSnapshot:
         """Collect the current dashboard metrics snapshot."""
-        from apeiria.access.repository import access_repository
+        from apeiria.access.service import access_service
         from apeiria.plugins.repository import plugin_catalog_repository
 
         adapters = list(nonebot.get_adapters().keys())
         plugins = nonebot.get_loaded_plugins()
         enabled_map = await plugin_catalog_repository.get_enabled_map()
-        access_rules = await access_repository.list_access_rules()
+        access_rules = await access_service.list_access_rules()
         disabled_plugins_count = sum(
             1 for enabled in enabled_map.values() if not enabled
         )

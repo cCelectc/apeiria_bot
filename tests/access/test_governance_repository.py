@@ -13,20 +13,20 @@ def test_access_and_group_repositories_use_new_database(
     tmp_path: Path,
 ) -> None:
     from apeiria.access.groups_repository import GroupStateRow, group_repository
-    from apeiria.access.repository import access_repository
+    from apeiria.access.service import access_service
 
     db_path = tmp_path / "test.db"
 
     async def run() -> None:
         async with async_db(db_path):
-            await access_repository.upsert_access_rule(
+            await access_service.upsert_access_rule(
                 subject_type="group",
                 subject_id="group-1",
                 plugin_module="plugins.alpha",
                 effect="deny",
                 note="blocked",
             )
-            rules = await access_repository.list_access_rules()
+            rules = await access_service.list_access_rules()
             assert len(rules) == 1
             assert rules[0].plugin_module == "plugins.alpha"
             assert rules[0].effect == "deny"
@@ -39,8 +39,8 @@ def test_access_and_group_repositories_use_new_database(
                     disabled_plugins='["plugins.alpha"]',
                 )
             )
-            assert await access_repository.get_group_bot_enabled("group-1") is False
-            assert await access_repository.get_group_disabled_plugins("group-1") == [
+            assert await access_service.get_group_bot_enabled("group-1") is False
+            assert await access_service.get_group_disabled_plugins("group-1") == [
                 "plugins.alpha"
             ]
             group = await group_repository.get_group("group-1")
@@ -48,7 +48,7 @@ def test_access_and_group_repositories_use_new_database(
             assert group.group_name == "Group One"
             assert len(await group_repository.list_groups()) == 1
             assert (
-                await access_repository.delete_access_rule(
+                await access_service.delete_access_rule(
                     subject_type="group",
                     subject_id="group-1",
                     plugin_module="plugins.alpha",
