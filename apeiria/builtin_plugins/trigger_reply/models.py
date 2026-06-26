@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import re  # noqa: TC003
+import re
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict

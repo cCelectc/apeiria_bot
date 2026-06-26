@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 from collections.abc import Mapping, Sequence
 from math import isfinite
-from pathlib import Path  # noqa: TC003
+from pathlib import Path
 from typing import Any, cast
 
 from nonebot import require
