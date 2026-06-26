@@ -95,10 +95,9 @@ def normalize_contact_approval_config(data: dict[str, object]) -> dict[str, obje
             data.get("suppressed_group_join_reject_reason"),
             fallback="",
         ),
-        "ticket_expiration_minutes": normalize_int(
+        "ticket_expiration_minutes": _normalize_positive_int(
             data.get("ticket_expiration_minutes"),
             fallback=DEFAULT_TICKET_EXPIRATION_MINUTES,
-            min_value=1,
         ),
         "approval_prefix": normalize_non_empty_string(
             data.get("approval_prefix"),
@@ -186,6 +185,11 @@ def _normalize_id_list(value: object) -> list[str]:
 
 def _valid_numeric_id(value: str) -> bool:
     return value.isdecimal() and value != "0"
+
+
+def _normalize_positive_int(value: object, *, fallback: int) -> int:
+    result = normalize_int(value, fallback=fallback)
+    return result if result > 0 else fallback
 
 
 __all__ = [
