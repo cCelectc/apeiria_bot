@@ -2,13 +2,11 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from pathlib import PurePath
-from typing import TypeVar
 
 from pydantic import BaseModel, ConfigDict
 
 from apeiria.config import project_config_service
-
-ModelT = TypeVar("ModelT", bound=BaseModel)
+from apeiria.config.normalizers import normalize_bool, normalize_int, validate_config
 
 DEFAULT_ENABLED = True
 DEFAULT_PRIORITY = 12
@@ -29,15 +27,16 @@ class TriggerReplyConfig(BaseModel):
 
 def normalize_trigger_reply_config(data: dict[str, object]) -> dict[str, object]:
     return {
-        "enabled": _normalize_bool(
+        "enabled": normalize_bool(
             data.get("enabled"),
             fallback=DEFAULT_ENABLED,
         ),
-        "priority": _normalize_priority(
+        "priority": normalize_int(
             data.get("priority"),
             fallback=DEFAULT_PRIORITY,
+            min_value=1,
         ),
-        "stop_propagation_on_match": _normalize_bool(
+        "stop_propagation_on_match": normalize_bool(
             data.get("stop_propagation_on_match"),
             fallback=DEFAULT_STOP_PROPAGATION_ON_MATCH,
         ),
@@ -45,7 +44,7 @@ def normalize_trigger_reply_config(data: dict[str, object]) -> dict[str, object]
             data.get("rules_file"),
             fallback=DEFAULT_RULES_FILE,
         ),
-        "debug": _normalize_bool(data.get("debug"), fallback=DEFAULT_DEBUG),
+        "debug": normalize_bool(data.get("debug"), fallback=DEFAULT_DEBUG),
     }
 
 
@@ -53,35 +52,7 @@ def get_trigger_reply_config() -> TriggerReplyConfig:
     config = normalize_trigger_reply_config(
         project_config_service.read_project_plugin_config("trigger_reply")
     )
-    return _validate_config(TriggerReplyConfig, config)
-
-
-def _validate_config(model: type[ModelT], data: dict[str, object]) -> ModelT:
-    return model.model_validate(data)
-
-
-def _normalize_bool(value: object, *, fallback: bool) -> bool:
-    if isinstance(value, bool):
-        return value
-    if isinstance(value, str):
-        normalized = value.strip().lower()
-        if normalized in {"true", "1", "yes", "on"}:
-            return True
-        if normalized in {"false", "0", "no", "off"}:
-            return False
-    return fallback
-
-
-def _normalize_priority(value: object, *, fallback: int) -> int:
-    if isinstance(value, bool):
-        return fallback
-    if not isinstance(value, (int, float, str)):
-        return fallback
-    try:
-        priority = int(value)
-    except (TypeError, ValueError):
-        return fallback
-    return max(priority, 1)
+    return validate_config(TriggerReplyConfig, config)
 
 
 def _normalize_rules_file(value: object, *, fallback: str) -> tuple[str, ...]:

@@ -7,6 +7,12 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict
 
 from apeiria.config import project_config_service
+from apeiria.config.normalizers import (
+    iter_raw_values,
+    normalize_bool,
+    normalize_float,
+    normalize_int,
+)
 
 GroupMode = Literal["allowlist", "blocklist"]
 
@@ -63,7 +69,7 @@ class _ValidationInput:
 def normalize_repeater_config(data: dict[str, object]) -> dict[str, object]:
     """Normalize raw project config into a bounded repeater payload."""
 
-    repeat_threshold = _normalize_int(
+    repeat_threshold = normalize_int(
         data.get("repeat_threshold"),
         fallback=DEFAULT_REPEAT_THRESHOLD,
     )
@@ -73,19 +79,19 @@ def normalize_repeater_config(data: dict[str, object]) -> dict[str, object]:
         lower=True,
     )
     group_mode = _normalize_group_mode(data.get("group_mode"))
-    base_probability = _normalize_float(
+    base_probability = normalize_float(
         data.get("base_probability"),
         fallback=DEFAULT_BASE_PROBABILITY,
     )
-    max_probability = _normalize_float(
+    max_probability = normalize_float(
         data.get("max_probability"),
         fallback=DEFAULT_MAX_PROBABILITY,
     )
-    saturation_extra = _normalize_int(
+    saturation_extra = normalize_int(
         data.get("saturation_extra"),
         fallback=DEFAULT_SATURATION_EXTRA,
     )
-    debug = _normalize_bool(data.get("debug"), fallback=False)
+    debug = normalize_bool(data.get("debug"), fallback=False)
 
     allow_groups = normalize_group_entries(
         data.get("allow_groups"),
@@ -200,7 +206,7 @@ def _normalize_string_tuple(
 ) -> tuple[str, ...]:
     values = tuple(
         item.lower() if lower else item
-        for item in (_normalize_text(raw) for raw in _iter_raw_values(value))
+        for item in (_normalize_text(raw) for raw in iter_raw_values(value))
         if item is not None and (keep_empty or item)
     )
     return values if value is not None else fallback
@@ -209,63 +215,15 @@ def _normalize_string_tuple(
 def _iter_string_values(value: object) -> tuple[str, ...]:
     return tuple(
         item
-        for item in (_normalize_text(raw) for raw in _iter_raw_values(value))
+        for item in (_normalize_text(raw) for raw in iter_raw_values(value))
         if item
     )
-
-
-def _iter_raw_values(value: object) -> tuple[object, ...]:
-    if value is None:
-        return ()
-    if isinstance(value, str):
-        return (value,)
-    if isinstance(value, (list, tuple, set, frozenset)):
-        return tuple(value)
-    return (value,)
 
 
 def _normalize_text(value: object) -> str | None:
     if not isinstance(value, str):
         return None
     return value.strip()
-
-
-def _normalize_int(value: object, *, fallback: int) -> int:
-    if isinstance(value, bool):
-        return fallback
-    if value is None:
-        return fallback
-    if not isinstance(value, (int, float, str)):
-        return fallback
-    try:
-        return int(value)
-    except (TypeError, ValueError):
-        return fallback
-
-
-def _normalize_float(value: object, *, fallback: float) -> float:
-    if isinstance(value, bool):
-        return fallback
-    if value is None:
-        return fallback
-    if not isinstance(value, (int, float, str)):
-        return fallback
-    try:
-        return float(value)
-    except (TypeError, ValueError):
-        return fallback
-
-
-def _normalize_bool(value: object, *, fallback: bool) -> bool:
-    if isinstance(value, bool):
-        return value
-    if isinstance(value, str):
-        normalized = value.strip().lower()
-        if normalized in {"true", "1", "yes", "on"}:
-            return True
-        if normalized in {"false", "0", "no", "off"}:
-            return False
-    return fallback
 
 
 __all__ = [

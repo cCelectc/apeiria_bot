@@ -1,12 +1,18 @@
 from __future__ import annotations
 
-from typing import Literal, TypeVar
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
 
 from apeiria.config import project_config_service
-
-ModelT = TypeVar("ModelT", bound=BaseModel)
+from apeiria.config.normalizers import (
+    normalize_bool,
+    normalize_choice,
+    normalize_int,
+    normalize_non_empty_string,
+    normalize_string,
+    validate_config,
+)
 
 OwnerTargetScope = Literal["qq"]
 GroupJoinGateMode = Literal["whitelist", "blacklist"]
@@ -60,19 +66,19 @@ def normalize_contact_approval_config(data: dict[str, object]) -> dict[str, obje
 
     return {
         "owner_targets": tuple(_normalize_owner_targets(data.get("owner_targets"))),
-        "friend_requests_enabled": _normalize_bool(
+        "friend_requests_enabled": normalize_bool(
             data.get("friend_requests_enabled", True),
             fallback=True,
         ),
-        "bot_group_invites_enabled": _normalize_bool(
+        "bot_group_invites_enabled": normalize_bool(
             data.get("bot_group_invites_enabled", True),
             fallback=True,
         ),
-        "group_join_requests_enabled": _normalize_bool(
+        "group_join_requests_enabled": normalize_bool(
             data.get("group_join_requests_enabled", True),
             fallback=True,
         ),
-        "group_join_gate_mode": _normalize_choice(
+        "group_join_gate_mode": normalize_choice(
             data.get("group_join_gate_mode", "whitelist"),
             allowed=_GATE_MODE_VALUES,
             fallback="whitelist",
@@ -80,36 +86,37 @@ def normalize_contact_approval_config(data: dict[str, object]) -> dict[str, obje
         "group_join_gate_ids": tuple(
             _normalize_id_list(data.get("group_join_gate_ids"))
         ),
-        "suppressed_group_join_action": _normalize_choice(
+        "suppressed_group_join_action": normalize_choice(
             data.get("suppressed_group_join_action", "ignore"),
             allowed=_SUPPRESSED_ACTION_VALUES,
             fallback="ignore",
         ),
-        "suppressed_group_join_reject_reason": _normalize_string(
+        "suppressed_group_join_reject_reason": normalize_string(
             data.get("suppressed_group_join_reject_reason"),
             fallback="",
         ),
-        "ticket_expiration_minutes": _normalize_positive_int(
+        "ticket_expiration_minutes": normalize_int(
             data.get("ticket_expiration_minutes"),
             fallback=DEFAULT_TICKET_EXPIRATION_MINUTES,
+            min_value=1,
         ),
-        "approval_prefix": _normalize_non_empty_string(
+        "approval_prefix": normalize_non_empty_string(
             data.get("approval_prefix"),
             fallback=DEFAULT_APPROVAL_PREFIX,
         ),
-        "missing_target_reply": _normalize_non_empty_string(
+        "missing_target_reply": normalize_non_empty_string(
             data.get("missing_target_reply"),
             fallback=DEFAULT_MISSING_TARGET_REPLY,
         ),
-        "ticket_not_found_reply": _normalize_non_empty_string(
+        "ticket_not_found_reply": normalize_non_empty_string(
             data.get("ticket_not_found_reply"),
             fallback=DEFAULT_TICKET_NOT_FOUND_REPLY,
         ),
-        "unauthorized_reply": _normalize_non_empty_string(
+        "unauthorized_reply": normalize_non_empty_string(
             data.get("unauthorized_reply"),
             fallback=DEFAULT_UNAUTHORIZED_REPLY,
         ),
-        "platform_failed_reply": _normalize_non_empty_string(
+        "platform_failed_reply": normalize_non_empty_string(
             data.get("platform_failed_reply"),
             fallback=DEFAULT_PLATFORM_FAILED_REPLY,
         ),
@@ -120,7 +127,7 @@ def get_contact_approval_config() -> ContactApprovalConfig:
     config = normalize_contact_approval_config(
         project_config_service.read_project_plugin_config("contact_approval")
     )
-    return _validate_config(ContactApprovalConfig, config)
+    return validate_config(ContactApprovalConfig, config)
 
 
 def parse_owner_target(value: object) -> OwnerTarget | None:
@@ -135,10 +142,6 @@ def parse_owner_target(value: object) -> OwnerTarget | None:
     if scope != "qq" or not _valid_numeric_id(target_id):
         return None
     return OwnerTarget(scope="qq", target_id=target_id)
-
-
-def _validate_config(model: type[ModelT], data: dict[str, object]) -> ModelT:
-    return model.model_validate(data)
 
 
 def _normalize_owner_targets(value: object) -> list[OwnerTarget]:
@@ -179,52 +182,6 @@ def _normalize_id_list(value: object) -> list[str]:
         seen.add(text)
         ids.append(text)
     return ids
-
-
-def _normalize_choice(
-    value: object,
-    *,
-    allowed: set[str],
-    fallback: str,
-) -> str:
-    if not isinstance(value, str):
-        return fallback
-    normalized = value.strip().lower()
-    return normalized if normalized in allowed else fallback
-
-
-def _normalize_bool(value: object, *, fallback: bool) -> bool:
-    if isinstance(value, bool):
-        return value
-    if isinstance(value, str):
-        normalized = value.strip().lower()
-        if normalized in {"true", "1", "yes", "on"}:
-            return True
-        if normalized in {"false", "0", "no", "off"}:
-            return False
-    return fallback
-
-
-def _normalize_string(value: object, *, fallback: str) -> str:
-    if not isinstance(value, str):
-        return fallback
-    return value.strip()
-
-
-def _normalize_non_empty_string(value: object, *, fallback: str) -> str:
-    return _normalize_string(value, fallback="") or fallback
-
-
-def _normalize_positive_int(value: object, *, fallback: int) -> int:
-    if isinstance(value, bool):
-        return fallback
-    if not isinstance(value, (int, float, str)):
-        return fallback
-    try:
-        normalized = int(value)
-    except (TypeError, ValueError):
-        return fallback
-    return normalized if normalized > 0 else fallback
 
 
 def _valid_numeric_id(value: str) -> bool:

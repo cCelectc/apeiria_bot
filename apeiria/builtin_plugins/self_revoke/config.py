@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-from typing import Literal, TypeVar
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
 
 from apeiria.config import project_config_service
+from apeiria.config.normalizers import normalize_bool, normalize_choice, validate_config
 
-ModelT = TypeVar("ModelT", bound=BaseModel)
 SelfRevokePermission = Literal["public", "superuser"]
 SelfRevokeFeedback = Literal["silent", "reaction"]
 
@@ -22,48 +22,20 @@ class SelfRevokeConfig(BaseModel):
     feedback: SelfRevokeFeedback = "silent"
 
 
-def _validate_config(model: type[ModelT], data: dict[str, object]) -> ModelT:
-    return model.model_validate(data)
-
-
-def _normalize_choice(
-    value: object,
-    *,
-    allowed: set[str],
-    fallback: str,
-) -> str:
-    if not isinstance(value, str):
-        return fallback
-    normalized = value.strip().lower()
-    return normalized if normalized in allowed else fallback
-
-
-def _normalize_bool(value: object, *, fallback: bool) -> bool:
-    if isinstance(value, bool):
-        return value
-    if isinstance(value, str):
-        normalized = value.strip().lower()
-        if normalized in {"true", "1", "yes", "on"}:
-            return True
-        if normalized in {"false", "0", "no", "off"}:
-            return False
-    return fallback
-
-
 def normalize_self_revoke_config(data: dict[str, object]) -> dict[str, object]:
     """Normalize raw project config into a safe self-revoke config payload."""
 
     return {
-        "permission": _normalize_choice(
+        "permission": normalize_choice(
             data.get("permission", "public"),
             allowed=_PERMISSION_VALUES,
             fallback="public",
         ),
-        "revoke_trigger_message": _normalize_bool(
+        "revoke_trigger_message": normalize_bool(
             data.get("revoke_trigger_message", False),
             fallback=False,
         ),
-        "feedback": _normalize_choice(
+        "feedback": normalize_choice(
             data.get("feedback", "silent"),
             allowed=_FEEDBACK_VALUES,
             fallback="silent",
@@ -75,7 +47,7 @@ def get_self_revoke_config() -> SelfRevokeConfig:
     config = normalize_self_revoke_config(
         project_config_service.read_project_plugin_config("self_revoke")
     )
-    return _validate_config(SelfRevokeConfig, config)
+    return validate_config(SelfRevokeConfig, config)
 
 
 __all__ = [
