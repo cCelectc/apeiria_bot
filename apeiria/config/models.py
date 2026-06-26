@@ -23,11 +23,26 @@ class DatabaseConfig(BaseModel):
 class WebConfig(BaseModel):
     host: str = "127.0.0.1"
     port: int = 8080
+    username: str = "admin"
+    password_hash: str = ""
+    jwt_secret: str = ""
+    token_expire_days: int = 7
+    trusted_proxies: list[str] = []
+    real_ip_header: str = ""
+
+
+class LogConfig(BaseModel):
+    file: str = "data/logs/apeiria.log"
+    level: str = "INFO"
+    rotation: str = "10 MB"
+    retention: str = "7 days"
+    stream_buffer: int = 500
 
 
 class ApeiriaConfig(BaseModel):
     database: DatabaseConfig = DatabaseConfig()
     web: WebConfig = WebConfig()
+    logging: LogConfig = LogConfig()
 
 
 class AppConfig(BaseModel):
