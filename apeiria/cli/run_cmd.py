@@ -32,9 +32,7 @@ def run_cmd(reload: bool) -> None:  # noqa: FBT001
     db_path = app.apeiria.database.path
     import asyncio
 
-    asyncio.get_event_loop().run_until_complete(
-        init_db(f"sqlite+aiosqlite:///{db_path}")
-    )
+    asyncio.run(init_db(f"sqlite+aiosqlite:///{db_path}"))
 
     plan = BootstrapPlan()
     plan.add_step("db_migrate", step_db_migrate)
