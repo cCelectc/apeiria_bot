@@ -11,15 +11,30 @@ dependencies = [
     "nonebot2[httpx]>=2.5.0",
     "nonebot2[websockets]>=2.5.0",
     "nonebot-adapter-onebot>=2.4.6",
-    "ruff>=0.15.20",
+    "sqlalchemy[asyncio]>=2.0.30",
+    "aiosqlite>=0.20.0",
+    "alembic>=1.14.0",
+    "pyyaml>=6.0.3",
+    "click>=8.1.8",
+    "watchfiles>=0.21.0",
+    "httpx>=0.28.1",
+    "nonebot-plugin-alconna>=0.61.1",
+    "nonebot-plugin-uninfo>=0.11.0",
+    "nonebot-plugin-htmlrender>=0.5.0",
+    "nonebot-plugin-localstore>=0.7.4",
 ]
+
+[project.scripts]
+apeiria = "apeiria.cli.main:main"
 
 [dependency-groups]
 dev = [
     "ruff>=0.15.0",
     "pre-commit>=4.0.0,<5.0.0",
     "nonebug>=0.4.4",
+    "pytest>=8.0",
     "pytest-asyncio>=1.4.0",
+    "pyright[nodejs]>=1.1",
 ]
 
 [tool.nonebot]
@@ -34,6 +49,7 @@ nonebot-adapter-onebot = [
 
 [tool.nonebot.plugins]
 "@local" = []
+
 [tool.ruff]
 line-length = 88
 target-version = "py312"
@@ -42,7 +58,6 @@ target-version = "py312"
 line-ending = "lf"
 
 [tool.ruff.lint]
-# For more rules, see https://docs.astral.sh/ruff/rules/.
 select = [
     "F",     # Pyflakes
     "W",     # pycodestyle warnings
@@ -76,7 +91,6 @@ select = [
     "TC",    # flake8-type-checking
     "ARG",   # flake8-unused-arguments
     "PTH",   # flake8-use-pathlib
-    # "ERA",   # eradicate
     "FAST", # FastAPI
     "PERF", # Perflint
     "PGH",  # pygrep-hooks
@@ -85,13 +99,9 @@ select = [
     "RUF",  # Ruff-specific rules
 ]
 ignore = [
-    "E402",  # module-import-not-at-top-of-file  # nonebot2 require() violates this
-    "B008",  # function-call-in-default-argument  # nonebot2 Depends() without Annotated violates this
+    "E402",  # module-import-not-at-top-of-file
+    "B008",  # function-call-in-default-argument
     "UP037", # quoted-annotation
-    # "RUF001",  # ambiguous-unicode-character-string
-    # "RUF002",  # ambiguous-unicode-character-docstring
-    # "RUF003",  # ambiguous-unicode-character-comment
-    # "ANN201",  # missing-return-type-undocumented-public-function
     "ANN202",  # missing-return-type-private-function
     "ANN401",  # any-type
     "COM812",  # missing-trailing-comma
@@ -121,7 +131,16 @@ allowed-confusables = [
 keep-runtime-typing = true
 
 [tool.pyright]
-# For Pylance/Pyright configurations, see https://microsoft.github.io/pyright/#/configuration.
 pythonVersion = "3.12"
 pythonPlatform = "All"
 typeCheckingMode = "standard"
+include = ["apeiria", "bot.py"]
+extraPaths = ["."]
+exclude = ["**/__pycache__", "**/.*", ".venv", ".apeiria", "data"]
+venvPath = "."
+venv = ".venv"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+norecursedirs = [".venv", ".apeiria", "data"]
