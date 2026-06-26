@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import json
+import logging
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -22,6 +23,25 @@ if TYPE_CHECKING:
 _DEFAULT_BUFFER = 500
 _MAX_SCAN_LINES = 5000
 _HEARTBEAT = 15.0
+
+_STATIC_ACCESS_PREFIXES = ("/assets/",)
+_ACCESS_MIN_ARGS = 3
+_ACCESS_PATH_INDEX = 2
+
+
+class _StaticAccessFilter(logging.Filter):
+    def filter(self, record: logging.LogRecord) -> bool:
+        args = record.args
+        if isinstance(args, tuple) and len(args) >= _ACCESS_MIN_ARGS:
+            path = args[_ACCESS_PATH_INDEX]
+            if isinstance(path, str) and path.startswith(_STATIC_ACCESS_PREFIXES):
+                return False
+        return True
+
+
+def mute_static_access_logs() -> None:
+    """Drop uvicorn access-log lines for static assets (e.g. font subsets)."""
+    logging.getLogger("uvicorn.access").addFilter(_StaticAccessFilter())
 
 
 class LogHub:

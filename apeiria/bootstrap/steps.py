@@ -185,7 +185,11 @@ def step_web() -> None:
 
     from apeiria.config.loader import load_config
     from apeiria.web.auth import auth_router, ensure_credentials
-    from apeiria.web.logs import get_log_hub, logs_router
+    from apeiria.web.logs import (
+        get_log_hub,
+        logs_router,
+        mute_static_access_logs,
+    )
     from apeiria.web.routes import router
 
     driver = nonebot.get_driver()
@@ -198,6 +202,7 @@ def step_web() -> None:
     app_config = load_config("data/config.yaml")
     ensure_credentials()
     get_log_hub().install_sinks(app_config.apeiria.logging)
+    mute_static_access_logs()
 
     app.include_router(auth_router)
     app.include_router(logs_router)
