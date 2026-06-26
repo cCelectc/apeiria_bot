@@ -4,6 +4,7 @@ from pathlib import Path
 
 import nonebot
 from nonebot.log import logger
+from nonebot.rule import Rule
 
 from apeiria.access.control import AccessControl
 from apeiria.env.ensure import ensure_apeiria_env
@@ -110,24 +111,28 @@ def step_load_pypi() -> None:
     logger.success("Loaded PyPI plugins via temporary config")
 
 
-def step_conversation() -> None:
+_conversation_handler = nonebot.on_message(Rule(), block=False)
+
+
+@_conversation_handler.handle()
+async def _persist_inbound(event: nonebot.adapters.Event) -> None:  # pyright: ignore[reportAttributeAccessIssue]
     from apeiria.conversation.store import append_message
 
-    @nonebot.on_message(None, block=False)  # pyright: ignore[reportCallIssue]
-    async def _persist_inbound(event: nonebot.adapters.Event) -> None:  # pyright: ignore[reportAttributeAccessIssue]
-        try:
-            session_id = event.get_session_id()
-            user_id = event.get_user_id()
-            text = event.get_plaintext()
-            await append_message(
-                session_id=session_id or "unknown",
-                role="user",
-                content=text,
-                user_id=user_id,
-            )
-        except Exception:  # noqa: BLE001
-            logger.opt(exception=True).debug("Failed to persist inbound message")
+    try:
+        session_id = event.get_session_id()
+        user_id = event.get_user_id()
+        text = event.get_plaintext()
+        await append_message(
+            session_id=session_id or "unknown",
+            role="user",
+            content=text,
+            user_id=user_id,
+        )
+    except Exception:  # noqa: BLE001
+        logger.opt(exception=True).debug("Failed to persist inbound message")
 
+
+def step_conversation() -> None:
     logger.success("Message persistence hook installed")
 
 
