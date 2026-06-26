@@ -24,23 +24,30 @@ _DEFAULT_BUFFER = 500
 _MAX_SCAN_LINES = 5000
 _HEARTBEAT = 15.0
 
-_STATIC_ACCESS_PREFIXES = ("/assets/",)
-_ACCESS_MIN_ARGS = 3
+_MUTED_ACCESS_PREFIXES = ("/assets/",)
+_MUTED_ACCESS_PATHS = frozenset({"/favicon.svg", "/icons.svg", "/api/status"})
+_ACCESS_ARG_COUNT = 5
 _ACCESS_PATH_INDEX = 2
+_ACCESS_STATUS_INDEX = 4
+_HTTP_ERROR = 400
 
 
 class _StaticAccessFilter(logging.Filter):
     def filter(self, record: logging.LogRecord) -> bool:
         args = record.args
-        if isinstance(args, tuple) and len(args) >= _ACCESS_MIN_ARGS:
-            path = args[_ACCESS_PATH_INDEX]
-            if isinstance(path, str) and path.startswith(_STATIC_ACCESS_PREFIXES):
-                return False
-        return True
+        if not isinstance(args, tuple) or len(args) < _ACCESS_ARG_COUNT:
+            return True
+        path = args[_ACCESS_PATH_INDEX]
+        status = args[_ACCESS_STATUS_INDEX]
+        is_muted = isinstance(path, str) and (
+            path.startswith(_MUTED_ACCESS_PREFIXES) or path in _MUTED_ACCESS_PATHS
+        )
+        is_success = isinstance(status, int) and status < _HTTP_ERROR
+        return not (is_muted and is_success)
 
 
 def mute_static_access_logs() -> None:
-    """Drop uvicorn access-log lines for static assets (e.g. font subsets)."""
+    """Drop successful uvicorn access logs for static assets and the status poll."""
     logging.getLogger("uvicorn.access").addFilter(_StaticAccessFilter())
 
 
