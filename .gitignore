@@ -164,3 +164,7 @@ apeiria.*.toml
 **/dist/
 **/node_modules/
 **/.vite/
+
+# Frontend source — override the Python `lib/` ignore above
+!webui/src/lib/
+!webui/src/lib/**
