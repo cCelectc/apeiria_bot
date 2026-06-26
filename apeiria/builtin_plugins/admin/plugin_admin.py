@@ -5,7 +5,7 @@ from nonebot.adapters import Event  # noqa: TC002
 from nonebot_plugin_alconna import Alconna, Match, on_alconna
 
 from apeiria.plugin.manager import set_plugin_state
-from apeiria.plugin.scanner import scan_plugins
+from apeiria.plugin.scanner import PluginManifest, scan_plugins
 
 from .presenter import render_block, render_list_block
 from .utils import ensure_owner_message
@@ -88,8 +88,7 @@ async def handle_plugin(
     await _plugin.finish(f"已{action_chinese}插件: {matched.name}")
 
 
-def _find_plugin(query: str) -> "PluginManifest | None":  # noqa: F821
-
+def _find_plugin(query: str) -> PluginManifest | None:
     normalized = query.strip().lower()
     for p in scan_plugins():
         if normalized in (p.name.lower(), normalized):
@@ -97,7 +96,7 @@ def _find_plugin(query: str) -> "PluginManifest | None":  # noqa: F821
     return None
 
 
-def _render_info(p: "PluginManifest") -> str:  # noqa: F821
+def _render_info(p: PluginManifest) -> str:
     return render_block(
         "插件详情",
         [

@@ -12,6 +12,7 @@ require("nonebot_plugin_alconna")
 __plugin_meta__ = PluginMetadata(
     name="管理",
     description="超级用户管理命令",
+    usage="发送 /admin 查看管理命令",
     type="application",
     supported_adapters=inherit_supported_adapters("nonebot_plugin_alconna"),
     extra=PluginExtraData(

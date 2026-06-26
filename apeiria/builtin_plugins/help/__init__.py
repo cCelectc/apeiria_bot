@@ -162,6 +162,7 @@ _mc = _cfg
 __plugin_meta__ = PluginMetadata(
     name="命令帮助",
     description="自动生成命令帮助菜单，支持角色区分和图片渲染",
+    usage="发送 /help 查看功能菜单",
     type="application",
     config=HelpConfig,
     supported_adapters=inherit_supported_adapters("nonebot_plugin_alconna"),
