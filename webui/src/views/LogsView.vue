@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed, nextTick, onUnmounted, ref, watch } from 'vue'
-import { AlertCircle, ChevronLeft, ChevronRight, Pause, Play, Trash2 } from '@lucide/vue'
+import { ChevronLeft, ChevronRight, Pause, Play, Trash2 } from '@lucide/vue'
+import ErrorState from '@/components/ErrorState.vue'
+import PageHeader from '@/components/PageHeader.vue'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
@@ -112,8 +114,7 @@ watch([level, keyword], () => {
 
 <template>
   <div class="flex h-full flex-col p-6 lg:p-8">
-    <h1 class="text-2xl font-semibold tracking-tight">{{ $t('logs.title') }}</h1>
-    <p class="mb-6 mt-1 text-sm text-muted-foreground">{{ $t('logs.subtitle') }}</p>
+    <PageHeader :title="$t('logs.title')" :subtitle="$t('logs.subtitle')" />
 
     <Tabs v-model="tab" class="flex min-h-0 flex-1 flex-col">
       <TabsList class="w-fit">
@@ -166,14 +167,7 @@ watch([level, keyword], () => {
         <div
           class="flex-1 min-h-0 overflow-auto rounded-xl border bg-card p-3 font-mono text-xs"
         >
-          <div v-if="isError" class="mb-4 rounded-lg border border-destructive/50 bg-destructive/10 p-4">
-            <div class="flex items-center gap-2">
-              <AlertCircle class="size-4 text-destructive" />
-              <p class="text-sm font-medium text-destructive">{{ $t('error.loadFailed') }}</p>
-            </div>
-            <p class="mt-1 text-sm text-destructive/80">{{ (error as Error)?.message }}</p>
-            <Button variant="outline" size="sm" class="mt-2" @click="() => refetch()">{{ $t('error.retry') }}</Button>
-          </div>
+          <ErrorState v-if="isError" class="mb-4" :message="(error as Error)?.message" @retry="() => refetch()" />
           <p v-else-if="isFetching" class="py-6 text-center text-muted-foreground">{{ $t('logs.loading') }}</p>
           <p
             v-else-if="!history || !history.items.length"

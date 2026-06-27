@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { Activity, AlertCircle, Plug, Puzzle } from '@lucide/vue'
-import { Button } from '@/components/ui/button'
+import { Activity, Plug, Puzzle } from '@lucide/vue'
+import ErrorState from '@/components/ErrorState.vue'
+import PageHeader from '@/components/PageHeader.vue'
 import { Card, CardContent } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useAdaptersQuery } from '@/composables/useAdapters'
@@ -37,17 +38,9 @@ const installedAdapterCount = computed(
 
 <template>
   <div class="p-6 lg:p-8">
-    <h1 class="text-2xl font-semibold tracking-tight">{{ $t('dashboard.title') }}</h1>
-    <p class="mb-6 mt-1 text-sm text-muted-foreground">{{ $t('dashboard.subtitle') }}</p>
+    <PageHeader :title="$t('dashboard.title')" :subtitle="$t('dashboard.subtitle')" />
 
-    <div v-if="isError" class="mb-4 rounded-lg border border-destructive/50 bg-destructive/10 p-4">
-      <div class="flex items-center gap-2">
-        <AlertCircle class="size-4 text-destructive" />
-        <p class="text-sm font-medium text-destructive">{{ $t('error.loadFailed') }}</p>
-      </div>
-      <p class="mt-1 text-sm text-destructive/80">{{ (error as Error)?.message }}</p>
-      <Button variant="outline" size="sm" class="mt-2" @click="() => refetch()">{{ $t('error.retry') }}</Button>
-    </div>
+    <ErrorState v-if="isError" class="mb-4" :message="(error as Error)?.message" @retry="() => refetch()" />
 
     <div v-else-if="isLoading" class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
       <Skeleton v-for="i in 3" :key="i" class="h-32 rounded-xl" />

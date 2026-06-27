@@ -3,7 +3,6 @@ import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { refDebounced } from '@vueuse/core'
 import {
-  AlertCircle,
   Check,
   ChevronLeft,
   ChevronRight,
@@ -12,6 +11,8 @@ import {
   Search,
 } from '@lucide/vue'
 import { toast } from 'vue-sonner'
+import ErrorState from '@/components/ErrorState.vue'
+import PageHeader from '@/components/PageHeader.vue'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -144,8 +145,7 @@ function openDetail(item: StoreItem) {
 
 <template>
   <div class="p-6 lg:p-8">
-    <h1 class="text-2xl font-semibold tracking-tight">{{ $t('store.title') }}</h1>
-    <p class="mb-6 mt-1 text-sm text-muted-foreground">{{ $t('store.subtitle') }}</p>
+    <PageHeader :title="$t('store.title')" :subtitle="$t('store.subtitle')" />
 
     <div class="relative mb-6 max-w-md">
       <Search class="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
@@ -160,14 +160,7 @@ function openDetail(item: StoreItem) {
     </Tabs>
 
     <div class="mt-6">
-      <div v-if="currentIsError" class="mb-4 rounded-lg border border-destructive/50 bg-destructive/10 p-4">
-        <div class="flex items-center gap-2">
-          <AlertCircle class="size-4 text-destructive" />
-          <p class="text-sm font-medium text-destructive">{{ $t('error.loadFailed') }}</p>
-        </div>
-        <p class="mt-1 text-sm text-destructive/80">{{ (currentErrorDetail as Error)?.message }}</p>
-        <Button variant="outline" size="sm" class="mt-2" @click="() => currentRefetch()">{{ $t('error.retry') }}</Button>
-      </div>
+      <ErrorState v-if="currentIsError" class="mb-4" :message="(currentErrorDetail as Error)?.message" @retry="() => currentRefetch()" />
       <p v-else-if="currentLoading && !currentItems.length" class="py-12 text-center text-sm text-muted-foreground">
         {{ $t('store.loading') }}
       </p>

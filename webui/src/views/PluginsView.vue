@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import { reactive, ref, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { AlertCircle, Info, Plus, Settings2, Trash2, X } from '@lucide/vue'
+import { Info, Plus, Settings2, Trash2, X } from '@lucide/vue'
 import { toast } from 'vue-sonner'
 import ConfigEditor from '@/components/ConfigEditor.vue'
+import ErrorState from '@/components/ErrorState.vue'
+import PageHeader from '@/components/PageHeader.vue'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -128,25 +130,16 @@ function remove(name: string) {
 
 <template>
   <div class="p-6 lg:p-8">
-    <div class="mb-6 flex items-center justify-between gap-4">
-      <div>
-        <h1 class="text-2xl font-semibold tracking-tight">{{ $t('plugins.title') }}</h1>
-        <p class="mt-1 text-sm text-muted-foreground">{{ $t('plugins.subtitle') }}</p>
-      </div>
-      <Button @click="installOpen = true">
-        <Plus class="size-4" />
-        {{ $t('plugins.installPlugin') }}
-      </Button>
-    </div>
+    <PageHeader :title="$t('plugins.title')" :subtitle="$t('plugins.subtitle')">
+      <template #actions>
+        <Button @click="installOpen = true">
+          <Plus class="size-4" />
+          {{ $t('plugins.installPlugin') }}
+        </Button>
+      </template>
+    </PageHeader>
 
-    <div v-if="isError" class="mb-4 rounded-lg border border-destructive/50 bg-destructive/10 p-4">
-      <div class="flex items-center gap-2">
-        <AlertCircle class="size-4 text-destructive" />
-        <p class="text-sm font-medium text-destructive">{{ $t('error.loadFailed') }}</p>
-      </div>
-      <p class="mt-1 text-sm text-destructive/80">{{ (error as Error)?.message }}</p>
-      <Button variant="outline" size="sm" class="mt-2" @click="() => refetch()">{{ $t('error.retry') }}</Button>
-    </div>
+    <ErrorState v-if="isError" class="mb-4" :message="(error as Error)?.message" @retry="() => refetch()" />
 
     <div class="rounded-xl border bg-card shadow-sm">
       <Table>

@@ -3,6 +3,7 @@ import { reactive } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { AlertCircle } from '@lucide/vue'
 import { toast } from 'vue-sonner'
+import PageHeader from '@/components/PageHeader.vue'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -35,8 +36,7 @@ function onSubmit() {
 
 <template>
   <div class="p-6 lg:p-8">
-    <h1 class="text-2xl font-semibold tracking-tight">{{ $t('account.title') }}</h1>
-    <p class="mb-6 mt-1 text-sm text-muted-foreground">{{ $t('account.description') }}</p>
+    <PageHeader :title="$t('account.title')" :subtitle="$t('account.description')" />
     <Card class="max-w-md">
       <CardHeader>
         <CardTitle class="text-base">{{ $t('account.changePassword') }}</CardTitle>
