@@ -24,8 +24,6 @@ class WebConfig(BaseModel):
     host: str = "127.0.0.1"
     port: int = 8080
     username: str = "admin"
-    password_hash: str = ""
-    jwt_secret: str = ""
     token_expire_days: int = 7
     trusted_proxies: list[str] = []
     real_ip_header: str = ""
