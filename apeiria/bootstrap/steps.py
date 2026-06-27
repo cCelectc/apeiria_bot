@@ -203,14 +203,6 @@ def _needs_frontend_build(dist_dir: Path) -> bool:
     return stored != current
 
 
-def _write_build_fingerprint(dist_dir: Path) -> None:
-    src_dir = Path("webui/src")
-    if not src_dir.is_dir():
-        return
-    fingerprint_file = dist_dir / ".build_fingerprint"
-    fingerprint_file.write_text(_source_fingerprint(src_dir))
-
-
 def _try_auto_build_frontend() -> None:
     import shutil
     import subprocess
@@ -245,7 +237,6 @@ def _try_auto_build_frontend() -> None:
             logger.warning("Frontend build failed:\n{}", result.stderr[-500:])
         else:
             logger.success("Frontend build completed")
-            _write_build_fingerprint(dist_dir)
     except OSError as e:
         logger.warning("Failed to run frontend build: {}", e)
 
