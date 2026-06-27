@@ -10,6 +10,10 @@ export interface Plugin {
   type: string | null
   homepage: string | null
   supported_adapters: string[] | null
+  can_disable: boolean
+  can_uninstall: boolean
+  depends_on: string[]
+  depended_by: string[]
 }
 
 export interface Adapter {
