@@ -292,11 +292,14 @@ function remove(name: string) {
         @escape-key-down="(e) => { e.preventDefault(); guardCloseConfig() }"
         @interact-outside="(e) => { e.preventDefault(); guardCloseConfig() }"
       >
-        <DialogHeader class="flex flex-row items-center justify-between gap-2 space-y-0">
-          <DialogTitle>{{ $t('plugins.config', { name: configPlugin }) }}</DialogTitle>
-          <Button variant="ghost" size="icon" aria-label="关闭" @click="guardCloseConfig">
-            <X class="size-4" aria-hidden="true" />
-          </Button>
+        <DialogHeader class="space-y-1">
+          <div class="flex flex-row items-center justify-between gap-2">
+            <DialogTitle>{{ $t('plugins.config') }}</DialogTitle>
+            <Button variant="ghost" size="icon" aria-label="关闭" @click="guardCloseConfig">
+              <X class="size-4" aria-hidden="true" />
+            </Button>
+          </div>
+          <p class="font-mono text-xs text-muted-foreground">{{ configPlugin }}</p>
         </DialogHeader>
         <ConfigEditor
           v-if="pluginConfigData"
