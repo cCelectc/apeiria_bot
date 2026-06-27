@@ -46,6 +46,21 @@ const saveAdapterConfig = useSaveAdapterConfig()
 
 const configEditorRef = ref<InstanceType<typeof ConfigEditor>>()
 
+const confirmOpen = ref(false)
+const confirmMessage = ref('')
+const confirmAction = ref<(() => void) | null>(null)
+
+function askConfirm(msg: string, action: () => void) {
+  confirmMessage.value = msg
+  confirmAction.value = action
+  confirmOpen.value = true
+}
+
+function executeConfirm() {
+  confirmAction.value?.()
+  confirmOpen.value = false
+}
+
 async function guardCloseConfig() {
   const ok = (await configEditorRef.value?.attemptClose()) ?? true
   if (ok) configOpen.value = false
@@ -74,17 +89,25 @@ function submitInstall() {
 }
 
 function toggle(name: string, enabled: boolean) {
+  if (!enabled) {
+    askConfirm(`确定要禁用「${name}」吗？依赖它的功能将停止工作。`, () => {
+      setState.mutate({ name, enabled }, { onError: (e: Error) => toast.error(e.message) })
+    })
+    return
+  }
   setState.mutate({ name, enabled }, { onError: (e: Error) => toast.error(e.message) })
 }
 
 function remove(name: string) {
-  uninstall.mutate(
-    { name },
-    {
-      onSuccess: () => toast.success('已卸载'),
-      onError: (e: Error) => toast.error(e.message),
-    },
-  )
+  askConfirm(`确定要卸载「${name}」吗？此操作不可撤销。`, () => {
+    uninstall.mutate(
+      { name },
+      {
+        onSuccess: () => toast.success('已卸载'),
+        onError: (e: Error) => toast.error(e.message),
+      },
+    )
+  })
 }
 </script>
 
@@ -214,6 +237,19 @@ function remove(name: string) {
             }
           "
         />
+      </DialogContent>
+    </Dialog>
+
+    <Dialog v-model:open="confirmOpen">
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>确认操作</DialogTitle>
+          <DialogDescription>{{ confirmMessage }}</DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <Button variant="outline" @click="confirmOpen = false">取消</Button>
+          <Button variant="destructive" @click="executeConfirm">确定</Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   </div>
