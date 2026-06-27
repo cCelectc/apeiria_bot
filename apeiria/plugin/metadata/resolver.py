@@ -67,7 +67,7 @@ def resolve_config_namespace_contract(
         (
             item
             for item in nonebot.get_loaded_plugins()
-            if item.module_name == module_name
+            if module_name in {item.module_name, item.name}
         ),
         None,
     )
