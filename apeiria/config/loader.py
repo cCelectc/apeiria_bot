@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import json
 import os
+from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
 import yaml
 from nonebot.log import logger
@@ -28,6 +30,55 @@ def to_env_value(value: object) -> str:
     return json.dumps(value)
 
 
+def _flatten_nested(prefix: str, obj: dict, parent: str = "") -> None:
+    for key, val in obj.items():
+        full_key = f"{parent}__{key}" if parent else key
+        if isinstance(val, dict):
+            _flatten_nested(prefix, val, full_key)
+        else:
+            os.environ[f"{prefix}__{full_key}".upper()] = to_env_value(val)
+
+
+def _try_resolve_plugin_contract(name: str):
+    try:
+        from apeiria.plugin.metadata.resolver import resolve_config_namespace_contract
+
+        return resolve_config_namespace_contract(name)
+    except (ImportError, ValueError, TypeError):
+        return None
+
+
+def _try_resolve_adapter_contract(name: str):
+    try:
+        from apeiria.plugin.adapter_resolver import resolve_adapter_config
+
+        return resolve_adapter_config(name)
+    except (ImportError, ValueError, TypeError):
+        return None
+
+
+def _inject_section_config(
+    entries: dict[str, dict],
+    resolve_fn: Callable[[str], Any],
+    set_driver_attr: object | None = None,
+) -> None:
+    for name, cfg in entries.items():
+        if not cfg:
+            continue
+        contract = resolve_fn(name)
+        if contract and contract.is_scoped and contract.namespace:
+            inner_cfg = cfg.get(contract.namespace, cfg)
+            if isinstance(inner_cfg, dict):
+                _flatten_nested(contract.namespace.upper(), inner_cfg)
+                if set_driver_attr is not None:
+                    setattr(set_driver_attr, contract.namespace, inner_cfg)
+        else:
+            for key, val in cfg.items():
+                os.environ[key.upper()] = to_env_value(val)
+                if set_driver_attr is not None:
+                    setattr(set_driver_attr, key, val)
+
+
 def expand_config(app: AppConfig) -> None:
     nonebot_fields = {
         name: getattr(app.nonebot, name) for name in app._nonebot_field_names
@@ -35,13 +86,8 @@ def expand_config(app: AppConfig) -> None:
     for key, value in nonebot_fields.items():
         os.environ[key.upper()] = to_env_value(value)
 
-    for fields in app.plugins.values():
-        for key, value in fields.items():
-            os.environ[key.upper()] = to_env_value(value)
-
-    for fields in app.adapters.values():
-        for key, value in fields.items():
-            os.environ[key.upper()] = to_env_value(value)
+    _inject_section_config(app.plugins, _try_resolve_plugin_contract)
+    _inject_section_config(app.adapters, _try_resolve_adapter_contract)
 
     logger.success("Config expanded from YAML to environment")
 
@@ -122,10 +168,11 @@ def update_runtime_config(app: AppConfig) -> None:
     driver = get_driver()
     config = driver.config
 
-    for plugin_name, fields in app.plugins.items():
-        for key, value in fields.items():
-            os.environ[key.upper()] = to_env_value(value)
-            setattr(config, key, value)
-            logger.debug("Hot-reloaded config: {}.{} = {}", plugin_name, key, value)
+    _inject_section_config(
+        app.plugins, _try_resolve_plugin_contract, set_driver_attr=config
+    )
+    _inject_section_config(
+        app.adapters, _try_resolve_adapter_contract, set_driver_attr=config
+    )
 
     logger.success("Plugin config hot-reloaded")
