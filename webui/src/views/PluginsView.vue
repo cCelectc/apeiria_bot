@@ -35,6 +35,12 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
+import {
   usePluginConfigQuery,
   usePluginMutations,
   usePluginsQuery,
@@ -187,7 +193,23 @@ function remove(name: string) {
               <Badge variant="secondary">{{ p.source }}</Badge>
             </TableCell>
             <TableCell>
+              <TooltipProvider v-if="!p.can_disable" :delay-duration="200">
+                <Tooltip>
+                  <TooltipTrigger as-child>
+                    <span>
+                      <Switch
+                        :model-value="p.enabled"
+                        disabled
+                      />
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>{{ $t('plugins.cannotDisable') }}</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
               <Switch
+                v-else
                 :model-value="p.enabled"
                 @update:model-value="(v: boolean) => toggle(p.name, v)"
               />
@@ -200,7 +222,13 @@ function remove(name: string) {
                 <Button variant="ghost" size="icon" :aria-label="`配置 ${p.name}`" @click="openConfig(p.name)">
                   <Settings2 class="size-4" aria-hidden="true" />
                 </Button>
-                <Button variant="ghost" size="icon" :aria-label="`卸载 ${p.name}`" @click="remove(p.name)">
+                <Button
+                  v-if="p.can_uninstall"
+                  variant="ghost"
+                  size="icon"
+                  :aria-label="`卸载 ${p.name}`"
+                  @click="remove(p.name)"
+                >
                   <Trash2 class="size-4 text-destructive" aria-hidden="true" />
                 </Button>
               </div>
@@ -260,6 +288,36 @@ function remove(name: string) {
           >
             {{ $t('plugins.homepage') }}
           </a>
+
+          <div v-if="detailPlugin.depends_on.length || detailPlugin.depended_by.length">
+            <p class="mb-2 text-muted-foreground font-medium">{{ $t('plugins.dependency') }}</p>
+
+            <div v-if="detailPlugin.depends_on.length" class="mb-2">
+              <p class="text-xs text-muted-foreground mb-1">{{ $t('plugins.dependsOn') }}</p>
+              <div class="flex flex-wrap gap-1">
+                <Badge
+                  v-for="d in detailPlugin.depends_on"
+                  :key="d"
+                  variant="secondary"
+                >
+                  {{ d }}
+                </Badge>
+              </div>
+            </div>
+
+            <div v-if="detailPlugin.depended_by.length">
+              <p class="text-xs text-muted-foreground mb-1">{{ $t('plugins.dependedBy') }}</p>
+              <div class="flex flex-wrap gap-1">
+                <Badge
+                  v-for="d in detailPlugin.depended_by"
+                  :key="d"
+                  variant="secondary"
+                >
+                  {{ d }}
+                </Badge>
+              </div>
+            </div>
+          </div>
         </div>
       </SheetContent>
     </Sheet>
