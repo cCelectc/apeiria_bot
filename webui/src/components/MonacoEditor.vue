@@ -73,9 +73,9 @@ watch(
 <template>
   <div
     v-if="!ready"
-    class="flex items-center justify-center h-full min-h-[400px] w-full border rounded-md"
+    class="flex items-center justify-center min-h-[200px] w-full border rounded-md"
   >
     <Loader2 class="size-8 animate-spin text-muted-foreground" />
   </div>
-  <div ref="containerRef" v-else class="h-full min-h-[400px] w-full border rounded-md" />
+  <div ref="containerRef" v-else class="h-full min-h-[200px] w-full border rounded-md" />
 </template>

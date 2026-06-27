@@ -23,10 +23,10 @@ onBeforeRouteLeave(async () => {
 </script>
 
 <template>
-  <div class="p-6 lg:p-8">
+  <div class="flex min-h-0 flex-col p-6 lg:p-8 h-full">
     <h1 class="mb-6 text-2xl font-semibold tracking-tight">NoneBot 设置</h1>
-    <Card>
-      <CardContent>
+    <Card class="flex flex-col min-h-0 flex-1">
+      <CardContent class="flex-1 min-h-0 overflow-auto">
         <Skeleton v-if="schemaLoading || configLoading" class="h-96" />
         <ConfigEditor
           v-else-if="schema && config"

@@ -177,7 +177,7 @@ defineExpose({ isDirty, attemptClose })
 </script>
 
 <template>
-  <div class="space-y-4">
+  <div class="flex min-h-0 flex-col space-y-4">
     <div v-if="schema.source !== 'none'" class="flex items-center justify-between">
       <Tabs :model-value="mode" @update:model-value="(v) => v && switchMode(v as 'form' | 'code')">
         <TabsList>
@@ -197,11 +197,11 @@ defineExpose({ isDirty, attemptClose })
       此{{ schema.owner_kind === 'adapter' ? '适配器' : '插件' }}无配置项（空配置）
     </div>
 
-    <div v-else-if="mode === 'form'">
+    <div v-else-if="mode === 'form'" class="flex-1 min-h-0 overflow-auto">
       <FormRenderer :fields="schema.fields" :model-value="data" @update:model-value="onFormUpdate" />
     </div>
 
-    <div v-else class="h-[60vh]">
+    <div v-else class="flex-1 min-h-0">
       <MonacoEditor
         :model-value="yamlRaw"
         :json-schema="(schema.json_schema as Record<string, unknown>) || undefined"
