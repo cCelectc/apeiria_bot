@@ -12,6 +12,7 @@ import {
 } from '@/components/ui/select'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useLogHistoryQuery } from '@/composables/useLogs'
+import { createSseClient } from '@/lib/sse'
 import { useAuthStore } from '@/stores/auth'
 import type { LogRecord } from '@/types'
 
@@ -38,7 +39,7 @@ function levelClass(level: string): string {
 const live = ref<LogRecord[]>([])
 const paused = ref(false)
 const scrollEl = ref<HTMLElement | null>(null)
-let es: EventSource | null = null
+let sseClient: ReturnType<typeof createSseClient> | null = null
 
 function scrollToBottom() {
   const el = scrollEl.value
@@ -48,24 +49,27 @@ function scrollToBottom() {
 function connect() {
   disconnect()
   if (!auth.token) return
-  es = new EventSource(`/api/logs/stream?token=${encodeURIComponent(auth.token)}`)
-  es.onmessage = (e) => {
-    try {
-      const rec = JSON.parse(e.data) as LogRecord
-      live.value.push(rec)
-      if (live.value.length > MAX_LIVE) {
-        live.value.splice(0, live.value.length - MAX_LIVE)
+  sseClient = createSseClient(
+    '/api/logs/stream',
+    auth.token,
+    (data) => {
+      try {
+        const rec = JSON.parse(data) as LogRecord
+        live.value.push(rec)
+        if (live.value.length > MAX_LIVE) {
+          live.value.splice(0, live.value.length - MAX_LIVE)
+        }
+        if (!paused.value) void nextTick(scrollToBottom)
+      } catch {
+        // ignore malformed lines
       }
-      if (!paused.value) void nextTick(scrollToBottom)
-    } catch {
-      // ignore malformed lines
-    }
-  }
+    },
+  )
 }
 
 function disconnect() {
-  es?.close()
-  es = null
+  sseClient?.close()
+  sseClient = null
 }
 
 function clearLive() {
