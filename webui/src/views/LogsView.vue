@@ -117,7 +117,7 @@ watch([level, keyword], () => {
         <TabsTrigger value="history">历史</TabsTrigger>
       </TabsList>
 
-      <TabsContent value="live" class="min-h-0 flex-1">
+      <TabsContent value="live" class="flex min-h-0 flex-1 flex-col">
         <div class="mb-2 flex items-center gap-2">
           <Button variant="outline" size="sm" @click="paused = !paused">
             <component :is="paused ? Play : Pause" class="size-4" />
@@ -130,7 +130,7 @@ watch([level, keyword], () => {
         </div>
         <div
           ref="scrollEl"
-          class="h-[calc(100vh-16rem)] overflow-auto rounded-xl border bg-card p-3 font-mono text-xs"
+          class="flex-1 min-h-0 overflow-auto rounded-xl border bg-card p-3 font-mono text-xs"
         >
           <p v-if="!live.length" class="py-6 text-center text-muted-foreground">
             等待日志…
@@ -145,7 +145,7 @@ watch([level, keyword], () => {
         </div>
       </TabsContent>
 
-      <TabsContent value="history" class="min-h-0 flex-1">
+      <TabsContent value="history" class="flex min-h-0 flex-1 flex-col">
         <div class="mb-2 flex flex-wrap items-center gap-2">
           <Select v-model="level">
             <SelectTrigger class="w-36">
@@ -160,7 +160,7 @@ watch([level, keyword], () => {
         </div>
 
         <div
-          class="h-[calc(100vh-19rem)] overflow-auto rounded-xl border bg-card p-3 font-mono text-xs"
+          class="flex-1 min-h-0 overflow-auto rounded-xl border bg-card p-3 font-mono text-xs"
         >
           <p v-if="isFetching" class="py-6 text-center text-muted-foreground">加载中…</p>
           <p
