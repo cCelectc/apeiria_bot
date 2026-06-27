@@ -90,6 +90,7 @@
   --sidebar-border: #e5e7eb;
   --sidebar-ring: #2196f3;
   --scrollbar-thumb: #00000018;
+  --scrollbar-thumb-hover: #00000040;
 }
 
 .dark {
@@ -131,6 +132,7 @@
   --sidebar-border: #ffffff1a;
   --sidebar-ring: #2196f3;
   --scrollbar-thumb: #ffffff1a;
+  --scrollbar-thumb-hover: #ffffff40;
 }
 
 @layer base {
@@ -143,12 +145,12 @@
 
   html {
     scrollbar-width: thin;
-    scrollbar-color: transparent transparent;
+    scrollbar-color: var(--scrollbar-thumb) transparent;
   }
 
   ::-webkit-scrollbar {
-    width: 5px;
-    height: 5px;
+    width: 8px;
+    height: 8px;
   }
 
   ::-webkit-scrollbar-track {
@@ -156,12 +158,11 @@
   }
 
   ::-webkit-scrollbar-thumb {
-    background-color: transparent;
-    border-radius: 3px;
+    background-color: var(--scrollbar-thumb);
+    border-radius: 4px;
   }
 
-  ::-webkit-scrollbar-thumb:hover,
-  *:hover::-webkit-scrollbar-thumb {
-    background-color: var(--scrollbar-thumb);
+  ::-webkit-scrollbar-thumb:hover {
+    background-color: var(--scrollbar-thumb-hover);
   }
 }
