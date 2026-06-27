@@ -43,13 +43,13 @@ const installedAdapterCount = computed(
       <Skeleton v-for="i in 3" :key="i" class="h-32 rounded-xl" />
     </div>
     <div v-else class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-      <Card class="border-0 bg-gradient-to-br from-primary to-violet-600 text-white shadow-lg">
+      <Card>
         <CardContent class="p-6">
-          <div class="flex size-11 items-center justify-center rounded-xl bg-white/20">
+          <div class="flex size-11 items-center justify-center rounded-xl bg-primary/10 text-primary">
             <Activity class="size-6" />
           </div>
-          <p class="mt-4 text-3xl font-bold">{{ uptime }}</p>
-          <p class="mt-1 text-sm text-white/80">运行时长</p>
+          <p class="mt-4 text-2xl font-bold">{{ uptime }}</p>
+          <p class="mt-1 text-sm text-muted-foreground">运行时长</p>
         </CardContent>
       </Card>
 
