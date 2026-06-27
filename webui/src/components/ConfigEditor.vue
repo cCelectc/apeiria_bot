@@ -132,7 +132,7 @@ async function handleSave() {
       此{{ schema.owner_kind === 'adapter' ? '适配器' : '插件' }}无配置项
     </div>
 
-    <div v-else-if="mode === 'form'" class="max-h-[60vh] overflow-y-auto pr-1">
+    <div v-else-if="mode === 'form'">
       <FormRenderer :fields="schema.fields" :model-value="data" @update:model-value="onFormUpdate" />
     </div>
 

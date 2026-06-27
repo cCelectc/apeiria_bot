@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import ConfigEditor from '@/components/ConfigEditor.vue'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
   useConfigSchema,
   useNonebotConfig,
@@ -18,39 +19,44 @@ const saveApeiria = useSaveApeiriaConfig()
 </script>
 
 <template>
-  <div class="p-6 lg:p-8 space-y-8">
-    <div>
-      <h2 class="text-xl font-semibold mb-4">NoneBot 配置</h2>
-      <Skeleton v-if="nsLoading || ncLoading" class="h-96" />
-      <ConfigEditor
-        v-else-if="nonebotSchema && nonebotConfig"
-        :schema="nonebotSchema"
-        :model-value="nonebotConfig"
-        section="nonebot"
-        :save-mutation="
-          async (d: Record<string, unknown>) => {
-            await saveNonebot.mutateAsync(d)
-          }
-        "
-      />
-    </div>
+  <div class="p-6 lg:p-8">
+    <h1 class="text-2xl font-semibold tracking-tight mb-6">设置</h1>
 
-    <Separator />
+    <Tabs default-value="nonebot" class="w-full">
+      <TabsList class="mb-6">
+        <TabsTrigger value="nonebot">NoneBot</TabsTrigger>
+        <TabsTrigger value="apeiria">Apeiria</TabsTrigger>
+      </TabsList>
 
-    <div>
-      <h2 class="text-xl font-semibold mb-4">Apeiria 配置</h2>
-      <Skeleton v-if="asLoading || acLoading" class="h-96" />
-      <ConfigEditor
-        v-else-if="apeiriaSchema && apeiriaConfig"
-        :schema="apeiriaSchema"
-        :model-value="apeiriaConfig"
-        section="apeiria"
-        :save-mutation="
-          async (d: Record<string, unknown>) => {
-            await saveApeiria.mutateAsync(d)
-          }
-        "
-      />
-    </div>
+      <TabsContent value="nonebot">
+        <Skeleton v-if="nsLoading || ncLoading" class="h-96" />
+        <ConfigEditor
+          v-else-if="nonebotSchema && nonebotConfig"
+          :schema="nonebotSchema"
+          :model-value="nonebotConfig"
+          section="nonebot"
+          :save-mutation="
+            async (d: Record<string, unknown>) => {
+              await saveNonebot.mutateAsync(d)
+            }
+          "
+        />
+      </TabsContent>
+
+      <TabsContent value="apeiria">
+        <Skeleton v-if="asLoading || acLoading" class="h-96" />
+        <ConfigEditor
+          v-else-if="apeiriaSchema && apeiriaConfig"
+          :schema="apeiriaSchema"
+          :model-value="apeiriaConfig"
+          section="apeiria"
+          :save-mutation="
+            async (d: Record<string, unknown>) => {
+              await saveApeiria.mutateAsync(d)
+            }
+          "
+        />
+      </TabsContent>
+    </Tabs>
   </div>
 </template>
