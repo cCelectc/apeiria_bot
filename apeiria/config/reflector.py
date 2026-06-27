@@ -81,6 +81,17 @@ def _make_fake_field_info(annotation: type) -> _FakeFieldInfo:
     return _FakeFieldInfo(annotation)
 
 
+_JSON_SAFE_TYPES = (str, int, float, bool, list, dict, type(None))
+
+
+def _make_json_safe(value: Any) -> Any:
+    if value is None:
+        return None
+    if isinstance(value, _JSON_SAFE_TYPES):
+        return value
+    return str(value)
+
+
 def _field_default_to_dict(default_val: Any) -> Any:
     if default_val is None:
         return None
@@ -139,9 +150,9 @@ def _reflect_field(field_name: str, field_info: Any) -> FieldNode:
 
     return PrimitiveField(
         type=ptype,
-        default=default_val,
+        default=_make_json_safe(default_val),
         required=is_required and not optional,
-        choices=choices,
+        choices=choices or None,
         **base_kwargs,
     )
 
