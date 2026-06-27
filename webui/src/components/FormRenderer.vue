@@ -79,7 +79,8 @@ function updateArrayItem(field: ArrayField, index: number, value: unknown) {
 
 function addMapEntry(field: MapField) {
   const obj = { ...(props.modelValue[field.key] as Record<string, unknown> || {}) }
-  obj[''] = field.value_schema?.kind === 'primitive'
+  const tempKey = `__temp_${Date.now()}`
+  obj[tempKey] = field.value_schema?.kind === 'primitive'
     ? (field.value_schema as PrimitiveField).default ?? ''
     : {}
   updateField(field.key, obj)
