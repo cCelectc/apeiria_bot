@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { dump } from 'js-yaml'
 import { Button } from '@/components/ui/button'
 import {
@@ -29,6 +30,8 @@ const emit = defineEmits<{
   cancel: []
 }>()
 
+const { t } = useI18n()
+
 const structured = computed(() =>
   flattenDiff(props.original, props.current, props.fields),
 )
@@ -43,11 +46,11 @@ function fmt(v: unknown): string {
   return String(v)
 }
 
-const kindLabel: Record<DiffKind, string> = {
-  added: '新增',
-  removed: '删除',
-  changed: '变更',
-}
+const kindLabel = computed<Record<DiffKind, string>>(() => ({
+  added: t('unsaved.added'),
+  removed: t('unsaved.removed'),
+  changed: t('unsaved.changed'),
+}))
 
 function rowClass(kind: DiffKind): string {
   if (kind === 'added') return 'bg-emerald-500/10'
@@ -65,20 +68,20 @@ function onOpenChange(v: boolean) {
   <Dialog :open="open" @update:open="onOpenChange">
     <DialogContent class="max-w-lg">
       <DialogHeader>
-        <DialogTitle>未保存的更改</DialogTitle>
-        <DialogDescription>你有未保存的配置改动，请选择如何处理。</DialogDescription>
+        <DialogTitle>{{ $t('unsaved.title') }}</DialogTitle>
+        <DialogDescription>{{ $t('unsaved.description') }}</DialogDescription>
       </DialogHeader>
 
       <Tabs default-value="structured">
         <TabsList>
-          <TabsTrigger value="structured">结构化</TabsTrigger>
-          <TabsTrigger value="advanced">高级</TabsTrigger>
+          <TabsTrigger value="structured">{{ $t('unsaved.structured') }}</TabsTrigger>
+          <TabsTrigger value="advanced">{{ $t('unsaved.advanced') }}</TabsTrigger>
         </TabsList>
 
         <TabsContent value="structured">
           <div class="max-h-[45vh] space-y-2 overflow-y-auto pt-2">
             <p v-if="!structured.length" class="py-6 text-center text-sm text-muted-foreground">
-              无差异
+              {{ $t('unsaved.noDiff') }}
             </p>
             <div
               v-for="d in structured"
@@ -116,10 +119,10 @@ function onOpenChange(v: boolean) {
       </Tabs>
 
       <DialogFooter>
-        <Button variant="ghost" @click="emit('cancel')">继续编辑</Button>
-        <Button variant="outline" @click="emit('discard')">放弃更改并关闭</Button>
+        <Button variant="ghost" @click="emit('cancel')">{{ $t('unsaved.continueEditing') }}</Button>
+        <Button variant="outline" @click="emit('discard')">{{ $t('unsaved.discardAndClose') }}</Button>
         <Button :disabled="saving" @click="emit('save')">
-          {{ saving ? '保存中…' : '保存并关闭' }}
+          {{ saving ? $t('unsaved.saving') : $t('unsaved.saveAndClose') }}
         </Button>
       </DialogFooter>
     </DialogContent>

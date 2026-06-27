@@ -37,16 +37,16 @@ const installedAdapterCount = computed(
 
 <template>
   <div class="p-6 lg:p-8">
-    <h1 class="text-2xl font-semibold tracking-tight">看板</h1>
-    <p class="mb-6 mt-1 text-sm text-muted-foreground">运行状态总览</p>
+    <h1 class="text-2xl font-semibold tracking-tight">{{ $t('dashboard.title') }}</h1>
+    <p class="mb-6 mt-1 text-sm text-muted-foreground">{{ $t('dashboard.subtitle') }}</p>
 
     <div v-if="isError" class="mb-4 rounded-lg border border-destructive/50 bg-destructive/10 p-4">
       <div class="flex items-center gap-2">
         <AlertCircle class="size-4 text-destructive" />
-        <p class="text-sm font-medium text-destructive">加载失败</p>
+        <p class="text-sm font-medium text-destructive">{{ $t('error.loadFailed') }}</p>
       </div>
       <p class="mt-1 text-sm text-destructive/80">{{ (error as Error)?.message }}</p>
-      <Button variant="outline" size="sm" class="mt-2" @click="() => refetch()">重试</Button>
+      <Button variant="outline" size="sm" class="mt-2" @click="() => refetch()">{{ $t('error.retry') }}</Button>
     </div>
 
     <div v-else-if="isLoading" class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -59,7 +59,7 @@ const installedAdapterCount = computed(
             <Activity class="size-6" />
           </div>
           <p class="mt-4 text-2xl font-bold">{{ uptime }}</p>
-          <p class="mt-1 text-sm text-muted-foreground">运行时长</p>
+          <p class="mt-1 text-sm text-muted-foreground">{{ $t('dashboard.uptime') }}</p>
         </CardContent>
       </Card>
 
@@ -69,10 +69,10 @@ const installedAdapterCount = computed(
             <div class="flex size-11 items-center justify-center rounded-xl bg-primary/10 text-primary">
               <Puzzle class="size-6" />
             </div>
-            <span class="text-xs text-muted-foreground">已安装 {{ installedPluginCount }}</span>
+            <span class="text-xs text-muted-foreground">{{ $t('dashboard.installed', { count: installedPluginCount }) }}</span>
           </div>
           <p class="mt-4 text-3xl font-bold">{{ loadedPlugins }}</p>
-          <p class="mt-1 text-sm text-muted-foreground">已加载插件 · 启用 {{ enabledPluginCount }}</p>
+          <p class="mt-1 text-sm text-muted-foreground">{{ $t('dashboard.pluginCount') }} · {{ $t('dashboard.enabled', { count: enabledPluginCount }) }}</p>
         </CardContent>
       </Card>
 
@@ -82,17 +82,17 @@ const installedAdapterCount = computed(
             <div class="flex size-11 items-center justify-center rounded-xl bg-chart-3/10 text-chart-3">
               <Plug class="size-6" />
             </div>
-            <span class="text-xs text-muted-foreground">已安装 {{ installedAdapterCount }}</span>
+            <span class="text-xs text-muted-foreground">{{ $t('dashboard.installed', { count: installedAdapterCount }) }}</span>
           </div>
           <p class="mt-4 text-3xl font-bold">{{ loadedAdapters.length }}</p>
-          <p class="mt-1 text-sm text-muted-foreground">已加载适配器</p>
+          <p class="mt-1 text-sm text-muted-foreground">{{ $t('dashboard.adapterCount') }}</p>
         </CardContent>
       </Card>
     </div>
 
     <Card v-if="loadedAdapters.length" class="mt-4">
       <CardContent class="p-6">
-        <p class="mb-3 text-sm font-medium">适配器状态</p>
+        <p class="mb-3 text-sm font-medium">{{ $t('dashboard.adapterStatus') }}</p>
         <div class="flex flex-wrap gap-2">
           <span
             v-for="a in loadedAdapters"

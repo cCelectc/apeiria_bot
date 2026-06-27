@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { reactive, ref, computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { AlertCircle, Plus, Settings2, Trash2, X } from '@lucide/vue'
 import { toast } from 'vue-sonner'
 import ConfigEditor from '@/components/ConfigEditor.vue'
@@ -31,7 +32,9 @@ import {
   useSaveAdapterConfig,
 } from '@/composables/useAdapters'
 
+const { t } = useI18n()
 const { data, isLoading, isError, error, refetch } = useAdaptersQuery()
+void isLoading
 const { install, uninstall, setState } = useAdapterMutations()
 
 const installOpen = ref(false)
@@ -80,7 +83,7 @@ function submitInstall() {
     },
     {
       onSuccess: () => {
-        toast.success('已安装')
+        toast.success(t('adapters.installed'))
         installOpen.value = false
       },
       onError: (e: Error) => toast.error(e.message),
@@ -90,7 +93,7 @@ function submitInstall() {
 
 function toggle(name: string, enabled: boolean) {
   if (!enabled) {
-    askConfirm(`确定要禁用「${name}」吗？依赖它的功能将停止工作。`, () => {
+    askConfirm(t('confirm.disableMessage', { name }), () => {
       setState.mutate({ name, enabled }, { onError: (e: Error) => toast.error(e.message) })
     })
     return
@@ -99,11 +102,11 @@ function toggle(name: string, enabled: boolean) {
 }
 
 function remove(name: string) {
-  askConfirm(`确定要卸载「${name}」吗？此操作不可撤销。`, () => {
+  askConfirm(t('confirm.uninstallMessage', { name }), () => {
     uninstall.mutate(
       { name },
       {
-        onSuccess: () => toast.success('已卸载'),
+        onSuccess: () => toast.success(t('adapters.uninstalled')),
         onError: (e: Error) => toast.error(e.message),
       },
     )
@@ -115,44 +118,44 @@ function remove(name: string) {
   <div class="p-6 lg:p-8">
     <div class="mb-6 flex items-center justify-between gap-4">
       <div>
-        <h1 class="text-2xl font-semibold tracking-tight">适配器管理</h1>
-        <p class="mt-1 text-sm text-muted-foreground">安装、卸载、启停与配置</p>
+        <h1 class="text-2xl font-semibold tracking-tight">{{ $t('adapters.title') }}</h1>
+        <p class="mt-1 text-sm text-muted-foreground">{{ $t('adapters.subtitle') }}</p>
       </div>
       <Button @click="installOpen = true">
         <Plus class="size-4" />
-        安装适配器
+        {{ $t('adapters.installAdapter') }}
       </Button>
     </div>
 
     <div v-if="isError" class="mb-4 rounded-lg border border-destructive/50 bg-destructive/10 p-4">
       <div class="flex items-center gap-2">
         <AlertCircle class="size-4 text-destructive" />
-        <p class="text-sm font-medium text-destructive">加载失败</p>
+        <p class="text-sm font-medium text-destructive">{{ $t('error.loadFailed') }}</p>
       </div>
       <p class="mt-1 text-sm text-destructive/80">{{ (error as Error)?.message }}</p>
-      <Button variant="outline" size="sm" class="mt-2" @click="() => refetch()">重试</Button>
+      <Button variant="outline" size="sm" class="mt-2" @click="() => refetch()">{{ $t('error.retry') }}</Button>
     </div>
 
     <div class="rounded-xl border bg-card shadow-sm">
       <Table>
         <TableHeader>
           <TableRow>
-            <TableHead>名称</TableHead>
-            <TableHead>模块</TableHead>
-            <TableHead>来源</TableHead>
-            <TableHead>启用</TableHead>
-            <TableHead class="text-right">操作</TableHead>
+            <TableHead>{{ $t('adapters.name') }}</TableHead>
+            <TableHead>{{ $t('adapters.moduleName') }}</TableHead>
+            <TableHead>{{ $t('adapters.source') }}</TableHead>
+            <TableHead>{{ $t('adapters.enabled') }}</TableHead>
+            <TableHead class="text-right">{{ $t('adapters.actions') }}</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
-          <TableRow v-else-if="isLoading">
+          <TableRow v-if="isLoading">
             <TableCell colspan="5" class="text-center text-muted-foreground">
-              加载中...
+              {{ $t('adapters.loading') }}
             </TableCell>
           </TableRow>
           <TableRow v-else-if="!data || !data.adapters.length">
             <TableCell colspan="5" class="text-center text-muted-foreground">
-              暂无数据
+              {{ $t('adapters.empty') }}
             </TableCell>
           </TableRow>
           <TableRow v-for="a in data?.adapters ?? []" :key="a.name">
@@ -187,26 +190,26 @@ function remove(name: string) {
     <Dialog v-model:open="installOpen">
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>安装适配器</DialogTitle>
-          <DialogDescription>填写名称、PyPI 包名与模块名</DialogDescription>
+          <DialogTitle>{{ $t('adapters.installAdapter') }}</DialogTitle>
+          <DialogDescription>{{ $t('adapters.installDescription') }}</DialogDescription>
         </DialogHeader>
         <div class="space-y-4 py-2">
           <div class="space-y-2">
-            <Label for="adapter-install-name">名称</Label>
+            <Label for="adapter-install-name">{{ $t('adapters.name') }}</Label>
             <Input id="adapter-install-name" v-model="installForm.name" />
           </div>
           <div class="space-y-2">
-            <Label for="adapter-install-pkg">PyPI 包名</Label>
+            <Label for="adapter-install-pkg">{{ $t('adapters.installAdapterPkg') }}</Label>
             <Input id="adapter-install-pkg" v-model="installForm.pkg" />
           </div>
           <div class="space-y-2">
-            <Label for="adapter-install-module">模块名</Label>
+            <Label for="adapter-install-module">{{ $t('adapters.installAdapterModule') }}</Label>
             <Input id="adapter-install-module" v-model="installForm.module_name" />
           </div>
         </div>
         <DialogFooter>
-          <Button variant="outline" @click="installOpen = false">取消</Button>
-          <Button :disabled="install.isPending.value" @click="submitInstall">安装</Button>
+          <Button variant="outline" @click="installOpen = false">{{ $t('common.cancel') }}</Button>
+          <Button :disabled="install.isPending.value" @click="submitInstall">{{ $t('store.install') }}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -219,7 +222,7 @@ function remove(name: string) {
         @interact-outside="(e) => { e.preventDefault(); guardCloseConfig() }"
       >
         <DialogHeader class="flex flex-row items-center justify-between gap-2 space-y-0">
-          <DialogTitle>{{ configAdapter }} 适配器配置</DialogTitle>
+          <DialogTitle>{{ $t('adapters.config', { name: configAdapter }) }}</DialogTitle>
           <Button variant="ghost" size="icon" aria-label="关闭" @click="guardCloseConfig">
             <X class="size-4" aria-hidden="true" />
           </Button>
@@ -243,12 +246,12 @@ function remove(name: string) {
     <Dialog v-model:open="confirmOpen">
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>确认操作</DialogTitle>
+          <DialogTitle>{{ $t('confirm.title') }}</DialogTitle>
           <DialogDescription>{{ confirmMessage }}</DialogDescription>
         </DialogHeader>
         <DialogFooter>
-          <Button variant="outline" @click="confirmOpen = false">取消</Button>
-          <Button variant="destructive" @click="executeConfirm">确定</Button>
+          <Button variant="outline" @click="confirmOpen = false">{{ $t('confirm.cancel') }}</Button>
+          <Button variant="destructive" @click="executeConfirm">{{ $t('confirm.confirm') }}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

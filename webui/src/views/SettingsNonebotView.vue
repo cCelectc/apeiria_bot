@@ -47,16 +47,16 @@ onBeforeRouteLeave(async () => {
 
 <template>
   <div class="flex min-h-0 flex-col p-6 lg:p-8 h-full">
-    <h1 class="mb-6 text-2xl font-semibold tracking-tight">NoneBot 设置</h1>
+    <h1 class="mb-6 text-2xl font-semibold tracking-tight">{{ $t('settings.nonebotTitle') }}</h1>
     <Card class="flex flex-col min-h-0 flex-1">
       <CardContent class="flex-1 min-h-0 overflow-auto">
         <div v-if="isError" class="mb-4 rounded-lg border border-destructive/50 bg-destructive/10 p-4">
           <div class="flex items-center gap-2">
             <AlertCircle class="size-4 text-destructive" />
-            <p class="text-sm font-medium text-destructive">加载失败</p>
+            <p class="text-sm font-medium text-destructive">{{ $t('error.loadFailed') }}</p>
           </div>
           <p class="mt-1 text-sm text-destructive/80">{{ (errorDetail as Error)?.message }}</p>
-          <Button variant="outline" size="sm" class="mt-2" @click="refetchAll">重试</Button>
+          <Button variant="outline" size="sm" class="mt-2" @click="refetchAll">{{ $t('error.retry') }}</Button>
         </div>
         <Skeleton v-else-if="schemaLoading || configLoading" class="h-96" />
         <ConfigEditor

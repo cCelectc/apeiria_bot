@@ -181,12 +181,12 @@ defineExpose({ isDirty, attemptClose })
     <div v-if="schema.source !== 'none'" class="flex items-center justify-between">
       <Tabs :model-value="mode" @update:model-value="(v) => v && switchMode(v as 'form' | 'code')">
         <TabsList>
-          <TabsTrigger value="form">结构化</TabsTrigger>
-          <TabsTrigger value="code">高级</TabsTrigger>
+          <TabsTrigger value="form">{{ $t('config.formTab') }}</TabsTrigger>
+          <TabsTrigger value="code">{{ $t('config.codeTab') }}</TabsTrigger>
         </TabsList>
       </Tabs>
       <Button :disabled="saving" @click="handleSave">
-        {{ saving ? '保存中...' : '保存配置' }}
+        {{ saving ? $t('config.saving') : $t('config.save') }}
       </Button>
     </div>
 
@@ -194,7 +194,7 @@ defineExpose({ isDirty, attemptClose })
       v-if="schema.source === 'none'"
       class="rounded-lg border border-dashed py-10 text-center text-sm text-muted-foreground"
     >
-      此{{ schema.owner_kind === 'adapter' ? '适配器' : '插件' }}无配置项（空配置）
+      {{ $t('config.noConfigDetail', { type: schema.owner_kind === 'adapter' ? $t('nav.adapters') : $t('nav.plugins') }) }}
     </div>
 
     <div v-else-if="mode === 'form'" class="flex-1 min-h-0 overflow-auto">

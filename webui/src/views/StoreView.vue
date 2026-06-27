@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { refDebounced } from '@vueuse/core'
 import {
   AlertCircle,
@@ -37,6 +38,7 @@ const query = ref('')
 const debouncedQuery = refDebounced(query, 300)
 const tab = ref<'plugins' | 'adapters'>('plugins')
 const page = ref(1)
+const { t } = useI18n()
 
 const isPlugins = computed(() => tab.value === 'plugins')
 
@@ -116,7 +118,7 @@ function isInstalled(item: StoreItem, forAdapter: boolean): boolean {
 
 function installItem(item: StoreItem, forAdapter: boolean) {
   const opts = {
-    onSuccess: () => toast.success(`已安装 ${item.name}`),
+    onSuccess: () => toast.success(`${t('store.installed')} ${item.name}`),
     onError: (e: Error) => toast.error(e.message),
   }
   if (forAdapter) {
@@ -142,18 +144,18 @@ function openDetail(item: StoreItem) {
 
 <template>
   <div class="p-6 lg:p-8">
-    <h1 class="text-2xl font-semibold tracking-tight">商店</h1>
-    <p class="mb-6 mt-1 text-sm text-muted-foreground">浏览并安装 NoneBot 官方插件与适配器</p>
+    <h1 class="text-2xl font-semibold tracking-tight">{{ $t('store.title') }}</h1>
+    <p class="mb-6 mt-1 text-sm text-muted-foreground">{{ $t('store.subtitle') }}</p>
 
     <div class="relative mb-6 max-w-md">
       <Search class="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
-      <Input v-model="query" placeholder="输入关键词过滤…" aria-label="搜索插件与适配器" class="pl-9" />
+      <Input v-model="query" :placeholder="$t('store.searchPlaceholder')" aria-label="搜索插件与适配器" class="pl-9" />
     </div>
 
     <Tabs v-model="tab">
       <TabsList>
-        <TabsTrigger value="plugins">插件</TabsTrigger>
-        <TabsTrigger value="adapters">适配器</TabsTrigger>
+        <TabsTrigger value="plugins">{{ $t('store.plugins') }}</TabsTrigger>
+        <TabsTrigger value="adapters">{{ $t('store.adapters') }}</TabsTrigger>
       </TabsList>
     </Tabs>
 
@@ -161,23 +163,23 @@ function openDetail(item: StoreItem) {
       <div v-if="currentIsError" class="mb-4 rounded-lg border border-destructive/50 bg-destructive/10 p-4">
         <div class="flex items-center gap-2">
           <AlertCircle class="size-4 text-destructive" />
-          <p class="text-sm font-medium text-destructive">加载失败</p>
+          <p class="text-sm font-medium text-destructive">{{ $t('error.loadFailed') }}</p>
         </div>
         <p class="mt-1 text-sm text-destructive/80">{{ (currentErrorDetail as Error)?.message }}</p>
-        <Button variant="outline" size="sm" class="mt-2" @click="() => currentRefetch()">重试</Button>
+        <Button variant="outline" size="sm" class="mt-2" @click="() => currentRefetch()">{{ $t('error.retry') }}</Button>
       </div>
       <p v-else-if="currentLoading && !currentItems.length" class="py-12 text-center text-sm text-muted-foreground">
-        加载中…
+        {{ $t('store.loading') }}
       </p>
       <p v-else-if="!currentItems.length" class="py-12 text-center text-sm text-muted-foreground">
-        无匹配结果
+        {{ $t('store.noResults') }}
       </p>
       <div v-else class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         <Card v-for="item in currentItems" :key="item.pypi_name || item.name" class="flex flex-col">
           <CardHeader class="pb-3">
             <div class="flex items-start justify-between gap-2">
               <CardTitle class="text-base leading-tight">{{ item.name }}</CardTitle>
-              <Badge v-if="item.is_official" variant="secondary" class="shrink-0">官方</Badge>
+              <Badge v-if="item.is_official" variant="secondary" class="shrink-0">{{ $t('store.official') }}</Badge>
             </div>
             <p class="line-clamp-2 text-sm text-muted-foreground">{{ item.description }}</p>
           </CardHeader>
@@ -198,7 +200,7 @@ function openDetail(item: StoreItem) {
                 <span v-if="item.version" class="shrink-0">v{{ item.version }}</span>
               </div>
               <div class="flex shrink-0 items-center gap-1">
-                <Button variant="ghost" size="sm" @click="openDetail(item)">详情</Button>
+                <Button variant="ghost" size="sm" @click="openDetail(item)">{{ $t('store.detail') }}</Button>
                 <Button
                   v-if="isInstalled(item, !isPlugins)"
                   size="sm"
@@ -206,11 +208,11 @@ function openDetail(item: StoreItem) {
                   disabled
                 >
                   <Check class="size-4" />
-                  已安装
+                  {{ $t('store.installed') }}
                 </Button>
                 <Button v-else size="sm" @click="installItem(item, !isPlugins)">
                   <Download class="size-4" />
-                  安装
+                  {{ $t('store.install') }}
                 </Button>
               </div>
             </div>
@@ -221,11 +223,11 @@ function openDetail(item: StoreItem) {
       <div v-if="pageCount > 1" class="mt-6 flex items-center justify-center gap-3">
         <Button variant="outline" size="sm" :disabled="page <= 1" @click="page--">
           <ChevronLeft class="size-4" />
-          上一页
+          {{ $t('store.prevPage') }}
         </Button>
         <span class="text-sm text-muted-foreground">{{ page }} / {{ pageCount }}</span>
         <Button variant="outline" size="sm" :disabled="page >= pageCount" @click="page++">
-          下一页
+          {{ $t('store.nextPage') }}
           <ChevronRight class="size-4" />
         </Button>
       </div>
@@ -236,33 +238,33 @@ function openDetail(item: StoreItem) {
         <SheetHeader>
           <SheetTitle class="flex items-center gap-2">
             {{ detailItem?.name }}
-            <Badge v-if="detailItem?.is_official" variant="secondary">官方</Badge>
+            <Badge v-if="detailItem?.is_official" variant="secondary">{{ $t('store.official') }}</Badge>
           </SheetTitle>
           <SheetDescription>{{ detailItem?.description }}</SheetDescription>
         </SheetHeader>
 
         <div v-if="detailItem" class="space-y-4 px-4 text-sm">
           <div class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2">
-            <span class="text-muted-foreground">PyPI</span>
+            <span class="text-muted-foreground">{{ $t('store.pypi') }}</span>
             <span class="break-all font-mono">{{ detailItem.pypi_name }}</span>
-            <span class="text-muted-foreground">作者</span>
+            <span class="text-muted-foreground">{{ $t('store.author') }}</span>
             <span>{{ detailItem.author || '—' }}</span>
             <template v-if="detailItem.version">
-              <span class="text-muted-foreground">版本</span>
+              <span class="text-muted-foreground">{{ $t('store.version') }}</span>
               <span>{{ detailItem.version }}</span>
             </template>
             <template v-if="detailItem.type">
-              <span class="text-muted-foreground">类型</span>
+              <span class="text-muted-foreground">{{ $t('store.type') }}</span>
               <span>{{ detailItem.type }}</span>
             </template>
             <template v-if="detailItem.module_names.length">
-              <span class="text-muted-foreground">模块</span>
+              <span class="text-muted-foreground">{{ $t('store.module') }}</span>
               <span class="break-all font-mono">{{ detailItem.module_names.join(', ') }}</span>
             </template>
           </div>
 
           <div v-if="detailItem.supported_adapters?.length">
-            <p class="mb-1 text-muted-foreground">支持适配器</p>
+            <p class="mb-1 text-muted-foreground">{{ $t('store.supportedAdapters') }}</p>
             <div class="flex flex-wrap gap-1">
               <Badge v-for="a in detailItem.supported_adapters" :key="a" variant="outline">
                 {{ a }}
@@ -278,7 +280,7 @@ function openDetail(item: StoreItem) {
             class="inline-flex items-center gap-1 text-primary hover:underline"
           >
             <ExternalLink class="size-4" />
-            项目主页
+            {{ $t('store.homepage') }}
           </a>
         </div>
 
@@ -289,7 +291,7 @@ function openDetail(item: StoreItem) {
             disabled
           >
             <Check class="size-4" />
-            已安装
+            {{ $t('store.installed') }}
           </Button>
           <Button
             v-else-if="detailItem"
@@ -301,7 +303,7 @@ function openDetail(item: StoreItem) {
             "
           >
             <Download class="size-4" />
-            安装
+            {{ $t('store.install') }}
           </Button>
         </SheetFooter>
       </SheetContent>

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { reactive, ref, computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { AlertCircle, Info, Plus, Settings2, Trash2, X } from '@lucide/vue'
 import { toast } from 'vue-sonner'
 import ConfigEditor from '@/components/ConfigEditor.vue'
@@ -39,7 +40,9 @@ import {
 } from '@/composables/usePlugins'
 import type { Plugin } from '@/types'
 
+const { t } = useI18n()
 const { data, isLoading, isError, error, refetch } = usePluginsQuery()
+void isLoading
 const { install, uninstall, setState } = usePluginMutations()
 
 const installOpen = ref(false)
@@ -92,7 +95,7 @@ function submitInstall() {
     { name: installForm.name, pkg: installForm.pkg },
     {
       onSuccess: () => {
-        toast.success('已安装')
+        toast.success(t('plugins.installed'))
         installOpen.value = false
       },
       onError: (e: Error) => toast.error(e.message),
@@ -102,7 +105,7 @@ function submitInstall() {
 
 function toggle(name: string, enabled: boolean) {
   if (!enabled) {
-    askConfirm(`确定要禁用「${name}」吗？依赖它的功能将停止工作。`, () => {
+    askConfirm(t('confirm.disableMessage', { name }), () => {
       setState.mutate({ name, enabled }, { onError: (e: Error) => toast.error(e.message) })
     })
     return
@@ -111,11 +114,11 @@ function toggle(name: string, enabled: boolean) {
 }
 
 function remove(name: string) {
-  askConfirm(`确定要卸载「${name}」吗？此操作不可撤销。`, () => {
+  askConfirm(t('confirm.uninstallMessage', { name }), () => {
     uninstall.mutate(
       { name },
       {
-        onSuccess: () => toast.success('已卸载'),
+        onSuccess: () => toast.success(t('plugins.uninstalled')),
         onError: (e: Error) => toast.error(e.message),
       },
     )
@@ -127,45 +130,45 @@ function remove(name: string) {
   <div class="p-6 lg:p-8">
     <div class="mb-6 flex items-center justify-between gap-4">
       <div>
-        <h1 class="text-2xl font-semibold tracking-tight">插件管理</h1>
-        <p class="mt-1 text-sm text-muted-foreground">安装、卸载、启停与配置</p>
+        <h1 class="text-2xl font-semibold tracking-tight">{{ $t('plugins.title') }}</h1>
+        <p class="mt-1 text-sm text-muted-foreground">{{ $t('plugins.subtitle') }}</p>
       </div>
       <Button @click="installOpen = true">
         <Plus class="size-4" />
-        安装插件
+        {{ $t('plugins.installPlugin') }}
       </Button>
     </div>
 
     <div v-if="isError" class="mb-4 rounded-lg border border-destructive/50 bg-destructive/10 p-4">
       <div class="flex items-center gap-2">
         <AlertCircle class="size-4 text-destructive" />
-        <p class="text-sm font-medium text-destructive">加载失败</p>
+        <p class="text-sm font-medium text-destructive">{{ $t('error.loadFailed') }}</p>
       </div>
       <p class="mt-1 text-sm text-destructive/80">{{ (error as Error)?.message }}</p>
-      <Button variant="outline" size="sm" class="mt-2" @click="() => refetch()">重试</Button>
+      <Button variant="outline" size="sm" class="mt-2" @click="() => refetch()">{{ $t('error.retry') }}</Button>
     </div>
 
     <div class="rounded-xl border bg-card shadow-sm">
       <Table>
         <TableHeader>
           <TableRow>
-            <TableHead>名称</TableHead>
-            <TableHead>描述</TableHead>
-            <TableHead>类型</TableHead>
-            <TableHead>来源</TableHead>
-            <TableHead>启用</TableHead>
-            <TableHead class="text-right">操作</TableHead>
+            <TableHead>{{ $t('plugins.name') }}</TableHead>
+            <TableHead>{{ $t('plugins.description') }}</TableHead>
+            <TableHead>{{ $t('plugins.type') }}</TableHead>
+            <TableHead>{{ $t('plugins.source') }}</TableHead>
+            <TableHead>{{ $t('plugins.enabled') }}</TableHead>
+            <TableHead class="text-right">{{ $t('plugins.actions') }}</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
-          <TableRow v-else-if="isLoading">
+          <TableRow v-if="isLoading">
             <TableCell colspan="6" class="text-center text-muted-foreground">
-              加载中...
+              {{ $t('plugins.loading') }}
             </TableCell>
           </TableRow>
           <TableRow v-else-if="!data || !data.plugins.length">
             <TableCell colspan="6" class="text-center text-muted-foreground">
-              暂无数据
+              {{ $t('plugins.empty') }}
             </TableCell>
           </TableRow>
           <TableRow v-for="p in data?.plugins ?? []" :key="p.name">
@@ -216,25 +219,25 @@ function remove(name: string) {
       <SheetContent class="w-full overflow-y-auto sm:max-w-md">
         <SheetHeader>
           <SheetTitle>{{ detailPlugin?.display_name || detailPlugin?.name }}</SheetTitle>
-          <SheetDescription>{{ detailPlugin?.description || '无描述' }}</SheetDescription>
+          <SheetDescription>{{ detailPlugin?.description || $t('plugins.noDescription') }}</SheetDescription>
         </SheetHeader>
 
         <div v-if="detailPlugin" class="space-y-4 px-4 text-sm">
           <dl class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2">
-            <dt class="text-muted-foreground">标识</dt>
+            <dt class="text-muted-foreground">{{ $t('plugins.identifier') }}</dt>
             <dd class="break-all font-mono">{{ detailPlugin.name }}</dd>
-            <dt class="text-muted-foreground">来源</dt>
+            <dt class="text-muted-foreground">{{ $t('plugins.source') }}</dt>
             <dd>{{ detailPlugin.source }}</dd>
             <template v-if="detailPlugin.type">
-              <dt class="text-muted-foreground">类型</dt>
+              <dt class="text-muted-foreground">{{ $t('plugins.type') }}</dt>
               <dd>{{ detailPlugin.type }}</dd>
             </template>
-            <dt class="text-muted-foreground">模块</dt>
+            <dt class="text-muted-foreground">{{ $t('plugins.module') }}</dt>
             <dd class="break-all font-mono">{{ detailPlugin.path_or_module }}</dd>
           </dl>
 
           <div v-if="detailPlugin.supported_adapters?.length">
-            <p class="mb-1 text-muted-foreground">支持适配器</p>
+            <p class="mb-1 text-muted-foreground">{{ $t('plugins.supportedAdapters') }}</p>
             <div class="flex flex-wrap gap-1">
               <Badge
                 v-for="a in detailPlugin.supported_adapters"
@@ -247,7 +250,7 @@ function remove(name: string) {
           </div>
 
           <div v-if="detailPlugin.usage">
-            <p class="mb-1 text-muted-foreground">用法</p>
+            <p class="mb-1 text-muted-foreground">{{ $t('plugins.usage') }}</p>
             <pre
               class="whitespace-pre-wrap rounded-lg bg-muted p-3 text-xs"
             >{{ detailPlugin.usage }}</pre>
@@ -260,7 +263,7 @@ function remove(name: string) {
             rel="noopener noreferrer"
             class="inline-flex items-center gap-1 text-primary hover:underline"
           >
-            项目主页
+            {{ $t('plugins.homepage') }}
           </a>
         </div>
       </SheetContent>
@@ -269,22 +272,22 @@ function remove(name: string) {
     <Dialog v-model:open="installOpen">
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>安装插件</DialogTitle>
-          <DialogDescription>填写插件名称与 PyPI 包名</DialogDescription>
+          <DialogTitle>{{ $t('plugins.installPlugin') }}</DialogTitle>
+          <DialogDescription>{{ $t('plugins.installDescription') }}</DialogDescription>
         </DialogHeader>
         <div class="space-y-4 py-2">
           <div class="space-y-2">
-            <Label for="plugin-install-name">名称</Label>
+            <Label for="plugin-install-name">{{ $t('plugins.name') }}</Label>
             <Input id="plugin-install-name" v-model="installForm.name" />
           </div>
           <div class="space-y-2">
-            <Label for="plugin-install-pkg">PyPI 包名</Label>
+            <Label for="plugin-install-pkg">{{ $t('plugins.pypiName') }}</Label>
             <Input id="plugin-install-pkg" v-model="installForm.pkg" />
           </div>
         </div>
         <DialogFooter>
-          <Button variant="outline" @click="installOpen = false">取消</Button>
-          <Button :disabled="install.isPending.value" @click="submitInstall">安装</Button>
+          <Button variant="outline" @click="installOpen = false">{{ $t('common.cancel') }}</Button>
+          <Button :disabled="install.isPending.value" @click="submitInstall">{{ $t('store.install') }}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -297,7 +300,7 @@ function remove(name: string) {
         @interact-outside="(e) => { e.preventDefault(); guardCloseConfig() }"
       >
         <DialogHeader class="flex flex-row items-center justify-between gap-2 space-y-0">
-          <DialogTitle>{{ configPlugin }} 配置</DialogTitle>
+          <DialogTitle>{{ $t('plugins.config', { name: configPlugin }) }}</DialogTitle>
           <Button variant="ghost" size="icon" aria-label="关闭" @click="guardCloseConfig">
             <X class="size-4" aria-hidden="true" />
           </Button>
@@ -321,12 +324,12 @@ function remove(name: string) {
     <Dialog v-model:open="confirmOpen">
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>确认操作</DialogTitle>
+          <DialogTitle>{{ $t('confirm.title') }}</DialogTitle>
           <DialogDescription>{{ confirmMessage }}</DialogDescription>
         </DialogHeader>
         <DialogFooter>
-          <Button variant="outline" @click="confirmOpen = false">取消</Button>
-          <Button variant="destructive" @click="executeConfirm">确定</Button>
+          <Button variant="outline" @click="confirmOpen = false">{{ $t('confirm.cancel') }}</Button>
+          <Button variant="destructive" @click="executeConfirm">{{ $t('confirm.confirm') }}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

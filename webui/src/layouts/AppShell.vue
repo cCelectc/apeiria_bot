@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import {
   ChevronsUpDown,
@@ -49,19 +50,21 @@ const route = useRoute()
 const router = useRouter()
 const ui = useUiStore()
 const auth = useAuthStore()
+const { t } = useI18n()
 
 const nav = [
-  { name: 'dashboard', label: '看板', icon: LayoutDashboard },
-  { name: 'plugins', label: '插件', icon: Puzzle },
-  { name: 'adapters', label: '适配器', icon: Plug },
-  { name: 'store', label: '商店', icon: Store },
-  { name: 'logs', label: '日志', icon: ScrollText },
+  { name: 'dashboard', icon: LayoutDashboard },
+  { name: 'plugins', icon: Puzzle },
+  { name: 'adapters', icon: Plug },
+  { name: 'store', icon: Store },
+  { name: 'logs', icon: ScrollText },
 ]
 
 const currentLabel = computed(() => {
-  if (route.path.startsWith('/settings')) return '设置'
-  if (route.name === 'account') return '账户'
-  return nav.find((n) => n.name === route.name)?.label ?? ''
+  if (route.path.startsWith('/settings')) return t('nav.settings')
+  if (route.name === 'account') return t('nav.account')
+  const item = nav.find((n) => n.name === route.name)
+  return item ? t(`nav.${item.name}`) : ''
 })
 
 const initial = computed(() => (auth.username ?? 'A').slice(0, 1).toUpperCase())
@@ -99,11 +102,11 @@ function logout() {
                 <SidebarMenuButton
                   as-child
                   :is-active="route.name === item.name"
-                  :tooltip="item.label"
+                  :tooltip="$t(`nav.${item.name}`)"
                 >
                   <RouterLink :to="{ name: item.name }">
                     <component :is="item.icon" />
-                    <span>{{ item.label }}</span>
+                    <span>{{ $t(`nav.${item.name}`) }}</span>
                   </RouterLink>
                 </SidebarMenuButton>
               </SidebarMenuItem>
@@ -117,11 +120,11 @@ function logout() {
                 <SidebarMenuButton
                   as-child
                   :is-active="route.path.startsWith('/settings')"
-                  tooltip="设置"
+                  :tooltip="$t('nav.settings')"
                 >
                   <RouterLink :to="{ name: 'settings-nonebot' }">
                     <Settings class="size-4" />
-                    <span>设置</span>
+                    <span>{{ $t('nav.settings') }}</span>
                   </RouterLink>
                 </SidebarMenuButton>
                 <SidebarMenuSub>
@@ -147,11 +150,11 @@ function logout() {
                 <SidebarMenuButton
                   as-child
                   :is-active="route.name === 'account'"
-                  tooltip="账户"
+                  :tooltip="$t('nav.account')"
                 >
                   <RouterLink :to="{ name: 'account' }">
                     <KeyRound class="size-4" />
-                    <span>账户</span>
+                    <span>{{ $t('nav.account') }}</span>
                   </RouterLink>
                 </SidebarMenuButton>
               </SidebarMenuItem>
@@ -171,21 +174,21 @@ function logout() {
                     </AvatarFallback>
                   </Avatar>
                   <div class="grid flex-1 text-left text-sm leading-tight">
-                    <span class="truncate font-medium">{{ auth.username ?? '管理员' }}</span>
+                    <span class="truncate font-medium">{{ auth.username ?? $t('account.admin') }}</span>
                   </div>
                   <ChevronsUpDown class="ml-auto size-4" />
                 </SidebarMenuButton>
               </DropdownMenuTrigger>
               <DropdownMenuContent side="top" align="start" class="w-56">
-                <DropdownMenuLabel>{{ auth.username ?? '管理员' }}</DropdownMenuLabel>
+                <DropdownMenuLabel>{{ auth.username ?? $t('account.admin') }}</DropdownMenuLabel>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem @click="router.push({ name: 'account' })">
                   <KeyRound class="size-4" />
-                  修改密码
+                  {{ $t('account.changePassword') }}
                 </DropdownMenuItem>
                 <DropdownMenuItem @click="logout">
                   <LogOut class="size-4" />
-                  退出登录
+                  {{ $t('account.logout') }}
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -204,7 +207,7 @@ function logout() {
         <div class="ml-auto flex items-center gap-2">
           <DropdownMenu>
             <DropdownMenuTrigger as-child>
-              <Button variant="ghost" size="icon" aria-label="切换主题">
+              <Button variant="ghost" size="icon" :aria-label="$t('theme.label')">
                 <Sun v-if="ui.theme === 'light'" class="size-4" aria-hidden="true" />
                 <Moon v-else-if="ui.theme === 'dark'" class="size-4" aria-hidden="true" />
                 <Monitor v-else class="size-4" aria-hidden="true" />
@@ -213,15 +216,15 @@ function logout() {
             <DropdownMenuContent align="end">
               <DropdownMenuItem @click="setTheme('light')">
                 <Sun class="size-4" />
-                亮色
+                {{ $t('theme.light') }}
               </DropdownMenuItem>
               <DropdownMenuItem @click="setTheme('dark')">
                 <Moon class="size-4" />
-                暗色
+                {{ $t('theme.dark') }}
               </DropdownMenuItem>
               <DropdownMenuItem @click="setTheme('system')">
                 <Monitor class="size-4" />
-                跟随系统
+                {{ $t('theme.system') }}
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
