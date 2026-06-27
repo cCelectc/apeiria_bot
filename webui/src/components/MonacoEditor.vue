@@ -71,11 +71,12 @@ watch(
 </script>
 
 <template>
-  <div
-    v-if="!ready"
-    class="flex items-center justify-center min-h-[200px] w-full border rounded-md"
-  >
-    <Loader2 class="size-8 animate-spin text-muted-foreground" />
+  <div ref="containerRef" class="relative h-full min-h-[200px] w-full border rounded-md">
+    <div
+      v-if="!ready"
+      class="absolute inset-0 flex items-center justify-center bg-background"
+    >
+      <Loader2 class="size-8 animate-spin text-muted-foreground" />
+    </div>
   </div>
-  <div ref="containerRef" v-else class="h-full min-h-[200px] w-full border rounded-md" />
 </template>
