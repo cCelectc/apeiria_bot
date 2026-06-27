@@ -7,6 +7,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import JSONResponse
 
 from apeiria.config.loader import load_config, update_runtime_config
+from apeiria.config.models import ApeiriaConfig
+from apeiria.config.reflector import reflect_model
 from apeiria.plugin.adapter_manager import (
     install_adapter,
     set_adapter_state,
@@ -79,22 +81,13 @@ async def api_plugins_state(data: dict) -> JSONResponse:
 @router.get("/plugins/{name}/config")
 async def api_plugin_config(name: str) -> JSONResponse:
     contract = resolve_config_namespace_contract(name)
-    if not contract.has_config_model and not contract.configs:
-        raise HTTPException(status_code=404)
-    fields = [
-        {
-            "key": c.key,
-            "label": c.label or c.key,
-            "help": c.help,
-            "type": _type_name(c.type),
-            "default": c.default,
-            "order": c.order,
-            "secret": c.secret,
-            "choices": c.choices,
-        }
-        for c in contract.configs
-    ]
-    return JSONResponse(content={"fields": fields})
+
+    if contract.source == "none" and not contract.fields:
+        raise HTTPException(status_code=404, detail="No config for this plugin")
+
+    app = load_config("data/config.yaml")
+    values = app.plugins.get(name, {})
+    return JSONResponse(content={**contract.to_dict(), "values": values})
 
 
 @router.get("/adapters/list")
@@ -144,10 +137,73 @@ async def api_adapters_state(data: dict) -> JSONResponse:
     return JSONResponse(content={"ok": ok})
 
 
+@router.get("/adapters/{name}/config")
+async def api_adapter_config(name: str) -> JSONResponse:
+    from apeiria.plugin.adapter_resolver import resolve_adapter_config
+
+    contract = resolve_adapter_config(name)
+    if contract is None:
+        raise HTTPException(status_code=404, detail="No config for this adapter")
+
+    app = load_config("data/config.yaml")
+    values = app.adapters.get(name, {})
+    return JSONResponse(content={**contract.to_dict(), "values": values})
+
+
 @router.get("/config")
 async def api_config_get() -> JSONResponse:
     app = load_config("data/config.yaml")
     return JSONResponse(content=app.model_dump())
+
+
+@router.get("/config/schema/{section}")
+async def api_config_schema(section: str) -> JSONResponse:
+    if section == "nonebot":
+        from nonebot import get_driver
+
+        config_cls = get_driver().config.__class__
+        fields = reflect_model(config_cls)
+        internal_keys = {
+            "_env_file",
+            "_env_file_encoding",
+            "_env_nested_delimiter",
+            "driver",
+            "api_timeout",
+            "session_expire_timeout",
+        }
+        fields = [f for f in fields if f.key not in internal_keys]
+        try:
+            json_schema = config_cls.model_json_schema()
+        except (TypeError, ValueError):
+            json_schema = {}
+        contract = {
+            "namespace": None,
+            "is_scoped": False,
+            "owner_kind": "nonebot",
+            "owner_id": "nonebot",
+            "source": "pydantic",
+            "fields": [f.to_dict() for f in fields],
+            "json_schema": json_schema,
+        }
+    elif section == "apeiria":
+        fields = reflect_model(ApeiriaConfig)
+        try:
+            json_schema = ApeiriaConfig.model_json_schema()
+        except (TypeError, ValueError):
+            json_schema = {}
+        contract = {
+            "namespace": None,
+            "is_scoped": False,
+            "owner_kind": "apeiria",
+            "owner_id": "apeiria",
+            "source": "pydantic",
+            "fields": [f.to_dict() for f in fields],
+            "json_schema": json_schema,
+        }
+    else:
+        raise HTTPException(status_code=400, detail=f"Unknown section: {section}")
+
+    return JSONResponse(content=contract)
 
 
 @router.put("/config/nonebot")
@@ -167,6 +223,8 @@ async def api_config_plugins(data: dict) -> JSONResponse:
 @router.put("/config/adapters")
 async def api_config_adapters(data: dict) -> JSONResponse:
     _patch_config("adapters", data)
+    app = load_config("data/config.yaml")
+    update_runtime_config(app)
     return JSONResponse(content={"ok": True})
 
 
@@ -186,22 +244,6 @@ def _patch_config(section: str, data: dict) -> None:
     else:
         raw[section] = data
     _write_yaml(raw)
-
-
-def _type_name(t: object) -> str:
-    mapping = {
-        str: "str",
-        int: "int",
-        float: "float",
-        bool: "bool",
-        list: "list",
-        dict: "dict",
-        type(None): "none",
-    }
-    if t in mapping:
-        return mapping[t]
-    name = getattr(t, "__name__", None)
-    return str(name) if isinstance(name, str) else str(t)
 
 
 @router.get("/store/plugins")
