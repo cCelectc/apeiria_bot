@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, onBeforeUnmount, watch } from 'vue'
 import loader from '@monaco-editor/loader'
+import { Loader2 } from '@lucide/vue'
 import type * as Monaco from 'monaco-editor'
 
 const props = defineProps<{
@@ -13,6 +14,7 @@ const emit = defineEmits<{
 }>()
 
 const containerRef = ref<HTMLElement | null>(null)
+const ready = ref(false)
 let editor: Monaco.editor.IStandaloneCodeEditor | null = null
 let debounceTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -49,6 +51,8 @@ onMounted(async () => {
     }
   })
   observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] })
+
+  ready.value = true
 })
 
 onBeforeUnmount(() => {
@@ -67,5 +71,11 @@ watch(
 </script>
 
 <template>
-  <div ref="containerRef" class="h-full min-h-[400px] w-full border rounded-md" />
+  <div
+    v-if="!ready"
+    class="flex items-center justify-center h-full min-h-[400px] w-full border rounded-md"
+  >
+    <Loader2 class="size-8 animate-spin text-muted-foreground" />
+  </div>
+  <div ref="containerRef" v-else class="h-full min-h-[400px] w-full border rounded-md" />
 </template>
