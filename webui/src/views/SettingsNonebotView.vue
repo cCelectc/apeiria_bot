@@ -49,7 +49,7 @@ onBeforeRouteLeave(async () => {
   <div class="flex min-h-0 flex-col p-6 lg:p-8 h-full">
     <PageHeader :title="$t('settings.nonebotTitle')" />
     <Card class="flex flex-col min-h-0 flex-1">
-      <CardContent class="flex-1 min-h-0 overflow-auto">
+      <CardContent class="flex flex-col flex-1 min-h-0 overflow-hidden">
         <ErrorState v-if="isError" class="mb-4" :message="(errorDetail as Error)?.message" @retry="refetchAll" />
         <Skeleton v-else-if="schemaLoading || configLoading" class="h-96" />
         <ConfigEditor
