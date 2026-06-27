@@ -3,6 +3,18 @@ import { computed, type MaybeRefOrGetter, toValue } from 'vue'
 import { api } from '@/lib/api'
 import type { ConfigContract } from '@/types'
 
+function emptyContract(ownerId: string): ConfigContract {
+  return {
+    namespace: null,
+    is_scoped: false,
+    owner_kind: 'adapter',
+    owner_id: ownerId,
+    source: 'none',
+    fields: [],
+    json_schema: {},
+  }
+}
+
 export function useAdaptersQuery() {
   return useQuery({
     queryKey: ['adapters'],
@@ -14,10 +26,15 @@ export function useAdapterConfigQuery(name: MaybeRefOrGetter<string>) {
   return useQuery({
     queryKey: computed(() => ['adapter-config', toValue(name)]),
     queryFn: async () => {
-      const res = await api.adapters.config(toValue(name))
-      return {
-        schema: res as ConfigContract,
-        values: res.values || {},
+      const id = toValue(name)
+      try {
+        const res = await api.adapters.config(id)
+        return { schema: res as ConfigContract, values: res.values || {} }
+      } catch (e) {
+        if ((e as { status?: number }).status === 404) {
+          return { schema: emptyContract(id), values: {} as Record<string, unknown> }
+        }
+        throw e
       }
     },
     enabled: computed(() => Boolean(toValue(name))),

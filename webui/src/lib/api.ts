@@ -39,7 +39,9 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
     } catch {
       // ignore non-JSON error bodies
     }
-    throw new Error(detail)
+    const err = new Error(detail) as Error & { status?: number }
+    err.status = res.status
+    throw err
   }
 
   if (res.status === 204) return undefined as T
