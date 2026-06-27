@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import {
+  ChevronDown,
   ChevronsUpDown,
   KeyRound,
   LayoutDashboard,
@@ -57,6 +58,8 @@ const router = useRouter()
 const ui = useUiStore()
 const auth = useAuthStore()
 const { t } = useI18n()
+
+const settingsOpen = ref(false)
 
 const nav = [
   { name: 'dashboard', icon: LayoutDashboard },
@@ -139,16 +142,18 @@ function logout() {
             <SidebarMenu>
               <SidebarMenuItem>
                 <SidebarMenuButton
-                  as-child
                   :is-active="route.path.startsWith('/settings')"
                   :tooltip="$t('nav.settings')"
+                  @click="settingsOpen = !settingsOpen"
                 >
-                  <RouterLink :to="{ name: 'settings-nonebot' }">
-                    <Settings class="size-4" />
-                    <span>{{ $t('nav.settings') }}</span>
-                  </RouterLink>
+                  <Settings class="size-4" />
+                  <span>{{ $t('nav.settings') }}</span>
+                  <ChevronDown
+                    class="ml-auto size-4 transition-transform"
+                    :class="{ 'rotate-180': settingsOpen }"
+                  />
                 </SidebarMenuButton>
-                <SidebarMenuSub>
+                <SidebarMenuSub v-show="settingsOpen">
                   <SidebarMenuSubItem>
                     <SidebarMenuSubButton
                       as-child
