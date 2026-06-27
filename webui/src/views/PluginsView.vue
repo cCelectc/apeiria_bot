@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { reactive, ref, computed } from 'vue'
-import { Info, Plus, Settings2, Trash2 } from '@lucide/vue'
+import { Info, Plus, Settings2, Trash2, X } from '@lucide/vue'
 import { toast } from 'vue-sonner'
 import ConfigEditor from '@/components/ConfigEditor.vue'
 import { Badge } from '@/components/ui/badge'
@@ -51,6 +51,13 @@ const { data: pluginConfigData } = usePluginConfigQuery(
   computed(() => configPlugin.value),
 )
 const savePluginConfig = useSavePluginConfig()
+
+const configEditorRef = ref<InstanceType<typeof ConfigEditor>>()
+
+async function guardCloseConfig() {
+  const ok = (await configEditorRef.value?.attemptClose()) ?? true
+  if (ok) configOpen.value = false
+}
 
 const detailOpen = ref(false)
 const detailPlugin = ref<Plugin | null>(null)
@@ -251,12 +258,21 @@ function remove(name: string) {
     </Dialog>
 
     <Dialog v-model:open="configOpen">
-      <DialogContent class="max-w-2xl max-h-[85vh] overflow-y-auto">
-        <DialogHeader>
+      <DialogContent
+        class="max-w-2xl max-h-[85vh] overflow-y-auto"
+        :show-close-button="false"
+        @escape-key-down="(e) => { e.preventDefault(); guardCloseConfig() }"
+        @interact-outside="(e) => { e.preventDefault(); guardCloseConfig() }"
+      >
+        <DialogHeader class="flex flex-row items-center justify-between gap-2 space-y-0">
           <DialogTitle>{{ configPlugin }} 配置</DialogTitle>
+          <Button variant="ghost" size="icon" @click="guardCloseConfig">
+            <X class="size-4" />
+          </Button>
         </DialogHeader>
         <ConfigEditor
           v-if="pluginConfigData"
+          ref="configEditorRef"
           :schema="pluginConfigData.schema"
           :model-value="pluginConfigData.values"
           section="plugins"
