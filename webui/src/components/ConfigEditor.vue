@@ -180,7 +180,7 @@ defineExpose({ isDirty, attemptClose })
   <div class="flex flex-1 min-h-0 flex-col space-y-4">
     <div
       v-if="schema.source !== 'none'"
-      class="-mx-1 flex items-center justify-between bg-background px-1 pb-3"
+      class="-mx-1 flex items-center justify-between border-b px-1 pb-3"
     >
       <Tabs :model-value="mode" @update:model-value="(v) => v && switchMode(v as 'form' | 'code')">
         <TabsList>
