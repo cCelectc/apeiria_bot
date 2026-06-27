@@ -165,14 +165,14 @@ function remove(name: string) {
               />
             </TableCell>
             <TableCell class="text-right">
-              <Button variant="ghost" size="icon" @click="openDetail(p)">
-                <Info class="size-4" />
+              <Button variant="ghost" size="icon" :aria-label="`查看 ${p.name} 详情`" @click="openDetail(p)">
+                <Info class="size-4" aria-hidden="true" />
               </Button>
-              <Button variant="ghost" size="icon" @click="openConfig(p.name)">
-                <Settings2 class="size-4" />
+              <Button variant="ghost" size="icon" :aria-label="`配置 ${p.name}`" @click="openConfig(p.name)">
+                <Settings2 class="size-4" aria-hidden="true" />
               </Button>
-              <Button variant="ghost" size="icon" @click="remove(p.name)">
-                <Trash2 class="size-4 text-destructive" />
+              <Button variant="ghost" size="icon" :aria-label="`卸载 ${p.name}`" @click="remove(p.name)">
+                <Trash2 class="size-4 text-destructive" aria-hidden="true" />
               </Button>
             </TableCell>
           </TableRow>
@@ -188,18 +188,18 @@ function remove(name: string) {
         </SheetHeader>
 
         <div v-if="detailPlugin" class="space-y-4 px-4 text-sm">
-          <div class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2">
-            <span class="text-muted-foreground">标识</span>
-            <span class="break-all font-mono">{{ detailPlugin.name }}</span>
-            <span class="text-muted-foreground">来源</span>
-            <span>{{ detailPlugin.source }}</span>
+          <dl class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2">
+            <dt class="text-muted-foreground">标识</dt>
+            <dd class="break-all font-mono">{{ detailPlugin.name }}</dd>
+            <dt class="text-muted-foreground">来源</dt>
+            <dd>{{ detailPlugin.source }}</dd>
             <template v-if="detailPlugin.type">
-              <span class="text-muted-foreground">类型</span>
-              <span>{{ detailPlugin.type }}</span>
+              <dt class="text-muted-foreground">类型</dt>
+              <dd>{{ detailPlugin.type }}</dd>
             </template>
-            <span class="text-muted-foreground">模块</span>
-            <span class="break-all font-mono">{{ detailPlugin.path_or_module }}</span>
-          </div>
+            <dt class="text-muted-foreground">模块</dt>
+            <dd class="break-all font-mono">{{ detailPlugin.path_or_module }}</dd>
+          </dl>
 
           <div v-if="detailPlugin.supported_adapters?.length">
             <p class="mb-1 text-muted-foreground">支持适配器</p>
@@ -225,7 +225,7 @@ function remove(name: string) {
             v-if="detailPlugin.homepage"
             :href="detailPlugin.homepage"
             target="_blank"
-            rel="noreferrer"
+            rel="noopener noreferrer"
             class="inline-flex items-center gap-1 text-primary hover:underline"
           >
             项目主页
@@ -242,12 +242,12 @@ function remove(name: string) {
         </DialogHeader>
         <div class="space-y-4 py-2">
           <div class="space-y-2">
-            <Label>名称</Label>
-            <Input v-model="installForm.name" />
+            <Label for="plugin-install-name">名称</Label>
+            <Input id="plugin-install-name" v-model="installForm.name" />
           </div>
           <div class="space-y-2">
-            <Label>PyPI 包名</Label>
-            <Input v-model="installForm.pkg" />
+            <Label for="plugin-install-pkg">PyPI 包名</Label>
+            <Input id="plugin-install-pkg" v-model="installForm.pkg" />
           </div>
         </div>
         <DialogFooter>
@@ -266,8 +266,8 @@ function remove(name: string) {
       >
         <DialogHeader class="flex flex-row items-center justify-between gap-2 space-y-0">
           <DialogTitle>{{ configPlugin }} 配置</DialogTitle>
-          <Button variant="ghost" size="icon" @click="guardCloseConfig">
-            <X class="size-4" />
+          <Button variant="ghost" size="icon" aria-label="关闭" @click="guardCloseConfig">
+            <X class="size-4" aria-hidden="true" />
           </Button>
         </DialogHeader>
         <ConfigEditor

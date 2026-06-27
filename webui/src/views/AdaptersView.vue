@@ -140,11 +140,11 @@ function remove(name: string) {
               />
             </TableCell>
             <TableCell class="text-right">
-              <Button variant="ghost" size="icon" @click="openConfig(a.name)">
-                <Settings2 class="size-4" />
+              <Button variant="ghost" size="icon" :aria-label="`配置 ${a.name}`" @click="openConfig(a.name)">
+                <Settings2 class="size-4" aria-hidden="true" />
               </Button>
-              <Button variant="ghost" size="icon" @click="remove(a.name)">
-                <Trash2 class="size-4 text-destructive" />
+              <Button variant="ghost" size="icon" :aria-label="`卸载 ${a.name}`" @click="remove(a.name)">
+                <Trash2 class="size-4 text-destructive" aria-hidden="true" />
               </Button>
             </TableCell>
           </TableRow>
@@ -160,16 +160,16 @@ function remove(name: string) {
         </DialogHeader>
         <div class="space-y-4 py-2">
           <div class="space-y-2">
-            <Label>名称</Label>
-            <Input v-model="installForm.name" />
+            <Label for="adapter-install-name">名称</Label>
+            <Input id="adapter-install-name" v-model="installForm.name" />
           </div>
           <div class="space-y-2">
-            <Label>PyPI 包名</Label>
-            <Input v-model="installForm.pkg" />
+            <Label for="adapter-install-pkg">PyPI 包名</Label>
+            <Input id="adapter-install-pkg" v-model="installForm.pkg" />
           </div>
           <div class="space-y-2">
-            <Label>模块名</Label>
-            <Input v-model="installForm.module_name" />
+            <Label for="adapter-install-module">模块名</Label>
+            <Input id="adapter-install-module" v-model="installForm.module_name" />
           </div>
         </div>
         <DialogFooter>
@@ -188,8 +188,8 @@ function remove(name: string) {
       >
         <DialogHeader class="flex flex-row items-center justify-between gap-2 space-y-0">
           <DialogTitle>{{ configAdapter }} 适配器配置</DialogTitle>
-          <Button variant="ghost" size="icon" @click="guardCloseConfig">
-            <X class="size-4" />
+          <Button variant="ghost" size="icon" aria-label="关闭" @click="guardCloseConfig">
+            <X class="size-4" aria-hidden="true" />
           </Button>
         </DialogHeader>
         <ConfigEditor

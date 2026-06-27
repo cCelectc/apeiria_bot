@@ -156,7 +156,7 @@ watch([level, keyword], () => {
               <SelectItem v-for="l in LEVELS" :key="l" :value="l">{{ l }}</SelectItem>
             </SelectContent>
           </Select>
-          <Input v-model="keyword" placeholder="关键词…" class="max-w-xs" />
+          <Input v-model="keyword" placeholder="关键词…" aria-label="日志关键词" class="max-w-xs" />
         </div>
 
         <div
@@ -185,18 +185,20 @@ watch([level, keyword], () => {
           <Button
             variant="outline"
             size="icon"
+            aria-label="上一页"
             :disabled="page <= 1"
             @click="page--"
           >
-            <ChevronLeft class="size-4" />
+            <ChevronLeft class="size-4" aria-hidden="true" />
           </Button>
           <Button
             variant="outline"
             size="icon"
+            aria-label="下一页"
             :disabled="page >= totalPages"
             @click="page++"
           >
-            <ChevronRight class="size-4" />
+            <ChevronRight class="size-4" aria-hidden="true" />
           </Button>
         </div>
       </TabsContent>

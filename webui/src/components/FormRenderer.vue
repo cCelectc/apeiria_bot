@@ -216,8 +216,8 @@ function updateMapValue(field: MapField, key: string, value: unknown) {
           >
             <div class="flex justify-between items-center">
               <span class="text-xs text-muted-foreground font-mono">#{{ idx + 1 }}</span>
-              <Button variant="ghost" size="icon" @click="removeArrayItem(field as ArrayField, idx)">
-                <X class="size-4" />
+              <Button variant="ghost" size="icon" aria-label="删除此项" @click="removeArrayItem(field as ArrayField, idx)">
+                <X class="size-4" aria-hidden="true" />
               </Button>
             </div>
             <FormRenderer
@@ -256,6 +256,7 @@ function updateMapValue(field: MapField, key: string, value: unknown) {
             <Input
               class="w-1/3"
               placeholder="键"
+              aria-label="键"
               :model-value="String(k)"
               @update:model-value="(nk: string | number) => updateMapKey(field as MapField, String(k), String(nk))"
             />
@@ -264,6 +265,7 @@ function updateMapValue(field: MapField, key: string, value: unknown) {
               v-if="(field as MapField).value_schema?.kind === 'primitive'"
               class="flex-1"
               placeholder="值"
+              aria-label="值"
               :model-value="String(v ?? '')"
               @update:model-value="(val: string | number) => updateMapValue(field as MapField, String(k), String(val))"
             />
@@ -274,8 +276,8 @@ function updateMapValue(field: MapField, key: string, value: unknown) {
               :model-value="v as Record<string, unknown>"
               @update:model-value="(val: Record<string, unknown>) => updateMapValue(field as MapField, String(k), val)"
             />
-            <Button variant="ghost" size="icon" @click="removeMapEntry(field as MapField, String(k))">
-              <X class="size-4" />
+            <Button variant="ghost" size="icon" aria-label="删除此项" @click="removeMapEntry(field as MapField, String(k))">
+              <X class="size-4" aria-hidden="true" />
             </Button>
           </div>
         </div>

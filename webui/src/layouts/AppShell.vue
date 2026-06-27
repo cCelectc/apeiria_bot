@@ -204,10 +204,10 @@ function logout() {
         <div class="ml-auto flex items-center gap-2">
           <DropdownMenu>
             <DropdownMenuTrigger as-child>
-              <Button variant="ghost" size="icon">
-                <Sun v-if="ui.theme === 'light'" class="size-4" />
-                <Moon v-else-if="ui.theme === 'dark'" class="size-4" />
-                <Monitor v-else class="size-4" />
+              <Button variant="ghost" size="icon" aria-label="切换主题">
+                <Sun v-if="ui.theme === 'light'" class="size-4" aria-hidden="true" />
+                <Moon v-else-if="ui.theme === 'dark'" class="size-4" aria-hidden="true" />
+                <Monitor v-else class="size-4" aria-hidden="true" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">

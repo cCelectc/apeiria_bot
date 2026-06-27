@@ -124,8 +124,8 @@ function openDetail(item: StoreItem) {
     <p class="mb-6 mt-1 text-sm text-muted-foreground">浏览并安装 NoneBot 官方插件与适配器</p>
 
     <div class="relative mb-6 max-w-md">
-      <Search class="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-      <Input v-model="query" placeholder="输入关键词过滤…" class="pl-9" />
+      <Search class="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+      <Input v-model="query" placeholder="输入关键词过滤…" aria-label="搜索插件与适配器" class="pl-9" />
     </div>
 
     <Tabs v-model="tab">
@@ -244,7 +244,7 @@ function openDetail(item: StoreItem) {
             v-if="detailItem.homepage"
             :href="detailItem.homepage"
             target="_blank"
-            rel="noreferrer"
+            rel="noopener noreferrer"
             class="inline-flex items-center gap-1 text-primary hover:underline"
           >
             <ExternalLink class="size-4" />
