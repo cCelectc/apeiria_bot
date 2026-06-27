@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { ref } from 'vue'
+import { onBeforeRouteLeave } from 'vue-router'
 import ConfigEditor from '@/components/ConfigEditor.vue'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
@@ -16,6 +18,16 @@ const saveNonebot = useSaveNonebotConfig()
 const { data: apeiriaSchema, isLoading: asLoading } = useConfigSchema('apeiria')
 const { data: apeiriaConfig, isLoading: acLoading } = useApeiriaConfig()
 const saveApeiria = useSaveApeiriaConfig()
+
+const nonebotEditor = ref<InstanceType<typeof ConfigEditor>>()
+const apeiriaEditor = ref<InstanceType<typeof ConfigEditor>>()
+
+onBeforeRouteLeave(async () => {
+  for (const editor of [nonebotEditor.value, apeiriaEditor.value]) {
+    if (editor && !(await editor.attemptClose())) return false
+  }
+  return true
+})
 </script>
 
 <template>
@@ -32,6 +44,7 @@ const saveApeiria = useSaveApeiriaConfig()
         <Skeleton v-if="nsLoading || ncLoading" class="h-96" />
         <ConfigEditor
           v-else-if="nonebotSchema && nonebotConfig"
+          ref="nonebotEditor"
           :schema="nonebotSchema"
           :model-value="nonebotConfig"
           section="nonebot"
@@ -47,6 +60,7 @@ const saveApeiria = useSaveApeiriaConfig()
         <Skeleton v-if="asLoading || acLoading" class="h-96" />
         <ConfigEditor
           v-else-if="apeiriaSchema && apeiriaConfig"
+          ref="apeiriaEditor"
           :schema="apeiriaSchema"
           :model-value="apeiriaConfig"
           section="apeiria"
