@@ -34,7 +34,7 @@ onMounted(async () => {
     renderWhitespace: 'selection',
   })
 
-  editor.onDidChangeModelContent(() => {
+  editor!.onDidChangeModelContent(() => {
     if (debounceTimer) clearTimeout(debounceTimer)
     debounceTimer = setTimeout(() => {
       emit('update:modelValue', editor!.getValue())

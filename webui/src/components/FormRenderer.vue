@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { Plus, X } from 'lucide-vue-next'
+import { Plus, X } from '@lucide/vue'
 import type { FieldNode, PrimitiveField, ObjectField, ArrayField, MapField } from '@/types'
 
 const props = defineProps<{
