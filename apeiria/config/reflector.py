@@ -1,0 +1,164 @@
+from __future__ import annotations
+
+import typing
+from enum import Enum
+from typing import Any, Literal, get_args, get_origin
+
+from pydantic import BaseModel
+
+from apeiria.config.schema import (
+    AnyField,
+    ArrayField,
+    FieldNode,
+    MapField,
+    ObjectField,
+    PrimitiveField,
+)
+
+_TYPE_MAP: dict[type, str] = {
+    str: "str",
+    int: "int",
+    float: "float",
+    bool: "bool",
+}
+
+
+def _get_pydantic_type(field_info: Any) -> type:
+    return field_info.annotation
+
+
+def _is_optional(annotation: type) -> bool:
+    origin = get_origin(annotation)
+    if origin is typing.Union:
+        args = get_args(annotation)
+        return type(None) in args
+    return False
+
+
+def _unwrap_optional(annotation: type) -> type:
+    origin = get_origin(annotation)
+    if origin is typing.Union:
+        args = [a for a in get_args(annotation) if a is not type(None)]
+        if len(args) == 1:
+            return args[0]
+        return annotation
+    return annotation
+
+
+def _infer_primitive_type(annotation: type) -> str:
+    origin = get_origin(annotation)
+    if origin is Literal:
+        return "literal"
+    if isinstance(annotation, type) and issubclass(annotation, Enum):
+        return "enum"
+    return _TYPE_MAP.get(annotation, "str")
+
+
+def _extract_choices(annotation: type) -> list[dict[str, str]] | None:
+    origin = get_origin(annotation)
+    if origin is Literal:
+        args = get_args(annotation)
+        return [{"value": str(a), "label": str(a)} for a in args]
+    if isinstance(annotation, type) and issubclass(annotation, Enum):
+        return [{"value": member.value, "label": member.name} for member in annotation]
+    return None
+
+
+class _FakeFieldInfo:
+    def __init__(self, annotation: type) -> None:
+        self.annotation = annotation
+        self.description = None
+        self.title = None
+
+    def is_required(self) -> bool:
+        return True
+
+    def get_default(self, *, call_default_factory: Any = False) -> Any:  # noqa: ARG002
+        return None
+
+
+def _make_fake_field_info(annotation: type) -> _FakeFieldInfo:
+    return _FakeFieldInfo(annotation)
+
+
+def _field_default_to_dict(default_val: Any) -> Any:
+    if default_val is None:
+        return None
+    if isinstance(default_val, BaseModel):
+        try:
+            return default_val.model_dump()
+        except (AttributeError, TypeError):
+            return None
+    return default_val
+
+
+def _reflect_field(field_name: str, field_info: Any) -> FieldNode:
+    annotation = _get_pydantic_type(field_info)
+    if annotation is None:
+        annotation = str
+
+    is_required = field_info.is_required()
+    description = field_info.description or ""
+    title = field_info.title or ""
+
+    base_kwargs: dict[str, Any] = {
+        "key": field_name,
+        "label": title or field_name,
+        "description": description,
+    }
+
+    optional = _is_optional(annotation)
+    if optional:
+        annotation = _unwrap_optional(annotation)
+
+    if isinstance(annotation, type) and issubclass(annotation, BaseModel):
+        children = reflect_model(annotation)
+        raw_default = field_info.get_default(call_default_factory=True)
+        return ObjectField(
+            children=children,
+            default=_field_default_to_dict(raw_default),
+            **base_kwargs,
+        )
+
+    origin = get_origin(annotation)
+    if origin in (list, set):
+        args = get_args(annotation)
+        item_type = args[0] if args else str
+        item_schema = _reflect_field("", _make_fake_field_info(item_type))
+        return ArrayField(item_schema=item_schema, **base_kwargs)
+
+    if origin is dict:
+        args = get_args(annotation)
+        value_type = args[1] if len(args) > 1 else str
+        value_schema = _reflect_field("", _make_fake_field_info(value_type))
+        return MapField(value_schema=value_schema, **base_kwargs)
+
+    ptype = _infer_primitive_type(annotation)
+    choices = _extract_choices(annotation)
+    default_val = field_info.get_default(call_default_factory=True)
+
+    return PrimitiveField(
+        type=ptype,
+        default=default_val,
+        required=is_required and not optional,
+        choices=choices,
+        **base_kwargs,
+    )
+
+
+def reflect_model(model_cls: type[BaseModel]) -> list[FieldNode]:
+    fields: list[FieldNode] = []
+    for field_name, field_info in model_cls.model_fields.items():
+        try:
+            node = _reflect_field(field_name, field_info)
+            fields.append(node)
+        except (TypeError, ValueError, KeyError):
+            fields.append(
+                AnyField(
+                    key=field_name,
+                    label=field_name,
+                    description=field_info.description
+                    or f"Type: {field_info.annotation}",
+                )
+            )
+    return fields
