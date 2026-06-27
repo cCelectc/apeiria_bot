@@ -13,7 +13,8 @@ const DashboardView = () => import('@/views/DashboardView.vue')
 const PluginsView = () => import('@/views/PluginsView.vue')
 const AdaptersView = () => import('@/views/AdaptersView.vue')
 const StoreView = () => import('@/views/StoreView.vue')
-const SettingsView = () => import('@/views/SettingsView.vue')
+const SettingsNonebotView = () => import('@/views/SettingsNonebotView.vue')
+const SettingsApeiriaView = () => import('@/views/SettingsApeiriaView.vue')
 const LogsView = () => import('@/views/LogsView.vue')
 const AccountView = () => import('@/views/AccountView.vue')
 
@@ -34,7 +35,17 @@ const router = createRouter({
         { path: 'plugins', name: 'plugins', component: PluginsView },
         { path: 'adapters', name: 'adapters', component: AdaptersView },
         { path: 'store', name: 'store', component: StoreView },
-        { path: 'settings', name: 'settings', component: SettingsView },
+        { path: 'settings', redirect: { name: 'settings-nonebot' } },
+        {
+          path: 'settings/nonebot',
+          name: 'settings-nonebot',
+          component: SettingsNonebotView,
+        },
+        {
+          path: 'settings/apeiria',
+          name: 'settings-apeiria',
+          component: SettingsApeiriaView,
+        },
         { path: 'logs', name: 'logs', component: LogsView },
         { path: 'account', name: 'account', component: AccountView },
       ],

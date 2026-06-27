@@ -36,6 +36,9 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  SidebarMenuSub,
+  SidebarMenuSubButton,
+  SidebarMenuSubItem,
   SidebarProvider,
   SidebarTrigger,
 } from '@/components/ui/sidebar'
@@ -55,9 +58,11 @@ const nav = [
   { name: 'logs', label: '日志', icon: ScrollText },
 ]
 
-const currentLabel = computed(
-  () => nav.find((n) => n.name === route.name)?.label ?? '',
-)
+const currentLabel = computed(() => {
+  if (route.path.startsWith('/settings')) return '设置'
+  if (route.name === 'account') return '账户'
+  return nav.find((n) => n.name === route.name)?.label ?? ''
+})
 
 const initial = computed(() => (auth.username ?? 'A').slice(0, 1).toUpperCase())
 
@@ -111,14 +116,32 @@ function logout() {
               <SidebarMenuItem>
                 <SidebarMenuButton
                   as-child
-                  :is-active="route.name === 'settings'"
+                  :is-active="route.path.startsWith('/settings')"
                   tooltip="设置"
                 >
-                  <RouterLink :to="{ name: 'settings' }">
+                  <RouterLink :to="{ name: 'settings-nonebot' }">
                     <Settings class="size-4" />
                     <span>设置</span>
                   </RouterLink>
                 </SidebarMenuButton>
+                <SidebarMenuSub>
+                  <SidebarMenuSubItem>
+                    <SidebarMenuSubButton
+                      as-child
+                      :is-active="route.name === 'settings-nonebot'"
+                    >
+                      <RouterLink :to="{ name: 'settings-nonebot' }">NoneBot</RouterLink>
+                    </SidebarMenuSubButton>
+                  </SidebarMenuSubItem>
+                  <SidebarMenuSubItem>
+                    <SidebarMenuSubButton
+                      as-child
+                      :is-active="route.name === 'settings-apeiria'"
+                    >
+                      <RouterLink :to="{ name: 'settings-apeiria' }">Apeiria</RouterLink>
+                    </SidebarMenuSubButton>
+                  </SidebarMenuSubItem>
+                </SidebarMenuSub>
               </SidebarMenuItem>
               <SidebarMenuItem>
                 <SidebarMenuButton
