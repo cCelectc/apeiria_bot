@@ -1,54 +1,131 @@
 <script setup lang="ts">
-import { ref } from 'vue'
-import { Download, Search } from '@lucide/vue'
+import { computed, ref, watch } from 'vue'
+import { refDebounced } from '@vueuse/core'
+import {
+  Check,
+  ChevronLeft,
+  ChevronRight,
+  Download,
+  ExternalLink,
+  Search,
+} from '@lucide/vue'
 import { toast } from 'vue-sonner'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { useAdapterMutations } from '@/composables/useAdapters'
-import { usePluginMutations } from '@/composables/usePlugins'
-import { useStoreAdaptersQuery, useStorePluginsQuery } from '@/composables/useStore'
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+} from '@/components/ui/sheet'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { useAdapterMutations, useAdaptersQuery } from '@/composables/useAdapters'
+import { usePluginMutations, usePluginsQuery } from '@/composables/usePlugins'
+import {
+  STORE_PAGE_SIZE,
+  useStoreAdaptersQuery,
+  useStorePluginsQuery,
+} from '@/composables/useStore'
 import type { StoreItem } from '@/types'
 
 const query = ref('')
-const tab = ref('plugins')
+const debouncedQuery = refDebounced(query, 300)
+const tab = ref<'plugins' | 'adapters'>('plugins')
+const page = ref(1)
 
-const { data: pluginData, isFetching: pluginLoading } = useStorePluginsQuery(query)
-const { data: adapterData, isFetching: adapterLoading } = useStoreAdaptersQuery(query)
+const isPlugins = computed(() => tab.value === 'plugins')
+
+watch([debouncedQuery, tab], () => {
+  page.value = 1
+})
+
+const { data: pluginData, isFetching: pluginLoading } = useStorePluginsQuery(
+  debouncedQuery,
+  page,
+  isPlugins,
+)
+const { data: adapterData, isFetching: adapterLoading } = useStoreAdaptersQuery(
+  debouncedQuery,
+  page,
+  computed(() => !isPlugins.value),
+)
 const { install: installPlugin } = usePluginMutations()
 const { install: installAdapter } = useAdapterMutations()
+const { data: installedPlugins } = usePluginsQuery()
+const { data: installedAdapters } = useAdaptersQuery()
 
-function addPlugin(item: StoreItem) {
-  installPlugin.mutate(
-    { name: item.name, pkg: item.pypi_name },
-    {
-      onSuccess: () => toast.success(`已安装 ${item.name}`),
-      onError: (e: Error) => toast.error(e.message),
-    },
-  )
+const currentItems = computed<StoreItem[]>(
+  () => (isPlugins.value ? pluginData.value : adapterData.value)?.results ?? [],
+)
+const currentLoading = computed(() =>
+  isPlugins.value ? pluginLoading.value : adapterLoading.value,
+)
+const total = computed(
+  () => (isPlugins.value ? pluginData.value?.total : adapterData.value?.total) ?? 0,
+)
+const pageCount = computed(() => Math.max(1, Math.ceil(total.value / STORE_PAGE_SIZE)))
+
+const installedPluginKeys = computed(() => {
+  const set = new Set<string>()
+  for (const p of installedPlugins.value?.plugins ?? []) {
+    set.add(p.path_or_module)
+    set.add(p.name)
+  }
+  return set
+})
+const installedAdapterKeys = computed(() => {
+  const set = new Set<string>()
+  for (const a of installedAdapters.value?.adapters ?? []) {
+    set.add(a.module_name)
+    set.add(a.name)
+  }
+  return set
+})
+
+function isInstalled(item: StoreItem, forAdapter: boolean): boolean {
+  const set = forAdapter ? installedAdapterKeys.value : installedPluginKeys.value
+  if (set.has(item.name) || set.has(item.pypi_name)) return true
+  return item.module_names.some((m) => set.has(m))
 }
 
-function addAdapter(item: StoreItem) {
-  installAdapter.mutate(
-    { name: item.name, pkg: item.pypi_name, module_name: item.module_names[0] ?? '' },
-    {
-      onSuccess: () => toast.success(`已安装 ${item.name}`),
-      onError: (e: Error) => toast.error(e.message),
-    },
-  )
+function installItem(item: StoreItem, forAdapter: boolean) {
+  const opts = {
+    onSuccess: () => toast.success(`已安装 ${item.name}`),
+    onError: (e: Error) => toast.error(e.message),
+  }
+  if (forAdapter) {
+    installAdapter.mutate(
+      { name: item.name, pkg: item.pypi_name, module_name: item.module_names[0] ?? '' },
+      opts,
+    )
+  } else {
+    installPlugin.mutate({ name: item.name, pkg: item.pypi_name }, opts)
+  }
+}
+
+const detailOpen = ref(false)
+const detailItem = ref<StoreItem | null>(null)
+const detailIsAdapter = ref(false)
+
+function openDetail(item: StoreItem) {
+  detailItem.value = item
+  detailIsAdapter.value = !isPlugins.value
+  detailOpen.value = true
 }
 </script>
 
 <template>
   <div class="p-6 lg:p-8">
     <h1 class="text-2xl font-semibold tracking-tight">商店</h1>
-    <p class="mb-6 mt-1 text-sm text-muted-foreground">搜索 NoneBot 官方插件与适配器</p>
+    <p class="mb-6 mt-1 text-sm text-muted-foreground">浏览并安装 NoneBot 官方插件与适配器</p>
 
     <div class="relative mb-6 max-w-md">
       <Search class="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-      <Input v-model="query" placeholder="输入关键词搜索…" class="pl-9" />
+      <Input v-model="query" placeholder="输入关键词过滤…" class="pl-9" />
     </div>
 
     <Tabs v-model="tab">
@@ -56,66 +133,148 @@ function addAdapter(item: StoreItem) {
         <TabsTrigger value="plugins">插件</TabsTrigger>
         <TabsTrigger value="adapters">适配器</TabsTrigger>
       </TabsList>
-
-      <TabsContent value="plugins">
-        <p v-if="!query.trim()" class="py-8 text-center text-sm text-muted-foreground">
-          输入关键词以搜索插件
-        </p>
-        <p v-else-if="pluginLoading" class="py-8 text-center text-sm text-muted-foreground">
-          搜索中…
-        </p>
-        <p
-          v-else-if="!pluginData || !pluginData.results.length"
-          class="py-8 text-center text-sm text-muted-foreground"
-        >
-          无匹配结果
-        </p>
-        <div v-else class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          <Card v-for="item in pluginData.results" :key="item.pypi_name || item.name">
-            <CardHeader>
-              <CardTitle class="text-base">{{ item.name }}</CardTitle>
-              <p class="line-clamp-2 text-sm text-muted-foreground">{{ item.description }}</p>
-            </CardHeader>
-            <CardContent class="flex items-center justify-between gap-2">
-              <Badge variant="secondary">{{ item.author }}</Badge>
-              <Button size="sm" @click="addPlugin(item)">
-                <Download class="size-4" />
-                安装
-              </Button>
-            </CardContent>
-          </Card>
-        </div>
-      </TabsContent>
-
-      <TabsContent value="adapters">
-        <p v-if="!query.trim()" class="py-8 text-center text-sm text-muted-foreground">
-          输入关键词以搜索适配器
-        </p>
-        <p v-else-if="adapterLoading" class="py-8 text-center text-sm text-muted-foreground">
-          搜索中…
-        </p>
-        <p
-          v-else-if="!adapterData || !adapterData.results.length"
-          class="py-8 text-center text-sm text-muted-foreground"
-        >
-          无匹配结果
-        </p>
-        <div v-else class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          <Card v-for="item in adapterData.results" :key="item.pypi_name || item.name">
-            <CardHeader>
-              <CardTitle class="text-base">{{ item.name }}</CardTitle>
-              <p class="line-clamp-2 text-sm text-muted-foreground">{{ item.description }}</p>
-            </CardHeader>
-            <CardContent class="flex items-center justify-between gap-2">
-              <Badge variant="secondary">{{ item.author }}</Badge>
-              <Button size="sm" @click="addAdapter(item)">
-                <Download class="size-4" />
-                安装
-              </Button>
-            </CardContent>
-          </Card>
-        </div>
-      </TabsContent>
     </Tabs>
+
+    <div class="mt-6">
+      <p v-if="currentLoading && !currentItems.length" class="py-12 text-center text-sm text-muted-foreground">
+        加载中…
+      </p>
+      <p v-else-if="!currentItems.length" class="py-12 text-center text-sm text-muted-foreground">
+        无匹配结果
+      </p>
+      <div v-else class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        <Card v-for="item in currentItems" :key="item.pypi_name || item.name" class="flex flex-col">
+          <CardHeader class="pb-3">
+            <div class="flex items-start justify-between gap-2">
+              <CardTitle class="text-base leading-tight">{{ item.name }}</CardTitle>
+              <Badge v-if="item.is_official" variant="secondary" class="shrink-0">官方</Badge>
+            </div>
+            <p class="line-clamp-2 text-sm text-muted-foreground">{{ item.description }}</p>
+          </CardHeader>
+          <CardContent class="mt-auto flex flex-col gap-3">
+            <div v-if="item.tags.length" class="flex flex-wrap gap-1">
+              <span
+                v-for="t in item.tags.slice(0, 4)"
+                :key="t.label"
+                class="rounded px-1.5 py-0.5 text-xs font-medium text-slate-800"
+                :style="{ backgroundColor: t.color }"
+              >
+                {{ t.label }}
+              </span>
+            </div>
+            <div class="flex items-center justify-between gap-2">
+              <div class="flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
+                <span class="truncate">{{ item.author }}</span>
+                <span v-if="item.version" class="shrink-0">v{{ item.version }}</span>
+              </div>
+              <div class="flex shrink-0 items-center gap-1">
+                <Button variant="ghost" size="sm" @click="openDetail(item)">详情</Button>
+                <Button
+                  v-if="isInstalled(item, !isPlugins)"
+                  size="sm"
+                  variant="secondary"
+                  disabled
+                >
+                  <Check class="size-4" />
+                  已安装
+                </Button>
+                <Button v-else size="sm" @click="installItem(item, !isPlugins)">
+                  <Download class="size-4" />
+                  安装
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      <div v-if="pageCount > 1" class="mt-6 flex items-center justify-center gap-3">
+        <Button variant="outline" size="sm" :disabled="page <= 1" @click="page--">
+          <ChevronLeft class="size-4" />
+          上一页
+        </Button>
+        <span class="text-sm text-muted-foreground">{{ page }} / {{ pageCount }}</span>
+        <Button variant="outline" size="sm" :disabled="page >= pageCount" @click="page++">
+          下一页
+          <ChevronRight class="size-4" />
+        </Button>
+      </div>
+    </div>
+
+    <Sheet v-model:open="detailOpen">
+      <SheetContent class="w-full overflow-y-auto sm:max-w-md">
+        <SheetHeader>
+          <SheetTitle class="flex items-center gap-2">
+            {{ detailItem?.name }}
+            <Badge v-if="detailItem?.is_official" variant="secondary">官方</Badge>
+          </SheetTitle>
+          <SheetDescription>{{ detailItem?.description }}</SheetDescription>
+        </SheetHeader>
+
+        <div v-if="detailItem" class="space-y-4 px-4 text-sm">
+          <div class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2">
+            <span class="text-muted-foreground">PyPI</span>
+            <span class="break-all font-mono">{{ detailItem.pypi_name }}</span>
+            <span class="text-muted-foreground">作者</span>
+            <span>{{ detailItem.author || '—' }}</span>
+            <template v-if="detailItem.version">
+              <span class="text-muted-foreground">版本</span>
+              <span>{{ detailItem.version }}</span>
+            </template>
+            <template v-if="detailItem.type">
+              <span class="text-muted-foreground">类型</span>
+              <span>{{ detailItem.type }}</span>
+            </template>
+            <template v-if="detailItem.module_names.length">
+              <span class="text-muted-foreground">模块</span>
+              <span class="break-all font-mono">{{ detailItem.module_names.join(', ') }}</span>
+            </template>
+          </div>
+
+          <div v-if="detailItem.supported_adapters?.length">
+            <p class="mb-1 text-muted-foreground">支持适配器</p>
+            <div class="flex flex-wrap gap-1">
+              <Badge v-for="a in detailItem.supported_adapters" :key="a" variant="outline">
+                {{ a }}
+              </Badge>
+            </div>
+          </div>
+
+          <a
+            v-if="detailItem.homepage"
+            :href="detailItem.homepage"
+            target="_blank"
+            rel="noreferrer"
+            class="inline-flex items-center gap-1 text-primary hover:underline"
+          >
+            <ExternalLink class="size-4" />
+            项目主页
+          </a>
+        </div>
+
+        <SheetFooter>
+          <Button
+            v-if="detailItem && isInstalled(detailItem, detailIsAdapter)"
+            variant="secondary"
+            disabled
+          >
+            <Check class="size-4" />
+            已安装
+          </Button>
+          <Button
+            v-else-if="detailItem"
+            @click="
+              () => {
+                if (detailItem) installItem(detailItem, detailIsAdapter)
+                detailOpen = false
+              }
+            "
+          >
+            <Download class="size-4" />
+            安装
+          </Button>
+        </SheetFooter>
+      </SheetContent>
+    </Sheet>
   </div>
 </template>
