@@ -189,19 +189,43 @@ def _reflect_field(field_name: str, field_info: Any) -> FieldNode:
     )
 
 
+def _collect_attr_docstrings(model_cls: type[BaseModel]) -> dict[str, str]:
+    from pydantic._internal._docs_extraction import extract_docstrings_from_cls
+
+    result: dict[str, str] = {}
+    for klass in model_cls.__mro__:
+        if klass is BaseModel or klass is object:
+            continue
+        if not (isinstance(klass, type) and issubclass(klass, BaseModel)):
+            continue
+        docs: dict[str, str] = {}
+        for use_inspect in (False, True):
+            try:
+                extracted = extract_docstrings_from_cls(klass, use_inspect=use_inspect)
+            except Exception:  # noqa: BLE001 - pydantic internal API / no source
+                continue
+            if extracted:
+                docs = extracted
+                break
+        for key, text in docs.items():
+            if key not in result and text:
+                result[key] = text
+    return result
+
+
 def reflect_model(model_cls: type[BaseModel]) -> list[FieldNode]:
+    docstrings = _collect_attr_docstrings(model_cls)
     fields: list[FieldNode] = []
     for field_name, field_info in model_cls.model_fields.items():
         try:
             node = _reflect_field(field_name, field_info)
-            fields.append(node)
         except (TypeError, ValueError, KeyError):
-            fields.append(
-                AnyField(
-                    key=field_name,
-                    label=field_name,
-                    description=field_info.description
-                    or f"Type: {field_info.annotation}",
-                )
+            node = AnyField(
+                key=field_name,
+                label=field_name,
+                description=field_info.description or f"Type: {field_info.annotation}",
             )
+        if not node.description and field_name in docstrings:
+            node.description = docstrings[field_name]
+        fields.append(node)
     return fields

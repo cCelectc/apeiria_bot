@@ -131,3 +131,33 @@ def test_reflect_nested_model_has_object() -> None:
     fields = reflect_model(NestedConfig)
     kinds = {f.kind for f in fields}
     assert "object" in kinds
+
+
+class DocstringConfig(BaseModel):
+    token: str = ""
+    """授权令牌"""
+    port: int = 8080
+    """监听端口"""
+    explicit: str = Field(default="", description="显式说明")
+    """这条 docstring 应被忽略"""
+    plain: str = ""
+
+
+def test_reflect_attribute_docstring_fallback() -> None:
+    fields = reflect_model(DocstringConfig)
+    token_f = next(f for f in fields if f.key == "token")
+    assert token_f.description == "授权令牌"
+    port_f = next(f for f in fields if f.key == "port")
+    assert port_f.description == "监听端口"
+
+
+def test_reflect_explicit_description_wins_over_docstring() -> None:
+    fields = reflect_model(DocstringConfig)
+    explicit_f = next(f for f in fields if f.key == "explicit")
+    assert explicit_f.description == "显式说明"
+
+
+def test_reflect_no_docstring_is_empty() -> None:
+    fields = reflect_model(DocstringConfig)
+    plain_f = next(f for f in fields if f.key == "plain")
+    assert plain_f.description == ""
