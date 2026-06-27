@@ -1,10 +1,14 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { dump, load } from 'js-yaml'
 import { toast } from 'vue-sonner'
+import { Button } from '@/components/ui/button'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { deepEqual } from '@/lib/configDiff'
 import type { ConfigContract } from '@/types'
 import FormRenderer from './FormRenderer.vue'
 import MonacoEditor from './MonacoEditor.vue'
+import UnsavedChangesDialog from './UnsavedChangesDialog.vue'
 
 const props = defineProps<{
   schema: ConfigContract
@@ -18,19 +22,27 @@ const emit = defineEmits<{
   'update:modelValue': [value: Record<string, unknown>]
 }>()
 
+function clone(v: Record<string, unknown>): Record<string, unknown> {
+  return JSON.parse(JSON.stringify(v)) as Record<string, unknown>
+}
+
 const mode = ref<'form' | 'code'>('form')
-const data = ref<Record<string, unknown>>({ ...props.modelValue })
+const data = ref<Record<string, unknown>>(clone(props.modelValue))
+const baseline = ref<Record<string, unknown>>(clone(props.modelValue))
 const yamlRaw = ref('')
+
+const isDirty = computed(() => !deepEqual(data.value, baseline.value))
 
 watch(
   () => props.modelValue,
   (val) => {
-    data.value = { ...val }
+    data.value = clone(val)
+    baseline.value = clone(val)
     if (mode.value === 'code') {
       yamlRaw.value = dump(val, { indent: 2 })
     }
   },
-  { deep: true }
+  { deep: true },
 )
 
 function onFormUpdate(value: Record<string, unknown>) {
@@ -52,7 +64,20 @@ function onCodeUpdate(value: string) {
   }
 }
 
+function syncFromCode() {
+  if (mode.value !== 'code') return
+  try {
+    const parsed = load(yamlRaw.value)
+    if (typeof parsed === 'object' && parsed !== null) {
+      data.value = parsed as Record<string, unknown>
+    }
+  } catch {
+    // keep last valid data
+  }
+}
+
 function switchMode(newMode: 'form' | 'code') {
+  if (newMode === mode.value) return
   if (newMode === 'code') {
     yamlRaw.value = dump(data.value, { indent: 2 })
     mode.value = 'code'
@@ -73,19 +98,19 @@ function switchMode(newMode: 'form' | 'code') {
 
 const saving = ref(false)
 
-async function handleSave() {
+async function doSave(): Promise<boolean> {
   let submitData: Record<string, unknown>
   if (mode.value === 'code') {
     try {
       const parsed = load(yamlRaw.value)
       if (typeof parsed !== 'object' || parsed === null) {
         toast.error('YAML 内容必须是映射对象')
-        return
+        return false
       }
       submitData = parsed as Record<string, unknown>
     } catch (e) {
       toast.error(`YAML 解析失败: ${(e as Error).message}`)
-      return
+      return false
     }
   } else {
     submitData = data.value
@@ -95,41 +120,81 @@ async function handleSave() {
   try {
     await props.saveMutation(submitData)
     toast.success('配置已保存')
+    data.value = clone(submitData)
+    baseline.value = clone(submitData)
     emit('update:modelValue', submitData)
+    return true
   } catch (e) {
     toast.error(`保存失败: ${(e as Error).message}`)
+    return false
   } finally {
     saving.value = false
   }
 }
+
+function handleSave() {
+  void doSave()
+}
+
+const confirmOpen = ref(false)
+let closeResolver: ((ok: boolean) => void) | null = null
+
+function resolveClose(ok: boolean) {
+  confirmOpen.value = false
+  const r = closeResolver
+  closeResolver = null
+  r?.(ok)
+}
+
+function attemptClose(): Promise<boolean> {
+  syncFromCode()
+  if (!isDirty.value) return Promise.resolve(true)
+  return new Promise<boolean>((resolve) => {
+    closeResolver = resolve
+    confirmOpen.value = true
+  })
+}
+
+function onConfirmCancel() {
+  resolveClose(false)
+}
+
+function onConfirmDiscard() {
+  data.value = clone(baseline.value)
+  if (mode.value === 'code') {
+    yamlRaw.value = dump(data.value, { indent: 2 })
+  }
+  resolveClose(true)
+}
+
+async function onConfirmSave() {
+  if (await doSave()) {
+    resolveClose(true)
+  }
+}
+
+defineExpose({ isDirty, attemptClose })
 </script>
 
 <template>
   <div class="space-y-4">
-    <div class="flex items-center justify-between">
-      <div class="flex items-center gap-1 border rounded-md p-0.5 bg-muted/50">
-        <button
-          class="px-3 py-1 text-sm rounded-sm transition-colors"
-          :class="mode === 'form' ? 'bg-background shadow-sm' : 'text-muted-foreground hover:text-foreground'"
-          @click="switchMode('form')"
-        >
-          表单
-        </button>
-        <button
-          class="px-3 py-1 text-sm rounded-sm transition-colors"
-          :class="mode === 'code' ? 'bg-background shadow-sm' : 'text-muted-foreground hover:text-foreground'"
-          @click="switchMode('code')"
-        >
-          源码
-        </button>
-      </div>
+    <div v-if="schema.source !== 'none'" class="flex items-center justify-between">
+      <Tabs :model-value="mode" @update:model-value="(v) => v && switchMode(v as 'form' | 'code')">
+        <TabsList>
+          <TabsTrigger value="form">结构化</TabsTrigger>
+          <TabsTrigger value="code">高级</TabsTrigger>
+        </TabsList>
+      </Tabs>
       <Button :disabled="saving" @click="handleSave">
         {{ saving ? '保存中...' : '保存配置' }}
       </Button>
     </div>
 
-    <div v-if="schema.source === 'none'" class="text-muted-foreground text-sm py-8 text-center">
-      此{{ schema.owner_kind === 'adapter' ? '适配器' : '插件' }}无配置项
+    <div
+      v-if="schema.source === 'none'"
+      class="rounded-lg border border-dashed py-10 text-center text-sm text-muted-foreground"
+    >
+      此{{ schema.owner_kind === 'adapter' ? '适配器' : '插件' }}无配置项（空配置）
     </div>
 
     <div v-else-if="mode === 'form'">
@@ -143,5 +208,16 @@ async function handleSave() {
         @update:model-value="onCodeUpdate"
       />
     </div>
+
+    <UnsavedChangesDialog
+      v-model:open="confirmOpen"
+      :original="baseline"
+      :current="data"
+      :fields="schema.fields"
+      :saving="saving"
+      @save="onConfirmSave"
+      @discard="onConfirmDiscard"
+      @cancel="onConfirmCancel"
+    />
   </div>
 </template>
