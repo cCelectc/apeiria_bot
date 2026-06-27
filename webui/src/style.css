@@ -89,6 +89,7 @@
   --sidebar-accent-foreground: #1565c0;
   --sidebar-border: #e5e7eb;
   --sidebar-ring: #2196f3;
+  --scrollbar-thumb: #00000018;
 }
 
 .dark {
@@ -129,6 +130,7 @@
   --sidebar-accent-foreground: #90caf9;
   --sidebar-border: #ffffff1a;
   --sidebar-ring: #2196f3;
+  --scrollbar-thumb: #ffffff1a;
 }
 
 @layer base {
@@ -137,5 +139,29 @@
   }
   body {
     @apply bg-background text-foreground;
+  }
+
+  html {
+    scrollbar-width: thin;
+    scrollbar-color: transparent transparent;
+  }
+
+  ::-webkit-scrollbar {
+    width: 5px;
+    height: 5px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background-color: transparent;
+    border-radius: 3px;
+  }
+
+  ::-webkit-scrollbar-thumb:hover,
+  *:hover::-webkit-scrollbar-thumb {
+    background-color: var(--scrollbar-thumb);
   }
 }
