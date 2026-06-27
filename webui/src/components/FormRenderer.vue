@@ -190,7 +190,7 @@ function updateMapValue(field: MapField, key: string, value: unknown) {
           </span>
         </div>
         <p v-if="field.description" class="mt-1 text-[0.8rem] text-muted-foreground">{{ field.description }}</p>
-        <div class="mt-3 border-l-2 border-border pl-4">
+        <div class="mt-3 border-l border-border pl-4">
           <FormRenderer
             :fields="(field as ObjectField).children"
             :model-value="(modelValue[field.key] as Record<string, unknown>) || {}"
@@ -208,11 +208,11 @@ function updateMapValue(field: MapField, key: string, value: unknown) {
           </span>
         </div>
         <p v-if="field.description" class="mt-1 text-[0.8rem] text-muted-foreground">{{ field.description }}</p>
-        <div class="mt-3 space-y-2">
+        <div class="mt-3 divide-y divide-border border-l border-border pl-4">
           <div
             v-for="(item, idx) in (modelValue[field.key] as unknown[] || [])"
             :key="idx"
-            class="rounded-md border bg-card p-3 space-y-2"
+            class="space-y-2 py-3 first:pt-0 last:pb-0"
           >
             <div class="flex justify-between items-center">
               <span class="text-xs text-muted-foreground font-mono">#{{ idx + 1 }}</span>
@@ -247,11 +247,11 @@ function updateMapValue(field: MapField, key: string, value: unknown) {
           </span>
         </div>
         <p v-if="field.description" class="mt-1 text-[0.8rem] text-muted-foreground">{{ field.description }}</p>
-        <div class="mt-3 space-y-2">
+        <div class="mt-3 divide-y divide-border border-l border-border pl-4">
           <div
             v-for="(v, k) in (modelValue[field.key] as Record<string, unknown> || {})"
             :key="k"
-            class="flex items-center gap-2"
+            class="flex items-center gap-2 py-3 first:pt-0 last:pb-0"
           >
             <Input
               class="w-1/3"
