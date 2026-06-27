@@ -24,7 +24,7 @@ class PluginManifest:
     name: str
     path_or_module: str
     enabled: bool
-    source: str  # "builtin" | "local" | "pypi"
+    source: str  # "builtin" | "local" | "pypi" | "dependency"
 
 
 def requirement_to_module(requirement: str) -> str:

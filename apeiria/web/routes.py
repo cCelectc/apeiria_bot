@@ -39,8 +39,11 @@ def _write_yaml(raw: dict) -> None:
 async def api_plugins_list() -> JSONResponse:
     import nonebot
 
+    from apeiria.plugin.dependency_graph import get_cached_graph
+
     metadata_map: dict[str, dict] = {}
-    for plugin in nonebot.get_loaded_plugins():
+    loaded_plugins = nonebot.get_loaded_plugins()
+    for plugin in loaded_plugins:
         meta = plugin.metadata
         if meta is None:
             continue
@@ -54,7 +57,43 @@ async def api_plugins_list() -> JSONResponse:
             "supported_adapters": sorted(adapters) if adapters else None,
         }
 
-    items = merge_plugin_metadata(scan_plugins(), metadata_map)
+    dep_graph_obj = get_cached_graph(loaded_plugins)
+
+    items = merge_plugin_metadata(
+        scan_plugins(),
+        metadata_map,
+        dep_graph=dep_graph_obj.graph,
+        dep_reverse=dep_graph_obj.reverse,
+    )
+
+    scanned_names = {m.name for m in scan_plugins()}
+    for plugin in loaded_plugins:
+        if plugin.name in scanned_names:
+            continue
+        if not plugin.metadata and plugin.module_name.startswith("nonebot."):
+            continue
+
+        meta = metadata_map.get(plugin.name, {})
+        items.append(
+            {
+                "name": plugin.name,
+                "source": "dependency",
+                "enabled": True,
+                "path_or_module": plugin.module_name,
+                "module": plugin.module_name,
+                "display_name": meta.get("name"),
+                "description": meta.get("description"),
+                "usage": meta.get("usage"),
+                "type": meta.get("type"),
+                "homepage": meta.get("homepage"),
+                "supported_adapters": meta.get("supported_adapters"),
+                "can_disable": False,
+                "can_uninstall": False,
+                "depends_on": sorted(dep_graph_obj.graph.get(plugin.name, set())),
+                "depended_by": sorted(dep_graph_obj.reverse.get(plugin.name, set())),
+            }
+        )
+
     return JSONResponse(content={"plugins": items})
 
 
