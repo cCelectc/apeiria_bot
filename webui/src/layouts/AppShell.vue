@@ -19,6 +19,12 @@ import {
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -72,6 +78,21 @@ const initial = computed(() => (auth.username ?? 'A').slice(0, 1).toUpperCase())
 function setTheme(t: Theme) {
   ui.setTheme(t)
 }
+
+function cycleTheme() {
+  const order: Theme[] = ['light', 'dark', 'system']
+  const idx = order.indexOf(ui.theme)
+  setTheme(order[(idx + 1) % order.length])
+}
+
+const themeName = computed(() => {
+  const names: Record<Theme, string> = {
+    light: t('theme.light'),
+    dark: t('theme.dark'),
+    system: t('theme.system'),
+  }
+  return names[ui.theme]
+})
 
 function logout() {
   auth.clearSession()
@@ -205,29 +226,20 @@ function logout() {
         <div class="h-4 w-px bg-border" />
         <h1 class="text-sm font-medium">{{ currentLabel }}</h1>
         <div class="ml-auto flex items-center gap-2">
-          <DropdownMenu>
-            <DropdownMenuTrigger as-child>
-              <Button variant="ghost" size="icon" :aria-label="$t('theme.label')">
-                <Sun v-if="ui.theme === 'light'" class="size-4" aria-hidden="true" />
-                <Moon v-else-if="ui.theme === 'dark'" class="size-4" aria-hidden="true" />
-                <Monitor v-else class="size-4" aria-hidden="true" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem @click="setTheme('light')">
-                <Sun class="size-4" />
-                {{ $t('theme.light') }}
-              </DropdownMenuItem>
-              <DropdownMenuItem @click="setTheme('dark')">
-                <Moon class="size-4" />
-                {{ $t('theme.dark') }}
-              </DropdownMenuItem>
-              <DropdownMenuItem @click="setTheme('system')">
-                <Monitor class="size-4" />
-                {{ $t('theme.system') }}
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <TooltipProvider :delay-duration="200">
+            <Tooltip>
+              <TooltipTrigger as-child>
+                <Button variant="ghost" size="icon" :aria-label="$t('theme.label')" @click="cycleTheme">
+                  <Sun v-if="ui.theme === 'light'" class="size-4" aria-hidden="true" />
+                  <Moon v-else-if="ui.theme === 'dark'" class="size-4" aria-hidden="true" />
+                  <Monitor v-else class="size-4" aria-hidden="true" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>{{ themeName }}</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
         </div>
       </header>
       <main class="min-h-0 flex-1 overflow-auto">
