@@ -1,9 +1,8 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import {
-  ChevronDown,
   ChevronsUpDown,
   KeyRound,
   LayoutDashboard,
@@ -44,13 +43,9 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
-  SidebarMenuSub,
-  SidebarMenuSubButton,
-  SidebarMenuSubItem,
   SidebarProvider,
   SidebarTrigger,
 } from '@/components/ui/sidebar'
-import { useSidebar } from '@/components/ui/sidebar/utils'
 import { useAuthStore } from '@/stores/auth'
 import { type Theme, useUiStore } from '@/stores/ui'
 
@@ -58,10 +53,7 @@ const route = useRoute()
 const router = useRouter()
 const ui = useUiStore()
 const auth = useAuthStore()
-const sidebar = useSidebar()
 const { t } = useI18n()
-
-const settingsOpen = ref(false)
 
 const nav = [
   { name: 'dashboard', icon: LayoutDashboard },
@@ -143,38 +135,7 @@ function logout() {
           <SidebarGroupContent>
             <SidebarMenu>
               <SidebarMenuItem>
-                <template v-if="sidebar.state.value === 'expanded'">
-                  <SidebarMenuButton
-                    :is-active="route.path.startsWith('/settings')"
-                    @click="settingsOpen = !settingsOpen"
-                  >
-                    <Settings class="size-4" />
-                    <span>{{ $t('nav.settings') }}</span>
-                    <ChevronDown
-                      class="ml-auto size-4 transition-transform"
-                      :class="{ 'rotate-180': settingsOpen }"
-                    />
-                  </SidebarMenuButton>
-                  <SidebarMenuSub v-show="settingsOpen">
-                    <SidebarMenuSubItem>
-                      <SidebarMenuSubButton
-                        as-child
-                        :is-active="route.name === 'settings-nonebot'"
-                      >
-                        <RouterLink :to="{ name: 'settings-nonebot' }">NoneBot</RouterLink>
-                      </SidebarMenuSubButton>
-                    </SidebarMenuSubItem>
-                    <SidebarMenuSubItem>
-                      <SidebarMenuSubButton
-                        as-child
-                        :is-active="route.name === 'settings-apeiria'"
-                      >
-                        <RouterLink :to="{ name: 'settings-apeiria' }">Apeiria</RouterLink>
-                      </SidebarMenuSubButton>
-                    </SidebarMenuSubItem>
-                  </SidebarMenuSub>
-                </template>
-                <DropdownMenu v-else>
+                <DropdownMenu>
                   <DropdownMenuTrigger as-child>
                     <SidebarMenuButton
                       :is-active="route.path.startsWith('/settings')"
