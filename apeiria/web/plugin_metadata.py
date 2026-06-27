@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+from apeiria.plugin.scanner import manifest_module_candidate
+
 if TYPE_CHECKING:
     from apeiria.plugin.scanner import PluginManifest
 
@@ -11,8 +13,7 @@ def _lookup(
 ) -> dict[str, Any] | None:
     if manifest.name in metadata_map:
         return metadata_map[manifest.name]
-    tail = manifest.path_or_module.rsplit(".", 1)[-1]
-    return metadata_map.get(tail)
+    return metadata_map.get(manifest_module_candidate(manifest))
 
 
 def merge_plugin_metadata(
@@ -28,6 +29,7 @@ def merge_plugin_metadata(
                 "source": manifest.source,
                 "enabled": manifest.enabled,
                 "path_or_module": manifest.path_or_module,
+                "module": manifest_module_candidate(manifest),
                 "display_name": meta.get("name"),
                 "description": meta.get("description"),
                 "usage": meta.get("usage"),

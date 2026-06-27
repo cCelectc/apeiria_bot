@@ -10,7 +10,13 @@ from apeiria.access.control import AccessControl
 from apeiria.env.ensure import ensure_apeiria_env
 from apeiria.env.inject import inject_apeiria_paths
 from apeiria.env.sync import sync_apeiria_env
-from apeiria.plugin.scanner import BUILTIN_LIST, _is_enabled, _load_plugins_yaml
+from apeiria.plugin.scanner import (
+    BUILTIN_LIST,
+    _is_enabled,
+    _load_plugins_yaml,
+    manifest_module_candidate,
+    scan_plugins,
+)
 
 _access_control: AccessControl | None = None
 
@@ -99,40 +105,28 @@ def step_load_local() -> None:
 
 
 def step_load_pypi() -> None:
-    pyproject = Path(".apeiria/pyproject.toml")
-    if not pyproject.exists():
-        return
-
-    data = _load_plugins_yaml()
-    raw = pyproject.read_text(encoding="utf-8")
-    enabled_entries: dict[str, str] = {}
-    in_plugins = False
-    for line in raw.splitlines():
-        stripped = line.strip()
-        if stripped == "[tool.nonebot.plugins]":
-            in_plugins = True
+    loaded = 0
+    for manifest in scan_plugins():
+        if manifest.source != "pypi":
             continue
-        if in_plugins:
-            if stripped.startswith("["):
-                break
-            if "=" in stripped:
-                key, val = stripped.split("=", 1)
-                key = key.strip().strip('"')
-                if _is_enabled(key, data):
-                    enabled_entries[key] = val.strip()
+        if not manifest.enabled:
+            logger.debug("Skipped disabled PyPI plugin: {}", manifest.name)
+            continue
+        module = manifest_module_candidate(manifest)
+        if not module:
+            continue
+        try:
+            nonebot.load_plugin(module)
+        except Exception:  # noqa: BLE001
+            logger.opt(exception=True).warning(
+                "Failed to load PyPI plugin: {} ({})", manifest.name, module
+            )
+            continue
+        loaded += 1
+        logger.debug("Loaded PyPI plugin: {} ({})", manifest.name, module)
 
-    if not enabled_entries:
-        return
-
-    temp_path = Path("data/.runtime_plugins.toml")
-    temp_path.parent.mkdir(parents=True, exist_ok=True)
-    lines = ["[tool.nonebot.plugins]"]
-    for key, val in enabled_entries.items():
-        lines.append(f'"{key}" = {val}')
-    temp_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
-
-    nonebot.load_from_toml(str(temp_path))
-    logger.success("Loaded PyPI plugins via temporary config")
+    if loaded:
+        logger.success("Loaded {} PyPI plugin(s)", loaded)
 
 
 _conversation_handler = nonebot.on_message(Rule(), block=False)

@@ -79,3 +79,64 @@ def test_merge_matches_by_module_tail() -> None:
 
     assert result[0]["display_name"] == "Foo"
     assert result[0]["supported_adapters"] is None
+
+
+def test_merge_matches_pypi_requirement_string() -> None:
+    from apeiria.web.plugin_metadata import merge_plugin_metadata
+
+    manifests = [_manifest("服务器状态查看", "nonebot-plugin-status", source="pypi")]
+    metadata_map = {
+        "nonebot_plugin_status": {
+            "name": "服务器状态",
+            "description": "查看服务器状态",
+            "usage": "/status",
+            "type": "application",
+            "homepage": "",
+            "supported_adapters": None,
+        }
+    }
+
+    result = merge_plugin_metadata(manifests, metadata_map)
+
+    assert result[0]["display_name"] == "服务器状态"
+    assert result[0]["description"] == "查看服务器状态"
+    assert result[0]["type"] == "application"
+
+
+def test_merge_includes_consistent_module_identifier() -> None:
+    from apeiria.web.plugin_metadata import merge_plugin_metadata
+
+    manifests = [
+        _manifest("admin", "apeiria.builtin_plugins.admin", source="builtin"),
+        _manifest("服务器状态查看", "nonebot-plugin-status>=0.9.0", source="pypi"),
+        _manifest("localp", "/abs/path/localp", source="local"),
+    ]
+
+    rows = merge_plugin_metadata(manifests, {})
+
+    by_name = {r["name"]: r for r in rows}
+    assert by_name["admin"]["module"] == "admin"
+    assert by_name["服务器状态查看"]["module"] == "nonebot_plugin_status"
+    assert by_name["localp"]["module"] == "localp"
+
+
+def test_merge_matches_pypi_requirement_with_version_specifier() -> None:
+    from apeiria.web.plugin_metadata import merge_plugin_metadata
+
+    manifests = [
+        _manifest("status", "nonebot-plugin-status>=0.9.0", source="pypi"),
+    ]
+    metadata_map = {
+        "nonebot_plugin_status": {
+            "name": "服务器状态",
+            "description": "查看服务器状态",
+            "usage": "/status",
+            "type": "application",
+            "homepage": "",
+            "supported_adapters": None,
+        }
+    }
+
+    result = merge_plugin_metadata(manifests, metadata_map)
+
+    assert result[0]["display_name"] == "服务器状态"

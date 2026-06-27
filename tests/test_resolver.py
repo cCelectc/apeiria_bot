@@ -63,3 +63,45 @@ async def test_resolve_contract_unknown_plugin() -> None:
     assert isinstance(contract, ConfigContract)
     assert contract.source == "none"
     assert contract.fields == []
+
+
+@pytest.mark.asyncio
+async def test_resolve_contract_pypi_plugin_by_manifest_name(monkeypatch) -> None:
+    from typing import ClassVar
+
+    import nonebot
+    from pydantic import BaseModel
+
+    from apeiria.plugin import scanner
+    from apeiria.plugin.scanner import PluginManifest
+
+    class _FakeConfig(BaseModel):
+        api_key: str = ""
+
+    class _FakeMeta:
+        config = _FakeConfig
+        extra: ClassVar[dict] = {}
+
+    class _FakePlugin:
+        name = "nonebot_plugin_status"
+        module_name = "nonebot_plugin_status"
+        metadata = _FakeMeta()
+
+    monkeypatch.setattr(nonebot, "get_loaded_plugins", lambda: {_FakePlugin()})
+    monkeypatch.setattr(
+        scanner,
+        "scan_plugins",
+        lambda: [
+            PluginManifest(
+                name="服务器状态查看",
+                path_or_module="nonebot-plugin-status>=0.9.0",
+                enabled=True,
+                source="pypi",
+            )
+        ],
+    )
+
+    contract = resolve_config_namespace_contract("服务器状态查看")
+    assert contract.source == "pydantic"
+    assert contract.owner_kind == "plugin"
+    assert any(f.key == "api_key" for f in contract.fields)

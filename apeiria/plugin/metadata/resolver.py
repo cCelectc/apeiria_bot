@@ -34,10 +34,38 @@ def merge_extra_hints(fields: list[FieldNode], extra_hints: list[dict]) -> None:
             _apply_hint_to_field(field, hint)
 
 
+def _find_loaded_plugin(identifier: str):
+    return next(
+        (
+            item
+            for item in nonebot.get_loaded_plugins()
+            if identifier in {item.module_name, item.name}
+        ),
+        None,
+    )
+
+
+def _module_candidate_for(name: str) -> str | None:
+    from apeiria.plugin.scanner import manifest_module_candidate, scan_plugins
+
+    for manifest in scan_plugins():
+        if manifest.name == name:
+            return manifest_module_candidate(manifest)
+    return None
+
+
 def resolve_config_namespace_contract(
     module_name: str,
 ) -> ConfigContract:
     registered = get_registered_plugin_config(module_name)
+    plugin = _find_loaded_plugin(module_name)
+
+    if registered is None and plugin is None:
+        candidate = _module_candidate_for(module_name)
+        if candidate and candidate != module_name:
+            registered = get_registered_plugin_config(candidate)
+            plugin = _find_loaded_plugin(candidate)
+
     if registered is not None:
         children: list[FieldNode] = [
             PrimitiveField(
@@ -63,14 +91,6 @@ def resolve_config_namespace_contract(
             json_schema={},
         )
 
-    plugin = next(
-        (
-            item
-            for item in nonebot.get_loaded_plugins()
-            if module_name in {item.module_name, item.name}
-        ),
-        None,
-    )
     if plugin is not None and plugin.metadata is not None:
         config_model = getattr(plugin.metadata, "config", None)
         has_pydantic_config = isinstance(config_model, type) and issubclass(

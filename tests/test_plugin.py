@@ -42,3 +42,44 @@ def test_scan_returns_sorted(tmp_path, monkeypatch) -> None:
 
     plugins = scan_plugins()
     assert len(plugins) >= 5
+
+
+def test_requirement_to_module_strips_version() -> None:
+    from apeiria.plugin.scanner import requirement_to_module
+
+    assert requirement_to_module("nonebot-plugin-status") == "nonebot_plugin_status"
+    assert (
+        requirement_to_module("nonebot-plugin-status>=0.9.0") == "nonebot_plugin_status"
+    )
+    assert (
+        requirement_to_module("nonebot-plugin-foo[extra]>=1.0") == "nonebot_plugin_foo"
+    )
+    assert requirement_to_module("nonebot_plugin_foo") == "nonebot_plugin_foo"
+
+
+def test_manifest_module_candidate_by_source() -> None:
+    from apeiria.plugin.scanner import PluginManifest, manifest_module_candidate
+
+    pypi = PluginManifest(
+        name="服务器状态查看",
+        path_or_module="nonebot-plugin-status>=0.9.0",
+        enabled=True,
+        source="pypi",
+    )
+    assert manifest_module_candidate(pypi) == "nonebot_plugin_status"
+
+    builtin = PluginManifest(
+        name="admin",
+        path_or_module="apeiria.builtin_plugins.admin",
+        enabled=True,
+        source="builtin",
+    )
+    assert manifest_module_candidate(builtin) == "admin"
+
+    local = PluginManifest(
+        name="myplugin",
+        path_or_module="/abs/path/myplugin",
+        enabled=True,
+        source="local",
+    )
+    assert manifest_module_candidate(local) == "myplugin"

@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
 import yaml
+
+_REQUIREMENT_NAME = re.compile(r"^[A-Za-z0-9._-]+")
 
 BUILTIN_LIST = [
     "admin",
@@ -22,6 +25,21 @@ class PluginManifest:
     path_or_module: str
     enabled: bool
     source: str  # "builtin" | "local" | "pypi"
+
+
+def requirement_to_module(requirement: str) -> str:
+    match = _REQUIREMENT_NAME.match(requirement.strip())
+    base = match.group(0) if match else requirement
+    base = base.split("[", 1)[0]
+    return base.replace("-", "_")
+
+
+def manifest_module_candidate(manifest: PluginManifest) -> str:
+    if manifest.source == "pypi":
+        return requirement_to_module(manifest.path_or_module)
+    if manifest.source == "local":
+        return Path(manifest.path_or_module).name
+    return manifest.path_or_module.rsplit(".", 1)[-1]
 
 
 def _load_plugins_yaml() -> dict:
