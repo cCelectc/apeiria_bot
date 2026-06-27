@@ -1,2 +1,4 @@
 allowBuilds:
   vue-demi: true
+minimumReleaseAgeExclude:
+  - js-yaml@5.2.0

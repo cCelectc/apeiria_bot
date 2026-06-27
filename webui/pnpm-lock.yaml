@@ -39,8 +39,8 @@ importers:
         specifier: ^2.1.1
         version: 2.1.1
       js-yaml:
-        specifier: ^5.1.0
-        version: 5.1.0
+        specifier: ^5.2.0
+        version: 5.2.0
       marked:
         specifier: ^18.0.5
         version: 18.0.5
@@ -54,8 +54,8 @@ importers:
         specifier: ^4.7.1
         version: 4.7.1(pinia@3.0.4(typescript@6.0.3)(vue@3.5.39(typescript@6.0.3)))
       reka-ui:
-        specifier: ^2.10.0
-        version: 2.10.0(vue@3.5.39(typescript@6.0.3))
+        specifier: ^2.10.1
+        version: 2.10.1(vue@3.5.39(typescript@6.0.3))
       tailwind-merge:
         specifier: ^3.6.0
         version: 3.6.0
@@ -738,8 +738,8 @@ packages:
     resolution: {integrity: sha512-AC/7JofJvZGrrneWNaEnJeOLUx+JlGt7tNa0wZiRPT4MY1wmfKjt2+6O2p2uz2+skll8OZZmJMNqeke7kKbNgQ==}
     hasBin: true
 
-  js-yaml@5.1.0:
-    resolution: {integrity: sha512-s8VA5jkR8f22S3NAXmhKPFqGUduqZGlsufabVOgN14iTdw/RXcym7bKkbwjxLK9Yw2lEvvmJjFp119+KPeo8Kg==}
+  js-yaml@5.2.0:
+    resolution: {integrity: sha512-YeLUMlvR4Ou1B119LIaM0r65JvbOBooJDc9yEu0dClb/uSC5P4FrLU8OCCz/HXWvtPoIrR0dRzABTjo1sTN9Bw==}
     hasBin: true
 
   jsesc@3.1.0:
@@ -930,8 +930,8 @@ packages:
     resolution: {integrity: sha512-9u/XQ1pvrQtYyMpZe7DXKv2p5CNvyVwzUB6uhLAnQwHMSgKMBR62lc7AHljaeteeHXn11XTAaLLUVZYVZyuRBQ==}
     engines: {node: '>= 20.19.0'}
 
-  reka-ui@2.10.0:
-    resolution: {integrity: sha512-HIUVfSBM/AyGkcUI7aiOxxMc4N+0UD2ZEun8dcrT0H4fveotEoeDdvzyZu97eeEvEa1H9oGHoOpApkfxlgnC7g==}
+  reka-ui@2.10.1:
+    resolution: {integrity: sha512-drcOQ4rQtDYAcGCsyQBqQg8QQ+H3B+zDaMJU0h8KPEPMa7g9BHu3zcOi4OB39XJSWizceFoNO0Z9tctSGLOXqg==}
     peerDependencies:
       vue: '>= 3.4.0'
 
@@ -1809,7 +1809,7 @@ snapshots:
 
   jiti@2.7.0: {}
 
-  js-yaml@5.1.0:
+  js-yaml@5.2.0:
     dependencies:
       argparse: 2.0.1
 
@@ -1953,7 +1953,7 @@ snapshots:
 
   readdirp@5.0.0: {}
 
-  reka-ui@2.10.0(vue@3.5.39(typescript@6.0.3)):
+  reka-ui@2.10.1(vue@3.5.39(typescript@6.0.3)):
     dependencies:
       '@floating-ui/dom': 1.7.6
       '@floating-ui/vue': 1.1.11(vue@3.5.39(typescript@6.0.3))
