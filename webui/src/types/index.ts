@@ -3,6 +3,12 @@ export interface Plugin {
   source: string
   enabled: boolean
   path_or_module: string
+  display_name: string | null
+  description: string | null
+  usage: string | null
+  type: string | null
+  homepage: string | null
+  supported_adapters: string[] | null
 }
 
 export interface Adapter {
@@ -76,6 +82,11 @@ export interface AnyField {
   order: number
 }
 
+export interface StoreTag {
+  label: string
+  color: string
+}
+
 export interface StoreItem {
   name: string
   version: string
@@ -84,8 +95,16 @@ export interface StoreItem {
   homepage: string
   pypi_name: string
   module_names: string[]
-  supported_adapters: string[]
+  supported_adapters: string[] | null
   installed_version: string | null
+  type: string
+  tags: StoreTag[]
+  is_official: boolean
+}
+
+export interface StoreSearchResult {
+  results: StoreItem[]
+  total: number
 }
 
 export interface LogRecord {

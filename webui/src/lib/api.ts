@@ -7,7 +7,7 @@ import type {
   LoginResponse,
   Plugin,
   StatusInfo,
-  StoreItem,
+  StoreSearchResult,
 } from '@/types'
 
 const BASE = '/api'
@@ -92,15 +92,15 @@ export const api = {
       request<ConfigContract>('GET', `/config/schema/${section}`),
   },
   store: {
-    searchPlugins: (q: string) =>
-      request<{ results: StoreItem[] }>(
+    searchPlugins: (q: string, limit = 60, offset = 0) =>
+      request<StoreSearchResult>(
         'GET',
-        `/store/plugins?q=${encodeURIComponent(q)}`,
+        `/store/plugins?q=${encodeURIComponent(q)}&limit=${limit}&offset=${offset}`,
       ),
-    searchAdapters: (q: string) =>
-      request<{ results: StoreItem[] }>(
+    searchAdapters: (q: string, limit = 60, offset = 0) =>
+      request<StoreSearchResult>(
         'GET',
-        `/store/adapters?q=${encodeURIComponent(q)}`,
+        `/store/adapters?q=${encodeURIComponent(q)}&limit=${limit}&offset=${offset}`,
       ),
   },
   logs: {
