@@ -12,15 +12,68 @@ export interface Adapter {
   module_name: string
 }
 
-export interface ConfigField {
+export interface ConfigContract {
+  namespace: string | null
+  is_scoped: boolean
+  owner_kind: 'plugin' | 'adapter' | 'nonebot' | 'apeiria'
+  owner_id: string
+  source: 'pydantic' | 'extra_only' | 'none'
+  fields: FieldNode[]
+  json_schema: Record<string, unknown>
+}
+
+export type FieldNode = PrimitiveField | ObjectField | ArrayField | MapField | AnyField
+
+export interface PrimitiveField {
+  kind: 'primitive'
   key: string
   label: string
-  help: string | null
-  type: string
+  description: string
+  type: 'str' | 'int' | 'float' | 'bool' | 'enum' | 'literal'
+  default: unknown
+  required: boolean
+  secret: boolean
+  choices?: { value: string; label: string }[]
+  order: number
+}
+
+export interface ObjectField {
+  kind: 'object'
+  key: string
+  label: string
+  description: string
+  children: FieldNode[]
+  default: Record<string, unknown> | null
+  order: number
+}
+
+export interface ArrayField {
+  kind: 'array'
+  key: string
+  label: string
+  description: string
+  item_schema: FieldNode | null
+  default: unknown[] | null
+  order: number
+}
+
+export interface MapField {
+  kind: 'map'
+  key: string
+  label: string
+  description: string
+  key_type: string
+  value_schema: FieldNode | null
+  order: number
+}
+
+export interface AnyField {
+  kind: 'any'
+  key: string
+  label: string
+  description: string
   default: unknown
   order: number
-  secret: boolean
-  choices: unknown[] | null
 }
 
 export interface StoreItem {
