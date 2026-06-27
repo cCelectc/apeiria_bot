@@ -69,6 +69,7 @@ export default {
     save: '保存配置',
     saving: '保存中...',
     saved: '配置已保存',
+    resetDefaults: '恢复默认',
     noConfig: '此{type}无配置项',
     noConfigDetail: '此{type}无配置项（空配置）',
     yamlError: 'YAML 语法错误',

@@ -5,7 +5,7 @@ import { toast } from 'vue-sonner'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { deepEqual } from '@/lib/configDiff'
-import type { ConfigContract } from '@/types'
+import type { ConfigContract, FieldNode } from '@/types'
 import FormRenderer from './FormRenderer.vue'
 import MonacoEditor from './MonacoEditor.vue'
 import UnsavedChangesDialog from './UnsavedChangesDialog.vue'
@@ -93,6 +93,29 @@ function switchMode(newMode: 'form' | 'code') {
     } catch (e) {
       toast.error(`YAML 语法错误: ${(e as Error).message}`)
     }
+  }
+}
+
+function collectDefaults(fields: FieldNode[]): Record<string, unknown> {
+  const result: Record<string, unknown> = {}
+  for (const f of fields) {
+    if (f.kind === 'object') {
+      result[f.key] = collectDefaults(f.children)
+    } else if (f.kind === 'array' || f.kind === 'map') {
+      result[f.key] = undefined
+    } else {
+      result[f.key] = f.default
+    }
+  }
+  return result
+}
+
+function resetToDefaults() {
+  const defaults = collectDefaults(props.schema.fields)
+  data.value = defaults
+  baseline.value = clone(defaults)
+  if (mode.value === 'code') {
+    yamlRaw.value = dump(defaults, { indent: 2 })
   }
 }
 
@@ -188,9 +211,14 @@ defineExpose({ isDirty, attemptClose })
           <TabsTrigger value="code">{{ $t('config.codeTab') }}</TabsTrigger>
         </TabsList>
       </Tabs>
-      <Button :disabled="saving" @click="handleSave">
-        {{ saving ? $t('config.saving') : $t('config.save') }}
-      </Button>
+      <div class="flex items-center gap-2">
+        <Button variant="outline" :disabled="saving" @click="resetToDefaults">
+          {{ $t('config.resetDefaults') }}
+        </Button>
+        <Button :disabled="saving" @click="handleSave">
+          {{ saving ? $t('config.saving') : $t('config.save') }}
+        </Button>
+      </div>
     </div>
 
     <div
