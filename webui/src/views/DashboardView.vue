@@ -44,7 +44,7 @@ const installedAdapterCount = computed(
     </div>
     <div v-else class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
       <Card>
-        <CardContent class="p-6">
+        <CardContent>
           <div class="flex size-11 items-center justify-center rounded-xl bg-primary/10 text-primary">
             <Activity class="size-6" />
           </div>
@@ -54,7 +54,7 @@ const installedAdapterCount = computed(
       </Card>
 
       <Card>
-        <CardContent class="p-6">
+        <CardContent>
           <div class="flex items-center justify-between">
             <div class="flex size-11 items-center justify-center rounded-xl bg-primary/10 text-primary">
               <Puzzle class="size-6" />
@@ -67,7 +67,7 @@ const installedAdapterCount = computed(
       </Card>
 
       <Card>
-        <CardContent class="p-6">
+        <CardContent>
           <div class="flex items-center justify-between">
             <div class="flex size-11 items-center justify-center rounded-xl bg-chart-3/10 text-chart-3">
               <Plug class="size-6" />

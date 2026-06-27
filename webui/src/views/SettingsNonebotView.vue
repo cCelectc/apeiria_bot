@@ -26,7 +26,7 @@ onBeforeRouteLeave(async () => {
   <div class="p-6 lg:p-8">
     <h1 class="mb-6 text-2xl font-semibold tracking-tight">NoneBot 设置</h1>
     <Card>
-      <CardContent class="p-6">
+      <CardContent>
         <Skeleton v-if="schemaLoading || configLoading" class="h-96" />
         <ConfigEditor
           v-else-if="schema && config"
