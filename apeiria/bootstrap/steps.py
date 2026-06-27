@@ -177,8 +177,22 @@ def step_access() -> None:
     logger.success("Access control initialized")
 
 
-def _needs_frontend_build(frontend_dir: Path) -> bool:
-    index = frontend_dir / "index.html"
+def _source_fingerprint(src_dir: Path) -> str:
+    import hashlib
+
+    hasher = hashlib.sha256()
+    for f in sorted(src_dir.rglob("*")):
+        if not f.is_file():
+            continue
+        if f.suffix not in (".vue", ".ts", ".js", ".css", ".json", ".html"):
+            continue
+        hasher.update(str(f.relative_to(src_dir)).encode())
+        hasher.update(f.read_bytes())
+    return hasher.hexdigest()
+
+
+def _needs_frontend_build(dist_dir: Path) -> bool:
+    index = dist_dir / "index.html"
     if not index.is_file():
         return True
 
@@ -186,15 +200,21 @@ def _needs_frontend_build(frontend_dir: Path) -> bool:
     if not src_dir.is_dir():
         return False
 
-    dist_mtime = index.stat().st_mtime
-    for f in src_dir.rglob("*"):
-        if not f.is_file():
-            continue
-        if f.suffix not in (".vue", ".ts", ".js", ".css", ".json"):
-            continue
-        if f.stat().st_mtime > dist_mtime:
-            return True
-    return False
+    current = _source_fingerprint(src_dir)
+    fingerprint_file = dist_dir / ".build_fingerprint"
+    try:
+        stored = fingerprint_file.read_text().strip()
+    except (OSError, ValueError):
+        return True
+    return stored != current
+
+
+def _write_build_fingerprint(dist_dir: Path) -> None:
+    src_dir = Path("webui/src")
+    if not src_dir.is_dir():
+        return
+    fingerprint_file = dist_dir / ".build_fingerprint"
+    fingerprint_file.write_text(_source_fingerprint(src_dir))
 
 
 def _try_auto_build_frontend() -> None:
@@ -231,6 +251,7 @@ def _try_auto_build_frontend() -> None:
             logger.warning("Frontend build failed:\n{}", result.stderr[-500:])
         else:
             logger.success("Frontend build completed")
+            _write_build_fingerprint(dist_dir)
     except OSError as e:
         logger.warning("Failed to run frontend build: {}", e)
 
