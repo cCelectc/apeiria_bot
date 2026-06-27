@@ -108,6 +108,13 @@ export default {
     homepage: '项目主页',
     noDescription: '无描述',
     pypiName: 'PyPI 包名',
+    cannotDisable: '作为其他插件的依赖被加载，无法禁用',
+    cannotUninstall: '作为依赖被加载，无法卸载',
+    dependency: '依赖关系',
+    dependsOn: '依赖以下插件',
+    dependedBy: '被以下插件依赖',
+    noDependencies: '无依赖关系',
+    nesting: '(嵌套)',
   },
   adapters: {
     title: '适配器管理',
