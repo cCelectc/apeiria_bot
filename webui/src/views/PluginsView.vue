@@ -181,9 +181,18 @@ function remove(name: string) {
               </div>
             </TableCell>
             <TableCell class="max-w-xs">
-              <span class="line-clamp-1 text-sm text-muted-foreground">
-                {{ p.description || '—' }}
-              </span>
+              <TooltipProvider :delay-duration="200">
+                <Tooltip>
+                  <TooltipTrigger as-child>
+                    <span class="line-clamp-1 text-sm text-muted-foreground cursor-default">
+                      {{ p.description || '—' }}
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent v-if="p.description">
+                    <p class="max-w-xs">{{ p.description }}</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
             </TableCell>
             <TableCell>
               <Badge v-if="p.type" variant="outline">{{ p.type }}</Badge>
