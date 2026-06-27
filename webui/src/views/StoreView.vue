@@ -2,6 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import { refDebounced } from '@vueuse/core'
 import {
+  AlertCircle,
   Check,
   ChevronLeft,
   ChevronRight,
@@ -43,12 +44,24 @@ watch([debouncedQuery, tab], () => {
   page.value = 1
 })
 
-const { data: pluginData, isFetching: pluginLoading } = useStorePluginsQuery(
+const {
+  data: pluginData,
+  isFetching: pluginLoading,
+  isError: pluginError,
+  error: pluginErrorDetail,
+  refetch: pluginRefetch,
+} = useStorePluginsQuery(
   debouncedQuery,
   page,
   isPlugins,
 )
-const { data: adapterData, isFetching: adapterLoading } = useStoreAdaptersQuery(
+const {
+  data: adapterData,
+  isFetching: adapterLoading,
+  isError: adapterError,
+  error: adapterErrorDetail,
+  refetch: adapterRefetch,
+} = useStoreAdaptersQuery(
   debouncedQuery,
   page,
   computed(() => !isPlugins.value),
@@ -63,6 +76,15 @@ const currentItems = computed<StoreItem[]>(
 )
 const currentLoading = computed(() =>
   isPlugins.value ? pluginLoading.value : adapterLoading.value,
+)
+const currentIsError = computed(() =>
+  isPlugins.value ? pluginError.value : adapterError.value,
+)
+const currentErrorDetail = computed(
+  () => (isPlugins.value ? pluginErrorDetail.value : adapterErrorDetail.value) as Error | null,
+)
+const currentRefetch = computed(() =>
+  isPlugins.value ? pluginRefetch : adapterRefetch,
 )
 const total = computed(
   () => (isPlugins.value ? pluginData.value?.total : adapterData.value?.total) ?? 0,
@@ -136,7 +158,15 @@ function openDetail(item: StoreItem) {
     </Tabs>
 
     <div class="mt-6">
-      <p v-if="currentLoading && !currentItems.length" class="py-12 text-center text-sm text-muted-foreground">
+      <div v-if="currentIsError" class="mb-4 rounded-lg border border-destructive/50 bg-destructive/10 p-4">
+        <div class="flex items-center gap-2">
+          <AlertCircle class="size-4 text-destructive" />
+          <p class="text-sm font-medium text-destructive">加载失败</p>
+        </div>
+        <p class="mt-1 text-sm text-destructive/80">{{ (currentErrorDetail as Error)?.message }}</p>
+        <Button variant="outline" size="sm" class="mt-2" @click="() => currentRefetch()">重试</Button>
+      </div>
+      <p v-else-if="currentLoading && !currentItems.length" class="py-12 text-center text-sm text-muted-foreground">
         加载中…
       </p>
       <p v-else-if="!currentItems.length" class="py-12 text-center text-sm text-muted-foreground">

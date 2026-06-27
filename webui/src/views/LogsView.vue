@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onUnmounted, ref, watch } from 'vue'
-import { ChevronLeft, ChevronRight, Pause, Play, Trash2 } from '@lucide/vue'
+import { AlertCircle, ChevronLeft, ChevronRight, Pause, Play, Trash2 } from '@lucide/vue'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
@@ -99,7 +99,7 @@ const params = computed(() => ({
   size: PAGE_SIZE,
 }))
 
-const { data: history, isFetching } = useLogHistoryQuery(params)
+const { data: history, isFetching, isError, error, refetch } = useLogHistoryQuery(params)
 
 const totalPages = computed(() =>
   history.value ? Math.max(1, Math.ceil(history.value.total / PAGE_SIZE)) : 1,
@@ -166,7 +166,15 @@ watch([level, keyword], () => {
         <div
           class="flex-1 min-h-0 overflow-auto rounded-xl border bg-card p-3 font-mono text-xs"
         >
-          <p v-if="isFetching" class="py-6 text-center text-muted-foreground">加载中…</p>
+          <div v-if="isError" class="mb-4 rounded-lg border border-destructive/50 bg-destructive/10 p-4">
+            <div class="flex items-center gap-2">
+              <AlertCircle class="size-4 text-destructive" />
+              <p class="text-sm font-medium text-destructive">加载失败</p>
+            </div>
+            <p class="mt-1 text-sm text-destructive/80">{{ (error as Error)?.message }}</p>
+            <Button variant="outline" size="sm" class="mt-2" @click="() => refetch()">重试</Button>
+          </div>
+          <p v-else-if="isFetching" class="py-6 text-center text-muted-foreground">加载中…</p>
           <p
             v-else-if="!history || !history.items.length"
             class="py-6 text-center text-muted-foreground"

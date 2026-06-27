@@ -1,13 +1,14 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { Activity, Plug, Puzzle } from '@lucide/vue'
+import { Activity, AlertCircle, Plug, Puzzle } from '@lucide/vue'
+import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useAdaptersQuery } from '@/composables/useAdapters'
 import { usePluginsQuery } from '@/composables/usePlugins'
 import { useStatusQuery } from '@/composables/useStatus'
 
-const { data, isLoading } = useStatusQuery()
+const { data, isLoading, isError, error, refetch } = useStatusQuery()
 const { data: installedPlugins } = usePluginsQuery()
 const { data: installedAdapters } = useAdaptersQuery()
 
@@ -39,7 +40,16 @@ const installedAdapterCount = computed(
     <h1 class="text-2xl font-semibold tracking-tight">看板</h1>
     <p class="mb-6 mt-1 text-sm text-muted-foreground">运行状态总览</p>
 
-    <div v-if="isLoading" class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+    <div v-if="isError" class="mb-4 rounded-lg border border-destructive/50 bg-destructive/10 p-4">
+      <div class="flex items-center gap-2">
+        <AlertCircle class="size-4 text-destructive" />
+        <p class="text-sm font-medium text-destructive">加载失败</p>
+      </div>
+      <p class="mt-1 text-sm text-destructive/80">{{ (error as Error)?.message }}</p>
+      <Button variant="outline" size="sm" class="mt-2" @click="() => refetch()">重试</Button>
+    </div>
+
+    <div v-else-if="isLoading" class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
       <Skeleton v-for="i in 3" :key="i" class="h-32 rounded-xl" />
     </div>
     <div v-else class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">

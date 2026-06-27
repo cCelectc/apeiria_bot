@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { reactive, ref, computed } from 'vue'
-import { Plus, Settings2, Trash2, X } from '@lucide/vue'
+import { AlertCircle, Plus, Settings2, Trash2, X } from '@lucide/vue'
 import { toast } from 'vue-sonner'
 import ConfigEditor from '@/components/ConfigEditor.vue'
 import { Badge } from '@/components/ui/badge'
@@ -31,7 +31,7 @@ import {
   useSaveAdapterConfig,
 } from '@/composables/useAdapters'
 
-const { data, isLoading } = useAdaptersQuery()
+const { data, isLoading, isError, error, refetch } = useAdaptersQuery()
 const { install, uninstall, setState } = useAdapterMutations()
 
 const installOpen = ref(false)
@@ -101,6 +101,15 @@ function remove(name: string) {
       </Button>
     </div>
 
+    <div v-if="isError" class="mb-4 rounded-lg border border-destructive/50 bg-destructive/10 p-4">
+      <div class="flex items-center gap-2">
+        <AlertCircle class="size-4 text-destructive" />
+        <p class="text-sm font-medium text-destructive">加载失败</p>
+      </div>
+      <p class="mt-1 text-sm text-destructive/80">{{ (error as Error)?.message }}</p>
+      <Button variant="outline" size="sm" class="mt-2" @click="() => refetch()">重试</Button>
+    </div>
+
     <div class="rounded-xl border bg-card shadow-sm">
       <Table>
         <TableHeader>
@@ -113,7 +122,7 @@ function remove(name: string) {
           </TableRow>
         </TableHeader>
         <TableBody>
-          <TableRow v-if="isLoading">
+          <TableRow v-else-if="isLoading">
             <TableCell colspan="5" class="text-center text-muted-foreground">
               加载中...
             </TableCell>

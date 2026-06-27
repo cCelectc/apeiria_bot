@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { reactive } from 'vue'
+import { AlertCircle } from '@lucide/vue'
 import { toast } from 'vue-sonner'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -8,7 +9,7 @@ import { Label } from '@/components/ui/label'
 import { useChangePasswordMutation } from '@/composables/useAuth'
 
 const form = reactive({ oldPassword: '', newPassword: '', confirm: '' })
-const { mutate, isPending } = useChangePasswordMutation()
+const { mutate, isPending, isError, error, reset } = useChangePasswordMutation()
 
 function onSubmit() {
   if (form.newPassword !== form.confirm) {
@@ -39,6 +40,14 @@ function onSubmit() {
         <CardTitle class="text-base">修改密码</CardTitle>
       </CardHeader>
       <CardContent>
+        <div v-if="isError" class="mb-4 rounded-lg border border-destructive/50 bg-destructive/10 p-4">
+          <div class="flex items-center gap-2">
+            <AlertCircle class="size-4 text-destructive" />
+            <p class="text-sm font-medium text-destructive">操作失败</p>
+          </div>
+          <p class="mt-1 text-sm text-destructive/80">{{ (error as Error)?.message }}</p>
+          <Button variant="outline" size="sm" class="mt-2" @click="() => reset()">重试</Button>
+        </div>
         <form class="space-y-4" @submit.prevent="onSubmit">
           <div class="space-y-2">
             <Label for="old">当前密码</Label>
