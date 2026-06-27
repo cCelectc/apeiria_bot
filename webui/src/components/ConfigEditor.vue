@@ -177,7 +177,7 @@ defineExpose({ isDirty, attemptClose })
 </script>
 
 <template>
-  <div class="flex min-h-0 flex-col space-y-4">
+  <div class="flex flex-col space-y-4">
     <div
       v-if="schema.source !== 'none'"
       class="sticky top-0 z-10 -mx-1 flex items-center justify-between bg-background px-1 pb-3"
