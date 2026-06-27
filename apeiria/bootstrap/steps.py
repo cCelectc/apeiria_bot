@@ -177,9 +177,65 @@ def step_access() -> None:
     logger.success("Access control initialized")
 
 
-def step_web() -> None:
-    from pathlib import Path
+def _needs_frontend_build(frontend_dir: Path) -> bool:
+    index = frontend_dir / "index.html"
+    if not index.is_file():
+        return True
 
+    src_dir = Path("webui/src")
+    if not src_dir.is_dir():
+        return False
+
+    dist_mtime = index.stat().st_mtime
+    for f in src_dir.rglob("*"):
+        if not f.is_file():
+            continue
+        if f.suffix not in (".vue", ".ts", ".js", ".css", ".json"):
+            continue
+        if f.stat().st_mtime > dist_mtime:
+            return True
+    return False
+
+
+def _try_auto_build_frontend() -> None:
+    import shutil
+    import subprocess
+
+    if not shutil.which("pnpm") or not shutil.which("node"):
+        logger.debug("pnpm/node not available, skipping frontend auto-build")
+        return
+
+    frontend_dir = Path("webui")
+    dist_dir = frontend_dir / "dist"
+
+    if not _needs_frontend_build(dist_dir):
+        return
+
+    logger.info("Frontend build needed — running pnpm build in webui/ ...")
+    try:
+        subprocess.run(
+            ["pnpm", "install", "--frozen-lockfile"],
+            cwd=str(frontend_dir),
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        result = subprocess.run(
+            ["pnpm", "build"],
+            cwd=str(frontend_dir),
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if result.returncode != 0:
+            logger.warning("Frontend build failed:\n{}", result.stderr[-500:])
+        else:
+            logger.success("Frontend build completed")
+    except OSError as e:
+        logger.warning("Failed to run frontend build: {}", e)
+
+
+def step_web() -> None:
     from fastapi import FastAPI, HTTPException
     from fastapi.responses import FileResponse
 
@@ -209,6 +265,8 @@ def step_web() -> None:
     app.include_router(router)
 
     frontend_dir = Path("webui/dist")
+
+    _try_auto_build_frontend()
 
     @app.get("/{full_path:path}")
     async def _serve_frontend(full_path: str) -> FileResponse:
