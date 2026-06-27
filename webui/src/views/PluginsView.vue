@@ -140,10 +140,10 @@ function remove(name: string) {
             <TableCell>
               <div class="font-medium">{{ p.display_name || p.name }}</div>
               <div
-                v-if="p.display_name && p.display_name !== p.name"
+                v-if="p.module && p.module !== (p.display_name || p.name)"
                 class="text-xs text-muted-foreground"
               >
-                {{ p.name }}
+                {{ p.module }}
               </div>
             </TableCell>
             <TableCell class="max-w-xs">

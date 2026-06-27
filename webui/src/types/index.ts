@@ -3,6 +3,7 @@ export interface Plugin {
   source: string
   enabled: boolean
   path_or_module: string
+  module: string
   display_name: string | null
   description: string | null
   usage: string | null
