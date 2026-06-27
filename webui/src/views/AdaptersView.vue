@@ -94,7 +94,7 @@ function remove(name: string) {
       </Button>
     </div>
 
-    <div class="rounded-xl border bg-card">
+    <div class="rounded-xl border bg-card shadow-sm">
       <Table>
         <TableHeader>
           <TableRow>
@@ -117,8 +117,12 @@ function remove(name: string) {
             </TableCell>
           </TableRow>
           <TableRow v-for="a in data?.adapters ?? []" :key="a.name">
-            <TableCell class="font-medium">{{ a.name }}</TableCell>
-            <TableCell class="text-muted-foreground">{{ a.module_name }}</TableCell>
+            <TableCell>
+              <div class="font-medium">{{ a.name }}</div>
+            </TableCell>
+            <TableCell class="font-mono text-xs text-muted-foreground">
+              {{ a.module_name }}
+            </TableCell>
             <TableCell>
               <Badge variant="secondary">{{ a.source }}</Badge>
             </TableCell>

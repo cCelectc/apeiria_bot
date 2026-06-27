@@ -106,7 +106,7 @@ function remove(name: string) {
       </Button>
     </div>
 
-    <div class="rounded-xl border bg-card">
+    <div class="rounded-xl border bg-card shadow-sm">
       <Table>
         <TableHeader>
           <TableRow>
