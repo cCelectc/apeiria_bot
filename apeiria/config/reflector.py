@@ -1,10 +1,14 @@
 from __future__ import annotations
 
 import typing
+from datetime import timedelta
+from decimal import Decimal
 from enum import Enum
+from pathlib import Path
 from typing import Any, Literal, get_args, get_origin
+from uuid import UUID
 
-from pydantic import BaseModel
+from pydantic import BaseModel, SecretBytes, SecretStr
 
 from apeiria.config.schema import (
     AnyField,
@@ -15,12 +19,44 @@ from apeiria.config.schema import (
     PrimitiveField,
 )
 
-_TYPE_MAP: dict[type, str] = {
+_TYPE_MAP: dict[object, str] = {
     str: "str",
     int: "int",
     float: "float",
     bool: "bool",
+    Decimal: "float",
+    UUID: "str",
+    Path: "str",
+    timedelta: "str",
 }
+
+_SECRET_TYPES: tuple[type, ...] = (SecretStr, SecretBytes)
+
+_STRING_LIKE_TYPES: tuple[type, ...] = (UUID, Path, timedelta)
+
+
+def _try_import_ipaddress_types() -> dict[type, str]:
+    result: dict[type, str] = {}
+    try:
+        from ipaddress import IPv4Address, IPv6Address, IPvAnyAddress
+
+        result[IPv4Address] = "str"
+        result[IPv6Address] = "str"
+        result[IPvAnyAddress] = "str"
+    except ImportError:
+        pass
+    try:
+        from pydantic.networks import AnyUrl, FileUrl, HttpUrl
+
+        result[AnyUrl] = "str"
+        result[FileUrl] = "str"
+        result[HttpUrl] = "str"
+    except ImportError:
+        pass
+    return result
+
+
+_TYPE_MAP.update(_try_import_ipaddress_types())
 
 
 def _get_pydantic_type(field_info: Any) -> type:
@@ -118,6 +154,8 @@ def _reflect_field(field_name: str, field_info: Any) -> FieldNode:
         "description": description,
     }
 
+    is_secret = isinstance(annotation, type) and issubclass(annotation, _SECRET_TYPES)
+
     optional = _is_optional(annotation)
     if optional:
         annotation = _unwrap_optional(annotation)
@@ -152,6 +190,7 @@ def _reflect_field(field_name: str, field_info: Any) -> FieldNode:
         type=ptype,
         default=_make_json_safe(default_val),
         required=is_required and not optional,
+        secret=is_secret,
         choices=choices or None,
         **base_kwargs,
     )
