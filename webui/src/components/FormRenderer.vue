@@ -14,6 +14,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
+import MarkdownText from '@/components/MarkdownText.vue'
 
 const props = defineProps<{
   fields: FieldNode[]
@@ -127,7 +128,7 @@ function updateMapValue(field: MapField, key: string, value: unknown) {
             默认: {{ fmtDefault((field as PrimitiveField).default) }}
           </span>
         </div>
-        <p v-if="field.description" class="text-[0.8rem] text-muted-foreground">{{ field.description }}</p>
+        <MarkdownText v-if="field.description" :text="field.description" class="text-xs text-muted-foreground" />
         <div>
           <Switch
             v-if="(field as PrimitiveField).type === 'bool'"
@@ -190,7 +191,7 @@ function updateMapValue(field: MapField, key: string, value: unknown) {
             {{ GROUP_TYPE_LABEL.object }}
           </span>
         </div>
-        <p v-if="field.description" class="text-[0.8rem] text-muted-foreground">{{ field.description }}</p>
+        <MarkdownText v-if="field.description" :text="field.description" class="text-xs text-muted-foreground" />
         <div class="border-l-2 border-border/70 pl-4">
           <FormRenderer
             :fields="(field as ObjectField).children"
@@ -208,7 +209,7 @@ function updateMapValue(field: MapField, key: string, value: unknown) {
             {{ GROUP_TYPE_LABEL.array }}
           </span>
         </div>
-        <p v-if="field.description" class="text-[0.8rem] text-muted-foreground">{{ field.description }}</p>
+        <MarkdownText v-if="field.description" :text="field.description" class="text-xs text-muted-foreground" />
         <div class="divide-y divide-border border-l-2 border-border/70 pl-4">
           <div
             v-for="(item, idx) in (modelValue[field.key] as unknown[] || [])"
@@ -247,7 +248,7 @@ function updateMapValue(field: MapField, key: string, value: unknown) {
             {{ GROUP_TYPE_LABEL.map }}
           </span>
         </div>
-        <p v-if="field.description" class="text-[0.8rem] text-muted-foreground">{{ field.description }}</p>
+        <MarkdownText v-if="field.description" :text="field.description" class="text-xs text-muted-foreground" />
         <div class="divide-y divide-border border-l-2 border-border/70 pl-4">
           <div
             v-for="(v, k) in (modelValue[field.key] as Record<string, unknown> || {})"
@@ -295,7 +296,7 @@ function updateMapValue(field: MapField, key: string, value: unknown) {
             {{ GROUP_TYPE_LABEL.any }}
           </span>
         </div>
-        <p v-if="field.description" class="text-[0.8rem] text-muted-foreground">{{ field.description }}</p>
+        <MarkdownText v-if="field.description" :text="field.description" class="text-xs text-muted-foreground" />
         <div>
           <Input
             :model-value="String(modelValue[field.key] ?? '')"
