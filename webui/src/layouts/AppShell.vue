@@ -50,6 +50,7 @@ import {
   SidebarProvider,
   SidebarTrigger,
 } from '@/components/ui/sidebar'
+import { useSidebar } from '@/components/ui/sidebar/utils'
 import { useAuthStore } from '@/stores/auth'
 import { type Theme, useUiStore } from '@/stores/ui'
 
@@ -57,6 +58,7 @@ const route = useRoute()
 const router = useRouter()
 const ui = useUiStore()
 const auth = useAuthStore()
+const sidebar = useSidebar()
 const { t } = useI18n()
 
 const settingsOpen = ref(false)
@@ -141,36 +143,56 @@ function logout() {
           <SidebarGroupContent>
             <SidebarMenu>
               <SidebarMenuItem>
-                <SidebarMenuButton
-                  :is-active="route.path.startsWith('/settings')"
-                  :tooltip="$t('nav.settings')"
-                  @click="settingsOpen = !settingsOpen"
-                >
-                  <Settings class="size-4" />
-                  <span>{{ $t('nav.settings') }}</span>
-                  <ChevronDown
-                    class="ml-auto size-4 transition-transform"
-                    :class="{ 'rotate-180': settingsOpen }"
-                  />
-                </SidebarMenuButton>
-                <SidebarMenuSub v-show="settingsOpen">
-                  <SidebarMenuSubItem>
-                    <SidebarMenuSubButton
-                      as-child
-                      :is-active="route.name === 'settings-nonebot'"
+                <template v-if="sidebar.state.value === 'expanded'">
+                  <SidebarMenuButton
+                    :is-active="route.path.startsWith('/settings')"
+                    @click="settingsOpen = !settingsOpen"
+                  >
+                    <Settings class="size-4" />
+                    <span>{{ $t('nav.settings') }}</span>
+                    <ChevronDown
+                      class="ml-auto size-4 transition-transform"
+                      :class="{ 'rotate-180': settingsOpen }"
+                    />
+                  </SidebarMenuButton>
+                  <SidebarMenuSub v-show="settingsOpen">
+                    <SidebarMenuSubItem>
+                      <SidebarMenuSubButton
+                        as-child
+                        :is-active="route.name === 'settings-nonebot'"
+                      >
+                        <RouterLink :to="{ name: 'settings-nonebot' }">NoneBot</RouterLink>
+                      </SidebarMenuSubButton>
+                    </SidebarMenuSubItem>
+                    <SidebarMenuSubItem>
+                      <SidebarMenuSubButton
+                        as-child
+                        :is-active="route.name === 'settings-apeiria'"
+                      >
+                        <RouterLink :to="{ name: 'settings-apeiria' }">Apeiria</RouterLink>
+                      </SidebarMenuSubButton>
+                    </SidebarMenuSubItem>
+                  </SidebarMenuSub>
+                </template>
+                <DropdownMenu v-else>
+                  <DropdownMenuTrigger as-child>
+                    <SidebarMenuButton
+                      :is-active="route.path.startsWith('/settings')"
+                      :tooltip="$t('nav.settings')"
                     >
-                      <RouterLink :to="{ name: 'settings-nonebot' }">NoneBot</RouterLink>
-                    </SidebarMenuSubButton>
-                  </SidebarMenuSubItem>
-                  <SidebarMenuSubItem>
-                    <SidebarMenuSubButton
-                      as-child
-                      :is-active="route.name === 'settings-apeiria'"
-                    >
-                      <RouterLink :to="{ name: 'settings-apeiria' }">Apeiria</RouterLink>
-                    </SidebarMenuSubButton>
-                  </SidebarMenuSubItem>
-                </SidebarMenuSub>
+                      <Settings class="size-4" />
+                      <span>{{ $t('nav.settings') }}</span>
+                    </SidebarMenuButton>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent side="right" align="start">
+                    <DropdownMenuItem @click="router.push({ name: 'settings-nonebot' })">
+                      NoneBot
+                    </DropdownMenuItem>
+                    <DropdownMenuItem @click="router.push({ name: 'settings-apeiria' })">
+                      Apeiria
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </SidebarMenuItem>
               <SidebarMenuItem>
                 <SidebarMenuButton
