@@ -209,8 +209,18 @@ logs_router = APIRouter(prefix="/api/logs", tags=["logs"])
 
 @logs_router.get("/stream", dependencies=[Depends(verify_token)])
 async def stream(request: Request) -> StreamingResponse:
+    hub = get_log_hub()
+
+    async def event_stream_with_history() -> AsyncIterator[str]:
+        history = await asyncio.to_thread(hub.read_history, "", "", 1, 50)
+        for record in history["items"]:
+            yield f"data: {json.dumps(record, ensure_ascii=False)}\n\n"
+
+        async for event in hub.event_stream(request):
+            yield event
+
     return StreamingResponse(
-        get_log_hub().event_stream(request),
+        event_stream_with_history(),
         media_type="text/event-stream",
     )
 
