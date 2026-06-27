@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { reactive, ref } from 'vue'
+import { reactive, ref, computed } from 'vue'
 import { Plus, Settings2, Trash2 } from '@lucide/vue'
 import { toast } from 'vue-sonner'
-import ConfigForm from '@/components/ConfigForm.vue'
+import ConfigEditor from '@/components/ConfigEditor.vue'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -24,7 +24,12 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { usePluginMutations, usePluginsQuery } from '@/composables/usePlugins'
+import {
+  usePluginConfigQuery,
+  usePluginMutations,
+  usePluginsQuery,
+  useSavePluginConfig,
+} from '@/composables/usePlugins'
 
 const { data, isLoading } = usePluginsQuery()
 const { install, uninstall, setState } = usePluginMutations()
@@ -34,6 +39,10 @@ const installForm = reactive({ name: '', pkg: '' })
 
 const configOpen = ref(false)
 const configPlugin = ref('')
+const { data: pluginConfigData } = usePluginConfigQuery(
+  computed(() => configPlugin.value),
+)
+const savePluginConfig = useSavePluginConfig()
 
 function openConfig(name: string) {
   configPlugin.value = name
@@ -149,10 +158,24 @@ function remove(name: string) {
       </DialogContent>
     </Dialog>
 
-    <ConfigForm
-      v-if="configPlugin"
-      v-model:open="configOpen"
-      :plugin-name="configPlugin"
-    />
+    <Dialog v-model:open="configOpen">
+      <DialogContent class="max-w-2xl max-h-[85vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>{{ configPlugin }} 配置</DialogTitle>
+        </DialogHeader>
+        <ConfigEditor
+          v-if="pluginConfigData"
+          :schema="pluginConfigData.schema"
+          :model-value="pluginConfigData.values"
+          section="plugins"
+          :owner-id="configPlugin"
+          :save-mutation="
+            async (d: Record<string, unknown>) => {
+              await savePluginConfig.mutateAsync({ name: configPlugin, data: d })
+            }
+          "
+        />
+      </DialogContent>
+    </Dialog>
   </div>
 </template>

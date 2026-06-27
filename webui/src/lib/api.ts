@@ -2,7 +2,7 @@ import router from '@/router'
 import { useAuthStore } from '@/stores/auth'
 import type {
   Adapter,
-  ConfigField,
+  ConfigContract,
   LogHistory,
   LoginResponse,
   Plugin,
@@ -65,7 +65,10 @@ export const api = {
     setState: (data: { name: string; enabled: boolean }) =>
       request<{ ok: boolean }>('POST', '/plugins/state', data),
     config: (name: string) =>
-      request<{ fields: ConfigField[] }>('GET', `/plugins/${name}/config`),
+      request<ConfigContract & { values: Record<string, unknown> }>(
+        'GET',
+        `/plugins/${name}/config`,
+      ),
   },
   adapters: {
     list: () => request<{ adapters: Adapter[] }>('GET', '/adapters/list'),
@@ -75,11 +78,18 @@ export const api = {
       request<{ ok: boolean }>('POST', '/adapters/uninstall', data),
     setState: (data: { name: string; enabled: boolean }) =>
       request<{ ok: boolean }>('POST', '/adapters/state', data),
+    config: (name: string) =>
+      request<ConfigContract & { values: Record<string, unknown> }>(
+        'GET',
+        `/adapters/${name}/config`,
+      ),
   },
   config: {
     get: () => request<Record<string, unknown>>('GET', '/config'),
     update: (section: string, data: Record<string, unknown>) =>
       request<{ ok: boolean }>('PUT', `/config/${section}`, data),
+    schema: (section: string) =>
+      request<ConfigContract>('GET', `/config/schema/${section}`),
   },
   store: {
     searchPlugins: (q: string) =>

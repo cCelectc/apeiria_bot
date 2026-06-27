@@ -13,7 +13,7 @@ const DashboardView = () => import('@/views/DashboardView.vue')
 const PluginsView = () => import('@/views/PluginsView.vue')
 const AdaptersView = () => import('@/views/AdaptersView.vue')
 const StoreView = () => import('@/views/StoreView.vue')
-const ConfigView = () => import('@/views/ConfigView.vue')
+const SettingsView = () => import('@/views/SettingsView.vue')
 const LogsView = () => import('@/views/LogsView.vue')
 const AccountView = () => import('@/views/AccountView.vue')
 
@@ -34,7 +34,7 @@ const router = createRouter({
         { path: 'plugins', name: 'plugins', component: PluginsView },
         { path: 'adapters', name: 'adapters', component: AdaptersView },
         { path: 'store', name: 'store', component: StoreView },
-        { path: 'config', name: 'config', component: ConfigView },
+        { path: 'settings', name: 'settings', component: SettingsView },
         { path: 'logs', name: 'logs', component: LogsView },
         { path: 'account', name: 'account', component: AccountView },
       ],

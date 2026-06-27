@@ -42,4 +42,21 @@ export default {
     success: '密码已修改',
     wrongPassword: '当前密码错误',
   },
+  settings: {
+    title: '设置',
+    nonebot: 'NoneBot 配置',
+    apeiria: 'Apeiria 配置',
+  },
+  config: {
+    form: '表单',
+    code: '源码',
+    save: '保存配置',
+    saving: '保存中...',
+    saved: '配置已保存',
+    noConfig: '此{type}无配置项',
+    yamlError: 'YAML 语法错误',
+    saveFailed: '保存失败',
+    add: '添加',
+    remove: '删除',
+  },
 }

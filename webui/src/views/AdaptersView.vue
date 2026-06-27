@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { reactive, ref } from 'vue'
-import { Plus, Trash2 } from '@lucide/vue'
+import { reactive, ref, computed } from 'vue'
+import { Plus, Settings2, Trash2 } from '@lucide/vue'
 import { toast } from 'vue-sonner'
+import ConfigEditor from '@/components/ConfigEditor.vue'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -23,13 +24,30 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { useAdapterMutations, useAdaptersQuery } from '@/composables/useAdapters'
+import {
+  useAdapterConfigQuery,
+  useAdapterMutations,
+  useAdaptersQuery,
+  useSaveAdapterConfig,
+} from '@/composables/useAdapters'
 
 const { data, isLoading } = useAdaptersQuery()
 const { install, uninstall, setState } = useAdapterMutations()
 
 const installOpen = ref(false)
 const installForm = reactive({ name: '', pkg: '', module_name: '' })
+
+const configOpen = ref(false)
+const configAdapter = ref('')
+const { data: adapterConfigData } = useAdapterConfigQuery(
+  computed(() => configAdapter.value),
+)
+const saveAdapterConfig = useSaveAdapterConfig()
+
+function openConfig(name: string) {
+  configAdapter.value = name
+  configOpen.value = true
+}
 
 function submitInstall() {
   install.mutate(
@@ -68,7 +86,7 @@ function remove(name: string) {
     <div class="mb-6 flex items-center justify-between gap-4">
       <div>
         <h1 class="text-2xl font-semibold tracking-tight">适配器管理</h1>
-        <p class="mt-1 text-sm text-muted-foreground">安装、卸载与启停</p>
+        <p class="mt-1 text-sm text-muted-foreground">安装、卸载、启停与配置</p>
       </div>
       <Button @click="installOpen = true">
         <Plus class="size-4" />
@@ -111,6 +129,9 @@ function remove(name: string) {
               />
             </TableCell>
             <TableCell class="text-right">
+              <Button variant="ghost" size="icon" @click="openConfig(a.name)">
+                <Settings2 class="size-4" />
+              </Button>
               <Button variant="ghost" size="icon" @click="remove(a.name)">
                 <Trash2 class="size-4 text-destructive" />
               </Button>
@@ -144,6 +165,32 @@ function remove(name: string) {
           <Button variant="outline" @click="installOpen = false">取消</Button>
           <Button :disabled="install.isPending.value" @click="submitInstall">安装</Button>
         </DialogFooter>
+      </DialogContent>
+    </Dialog>
+
+    <Dialog v-model:open="configOpen">
+      <DialogContent class="max-w-2xl max-h-[85vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>{{ configAdapter }} 适配器配置</DialogTitle>
+        </DialogHeader>
+        <ConfigEditor
+          v-if="adapterConfigData"
+          :schema="adapterConfigData.schema"
+          :model-value="adapterConfigData.values"
+          section="adapters"
+          :owner-id="configAdapter"
+          :save-mutation="
+            async (d: Record<string, unknown>) => {
+              await saveAdapterConfig.mutateAsync({ name: configAdapter, data: d })
+            }
+          "
+        />
+        <div
+          v-else
+          class="text-muted-foreground text-sm py-8 text-center"
+        >
+          此适配器无配置项
+        </div>
       </DialogContent>
     </Dialog>
   </div>

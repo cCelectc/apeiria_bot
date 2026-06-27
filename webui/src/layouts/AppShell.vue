@@ -52,7 +52,6 @@ const nav = [
   { name: 'plugins', label: '插件', icon: Puzzle },
   { name: 'adapters', label: '适配器', icon: Plug },
   { name: 'store', label: '商店', icon: Store },
-  { name: 'config', label: '配置', icon: Settings },
   { name: 'logs', label: '日志', icon: ScrollText },
 ]
 
@@ -100,6 +99,36 @@ function logout() {
                   <RouterLink :to="{ name: item.name }">
                     <component :is="item.icon" />
                     <span>{{ item.label }}</span>
+                  </RouterLink>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+        <SidebarGroup class="mt-auto">
+          <SidebarGroupContent>
+            <SidebarMenu>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  as-child
+                  :is-active="route.name === 'settings'"
+                  tooltip="设置"
+                >
+                  <RouterLink :to="{ name: 'settings' }">
+                    <Settings class="size-4" />
+                    <span>设置</span>
+                  </RouterLink>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  as-child
+                  :is-active="route.name === 'account'"
+                  tooltip="账户"
+                >
+                  <RouterLink :to="{ name: 'account' }">
+                    <KeyRound class="size-4" />
+                    <span>账户</span>
                   </RouterLink>
                 </SidebarMenuButton>
               </SidebarMenuItem>

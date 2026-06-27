@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/vue-query'
 import { computed, type MaybeRefOrGetter, toValue } from 'vue'
 import { api } from '@/lib/api'
+import type { ConfigContract } from '@/types'
 
 export function usePluginsQuery() {
   return useQuery({
@@ -12,8 +13,26 @@ export function usePluginsQuery() {
 export function usePluginConfigQuery(name: MaybeRefOrGetter<string>) {
   return useQuery({
     queryKey: computed(() => ['plugin-config', toValue(name)]),
-    queryFn: () => api.plugins.config(toValue(name)),
+    queryFn: async () => {
+      const res = await api.plugins.config(toValue(name))
+      return {
+        schema: res as ConfigContract,
+        values: res.values || {},
+      }
+    },
     enabled: computed(() => Boolean(toValue(name))),
+  })
+}
+
+export function useSavePluginConfig() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (vars: { name: string; data: Record<string, unknown> }) => {
+      await api.config.update('plugins', { [vars.name]: vars.data })
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['plugin-config'] })
+    },
   })
 }
 
