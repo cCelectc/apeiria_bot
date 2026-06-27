@@ -1,14 +1,10 @@
 from __future__ import annotations
 
 import typing
-from datetime import timedelta
-from decimal import Decimal
 from enum import Enum
-from pathlib import Path
 from typing import Any, Literal, get_args, get_origin
-from uuid import UUID
 
-from pydantic import BaseModel, SecretBytes, SecretStr
+from pydantic import BaseModel
 
 from apeiria.config.schema import (
     AnyField,
@@ -18,45 +14,6 @@ from apeiria.config.schema import (
     ObjectField,
     PrimitiveField,
 )
-
-_TYPE_MAP: dict[object, str] = {
-    str: "str",
-    int: "int",
-    float: "float",
-    bool: "bool",
-    Decimal: "float",
-    UUID: "str",
-    Path: "str",
-    timedelta: "str",
-}
-
-_SECRET_TYPES: tuple[type, ...] = (SecretStr, SecretBytes)
-
-_STRING_LIKE_TYPES: tuple[type, ...] = (UUID, Path, timedelta)
-
-
-def _try_import_ipaddress_types() -> dict[type, str]:
-    result: dict[type, str] = {}
-    try:
-        from ipaddress import IPv4Address, IPv6Address, IPvAnyAddress
-
-        result[IPv4Address] = "str"
-        result[IPv6Address] = "str"
-        result[IPvAnyAddress] = "str"
-    except ImportError:
-        pass
-    try:
-        from pydantic.networks import AnyUrl, FileUrl, HttpUrl
-
-        result[AnyUrl] = "str"
-        result[FileUrl] = "str"
-        result[HttpUrl] = "str"
-    except ImportError:
-        pass
-    return result
-
-
-_TYPE_MAP.update(_try_import_ipaddress_types())
 
 
 def _get_pydantic_type(field_info: Any) -> type:
@@ -81,13 +38,46 @@ def _unwrap_optional(annotation: type) -> type:
     return annotation
 
 
+def _is_secret_type(annotation: type) -> bool:
+    if not isinstance(annotation, type):
+        return False
+    qualname = getattr(annotation, "__qualname__", "").lower()
+    module = getattr(annotation, "__module__", "").lower()
+    return "secret" in qualname or "secret" in module
+
+
+def _is_enum_type(annotation: type) -> bool:
+    origin = get_origin(annotation)
+    if origin is Literal:
+        return False
+    return isinstance(annotation, type) and issubclass(annotation, Enum)
+
+
+def _is_bool_type(annotation: type) -> bool:
+    return isinstance(annotation, type) and annotation is bool
+
+
+def _is_int_type(annotation: type) -> bool:
+    return isinstance(annotation, type) and issubclass(annotation, int)
+
+
+def _is_float_type(annotation: type) -> bool:
+    return isinstance(annotation, type) and issubclass(annotation, float)
+
+
 def _infer_primitive_type(annotation: type) -> str:
     origin = get_origin(annotation)
     if origin is Literal:
         return "literal"
-    if isinstance(annotation, type) and issubclass(annotation, Enum):
+    if _is_enum_type(annotation):
         return "enum"
-    return _TYPE_MAP.get(annotation, "str")
+    if _is_bool_type(annotation):
+        return "bool"
+    if _is_int_type(annotation):
+        return "int"
+    if _is_float_type(annotation):
+        return "float"
+    return "str"
 
 
 def _extract_choices(annotation: type) -> list[dict[str, str]] | None:
@@ -95,8 +85,11 @@ def _extract_choices(annotation: type) -> list[dict[str, str]] | None:
     if origin is Literal:
         args = get_args(annotation)
         return [{"value": str(a), "label": str(a)} for a in args]
-    if isinstance(annotation, type) and issubclass(annotation, Enum):
-        return [{"value": member.value, "label": member.name} for member in annotation]
+    if _is_enum_type(annotation):
+        return [
+            {"value": member.value, "label": member.name}
+            for member in annotation  # type: ignore[var-annotated]
+        ]
     return None
 
 
@@ -154,7 +147,7 @@ def _reflect_field(field_name: str, field_info: Any) -> FieldNode:
         "description": description,
     }
 
-    is_secret = isinstance(annotation, type) and issubclass(annotation, _SECRET_TYPES)
+    is_secret = _is_secret_type(annotation)
 
     optional = _is_optional(annotation)
     if optional:
