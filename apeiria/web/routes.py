@@ -19,7 +19,8 @@ from apeiria.plugin.manager import install_plugin, set_plugin_state, uninstall_p
 from apeiria.plugin.metadata.resolver import resolve_config_namespace_contract
 from apeiria.plugin.scanner import scan_plugins
 from apeiria.web.auth import verify_token
-from apeiria.web.store import get_status, get_store
+from apeiria.web.plugin_metadata import merge_plugin_metadata
+from apeiria.web.store import get_status, get_store, paginate
 
 router = APIRouter(prefix="/api", dependencies=[Depends(verify_token)])
 
@@ -36,15 +37,24 @@ def _write_yaml(raw: dict) -> None:
 
 @router.get("/plugins/list")
 async def api_plugins_list() -> JSONResponse:
-    items = [
-        {
-            "name": p.name,
-            "source": p.source,
-            "enabled": p.enabled,
-            "path_or_module": p.path_or_module,
+    import nonebot
+
+    metadata_map: dict[str, dict] = {}
+    for plugin in nonebot.get_loaded_plugins():
+        meta = plugin.metadata
+        if meta is None:
+            continue
+        adapters = meta.supported_adapters
+        metadata_map[plugin.name] = {
+            "name": meta.name,
+            "description": meta.description,
+            "usage": meta.usage,
+            "type": meta.type,
+            "homepage": meta.homepage,
+            "supported_adapters": sorted(adapters) if adapters else None,
         }
-        for p in scan_plugins()
-    ]
+
+    items = merge_plugin_metadata(scan_plugins(), metadata_map)
     return JSONResponse(content={"plugins": items})
 
 
@@ -247,10 +257,15 @@ def _patch_config(section: str, data: dict) -> None:
 
 
 @router.get("/store/plugins")
-async def api_store_search(q: str = "") -> JSONResponse:
+async def api_store_search(
+    q: str = "", limit: int = 60, offset: int = 0
+) -> JSONResponse:
     store = get_store()
     items = await store.search(q)
-    return JSONResponse(content={"results": [it.to_dict() for it in items]})
+    page, total = paginate(items, offset, limit)
+    return JSONResponse(
+        content={"results": [it.to_dict() for it in page], "total": total}
+    )
 
 
 @router.get("/store/plugins/{pkg_name}")
@@ -263,10 +278,15 @@ async def api_store_get(pkg_name: str) -> JSONResponse:
 
 
 @router.get("/store/adapters")
-async def api_store_adapters_search(q: str = "") -> JSONResponse:
+async def api_store_adapters_search(
+    q: str = "", limit: int = 60, offset: int = 0
+) -> JSONResponse:
     store = get_store()
     items = await store.search_adapters(q)
-    return JSONResponse(content={"results": [it.to_dict() for it in items]})
+    page, total = paginate(items, offset, limit)
+    return JSONResponse(
+        content={"results": [it.to_dict() for it in page], "total": total}
+    )
 
 
 @router.get("/store/sources")
