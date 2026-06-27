@@ -211,7 +211,7 @@ function remove(name: string) {
 
     <Dialog v-model:open="configOpen">
       <DialogContent
-        class="max-w-2xl max-h-[85vh] overflow-y-auto"
+        class="max-w-2xl max-h-[85vh] flex flex-col overflow-hidden"
         :show-close-button="false"
         @escape-key-down="(e) => { e.preventDefault(); guardCloseConfig() }"
         @interact-outside="(e) => { e.preventDefault(); guardCloseConfig() }"

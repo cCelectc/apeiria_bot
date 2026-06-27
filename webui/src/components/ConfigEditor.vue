@@ -177,10 +177,10 @@ defineExpose({ isDirty, attemptClose })
 </script>
 
 <template>
-  <div class="flex min-h-0 flex-col space-y-4">
+  <div class="flex h-full flex-col space-y-4">
     <div
       v-if="schema.source !== 'none'"
-      class="sticky top-0 z-10 -mx-1 flex items-center justify-between bg-background/95 px-1 pb-3 backdrop-blur"
+      class="-mx-1 flex items-center justify-between bg-background px-1 pb-3"
     >
       <Tabs :model-value="mode" @update:model-value="(v) => v && switchMode(v as 'form' | 'code')">
         <TabsList>
@@ -204,7 +204,7 @@ defineExpose({ isDirty, attemptClose })
       <FormRenderer :fields="schema.fields" :model-value="data" @update:model-value="onFormUpdate" />
     </div>
 
-    <div v-else class="flex-1 min-h-0">
+    <div v-else class="flex-1 min-h-0 overflow-auto">
       <MonacoEditor
         :model-value="yamlRaw"
         :json-schema="(schema.json_schema as Record<string, unknown>) || undefined"
