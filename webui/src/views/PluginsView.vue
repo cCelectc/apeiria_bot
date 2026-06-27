@@ -188,8 +188,8 @@ function remove(name: string) {
                       {{ p.description || '—' }}
                     </span>
                   </TooltipTrigger>
-                  <TooltipContent v-if="p.description">
-                    <p class="max-w-xs">{{ p.description }}</p>
+                  <TooltipContent v-if="p.description" class="max-w-xs">
+                    <p>{{ p.description }}</p>
                   </TooltipContent>
                 </Tooltip>
               </TooltipProvider>
