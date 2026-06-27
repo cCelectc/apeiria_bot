@@ -193,15 +193,17 @@ function remove(name: string) {
               />
             </TableCell>
             <TableCell class="text-right">
-              <Button variant="ghost" size="icon" :aria-label="`查看 ${p.name} 详情`" @click="openDetail(p)">
-                <Info class="size-4" aria-hidden="true" />
-              </Button>
-              <Button variant="ghost" size="icon" :aria-label="`配置 ${p.name}`" @click="openConfig(p.name)">
-                <Settings2 class="size-4" aria-hidden="true" />
-              </Button>
-              <Button variant="ghost" size="icon" :aria-label="`卸载 ${p.name}`" @click="remove(p.name)">
-                <Trash2 class="size-4 text-destructive" aria-hidden="true" />
-              </Button>
+              <div class="flex items-center justify-end gap-0.5">
+                <Button variant="ghost" size="icon" :aria-label="`查看 ${p.name} 详情`" @click="openDetail(p)">
+                  <Info class="size-4" aria-hidden="true" />
+                </Button>
+                <Button variant="ghost" size="icon" :aria-label="`配置 ${p.name}`" @click="openConfig(p.name)">
+                  <Settings2 class="size-4" aria-hidden="true" />
+                </Button>
+                <Button variant="ghost" size="icon" :aria-label="`卸载 ${p.name}`" @click="remove(p.name)">
+                  <Trash2 class="size-4 text-destructive" aria-hidden="true" />
+                </Button>
+              </div>
             </TableCell>
           </TableRow>
         </TableBody>

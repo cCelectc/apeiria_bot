@@ -168,12 +168,14 @@ function remove(name: string) {
               />
             </TableCell>
             <TableCell class="text-right">
-              <Button variant="ghost" size="icon" :aria-label="`配置 ${a.name}`" @click="openConfig(a.name)">
-                <Settings2 class="size-4" aria-hidden="true" />
-              </Button>
-              <Button variant="ghost" size="icon" :aria-label="`卸载 ${a.name}`" @click="remove(a.name)">
-                <Trash2 class="size-4 text-destructive" aria-hidden="true" />
-              </Button>
+              <div class="flex items-center justify-end gap-0.5">
+                <Button variant="ghost" size="icon" :aria-label="`配置 ${a.name}`" @click="openConfig(a.name)">
+                  <Settings2 class="size-4" aria-hidden="true" />
+                </Button>
+                <Button variant="ghost" size="icon" :aria-label="`卸载 ${a.name}`" @click="remove(a.name)">
+                  <Trash2 class="size-4 text-destructive" aria-hidden="true" />
+                </Button>
+              </div>
             </TableCell>
           </TableRow>
         </TableBody>
