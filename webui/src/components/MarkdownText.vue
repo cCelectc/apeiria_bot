@@ -1,15 +1,15 @@
 <script setup lang="ts">
-import { computed } from 'vue'
-import { marked } from 'marked'
+import { computed } from "vue";
+import { marked } from "marked";
 
 const props = defineProps<{
-  text?: string
-}>()
+  text?: string;
+}>();
 
 const html = computed(() => {
-  if (!props.text) return ''
-  return marked.parse(props.text) as string
-})
+  if (!props.text) return "";
+  return marked.parse(props.text) as string;
+});
 </script>
 
 <template>

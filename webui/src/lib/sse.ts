@@ -4,8 +4,8 @@ export function createSseClient(
   onMessage: (data: string) => void,
   onError?: (err: Error) => void,
 ): { close: () => void } {
-  const controller = new AbortController()
-  let stopped = false
+  const controller = new AbortController();
+  let stopped = false;
 
   async function connect() {
     while (!stopped) {
@@ -13,48 +13,48 @@ export function createSseClient(
         const response = await fetch(url, {
           headers: { Authorization: `Bearer ${token}` },
           signal: controller.signal,
-        })
+        });
 
         if (!response.ok || !response.body) {
-          throw new Error(`SSE connection failed: ${response.status}`)
+          throw new Error(`SSE connection failed: ${response.status}`);
         }
 
         const reader = response.body
           .pipeThrough(new TextDecoderStream())
-          .getReader()
+          .getReader();
 
-        let buffer = ''
+        let buffer = "";
         while (true) {
-          const { done, value } = await reader.read()
-          if (done) break
+          const { done, value } = await reader.read();
+          if (done) break;
 
-          buffer += value
-          const lines = buffer.split('\n')
-          buffer = lines.pop() ?? ''
+          buffer += value;
+          const lines = buffer.split("\n");
+          buffer = lines.pop() ?? "";
 
           for (const line of lines) {
-            if (line.startsWith('data: ')) {
-              onMessage(line.slice(6))
+            if (line.startsWith("data: ")) {
+              onMessage(line.slice(6));
             }
           }
         }
       } catch (err: unknown) {
-        if ((err as Error).name === 'AbortError' || stopped) break
-        onError?.(err as Error)
+        if ((err as Error).name === "AbortError" || stopped) break;
+        onError?.(err as Error);
       }
 
       if (!stopped) {
-        await new Promise((resolve) => setTimeout(resolve, 3000))
+        await new Promise((resolve) => setTimeout(resolve, 3000));
       }
     }
   }
 
-  connect()
+  connect();
 
   return {
     close: () => {
-      stopped = true
-      controller.abort()
+      stopped = true;
+      controller.abort();
     },
-  }
+  };
 }

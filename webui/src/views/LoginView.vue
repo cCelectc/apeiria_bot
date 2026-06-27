@@ -1,22 +1,22 @@
 <script setup lang="ts">
-import { reactive } from 'vue'
-import { Button } from '@/components/ui/button'
+import { reactive } from "vue";
+import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
-} from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { useLoginMutation } from '@/composables/useAuth'
+} from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { useLoginMutation } from "@/composables/useAuth";
 
-const form = reactive({ username: 'admin', password: '' })
-const { mutate, isPending, isError } = useLoginMutation()
+const form = reactive({ username: "admin", password: "" });
+const { mutate, isPending, isError } = useLoginMutation();
 
 function onSubmit() {
-  mutate({ username: form.username, password: form.password })
+  mutate({ username: form.username, password: form.password });
 }
 </script>
 
@@ -29,13 +29,13 @@ function onSubmit() {
         >
           A
         </div>
-        <CardTitle class="text-2xl">{{ $t('login.title') }}</CardTitle>
-        <CardDescription>{{ $t('login.subtitle') }}</CardDescription>
+        <CardTitle class="text-2xl">{{ $t("login.title") }}</CardTitle>
+        <CardDescription>{{ $t("login.subtitle") }}</CardDescription>
       </CardHeader>
       <CardContent>
         <form class="space-y-4" @submit.prevent="onSubmit">
           <div class="space-y-2">
-            <Label for="username">{{ $t('login.username') }}</Label>
+            <Label for="username">{{ $t("login.username") }}</Label>
             <Input
               id="username"
               v-model="form.username"
@@ -44,7 +44,7 @@ function onSubmit() {
             />
           </div>
           <div class="space-y-2">
-            <Label for="password">{{ $t('login.password') }}</Label>
+            <Label for="password">{{ $t("login.password") }}</Label>
             <Input
               id="password"
               v-model="form.password"
@@ -54,10 +54,10 @@ function onSubmit() {
             />
           </div>
           <p v-if="isError" class="text-sm text-destructive">
-            {{ $t('login.error') }}
+            {{ $t("login.error") }}
           </p>
           <Button type="submit" class="w-full" :disabled="isPending">
-            {{ isPending ? $t('common.loading') : $t('login.submit') }}
+            {{ isPending ? $t("common.loading") : $t("login.submit") }}
           </Button>
         </form>
       </CardContent>

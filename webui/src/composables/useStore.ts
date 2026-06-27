@@ -1,8 +1,8 @@
-import { keepPreviousData, useQuery } from '@tanstack/vue-query'
-import { computed, type MaybeRefOrGetter, toValue } from 'vue'
-import { api } from '@/lib/api'
+import { keepPreviousData, useQuery } from "@tanstack/vue-query";
+import { computed, type MaybeRefOrGetter, toValue } from "vue";
+import { api } from "@/lib/api";
 
-export const STORE_PAGE_SIZE = 60
+export const STORE_PAGE_SIZE = 60;
 
 export function useStorePluginsQuery(
   query: MaybeRefOrGetter<string>,
@@ -10,7 +10,7 @@ export function useStorePluginsQuery(
   enabled: MaybeRefOrGetter<boolean> = true,
 ) {
   return useQuery({
-    queryKey: computed(() => ['store-plugins', toValue(query), toValue(page)]),
+    queryKey: computed(() => ["store-plugins", toValue(query), toValue(page)]),
     queryFn: () =>
       api.store.searchPlugins(
         toValue(query),
@@ -19,7 +19,7 @@ export function useStorePluginsQuery(
       ),
     enabled: computed(() => toValue(enabled)),
     placeholderData: keepPreviousData,
-  })
+  });
 }
 
 export function useStoreAdaptersQuery(
@@ -28,7 +28,7 @@ export function useStoreAdaptersQuery(
   enabled: MaybeRefOrGetter<boolean> = true,
 ) {
   return useQuery({
-    queryKey: computed(() => ['store-adapters', toValue(query), toValue(page)]),
+    queryKey: computed(() => ["store-adapters", toValue(query), toValue(page)]),
     queryFn: () =>
       api.store.searchAdapters(
         toValue(query),
@@ -37,5 +37,5 @@ export function useStoreAdaptersQuery(
       ),
     enabled: computed(() => toValue(enabled)),
     placeholderData: keepPreviousData,
-  })
+  });
 }

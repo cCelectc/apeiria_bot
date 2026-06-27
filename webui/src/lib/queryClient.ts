@@ -1,4 +1,4 @@
-import { QueryClient, VueQueryPlugin } from '@tanstack/vue-query'
+import { QueryClient, VueQueryPlugin } from "@tanstack/vue-query";
 
 export const queryClient = new QueryClient({
   defaultOptions: {
@@ -7,6 +7,6 @@ export const queryClient = new QueryClient({
       retry: 1,
     },
   },
-})
+});
 
-export { VueQueryPlugin }
+export { VueQueryPlugin };

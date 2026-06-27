@@ -1,115 +1,117 @@
 <script setup lang="ts">
-import { computed, nextTick, onUnmounted, ref, watch } from 'vue'
-import { ChevronLeft, ChevronRight, Pause, Play, Trash2 } from '@lucide/vue'
-import ErrorState from '@/components/ErrorState.vue'
-import PageHeader from '@/components/PageHeader.vue'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
+import { computed, nextTick, onUnmounted, ref, watch } from "vue";
+import { ChevronLeft, ChevronRight, Pause, Play, Trash2 } from "@lucide/vue";
+import ErrorState from "@/components/ErrorState.vue";
+import PageHeader from "@/components/PageHeader.vue";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '@/components/ui/select'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { useLogHistoryQuery } from '@/composables/useLogs'
-import { createSseClient } from '@/lib/sse'
-import { useAuthStore } from '@/stores/auth'
-import type { LogRecord } from '@/types'
+} from "@/components/ui/select";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useLogHistoryQuery } from "@/composables/useLogs";
+import { createSseClient } from "@/lib/sse";
+import { useAuthStore } from "@/stores/auth";
+import type { LogRecord } from "@/types";
 
-const LEVELS = ['DEBUG', 'INFO', 'SUCCESS', 'WARNING', 'ERROR', 'CRITICAL']
-const PAGE_SIZE = 100
-const MAX_LIVE = 1000
+const LEVELS = ["DEBUG", "INFO", "SUCCESS", "WARNING", "ERROR", "CRITICAL"];
+const PAGE_SIZE = 100;
+const MAX_LIVE = 1000;
 
-const auth = useAuthStore()
-const tab = ref('live')
+const auth = useAuthStore();
+const tab = ref("live");
 
 function levelClass(level: string): string {
   const map: Record<string, string> = {
-    DEBUG: 'text-log-debug',
-    INFO: 'text-log-info',
-    SUCCESS: 'text-log-success',
-    WARNING: 'text-log-warning',
-    ERROR: 'text-log-error',
-    CRITICAL: 'text-log-critical',
-  }
-  return map[level] ?? 'text-muted-foreground'
+    DEBUG: "text-log-debug",
+    INFO: "text-log-info",
+    SUCCESS: "text-log-success",
+    WARNING: "text-log-warning",
+    ERROR: "text-log-error",
+    CRITICAL: "text-log-critical",
+  };
+  return map[level] ?? "text-muted-foreground";
 }
 
 // ---- live ----
-const live = ref<LogRecord[]>([])
-const paused = ref(false)
-const scrollEl = ref<HTMLElement | null>(null)
-let sseClient: ReturnType<typeof createSseClient> | null = null
+const live = ref<LogRecord[]>([]);
+const paused = ref(false);
+const scrollEl = ref<HTMLElement | null>(null);
+let sseClient: ReturnType<typeof createSseClient> | null = null;
 
 function scrollToBottom() {
-  const el = scrollEl.value
-  if (el) el.scrollTop = el.scrollHeight
+  const el = scrollEl.value;
+  if (el) el.scrollTop = el.scrollHeight;
 }
 
 function connect() {
-  disconnect()
-  if (!auth.token) return
-  sseClient = createSseClient(
-    '/api/logs/stream',
-    auth.token,
-    (data) => {
-      try {
-        const rec = JSON.parse(data) as LogRecord
-        live.value.push(rec)
-        if (live.value.length > MAX_LIVE) {
-          live.value.splice(0, live.value.length - MAX_LIVE)
-        }
-        if (!paused.value) void nextTick(scrollToBottom)
-      } catch {
-        // ignore malformed lines
+  disconnect();
+  if (!auth.token) return;
+  sseClient = createSseClient("/api/logs/stream", auth.token, (data) => {
+    try {
+      const rec = JSON.parse(data) as LogRecord;
+      live.value.push(rec);
+      if (live.value.length > MAX_LIVE) {
+        live.value.splice(0, live.value.length - MAX_LIVE);
       }
-    },
-  )
+      if (!paused.value) void nextTick(scrollToBottom);
+    } catch {
+      // ignore malformed lines
+    }
+  });
 }
 
 function disconnect() {
-  sseClient?.close()
-  sseClient = null
+  sseClient?.close();
+  sseClient = null;
 }
 
 function clearLive() {
-  live.value = []
+  live.value = [];
 }
 
 watch(
   tab,
   (t) => {
-    if (t === 'live') connect()
-    else disconnect()
+    if (t === "live") connect();
+    else disconnect();
   },
   { immediate: true },
-)
+);
 
-onUnmounted(disconnect)
+onUnmounted(disconnect);
 
 // ---- history ----
-const level = ref('all')
-const keyword = ref('')
-const page = ref(1)
+const level = ref("all");
+const keyword = ref("");
+const page = ref(1);
 
 const params = computed(() => ({
-  level: level.value === 'all' ? '' : level.value,
+  level: level.value === "all" ? "" : level.value,
   q: keyword.value,
   page: page.value,
   size: PAGE_SIZE,
-}))
+}));
 
-const { data: history, isFetching, isError, error, refetch } = useLogHistoryQuery(params)
+const {
+  data: history,
+  isFetching,
+  isError,
+  error,
+  refetch,
+} = useLogHistoryQuery(params);
 
 const totalPages = computed(() =>
   history.value ? Math.max(1, Math.ceil(history.value.total / PAGE_SIZE)) : 1,
-)
+);
 
 watch([level, keyword], () => {
-  page.value = 1
-})
+  page.value = 1;
+});
 </script>
 
 <template>
@@ -118,19 +120,19 @@ watch([level, keyword], () => {
 
     <Tabs v-model="tab" class="flex min-h-0 flex-1 flex-col">
       <TabsList class="w-fit">
-        <TabsTrigger value="live">{{ $t('logs.live') }}</TabsTrigger>
-        <TabsTrigger value="history">{{ $t('logs.history') }}</TabsTrigger>
+        <TabsTrigger value="live">{{ $t("logs.live") }}</TabsTrigger>
+        <TabsTrigger value="history">{{ $t("logs.history") }}</TabsTrigger>
       </TabsList>
 
       <TabsContent value="live" class="flex min-h-0 flex-1 flex-col">
         <div class="mb-2 flex items-center gap-2">
           <Button variant="outline" size="sm" @click="paused = !paused">
             <component :is="paused ? Play : Pause" class="size-4" />
-            {{ paused ? $t('logs.resumeScroll') : $t('logs.pauseScroll') }}
+            {{ paused ? $t("logs.resumeScroll") : $t("logs.pauseScroll") }}
           </Button>
           <Button variant="outline" size="sm" @click="clearLive">
             <Trash2 class="size-4" />
-            {{ $t('logs.clear') }}
+            {{ $t("logs.clear") }}
           </Button>
         </div>
         <div
@@ -138,7 +140,7 @@ watch([level, keyword], () => {
           class="flex-1 min-h-0 overflow-auto rounded-xl border bg-card p-3 font-mono text-xs"
         >
           <p v-if="!live.length" class="py-6 text-center text-muted-foreground">
-            {{ $t('logs.waiting') }}
+            {{ $t("logs.waiting") }}
           </p>
           <div v-for="(r, i) in live" :key="i" class="flex gap-2 py-0.5">
             <span class="shrink-0 text-muted-foreground">{{ r.time }}</span>
@@ -157,25 +159,46 @@ watch([level, keyword], () => {
               <SelectValue :placeholder="$t('logs.level')" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">{{ $t('logs.allLevels') }}</SelectItem>
-              <SelectItem v-for="l in LEVELS" :key="l" :value="l">{{ l }}</SelectItem>
+              <SelectItem value="all">{{ $t("logs.allLevels") }}</SelectItem>
+              <SelectItem v-for="l in LEVELS" :key="l" :value="l">{{
+                l
+              }}</SelectItem>
             </SelectContent>
           </Select>
-          <Input v-model="keyword" :placeholder="$t('logs.keywordPlaceholder')" aria-label="日志关键词" class="max-w-xs" />
+          <Input
+            v-model="keyword"
+            :placeholder="$t('logs.keywordPlaceholder')"
+            aria-label="日志关键词"
+            class="max-w-xs"
+          />
         </div>
 
         <div
           class="flex-1 min-h-0 overflow-auto rounded-xl border bg-card p-3 font-mono text-xs"
         >
-          <ErrorState v-if="isError" class="mb-4" :message="(error as Error)?.message" @retry="() => refetch()" />
-          <p v-else-if="isFetching" class="py-6 text-center text-muted-foreground">{{ $t('logs.loading') }}</p>
+          <ErrorState
+            v-if="isError"
+            class="mb-4"
+            :message="(error as Error)?.message"
+            @retry="() => refetch()"
+          />
+          <p
+            v-else-if="isFetching"
+            class="py-6 text-center text-muted-foreground"
+          >
+            {{ $t("logs.loading") }}
+          </p>
           <p
             v-else-if="!history || !history.items.length"
             class="py-6 text-center text-muted-foreground"
           >
-            {{ $t('logs.noLogs') }}
+            {{ $t("logs.noLogs") }}
           </p>
-          <div v-for="(r, i) in history?.items ?? []" :key="i" class="flex gap-2 py-0.5">
+          <div
+            v-for="(r, i) in history?.items ?? []"
+            :key="i"
+            class="flex gap-2 py-0.5"
+          >
             <span class="shrink-0 text-muted-foreground">{{ r.time }}</span>
             <span :class="['w-16 shrink-0 font-medium', levelClass(r.level)]">
               {{ r.level }}
@@ -186,7 +209,13 @@ watch([level, keyword], () => {
 
         <div class="mt-2 flex items-center justify-end gap-2 text-sm">
           <span class="text-muted-foreground">
-            {{ $t('logs.pageInfo', { page, total: totalPages, count: history?.total ?? 0 }) }}
+            {{
+              $t("logs.pageInfo", {
+                page,
+                total: totalPages,
+                count: history?.total ?? 0,
+              })
+            }}
           </span>
           <Button
             variant="outline"

@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { computed } from 'vue'
-import { useI18n } from 'vue-i18n'
-import { useRoute, useRouter } from 'vue-router'
+import { computed } from "vue";
+import { useI18n } from "vue-i18n";
+import { useRoute, useRouter } from "vue-router";
 import {
   ChevronsUpDown,
   KeyRound,
@@ -15,15 +15,15 @@ import {
   Settings,
   Store,
   Sun,
-} from '@lucide/vue'
-import { Avatar, AvatarFallback } from '@/components/ui/avatar'
-import { Button } from '@/components/ui/button'
+} from "@lucide/vue";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Button } from "@/components/ui/button";
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
-} from '@/components/ui/tooltip'
+} from "@/components/ui/tooltip";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -31,7 +31,7 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
+} from "@/components/ui/dropdown-menu";
 import {
   Sidebar,
   SidebarContent,
@@ -45,55 +45,57 @@ import {
   SidebarMenuItem,
   SidebarProvider,
   SidebarTrigger,
-} from '@/components/ui/sidebar'
-import { useAuthStore } from '@/stores/auth'
-import { type Theme, useUiStore } from '@/stores/ui'
+} from "@/components/ui/sidebar";
+import { useAuthStore } from "@/stores/auth";
+import { type Theme, useUiStore } from "@/stores/ui";
 
-const route = useRoute()
-const router = useRouter()
-const ui = useUiStore()
-const auth = useAuthStore()
-const { t } = useI18n()
+const route = useRoute();
+const router = useRouter();
+const ui = useUiStore();
+const auth = useAuthStore();
+const { t } = useI18n();
 
 const nav = [
-  { name: 'dashboard', icon: LayoutDashboard },
-  { name: 'plugins', icon: Puzzle },
-  { name: 'adapters', icon: Plug },
-  { name: 'store', icon: Store },
-  { name: 'logs', icon: ScrollText },
-]
+  { name: "dashboard", icon: LayoutDashboard },
+  { name: "plugins", icon: Puzzle },
+  { name: "adapters", icon: Plug },
+  { name: "store", icon: Store },
+  { name: "logs", icon: ScrollText },
+];
 
 const currentLabel = computed(() => {
-  if (route.path.startsWith('/settings')) return t('nav.settings')
-  if (route.name === 'account') return t('nav.account')
-  const item = nav.find((n) => n.name === route.name)
-  return item ? t(`nav.${item.name}`) : ''
-})
+  if (route.path.startsWith("/settings")) return t("nav.settings");
+  if (route.name === "account") return t("nav.account");
+  const item = nav.find((n) => n.name === route.name);
+  return item ? t(`nav.${item.name}`) : "";
+});
 
-const initial = computed(() => (auth.username ?? 'A').slice(0, 1).toUpperCase())
+const initial = computed(() =>
+  (auth.username ?? "A").slice(0, 1).toUpperCase(),
+);
 
 function setTheme(t: Theme) {
-  ui.setTheme(t)
+  ui.setTheme(t);
 }
 
 function cycleTheme() {
-  const order: Theme[] = ['light', 'dark', 'system']
-  const idx = order.indexOf(ui.theme)
-  setTheme(order[(idx + 1) % order.length])
+  const order: Theme[] = ["light", "dark", "system"];
+  const idx = order.indexOf(ui.theme);
+  setTheme(order[(idx + 1) % order.length]);
 }
 
 const themeName = computed(() => {
   const names: Record<Theme, string> = {
-    light: t('theme.light'),
-    dark: t('theme.dark'),
-    system: t('theme.system'),
-  }
-  return names[ui.theme]
-})
+    light: t("theme.light"),
+    dark: t("theme.dark"),
+    system: t("theme.system"),
+  };
+  return names[ui.theme];
+});
 
 function logout() {
-  auth.clearSession()
-  void router.push({ name: 'login' })
+  auth.clearSession();
+  void router.push({ name: "login" });
 }
 </script>
 
@@ -107,7 +109,9 @@ function logout() {
           >
             A
           </div>
-          <span class="text-base font-semibold group-data-[collapsible=icon]:hidden">
+          <span
+            class="text-base font-semibold group-data-[collapsible=icon]:hidden"
+          >
             Apeiria
           </span>
         </div>
@@ -142,14 +146,18 @@ function logout() {
                       :tooltip="$t('nav.settings')"
                     >
                       <Settings class="size-4" />
-                      <span>{{ $t('nav.settings') }}</span>
+                      <span>{{ $t("nav.settings") }}</span>
                     </SidebarMenuButton>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent side="right" align="start">
-                    <DropdownMenuItem @click="router.push({ name: 'settings-nonebot' })">
+                    <DropdownMenuItem
+                      @click="router.push({ name: 'settings-nonebot' })"
+                    >
                       NoneBot
                     </DropdownMenuItem>
-                    <DropdownMenuItem @click="router.push({ name: 'settings-apeiria' })">
+                    <DropdownMenuItem
+                      @click="router.push({ name: 'settings-apeiria' })"
+                    >
                       Apeiria
                     </DropdownMenuItem>
                   </DropdownMenuContent>
@@ -163,7 +171,7 @@ function logout() {
                 >
                   <RouterLink :to="{ name: 'account' }">
                     <KeyRound class="size-4" />
-                    <span>{{ $t('nav.account') }}</span>
+                    <span>{{ $t("nav.account") }}</span>
                   </RouterLink>
                 </SidebarMenuButton>
               </SidebarMenuItem>
@@ -178,26 +186,32 @@ function logout() {
               <DropdownMenuTrigger as-child>
                 <SidebarMenuButton size="lg">
                   <Avatar class="size-8 rounded-lg">
-                    <AvatarFallback class="rounded-lg bg-primary/10 text-primary">
+                    <AvatarFallback
+                      class="rounded-lg bg-primary/10 text-primary"
+                    >
                       {{ initial }}
                     </AvatarFallback>
                   </Avatar>
                   <div class="grid flex-1 text-left text-sm leading-tight">
-                    <span class="truncate font-medium">{{ auth.username ?? $t('account.admin') }}</span>
+                    <span class="truncate font-medium">{{
+                      auth.username ?? $t("account.admin")
+                    }}</span>
                   </div>
                   <ChevronsUpDown class="ml-auto size-4" />
                 </SidebarMenuButton>
               </DropdownMenuTrigger>
               <DropdownMenuContent side="top" align="start" class="w-56">
-                <DropdownMenuLabel>{{ auth.username ?? $t('account.admin') }}</DropdownMenuLabel>
+                <DropdownMenuLabel>{{
+                  auth.username ?? $t("account.admin")
+                }}</DropdownMenuLabel>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem @click="router.push({ name: 'account' })">
                   <KeyRound class="size-4" />
-                  {{ $t('account.changePassword') }}
+                  {{ $t("account.changePassword") }}
                 </DropdownMenuItem>
                 <DropdownMenuItem @click="logout">
                   <LogOut class="size-4" />
-                  {{ $t('account.logout') }}
+                  {{ $t("account.logout") }}
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -217,9 +231,22 @@ function logout() {
           <TooltipProvider :delay-duration="200">
             <Tooltip>
               <TooltipTrigger as-child>
-                <Button variant="ghost" size="icon" :aria-label="$t('theme.label')" @click="cycleTheme">
-                  <Sun v-if="ui.theme === 'light'" class="size-4" aria-hidden="true" />
-                  <Moon v-else-if="ui.theme === 'dark'" class="size-4" aria-hidden="true" />
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  :aria-label="$t('theme.label')"
+                  @click="cycleTheme"
+                >
+                  <Sun
+                    v-if="ui.theme === 'light'"
+                    class="size-4"
+                    aria-hidden="true"
+                  />
+                  <Moon
+                    v-else-if="ui.theme === 'dark'"
+                    class="size-4"
+                    aria-hidden="true"
+                  />
                   <Monitor v-else class="size-4" aria-hidden="true" />
                 </Button>
               </TooltipTrigger>

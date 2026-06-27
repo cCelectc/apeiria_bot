@@ -4,7 +4,8 @@
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
-  --font-sans: "Inter", "Noto Sans SC", system-ui, -apple-system, "PingFang SC",
+  --font-sans:
+    "Inter", "Noto Sans SC", system-ui, -apple-system, "PingFang SC",
     "Microsoft YaHei", sans-serif;
   --font-heading: var(--font-sans);
   --color-sidebar-ring: var(--sidebar-ring);
