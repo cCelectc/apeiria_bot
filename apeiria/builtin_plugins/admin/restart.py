@@ -43,9 +43,11 @@ async def handle_restart(bot: Bot, event: Event) -> None:
 def _save_context(bot: Bot, event: Event) -> None:
     ctx: dict[str, Any] = {
         "bot_self_id": bot.self_id,
+        "adapter_name": bot.adapter.get_name(),
         "message_type": getattr(event, "message_type", "private"),
         "user_id": _safe_attr(event, "get_user_id"),
         "group_id": getattr(event, "group_id", None),
+        "session_id": _safe_attr(event, "get_session_id"),
         "started_at": time.time(),
     }
     _CONTEXT_PATH.parent.mkdir(parents=True, exist_ok=True)
@@ -73,10 +75,37 @@ def _delete_context() -> None:
     _CONTEXT_PATH.unlink(missing_ok=True)
 
 
+class _RestartNotifyEvent:
+    def __init__(
+        self,
+        user_id: str | None,
+        session_id: str,
+        message_type: str,
+        group_id: str | None,
+    ) -> None:
+        self._user_id = user_id
+        self._session_id = session_id
+        self.message_type = message_type
+        self.group_id = group_id
+
+    def get_type(self) -> str:
+        return "message"
+
+    def get_user_id(self) -> str:
+        return self._user_id or ""
+
+    def get_session_id(self) -> str:
+        return self._session_id
+
+
 @get_driver().on_bot_connect
 async def _on_reconnect(bot: Bot) -> None:
     ctx = _read_context()
-    if not ctx or ctx.get("bot_self_id") != bot.self_id:
+    if not ctx:
+        return
+    if ctx.get("bot_self_id") != bot.self_id:
+        return
+    if ctx.get("adapter_name") != bot.adapter.get_name():
         return
 
     _delete_context()
@@ -84,17 +113,15 @@ async def _on_reconnect(bot: Bot) -> None:
     elapsed = time.time() - ctx.get("started_at", time.time())
     msg = f"重启完成，耗时 {elapsed:.1f}s"
 
-    kwargs: dict[str, Any] = {
-        "message": msg,
-        "message_type": ctx.get("message_type", "private"),
-    }
-    if ctx.get("group_id"):
-        kwargs["group_id"] = int(ctx["group_id"])
-    if ctx.get("user_id"):
-        kwargs["user_id"] = int(ctx["user_id"])
+    event = _RestartNotifyEvent(
+        user_id=ctx.get("user_id"),
+        session_id=ctx.get("session_id", f"{bot.self_id}_"),
+        message_type=ctx.get("message_type", "private"),
+        group_id=ctx.get("group_id"),
+    )
 
     for attempt in range(_MAX_RETRIES):
-        err = await _try_send(bot, kwargs)
+        err = await _try_send(bot, event, msg)
         if err is None:
             return
         if attempt < _MAX_RETRIES - 1:
@@ -102,22 +129,17 @@ async def _on_reconnect(bot: Bot) -> None:
     logger.warning("重启通知发送失败（已重试 {} 次）", _MAX_RETRIES)
 
 
-async def _try_send(bot: Bot, kwargs: dict[str, Any]) -> BaseException | None:
+async def _try_send(
+    bot: Bot, event: _RestartNotifyEvent, message: str
+) -> BaseException | None:
     try:
-        await bot.call_api("send_msg", **kwargs)
+        await bot.send(event, message)
     except (RuntimeError, OSError, ValueError, TypeError) as exc:
         return exc
     return None
 
 
 async def _do_restart() -> None:
-    try:
-        from apeiria.db.engine import close_db
-
-        await close_db()
-    except (RuntimeError, OSError):
-        logger.debug("数据库关闭失败", exc_info=True)
-
     _exec_restart()
 
 
