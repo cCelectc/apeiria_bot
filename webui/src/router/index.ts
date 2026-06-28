@@ -59,7 +59,7 @@ router.beforeEach((to, _from) => {
   const auth = useAuthStore();
   const needsAuth = to.matched.some((r) => r.meta.requiresAuth === true);
   if (needsAuth && !auth.token) {
-    return { name: "login" };
+    return { name: "login", query: { redirect: to.fullPath } };
   }
   if (to.name === "login" && auth.token) {
     return { name: "dashboard" };

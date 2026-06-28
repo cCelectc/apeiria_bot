@@ -32,7 +32,10 @@ async function request<T>(
   if (res.status === 401) {
     auth.clearSession();
     if (router.currentRoute.value.name !== "login") {
-      void router.push({ name: "login" });
+      void router.push({
+        name: "login",
+        query: { redirect: router.currentRoute.value.fullPath },
+      });
     }
     throw new Error("未授权，请重新登录");
   }

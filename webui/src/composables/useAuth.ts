@@ -10,7 +10,12 @@ export function useLoginMutation() {
     mutationFn: api.auth.login,
     onSuccess: (data) => {
       auth.setSession(data.token, data.username);
-      void router.push({ name: "dashboard" });
+      const redirect = router.currentRoute.value.query.redirect as string | undefined;
+      if (redirect) {
+        void router.push(redirect);
+      } else {
+        void router.push({ name: "dashboard" });
+      }
     },
   });
 }
