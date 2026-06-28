@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from random import choices, random
 
-from .models import TriggerEntry, TriggerInput, TriggerMatch, TriggerReply
+from .models import IdFilter, TriggerEntry, TriggerInput, TriggerMatch, TriggerReply
 
 
 def _platform_alias(adapter_name: str) -> str:
@@ -17,15 +17,15 @@ def _scoped_id(platform: str | None, value: str | None) -> str | None:
     return f"{platform}:{value}"
 
 
-def _filter_allows(values: frozenset[str], target: str | None) -> bool:
-    if not values:
+def _filter_allows(filter_obj: IdFilter, target: str | None) -> bool:
+    if not filter_obj.values:
         return True
     if target is None:
         return False
-    if target in values:
-        return True
+    matches = target in filter_obj.values
     platform, _, __ = target.partition(":")
-    return f"{platform}:*" in values
+    matches = matches or f"{platform}:*" in filter_obj.values
+    return matches if filter_obj.mode == "white" else not matches
 
 
 def _do_match(  # noqa: C901, PLR0911, PLR0912

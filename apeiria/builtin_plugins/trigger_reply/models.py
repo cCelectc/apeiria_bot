@@ -1,12 +1,22 @@
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass, field
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
 
 MatchType = Literal["full", "fuzzy", "start", "end", "regex"]
 TriggerScene = Literal["group", "private"]
+
+
+@dataclass
+class IdFilter:
+    mode: Literal["white", "black"] = "white"
+    values: frozenset[str] = field(default_factory=frozenset)
+
+    def __bool__(self) -> bool:
+        return len(self.values) > 0
 
 
 class TriggerReply(BaseModel):
@@ -73,8 +83,8 @@ class TriggerEntry:
         block: bool = True,
         chance: float = 1.0,
         scenes: frozenset[TriggerScene] = frozenset(),
-        groups: frozenset[str] = frozenset(),
-        users: frozenset[str] = frozenset(),
+        groups: IdFilter | None = None,
+        users: IdFilter | None = None,
         matches: tuple[TriggerMatch, ...] = (),
         replies: tuple[TriggerReply, ...] = (),
     ) -> None:
@@ -84,8 +94,8 @@ class TriggerEntry:
         self.block = block
         self.chance = chance
         self.scenes = scenes
-        self.groups = groups
-        self.users = users
+        self.groups = groups or IdFilter()
+        self.users = users or IdFilter()
         self.matches = matches
         self.replies = replies
 

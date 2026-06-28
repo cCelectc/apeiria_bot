@@ -14,6 +14,7 @@ from nonebot_plugin_localstore import get_plugin_config_file
 
 from .config import TriggerReplyConfig  # noqa: TC001
 from .models import (
+    IdFilter,
     MatchType,
     TriggerEntry,
     TriggerMatch,
@@ -212,16 +213,19 @@ def _parse_scene_filter(raw: object) -> frozenset[TriggerScene]:
     return frozenset(valid)
 
 
-def _parse_id_filter(raw: object) -> frozenset[str]:
+def _parse_id_filter(raw: object) -> IdFilter | None:
     candidates = _list_val(raw)
     if not candidates:
-        return frozenset()
+        return None
     if isinstance(raw, Mapping):
         mode = _str_val(raw.get("mode")) or "white"
         if mode not in {"white", "black"}:
-            return frozenset()
+            return None
         candidates = _list_val(raw.get("values"))
-    return frozenset(item for item in candidates if _is_scoped_id(item))
+        values = frozenset(item for item in candidates if _is_scoped_id(item))
+        return IdFilter(mode=mode, values=values) if values else None
+    values = frozenset(item for item in candidates if _is_scoped_id(item))
+    return IdFilter(mode="white", values=values) if values else None
 
 
 def _is_scoped_id(value: str) -> bool:
