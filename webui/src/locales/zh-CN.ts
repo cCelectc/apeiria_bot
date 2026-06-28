@@ -49,6 +49,10 @@ export default {
     adapterStatus: "适配器状态",
     installed: "已安装 {count}",
     enabled: "启用 {count}",
+    restart: "重启",
+    restarting: "重启中...",
+    restartConfirmTitle: "确认重启 Bot",
+    restartConfirmDesc: "重启将中断所有服务，Bot 会在几秒后重新上线。确认继续？",
   },
   account: {
     title: "账号",

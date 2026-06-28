@@ -380,3 +380,26 @@ async def api_task_stream(request: Request, task_id: str) -> StreamingResponse:
         event_stream(),
         media_type="text/event-stream",
     )
+
+
+@router.post("/restart")
+async def api_restart() -> JSONResponse:
+    import os
+    import sys
+
+    try:
+        sys.stdout.flush()
+        sys.stderr.flush()
+    except OSError:
+        pass
+
+    if sys.platform == "win32":
+        import subprocess
+
+        subprocess.Popen(  # noqa: ASYNC220
+            [sys.executable, *sys.argv],
+            creationflags=subprocess.CREATE_NEW_PROCESS_GROUP,  # type: ignore[attr-defined]
+        )
+        os._exit(0)
+    else:
+        os.execv(sys.executable, [sys.executable, *sys.argv])

@@ -1,9 +1,20 @@
 <script setup lang="ts">
-import { computed } from "vue";
-import { Activity, Plug, Puzzle } from "@lucide/vue";
+import { computed, ref } from "vue";
+import { Activity, Plug, Puzzle, RotateCw } from "@lucide/vue";
+import { toast } from "vue-sonner";
+import { api } from "@/lib/api";
 import ErrorState from "@/components/ErrorState.vue";
 import PageHeader from "@/components/PageHeader.vue";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAdaptersQuery } from "@/composables/useAdapters";
 import { usePluginsQuery } from "@/composables/usePlugins";
@@ -12,6 +23,20 @@ import { useStatusQuery } from "@/composables/useStatus";
 const { data, isLoading, isError, error, refetch } = useStatusQuery();
 const { data: installedPlugins } = usePluginsQuery();
 const { data: installedAdapters } = useAdaptersQuery();
+
+const restartOpen = ref(false);
+const restarting = ref(false);
+
+async function doRestart() {
+  restarting.value = true;
+  try {
+    await api.status.restart();
+  } catch {
+    toast.error("重启请求失败");
+    restarting.value = false;
+    restartOpen.value = false;
+  }
+}
 
 function formatUptime(seconds: number): string {
   const d = Math.floor(seconds / 86400);
@@ -45,7 +70,19 @@ const installedAdapterCount = computed(
     <PageHeader
       :title="$t('dashboard.title')"
       :subtitle="$t('dashboard.subtitle')"
-    />
+    >
+      <template #actions>
+        <Button
+          variant="outline"
+          size="sm"
+          :disabled="isLoading || restarting"
+          @click="restartOpen = true"
+        >
+          <RotateCw class="size-4" :class="{ 'animate-spin': restarting }" />
+          {{ restarting ? $t("dashboard.restarting") : $t("dashboard.restart") }}
+        </Button>
+      </template>
+    </PageHeader>
 
     <ErrorState
       v-if="isError"
@@ -129,5 +166,24 @@ const installedAdapterCount = computed(
         </div>
       </CardContent>
     </Card>
+
+    <Dialog :open="restartOpen" @update:open="(v) => { if (!restarting) restartOpen = v }">
+      <DialogContent :show-close-button="!restarting">
+        <DialogHeader>
+          <DialogTitle>{{ $t("dashboard.restartConfirmTitle") }}</DialogTitle>
+          <DialogDescription>
+            {{ $t("dashboard.restartConfirmDesc") }}
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <Button variant="outline" :disabled="restarting" @click="restartOpen = false">
+            {{ $t("common.cancel") }}
+          </Button>
+          <Button variant="destructive" :disabled="restarting" @click="doRestart">
+            {{ restarting ? $t("dashboard.restarting") : $t("common.confirm") }}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   </div>
 </template>

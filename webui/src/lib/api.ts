@@ -67,6 +67,7 @@ export const api = {
   },
   status: {
     get: () => request<StatusInfo>("GET", "/status"),
+    restart: () => request<void>("POST", "/restart"),
   },
   plugins: {
     list: () => request<{ plugins: Plugin[] }>("GET", "/plugins/list"),
