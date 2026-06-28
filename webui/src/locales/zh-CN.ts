@@ -182,6 +182,7 @@ export default {
     account: "账号",
     addAccount: "添加账号",
     addAccountDesc: "添加一个模拟用户账号（切换账号=以该用户身份发言）。",
+    removeAccount: "删除当前账号",
     addGroup: "添加群",
     addGroupDesc: "添加一个模拟群聊；可在群里以不同账号发言。",
     actingAs: "以 {user} 发言",

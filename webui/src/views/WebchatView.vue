@@ -47,6 +47,7 @@ const {
   selectConversation,
   switchUser,
   addUser,
+  removeUser,
   addGroup,
   removeGroup,
 } = useWebchat();
@@ -152,7 +153,7 @@ function avatarText(m: WebchatMessage): string {
 
 <template>
   <div class="flex h-full min-h-0">
-    <aside class="flex w-60 shrink-0 flex-col border-r bg-card/40">
+    <aside class="flex min-h-0 w-60 shrink-0 flex-col border-r bg-card/40">
       <div class="flex shrink-0 items-center gap-2 border-b p-3">
         <Select v-model="currentUser">
           <SelectTrigger class="flex-1">
@@ -171,6 +172,15 @@ function avatarText(m: WebchatMessage): string {
           @click="addUserOpen = true"
         >
           <UserPlus class="size-4" />
+        </Button>
+        <Button
+          v-if="store.users.length > 1"
+          variant="outline"
+          size="icon"
+          :aria-label="$t('webchat.removeAccount')"
+          @click="removeUser(store.currentUserId)"
+        >
+          <Trash2 class="size-4" />
         </Button>
       </div>
       <div class="flex min-h-0 flex-1 flex-col gap-1 overflow-auto p-2">
@@ -217,7 +227,7 @@ function avatarText(m: WebchatMessage): string {
       </div>
     </aside>
 
-    <section class="flex min-w-0 flex-1 flex-col p-4 lg:p-6">
+    <section class="flex min-h-0 min-w-0 flex-1 flex-col p-4 lg:p-6">
       <div class="mb-3 flex shrink-0 items-center justify-between gap-2">
         <div class="flex min-w-0 items-center gap-2">
           <component
