@@ -177,6 +177,23 @@ def step_access() -> None:
     logger.success("Access control initialized")
 
 
+def step_webchat() -> None:
+    from apeiria.webchat.config import get_webchat_config
+
+    if not get_webchat_config().enabled:
+        logger.info("WebChat disabled — skipping registration")
+        return
+
+    from apeiria.webchat.adapter import WebChatAdapter
+    from apeiria.webchat.alconna import register_alconna
+    from apeiria.webchat.uninfo import register_uninfo
+
+    nonebot.get_driver().register_adapter(WebChatAdapter)
+    register_uninfo()
+    register_alconna()
+    logger.success("WebChat adapter registered")
+
+
 def _source_fingerprint(src_dir: Path) -> str:
     import hashlib
 

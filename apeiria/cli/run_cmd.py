@@ -16,6 +16,7 @@ from apeiria.bootstrap.steps import (
     step_load_local,
     step_load_pypi,
     step_web,
+    step_webchat,
 )
 from apeiria.config.loader import expand_config, load_config
 from apeiria.db.engine import init_db
@@ -68,7 +69,8 @@ def run_cmd(reload: bool) -> None:  # noqa: FBT001
         depends=["load_builtins", "load_local"],
     )
     plan.add_step("access", step_access, depends=["load_builtins", "load_local"])
-    plan.add_step("web", step_web, depends=["access"])
+    plan.add_step("webchat", step_webchat, depends=["conversation", "access"])
+    plan.add_step("web", step_web, depends=["access", "webchat"])
 
     plan.run("full")
 
