@@ -43,7 +43,7 @@ def _flatten_nested(
         if isinstance(val, dict):
             _flatten_nested(prefix, val, full_key, skipped, skip_existing)
         elif skip_existing and env_key in os.environ:
-            if skipped is not None:
+            if skipped is not None and os.environ[env_key] != to_env_value(val):
                 skipped.append(env_key)
         else:
             os.environ[env_key] = to_env_value(val)
@@ -93,7 +93,7 @@ def _inject_section_config(
             for key, val in cfg.items():
                 env_key = key.upper()
                 if skip_existing and env_key in os.environ:
-                    if skipped is not None:
+                    if skipped is not None and os.environ[env_key] != to_env_value(val):
                         skipped.append(env_key)
                 else:
                     os.environ[env_key] = to_env_value(val)
