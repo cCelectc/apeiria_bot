@@ -27,7 +27,12 @@ from apeiria.webchat.bot import WebChatBot
 from apeiria.webchat.config import get_webchat_config, resolve_default_user_id
 from apeiria.webchat.connection import ConnectionManager
 from apeiria.webchat.event import WebChatMessageEvent, resolve_to_me
-from apeiria.webchat.protocol import InboundClear, InboundDelete, InboundMessage
+from apeiria.webchat.protocol import (
+    InboundClear,
+    InboundDelete,
+    InboundMessage,
+    InboundSwitch,
+)
 
 if TYPE_CHECKING:
     from nonebot.adapters import Bot
@@ -83,7 +88,7 @@ class WebChatAdapter(BaseAdapter):
         conn_id, _is_first = await self.connections.add(websocket)
         bot = self._ensure_bot()
         try:
-            await self._replay_history(conn_id)
+            await self._replay_history(conn_id, self._default_session_id())
             while True:
                 raw = await websocket.receive_text()
                 await self._on_frame(bot, conn_id, raw)
@@ -107,12 +112,25 @@ class WebChatAdapter(BaseAdapter):
             self.bot_disconnect(self._bot)
             self._bot = None
 
-    async def _replay_history(self, conn_id: str) -> None:
+    async def _replay_history(self, conn_id: str, session_id: str) -> None:
         cfg = get_webchat_config()
-        session_id = self._default_session_id()
         rows = list(reversed(await load_recent(session_id, limit=cfg.history_limit)))
         messages = [self._row_to_wire(row, session_id) for row in rows]
-        await self.connections.send_to(conn_id, protocol.history_frame(messages))
+        await self.connections.send_to(
+            conn_id, protocol.history_frame(messages, session_id)
+        )
+
+    def _derive_session(self, identity: dict[str, Any]) -> tuple[str, str, str, str]:
+        user_id = str(identity.get("user_id") or resolve_default_user_id())
+        scene_type = identity.get("scene_type") or "private"
+        if scene_type not in ("private", "group"):
+            scene_type = "private"
+        scene_id = str(identity.get("scene_id") or user_id)
+        if scene_type == "group":
+            session_id = f"webchat:group:{scene_id}"
+        else:
+            session_id = f"webchat:private:{user_id}"
+        return session_id, user_id, scene_type, scene_id
 
     def _row_to_wire(self, row: MessageRow, session_id: str) -> dict[str, Any]:
         meta = row.meta_json or {}
@@ -142,25 +160,18 @@ class WebChatAdapter(BaseAdapter):
             await self._on_clear(conn_id)
         elif isinstance(frame, InboundDelete):
             await self._on_delete(frame.message_id)
+        elif isinstance(frame, InboundSwitch):
+            await self._on_switch(conn_id, frame)
 
     async def _on_message(
         self, bot: WebChatBot, conn_id: str, frame: InboundMessage
     ) -> None:
-        identity = frame.identity
-        user_id = str(identity.get("user_id") or resolve_default_user_id())
-        scene_type = identity.get("scene_type") or "private"
-        if scene_type not in ("private", "group"):
-            scene_type = "private"
-        scene_id = str(identity.get("scene_id") or user_id)
+        session_id, user_id, scene_type, scene_id = self._derive_session(frame.identity)
+        self._conn_sessions[conn_id] = session_id
 
         message = protocol.build_inbound_message(frame.text, frame.image)
         nicknames = nonebot.get_driver().config.nickname
         to_me = resolve_to_me(message, scene_type, nicknames)
-        if scene_type == "group":
-            session_id = f"webchat:group:{scene_id}"
-        else:
-            session_id = f"webchat:private:{user_id}"
-        self._conn_sessions[conn_id] = session_id
 
         await ensure_session(session_id, "webchat", scene_type, scene_id)
         message_id = uuid4().hex
@@ -198,10 +209,15 @@ class WebChatAdapter(BaseAdapter):
         self._tasks.add(task)
         task.add_done_callback(self._tasks.discard)
 
+    async def _on_switch(self, conn_id: str, frame: InboundSwitch) -> None:
+        session_id, _, _, _ = self._derive_session(frame.identity)
+        self._conn_sessions[conn_id] = session_id
+        await self._replay_history(conn_id, session_id)
+
     async def _on_clear(self, conn_id: str) -> None:
         session_id = self._conn_sessions.get(conn_id) or self._default_session_id()
         await delete_session_messages(session_id)
-        await self.connections.broadcast(protocol.cleared_frame())
+        await self.connections.broadcast(protocol.cleared_frame(session_id))
 
     async def _on_delete(self, message_id: str) -> None:
         await delete_message(message_id)

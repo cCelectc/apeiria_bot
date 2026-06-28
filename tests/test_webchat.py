@@ -110,6 +110,10 @@ def test_parse_inbound_variants() -> None:
     )
     assert isinstance(p.parse_inbound({"type": "clear"}), p.InboundClear)
     assert p.parse_inbound({"type": "delete", "message_id": "7"}).message_id == "7"
+    assert isinstance(
+        p.parse_inbound({"type": "switch", "identity": {"user_id": "u1"}}),
+        p.InboundSwitch,
+    )
 
 
 def test_parse_inbound_errors() -> None:
@@ -159,8 +163,11 @@ def test_wire_message_and_frames() -> None:
     )
     assert wm["id"] == "1"
     assert p.message_frame(wm) == {"type": "message", "message": wm}
-    assert p.history_frame([wm])["type"] == "history"
-    assert p.cleared_frame() == {"type": "cleared"}
+    assert p.history_frame([wm], "webchat:private:u1")["type"] == "history"
+    assert p.cleared_frame("webchat:private:u1") == {
+        "type": "cleared",
+        "session_id": "webchat:private:u1",
+    }
     assert p.deleted_frame("9") == {"type": "deleted", "message_id": "9"}
     assert p.error_frame("c", "m") == {"type": "error", "code": "c", "message": "m"}
 
@@ -480,8 +487,28 @@ async def test_adapter_on_clear_and_delete(monkeypatch) -> None:
 
     await ad._on_clear(conn)
     assert deleted_sessions == ["webchat:private:u1"]
-    assert ws.sent[-1] == {"type": "cleared"}
+    assert ws.sent[-1] == {"type": "cleared", "session_id": "webchat:private:u1"}
 
     await ad._on_delete("mid-9")
     assert deleted_ids == ["mid-9"]
     assert ws.sent[-1] == {"type": "deleted", "message_id": "mid-9"}
+
+
+async def test_adapter_on_switch_replays_history(monkeypatch) -> None:
+    import apeiria.webchat.adapter as adapter_mod
+    from apeiria.webchat.protocol import InboundSwitch
+
+    async def fake_load_recent(session_id, limit) -> list:  # noqa: ARG001
+        return []
+
+    monkeypatch.setattr(adapter_mod, "load_recent", fake_load_recent)
+
+    ad = _bare_adapter()
+    ws = _FakeWS()
+    conn, _ = await ad.connections.add(ws)
+
+    await ad._on_switch(conn, InboundSwitch(identity={"user_id": "u1"}))
+
+    assert ad._conn_sessions[conn] == "webchat:private:u1"
+    assert ws.sent[-1]["type"] == "history"
+    assert ws.sent[-1]["session_id"] == "webchat:private:u1"

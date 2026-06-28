@@ -27,7 +27,12 @@ class InboundDelete:
     message_id: str
 
 
-InboundFrame = InboundMessage | InboundClear | InboundDelete
+@dataclass
+class InboundSwitch:
+    identity: dict[str, Any]
+
+
+InboundFrame = InboundMessage | InboundClear | InboundDelete | InboundSwitch
 
 
 def parse_inbound(raw: Any) -> InboundFrame:
@@ -50,6 +55,11 @@ def parse_inbound(raw: Any) -> InboundFrame:
         if not message_id:
             raise ProtocolError("delete requires message_id")  # noqa: TRY003
         return InboundDelete(message_id=str(message_id))
+    if ftype == "switch":
+        identity = raw.get("identity") or {}
+        if not isinstance(identity, dict):
+            raise ProtocolError("identity must be an object")  # noqa: TRY003
+        return InboundSwitch(identity=identity)
     raise ProtocolError(f"unknown frame type: {ftype!r}")  # noqa: TRY003
 
 
@@ -113,12 +123,12 @@ def message_frame(wire_msg: dict[str, Any]) -> dict[str, Any]:
     return {"type": "message", "message": wire_msg}
 
 
-def history_frame(messages: list[dict[str, Any]]) -> dict[str, Any]:
-    return {"type": "history", "messages": messages}
+def history_frame(messages: list[dict[str, Any]], session_id: str) -> dict[str, Any]:
+    return {"type": "history", "session_id": session_id, "messages": messages}
 
 
-def cleared_frame() -> dict[str, Any]:
-    return {"type": "cleared"}
+def cleared_frame(session_id: str) -> dict[str, Any]:
+    return {"type": "cleared", "session_id": session_id}
 
 
 def deleted_frame(message_id: str) -> dict[str, Any]:
