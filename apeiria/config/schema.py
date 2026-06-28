@@ -29,6 +29,7 @@ class FieldNode:
     label: str = ""
     description: str = ""
     order: int = 0
+    immutable: bool = False
 
     def _base_dict(self) -> dict[str, Any]:
         return {
@@ -37,6 +38,7 @@ class FieldNode:
             "label": self.label,
             "description": self.description,
             "order": self.order,
+            "immutable": self.immutable,
         }
 
     def to_dict(self) -> dict[str, Any]:

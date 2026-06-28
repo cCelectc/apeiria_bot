@@ -17,6 +17,7 @@ def init_cmd() -> None:
     admin_ids = [x.strip() for x in admin_id.split(",") if x.strip()]
     config_lines = [
         "nonebot:",
+        '  driver: "~fastapi+~httpx+~websockets"',
         '  host: "127.0.0.1"',
         "  port: 8080",
         '  command_start: ["/"]',
@@ -26,7 +27,9 @@ def init_cmd() -> None:
         '  locale: "zh_CN"',
         '  log_level: "INFO"',
         "",
-        "plugins: {}",
+        "plugins:",
+        "  nonebot_plugin_localstore:",
+        "    localstore_use_cwd: true",
         "",
         "adapters:",
         "  nonebot_adapter_onebot_v11: {}",
@@ -47,7 +50,9 @@ def init_cmd() -> None:
     env_path = Path(".env")
     if not env_path.exists():
         env_path.write_text(
-            "# Apeiria Bot — 兜底配置，主配置见 data/config.yaml\n", encoding="utf-8"
+            "# NoneBot 兼容占位文件。配置主源见 data/config.yaml\n"
+            "# 环境切换方式: ENVIRONMENT=dev uv run apeiria run\n"
+            "# .env.dev / .env.prod 可设置环境专属覆写\n",
         )
 
     click.echo(f"\nProject initialized. Config: {config_path}")

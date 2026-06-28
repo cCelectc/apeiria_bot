@@ -30,13 +30,23 @@ def to_env_value(value: object) -> str:
     return json.dumps(value)
 
 
-def _flatten_nested(prefix: str, obj: dict, parent: str = "") -> None:
+def _flatten_nested(
+    prefix: str,
+    obj: dict,
+    parent: str = "",
+    skipped: list[str] | None = None,
+    skip_existing: bool = False,  # noqa: FBT001, FBT002
+) -> None:
     for key, val in obj.items():
         full_key = f"{parent}__{key}" if parent else key
+        env_key = f"{prefix}__{full_key}".upper()
         if isinstance(val, dict):
-            _flatten_nested(prefix, val, full_key)
+            _flatten_nested(prefix, val, full_key, skipped, skip_existing)
+        elif skip_existing and env_key in os.environ:
+            if skipped is not None:
+                skipped.append(env_key)
         else:
-            os.environ[f"{prefix}__{full_key}".upper()] = to_env_value(val)
+            os.environ[env_key] = to_env_value(val)
 
 
 def _try_resolve_plugin_contract(name: str):
@@ -61,6 +71,8 @@ def _inject_section_config(
     entries: dict[str, dict],
     resolve_fn: Callable[[str], Any],
     set_driver_attr: object | None = None,
+    skipped: list[str] | None = None,
+    skip_existing: bool = False,  # noqa: FBT001, FBT002
 ) -> None:
     for name, cfg in entries.items():
         if not cfg:
@@ -69,25 +81,58 @@ def _inject_section_config(
         if contract and contract.is_scoped and contract.namespace:
             inner_cfg = cfg.get(contract.namespace, cfg)
             if isinstance(inner_cfg, dict):
-                _flatten_nested(contract.namespace.upper(), inner_cfg)
+                _flatten_nested(
+                    contract.namespace.upper(),
+                    inner_cfg,
+                    skipped=skipped,
+                    skip_existing=skip_existing,
+                )
                 if set_driver_attr is not None:
                     setattr(set_driver_attr, contract.namespace, inner_cfg)
         else:
             for key, val in cfg.items():
-                os.environ[key.upper()] = to_env_value(val)
+                env_key = key.upper()
+                if skip_existing and env_key in os.environ:
+                    if skipped is not None:
+                        skipped.append(env_key)
+                else:
+                    os.environ[env_key] = to_env_value(val)
                 if set_driver_attr is not None:
                     setattr(set_driver_attr, key, val)
 
 
 def expand_config(app: AppConfig) -> None:
+    skipped_keys: list[str] = []
+
     nonebot_fields = {
         name: getattr(app.nonebot, name) for name in app._nonebot_field_names
     }
     for key, value in nonebot_fields.items():
-        os.environ[key.upper()] = to_env_value(value)
+        env_key = key.upper()
+        if env_key in os.environ:
+            skipped_keys.append(env_key)
+        else:
+            os.environ[env_key] = to_env_value(value)
 
-    _inject_section_config(app.plugins, _try_resolve_plugin_contract)
-    _inject_section_config(app.adapters, _try_resolve_adapter_contract)
+    _inject_section_config(
+        app.plugins,
+        _try_resolve_plugin_contract,
+        skipped=skipped_keys,
+        skip_existing=True,
+    )
+    _inject_section_config(
+        app.adapters,
+        _try_resolve_adapter_contract,
+        skipped=skipped_keys,
+        skip_existing=True,
+    )
+
+    if skipped_keys:
+        logger.warning(
+            "Skipped {} YAML config key(s) — already set by .env / process env: {}",
+            len(skipped_keys),
+            ", ".join(sorted(skipped_keys)),
+        )
 
     logger.success("Config expanded from YAML to environment")
 

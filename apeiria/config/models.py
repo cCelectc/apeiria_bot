@@ -6,6 +6,7 @@ from pydantic import BaseModel
 
 
 class NoneBotConfig(BaseModel):
+    driver: str = "~fastapi+~httpx+~websockets"
     host: str = "127.0.0.1"
     port: int = 8080
     command_start: list[str] = ["/"]
@@ -58,6 +59,7 @@ class AppConfig(BaseModel):
     apeiria: ApeiriaConfig = ApeiriaConfig()
 
     _nonebot_field_names: ClassVar[tuple[str, ...]] = (
+        "driver",
         "host",
         "port",
         "command_start",

@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import os
+from pathlib import Path
+
 import click
 
 from apeiria.bootstrap.plan import BootstrapPlan
@@ -28,8 +31,15 @@ GRACEFUL_SHUTDOWN_TIMEOUT = 3
 @click.option("--reload", is_flag=True, default=False, help="Enable hot reload")
 def run_cmd(reload: bool) -> None:  # noqa: FBT001
     import nonebot
+    from dotenv import load_dotenv
 
     from apeiria.web.logs import get_log_hub
+
+    load_dotenv(".env", override=False)
+    env = os.environ.get("ENVIRONMENT", "prod")
+    env_file = f".env.{env}"
+    if Path(env_file).exists():
+        load_dotenv(env_file, override=False)
 
     app = load_config("data/config.yaml")
     get_log_hub().install_sinks(app.apeiria.logging)
@@ -80,8 +90,6 @@ def run_cmd(reload: bool) -> None:  # noqa: FBT001
     plan.run("full")
 
     if reload:
-        from pathlib import Path
-
         import watchfiles
 
         click.echo("Hot reload enabled — watching for changes...")

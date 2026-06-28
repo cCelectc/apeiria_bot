@@ -216,10 +216,13 @@ async def api_config_schema(section: str) -> JSONResponse:
             "_env_file",
             "_env_file_encoding",
             "_env_nested_delimiter",
-            "driver",
             "api_timeout",
             "session_expire_timeout",
         }
+        immutable_keys = {"driver"}
+        for f in fields:
+            if f.key in immutable_keys:
+                f.immutable = True
         fields = [f for f in fields if f.key not in internal_keys]
         try:
             json_schema = config_cls.model_json_schema()
@@ -257,6 +260,12 @@ async def api_config_schema(section: str) -> JSONResponse:
 
 @router.put("/config/nonebot")
 async def api_config_nonebot(data: dict) -> JSONResponse:
+    immutable = {"driver"}
+    if blocked := immutable & data.keys():
+        raise HTTPException(
+            status_code=422,
+            detail=f"Cannot modify protected config: {', '.join(sorted(blocked))}",
+        )
     _patch_config("nonebot", data)
     return JSONResponse(content={"ok": True})
 
