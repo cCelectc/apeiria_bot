@@ -3,14 +3,6 @@ import { computed, type MaybeRefOrGetter, toValue } from "vue";
 import { api } from "@/lib/api";
 import type { ConfigContract } from "@/types";
 
-interface EntityApi {
-  list: () => Promise<{ plugins?: unknown; adapters?: unknown }>;
-  config: (name: string) => Promise<ConfigContract & { values?: Record<string, unknown> }>;
-  install: (data: { name: string; pkg: string; module_name?: string }) => Promise<{ ok: boolean }>;
-  uninstall: (data: { name: string; keep_config?: boolean }) => Promise<{ ok: boolean }>;
-  setState: (data: { name: string; enabled: boolean }) => Promise<{ ok: boolean }>;
-}
-
 interface EntityConfig {
   listKey: string[];
   configKey: string[];
@@ -30,7 +22,8 @@ function emptyContract(ownerKind: string, ownerId: string): ConfigContract {
   };
 }
 
-export function createEntityHooks(ent: EntityApi, cfg: EntityConfig) {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function createEntityHooks(ent: any, cfg: EntityConfig) {
   function useList() {
     return useQuery({ queryKey: cfg.listKey, queryFn: () => ent.list() });
   }
