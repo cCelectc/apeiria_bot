@@ -59,19 +59,24 @@ class WebChatBot(BaseBot):
         else:
             await self.connections.broadcast(frame)
 
-        await self._persist_outbound(session_id, message_id, msg, segments)
+        await self._persist_outbound(event, session_id, message_id, msg, segments)
         return {"message_id": message_id}
 
     async def _persist_outbound(
         self,
+        event: Event,
         session_id: str,
         message_id: str,
         msg: Message,
         segments: list[dict[str, Any]],
     ) -> None:
-        from apeiria.conversation.store import append_message
+        from apeiria.conversation.store import append_message, ensure_session
 
         try:
+            if isinstance(event, WebChatMessageEvent):
+                await ensure_session(
+                    session_id, "webchat", event.scene_type, event.scene_id
+                )
             await append_message(
                 session_id=session_id,
                 role="bot",

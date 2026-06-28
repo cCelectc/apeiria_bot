@@ -41,7 +41,7 @@ async def append_message(  # noqa: PLR0913
     user_id: str | None = None,
     message_id: str | None = None,
     meta_json: dict | None = None,
-) -> Message:
+) -> Message | None:
     db = get_db()
     now = _now_iso()
     async with db.gate.write() as sess:
@@ -49,17 +49,12 @@ async def append_message(  # noqa: PLR0913
             await sess.execute(select(Session).where(Session.session_id == session_id))
         ).scalar_one_or_none()
         if session is None:
-            session = Session(
-                session_id=session_id,
-                platform="unknown",
-                scene_type="unknown",
-                scene_id="unknown",
-            )
-            sess.add(session)
-            await sess.flush()
             from nonebot.log import logger
 
-            logger.debug("Auto-created session with unknown metadata: {}", session_id)
+            logger.warning(
+                "append_message: session not found, skipping: {}", session_id
+            )
+            return None
 
         msg = Message(
             session_id=session.id,
