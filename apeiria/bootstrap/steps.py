@@ -129,7 +129,14 @@ def step_load_pypi() -> None:
         logger.success("Loaded {} PyPI plugin(s)", loaded)
 
 
-_conversation_handler = nonebot.on_message(Rule(), block=False)
+async def _not_webchat(event: nonebot.adapters.Event) -> bool:  # pyright: ignore[reportAttributeAccessIssue]
+    try:
+        return not event.get_session_id().startswith("webchat:")
+    except Exception:  # noqa: BLE001
+        return True
+
+
+_conversation_handler = nonebot.on_message(Rule(_not_webchat), block=False)
 
 
 @_conversation_handler.handle()
@@ -138,8 +145,6 @@ async def _persist_inbound(event: nonebot.adapters.Event) -> None:  # pyright: i
 
     try:
         session_id = event.get_session_id()
-        if session_id and session_id.startswith("webchat:"):
-            return
         user_id = event.get_user_id()
         text = event.get_plaintext()
         await append_message(

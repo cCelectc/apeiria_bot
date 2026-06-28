@@ -63,10 +63,8 @@ class WebChatMessageEvent(WebChatEvent):
 
     @override
     def get_event_description(self) -> str:
-        return (
-            f"Message {self.message_id} from {self.user_id} "
-            f"@{self.scene_type}:{self.scene_id}: {self.get_plaintext()!r}"
-        )
+        scene = "private" if self.scene_type == "private" else f"group:{self.scene_id}"
+        return f"Message from {self.user_id}@{scene}: {self.get_plaintext()!r}"
 
     @override
     def get_user_id(self) -> str:
