@@ -194,6 +194,7 @@ function remove(name: string) {
                   <Settings2 class="size-4" aria-hidden="true" />
                 </Button>
                 <Button
+                  v-if="a.source !== 'builtin'"
                   variant="ghost"
                   size="icon"
                   :aria-label="`卸载 ${a.name}`"
