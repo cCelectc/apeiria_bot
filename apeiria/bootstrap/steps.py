@@ -158,6 +158,10 @@ def step_access() -> None:
     global _access_control  # noqa: PLW0603
     _access_control = AccessControl()
 
+    from apeiria.access.hook import install_access_hook
+
+    install_access_hook()
+
     @nonebot.get_driver().on_startup
     async def _load_rules() -> None:
         assert _access_control is not None
