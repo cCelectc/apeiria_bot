@@ -17,21 +17,29 @@ function buildFingerprint(): Plugin {
     closeBundle() {
       const srcDir = path.resolve(__dirname, "src");
       const distDir = path.resolve(__dirname, "dist");
-      const hasher = crypto.createHash("sha256");
 
-      function walk(dir: string) {
+      const relPaths: string[] = [];
+
+      function collect(dir: string) {
         for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
           const full = path.join(dir, entry.name);
           if (entry.isDirectory()) {
-            walk(full);
+            collect(full);
           } else if (entry.isFile() && SRC_EXTS.has(path.extname(entry.name))) {
-            hasher.update(path.relative(srcDir, full));
-            hasher.update(fs.readFileSync(full));
+            relPaths.push(path.relative(srcDir, full));
           }
         }
       }
 
-      walk(srcDir);
+      collect(srcDir);
+      relPaths.sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+
+      const hasher = crypto.createHash("sha256");
+      for (const rel of relPaths) {
+        hasher.update(rel);
+        hasher.update(fs.readFileSync(path.join(srcDir, rel)));
+      }
+
       fs.writeFileSync(
         path.join(distDir, ".build_fingerprint"),
         hasher.digest("hex"),
