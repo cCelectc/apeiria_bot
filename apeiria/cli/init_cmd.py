@@ -37,11 +37,6 @@ def init_cmd() -> None:
         "  web:",
         '    host: "127.0.0.1"',
         "    port: 8080",
-        "  # webchat:                # Web UI 调试聊天台（WebChat 适配器）",
-        "  #   enabled: true         # 是否启用",
-        "  #   ws_path: /ws/webchat  # WebSocket 路由路径",
-        "  #   default_user_id: ''   # 空则取 superusers[0]",
-        "  #   history_limit: 50     # 回放最近消息条数",
     ]
     from pathlib import Path
 
