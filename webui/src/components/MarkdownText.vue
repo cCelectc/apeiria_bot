@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import { marked } from "marked";
+import DOMPurify from "dompurify";
 
 const props = defineProps<{
   text?: string;
@@ -8,7 +9,7 @@ const props = defineProps<{
 
 const html = computed(() => {
   if (!props.text) return "";
-  return marked.parse(props.text) as string;
+  return DOMPurify.sanitize(marked.parse(props.text) as string);
 });
 </script>
 
