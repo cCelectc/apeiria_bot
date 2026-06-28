@@ -169,6 +169,7 @@ export default {
     sortDefault: "默认排列",
     sortNameAsc: "名称 A-Z",
     sortNameDesc: "名称 Z-A",
+    sortTimeDesc: "最近更新",
   },
   logs: {
     title: "日志",

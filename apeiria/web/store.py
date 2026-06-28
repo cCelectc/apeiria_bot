@@ -28,6 +28,7 @@ class StoreItem:
         "pypi_name",
         "supported_adapters",
         "tags",
+        "time",
         "type",
         "version",
     )
@@ -47,6 +48,7 @@ class StoreItem:
         type: str = "",  # noqa: A002
         tags: list[dict[str, Any]] | None = None,
         is_official: bool = False,
+        time: str = "",
     ) -> None:
         self.name = name
         self.version = version
@@ -60,6 +62,7 @@ class StoreItem:
         self.type = type
         self.tags = tags or []
         self.is_official = is_official
+        self.time = time
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -75,6 +78,7 @@ class StoreItem:
             "type": self.type,
             "tags": self.tags,
             "is_official": self.is_official,
+            "time": self.time,
         }
 
 
@@ -95,6 +99,7 @@ def _parse_item(raw: dict[str, Any]) -> StoreItem:
         type=raw.get("type", ""),
         tags=raw.get("tags") or [],
         is_official=bool(raw.get("is_official", False)),
+        time=raw.get("time", ""),
     )
 
 
@@ -127,6 +132,12 @@ def paginate(
         items = sorted(
             items,
             key=lambda it: (getattr(it, "name", "") or "").lower(),
+            reverse=True,
+        )
+    elif sort == "time_desc":
+        items = sorted(
+            items,
+            key=lambda it: getattr(it, "time", "") or "",
             reverse=True,
         )
     else:

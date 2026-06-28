@@ -111,6 +111,7 @@ export interface StoreItem {
   type: string;
   tags: StoreTag[];
   is_official: boolean;
+  time: string;
 }
 
 export interface StoreSearchResult {

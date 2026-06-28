@@ -186,6 +186,7 @@ function openDetail(item: StoreItem) {
         </SelectTrigger>
         <SelectContent>
           <SelectItem value="default">{{ $t("store.sortDefault") }}</SelectItem>
+          <SelectItem value="time_desc">{{ $t("store.sortTimeDesc") }}</SelectItem>
           <SelectItem value="name_asc">{{ $t("store.sortNameAsc") }}</SelectItem>
           <SelectItem value="name_desc">{{ $t("store.sortNameDesc") }}</SelectItem>
         </SelectContent>
