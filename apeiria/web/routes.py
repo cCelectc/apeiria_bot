@@ -1,26 +1,27 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException
-from fastapi.responses import JSONResponse
+from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import JSONResponse, StreamingResponse
 
 from apeiria.config.loader import load_config, update_runtime_config
 from apeiria.config.models import ApeiriaConfig
 from apeiria.config.reflector import reflect_model
 from apeiria.plugin.adapter_manager import (
-    install_adapter,
     set_adapter_state,
     uninstall_adapter,
 )
 from apeiria.plugin.adapter_scanner import scan_adapters
-from apeiria.plugin.manager import install_plugin, set_plugin_state, uninstall_plugin
+from apeiria.plugin.manager import set_plugin_state, uninstall_plugin
 from apeiria.plugin.metadata.resolver import resolve_config_namespace_contract
 from apeiria.plugin.scanner import scan_plugins
 from apeiria.web.auth import verify_token
 from apeiria.web.plugin_metadata import merge_plugin_metadata
 from apeiria.web.store import get_status, get_store, paginate
+from apeiria.web.tasks import get_task_runner
 
 router = APIRouter(prefix="/api", dependencies=[Depends(verify_token)])
 
@@ -103,8 +104,8 @@ async def api_plugins_install(data: dict) -> JSONResponse:
     pkg = data.get("pkg", "")
     if not name or not pkg:
         raise HTTPException(status_code=400, detail="name and pkg required")
-    ok, msg = await asyncio.to_thread(install_plugin, name, pkg)
-    return JSONResponse(content={"ok": ok, "message": msg})
+    task_id = await get_task_runner().start("plugin", name, pkg)
+    return JSONResponse(content={"task_id": task_id})
 
 
 @router.post("/plugins/uninstall")
@@ -162,8 +163,10 @@ async def api_adapters_install(data: dict) -> JSONResponse:
         raise HTTPException(
             status_code=400, detail="name, pkg and module_name required"
         )
-    ok, msg = await asyncio.to_thread(install_adapter, name, pkg, module_name)
-    return JSONResponse(content={"ok": ok, "message": msg})
+    task_id = await get_task_runner().start(
+        "adapter", name, pkg, module_name=module_name
+    )
+    return JSONResponse(content={"task_id": task_id})
 
 
 @router.post("/adapters/uninstall")
@@ -345,3 +348,32 @@ async def api_store_sources() -> JSONResponse:
 @router.get("/status")
 async def api_status() -> JSONResponse:
     return JSONResponse(content=get_status())
+
+
+@router.get("/tasks/{task_id}/stream")
+async def api_task_stream(request: Request, task_id: str) -> StreamingResponse:
+    runner = get_task_runner()
+    queue = await runner.subscribe(task_id)
+    if queue is None:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    async def event_stream():
+        try:
+            while True:
+                if await request.is_disconnected():
+                    break
+                try:
+                    payload = await asyncio.wait_for(queue.get(), timeout=30.0)
+                except TimeoutError:
+                    yield ": keepalive\n\n"
+                    continue
+                yield f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
+                if payload.get("type") in ("done", "error"):
+                    break
+        except asyncio.CancelledError:
+            pass
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+    )
