@@ -12,10 +12,9 @@ from apeiria.config.models import ApeiriaConfig
 from apeiria.config.reflector import reflect_model
 from apeiria.plugin.adapter_manager import (
     set_adapter_state,
-    uninstall_adapter,
 )
 from apeiria.plugin.adapter_scanner import scan_adapters
-from apeiria.plugin.manager import set_plugin_state, uninstall_plugin
+from apeiria.plugin.manager import set_plugin_state
 from apeiria.plugin.metadata.resolver import resolve_config_namespace_contract
 from apeiria.plugin.scanner import scan_plugins
 from apeiria.web.auth import verify_token
@@ -114,8 +113,10 @@ async def api_plugins_uninstall(data: dict) -> JSONResponse:
     keep_config = data.get("keep_config", False)
     if not name:
         raise HTTPException(status_code=400, detail="name required")
-    ok = uninstall_plugin(name, keep_config=keep_config)
-    return JSONResponse(content={"ok": ok})
+    task_id = await get_task_runner().start(
+        "plugin", name, name, uninstall=True, keep_config=keep_config
+    )
+    return JSONResponse(content={"task_id": task_id})
 
 
 @router.post("/plugins/state")
@@ -175,8 +176,10 @@ async def api_adapters_uninstall(data: dict) -> JSONResponse:
     keep_config = data.get("keep_config", False)
     if not name:
         raise HTTPException(status_code=400, detail="name required")
-    ok = uninstall_adapter(name, keep_config=keep_config)
-    return JSONResponse(content={"ok": ok})
+    task_id = await get_task_runner().start(
+        "adapter", name, name, uninstall=True, keep_config=keep_config
+    )
+    return JSONResponse(content={"task_id": task_id})
 
 
 @router.post("/adapters/state")

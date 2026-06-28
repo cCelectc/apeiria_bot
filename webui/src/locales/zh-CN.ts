@@ -10,6 +10,8 @@ export default {
     noData: "暂无数据",
     retry: "重试",
     back: "返回",
+    dismiss: "忽略",
+    pendingChanges: "插件变更将在重启 Bot 后生效。请通过聊天命令或管理面板重启。",
   },
   nav: {
     dashboard: "看板",

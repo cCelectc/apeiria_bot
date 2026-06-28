@@ -35,7 +35,11 @@ export function useAdapterMutations() {
         api.adapters.install(vars).then((r) => r.task_id),
       onSuccess: invalidate,
     }),
-    uninstall: useMutation({ mutationFn: api.adapters.uninstall, onSuccess: invalidate }),
+    uninstall: useMutation({
+      mutationFn: (vars: { name: string; keep_config?: boolean }) =>
+        api.adapters.uninstall(vars).then((r) => r.task_id),
+      onSuccess: invalidate,
+    }),
     setState: useMutation({ mutationFn: api.adapters.setState, onSuccess: invalidate }),
   };
 }

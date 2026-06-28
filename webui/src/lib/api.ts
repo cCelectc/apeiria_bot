@@ -73,7 +73,7 @@ export const api = {
     install: (data: { name: string; pkg: string }) =>
       request<InstallTaskResponse>("POST", "/plugins/install", data),
     uninstall: (data: { name: string; keep_config?: boolean }) =>
-      request<{ ok: boolean }>("POST", "/plugins/uninstall", data),
+      request<InstallTaskResponse>("POST", "/plugins/uninstall", data),
     setState: (data: { name: string; enabled: boolean }) =>
       request<{ ok: boolean }>("POST", "/plugins/state", data),
     config: (name: string) =>
@@ -87,7 +87,7 @@ export const api = {
     install: (data: { name: string; pkg: string; module_name: string }) =>
       request<InstallTaskResponse>("POST", "/adapters/install", data),
     uninstall: (data: { name: string; keep_config?: boolean }) =>
-      request<{ ok: boolean }>("POST", "/adapters/uninstall", data),
+      request<InstallTaskResponse>("POST", "/adapters/uninstall", data),
     setState: (data: { name: string; enabled: boolean }) =>
       request<{ ok: boolean }>("POST", "/adapters/state", data),
     config: (name: string) =>

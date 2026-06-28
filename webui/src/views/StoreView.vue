@@ -44,6 +44,7 @@ import {
   useAdaptersQuery,
 } from "@/composables/useAdapters";
 import { usePluginMutations, usePluginsQuery } from "@/composables/usePlugins";
+import { usePendingChanges } from "@/composables/usePendingChanges";
 import {
   STORE_PAGE_SIZE,
   useStoreAdaptersQuery,
@@ -87,6 +88,7 @@ const { install: installPlugin } = usePluginMutations();
 const { install: installAdapter } = useAdapterMutations();
 const { data: installedPlugins } = usePluginsQuery();
 const { data: installedAdapters } = useAdaptersQuery();
+const { pendingChanges, markChanged, clearChanges } = usePendingChanges();
 
 const currentItems = computed<StoreItem[]>(
   () => (isPlugins.value ? pluginData.value : adapterData.value)?.results ?? [],
@@ -165,6 +167,7 @@ function installItem(item: StoreItem, forAdapter: boolean) {
 function onProgressClose() {
   progressOpen.value = false;
   progressTaskId.value = null;
+  markChanged();
 }
 
 const detailOpen = ref(false);
@@ -193,6 +196,20 @@ function fmtTime(iso: string): string {
 <template>
   <div class="p-6 lg:p-8">
     <PageHeader :title="$t('store.title')" :subtitle="$t('store.subtitle')" />
+
+    <div
+      v-if="pendingChanges"
+      class="mb-4 flex items-center justify-between rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 dark:border-amber-800 dark:bg-amber-950"
+    >
+      <p class="text-sm text-amber-800 dark:text-amber-200">
+        {{ $t("common.pendingChanges") }}
+      </p>
+      <div class="flex items-center gap-2">
+        <Button variant="outline" size="sm" @click="clearChanges">
+          {{ $t("common.dismiss") }}
+        </Button>
+      </div>
+    </div>
 
     <div class="mb-4 flex flex-wrap items-center gap-3">
       <div class="relative w-full max-w-md">

@@ -34,8 +34,10 @@ import {
   useAdaptersQuery,
   useSaveAdapterConfig,
 } from "@/composables/useAdapters";
+import { usePendingChanges } from "@/composables/usePendingChanges";
 
 const { t } = useI18n();
+const { pendingChanges, markChanged, clearChanges } = usePendingChanges();
 const { data, isLoading, isError, error, refetch } = useAdaptersQuery();
 void isLoading;
 const { install, uninstall, setState } = useAdapterMutations();
@@ -105,6 +107,7 @@ function submitInstall() {
 function onProgressClose() {
   progressOpen.value = false;
   progressTaskId.value = null;
+  markChanged();
   refetch();
 }
 
@@ -129,7 +132,11 @@ function remove(name: string) {
     uninstall.mutate(
       { name },
       {
-        onSuccess: () => toast.success(t("adapters.uninstalled")),
+        onSuccess: (taskId: string) => {
+          progressTitle.value = `卸载适配器: ${name}`;
+          progressTaskId.value = taskId;
+          progressOpen.value = true;
+        },
         onError: (e: Error) => toast.error(e.message),
       },
     );
@@ -150,6 +157,20 @@ function remove(name: string) {
         </Button>
       </template>
     </PageHeader>
+
+    <div
+      v-if="pendingChanges"
+      class="mb-4 flex items-center justify-between rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 dark:border-amber-800 dark:bg-amber-950"
+    >
+      <p class="text-sm text-amber-800 dark:text-amber-200">
+        {{ $t("common.pendingChanges") }}
+      </p>
+      <div class="flex items-center gap-2">
+        <Button variant="outline" size="sm" @click="clearChanges">
+          {{ $t("common.dismiss") }}
+        </Button>
+      </div>
+    </div>
 
     <ErrorState
       v-if="isError"
