@@ -109,10 +109,12 @@ def expand_config(app: AppConfig) -> None:
     }
     for key, value in nonebot_fields.items():
         env_key = key.upper()
+        env_value = to_env_value(value)
         if env_key in os.environ:
-            skipped_keys.append(env_key)
+            if os.environ[env_key] != env_value:
+                skipped_keys.append(env_key)
         else:
-            os.environ[env_key] = to_env_value(value)
+            os.environ[env_key] = env_value
 
     _inject_section_config(
         app.plugins,

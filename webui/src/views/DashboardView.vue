@@ -31,11 +31,35 @@ async function doRestart() {
   restarting.value = true;
   try {
     await api.status.restart();
+    pollUntilUp();
   } catch {
     toast.error("重启请求失败");
     restarting.value = false;
     restartOpen.value = false;
   }
+}
+
+function pollUntilUp() {
+  let attempts = 0;
+  const max = 60;
+  const interval = setInterval(async () => {
+    attempts++;
+    try {
+      await api.status.get();
+      clearInterval(interval);
+      toast.success("Bot 已重启");
+      restarting.value = false;
+      restartOpen.value = false;
+      refetch();
+    } catch {
+      if (attempts >= max) {
+        clearInterval(interval);
+        toast.error("重启超时，请手动刷新页面");
+        restarting.value = false;
+        restartOpen.value = false;
+      }
+    }
+  }, 2000);
 }
 
 function formatUptime(seconds: number): string {
