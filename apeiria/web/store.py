@@ -116,8 +116,27 @@ def _matches(item: StoreItem, query: str) -> bool:
 
 
 def paginate(
-    items: list[Any], offset: int = 0, limit: int = 60
+    items: list[Any],
+    offset: int = 0,
+    limit: int = 60,
+    sort: str = "",
 ) -> tuple[list[Any], int]:
+    if sort == "name_asc":
+        items = sorted(items, key=lambda it: (getattr(it, "name", "") or "").lower())
+    elif sort == "name_desc":
+        items = sorted(
+            items,
+            key=lambda it: (getattr(it, "name", "") or "").lower(),
+            reverse=True,
+        )
+    else:
+        items = sorted(
+            items,
+            key=lambda it: (
+                not getattr(it, "is_official", False),
+                (getattr(it, "name", "") or "").lower(),
+            ),
+        )
     total = len(items)
     if limit <= 0:
         return items[offset:], total

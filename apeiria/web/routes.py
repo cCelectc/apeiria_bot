@@ -306,11 +306,11 @@ def _patch_config(section: str, data: dict) -> None:
 
 @router.get("/store/plugins")
 async def api_store_search(
-    q: str = "", limit: int = 60, offset: int = 0
+    q: str = "", limit: int = 60, offset: int = 0, sort: str = ""
 ) -> JSONResponse:
     store = get_store()
     items = await store.search(q)
-    page, total = paginate(items, offset, limit)
+    page, total = paginate(items, offset, limit, sort)
     return JSONResponse(
         content={"results": [it.to_dict() for it in page], "total": total}
     )
@@ -327,11 +327,11 @@ async def api_store_get(pkg_name: str) -> JSONResponse:
 
 @router.get("/store/adapters")
 async def api_store_adapters_search(
-    q: str = "", limit: int = 60, offset: int = 0
+    q: str = "", limit: int = 60, offset: int = 0, sort: str = ""
 ) -> JSONResponse:
     store = get_store()
     items = await store.search_adapters(q)
-    page, total = paginate(items, offset, limit)
+    page, total = paginate(items, offset, limit, sort)
     return JSONResponse(
         content={"results": [it.to_dict() for it in page], "total": total}
     )

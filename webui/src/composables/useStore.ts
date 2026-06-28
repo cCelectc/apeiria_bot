@@ -8,14 +8,16 @@ export function useStorePluginsQuery(
   query: MaybeRefOrGetter<string>,
   page: MaybeRefOrGetter<number> = 1,
   enabled: MaybeRefOrGetter<boolean> = true,
+  sort: MaybeRefOrGetter<string> = "",
 ) {
   return useQuery({
-    queryKey: computed(() => ["store-plugins", toValue(query), toValue(page)]),
+    queryKey: computed(() => ["store-plugins", toValue(query), toValue(page), toValue(sort)]),
     queryFn: () =>
       api.store.searchPlugins(
         toValue(query),
         STORE_PAGE_SIZE,
         (toValue(page) - 1) * STORE_PAGE_SIZE,
+        toValue(sort),
       ),
     enabled: computed(() => toValue(enabled)),
     placeholderData: keepPreviousData,
@@ -26,14 +28,16 @@ export function useStoreAdaptersQuery(
   query: MaybeRefOrGetter<string>,
   page: MaybeRefOrGetter<number> = 1,
   enabled: MaybeRefOrGetter<boolean> = true,
+  sort: MaybeRefOrGetter<string> = "",
 ) {
   return useQuery({
-    queryKey: computed(() => ["store-adapters", toValue(query), toValue(page)]),
+    queryKey: computed(() => ["store-adapters", toValue(query), toValue(page), toValue(sort)]),
     queryFn: () =>
       api.store.searchAdapters(
         toValue(query),
         STORE_PAGE_SIZE,
         (toValue(page) - 1) * STORE_PAGE_SIZE,
+        toValue(sort),
       ),
     enabled: computed(() => toValue(enabled)),
     placeholderData: keepPreviousData,

@@ -27,6 +27,13 @@ import {
 } from "@/components/ui/sheet";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   useAdapterMutations,
   useAdaptersQuery,
 } from "@/composables/useAdapters";
@@ -41,12 +48,13 @@ import type { StoreItem } from "@/types";
 const query = ref("");
 const debouncedQuery = refDebounced(query, 300);
 const tab = ref<"plugins" | "adapters">("plugins");
+const sort = ref("default");
 const page = ref(1);
 const { t } = useI18n();
 
 const isPlugins = computed(() => tab.value === "plugins");
 
-watch([debouncedQuery, tab], () => {
+watch([debouncedQuery, tab, sort], () => {
   page.value = 1;
 });
 
@@ -56,7 +64,7 @@ const {
   isError: pluginError,
   error: pluginErrorDetail,
   refetch: pluginRefetch,
-} = useStorePluginsQuery(debouncedQuery, page, isPlugins);
+} = useStorePluginsQuery(debouncedQuery, page, isPlugins, sort);
 const {
   data: adapterData,
   isFetching: adapterLoading,
@@ -67,6 +75,7 @@ const {
   debouncedQuery,
   page,
   computed(() => !isPlugins.value),
+  sort,
 );
 const { install: installPlugin } = usePluginMutations();
 const { install: installAdapter } = useAdapterMutations();
@@ -158,17 +167,29 @@ function openDetail(item: StoreItem) {
   <div class="p-6 lg:p-8">
     <PageHeader :title="$t('store.title')" :subtitle="$t('store.subtitle')" />
 
-    <div class="relative mb-6 max-w-md">
-      <Search
-        class="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
-        aria-hidden="true"
-      />
-      <Input
-        v-model="query"
-        :placeholder="$t('store.searchPlaceholder')"
-        aria-label="搜索插件与适配器"
-        class="pl-9"
-      />
+    <div class="mb-6 flex flex-wrap items-center gap-3">
+      <div class="relative max-w-md flex-1">
+        <Search
+          class="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
+          aria-hidden="true"
+        />
+        <Input
+          v-model="query"
+          :placeholder="$t('store.searchPlaceholder')"
+          aria-label="搜索插件与适配器"
+          class="pl-9"
+        />
+      </div>
+      <Select v-model="sort">
+        <SelectTrigger class="w-36">
+          <SelectValue :placeholder="$t('store.sortDefault')" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="default">{{ $t("store.sortDefault") }}</SelectItem>
+          <SelectItem value="name_asc">{{ $t("store.sortNameAsc") }}</SelectItem>
+          <SelectItem value="name_desc">{{ $t("store.sortNameDesc") }}</SelectItem>
+        </SelectContent>
+      </Select>
     </div>
 
     <Tabs v-model="tab">

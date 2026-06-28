@@ -103,16 +103,16 @@ export const api = {
       request<ConfigContract>("GET", `/config/schema/${section}`),
   },
   store: {
-    searchPlugins: (q: string, limit = 60, offset = 0) =>
-      request<StoreSearchResult>(
-        "GET",
-        `/store/plugins?q=${encodeURIComponent(q)}&limit=${limit}&offset=${offset}`,
-      ),
-    searchAdapters: (q: string, limit = 60, offset = 0) =>
-      request<StoreSearchResult>(
-        "GET",
-        `/store/adapters?q=${encodeURIComponent(q)}&limit=${limit}&offset=${offset}`,
-      ),
+    searchPlugins: (q: string, limit = 60, offset = 0, sort = "") => {
+      const sp = new URLSearchParams({ q, limit: String(limit), offset: String(offset) });
+      if (sort) sp.set("sort", sort);
+      return request<StoreSearchResult>("GET", `/store/plugins?${sp.toString()}`);
+    },
+    searchAdapters: (q: string, limit = 60, offset = 0, sort = "") => {
+      const sp = new URLSearchParams({ q, limit: String(limit), offset: String(offset) });
+      if (sort) sp.set("sort", sort);
+      return request<StoreSearchResult>("GET", `/store/adapters?${sp.toString()}`);
+    },
   },
   logs: {
     history: (params: {

@@ -166,6 +166,9 @@ export default {
     install: "安装",
     prevPage: "上一页",
     nextPage: "下一页",
+    sortDefault: "默认排列",
+    sortNameAsc: "名称 A-Z",
+    sortNameDesc: "名称 Z-A",
   },
   logs: {
     title: "日志",
