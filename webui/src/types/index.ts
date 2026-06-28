@@ -47,6 +47,7 @@ export interface PrimitiveField {
   secret: boolean;
   choices?: { value: string; label: string }[];
   order: number;
+  immutable?: boolean;
 }
 
 export interface ObjectField {
@@ -57,6 +58,7 @@ export interface ObjectField {
   children: FieldNode[];
   default: Record<string, unknown> | null;
   order: number;
+  immutable?: boolean;
 }
 
 export interface ArrayField {
@@ -67,6 +69,7 @@ export interface ArrayField {
   item_schema: FieldNode | null;
   default: unknown[] | null;
   order: number;
+  immutable?: boolean;
 }
 
 export interface MapField {
@@ -77,6 +80,7 @@ export interface MapField {
   key_type: string;
   value_schema: FieldNode | null;
   order: number;
+  immutable?: boolean;
 }
 
 export interface AnyField {
@@ -86,6 +90,7 @@ export interface AnyField {
   description: string;
   default: unknown;
   order: number;
+  immutable?: boolean;
 }
 
 export interface StoreTag {

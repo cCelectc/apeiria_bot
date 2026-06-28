@@ -87,6 +87,7 @@ export default {
     saveFailed: "保存失败",
     add: "添加",
     remove: "删除",
+    immutable: "只读",
   },
   theme: {
     label: "切换主题",

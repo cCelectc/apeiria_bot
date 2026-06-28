@@ -112,10 +112,16 @@ function collectDefaults(fields: FieldNode[]): Record<string, unknown> {
 
 function resetToDefaults() {
   const defaults = collectDefaults(props.schema.fields);
-  data.value = defaults;
-  baseline.value = clone(defaults);
+  const merged: Record<string, unknown> = { ...defaults };
+  for (const f of props.schema.fields) {
+    if (f.immutable && f.key in props.modelValue) {
+      merged[f.key] = props.modelValue[f.key];
+    }
+  }
+  data.value = merged;
+  baseline.value = clone(merged);
   if (mode.value === "code") {
-    yamlRaw.value = dump(defaults, { indent: 2 });
+    yamlRaw.value = dump(merged, { indent: 2 });
   }
 }
 

@@ -153,6 +153,12 @@ function updateMapValue(field: MapField, key: string, value: unknown) {
             {{ primTypeLabel(field as PrimitiveField) }}
           </span>
           <span
+            v-if="(field as PrimitiveField).immutable"
+            class="rounded-sm bg-amber-100 dark:bg-amber-900 px-1.5 py-0.5 text-xs font-medium text-amber-700 dark:text-amber-300"
+          >
+            {{ $t("config.immutable") }}
+          </span>
+          <span
             v-if="hasDefault((field as PrimitiveField).default)"
             class="max-w-[16rem] truncate rounded-sm bg-muted px-1.5 py-0.5 text-xs text-muted-foreground"
           >
@@ -169,11 +175,13 @@ function updateMapValue(field: MapField, key: string, value: unknown) {
             v-if="(field as PrimitiveField).type === 'bool'"
             :id="field.key"
             :model-value="!!modelValue[field.key]"
+            :disabled="(field as PrimitiveField).immutable"
             @update:model-value="(v: boolean) => updateField(field.key, v)"
           />
           <Select
             v-else-if="(field as PrimitiveField).choices?.length"
             :model-value="String(modelValue[field.key] ?? '')"
+            :disabled="(field as PrimitiveField).immutable"
             @update:model-value="
               (v: any) => updateField(field.key, String(v ?? ''))
             "
@@ -196,6 +204,7 @@ function updateMapValue(field: MapField, key: string, value: unknown) {
             :id="field.key"
             type="password"
             :model-value="String(modelValue[field.key] ?? '')"
+            :disabled="(field as PrimitiveField).immutable"
             @update:model-value="
               (v: string | number) => updateField(field.key, String(v))
             "
@@ -212,6 +221,7 @@ function updateMapValue(field: MapField, key: string, value: unknown) {
                 ? Number(modelValue[field.key])
                 : undefined
             "
+            :disabled="(field as PrimitiveField).immutable"
             @update:model-value="
               (v: string | number) =>
                 updateField(
@@ -226,6 +236,7 @@ function updateMapValue(field: MapField, key: string, value: unknown) {
             v-else-if="(field as PrimitiveField).type === 'str'"
             :id="field.key"
             :model-value="String(modelValue[field.key] ?? '')"
+            :disabled="(field as PrimitiveField).immutable"
             @update:model-value="
               (v: string | number) => updateField(field.key, String(v))
             "
@@ -234,6 +245,7 @@ function updateMapValue(field: MapField, key: string, value: unknown) {
             v-else
             :id="field.key"
             :model-value="String(modelValue[field.key] ?? '')"
+            :disabled="(field as PrimitiveField).immutable"
             @update:model-value="
               (v: string | number) => updateField(field.key, String(v))
             "
