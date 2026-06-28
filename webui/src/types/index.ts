@@ -166,11 +166,29 @@ export type WebchatInFrame =
       identity?: WebchatIdentity;
     }
   | { type: "clear" }
-  | { type: "delete"; message_id: string };
+  | { type: "delete"; message_id: string }
+  | { type: "switch"; identity: WebchatIdentity };
 
 export type WebchatOutFrame =
-  | { type: "history"; messages: WebchatMessage[] }
+  | { type: "history"; session_id: string; messages: WebchatMessage[] }
   | { type: "message"; message: WebchatMessage }
-  | { type: "cleared" }
+  | { type: "cleared"; session_id: string }
   | { type: "deleted"; message_id: string }
   | { type: "error"; code: string; message: string };
+
+export interface WebchatSimUser {
+  id: string;
+  name: string;
+}
+
+export interface WebchatSimGroup {
+  id: string;
+  name: string;
+}
+
+export interface WebchatConversation {
+  key: string;
+  type: "private" | "group";
+  name: string;
+  groupId?: string;
+}
