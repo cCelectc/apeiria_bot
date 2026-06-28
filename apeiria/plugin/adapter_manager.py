@@ -60,21 +60,27 @@ def _toml_remove_adapter(name: str) -> None:
     _ADAPTERS_TOML.write_text("\n".join(filtered) + "\n", encoding="utf-8")
 
 
-def install_adapter(name: str, pkg_requirement: str, module_name: str) -> bool:
+def install_adapter(
+    name: str, pkg_requirement: str, module_name: str
+) -> tuple[bool, str]:
     uv = shutil.which("uv")
     if uv is None:
-        logger.error("uv not found")
-        return False
+        return False, "uv not found"
 
-    result = subprocess.run(
-        [uv, "add", "--directory", ".apeiria", pkg_requirement],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
+    try:
+        result = subprocess.run(
+            [uv, "add", "--directory", ".apeiria", pkg_requirement],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=120,
+        )
+    except subprocess.TimeoutExpired:
+        return False, "安装超时（120s），请检查网络或包大小"
     if result.returncode != 0:
-        logger.error("uv add failed: {}", result.stderr.strip())
-        return False
+        err = result.stderr.strip() or result.stdout.strip()
+        logger.error("uv add failed: {}", err)
+        return False, err
 
     _toml_add_adapter(name, module_name)
 
@@ -86,7 +92,7 @@ def install_adapter(name: str, pkg_requirement: str, module_name: str) -> bool:
     _write_adapters_yaml(data)
 
     sync_apeiria_env()
-    return True
+    return True, "安装成功"
 
 
 def uninstall_adapter(name: str, *, keep_config: bool = False) -> bool:
@@ -104,6 +110,7 @@ def uninstall_adapter(name: str, *, keep_config: bool = False) -> bool:
             capture_output=True,
             text=True,
             check=False,
+            timeout=120,
         )
 
     _toml_remove_adapter(name)

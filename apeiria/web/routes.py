@@ -103,8 +103,8 @@ async def api_plugins_install(data: dict) -> JSONResponse:
     pkg = data.get("pkg", "")
     if not name or not pkg:
         raise HTTPException(status_code=400, detail="name and pkg required")
-    ok = await asyncio.to_thread(install_plugin, name, pkg)
-    return JSONResponse(content={"ok": ok})
+    ok, msg = await asyncio.to_thread(install_plugin, name, pkg)
+    return JSONResponse(content={"ok": ok, "message": msg})
 
 
 @router.post("/plugins/uninstall")
@@ -162,8 +162,8 @@ async def api_adapters_install(data: dict) -> JSONResponse:
         raise HTTPException(
             status_code=400, detail="name, pkg and module_name required"
         )
-    ok = await asyncio.to_thread(install_adapter, name, pkg, module_name)
-    return JSONResponse(content={"ok": ok})
+    ok, msg = await asyncio.to_thread(install_adapter, name, pkg, module_name)
+    return JSONResponse(content={"ok": ok, "message": msg})
 
 
 @router.post("/adapters/uninstall")

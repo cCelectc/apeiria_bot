@@ -24,24 +24,28 @@ def _write_plugins_yaml(data: dict) -> None:
     )
 
 
-def install_plugin(name: str, pkg_requirement: str) -> bool:
+def install_plugin(name: str, pkg_requirement: str) -> tuple[bool, str]:
     import shutil
     import subprocess
 
     uv = shutil.which("uv")
     if uv is None:
-        logger.error("uv not found")
-        return False
+        return False, "uv not found"
 
-    result = subprocess.run(
-        [uv, "add", "--directory", ".apeiria", pkg_requirement],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
+    try:
+        result = subprocess.run(
+            [uv, "add", "--directory", ".apeiria", pkg_requirement],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=120,
+        )
+    except subprocess.TimeoutExpired:
+        return False, "安装超时（120s），请检查网络或包大小"
     if result.returncode != 0:
-        logger.error("uv add failed: {}", result.stderr.strip())
-        return False
+        err = result.stderr.strip() or result.stdout.strip()
+        logger.error("uv add failed: {}", err)
+        return False, err
 
     data = _read_plugins_yaml()
     packages = data.setdefault("packages", {})
@@ -51,7 +55,7 @@ def install_plugin(name: str, pkg_requirement: str) -> bool:
     _write_plugins_yaml(data)
 
     sync_apeiria_env()
-    return True
+    return True, "安装成功"
 
 
 def uninstall_plugin(name: str, *, keep_config: bool = False) -> bool:
@@ -72,6 +76,7 @@ def uninstall_plugin(name: str, *, keep_config: bool = False) -> bool:
             capture_output=True,
             text=True,
             check=False,
+            timeout=120,
         )
 
     packages.pop(name, None)
