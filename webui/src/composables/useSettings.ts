@@ -1,42 +1,42 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/vue-query";
+import { computed } from "vue";
+import type { ComputedRef } from "vue";
 import { api } from "@/lib/api";
 import type { ConfigContract } from "@/types";
+import { useConfigQuery } from "./useConfig";
 
 const qc = () => useQueryClient();
 
 export function useConfigSchema(section: string) {
   return useQuery({
     queryKey: ["configSchema", section],
-    queryFn: async () => {
-      return api.config.schema(section) as Promise<ConfigContract>;
-    },
+    queryFn: () => api.config.schema(section),
   });
+}
+
+function _useSectionConfig(section: string): {
+  data: ComputedRef<Record<string, unknown> | undefined>;
+  isLoading: ComputedRef<boolean>;
+  isError: ComputedRef<boolean>;
+  error: ComputedRef<Error | null>;
+  refetch: () => Promise<unknown>;
+} {
+  const query = useConfigQuery();
+  return {
+    data: computed(() => (query.data.value as Record<string, unknown>)?.[section] as Record<string, unknown> | undefined),
+    isLoading: computed(() => query.isLoading.value),
+    isError: computed(() => query.isError.value),
+    error: computed(() => query.error.value as Error | null),
+    refetch: () => query.refetch(),
+  };
 }
 
 export function useNonebotConfig() {
-  return useQuery({
-    queryKey: ["config", "nonebot"],
-    queryFn: async () => {
-      const res = await api.config.get();
-      return (res as Record<string, unknown>).nonebot as Record<
-        string,
-        unknown
-      >;
-    },
-  });
+  return _useSectionConfig("nonebot");
 }
 
 export function useApeiriaConfig() {
-  return useQuery({
-    queryKey: ["config", "apeiria"],
-    queryFn: async () => {
-      const res = await api.config.get();
-      return (res as Record<string, unknown>).apeiria as Record<
-        string,
-        unknown
-      >;
-    },
-  });
+  return _useSectionConfig("apeiria");
 }
 
 export function useSaveNonebotConfig() {
