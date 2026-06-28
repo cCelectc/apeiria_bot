@@ -91,7 +91,10 @@ async def handle_plugin(
 def _find_plugin(query: str) -> PluginManifest | None:
     normalized = query.strip().lower()
     for p in scan_plugins():
-        if normalized in (p.name.lower(), normalized):
+        if p.name.lower() == normalized:
+            return p
+    for p in scan_plugins():
+        if normalized in p.name.lower():
             return p
     return None
 
