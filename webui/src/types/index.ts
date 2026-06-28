@@ -144,6 +144,18 @@ export interface LoginResponse {
   username: string;
 }
 
+export interface InstallTaskResponse {
+  task_id: string;
+}
+
+export interface TaskEvent {
+  type: "output" | "done" | "error";
+  text?: string;
+  ok?: boolean;
+  name?: string;
+  message?: string;
+}
+
 export type WebchatSegment =
   | { type: "text"; text: string }
   | { type: "image"; url: string }

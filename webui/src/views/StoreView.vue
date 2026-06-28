@@ -12,6 +12,7 @@ import {
 } from "@lucide/vue";
 import { toast } from "vue-sonner";
 import ErrorState from "@/components/ErrorState.vue";
+import InstallProgressDialog from "@/components/InstallProgressDialog.vue";
 import PageHeader from "@/components/PageHeader.vue";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -55,7 +56,7 @@ const debouncedQuery = refDebounced(query, 300);
 const tab = ref<"plugins" | "adapters">("plugins");
 const sort = ref("default");
 const page = ref(1);
-const { t } = useI18n();
+useI18n();
 
 const isPlugins = computed(() => tab.value === "plugins");
 
@@ -140,7 +141,11 @@ function isInstalled(item: StoreItem, forAdapter: boolean): boolean {
 
 function installItem(item: StoreItem, forAdapter: boolean) {
   const opts = {
-    onSuccess: () => toast.success(`${t("store.installed")} ${item.name}`),
+    onSuccess: (taskId: string) => {
+      progressTitle.value = `安装: ${item.name}`;
+      progressTaskId.value = taskId;
+      progressOpen.value = true;
+    },
     onError: (e: Error) => toast.error(e.message),
   };
   if (forAdapter) {
@@ -157,7 +162,15 @@ function installItem(item: StoreItem, forAdapter: boolean) {
   }
 }
 
+function onProgressClose() {
+  progressOpen.value = false;
+  progressTaskId.value = null;
+}
+
 const detailOpen = ref(false);
+const progressOpen = ref(false);
+const progressTaskId = ref<string | null>(null);
+const progressTitle = ref("");
 const detailItem = ref<StoreItem | null>(null);
 const detailIsAdapter = ref(false);
 
@@ -447,5 +460,12 @@ function fmtTime(iso: string): string {
         </SheetFooter>
       </SheetContent>
     </Sheet>
+
+    <InstallProgressDialog
+      :open="progressOpen"
+      :task-id="progressTaskId"
+      :title="progressTitle"
+      @close="onProgressClose"
+    />
   </div>
 </template>

@@ -30,7 +30,11 @@ export function useAdapterMutations() {
   const qc = useQueryClient();
   const invalidate = () => qc.invalidateQueries({ queryKey: ["adapters"] });
   return {
-    install: useMutation({ mutationFn: api.adapters.install, onSuccess: invalidate }),
+    install: useMutation({
+      mutationFn: (vars: { name: string; pkg: string; module_name: string }) =>
+        api.adapters.install(vars).then((r) => r.task_id),
+      onSuccess: invalidate,
+    }),
     uninstall: useMutation({ mutationFn: api.adapters.uninstall, onSuccess: invalidate }),
     setState: useMutation({ mutationFn: api.adapters.setState, onSuccess: invalidate }),
   };

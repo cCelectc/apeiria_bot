@@ -5,6 +5,7 @@ import { Info, Plus, Settings2, Trash2, X } from "@lucide/vue";
 import { toast } from "vue-sonner";
 import ConfigEditor from "@/components/ConfigEditor.vue";
 import ErrorState from "@/components/ErrorState.vue";
+import InstallProgressDialog from "@/components/InstallProgressDialog.vue";
 import PageHeader from "@/components/PageHeader.vue";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -55,6 +56,9 @@ const { install, uninstall, setState } = usePluginMutations();
 
 const installOpen = ref(false);
 const installForm = reactive({ name: "", pkg: "" });
+const progressOpen = ref(false);
+const progressTaskId = ref<string | null>(null);
+const progressTitle = ref("");
 
 const configOpen = ref(false);
 const configPlugin = ref("");
@@ -102,13 +106,23 @@ function submitInstall() {
   install.mutate(
     { name: installForm.name, pkg: installForm.pkg },
     {
-      onSuccess: () => {
-        toast.success(t("plugins.installed"));
+      onSuccess: (taskId: string) => {
         installOpen.value = false;
+        progressTitle.value = `安装插件: ${installForm.name}`;
+        progressTaskId.value = taskId;
+        progressOpen.value = true;
+        installForm.name = "";
+        installForm.pkg = "";
       },
       onError: (e: Error) => toast.error(e.message),
     },
   );
+}
+
+function onProgressClose() {
+  progressOpen.value = false;
+  progressTaskId.value = null;
+  refetch();
 }
 
 function toggle(name: string, enabled: boolean) {
@@ -401,6 +415,13 @@ function remove(name: string) {
         </DialogFooter>
       </DialogContent>
     </Dialog>
+
+    <InstallProgressDialog
+      :open="progressOpen"
+      :task-id="progressTaskId"
+      :title="progressTitle"
+      @close="onProgressClose"
+    />
 
     <Dialog v-model:open="configOpen">
       <DialogContent

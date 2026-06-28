@@ -3,6 +3,7 @@ import { useAuthStore } from "@/stores/auth";
 import type {
   Adapter,
   ConfigContract,
+  InstallTaskResponse,
   LogHistory,
   LoginResponse,
   Plugin,
@@ -70,7 +71,7 @@ export const api = {
   plugins: {
     list: () => request<{ plugins: Plugin[] }>("GET", "/plugins/list"),
     install: (data: { name: string; pkg: string }) =>
-      request<{ ok: boolean }>("POST", "/plugins/install", data),
+      request<InstallTaskResponse>("POST", "/plugins/install", data),
     uninstall: (data: { name: string; keep_config?: boolean }) =>
       request<{ ok: boolean }>("POST", "/plugins/uninstall", data),
     setState: (data: { name: string; enabled: boolean }) =>
@@ -84,7 +85,7 @@ export const api = {
   adapters: {
     list: () => request<{ adapters: Adapter[] }>("GET", "/adapters/list"),
     install: (data: { name: string; pkg: string; module_name: string }) =>
-      request<{ ok: boolean }>("POST", "/adapters/install", data),
+      request<InstallTaskResponse>("POST", "/adapters/install", data),
     uninstall: (data: { name: string; keep_config?: boolean }) =>
       request<{ ok: boolean }>("POST", "/adapters/uninstall", data),
     setState: (data: { name: string; enabled: boolean }) =>

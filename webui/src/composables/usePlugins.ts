@@ -30,7 +30,11 @@ export function usePluginMutations() {
   const qc = useQueryClient();
   const invalidate = () => qc.invalidateQueries({ queryKey: ["plugins"] });
   return {
-    install: useMutation({ mutationFn: api.plugins.install, onSuccess: invalidate }),
+    install: useMutation({
+      mutationFn: (vars: { name: string; pkg: string }) =>
+        api.plugins.install(vars).then((r) => r.task_id),
+      onSuccess: invalidate,
+    }),
     uninstall: useMutation({ mutationFn: api.plugins.uninstall, onSuccess: invalidate }),
     setState: useMutation({ mutationFn: api.plugins.setState, onSuccess: invalidate }),
   };
