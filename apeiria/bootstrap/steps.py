@@ -4,7 +4,7 @@ from pathlib import Path
 
 import nonebot
 from nonebot.log import logger
-from nonebot.rule import Rule
+from nonebot.message import event_postprocessor
 
 from apeiria.access.control import AccessControl
 from apeiria.env.ensure import ensure_apeiria_env
@@ -129,22 +129,16 @@ def step_load_pypi() -> None:
         logger.success("Loaded {} PyPI plugin(s)", loaded)
 
 
-async def _not_webchat(event: nonebot.adapters.Event) -> bool:  # pyright: ignore[reportAttributeAccessIssue]
-    try:
-        return not event.get_session_id().startswith("webchat:")
-    except Exception:  # noqa: BLE001
-        return True
-
-
-_conversation_handler = nonebot.on_message(Rule(_not_webchat), block=False)
-
-
-@_conversation_handler.handle()
+@event_postprocessor
 async def _persist_inbound(event: nonebot.adapters.Event) -> None:  # pyright: ignore[reportAttributeAccessIssue]
     from apeiria.conversation.store import append_message
 
+    if event.get_type() != "message":
+        return
     try:
         session_id = event.get_session_id()
+        if session_id.startswith("webchat:"):
+            return
         user_id = event.get_user_id()
         text = event.get_plaintext()
         await append_message(
