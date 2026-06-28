@@ -17,6 +17,7 @@ export function createWsClient(
   let stopped = false;
   let ws: WebSocket | null = null;
   let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  let delay = 1000;
 
   function connect() {
     if (stopped) return;
@@ -24,13 +25,17 @@ export function createWsClient(
     const sep = path.includes("?") ? "&" : "?";
     const url = `${proto}//${location.host}${path}${sep}token=${encodeURIComponent(token)}`;
     ws = new WebSocket(url);
-    ws.onopen = () => handlers.onOpen?.();
+    ws.onopen = () => {
+      delay = 1000;
+      handlers.onOpen?.();
+    };
     ws.onmessage = (ev) => handlers.onMessage(ev.data as string);
     ws.onclose = () => {
       ws = null;
       handlers.onClose?.();
       if (!stopped) {
-        reconnectTimer = setTimeout(connect, 3000);
+        reconnectTimer = setTimeout(connect, delay);
+        delay = Math.min(delay * 2, 30000);
       }
     };
     ws.onerror = () => {
