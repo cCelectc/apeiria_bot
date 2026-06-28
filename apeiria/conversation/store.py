@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 
 from apeiria.db.base import _now_iso
 from apeiria.db.engine import get_db
@@ -118,3 +118,28 @@ async def search_messages(
             .limit(limit)
         )
         return list(result.scalars().all())
+
+
+async def delete_session_messages(session_id: str) -> int:
+    """删除某会话的全部消息（保留 session 行），返回删除条数。"""
+    db = get_db()
+    async with db.gate.write() as sess:
+        session = (
+            await sess.execute(select(Session).where(Session.session_id == session_id))
+        ).scalar_one_or_none()
+        if session is None:
+            return 0
+        result = await sess.execute(
+            delete(Message).where(Message.session_id == session.id)
+        )
+        return result.rowcount or 0
+
+
+async def delete_message(message_id: str) -> int:
+    """按 message_id 删除单条消息，返回删除条数。"""
+    db = get_db()
+    async with db.gate.write() as sess:
+        result = await sess.execute(
+            delete(Message).where(Message.message_id == message_id)
+        )
+        return result.rowcount or 0
