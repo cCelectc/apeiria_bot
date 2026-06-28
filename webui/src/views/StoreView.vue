@@ -27,6 +27,11 @@ import {
 } from "@/components/ui/sheet";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -176,8 +181,8 @@ function fmtTime(iso: string): string {
   <div class="p-6 lg:p-8">
     <PageHeader :title="$t('store.title')" :subtitle="$t('store.subtitle')" />
 
-    <div class="mb-6 flex flex-wrap items-center gap-3">
-      <div class="relative max-w-md flex-1">
+    <div class="mb-4 flex flex-wrap items-center gap-3">
+      <div class="relative w-full max-w-md">
         <Search
           class="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
           aria-hidden="true"
@@ -189,8 +194,14 @@ function fmtTime(iso: string): string {
           class="pl-9"
         />
       </div>
+      <Tabs v-model="tab" class="shrink-0">
+        <TabsList>
+          <TabsTrigger value="plugins">{{ $t("store.plugins") }}</TabsTrigger>
+          <TabsTrigger value="adapters">{{ $t("store.adapters") }}</TabsTrigger>
+        </TabsList>
+      </Tabs>
       <Select v-model="sort">
-        <SelectTrigger class="w-36">
+        <SelectTrigger class="w-36 shrink-0">
           <SelectValue :placeholder="$t('store.sortDefault')" />
         </SelectTrigger>
         <SelectContent>
@@ -202,14 +213,11 @@ function fmtTime(iso: string): string {
       </Select>
     </div>
 
-    <Tabs v-model="tab">
-      <TabsList>
-        <TabsTrigger value="plugins">{{ $t("store.plugins") }}</TabsTrigger>
-        <TabsTrigger value="adapters">{{ $t("store.adapters") }}</TabsTrigger>
-      </TabsList>
-    </Tabs>
+    <p v-if="!currentIsError" class="mb-4 text-xs text-muted-foreground">
+      {{ $t("store.resultCount", { count: total }) }}
+    </p>
 
-    <div class="mt-6">
+    <div>
       <ErrorState
         v-if="currentIsError"
         class="mb-4"
@@ -236,9 +244,14 @@ function fmtTime(iso: string): string {
         >
           <CardHeader class="pb-3">
             <div class="flex items-start justify-between gap-2">
-              <CardTitle class="text-base leading-tight">{{
-                item.name
-              }}</CardTitle>
+              <Tooltip :delay-duration="600">
+                <TooltipTrigger as-child>
+                  <CardTitle class="truncate text-base leading-tight">{{
+                    item.name
+                  }}</CardTitle>
+                </TooltipTrigger>
+                <TooltipContent>{{ item.name }}</TooltipContent>
+              </Tooltip>
               <Badge
                 v-if="item.is_official"
                 variant="secondary"
@@ -246,26 +259,45 @@ function fmtTime(iso: string): string {
                 >{{ $t("store.official") }}</Badge
               >
             </div>
-            <p class="line-clamp-2 text-sm text-muted-foreground">
-              {{ item.description }}
-            </p>
+            <Tooltip :delay-duration="600">
+              <TooltipTrigger as-child>
+                <p class="line-clamp-2 cursor-default text-sm text-muted-foreground">
+                  {{ item.description }}
+                </p>
+              </TooltipTrigger>
+              <TooltipContent class="max-w-xs">{{ item.description }}</TooltipContent>
+            </Tooltip>
           </CardHeader>
           <CardContent class="mt-auto flex flex-col gap-3">
             <div v-if="item.tags.length" class="flex flex-wrap gap-1">
+              <Tooltip v-for="t in item.tags.slice(0, 4)" :key="t.label">
+                <TooltipTrigger as-child>
+                  <span
+                    class="rounded px-1.5 py-0.5 text-xs font-medium text-foreground/80"
+                    :style="{ backgroundColor: t.color }"
+                  >
+                    {{ t.label }}
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent>{{ t.label }}</TooltipContent>
+              </Tooltip>
               <span
-                v-for="t in item.tags.slice(0, 4)"
-                :key="t.label"
-                class="rounded px-1.5 py-0.5 text-xs font-medium text-slate-800"
-                :style="{ backgroundColor: t.color }"
+                v-if="item.tags.length > 4"
+                class="rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground"
               >
-                {{ t.label }}
+                +{{ item.tags.length - 4 }}
               </span>
             </div>
             <div class="flex items-center justify-between gap-2">
               <div
                 class="flex min-w-0 items-center gap-2 text-xs text-muted-foreground"
               >
-                <span class="truncate">{{ item.author }}</span>
+                <Tooltip :delay-duration="600">
+                  <TooltipTrigger as-child>
+                    <span class="cursor-default truncate">{{ item.author }}</span>
+                  </TooltipTrigger>
+                  <TooltipContent>{{ item.author }}</TooltipContent>
+                </Tooltip>
                 <span v-if="item.version" class="shrink-0"
                   >v{{ item.version }}</span
                 >

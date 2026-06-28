@@ -2,7 +2,7 @@ import { keepPreviousData, useQuery } from "@tanstack/vue-query";
 import { computed, type MaybeRefOrGetter, toValue } from "vue";
 import { api } from "@/lib/api";
 
-export const STORE_PAGE_SIZE = 60;
+export const STORE_PAGE_SIZE = 30;
 
 export function useStorePluginsQuery(
   query: MaybeRefOrGetter<string>,

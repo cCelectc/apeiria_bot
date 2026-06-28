@@ -171,6 +171,7 @@ export default {
     sortNameDesc: "名称 Z-A",
     sortTimeDesc: "最近更新",
     updateTime: "更新时间",
+    resultCount: "共 {count} 个结果",
   },
   logs: {
     title: "日志",
