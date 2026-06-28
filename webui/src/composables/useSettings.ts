@@ -1,6 +1,8 @@
-import { useMutation, useQuery } from "@tanstack/vue-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/vue-query";
 import { api } from "@/lib/api";
 import type { ConfigContract } from "@/types";
+
+const qc = () => useQueryClient();
 
 export function useConfigSchema(section: string) {
   return useQuery({
@@ -42,6 +44,9 @@ export function useSaveNonebotConfig() {
     mutationFn: async (data: Record<string, unknown>) => {
       await api.config.update("nonebot", data);
     },
+    onSuccess: () => {
+      qc().invalidateQueries({ queryKey: ["config"] });
+    },
   });
 }
 
@@ -49,6 +54,9 @@ export function useSaveApeiriaConfig() {
   return useMutation({
     mutationFn: async (data: Record<string, unknown>) => {
       await api.config.update("apeiria", data);
+    },
+    onSuccess: () => {
+      qc().invalidateQueries({ queryKey: ["config"] });
     },
   });
 }
