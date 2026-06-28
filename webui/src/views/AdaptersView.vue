@@ -9,6 +9,7 @@ import InstallProgressDialog from "@/components/InstallProgressDialog.vue";
 import PageHeader from "@/components/PageHeader.vue";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -47,6 +48,10 @@ const installForm = reactive({ name: "", pkg: "", module_name: "" });
 const progressOpen = ref(false);
 const progressTaskId = ref<string | null>(null);
 const progressTitle = ref("");
+
+const uninstallOpen = ref(false);
+const uninstallTarget = ref("");
+const keepConfig = ref(false);
 
 const configOpen = ref(false);
 const configAdapter = ref("");
@@ -128,19 +133,25 @@ function toggle(name: string, enabled: boolean) {
 }
 
 function remove(name: string) {
-  askConfirm(t("confirm.uninstallMessage", { name }), () => {
-    uninstall.mutate(
-      { name },
-      {
-        onSuccess: (taskId: string) => {
-          progressTitle.value = `卸载适配器: ${name}`;
-          progressTaskId.value = taskId;
-          progressOpen.value = true;
-        },
-        onError: (e: Error) => toast.error(e.message),
+  uninstallTarget.value = name;
+  keepConfig.value = false;
+  uninstallOpen.value = true;
+}
+
+function confirmUninstall() {
+  const name = uninstallTarget.value;
+  uninstallOpen.value = false;
+  uninstall.mutate(
+    { name, keep_config: keepConfig.value },
+    {
+      onSuccess: (taskId: string) => {
+        progressTitle.value = `卸载适配器: ${name}`;
+        progressTaskId.value = taskId;
+        progressOpen.value = true;
       },
-    );
-  });
+      onError: (e: Error) => toast.error(e.message),
+    },
+  );
 }
 </script>
 
@@ -334,6 +345,29 @@ function remove(name: string) {
             }
           "
         />
+      </DialogContent>
+    </Dialog>
+
+    <Dialog v-model:open="uninstallOpen">
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{{ $t("adapters.uninstallTitle") }}</DialogTitle>
+          <DialogDescription>
+            {{ $t("adapters.uninstallDesc", { name: uninstallTarget }) }}
+          </DialogDescription>
+        </DialogHeader>
+        <div class="flex items-center gap-2 py-2">
+          <Checkbox id="keep-config-adapter" v-model:checked="keepConfig" />
+          <Label for="keep-config-adapter">{{ $t("adapters.keepConfig") }}</Label>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" @click="uninstallOpen = false">
+            {{ $t("common.cancel") }}
+          </Button>
+          <Button variant="destructive" @click="confirmUninstall">
+            {{ $t("common.confirm") }}
+          </Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
 

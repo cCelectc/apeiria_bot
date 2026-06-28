@@ -62,6 +62,10 @@ const progressOpen = ref(false);
 const progressTaskId = ref<string | null>(null);
 const progressTitle = ref("");
 
+const uninstallOpen = ref(false);
+const uninstallTarget = ref("");
+const keepConfig = ref(false);
+
 const configOpen = ref(false);
 const configPlugin = ref("");
 const { data: pluginConfigData } = usePluginConfigQuery(
@@ -145,19 +149,25 @@ function toggle(name: string, enabled: boolean) {
 }
 
 function remove(name: string) {
-  askConfirm(t("confirm.uninstallMessage", { name }), () => {
-    uninstall.mutate(
-      { name },
-      {
-        onSuccess: (taskId: string) => {
-          progressTitle.value = `卸载插件: ${name}`;
-          progressTaskId.value = taskId;
-          progressOpen.value = true;
-        },
-        onError: (e: Error) => toast.error(e.message),
+  uninstallTarget.value = name;
+  keepConfig.value = false;
+  uninstallOpen.value = true;
+}
+
+function confirmUninstall() {
+  const name = uninstallTarget.value;
+  uninstallOpen.value = false;
+  uninstall.mutate(
+    { name, keep_config: keepConfig.value },
+    {
+      onSuccess: (taskId: string) => {
+        progressTitle.value = `卸载插件: ${name}`;
+        progressTaskId.value = taskId;
+        progressOpen.value = true;
       },
-    );
-  });
+      onError: (e: Error) => toast.error(e.message),
+    },
+  );
 }
 </script>
 
@@ -493,6 +503,29 @@ function remove(name: string) {
             }
           "
         />
+      </DialogContent>
+    </Dialog>
+
+    <Dialog v-model:open="uninstallOpen">
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{{ $t("plugins.uninstallTitle") }}</DialogTitle>
+          <DialogDescription>
+            {{ $t("plugins.uninstallDesc", { name: uninstallTarget }) }}
+          </DialogDescription>
+        </DialogHeader>
+        <div class="flex items-center gap-2 py-2">
+          <Checkbox id="keep-config" v-model:checked="keepConfig" />
+          <Label for="keep-config">{{ $t("plugins.keepConfig") }}</Label>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" @click="uninstallOpen = false">
+            {{ $t("common.cancel") }}
+          </Button>
+          <Button variant="destructive" @click="confirmUninstall">
+            {{ $t("common.confirm") }}
+          </Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
 
