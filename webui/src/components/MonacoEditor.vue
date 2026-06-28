@@ -6,7 +6,6 @@ import type * as Monaco from "monaco-editor";
 
 const props = defineProps<{
   modelValue: string;
-  jsonSchema?: Record<string, unknown>;
 }>();
 
 const emit = defineEmits<{
