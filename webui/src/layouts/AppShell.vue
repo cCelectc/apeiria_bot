@@ -11,6 +11,7 @@ import {
   Sun,
 } from "@lucide/vue";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -121,24 +122,6 @@ function logout() {
                   auth.username ?? $t("account.admin")
                 }}</DropdownMenuLabel>
                 <DropdownMenuSeparator />
-                <DropdownMenuRadioGroup
-                  :model-value="ui.theme"
-                  @update:model-value="setTheme"
-                >
-                  <DropdownMenuRadioItem value="light">
-                    <Sun />
-                    {{ $t("theme.light") }}
-                  </DropdownMenuRadioItem>
-                  <DropdownMenuRadioItem value="dark">
-                    <Moon />
-                    {{ $t("theme.dark") }}
-                  </DropdownMenuRadioItem>
-                  <DropdownMenuRadioItem value="system">
-                    <Monitor />
-                    {{ $t("theme.system") }}
-                  </DropdownMenuRadioItem>
-                </DropdownMenuRadioGroup>
-                <DropdownMenuSeparator />
                 <DropdownMenuItem @click="router.push({ name: 'account' })">
                   <KeyRound />
                   {{ $t("account.changePassword") }}
@@ -163,6 +146,40 @@ function logout() {
         <SidebarTrigger class="-ml-1" />
         <div class="h-4 w-px bg-border" />
         <h1 class="text-sm font-medium">{{ currentLabel }}</h1>
+        <div class="ml-auto flex items-center gap-2">
+          <DropdownMenu>
+            <DropdownMenuTrigger as-child>
+              <Button
+                variant="ghost"
+                size="icon"
+                :aria-label="$t('theme.label')"
+              >
+                <Sun v-if="ui.theme === 'light'" />
+                <Moon v-else-if="ui.theme === 'dark'" />
+                <Monitor v-else />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuRadioGroup
+                :model-value="ui.theme"
+                @update:model-value="setTheme"
+              >
+                <DropdownMenuRadioItem value="light">
+                  <Sun />
+                  {{ $t("theme.light") }}
+                </DropdownMenuRadioItem>
+                <DropdownMenuRadioItem value="dark">
+                  <Moon />
+                  {{ $t("theme.dark") }}
+                </DropdownMenuRadioItem>
+                <DropdownMenuRadioItem value="system">
+                  <Monitor />
+                  {{ $t("theme.system") }}
+                </DropdownMenuRadioItem>
+              </DropdownMenuRadioGroup>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
       </header>
       <main class="min-h-0 flex-1 overflow-auto">
         <RouterView />
