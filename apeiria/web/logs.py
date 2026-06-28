@@ -258,7 +258,7 @@ async def stream(request: Request) -> StreamingResponse:
 
     async def event_stream_with_history() -> AsyncIterator[str]:
         history = await asyncio.to_thread(hub.read_history, page=1, size=50)
-        for record in history["items"]:
+        for record in reversed(history["items"]):
             yield f"data: {json.dumps(record, ensure_ascii=False)}\n\n"
 
         async for event in hub.event_stream(request):
