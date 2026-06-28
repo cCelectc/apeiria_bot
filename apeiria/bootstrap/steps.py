@@ -138,6 +138,8 @@ async def _persist_inbound(event: nonebot.adapters.Event) -> None:  # pyright: i
 
     try:
         session_id = event.get_session_id()
+        if session_id and session_id.startswith("webchat:"):
+            return
         user_id = event.get_user_id()
         text = event.get_plaintext()
         await append_message(
