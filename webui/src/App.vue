@@ -25,5 +25,5 @@ watch(() => ui.theme, applyTheme);
 
 <template>
   <RouterView />
-  <Toaster position="top-center" rich-colors />
+  <Toaster position="top-center" rich-colors :theme="resolveActiveTheme()" />
 </template>
