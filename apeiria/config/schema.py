@@ -3,6 +3,24 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
+PrimitiveType = Literal["str", "int", "float", "bool", "enum", "literal"]
+
+
+def coerce_primitive_type(value: object) -> PrimitiveType:
+    match str(value):
+        case "int":
+            return "int"
+        case "float":
+            return "float"
+        case "bool":
+            return "bool"
+        case "enum":
+            return "enum"
+        case "literal":
+            return "literal"
+        case _:
+            return "str"
+
 
 @dataclass
 class FieldNode:
@@ -28,7 +46,7 @@ class FieldNode:
 @dataclass
 class PrimitiveField(FieldNode):
     kind: str = "primitive"
-    type: Literal["str", "int", "float", "bool", "enum", "literal"] = "str"
+    type: PrimitiveType = "str"
     default: Any = None
     required: bool = True
     secret: bool = False

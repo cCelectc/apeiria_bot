@@ -70,7 +70,7 @@ class PluginExtraData:
     required_plugins: list[str] = field(default_factory=list)
 
     @property
-    def configs(self) -> list[RegisterConfig]:
+    def configs(self) -> list[Any]:
         return self.config.fields
 
     def to_dict(self) -> dict[str, Any]:

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+from collections.abc import Collection
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -50,7 +51,7 @@ def _parse_require_calls(source: str) -> set[str]:
     return result
 
 
-def build_dependency_graph(plugins: list["Plugin"]) -> DepGraph:
+def build_dependency_graph(plugins: Collection["Plugin"]) -> DepGraph:
     graph: dict[str, set[str]] = {}
     nesting: set[tuple[str, str]] = set()
 
@@ -81,7 +82,7 @@ def build_dependency_graph(plugins: list["Plugin"]) -> DepGraph:
     return DepGraph(graph=graph, reverse=reverse, nesting=nesting)
 
 
-def get_cached_graph(plugins: list["Plugin"]) -> DepGraph:
+def get_cached_graph(plugins: Collection["Plugin"]) -> DepGraph:
     if _Cache.value is None:
         _Cache.value = build_dependency_graph(plugins)
     return _Cache.value

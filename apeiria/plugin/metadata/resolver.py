@@ -5,7 +5,12 @@ from nonebot.log import logger
 from pydantic import BaseModel
 
 from apeiria.config.reflector import reflect_model
-from apeiria.config.schema import ConfigContract, FieldNode, PrimitiveField
+from apeiria.config.schema import (
+    ConfigContract,
+    FieldNode,
+    PrimitiveField,
+    coerce_primitive_type,
+)
 from apeiria.plugin.metadata.api import PluginExtraData
 from apeiria.plugin.metadata.registry import get_registered_plugin_config
 
@@ -93,15 +98,12 @@ def resolve_config_namespace_contract(
 
     if plugin is not None and plugin.metadata is not None:
         config_model = getattr(plugin.metadata, "config", None)
-        has_pydantic_config = isinstance(config_model, type) and issubclass(
-            config_model, BaseModel
-        )
 
         extra_data = None
         if plugin.metadata.extra:
             extra_data = PluginExtraData.from_extra(plugin.metadata.extra)
 
-        if has_pydantic_config:
+        if isinstance(config_model, type) and issubclass(config_model, BaseModel):
             fields = reflect_model(config_model)
             if extra_data and extra_data.configs:
                 merge_extra_hints(fields, extra_data.configs)
@@ -131,7 +133,7 @@ def resolve_config_namespace_contract(
                     key=c.get("key", ""),
                     label=c.get("label", c.get("key", "")),
                     description=c.get("help", ""),
-                    type=str(c.get("type", "str")),
+                    type=coerce_primitive_type(c.get("type", "str")),
                     default=c.get("default"),
                     required=True,
                     secret=bool(c.get("secret", False)),

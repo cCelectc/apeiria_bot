@@ -13,6 +13,7 @@ from apeiria.config.schema import (
     MapField,
     ObjectField,
     PrimitiveField,
+    PrimitiveType,
 )
 
 
@@ -65,7 +66,7 @@ def _is_float_type(annotation: type) -> bool:
     return isinstance(annotation, type) and issubclass(annotation, float)
 
 
-def _infer_primitive_type(annotation: type) -> str:
+def _infer_primitive_type(annotation: type) -> PrimitiveType:
     origin = get_origin(annotation)
     if origin is Literal:
         return "literal"
