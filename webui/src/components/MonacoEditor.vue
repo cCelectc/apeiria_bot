@@ -16,6 +16,7 @@ const emit = defineEmits<{
 const containerRef = ref<HTMLElement | null>(null);
 const ready = ref(false);
 let editor: Monaco.editor.IStandaloneCodeEditor | null = null;
+let observer: MutationObserver | null = null;
 let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 
 onMounted(async () => {
@@ -45,7 +46,7 @@ onMounted(async () => {
     }, 500);
   });
 
-  const observer = new MutationObserver(() => {
+  observer = new MutationObserver(() => {
     if (editor) {
       monaco.editor.setTheme(
         document.documentElement.classList.contains("dark") ? "vs-dark" : "vs",
@@ -62,6 +63,7 @@ onMounted(async () => {
 
 onBeforeUnmount(() => {
   if (debounceTimer) clearTimeout(debounceTimer);
+  observer?.disconnect();
   editor?.dispose();
 });
 
