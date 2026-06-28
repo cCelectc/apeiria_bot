@@ -17,7 +17,7 @@ class TaskRunner:
         self,
         kind: str,
         name: str,
-        pkg_requirement: str,
+        pkg_requirement: str = "",
         *,
         module_name: str | None = None,
         uninstall: bool = False,
@@ -27,7 +27,7 @@ class TaskRunner:
         queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
         self._queues[task_id] = queue
         if uninstall:
-            coro = self._do_uninstall(queue, kind, name, pkg_requirement, keep_config)
+            coro = self._do_uninstall(queue, kind, name, keep_config=keep_config)
         else:
             coro = self._do_install(queue, kind, name, pkg_requirement, module_name)
         task = asyncio.create_task(coro)
@@ -118,12 +118,11 @@ class TaskRunner:
             }
         )
 
-    async def _do_uninstall(
+    async def _do_uninstall(  # noqa: PLR0915
         self,
         queue: asyncio.Queue[dict[str, Any]],
         kind: str,
         name: str,
-        pkg_requirement: str,
         *,
         keep_config: bool,
     ) -> None:
@@ -132,8 +131,23 @@ class TaskRunner:
             await queue.put({"type": "error", "ok": False, "message": "uv not found"})
             return
 
-        await self._emit(queue, "output", f"> uv remove {pkg_requirement}")
-        rc = await self._run_subprocess(queue, uv, "remove", pkg_requirement)
+        if kind == "plugin":
+            from apeiria.plugin.manager import _read_plugins_yaml
+
+            data = _read_plugins_yaml()
+            packages = data.get("packages") or {}
+            pkg_req = packages.get(name) or name
+        elif kind == "adapter":
+            from apeiria.plugin.adapter_manager import _read_adapters_yaml
+
+            data = _read_adapters_yaml()
+            packages = data.get("packages") or {}
+            pkg_req = packages.get(name) or name
+        else:
+            pkg_req = name
+
+        await self._emit(queue, "output", f"> uv remove {pkg_req}")
+        rc = await self._run_subprocess(queue, uv, "remove", pkg_req)
         if rc != 0:
             await queue.put(
                 {"type": "error", "ok": False, "message": f"uv remove 返回码: {rc}"}
