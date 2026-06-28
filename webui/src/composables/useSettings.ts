@@ -2,7 +2,6 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/vue-query";
 import { computed } from "vue";
 import type { ComputedRef } from "vue";
 import { api } from "@/lib/api";
-import type { ConfigContract } from "@/types";
 import { useConfigQuery } from "./useConfig";
 
 const qc = () => useQueryClient();

@@ -1,17 +1,37 @@
-import type { MaybeRefOrGetter } from "vue";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/vue-query";
+import { computed, type MaybeRefOrGetter, toValue } from "vue";
 import { api } from "@/lib/api";
-import { createEntityHooks } from "./useConfigEntity";
+import { fetchConfig } from "./useConfigEntity";
 
-const adapter = createEntityHooks(api.adapters as Parameters<typeof createEntityHooks>[0], {
-  listKey: ["adapters"],
-  configKey: ["adapter-config"],
-  configSection: "adapters",
-  ownerKind: "adapter",
-});
-
-export const useAdaptersQuery = adapter.useList;
-export function useAdapterConfigQuery(name: MaybeRefOrGetter<string>) {
-  return adapter.useConfig(name);
+export function useAdaptersQuery() {
+  return useQuery({ queryKey: ["adapters"], queryFn: () => api.adapters.list() });
 }
-export const useSaveAdapterConfig = adapter.useSaveConfig;
-export const useAdapterMutations = adapter.useMutations;
+
+export function useAdapterConfigQuery(name: MaybeRefOrGetter<string>) {
+  return useQuery({
+    queryKey: computed(() => ["adapter-config", toValue(name)]),
+    queryFn: () => fetchConfig(() => api.adapters.config(toValue(name)), "adapter", toValue(name)),
+    enabled: computed(() => Boolean(toValue(name))),
+    retry: false,
+  });
+}
+
+export function useSaveAdapterConfig() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (vars: { name: string; data: Record<string, unknown> }) => {
+      await api.config.update("adapters", { [vars.name]: vars.data });
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["adapter-config"] }),
+  });
+}
+
+export function useAdapterMutations() {
+  const qc = useQueryClient();
+  const invalidate = () => qc.invalidateQueries({ queryKey: ["adapters"] });
+  return {
+    install: useMutation({ mutationFn: api.adapters.install, onSuccess: invalidate }),
+    uninstall: useMutation({ mutationFn: api.adapters.uninstall, onSuccess: invalidate }),
+    setState: useMutation({ mutationFn: api.adapters.setState, onSuccess: invalidate }),
+  };
+}
