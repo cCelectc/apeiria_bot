@@ -270,7 +270,6 @@ def step_web() -> None:
     from apeiria.config.loader import load_config
     from apeiria.web.auth import auth_router, ensure_credentials
     from apeiria.web.logs import (
-        get_log_hub,
         logs_router,
         quiet_asgi_cancel_errors,
         route_access_logs,
@@ -286,7 +285,6 @@ def step_web() -> None:
 
     app_config = load_config("data/config.yaml")
     ensure_credentials()
-    get_log_hub().install_sinks(app_config.apeiria.logging)
     route_access_logs(app_config.apeiria.logging)
     quiet_asgi_cancel_errors()
 

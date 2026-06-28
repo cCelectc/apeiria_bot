@@ -27,10 +27,13 @@ GRACEFUL_SHUTDOWN_TIMEOUT = 3
 @click.command("run")
 @click.option("--reload", is_flag=True, default=False, help="Enable hot reload")
 def run_cmd(reload: bool) -> None:  # noqa: FBT001
-    app = load_config("data/config.yaml")
-    expand_config(app)
-
     import nonebot
+
+    from apeiria.web.logs import get_log_hub
+
+    app = load_config("data/config.yaml")
+    get_log_hub().install_sinks(app.apeiria.logging)
+    expand_config(app)
 
     nonebot.init()
 
