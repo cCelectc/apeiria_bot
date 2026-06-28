@@ -21,6 +21,14 @@ export default {
     webchat: "调试聊天",
     account: "账号",
     settings: "设置",
+    nonebot: "NoneBot",
+    apeiria: "Apeiria",
+  },
+  navGroup: {
+    overview: "概览",
+    management: "管理",
+    system: "系统",
+    tools: "工具",
   },
   login: {
     title: "Apeiria",
