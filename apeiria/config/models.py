@@ -37,10 +37,18 @@ class LogConfig(BaseModel):
     stream_buffer: int = 500
 
 
+class WebChatConfig(BaseModel):
+    enabled: bool = True
+    ws_path: str = "/ws/webchat"
+    default_user_id: str = ""
+    history_limit: int = 50
+
+
 class ApeiriaConfig(BaseModel):
     database: DatabaseConfig = DatabaseConfig()
     web: WebConfig = WebConfig()
     logging: LogConfig = LogConfig()
+    webchat: WebChatConfig = WebChatConfig()
 
 
 class AppConfig(BaseModel):
