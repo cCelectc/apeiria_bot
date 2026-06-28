@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import sys
 from pathlib import Path
 
 import click
@@ -32,6 +33,7 @@ GRACEFUL_SHUTDOWN_TIMEOUT = 3
 def run_cmd(reload: bool) -> None:  # noqa: FBT001
     import nonebot
     from dotenv import load_dotenv
+    from nonebot.log import logger
 
     from apeiria.web.logs import get_log_hub
 
@@ -87,7 +89,14 @@ def run_cmd(reload: bool) -> None:  # noqa: FBT001
     plan.add_step("webchat", step_webchat, depends=["conversation", "access"])
     plan.add_step("web", step_web, depends=["access", "webchat"])
 
-    plan.run("full")
+    result = plan.run("full")
+    if not result.ok:
+        logger.error(
+            "Bootstrap failed: {} step(s) failed: {}",
+            len(result.failed),
+            ", ".join(result.failed),
+        )
+        sys.exit(1)
 
     if reload:
         import watchfiles
