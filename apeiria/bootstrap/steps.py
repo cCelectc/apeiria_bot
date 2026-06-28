@@ -272,6 +272,7 @@ def step_web() -> None:
     from apeiria.web.logs import (
         get_log_hub,
         logs_router,
+        quiet_asgi_cancel_errors,
         route_access_logs,
     )
     from apeiria.web.routes import router
@@ -287,6 +288,7 @@ def step_web() -> None:
     ensure_credentials()
     get_log_hub().install_sinks(app_config.apeiria.logging)
     route_access_logs(app_config.apeiria.logging)
+    quiet_asgi_cancel_errors()
 
     app.include_router(auth_router)
     app.include_router(logs_router)

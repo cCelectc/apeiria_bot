@@ -76,6 +76,23 @@ def route_access_logs(cfg: LogConfig) -> None:
     get_driver().on_startup(_apply)
 
 
+class _AsgiCancelledFilter(logging.Filter):
+    def filter(self, record: logging.LogRecord) -> bool:
+        exc = record.exc_info[1] if record.exc_info else None
+        return not isinstance(exc, asyncio.CancelledError)
+
+
+def quiet_asgi_cancel_errors() -> None:
+    """Silence benign CancelledError ASGI-app error logs (e.g. the log SSE
+    stream force-cancelled by uvicorn's graceful-shutdown timeout)."""
+    from nonebot import get_driver
+
+    def _apply() -> None:
+        logging.getLogger("uvicorn.error").addFilter(_AsgiCancelledFilter())
+
+    get_driver().on_startup(_apply)
+
+
 class LogHub:
     def __init__(self) -> None:
         self._installed = False
