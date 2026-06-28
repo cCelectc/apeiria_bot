@@ -212,6 +212,25 @@ async def verify_token(request: Request) -> str:
     return sub
 
 
+async def decode_token(token: str) -> str | None:
+    """解码 JWT 并返回 subject（用户名），无效/过期/未初始化时返回 None。
+
+    用于 HTTP 请求上下文之外的鉴权（如 WebSocket 握手）。
+    """
+    if not token:
+        return None
+    try:
+        jwt_secret = await _require_jwt_secret()
+    except HTTPException:
+        return None
+    try:
+        payload = jwt.decode(token, jwt_secret, algorithms=[_JWT_ALGORITHM])
+    except jwt.InvalidTokenError:
+        return None
+    sub = payload.get("sub")
+    return sub if isinstance(sub, str) else None
+
+
 def _is_trusted(peer: str, proxies: list[str]) -> bool:
     try:
         addr = ipaddress.ip_address(peer)
