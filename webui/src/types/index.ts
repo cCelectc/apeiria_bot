@@ -137,3 +137,40 @@ export interface LoginResponse {
   token: string;
   username: string;
 }
+
+export type WebchatSegment =
+  | { type: "text"; text: string }
+  | { type: "image"; url: string }
+  | { type: "raw"; seg_type: string; data: Record<string, unknown> };
+
+export interface WebchatMessage {
+  id: string;
+  role: "user" | "bot";
+  segments: WebchatSegment[];
+  time: string;
+  session_id: string;
+  user_id?: string | null;
+}
+
+export interface WebchatIdentity {
+  user_id?: string;
+  scene_type?: "private" | "group";
+  scene_id?: string;
+}
+
+export type WebchatInFrame =
+  | {
+      type: "message";
+      text: string;
+      image?: string;
+      identity?: WebchatIdentity;
+    }
+  | { type: "clear" }
+  | { type: "delete"; message_id: string };
+
+export type WebchatOutFrame =
+  | { type: "history"; messages: WebchatMessage[] }
+  | { type: "message"; message: WebchatMessage }
+  | { type: "cleared" }
+  | { type: "deleted"; message_id: string }
+  | { type: "error"; code: string; message: string };
