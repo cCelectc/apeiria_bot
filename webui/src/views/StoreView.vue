@@ -161,6 +161,15 @@ function openDetail(item: StoreItem) {
   detailIsAdapter.value = !isPlugins.value;
   detailOpen.value = true;
 }
+
+function fmtTime(iso: string): string {
+  if (!iso) return "";
+  return new Date(iso).toLocaleDateString("zh-CN", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+}
 </script>
 
 <template>
@@ -260,6 +269,7 @@ function openDetail(item: StoreItem) {
                 <span v-if="item.version" class="shrink-0"
                   >v{{ item.version }}</span
                 >
+                <span v-if="item.time" class="shrink-0">{{ fmtTime(item.time) }}</span>
               </div>
               <div class="flex shrink-0 items-center gap-1">
                 <Button variant="ghost" size="sm" @click="openDetail(item)">{{
@@ -335,6 +345,10 @@ function openDetail(item: StoreItem) {
                 $t("store.version")
               }}</span>
               <span>{{ detailItem.version }}</span>
+            </template>
+            <template v-if="detailItem.time">
+              <span class="text-muted-foreground">{{ $t("store.updateTime") }}</span>
+              <span>{{ fmtTime(detailItem.time) }}</span>
             </template>
             <template v-if="detailItem.type">
               <span class="text-muted-foreground">{{ $t("store.type") }}</span>

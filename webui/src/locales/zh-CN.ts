@@ -170,6 +170,7 @@ export default {
     sortNameAsc: "名称 A-Z",
     sortNameDesc: "名称 Z-A",
     sortTimeDesc: "最近更新",
+    updateTime: "更新时间",
   },
   logs: {
     title: "日志",
