@@ -24,7 +24,7 @@ from apeiria.plugin.metadata.api import (
 
 from .config import TriggerReplyConfig, get_trigger_reply_config
 from .loader import _ensure_loaded, _refresh_rules
-from .models import TriggerInput
+from .models import TriggerEntry, TriggerInput
 from .service import _evaluate, _platform_alias
 
 require("nonebot_plugin_localstore")
@@ -145,6 +145,8 @@ async def _rule_checker(bot: Bot, event: Event, state: T_State) -> bool:
     entries = _ensure_loaded(config)
     if not entries:
         return False
+    if not _fast_check(trigger, entries):
+        return False
     reply = _evaluate(trigger, entries)
     if reply is None:
         if config.debug:
@@ -152,6 +154,33 @@ async def _rule_checker(bot: Bot, event: Event, state: T_State) -> bool:
         return False
     state["_trigger_reply_text"] = reply
     return True
+
+
+def _fast_check(  # noqa: C901
+    trigger: TriggerInput, entries: tuple[TriggerEntry, ...]
+) -> bool:
+    """快速预检：收集所有非正则模式的关键词，O(1) 集合查找。"""
+    candidates = {trigger.plaintext.lower(), trigger.message_text.lower()}
+    for entry in entries:
+        if not entry.enabled:
+            continue
+        for match in entry.matches:
+            if match.type == "regex":
+                continue
+            pattern = match.pattern or ""
+            if not pattern:
+                continue
+            kw = pattern.lower() if match.ignore_case else pattern
+            for text in candidates:
+                if match.type == "full" and text == kw:
+                    return True
+                if match.type == "start" and text.startswith(kw):
+                    return True
+                if match.type == "end" and text.endswith(kw):
+                    return True
+                if match.type == "fuzzy" and kw in text:
+                    return True
+    return False
 
 
 _message = on_message(

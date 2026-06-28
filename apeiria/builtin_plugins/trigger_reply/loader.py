@@ -36,8 +36,7 @@ def _load_toml() -> Any:
 
 def _load_rules(file_path: Path) -> tuple[tuple[TriggerEntry, ...], list[str]]:
     if not file_path.exists():
-        logger.warning("触发回复规则文件不存在: {}", file_path)
-        return (), [f"规则文件不存在: {file_path}"]
+        return (), []
     raw_text = file_path.read_text(encoding="utf-8")
     try:
         payload = _load_toml()(raw_text)
@@ -317,23 +316,39 @@ def _float_val(
     return result
 
 
+def _discover_rule_files(config: TriggerReplyConfig) -> list[Path]:
+    file_path = get_plugin_config_file(config.rules_file)
+    if file_path.is_dir():
+        return sorted(file_path.glob("*.toml"))
+    if file_path.exists():
+        return [file_path]
+    return []
+
+
 def _refresh_rules(config: TriggerReplyConfig) -> tuple[int, list[str]]:
     global _rules_cache, _rules_cache_count  # noqa: PLW0603
-    file_path = get_plugin_config_file(config.rules_file)
-    entries, errors = _load_rules(file_path)
-    _rules_cache = entries
+    all_entries: list[TriggerEntry] = []
+    all_errors: list[str] = []
+
+    for fp in _discover_rule_files(config):
+        entries, errors = _load_rules(fp)
+        all_entries.extend(entries)
+        if errors:
+            all_errors.append(f"{fp}: {'; '.join(errors)}")
+
+    _rules_cache = tuple(all_entries)
     _rules_cache_count += 1
-    count = len(entries)
-    if errors:
+    count = len(all_entries)
+    if all_errors:
         logger.warning(
             "触发回复加载了 {} 条规则，{} 个错误: {}",
             count,
-            len(errors),
-            "; ".join(errors),
+            len(all_errors),
+            "; ".join(all_errors),
         )
     else:
         logger.info("触发回复加载了 {} 条规则", count)
-    return count, errors
+    return count, all_errors
 
 
 def _ensure_loaded(config: TriggerReplyConfig) -> tuple[TriggerEntry, ...]:
