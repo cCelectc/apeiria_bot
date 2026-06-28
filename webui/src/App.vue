@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, watch } from "vue";
+import { onMounted, onBeforeUnmount, watch } from "vue";
 import { Toaster } from "@/components/ui/sonner";
 import { useUiStore } from "@/stores/ui";
 
@@ -19,7 +19,18 @@ function applyTheme() {
   );
 }
 
-onMounted(applyTheme);
+let mq: MediaQueryList | null = null;
+
+onMounted(() => {
+  applyTheme();
+  mq = window.matchMedia("(prefers-color-scheme: dark)");
+  mq.addEventListener("change", applyTheme);
+});
+
+onBeforeUnmount(() => {
+  mq?.removeEventListener("change", applyTheme);
+});
+
 watch(() => ui.theme, applyTheme);
 </script>
 
