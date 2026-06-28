@@ -21,6 +21,8 @@ from apeiria.bootstrap.steps import (
 from apeiria.config.loader import expand_config, load_config
 from apeiria.db.engine import init_db
 
+GRACEFUL_SHUTDOWN_TIMEOUT = 3
+
 
 @click.command("run")
 @click.option("--reload", is_flag=True, default=False, help="Enable hot reload")
@@ -88,4 +90,4 @@ def run_cmd(reload: bool) -> None:  # noqa: FBT001
             click.echo("Changes detected — restart with 'apeiria run' again")
             break
     else:
-        nonebot.run()
+        nonebot.run(timeout_graceful_shutdown=GRACEFUL_SHUTDOWN_TIMEOUT)
