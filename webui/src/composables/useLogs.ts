@@ -5,6 +5,9 @@ import { api } from "@/lib/api";
 export interface LogHistoryParams {
   level?: string;
   q?: string;
+  source?: string;
+  since?: number;
+  until?: number;
   page?: number;
   size?: number;
 }

@@ -22,7 +22,15 @@ if TYPE_CHECKING:
     from apeiria.config.models import LogConfig
 
 _DEFAULT_BUFFER = 500
-_MAX_SCAN_LINES = 5000
+_LEVEL_NO = {
+    "TRACE": 5,
+    "DEBUG": 10,
+    "INFO": 20,
+    "SUCCESS": 25,
+    "WARNING": 30,
+    "ERROR": 40,
+    "CRITICAL": 50,
+}
 _HEARTBEAT = 15.0
 
 _MUTED_ACCESS_PREFIXES = ("/assets/",)
@@ -123,7 +131,7 @@ class LogHub:
         record = message.record
         payload = json.dumps(
             {
-                "time": record["time"].isoformat(),
+                "ts": record["time"].timestamp(),
                 "level": record["level"].name,
                 "name": record["name"],
                 "message": record["message"],
@@ -169,10 +177,13 @@ class LogHub:
         finally:
             self.unsubscribe(queue)
 
-    def read_history(
+    def read_history(  # noqa: PLR0913
         self,
         level: str = "",
         query: str = "",
+        source: str = "",
+        since: float | None = None,
+        until: float | None = None,
         page: int = 1,
         size: int = 100,
     ) -> dict[str, Any]:
@@ -180,38 +191,55 @@ class LogHub:
         if path is None or not path.exists():
             return {"items": [], "total": 0, "page": page, "size": size}
 
-        lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
-        records: list[dict[str, str]] = []
-        for line in lines[-_MAX_SCAN_LINES:]:
+        records: list[dict[str, Any]] = []
+        for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
             try:
                 obj = json.loads(line)
             except json.JSONDecodeError:
                 continue
             record = obj.get("record", {})
+            level_obj = record.get("level", {})
             records.append(
                 {
-                    "time": record.get("time", {}).get("repr", ""),
-                    "level": record.get("level", {}).get("name", ""),
-                    "name": record.get("name", ""),
-                    "message": record.get("message", ""),
+                    "ts": record.get("time", {}).get("timestamp"),
+                    "no": level_obj.get("no", 0),
+                    "level": level_obj.get("name", ""),
+                    "name": record.get("name") or "",
+                    "message": record.get("message") or "",
                 }
             )
 
         if level:
-            records = [r for r in records if r["level"] == level]
+            min_no = _LEVEL_NO.get(level, 0)
+            records = [r for r in records if r["no"] >= min_no]
         if query:
             needle = query.lower()
-            records = [r for r in records if needle in r["message"].lower()]
+            records = [
+                r
+                for r in records
+                if needle in r["message"].lower() or needle in r["name"].lower()
+            ]
+        if source:
+            src = source.lower()
+            records = [r for r in records if src in r["name"].lower()]
+        if since is not None:
+            records = [r for r in records if r["ts"] is not None and r["ts"] >= since]
+        if until is not None:
+            records = [r for r in records if r["ts"] is not None and r["ts"] <= until]
 
         records.reverse()
         total = len(records)
         start = (page - 1) * size
-        return {
-            "items": records[start : start + size],
-            "total": total,
-            "page": page,
-            "size": size,
-        }
+        items = [
+            {
+                "ts": r["ts"],
+                "level": r["level"],
+                "name": r["name"],
+                "message": r["message"],
+            }
+            for r in records[start : start + size]
+        ]
+        return {"items": items, "total": total, "page": page, "size": size}
 
 
 _hub = LogHub()
@@ -243,11 +271,23 @@ async def stream(request: Request) -> StreamingResponse:
 
 
 @logs_router.get("/history", dependencies=[Depends(verify_token)])
-async def history(
+async def history(  # noqa: PLR0913
     level: str = "",
     q: str = "",
+    source: str = "",
+    since: float | None = None,
+    until: float | None = None,
     page: int = 1,
     size: int = 100,
 ) -> JSONResponse:
-    result = await asyncio.to_thread(get_log_hub().read_history, level, q, page, size)
+    result = await asyncio.to_thread(
+        get_log_hub().read_history,
+        level,
+        q,
+        source,
+        since,
+        until,
+        page,
+        size,
+    )
     return JSONResponse(content=result)

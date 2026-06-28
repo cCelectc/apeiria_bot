@@ -115,12 +115,18 @@ export const api = {
     history: (params: {
       level?: string;
       q?: string;
+      source?: string;
+      since?: number;
+      until?: number;
       page?: number;
       size?: number;
     }) => {
       const sp = new URLSearchParams();
       if (params.level) sp.set("level", params.level);
       if (params.q) sp.set("q", params.q);
+      if (params.source) sp.set("source", params.source);
+      if (params.since !== undefined) sp.set("since", String(params.since));
+      if (params.until !== undefined) sp.set("until", String(params.until));
       sp.set("page", String(params.page ?? 1));
       sp.set("size", String(params.size ?? 100));
       return request<LogHistory>("GET", `/logs/history?${sp.toString()}`);

@@ -114,7 +114,7 @@ export interface StoreSearchResult {
 }
 
 export interface LogRecord {
-  time: string;
+  ts: number;
   level: string;
   name: string;
   message: string;
