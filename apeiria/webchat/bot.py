@@ -29,13 +29,15 @@ class WebChatBot(BaseBot):
         super().__init__(adapter, self_id)
         self.connections = connections
 
-    async def send(
+    async def send(  # pyright: ignore[reportIncompatibleMethodOverride]
         self,
         event: Event,
         message: str | Message | MessageSegment,
         **kwargs: Any,  # noqa: ARG002
     ) -> Any:
-        msg = message if isinstance(message, Message) else Message(message)
+        msg = (
+            message if isinstance(message, Message) else Message(message)  # pyright: ignore[reportArgumentType]
+        )
         segments = protocol.message_to_wire(msg)
         message_id = uuid4().hex
         session_id = event.get_session_id()

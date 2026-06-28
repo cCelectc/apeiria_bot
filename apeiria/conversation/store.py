@@ -132,7 +132,7 @@ async def delete_session_messages(session_id: str) -> int:
         result = await sess.execute(
             delete(Message).where(Message.session_id == session.id)
         )
-        return result.rowcount or 0
+        return result.rowcount or 0  # pyright: ignore[reportAttributeAccessIssue]
 
 
 async def delete_message(message_id: str) -> int:
@@ -142,4 +142,4 @@ async def delete_message(message_id: str) -> int:
         result = await sess.execute(
             delete(Message).where(Message.message_id == message_id)
         )
-        return result.rowcount or 0
+        return result.rowcount or 0  # pyright: ignore[reportAttributeAccessIssue]

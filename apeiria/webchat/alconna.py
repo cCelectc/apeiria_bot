@@ -4,12 +4,8 @@ from typing import Any, cast
 from nonebot.adapters import Bot, Event
 from nonebot.log import logger
 from nonebot_plugin_alconna.uniseg.builder import MessageBuilder, build
-from nonebot_plugin_alconna.uniseg.exporter import (
-    MessageExporter,
-    SupportAdapter,
-    Target,
-    export,
-)
+from nonebot_plugin_alconna.uniseg.constraint import SupportAdapter
+from nonebot_plugin_alconna.uniseg.exporter import MessageExporter, Target, export
 from nonebot_plugin_alconna.uniseg.segment import Image, Text
 
 from apeiria.webchat.message import Message, MessageSegment
@@ -44,7 +40,7 @@ class WebChatExporter(MessageExporter[Message]):
         encoded = base64.b64encode(raw).decode()
         return MessageSegment.image(base64=f"data:{mime};base64,{encoded}")
 
-    async def send_to(
+    async def send_to(  # pyright: ignore[reportIncompatibleMethodOverride]
         self,
         target: Target | Event,
         bot: Bot,
