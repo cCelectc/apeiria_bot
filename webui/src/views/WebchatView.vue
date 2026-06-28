@@ -101,8 +101,12 @@ function avatarText(role: string): string {
 </script>
 
 <template>
-  <div class="flex h-full flex-col p-6 lg:p-8">
-    <PageHeader :title="$t('webchat.title')" :subtitle="$t('webchat.subtitle')">
+  <div class="flex h-full min-h-0 flex-col p-6 lg:p-8">
+    <PageHeader
+      class="shrink-0"
+      :title="$t('webchat.title')"
+      :subtitle="$t('webchat.subtitle')"
+    >
       <template #actions>
         <div class="flex items-center gap-3">
           <span class="flex items-center gap-1.5 text-sm text-muted-foreground">
@@ -146,7 +150,7 @@ function avatarText(role: string): string {
       </template>
     </PageHeader>
 
-    <div class="mb-3 flex flex-wrap items-center gap-2">
+    <div class="mb-3 flex shrink-0 flex-wrap items-center gap-2">
       <Select v-model="sceneType">
         <SelectTrigger class="w-32">
           <SelectValue />
@@ -188,34 +192,34 @@ function avatarText(role: string): string {
         :key="m.id"
         :class="
           cn(
-            'group flex items-end gap-2',
-            m.role === 'user' ? 'flex-row-reverse' : 'flex-row',
+            'group flex flex-col gap-1',
+            m.role === 'user' ? 'items-end' : 'items-start',
           )
         "
       >
-        <Avatar class="size-8 shrink-0">
-          <AvatarFallback
-            :class="
-              m.role === 'user'
-                ? 'bg-accent text-accent-foreground'
-                : 'bg-primary/10 text-primary'
-            "
-          >
-            {{ avatarText(m.role) }}
-          </AvatarFallback>
-        </Avatar>
         <div
           :class="
             cn(
-              'flex max-w-[75%] flex-col gap-1',
-              m.role === 'user' ? 'items-end' : 'items-start',
+              'flex max-w-[80%] items-end gap-2',
+              m.role === 'user' ? 'flex-row-reverse' : 'flex-row',
             )
           "
         >
+          <Avatar class="size-8 shrink-0">
+            <AvatarFallback
+              :class="
+                m.role === 'user'
+                  ? 'bg-accent text-accent-foreground'
+                  : 'bg-primary/10 text-primary'
+              "
+            >
+              {{ avatarText(m.role) }}
+            </AvatarFallback>
+          </Avatar>
           <div
             :class="
               cn(
-                'rounded-lg px-3 py-2 text-sm break-words',
+                'min-w-0 rounded-lg px-3 py-2 text-sm break-words',
                 m.role === 'user'
                   ? 'bg-accent text-accent-foreground'
                   : 'bg-secondary text-secondary-foreground',
@@ -242,22 +246,29 @@ function avatarText(role: string): string {
               </details>
             </template>
           </div>
-          <div class="flex items-center gap-2 text-xs text-muted-foreground">
-            <span>{{ m.time }}</span>
-            <button
-              type="button"
-              class="opacity-0 transition-opacity group-hover:opacity-100"
-              :aria-label="$t('webchat.deleteMessage')"
-              @click="deleteMessage(m.id)"
-            >
-              <Trash2 class="size-3.5" />
-            </button>
-          </div>
+        </div>
+        <div
+          :class="
+            cn(
+              'flex items-center gap-2 text-xs text-muted-foreground',
+              m.role === 'user' ? 'pr-10' : 'pl-10',
+            )
+          "
+        >
+          <span>{{ m.time }}</span>
+          <button
+            type="button"
+            class="opacity-0 transition-opacity group-hover:opacity-100"
+            :aria-label="$t('webchat.deleteMessage')"
+            @click="deleteMessage(m.id)"
+          >
+            <Trash2 class="size-3.5" />
+          </button>
         </div>
       </div>
     </div>
 
-    <div class="mt-3 flex items-end gap-2">
+    <div class="mt-3 flex shrink-0 items-end gap-2">
       <input
         ref="fileInput"
         type="file"
