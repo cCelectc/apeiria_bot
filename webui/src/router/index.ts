@@ -16,6 +16,7 @@ const StoreView = () => import("@/views/StoreView.vue");
 const SettingsNonebotView = () => import("@/views/SettingsNonebotView.vue");
 const SettingsApeiriaView = () => import("@/views/SettingsApeiriaView.vue");
 const LogsView = () => import("@/views/LogsView.vue");
+const WebchatView = () => import("@/views/WebchatView.vue");
 const AccountView = () => import("@/views/AccountView.vue");
 
 const router = createRouter({
@@ -47,6 +48,7 @@ const router = createRouter({
           component: SettingsApeiriaView,
         },
         { path: "logs", name: "logs", component: LogsView },
+        { path: "webchat", name: "webchat", component: WebchatView },
         { path: "account", name: "account", component: AccountView },
       ],
     },

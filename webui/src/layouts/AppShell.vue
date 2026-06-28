@@ -7,6 +7,7 @@ import {
   KeyRound,
   LayoutDashboard,
   LogOut,
+  MessageCircle,
   Monitor,
   Moon,
   Plug,
@@ -61,6 +62,7 @@ const nav = [
   { name: "adapters", icon: Plug },
   { name: "store", icon: Store },
   { name: "logs", icon: ScrollText },
+  { name: "webchat", icon: MessageCircle },
 ];
 
 const currentLabel = computed(() => {
