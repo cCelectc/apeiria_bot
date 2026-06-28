@@ -29,8 +29,7 @@ async def handle_status(event: Event) -> None:
     uptime = int(time.monotonic() - _start_time)
     plugins_count = len(nonebot.get_loaded_plugins())
     adapters = (
-        ", ".join(type(a).__name__ for a in nonebot.get_driver()._adapters.values())
-        or "无"
+        ", ".join(type(a).__name__ for a in nonebot.get_adapters().values()) or "无"
     )
 
     await _status.finish(

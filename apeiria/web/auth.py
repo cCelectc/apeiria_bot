@@ -40,6 +40,7 @@ _MAX_BACKOFF_EXP = 10
 
 _web_cache: list[WebConfig | None] = [None]  # type: ignore[valid-type]
 _login_failures: dict[str, tuple[int, float]] = {}
+_login_lock = asyncio.Lock()
 
 
 def _web_config() -> WebConfig:  # type: ignore[valid-type]
@@ -293,22 +294,25 @@ auth_router = APIRouter(prefix="/api/auth", tags=["auth"])
 @auth_router.post("/login")
 async def login(data: LoginRequest, request: Request) -> JSONResponse:
     key = _resolve_client_ip(request)
-    wait = _retry_after(key)
-    if wait > 0:
-        raise HTTPException(
-            status_code=429,
-            detail="Too many attempts",
-            headers={"Retry-After": str(int(wait) + 1)},
-        )
+    async with _login_lock:
+        wait = _retry_after(key)
+        if wait > 0:
+            raise HTTPException(
+                status_code=429,
+                detail="Too many attempts",
+                headers={"Retry-After": str(int(wait) + 1)},
+            )
     web = _web_config()
     password_hash = await _require_password_hash()
     ok = data.username == web.username and verify_dashboard_password(
         password_hash, data.password
     )
     if not ok:
-        _record_failure(key)
+        async with _login_lock:
+            _record_failure(key)
         raise HTTPException(status_code=401, detail="Invalid credentials")
-    _reset_failures(key)
+    async with _login_lock:
+        _reset_failures(key)
     jwt_secret = await _require_jwt_secret()
     token = _issue_token(web.username, jwt_secret)
     return JSONResponse(content={"token": token, "username": web.username})

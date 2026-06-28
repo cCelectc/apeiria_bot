@@ -85,24 +85,43 @@ class WebChatMessageEvent(WebChatEvent):
         return self.to_me
 
 
-def resolve_to_me(
+def is_at_me(
     message: Message,
     scene_type: str,
     nicknames: Iterable[str],
 ) -> bool:
-    """OneBot V11 语义：私聊恒真；群聊命中昵称前缀则剥离并置真。"""
+    """私聊恒真；群聊检测是否命中昵称前缀。"""
     if scene_type != "group":
         return True
     names = [re.escape(n) for n in nicknames if n]
     if not names or not message or message[0].type != "text":
         return False
     text = message[0].data.get("text", "")
+    return bool(re.match(rf"^(?:{'|'.join(names)})\s*", text))
+
+
+def strip_at_prefix(message: Message, nicknames: Iterable[str]) -> None:
+    """从消息首段剥离已匹配的昵称前缀。"""
+    names = [re.escape(n) for n in nicknames if n]
+    if not names or not message or message[0].type != "text":
+        return
+    text = message[0].data.get("text", "")
     matched = re.match(rf"^(?:{'|'.join(names)})\s*", text)
     if not matched:
-        return False
+        return
     message[0].data["text"] = text[matched.end() :]
     if not message[0].data["text"]:
         del message[0]
     if not message:
         message.append(MessageSegment.text(""))
-    return True
+
+
+def resolve_to_me(
+    message: Message,
+    scene_type: str,
+    nicknames: Iterable[str],
+) -> bool:
+    result = is_at_me(message, scene_type, nicknames)
+    if result and scene_type == "group":
+        strip_at_prefix(message, nicknames)
+    return result

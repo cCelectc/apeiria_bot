@@ -217,5 +217,5 @@ def get_status() -> dict[str, Any]:
     return {
         "uptime": get_uptime(),
         "plugin_count": len(nonebot.get_loaded_plugins()),
-        "adapters": [type(a).__name__ for a in nonebot.get_driver()._adapters.values()],
+        "adapters": [type(a).__name__ for a in nonebot.get_adapters().values()],
     }

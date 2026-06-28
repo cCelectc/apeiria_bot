@@ -8,6 +8,8 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
 
+from urllib.parse import urlparse
+
 from nonebot.log import logger
 from sqlalchemy import event
 from sqlalchemy.ext.asyncio import (
@@ -69,8 +71,10 @@ class ApeiriaDatabase:
         return self._gate
 
     async def init(self) -> None:
-        db_path = Path(self._url.replace("sqlite+aiosqlite:///", ""))
-        db_path.parent.mkdir(parents=True, exist_ok=True)
+        parsed = urlparse(self._url)
+        if parsed.scheme in ("sqlite+aiosqlite", "sqlite"):
+            db_path = Path(parsed.path.lstrip("/"))
+            db_path.parent.mkdir(parents=True, exist_ok=True)
 
         self._engine = create_async_engine(self._url, echo=False)
         self._sessionmaker = async_sessionmaker(

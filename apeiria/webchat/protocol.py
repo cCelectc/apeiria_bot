@@ -52,7 +52,7 @@ def parse_inbound(raw: Any) -> InboundFrame:
         return InboundClear()
     if ftype == "delete":
         message_id = raw.get("message_id")
-        if not message_id:
+        if message_id is None or message_id == "":
             raise ProtocolError("delete requires message_id")  # noqa: TRY003
         return InboundDelete(message_id=str(message_id))
     if ftype == "switch":
