@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, watch, onUnmounted } from "vue";
 import { Loader, Terminal } from "@lucide/vue";
+import { useI18n } from "vue-i18n";
 import { createSseClient } from "@/lib/sse";
 import { useAuthStore } from "@/stores/auth";
 import { Button } from "@/components/ui/button";
@@ -26,6 +27,7 @@ const emit = defineEmits<{
 }>();
 
 const auth = useAuthStore();
+const { t } = useI18n();
 const lines = ref<string[]>([]);
 const status = ref<"running" | "done" | "error">("running");
 const errorMsg = ref("");
@@ -48,7 +50,7 @@ function startStream(taskId: string) {
           status.value = "done";
         } else if (event.type === "error") {
           status.value = "error";
-          errorMsg.value = event.message ?? "安装失败";
+          errorMsg.value = event.message ?? t("progress.failed");
         }
       } catch {
         lines.value.push(data);
@@ -103,13 +105,13 @@ onUnmounted(() => stopStream());
           {{ title }}
         </DialogTitle>
         <DialogDescription v-if="status === 'running'">
-          正在安装，请稍候...
+          {{ $t("progress.installing") }}
         </DialogDescription>
         <DialogDescription v-else-if="status === 'done'">
-          安装完成
+          {{ $t("progress.done") }}
         </DialogDescription>
         <DialogDescription v-else>
-          安装失败
+          {{ $t("progress.failed") }}
         </DialogDescription>
       </DialogHeader>
 
@@ -125,14 +127,14 @@ onUnmounted(() => stopStream());
       <DialogFooter>
         <div v-if="status === 'running'" class="flex items-center gap-2 text-sm text-muted-foreground">
           <Loader class="size-4 animate-spin" />
-          安装中...
+          {{ $t("progress.running") }}
         </div>
         <Button
           v-if="status === 'done' || status === 'error'"
           variant="outline"
           @click="handleClose"
         >
-          {{ status === 'done' ? '完成' : '关闭' }}
+          {{ status === 'done' ? $t('progress.complete') : $t('progress.close') }}
         </Button>
       </DialogFooter>
     </DialogContent>

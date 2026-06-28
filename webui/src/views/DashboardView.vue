@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
 import { Activity, Plug, Puzzle, RotateCw } from "@lucide/vue";
+import { useI18n } from "vue-i18n";
 import { toast } from "vue-sonner";
 import { api } from "@/lib/api";
 import ErrorState from "@/components/ErrorState.vue";
@@ -23,6 +24,7 @@ import { useStatusQuery } from "@/composables/useStatus";
 const { data, isLoading, isError, error, refetch } = useStatusQuery();
 const { data: installedPlugins } = usePluginsQuery();
 const { data: installedAdapters } = useAdaptersQuery();
+const { t } = useI18n();
 
 const restartOpen = ref(false);
 const restarting = ref(false);
@@ -33,7 +35,7 @@ async function doRestart() {
     await api.status.restart();
     pollUntilUp();
   } catch {
-    toast.error("重启请求失败");
+    toast.error(t("dashboard.restartFailed"));
     restarting.value = false;
     restartOpen.value = false;
   }
@@ -47,14 +49,14 @@ function pollUntilUp() {
     try {
       await api.status.get();
       clearInterval(interval);
-      toast.success("Bot 已重启");
+      toast.success(t("dashboard.restartSuccess"));
       restarting.value = false;
       restartOpen.value = false;
       refetch();
     } catch {
       if (attempts >= max) {
         clearInterval(interval);
-        toast.error("重启超时，请手动刷新页面");
+        toast.error(t("dashboard.restartTimeout"));
         restarting.value = false;
         restartOpen.value = false;
       }

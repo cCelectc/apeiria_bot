@@ -53,6 +53,17 @@ export default {
     restarting: "重启中...",
     restartConfirmTitle: "确认重启 Bot",
     restartConfirmDesc: "重启将中断所有服务，Bot 会在几秒后重新上线。确认继续？",
+    restartFailed: "重启请求失败",
+    restartSuccess: "Bot 已重启",
+    restartTimeout: "重启超时，请手动刷新页面",
+  },
+  progress: {
+    installing: "处理中，请稍候...",
+    done: "完成",
+    failed: "处理失败",
+    running: "处理中...",
+    close: "关闭",
+    complete: "完成",
   },
   account: {
     title: "账号",
