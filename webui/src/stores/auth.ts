@@ -19,5 +19,10 @@ export const useAuthStore = defineStore(
 
     return { token, username, setSession, clearSession };
   },
-  { persist: true },
+  {
+    // Token persisted in localStorage for session survival across page refreshes.
+    // Acceptable for intranet admin dashboards protected by host-level auth.
+    // For public deployments, migrate to HttpOnly cookie + CSRF token flow.
+    persist: true,
+  },
 );
