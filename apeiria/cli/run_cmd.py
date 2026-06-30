@@ -24,7 +24,6 @@ from apeiria.bootstrap.steps import (
 )
 from apeiria.config.loader import expand_config, load_config
 from apeiria.db.engine import init_db
-from apeiria.utils.render import ensure_render_ready
 
 GRACEFUL_SHUTDOWN_TIMEOUT = 3
 
@@ -47,8 +46,6 @@ def run_cmd(reload: bool) -> None:  # noqa: FBT001
     app = load_config("data/config.yaml")
     get_log_hub().install_sinks(app.apeiria.logging)
     expand_config(app)
-
-    ensure_render_ready()
 
     nonebot.init()
 
