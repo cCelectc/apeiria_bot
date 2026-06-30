@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Annotated
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 
+from apeiria.config.contract import resolve_config_namespace_contract
 from apeiria.config.loader import load_config, update_runtime_config
 from apeiria.config.models import ApeiriaConfig
 from apeiria.config.reflector import reflect_model
@@ -16,7 +17,6 @@ from apeiria.plugin.adapter_manager import (
 )
 from apeiria.plugin.adapter_scanner import scan_adapters
 from apeiria.plugin.manager import set_plugin_state
-from apeiria.plugin.metadata.resolver import resolve_config_namespace_contract
 from apeiria.plugin.scanner import scan_plugins
 from apeiria.web.auth import verify_token
 from apeiria.web.plugin_metadata import merge_plugin_metadata

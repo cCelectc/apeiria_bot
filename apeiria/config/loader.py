@@ -51,7 +51,7 @@ def _flatten_nested(
 
 def _try_resolve_plugin_contract(name: str):
     try:
-        from apeiria.plugin.metadata.resolver import resolve_config_namespace_contract
+        from apeiria.config.contract import resolve_config_namespace_contract
 
         return resolve_config_namespace_contract(name)
     except (ImportError, ValueError, TypeError):
