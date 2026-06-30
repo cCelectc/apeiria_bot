@@ -14,7 +14,7 @@ BUILTIN_LIST = [
     "repeater",
     "trigger_reply",
     "friendship",
-    "contact_owner",
+    "relay",
     "self_revoke",
 ]
 

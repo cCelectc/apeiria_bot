@@ -78,7 +78,7 @@ apeiria_bot/
 │   │   ├── repeater/           ← 群复读
 │   │   ├── trigger_reply/      ← 关键词触发
 │   │   ├── friendship/         ← 好友/群审批
-│   │   ├── contact_owner/      ← 转发主人
+│   │   ├── relay/              ← 传话转发
 │   │   └── self_revoke/        ← 撤回消息
 │   ├── web/                    ← Web UI API
 │   └── utils/                  ← 通用工具 (superuser)
