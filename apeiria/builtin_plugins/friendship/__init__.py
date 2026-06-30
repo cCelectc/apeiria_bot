@@ -207,8 +207,12 @@ async def handle_request(
 
         for target_id in targets:
             try:
-                await bot.send_private_msg(user_id=int(target_id), message=msg)
-                await update_notified(pending.id, target_id, "")
+                result = await bot.send_private_msg(user_id=int(target_id), message=msg)
+                if isinstance(result, dict):
+                    msg_id = str(result.get("message_id", ""))
+                else:
+                    msg_id = ""
+                await update_notified(pending.id, target_id, msg_id)
             except Exception:  # noqa: BLE001
                 pass
 
