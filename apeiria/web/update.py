@@ -83,7 +83,9 @@ async def update_status() -> JSONResponse:
     dirty_files = dirty_output.splitlines() if dirty_output else []
 
     _, branches_output, _ = await _run_git("branch", "-r")
-    available_branches = _branch_list(branches_output)
+    all_branches = _branch_list(branches_output)
+    _allowed = {"main", "dev"}
+    available_branches = sorted(b for b in all_branches if b in _allowed)
 
     _, tags_output, _ = await _run_git("tag")
     available_tags = sorted(t.strip() for t in tags_output.splitlines() if t.strip())
