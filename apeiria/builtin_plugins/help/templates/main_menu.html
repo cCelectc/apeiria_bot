@@ -2,300 +2,84 @@
 <html>
 <head>
 <meta charset="utf-8">
-{% if font_urls %}
-{% for url in font_urls %}
-<link rel="stylesheet" href="{{ url }}">
-{% endfor %}
-{% endif %}
 <style>
-  :root {
-    --bg-color: #0b0e14;
-    --panel-bg: rgba(24, 28, 38, 0.92);
-    --panel-border: rgba(255, 255, 255, 0.08);
-    --panel-shadow: 0 20px 36px rgba(0, 0, 0, 0.28);
-    --text-primary: #f7fbff;
-    --text-secondary: rgba(220, 228, 240, 0.56);
-    --text-muted: rgba(220, 228, 240, 0.32);
-    --accent: {{ accent_color | default('#4e96f7') }};
-    --font-main: {% if latin_font_family %}"{{ latin_font_family }}", {% endif %}{% if font_family %}"{{ font_family }}", {% endif %}"Noto Sans CJK SC", "Source Han Sans SC", "Microsoft YaHei", sans-serif;
-    --font-mono: {% if mono_font_family %}"{{ mono_font_family }}", {% endif %}"JetBrains Mono", "Noto Sans Mono", "Consolas", monospace;
-    --card-width: 172px;
-    --grid-gap: 14px;
-    --content-padding: 18px;
-    --container-width: 610px;
-  }
-
   * { margin: 0; padding: 0; box-sizing: border-box; }
-
-  body {
-    width: var(--container-width);
-    font-family: var(--font-main);
-    color: var(--text-primary);
-    background:
-      radial-gradient(circle at top center, rgba(78, 150, 247, 0.12), transparent 32%),
-      radial-gradient(circle at top right, rgba(59, 96, 167, 0.22), transparent 38%),
-      linear-gradient(180deg, #151b26 0%, #111721 22%, #0d121b 44%, var(--bg-color) 100%);
-    -webkit-font-smoothing: antialiased;
-    -moz-osx-font-smoothing: grayscale;
-    text-rendering: optimizeLegibility;
-  }
-
-  .shell {
-    position: relative;
-    overflow: hidden;
-  }
-
-  .shell::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    height: 220px;
-    background:
-      radial-gradient(circle at 50% 0, rgba(84, 136, 248, 0.12), transparent 58%),
-      linear-gradient(180deg, rgba(255,255,255,0.02), transparent 72%);
-    pointer-events: none;
-  }
-
-  .shell::after {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    height: 160px;
-    background: linear-gradient(180deg, rgba(10, 14, 22, 0.08), transparent 100%);
-    pointer-events: none;
-  }
-
-  .banner {
-    position: relative;
-    padding: 28px 26px 20px;
-    text-align: center;
-    {% if banner_image %}
-    background: linear-gradient(180deg, rgba(11,14,20,0.18), rgba(11,14,20,0.52) 52%, rgba(11,14,20,0.04)), url('{{ banner_image }}') center/cover no-repeat;
-    {% endif %}
-  }
-
-  .banner-logo {
-    width: 46px;
-    height: 46px;
-    margin-bottom: 10px;
-    filter: drop-shadow(0 6px 18px rgba(74, 134, 255, 0.22));
-  }
-
-  .banner h1 {
-    font-size: 26px;
-    line-height: 1.18;
-    font-weight: 800;
-    letter-spacing: 0.4px;
-    margin-bottom: 6px;
-  }
-
-  .banner-subtitle {
-    font-size: 12px;
-    line-height: 1.45;
-    color: var(--text-secondary);
-  }
-
-  .banner-meta {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    margin-top: 12px;
-    min-width: 98px;
-    padding: 5px 13px;
-    border-radius: 999px;
-    background: rgba(255,255,255,0.04);
-    border: 1px solid rgba(255,255,255,0.07);
-    color: rgba(230, 237, 248, 0.62);
-    font-size: 10px;
-    font-weight: 600;
-    letter-spacing: 0.2px;
-  }
-
-  .banner-view {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    margin-top: 10px;
-    padding: 4px 11px;
-    border-radius: 999px;
-    background: rgba(78, 150, 247, 0.08);
-    border: 1px solid rgba(78, 150, 247, 0.18);
-    color: var(--accent);
-    font-size: 10px;
-    font-weight: 700;
-  }
-
-  .content {
-    padding: 8px var(--content-padding) 16px;
-  }
-
-  .grid {
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: center;
-    gap: var(--grid-gap);
-  }
-
-  .card {
-    position: relative;
-    width: var(--card-width);
-    min-height: 172px;
-    padding: 12px 14px 12px;
-    border-radius: 16px;
-    background: linear-gradient(180deg, rgba(27, 32, 44, 0.96), rgba(22, 26, 36, 0.92));
-    border: 1px solid var(--panel-border);
-    box-shadow: var(--panel-shadow);
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    text-align: center;
-  }
-
-  .card::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 18px;
-    right: 18px;
-    height: 1px;
-    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.1), transparent);
-    opacity: 0.9;
-  }
-
-  .card-icon-wrap {
-    width: 52px;
-    height: 52px;
-    margin-bottom: 10px;
-    border-radius: 16px;
-    background: rgba(255,255,255,0.04);
-    border: 1px solid rgba(255,255,255,0.08);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    box-shadow: inset 0 1px 0 rgba(255,255,255,0.05);
-  }
-
-  .card-icon {
-    width: 38px;
-    height: 38px;
-    border-radius: 12px;
-    object-fit: cover;
-  }
-
-  .card-name {
-    width: 100%;
-    font-size: 13.5px;
-    line-height: 1.3;
-    font-weight: 800;
-    color: var(--text-primary);
-    margin-bottom: 8px;
-    word-break: break-word;
-  }
-
-  .card-desc {
-    width: 100%;
-    min-height: 42px;
-    font-size: 10px;
-    line-height: 1.42;
-    color: var(--text-secondary);
-    display: -webkit-box;
-    -webkit-line-clamp: 3;
-    -webkit-box-orient: vertical;
-    overflow: hidden;
-  }
-
-  .card-badge {
-    margin-top: auto;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    min-width: 74px;
-    padding: 4px 10px;
-    border-radius: 999px;
-    background: rgba(78, 150, 247, 0.08);
-    border: 1px solid rgba(78, 150, 247, 0.18);
-    color: var(--accent);
-    font-size: 10px;
-    font-weight: 700;
-    letter-spacing: 0.1px;
-  }
-
-  .card-category {
-    margin-top: 7px;
-    font-size: 9px;
-    line-height: 1.3;
-    color: var(--text-muted);
-  }
-
-  .hint {
-    margin: 17px 0 10px;
-    text-align: center;
-    color: var(--text-secondary);
-    font-size: 11px;
-  }
-
-  .hint code {
-    display: inline-block;
-    margin: 0 4px;
-    padding: 2px 6px;
-    border-radius: 6px;
-    background: rgba(255,255,255,0.05);
-    color: var(--accent);
-    border: 1px solid rgba(255,255,255,0.04);
-    font-family: var(--font-mono);
-  }
-
-  .footer {
-    padding-top: 11px;
-    border-top: 1px solid rgba(255,255,255,0.05);
-    text-align: center;
-  }
-
-  .footer-text {
-    font-size: 10px;
-    color: var(--text-muted);
-  }
+  body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #f6f7fb; color: #333; }
+  .container { width: 960px; margin: 0 auto; }
+  .header { text-align: center; padding: 44px 20px 24px; background: linear-gradient(135deg, {{ accent_color }}15 0%, {{ accent_color }}08 100%); }
+  .header img { width: 56px; height: 56px; border-radius: 14px; }
+  .header h1 { margin: 12px 0 4px; font-size: 26px; font-weight: 700; color: #222; }
+  .header .subtitle { color: #999; font-size: 14px; }
+  .group { margin: 20px 24px; }
+  .group-label { font-size: 15px; font-weight: 600; color: #888; margin-bottom: 10px; padding-left: 4px; }
+  .card { display: flex; align-items: flex-start; padding: 16px 18px; margin-bottom: 8px; background: #fff; border-radius: 12px; box-shadow: 0 1px 4px rgba(0,0,0,0.06); }
+  .card-icon { flex-shrink: 0; width: 44px; height: 44px; border-radius: 10px; margin-right: 14px; background: #eef1f7; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+  .card-icon img { width: 100%; height: 100%; object-fit: cover; }
+  .card-icon .fallback { font-size: 18px; color: {{ accent_color }}; font-weight: 700; }
+  .card-body { flex: 1; min-width: 0; }
+  .card-title { font-size: 16px; font-weight: 600; color: #222; margin-bottom: 4px; }
+  .card-desc { font-size: 13px; color: #999; line-height: 1.5; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .card-meta { flex-shrink: 0; margin-left: 12px; display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
+  .badge { font-size: 11px; color: {{ accent_color }}; background: {{ accent_color }}12; padding: 3px 10px; border-radius: 10px; font-weight: 500; white-space: nowrap; }
+  .cmd-list { margin-top: 10px; padding-top: 10px; border-top: 1px solid #f0f0f0; }
+  .cmd-item { display: flex; align-items: baseline; padding: 4px 0; font-size: 13px; }
+  .cmd-name { font-weight: 600; color: {{ accent_color }}; margin-right: 8px; white-space: nowrap; }
+  .cmd-desc { color: #999; flex: 1; }
+  .cmd-admin { font-size: 10px; color: #e88; margin-left: 6px; padding: 1px 5px; background: #fef0f0; border-radius: 6px; font-weight: 500; }
+  .empty { text-align: center; padding: 60px 20px; color: #ccc; font-size: 16px; }
+  .footer { text-align: center; color: #ccc; font-size: 12px; padding: 36px 0 28px; }
+  {% if font_family %}
+  body { font-family: {{ font_family }}, sans-serif; }
+  {% endif %}
 </style>
 </head>
 <body>
-  <div class="shell">
-    <div class="banner">
-      {% if header_logo %}
-      <img class="banner-logo" src="{{ header_logo }}" alt="">
-      {% endif %}
-      <h1>{{ title }}</h1>
-      <div class="banner-subtitle">{{ subtitle }}</div>
-      <div class="banner-meta">共 {{ plugin_total }} 个插件</div>
-      <div class="banner-view">{{ view_label }}</div>
-    </div>
+<div class="container">
+  <div class="header">
+    <img src="{{ header_logo }}" alt="logo" onerror="this.style.display='none'">
+    <h1>{{ title }}</h1>
+    {% if subtitle %}<div class="subtitle">{{ subtitle }}</div>{% endif %}
+  </div>
 
-    <div class="content">
-      <div class="grid">
-        {% for plugin in plugins %}
-        <div class="card">
-          <div class="card-icon-wrap">
-            <img class="card-icon" src="{{ plugin.icon_url }}" alt="">
-          </div>
-          <div class="card-name">{{ plugin.display_name }}</div>
+  {% if groups %}
+    {% for group in groups %}
+    <div class="group">
+      <div class="group-label">{{ group.label }}</div>
+      {% for plugin in group.plugins %}
+      <div class="card">
+        <div class="card-icon">
+          {% if plugin.icon_url %}
+          <img src="{{ plugin.icon_url }}" alt="" onerror="this.parentElement.querySelector('.fallback').style.display='block'; this.style.display='none'">
+          {% endif %}
+          <div class="fallback" style="display: {% if plugin.icon_url %}none{% else %}block{% endif %}">{{ plugin.name[:2] }}</div>
+        </div>
+        <div class="card-body">
+          <div class="card-title">{{ plugin.name }}</div>
           <div class="card-desc">{{ plugin.description or '暂无描述' }}</div>
-          <div class="card-badge">{{ plugin.cmd_count }} 个命令</div>
-          {% if plugin.menu_category %}
-          <div class="card-category">{{ plugin.menu_category }}</div>
+          {% if plugin.commands %}
+          <div class="cmd-list">
+            {% for cmd in plugin.commands %}
+            <div class="cmd-item">
+              <span class="cmd-name">{{ cmd.name }}</span>
+              <span class="cmd-desc">{{ cmd.description or cmd.usage }}</span>
+              {% if cmd.admin_only %}<span class="cmd-admin">仅超管</span>{% endif %}
+            </div>
+            {% endfor %}
+          </div>
           {% endif %}
         </div>
-        {% endfor %}
+        <div class="card-meta">
+          <span class="badge">{{ plugin.cmd_count }} 命令</span>
+        </div>
       </div>
-
-      <div class="hint">发送 <code>{{ prefix }}help &lt;插件名&gt;</code> 查看详细命令</div>
-
-      <div class="footer">
-        <span class="footer-text">{{ footer }}</span>
-      </div>
+      {% endfor %}
     </div>
-  </div>
+    {% endfor %}
+  {% else %}
+    <div class="empty">暂无可用的功能</div>
+  {% endif %}
+
+  <div class="footer">{{ footer }}</div>
+</div>
 </body>
 </html>

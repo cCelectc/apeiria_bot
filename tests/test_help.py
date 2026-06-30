@@ -11,143 +11,174 @@ def _require_help_deps(after_nonebot_init: None) -> None:  # noqa: ARG001
     require("nonebot_plugin_htmlrender")
 
 
-def test_parse_pipe_command() -> None:
-    from apeiria.builtin_plugins.help.generator import _parse_pipe_command
+def test_help_command_item_defaults() -> None:
+    from apeiria.builtin_plugins.help.models import HelpCommandItem
 
-    cmd = _parse_pipe_command("名称|描述|!")
-    assert cmd is not None
-    assert cmd.name == "名称"
-    assert cmd.description == "描述"
-    assert cmd.custom_prefix == "!"
-
-    only = _parse_pipe_command("only")
-    assert only is not None
-    assert only.name == "only"
-    assert only.custom_prefix is None
-
-    assert _parse_pipe_command("") is None
-    assert _parse_pipe_command("   ") is None
+    cmd = HelpCommandItem(name="test")
+    assert cmd.name == "test"
+    assert cmd.aliases == []
+    assert cmd.description == ""
+    assert cmd.usage == ""
+    assert cmd.admin_only is False
 
 
-def test_display_name() -> None:
-    from apeiria.builtin_plugins.help.commands import _display_name
+def test_help_plugin_item_properties() -> None:
+    from apeiria.builtin_plugins.help.models import HelpCommandItem, HelpPluginItem
 
-    assert _display_name("/", "help", None) == "/help"
-    assert _display_name("/", "help", "!") == "!help"
-
-
-def test_dedupe_and_normalize_commands() -> None:
-    from apeiria.builtin_plugins.help.generator import _dedupe_and_normalize_commands
-    from apeiria.builtin_plugins.help.models import CommandHelpInfo
-
-    a = CommandHelpInfo(name="x", description="desc")
-    b = CommandHelpInfo(name="x", aliases=["y"])
-    out = _dedupe_and_normalize_commands([a, b])
-    assert len(out) == 1
-    assert out[0].description == "desc"
-    assert "y" in out[0].aliases
-
-
-def test_merge_declared_commands() -> None:
-    from apeiria.builtin_plugins.help.generator import _merge_declared_commands
-    from apeiria.builtin_plugins.help.models import CommandHelpInfo
-    from apeiria.plugin.metadata.api import CommandDeclaration
-
-    existing = [CommandHelpInfo(name="a")]
-    declared = ["b", CommandDeclaration(name="c", description="cc", aliases=["cx"])]
-    out = _merge_declared_commands(existing, declared)
-    by_name = {c.name: c for c in out}
-    assert set(by_name) == {"a", "b", "c"}
-    assert by_name["c"].description == "cc"
-    assert "cx" in by_name["c"].aliases
-
-
-def test_apply_overrides() -> None:
-    from apeiria.builtin_plugins.help.config import PluginOverride
-    from apeiria.builtin_plugins.help.generator import _apply_overrides
-    from apeiria.builtin_plugins.help.models import PluginHelpInfo
-
-    plugins = [
-        PluginHelpInfo(plugin_id="p1", module_name="m1", name="P1", display_name="P1")
-    ]
-    overrides = [
-        PluginOverride(
-            plugin_name="p1",
-            display_name="New",
-            description="D",
-            category="Cat",
-            order=5,
-            extra_commands=["cmd|desc"],
-        )
-    ]
-    _apply_overrides(plugins, overrides)
-    assert plugins[0].display_name == "New"
-    assert plugins[0].description == "D"
-    assert plugins[0].menu_category == "Cat"
-    assert plugins[0].order == 5
-    assert any(c.name == "cmd" for c in plugins[0].commands)
-
-
-def test_plugin_help_info_properties() -> None:
-    from apeiria.builtin_plugins.help.models import CommandHelpInfo, PluginHelpInfo
-
-    p = PluginHelpInfo(
+    p = HelpPluginItem(
         plugin_id="p",
         module_name="m",
-        name="N",
-        display_name="Hello",
+        name="TestPlugin",
         source="builtin",
-        commands=[CommandHelpInfo(name="a"), CommandHelpInfo(name="b")],
+        commands=[
+            HelpCommandItem(name="a"),
+            HelpCommandItem(name="b"),
+            HelpCommandItem(name="c"),
+        ],
     )
-    assert p.command_count == 2
+    assert p.command_count == 3
     assert p.is_builtin is True
-    assert p.initials == "HE"
 
-    other = PluginHelpInfo(
-        plugin_id="q", module_name="m2", name="Q", display_name="Q", source="user"
-    )
+    other = HelpPluginItem(plugin_id="q", module_name="m2", name="Q", source="user")
     assert other.is_builtin is False
-
-
-def test_build_menu_data_expands_commands() -> None:
-    from apeiria.builtin_plugins.help.config import HelpAppearanceConfig, HelpConfig
-    from apeiria.builtin_plugins.help.models import CommandHelpInfo, PluginHelpInfo
-    from apeiria.builtin_plugins.help.renderer import _build_menu_data
-
-    plugins = [
-        PluginHelpInfo(
-            plugin_id="p",
-            module_name="m",
-            name="N",
-            display_name="N",
-            commands=[CommandHelpInfo(name="a", description="da")],
-        )
-    ]
-    expanded = HelpConfig(appearance=HelpAppearanceConfig(expand_commands=True))
-    data = _build_menu_data(plugins, prefix="/", config=expanded, role="user")
-    entry = data["plugins"][0]
-    assert "commands" in entry
-    assert entry["commands"][0]["display_name"] == "/a"
-    assert entry["commands"][0]["description"] == "da"
-
-    collapsed = HelpConfig(appearance=HelpAppearanceConfig(expand_commands=False))
-    data2 = _build_menu_data(plugins, prefix="/", config=collapsed, role="user")
-    assert "commands" not in data2["plugins"][0]
+    assert other.command_count == 0
 
 
 def test_format_detail_text() -> None:
-    from apeiria.builtin_plugins.help.models import CommandHelpInfo, PluginHelpInfo
+    from apeiria.builtin_plugins.help.models import HelpCommandItem, HelpPluginItem
     from apeiria.builtin_plugins.help.renderer import _format_detail_text
 
-    info = PluginHelpInfo(
+    plugin = HelpPluginItem(
+        plugin_id="p",
+        module_name="m",
+        name="Hello",
+        description="A test plugin",
+        usage="Use /hello to greet",
+        commands=[
+            HelpCommandItem(name="hello", description="Say hello", usage="/hello"),
+            HelpCommandItem(
+                name="admin", usage="/admin", admin_only=True, aliases=["a"]
+            ),
+        ],
+    )
+    text = _format_detail_text(plugin, prefix="/")
+    assert "Hello" in text
+    assert "hello" in text
+    assert "Say hello" in text
+    assert "/admin" in text
+    assert "仅超管" in text
+    assert "a" in text
+    assert "Use /hello to greet" in text
+
+
+def test_format_menu_text() -> None:
+    from apeiria.builtin_plugins.help.config import HelpConfig
+    from apeiria.builtin_plugins.help.models import HelpCommandItem, HelpPluginItem
+    from apeiria.builtin_plugins.help.renderer import _format_menu_text
+
+    config = HelpConfig(title="Menu")
+    plugins = [
+        HelpPluginItem(
+            plugin_id="p",
+            module_name="m",
+            name="Plugin",
+            description="desc",
+            commands=[
+                HelpCommandItem(name="cmd1", admin_only=True),
+                HelpCommandItem(name="cmd2"),
+            ],
+        )
+    ]
+
+    text = _format_menu_text(plugins, prefix="/", config=config)
+    assert "Menu" in text
+    assert "Plugin" in text
+    assert "cmd1" in text
+    assert "cmd2" in text
+
+    text_expanded = _format_menu_text(
+        plugins,
+        prefix="/",
+        config=HelpConfig(title="Menu", expand_commands=True),
+    )
+    assert "仅超管" in text_expanded
+
+
+def test_build_detail_data() -> None:
+    from apeiria.builtin_plugins.help.config import HelpConfig
+    from apeiria.builtin_plugins.help.models import HelpCommandItem, HelpPluginItem
+    from apeiria.builtin_plugins.help.renderer import _build_detail_data
+
+    config = HelpConfig(accent_color="#ff0000")
+    plugin = HelpPluginItem(
         plugin_id="p",
         module_name="m",
         name="N",
-        display_name="Hello",
-        description="desc",
-        commands=[CommandHelpInfo(name="a", description="da")],
+        description="D",
+        usage="U",
+        commands=[HelpCommandItem(name="c", description="cd", aliases=["x"])],
     )
-    text = _format_detail_text(info, prefix="/", role="user")
-    assert "Hello" in text
-    assert "/a" in text
-    assert "da" in text
+    data = _build_detail_data(plugin, prefix="/", config=config)
+    assert data["plugin"]["name"] == "N"
+    assert data["plugin"]["description"] == "D"
+    assert data["usage"] == "U"
+    assert data["commands"][0]["name"] == "c"
+    assert data["commands"][0]["description"] == "cd"
+    assert "x" in data["commands"][0]["aliases"]
+
+
+def test_build_menu_data_groups() -> None:
+    from apeiria.builtin_plugins.help.config import HelpConfig
+    from apeiria.builtin_plugins.help.models import HelpCommandItem, HelpPluginItem
+    from apeiria.builtin_plugins.help.renderer import _build_menu_data
+
+    config = HelpConfig(expand_commands=False)
+    plugins = [
+        HelpPluginItem(
+            plugin_id="a",
+            module_name="ma",
+            name="App",
+            source="user",
+            commands=[HelpCommandItem(name="x")],
+        ),
+        HelpPluginItem(
+            plugin_id="b",
+            module_name="mb",
+            name="Builtin",
+            source="builtin",
+            commands=[HelpCommandItem(name="y")],
+        ),
+    ]
+    data = _build_menu_data(plugins, prefix="/", config=config, is_superuser=True)
+    assert len(data["groups"]) == 2  # application + builtin
+    app_group = next(g for g in data["groups"] if g["label"] == "功能")
+    builtin_group = next(g for g in data["groups"] if g["label"] == "内置")
+    assert len(app_group["plugins"]) == 1
+    assert len(builtin_group["plugins"]) == 1
+
+
+def test_build_menu_data_hides_builtin_for_normal_user() -> None:
+    from apeiria.builtin_plugins.help.config import HelpConfig
+    from apeiria.builtin_plugins.help.models import HelpCommandItem, HelpPluginItem
+    from apeiria.builtin_plugins.help.renderer import _build_menu_data
+
+    config = HelpConfig()
+    plugins = [
+        HelpPluginItem(
+            plugin_id="a",
+            module_name="ma",
+            name="App",
+            source="user",
+            commands=[HelpCommandItem(name="x")],
+        ),
+        HelpPluginItem(
+            plugin_id="b",
+            module_name="mb",
+            name="Builtin",
+            source="builtin",
+            commands=[HelpCommandItem(name="y")],
+        ),
+    ]
+    data = _build_menu_data(plugins, prefix="/", config=config, is_superuser=False)
+    assert len(data["groups"]) == 1
+    assert data["groups"][0]["label"] == "功能"
