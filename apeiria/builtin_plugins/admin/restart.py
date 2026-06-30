@@ -2,8 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import os
-import sys
 import time
 from pathlib import Path
 from typing import Any
@@ -13,6 +11,8 @@ from nonebot import get_driver
 from nonebot.adapters import Bot, Event  # noqa: TC002
 from nonebot.log import logger
 from nonebot_plugin_alconna import Alconna, on_alconna
+
+from apeiria.utils.restart import graceful_restart
 
 from .utils import ensure_owner_message
 
@@ -140,23 +140,4 @@ async def _try_send(
 
 
 async def _do_restart() -> None:
-    _exec_restart()
-
-
-def _exec_restart() -> None:
-    try:
-        sys.stdout.flush()
-        sys.stderr.flush()
-    except OSError:
-        pass
-
-    if sys.platform == "win32":
-        import subprocess
-
-        subprocess.Popen(
-            [sys.executable, *sys.argv],
-            creationflags=subprocess.CREATE_NEW_PROCESS_GROUP,  # type: ignore[attr-defined]
-        )
-        os._exit(0)
-    else:
-        os.execv(sys.executable, [sys.executable, *sys.argv])
+    await graceful_restart()
