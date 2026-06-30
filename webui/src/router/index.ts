@@ -19,6 +19,7 @@ const SettingsApeiriaView = () => import("@/views/SettingsApeiriaView.vue");
 const LogsView = () => import("@/views/LogsView.vue");
 const WebchatView = () => import("@/views/WebchatView.vue");
 const AccountView = () => import("@/views/AccountView.vue");
+const UpdateView = () => import("@/views/UpdateView.vue");
 
 const router = createRouter({
   history: createWebHistory(),
@@ -51,6 +52,7 @@ const router = createRouter({
         },
         { path: "logs", name: "logs", component: LogsView },
         { path: "webchat", name: "webchat", component: WebchatView },
+        { path: "update", name: "update", component: UpdateView },
         { path: "account", name: "account", component: AccountView },
       ],
     },

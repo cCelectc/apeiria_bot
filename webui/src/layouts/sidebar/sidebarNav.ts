@@ -1,4 +1,5 @@
 import {
+  GitBranch,
   LayoutDashboard,
   MessageCircle,
   Plug,
@@ -74,6 +75,7 @@ export const sidebarNav: NavGroup[] = [
     label: "navGroup.tools",
     items: [
       { title: "nav.webchat", icon: MessageCircle, to: { name: "webchat" } },
+      { title: "nav.update", icon: GitBranch, to: { name: "update" } },
     ],
   },
 ];

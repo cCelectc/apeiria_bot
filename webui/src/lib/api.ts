@@ -12,6 +12,8 @@ import type {
   Plugin,
   StatusInfo,
   StoreSearchResult,
+  UpdatePreviewResponse,
+  UpdateStatusResponse,
 } from "@/types";
 
 const BASE = "/api";
@@ -169,5 +171,22 @@ export const api = {
     },
     pluginsNames: () =>
       request<{ names: string[] }>("GET", "/plugins/names"),
+  },
+  update: {
+    status: () => request<UpdateStatusResponse>("GET", "/update/status"),
+    preview: (branch: string) =>
+      request<UpdatePreviewResponse>("GET", `/update/preview/${branch}`),
+    execute: (branch: string) => {
+      const auth = useAuthStore();
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+      };
+      if (auth.token) headers.Authorization = `Bearer ${auth.token}`;
+      return fetch(`${BASE}/update/execute`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ branch }),
+      });
+    },
   },
 };
