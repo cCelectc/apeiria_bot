@@ -24,7 +24,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useAuthStore } from "@/stores/auth";
 import type {
   UpdateEvent,
   UpdatePreviewResponse,
@@ -32,7 +31,6 @@ import type {
 } from "@/types";
 
 const { t } = useI18n();
-const auth = useAuthStore();
 
 const status = ref<UpdateStatusResponse | null>(null);
 const statusLoading = ref(false);
