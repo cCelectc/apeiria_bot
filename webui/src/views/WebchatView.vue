@@ -34,6 +34,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useWebchat } from "@/composables/useWebchat";
 import { cn } from "@/lib/utils";
 import type { WebchatMessage } from "@/types";
+import ImageLightbox from "@/components/webchat/ImageLightbox.vue";
 
 const {
   store,
@@ -63,6 +64,36 @@ const newUserId = ref("");
 const newUserName = ref("");
 const newGroupId = ref("");
 const newGroupName = ref("");
+const lightboxOpen = ref(false);
+const lightboxIndex = ref(0);
+
+interface ImageEntry {
+  url: string;
+  msgId: string;
+  segIdx: number;
+}
+
+const imageList = computed<ImageEntry[]>(() => {
+  const result: ImageEntry[] = [];
+  for (const m of activeMessages.value) {
+    for (let i = 0; i < m.segments.length; i++) {
+      const seg = m.segments[i];
+      if (seg.type === "image") {
+        result.push({ url: seg.url, msgId: m.id, segIdx: i });
+      }
+    }
+  }
+  return result;
+});
+
+function openLightbox(idx: number) {
+  lightboxIndex.value = idx;
+  lightboxOpen.value = true;
+}
+
+function findImageIndex(msgId: string, segIdx: number): number {
+  return imageList.value.findIndex((e) => e.msgId === msgId && e.segIdx === segIdx);
+}
 
 const currentUser = computed({
   get: () => store.currentUserId,
@@ -340,7 +371,8 @@ function avatarText(m: WebchatMessage): string {
                   v-else-if="seg.type === 'image'"
                   :src="seg.url"
                   alt=""
-                  class="max-h-60 max-w-full rounded-md"
+                  class="max-h-60 max-w-full rounded-md cursor-pointer hover:opacity-90 transition-opacity"
+                  @click="openLightbox(findImageIndex(m.id, i))"
                 />
                 <details v-else class="text-xs">
                   <summary class="cursor-pointer">
@@ -496,5 +528,12 @@ function avatarText(m: WebchatMessage): string {
         </DialogFooter>
       </DialogContent>
     </Dialog>
+
+    <ImageLightbox
+      :images="imageList.map(e => ({ url: e.url }))"
+      :initial-index="lightboxIndex"
+      :open="lightboxOpen"
+      @update:open="lightboxOpen = $event"
+    />
   </div>
 </template>

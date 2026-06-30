@@ -252,6 +252,10 @@ export default {
     attachImage: "添加图片",
     inputPlaceholder: "输入消息，Enter 发送，Shift+Enter 换行",
     send: "发送",
+    lightbox: {
+      fitWindow: "适应窗口",
+      originalSize: "原始大小",
+    },
   },
   unsaved: {
     title: "未保存的更改",
