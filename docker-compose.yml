@@ -10,5 +10,6 @@ services:
     volumes:
       - ./data:/app/data
       - ./.apeiria:/app/.apeiria
-      - ./data/config.yaml:/app/data/config.yaml
+      - ./config:/app/config
+      - ./cache:/app/cache
     restart: unless-stopped

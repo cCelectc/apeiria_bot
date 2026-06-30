@@ -14,16 +14,21 @@ RUN pnpm build
 # --- Runtime stage ---
 FROM python:3.12-slim
 
-RUN pip install uv
+ENV PIP_NO_CACHE_DIR=1
+ENV UV_COMPILE_BYTECODE=1
 
 WORKDIR /app
 
+RUN pip install uv
+
 COPY pyproject.toml uv.lock ./
-RUN uv sync --frozen
+RUN uv sync --frozen --no-dev
 
 COPY . .
 
 COPY --from=webui /webui/dist ./webui/dist
+
+RUN uv run playwright install chromium --with-deps
 
 EXPOSE 8080
 
