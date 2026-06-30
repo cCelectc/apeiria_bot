@@ -189,7 +189,7 @@ class MilkyFriendshipProvider:
     key = "milky"
 
     def supports(self, bot: Bot, event: Event) -> bool:
-        if bot.adapter.get_name() != "Milky":
+        if bot.adapter.get_name() != "nonebot-adapter-milky":
             return False
         with suppress(Exception):
             return event.get_type() == "request"
@@ -216,7 +216,7 @@ class MilkyFriendshipProvider:
             kind=kind,
             requester_id=requester_id,
             requester_name=requester_id,
-            platform="Milky",
+            platform="nonebot-adapter-milky",
             raw_flag=flag,
             group_id=_safe_str(event, "group_id") or None,
             comment=_safe_str(event, "comment"),

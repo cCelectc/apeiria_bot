@@ -6,10 +6,17 @@ from time import monotonic
 
 from arclet.alconna import Args, CommandMeta
 from nonebot import require
-from nonebot.adapters import Bot, Event  # noqa: TC002
+from nonebot.adapters import Bot  # noqa: TC002
 from nonebot.log import logger
 from nonebot.plugin import PluginMetadata, inherit_supported_adapters
-from nonebot_plugin_alconna import Alconna, MultiVar, Target, UniMessage, on_alconna
+from nonebot_plugin_alconna import (
+    Alconna,
+    Match,
+    MultiVar,
+    Target,
+    UniMessage,
+    on_alconna,
+)
 
 require("nonebot_plugin_uninfo")
 from nonebot_plugin_uninfo import Uninfo  # noqa: TC002
@@ -150,12 +157,15 @@ def _build_source_line(session: Uninfo) -> str:
 @_relay.handle()
 async def handle_relay(
     bot: Bot,
-    event: Event,
     session: Uninfo,
+    message: Match[tuple[str, ...]],
 ) -> None:
     config = get_relay_config()
 
-    body = " ".join(_relay.get_subcommand_result(event) or [])
+    if not message.available:
+        await _relay.finish("请在 /传话 后写上要留言的内容。")
+        return
+    body = " ".join(message.result).strip()
     if not body:
         await _relay.finish("请在 /传话 后写上要留言的内容。")
         return

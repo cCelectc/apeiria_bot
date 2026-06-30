@@ -29,7 +29,7 @@ from apeiria.plugin.metadata.api import (
 from apeiria.utils.session import resolve_superuser_targets
 
 from .config import FriendshipConfig, get_friendship_config
-from .models import PendingRequest, RequestInfo
+from .models import PendingRequest
 from .pending import (
     add_pending,
     find_by_notified_msg,
@@ -192,8 +192,8 @@ async def handle_request(
     logger.info(
         "saved pending request {} ({}/{})",
         pending.id,
-        info.kind,
-        info.requester_id,
+        pending.kind,
+        pending.requester_id,
     )
 
     if config.notify_superusers:
@@ -203,7 +203,7 @@ async def handle_request(
             return
 
         title = TITLE_MAP[info.kind]
-        msg = format_notification(info, pending.id, title)
+        msg = format_notification(pending, title)
 
         for target_id in targets:
             try:
@@ -337,19 +337,18 @@ async def handle_reply_action(
 
 
 def format_notification(
-    info: RequestInfo,
-    pending_id: str,
+    pending: PendingRequest,
     title: str,
 ) -> str:
     msg = f"【{title}】\n"
-    msg += f"ID: {pending_id}\n"
-    msg += f"用户: {info.requester_name}({info.requester_id})\n"
-    if info.group_id:
-        group_label = info.group_name or info.group_id
+    msg += f"ID: {pending.id}\n"
+    msg += f"用户: {pending.requester_name}({pending.requester_id})\n"
+    if pending.group_id:
+        group_label = pending.group_name or pending.group_id
         msg += f"群: {group_label}\n"
-    if info.comment:
-        msg += f"留言: {info.comment}\n"
-    msg += f"平台: {info.platform}\n"
+    if pending.comment:
+        msg += f"留言: {pending.comment}\n"
+    msg += f"平台: {pending.scope}\n"
     msg += "\n回复本消息「同意」或「拒绝」来处理此请求"
     return msg
 

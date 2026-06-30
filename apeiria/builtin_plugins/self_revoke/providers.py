@@ -260,12 +260,12 @@ _register_provider(OneBotV12RevokeProvider())
 
 # -- Telegram provider --
 
-_TELEGRAM = "telegram"
+_TELEGRAM_NAME = "Telegram"
 
 
 class TelegramRevokeProvider:
     def supports(self, bot: Bot, event: Event) -> bool:
-        if _adapter_name(bot) != _TELEGRAM:
+        if bot.adapter.get_name() != _TELEGRAM_NAME:
             return False
         reply = getattr(event, "reply_to_message", None)
         return (
@@ -338,12 +338,12 @@ _register_provider(TelegramRevokeProvider())
 
 # -- Discord provider --
 
-_DISCORD = "discord"
+_DISCORD_NAME = "Discord"
 
 
 class DiscordRevokeProvider:
     def supports(self, bot: Bot, event: Event) -> bool:
-        if _adapter_name(bot) != _DISCORD:
+        if bot.adapter.get_name() != _DISCORD_NAME:
             return False
         reply = getattr(event, "reply", None)
         return (
@@ -416,7 +416,7 @@ _register_provider(DiscordRevokeProvider())
 
 # -- Feishu provider --
 
-_FEISHU = "feishu"
+_FEISHU_NAME = "Feishu"
 
 
 class FeishuRevokeProvider:
@@ -426,7 +426,7 @@ class FeishuRevokeProvider:
         )
 
     def supports(self, bot: Bot, event: Event) -> bool:
-        if _adapter_name(bot) != _FEISHU:
+        if bot.adapter.get_name() != _FEISHU_NAME:
             return False
         reply = getattr(event, "reply", None)
         return (
@@ -486,7 +486,7 @@ _register_provider(FeishuRevokeProvider())
 
 # -- Satori provider --
 
-_SATORI = "satori"
+_SATORI_NAME = "Satori"
 
 
 class SatoriRevokeProvider:
@@ -562,7 +562,7 @@ class SatoriRevokeProvider:
         )
 
     def supports(self, bot: Bot, event: Event) -> bool:
-        if _adapter_name(bot) != _SATORI:
+        if bot.adapter.get_name() != _SATORI_NAME:
             return False
         reply = getattr(event, "reply", None)
         return (
@@ -636,7 +636,7 @@ _register_provider(SatoriRevokeProvider())
 
 # -- QQ Guild provider --
 
-_QQ = "qq"
+_QQ_NAME = "QQ"
 
 
 class QQGuildRevokeProvider:
@@ -648,7 +648,7 @@ class QQGuildRevokeProvider:
         return str(name).lower()
 
     def supports(self, bot: Bot, event: Event) -> bool:
-        if _adapter_name(bot) != _QQ:
+        if bot.adapter.get_name() != _QQ_NAME:
             return False
         if self._event_type_name(event) == "direct_message_create":
             return False
@@ -723,7 +723,7 @@ _register_provider(QQGuildRevokeProvider())
 
 # -- Milky provider --
 
-_MILKY_NAME = "Milky"
+_MILKY_NAME = "nonebot-adapter-milky"
 
 
 class MilkyRevokeProvider:
