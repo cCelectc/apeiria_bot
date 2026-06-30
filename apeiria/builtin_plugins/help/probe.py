@@ -213,6 +213,9 @@ def discover_plugins(
         if not meta:
             continue
 
+        if getattr(meta, "type", "application") == "library":
+            continue
+
         source = _plugin_source(plugin)
 
         if (
