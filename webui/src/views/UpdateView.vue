@@ -4,7 +4,6 @@ import { useI18n } from "vue-i18n";
 import { toast } from "vue-sonner";
 import {
   AlertTriangle,
-  ArrowUpCircle,
   GitBranch,
   GitCommit as GitCommitIcon,
   Loader2,
@@ -43,7 +42,6 @@ const previewLoading = ref(false);
 
 const sourceType = ref<"branch" | "tag">("branch");
 const selectedRef = ref("");
-const selectedCommit = ref("");
 
 const executing = ref(false);
 const terminalLines = ref<string[]>([]);
@@ -73,15 +71,11 @@ async function fetchPreview() {
   if (!selectedRef.value) return;
   previewLoading.value = true;
   preview.value = null;
-  selectedCommit.value = "";
   try {
     preview.value = await api.update.preview(
       selectedRef.value,
       sourceType.value,
     );
-    if (preview.value && preview.value.commits.length > 0) {
-      selectedCommit.value = preview.value.commits[0].hash;
-    }
   } catch {
     preview.value = null;
   } finally {
@@ -100,11 +94,6 @@ watch(sourceType, () => {
   }
 });
 
-const canExecute = computed(() => {
-  if (!status.value) return false;
-  return !status.value.is_dirty && !executing.value && !updateDone.value && !!selectedCommit.value;
-});
-
 const dirtyFiles = computed(() => {
   if (!status.value?.dirty_files) return [];
   return status.value.dirty_files;
@@ -116,6 +105,16 @@ const sourceOptions = computed(() => {
     ? status.value.available_branches
     : status.value.available_tags;
 });
+
+function canExecuteRow(hash: string): boolean {
+  return !!(
+    status.value &&
+    !status.value.is_dirty &&
+    !executing.value &&
+    !updateDone.value &&
+    hash !== status.value.commit_hash
+  );
+}
 
 function stageLabel(s: string): string {
   const map: Record<string, string> = {
@@ -135,8 +134,8 @@ async function scrollTerminal() {
   }
 }
 
-async function executeUpdate() {
-  if (!selectedRef.value || !selectedCommit.value || executing.value) return;
+async function executeUpdate(commit: string) {
+  if (!selectedRef.value || executing.value) return;
   executing.value = true;
   updateFailed.value = false;
   updateDone.value = false;
@@ -148,7 +147,7 @@ async function executeUpdate() {
   try {
     const res = await api.update.execute(
       selectedRef.value,
-      selectedCommit.value,
+      commit,
       sourceType.value,
     );
     if (!res.ok || !res.body) {
@@ -372,11 +371,11 @@ fetchStatus();
               <table class="w-full text-xs">
                 <thead class="sticky top-0 bg-muted/50">
                   <tr class="text-left text-muted-foreground">
-                    <th class="w-12 px-3 py-2">{{ $t("common.confirm") }}</th>
                     <th class="px-3 py-2">Commit</th>
                     <th class="px-3 py-2">{{ t("update.commitMessage") }}</th>
                     <th class="hidden px-3 py-2 sm:table-cell">{{ t("update.commitAuthor") }}</th>
                     <th class="hidden px-3 py-2 sm:table-cell">{{ t("update.commitDate") }}</th>
+                    <th class="w-24 px-3 py-2 text-center">{{ t("update.action") }}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -384,27 +383,10 @@ fetchStatus();
                     v-for="c in preview.commits"
                     :key="c.hash"
                     :class="[
-                      'cursor-pointer border-t transition-colors hover:bg-muted/30',
-                      selectedCommit === c.hash ? 'bg-primary/10' : '',
-                      isCurrentCommit(c.hash) ? 'bg-emerald-500/5' : '',
+                      'border-t transition-colors',
+                      isCurrentCommit(c.hash) ? 'bg-emerald-500/5' : 'hover:bg-muted/30',
                     ]"
-                    @click="selectedCommit = c.hash"
                   >
-                    <td class="px-3 py-2 text-center">
-                      <div
-                        class="mx-auto size-3.5 rounded-full border-2"
-                        :class="
-                          selectedCommit === c.hash
-                            ? 'border-primary bg-primary'
-                            : 'border-muted-foreground/30'
-                        "
-                      >
-                        <div
-                          v-if="selectedCommit === c.hash"
-                          class="mx-auto mt-0.5 size-1.5 rounded-full bg-primary-foreground"
-                        />
-                      </div>
-                    </td>
                     <td class="whitespace-nowrap px-3 py-2 font-mono">
                       <code>{{ c.hash }}</code>
                       <Badge
@@ -422,6 +404,17 @@ fetchStatus();
                     <td class="hidden whitespace-nowrap px-3 py-2 text-muted-foreground sm:table-cell">
                       {{ formatDate(c.date) }}
                     </td>
+                    <td class="px-2 py-1 text-center">
+                      <Button
+                        v-if="!isCurrentCommit(c.hash)"
+                        size="sm"
+                        variant="outline"
+                        :disabled="!canExecuteRow(c.hash)"
+                        @click.stop="executeUpdate(c.hash)"
+                      >
+                        {{ t("update.execute") }}
+                      </Button>
+                    </td>
                   </tr>
                 </tbody>
               </table>
@@ -433,24 +426,16 @@ fetchStatus();
         </CardContent>
       </Card>
 
-      <!-- Execute -->
+      <!-- Execute Controls -->
       <div class="flex-none">
         <Button
-          v-if="!executing && !polling"
-          :disabled="!canExecute"
-          @click="executeUpdate()"
-        >
-          <ArrowUpCircle class="mr-1.5 size-4" />
-          {{ t("update.execute") }}
-        </Button>
-        <Button
-          v-else-if="executing"
+          v-if="executing"
           variant="destructive"
           @click="cancelUpdate()"
         >
           {{ $t("common.cancel") }}
         </Button>
-        <Button v-else disabled>
+        <Button v-else-if="polling" disabled>
           <Loader2 class="mr-1.5 size-4 animate-spin" />
           {{ t("update.reconnecting") }}
         </Button>

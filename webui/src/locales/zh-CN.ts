@@ -325,6 +325,7 @@ export default {
     selectBranch: "选择分支",
     selectTag: "选择标签",
     selectCommit: "选择提交",
+    action: "操作",
     branchTab: "分支",
     tagTab: "标签",
     commitHash: "提交哈希",
