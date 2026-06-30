@@ -14,6 +14,7 @@ from apeiria.bootstrap.steps import (
     step_apeiria_sync,
     step_conversation,
     step_db_migrate,
+    step_db_shutdown,
     step_load_adapters,
     step_load_builtin_adapters,
     step_load_builtins,
@@ -56,6 +57,7 @@ def run_cmd(reload: bool) -> None:  # noqa: FBT001
 
     plan = BootstrapPlan()
     plan.add_step("db_migrate", step_db_migrate)
+    plan.add_step("db_shutdown", step_db_shutdown)
     plan.add_step("apeiria_ensure", step_apeiria_ensure)
     plan.add_step("apeiria_sync", step_apeiria_sync, depends=["apeiria_ensure"])
     plan.add_step("apeiria_inject", step_apeiria_inject, depends=["apeiria_sync"])

@@ -37,6 +37,16 @@ def step_db_migrate() -> None:
     logger.success("Database migrations applied")
 
 
+def step_db_shutdown() -> None:
+    from apeiria.db.engine import close_db
+
+    @nonebot.get_driver().on_shutdown
+    async def _close_db() -> None:
+        await close_db()
+
+    logger.success("DB graceful-shutdown hook installed")
+
+
 def step_apeiria_ensure() -> None:
     ensure_apeiria_env()
     logger.success("Plugin environment ensured")
