@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from contextlib import suppress
-from typing import TYPE_CHECKING
 
 import nonebot
 from arclet.alconna import Args, CommandMeta, Subcommand
@@ -14,9 +13,7 @@ from nonebot.rule import Rule
 from nonebot_plugin_alconna import Alconna, MultiVar, on_alconna
 
 require("nonebot_plugin_uninfo")
-
-if TYPE_CHECKING:
-    from nonebot_plugin_uninfo import Uninfo
+from nonebot_plugin_uninfo import Uninfo  # noqa: TC002
 
 from apeiria.utils.session import resolve_superuser_targets
 
