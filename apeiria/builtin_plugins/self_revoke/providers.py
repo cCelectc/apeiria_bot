@@ -122,7 +122,7 @@ async def _call_api(bot: Bot, api: str, **data: object) -> RevokeActionResult:
 
 # -- OneBot V11 provider --
 
-_ONEBOT_V11 = "onebotv11"
+_ONEBOT_V11_NAME = "OneBot V11"
 _ONEBOT_SUCCESS_EMOJI = "124"
 _ONEBOT_FAILURE_EMOJI = "424"
 
@@ -134,7 +134,7 @@ class OneBotV11RevokeProvider:
     }
 
     def supports(self, bot: Bot, event: Event) -> bool:
-        if _adapter_name(bot) != _ONEBOT_V11:
+        if bot.adapter.get_name() != _ONEBOT_V11_NAME:
             return False
         return hasattr(event, "reply") and hasattr(event, "message_id")
 
@@ -204,12 +204,12 @@ _register_provider(OneBotV11RevokeProvider())
 
 # -- OneBot V12 provider --
 
-_ONEBOT_V12 = "onebotv12"
+_ONEBOT_V12_NAME = "OneBot V12"
 
 
 class OneBotV12RevokeProvider:
     def supports(self, bot: Bot, event: Event) -> bool:
-        if _adapter_name(bot) != _ONEBOT_V12:
+        if bot.adapter.get_name() != _ONEBOT_V12_NAME:
             return False
         return hasattr(event, "reply") and hasattr(event, "message_id")
 
@@ -720,3 +720,67 @@ class QQGuildRevokeProvider:
 
 
 _register_provider(QQGuildRevokeProvider())
+
+# -- Milky provider --
+
+_MILKY_NAME = "Milky"
+
+
+class MilkyRevokeProvider:
+    def supports(self, bot: Bot, event: Event) -> bool:
+        if bot.adapter.get_name() != _MILKY_NAME:
+            return False
+        return hasattr(event, "reply") and hasattr(event, "message_id")
+
+    async def get_reply_target(self, bot: Bot, event: Event) -> RevokeTarget | None:
+        reply = getattr(event, "reply", None)
+        if reply is None:
+            return None
+        message_id = _string_attr(reply, "message_id")
+        if message_id is None:
+            return None
+        author_id = None
+        sender = getattr(reply, "sender", None)
+        if sender is not None:
+            author_id = _string_attr(sender, "user_id")
+        return RevokeTarget(message_id=message_id, author_id=author_id)
+
+    async def is_bot_authored(
+        self, bot: Bot, event: Event, target: RevokeTarget
+    ) -> bool:
+        bot_ids = {
+            str(item)
+            for item in (
+                getattr(bot, "self_id", None),
+                getattr(event, "self_id", None),
+            )
+            if item is not None
+        }
+        return target.author_id is not None and target.author_id in bot_ids
+
+    async def revoke_message(
+        self, bot: Bot, event: Event, target: RevokeTarget
+    ) -> RevokeActionResult:
+        return await _call_api(
+            bot,
+            "delete_msg",
+            message_id=_message_id_value(target.message_id),
+        )
+
+    async def revoke_trigger_message(
+        self, bot: Bot, event: Event
+    ) -> RevokeActionResult:
+        message_id = _event_message_id(event)
+        if message_id is None:
+            return RevokeActionResult.unsupported("trigger_message_id_missing")
+        return await _call_api(
+            bot, "delete_msg", message_id=_message_id_value(message_id)
+        )
+
+    async def apply_feedback(
+        self, bot: Bot, event: Event, *, kind: FeedbackKind
+    ) -> RevokeActionResult:
+        return RevokeActionResult.unsupported("reaction_feedback_unsupported")
+
+
+_register_provider(MilkyRevokeProvider())

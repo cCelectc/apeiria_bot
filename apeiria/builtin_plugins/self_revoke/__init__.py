@@ -31,7 +31,16 @@ __plugin_meta__ = PluginMetadata(
     usage="回复机器人的消息并发送「撤回」或「revoke」。",
     type="application",
     config=SelfRevokeConfig,
-    supported_adapters=None,
+    supported_adapters={
+        "~onebot.v11",
+        "~onebot.v12",
+        "~telegram",
+        "~discord",
+        "~feishu",
+        "~satori",
+        "~qq",
+        "~milky",
+    },
     extra=PluginExtraData(
         author="apeiria",
         version="0.1.0",
@@ -126,7 +135,9 @@ async def _is_prefixed_revoke(event: Event) -> bool:
     with suppress(Exception):
         text = event.get_plaintext().strip()
         prefix = _strip_command_prefix(text)
-        return prefix.lower() in {"撤回", "revoke"} if prefix is not None else False
+        if prefix is None:
+            return False
+        return prefix.lower() in {"撤回", "revoke"}
     return False
 
 
@@ -173,7 +184,7 @@ async def handle_revoke(  # noqa: C901
 
     revoke_result = await provider.revoke_message(bot, event, target)
     if not revoke_result.success:
-        logger.debug("撤回目标消息失败: {}", revoke_result.reason)
+        logger.warning("撤回目标消息失败: {}", revoke_result.reason)
         if config.feedback == "reaction":
             with suppress(Exception):
                 await provider.apply_feedback(bot, event, kind="failure")
