@@ -13,14 +13,6 @@ from nonebot.rule import Rule
 require("nonebot_plugin_uninfo")
 from nonebot_plugin_uninfo import SceneType, Uninfo
 
-from apeiria.plugin.metadata.api import (
-    ConfigExtra,
-    HelpExtra,
-    PluginExtraData,
-    PluginType,
-    RegisterConfig,
-    UiExtra,
-)
 from apeiria.utils.session import scoped_group_id
 
 from .config import RepeaterConfig, get_plugin_config
@@ -34,64 +26,6 @@ __plugin_meta__ = PluginMetadata(
     type="application",
     config=RepeaterConfig,
     supported_adapters=inherit_supported_adapters("nonebot_plugin_uninfo"),
-    extra=PluginExtraData(
-        author="apeiria",
-        version="0.2.0",
-        plugin_type=PluginType.NORMAL,
-        help=HelpExtra(
-            category="基础功能",
-            introduction="在指定群聊中跟随群友复读文本、表情和稳定图片消息。"
-            " 白/黑名单使用 scope:group_id 格式（如 QQClient:群号）。",
-        ),
-        ui=UiExtra(label="群聊复读机", order=18),
-        config=ConfigExtra(
-            fields=[
-                RegisterConfig(
-                    key="probability",
-                    default=0.3,
-                    help="达到复读阈值后的复读概率。",
-                    type=float,
-                    label="复读概率",
-                    order=10,
-                ),
-                RegisterConfig(
-                    key="cooldown_seconds",
-                    default=60,
-                    help="复读一次的冷却时间（秒）。",
-                    type=int,
-                    label="冷却时间",
-                    order=20,
-                ),
-                RegisterConfig(
-                    key="repeat_threshold",
-                    default=2,
-                    help="连续不同用户发送相同内容达到该次数后触发复读。",
-                    type=int,
-                    label="触发阈值",
-                    order=30,
-                ),
-                RegisterConfig(
-                    key="allowlist",
-                    default=[],
-                    help="允许生效的群，格式为 scope:group_id。为空时所有群生效。",
-                    type=list,
-                    item_type=str,
-                    label="群白名单",
-                    order=40,
-                ),
-                RegisterConfig(
-                    key="blocklist",
-                    default=[],
-                    help="禁止生效的群，格式为 scope:group_id，冲突时优先。",
-                    type=list,
-                    item_type=str,
-                    label="群黑名单",
-                    order=50,
-                ),
-            ]
-        ),
-        required_plugins=["nonebot_plugin_uninfo"],
-    ).to_dict(),
 )
 
 _service = RepeaterService()

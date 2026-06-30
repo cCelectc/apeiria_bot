@@ -18,14 +18,6 @@ require("nonebot_plugin_uninfo")
 if TYPE_CHECKING:
     from nonebot_plugin_uninfo import Uninfo
 
-from apeiria.plugin.metadata.api import (
-    ConfigExtra,
-    HelpExtra,
-    PluginExtraData,
-    PluginType,
-    RegisterConfig,
-    UiExtra,
-)
 from apeiria.utils.session import resolve_superuser_targets
 
 from .config import FriendshipConfig, get_friendship_config
@@ -56,53 +48,6 @@ __plugin_meta__ = PluginMetadata(
     type="application",
     config=FriendshipConfig,
     supported_adapters={"~onebot.v11", "~satori", "~milky"},
-    extra=PluginExtraData(
-        author="apeiria",
-        version="0.2.0",
-        plugin_type=PluginType.NORMAL,
-        help=HelpExtra(
-            category="基础功能",
-            introduction=(
-                "自动转发好友申请/入群申请/群邀请给超级用户，"
-                "支持回复同意/拒绝或命令操作。"
-            ),
-        ),
-        ui=UiExtra(label="好友请求管理", order=18),
-        commands=["申请"],
-        config=ConfigExtra(
-            fields=[
-                RegisterConfig(
-                    key="enabled",
-                    default=True,
-                    help="是否启用好友请求通知和处理。",
-                    type=bool,
-                    label="启用",
-                    order=10,
-                ),
-                RegisterConfig(
-                    key="notify_superusers",
-                    default=True,
-                    help="是否通知超级用户。",
-                    type=bool,
-                    label="通知超管",
-                    order=20,
-                ),
-                RegisterConfig(
-                    key="auto_approve",
-                    default=False,
-                    help="自动通过白名单用户的请求（尚未实现）。",
-                    type=bool,
-                    label="自动通过",
-                    order=30,
-                ),
-            ]
-        ),
-        required_plugins=[
-            "nonebot_plugin_alconna",
-            "nonebot_plugin_uninfo",
-            "nonebot_plugin_localstore",
-        ],
-    ).to_dict(),
 )
 
 _request = on_request(priority=2, block=False)

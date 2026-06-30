@@ -13,16 +13,6 @@ from nonebot.rule import Rule
 from nonebot.typing import T_State  # noqa: TC002
 from nonebot_plugin_alconna import Alconna, CommandMeta, on_alconna
 
-from apeiria.plugin.metadata.api import (
-    CommandDeclaration,
-    ConfigExtra,
-    HelpExtra,
-    PluginExtraData,
-    PluginType,
-    RegisterConfig,
-    UiExtra,
-)
-
 from .config import TriggerReplyConfig, get_trigger_reply_config
 from .loader import _ensure_loaded, _refresh_rules
 from .models import TriggerEntry, TriggerInput
@@ -38,60 +28,6 @@ __plugin_meta__ = PluginMetadata(
     type="application",
     config=TriggerReplyConfig,
     supported_adapters=None,
-    extra=PluginExtraData(
-        author="apeiria",
-        version="0.1.0",
-        plugin_type=PluginType.NORMAL,
-        help=HelpExtra(
-            category="基础功能",
-            introduction="按配置规则响应消息文本。",
-        ),
-        ui=UiExtra(label="触发回复", order=19),
-        commands=[
-            CommandDeclaration(
-                name="重载回复",
-                description="重新加载触发回复规则文件。",
-                aliases=["tr"],
-            )
-        ],
-        config=ConfigExtra(
-            fields=[
-                RegisterConfig(
-                    key="enabled",
-                    default=True,
-                    help="是否启用触发回复。",
-                    type=bool,
-                    label="启用",
-                    order=10,
-                ),
-                RegisterConfig(
-                    key="priority",
-                    default=12,
-                    help="NoneBot matcher 优先级。",
-                    type=int,
-                    label="优先级",
-                    order=20,
-                ),
-                RegisterConfig(
-                    key="rules_file",
-                    default="rules.toml",
-                    help="规则文件路径。",
-                    type=str,
-                    label="规则文件",
-                    order=40,
-                ),
-                RegisterConfig(
-                    key="debug",
-                    default=False,
-                    help="启用后记录调试日志。",
-                    type=bool,
-                    label="调试日志",
-                    order=50,
-                ),
-            ]
-        ),
-        required_plugins=["nonebot_plugin_localstore"],
-    ).to_dict(),
 )
 
 

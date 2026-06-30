@@ -11,16 +11,6 @@ from nonebot.plugin import PluginMetadata
 from nonebot.plugin.on import on_fullmatch, on_message
 from nonebot.rule import Rule
 
-from apeiria.plugin.metadata.api import (
-    CommandDeclaration,
-    ConfigExtra,
-    HelpExtra,
-    PluginExtraData,
-    PluginType,
-    RegisterConfig,
-    UiExtra,
-)
-
 from .config import SelfRevokeConfig, get_self_revoke_config
 from .providers import _resolve_provider
 
@@ -41,67 +31,6 @@ __plugin_meta__ = PluginMetadata(
         "~qq",
         "~milky",
     },
-    extra=PluginExtraData(
-        author="apeiria",
-        version="0.1.0",
-        plugin_type=PluginType.NORMAL,
-        help=HelpExtra(
-            category="基础功能",
-            introduction="用户引用回复机器人消息触发撤回。",
-        ),
-        ui=UiExtra(label="撤回消息", order=15),
-        commands=[
-            CommandDeclaration(
-                name="撤回",
-                description="撤回引用回复的机器人消息。",
-                aliases=["revoke"],
-                custom_prefix="",
-            ),
-            CommandDeclaration(
-                name="revoke",
-                description="撤回引用回复的机器人消息。",
-                aliases=["撤回"],
-            ),
-        ],
-        config=ConfigExtra(
-            fields=[
-                RegisterConfig(
-                    key="permission",
-                    default="public",
-                    help="撤回权限。",
-                    type=str,
-                    choices=["public", "superuser"],
-                    choice_labels={
-                        "public": "所有人",
-                        "superuser": "仅超级用户",
-                    },
-                    label="权限",
-                    order=10,
-                ),
-                RegisterConfig(
-                    key="revoke_trigger_message",
-                    default=False,
-                    help="撤回目标消息后是否同时撤回触发消息本身。",
-                    type=bool,
-                    label="撤回触发消息",
-                    order=20,
-                ),
-                RegisterConfig(
-                    key="feedback",
-                    default="silent",
-                    help="操作反馈方式。",
-                    type=str,
-                    choices=["silent", "reaction"],
-                    choice_labels={
-                        "silent": "静默",
-                        "reaction": "表情反应",
-                    },
-                    label="反馈方式",
-                    order=30,
-                ),
-            ]
-        ),
-    ).to_dict(),
 )
 
 

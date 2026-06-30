@@ -21,14 +21,6 @@ from nonebot_plugin_alconna import (
 require("nonebot_plugin_uninfo")
 from nonebot_plugin_uninfo import Uninfo  # noqa: TC002
 
-from apeiria.plugin.metadata.api import (
-    ConfigExtra,
-    HelpExtra,
-    PluginExtraData,
-    PluginType,
-    RegisterConfig,
-    UiExtra,
-)
 from apeiria.utils.session import resolve_superuser_targets
 
 from .config import RelayConfig, get_relay_config
@@ -43,57 +35,6 @@ __plugin_meta__ = PluginMetadata(
     supported_adapters=inherit_supported_adapters(
         "nonebot_plugin_alconna", "nonebot_plugin_uninfo"
     ),
-    extra=PluginExtraData(
-        author="apeiria",
-        version="0.2.0",
-        plugin_type=PluginType.NORMAL,
-        help=HelpExtra(
-            category="基础功能",
-            introduction="通过 /传话 命令向指定目标（默认=超管）发送单向消息。",
-        ),
-        ui=UiExtra(label="传话", order=17),
-        commands=["传话"],
-        config=ConfigExtra(
-            fields=[
-                RegisterConfig(
-                    key="target",
-                    default="",
-                    help="目标格式: scope:id，如 QQClient:123456。留空则投递给超管。",
-                    type=str,
-                    label="目标",
-                    order=10,
-                ),
-                RegisterConfig(
-                    key="rate_limit_count",
-                    default=3,
-                    help="滑动窗口内最大传话次数，0=不限流。",
-                    type=int,
-                    label="限流次数",
-                    order=20,
-                ),
-                RegisterConfig(
-                    key="rate_limit_window",
-                    default=60,
-                    help="滑动窗口秒数。",
-                    type=int,
-                    label="限流窗口(秒)",
-                    order=30,
-                ),
-                RegisterConfig(
-                    key="message_prefix",
-                    default="",
-                    help="转发时添加到消息前的文本。",
-                    type=str,
-                    label="消息前缀",
-                    order=40,
-                ),
-            ]
-        ),
-        required_plugins=[
-            "nonebot_plugin_alconna",
-            "nonebot_plugin_uninfo",
-        ],
-    ).to_dict(),
 )
 
 _rates: dict[str, deque[float]] = {}
