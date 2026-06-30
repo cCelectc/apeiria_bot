@@ -3,14 +3,14 @@ from __future__ import annotations
 from contextlib import suppress
 
 import nonebot
-from arclet.alconna import Args, CommandMeta, Subcommand
+from arclet.alconna import Args, Arparma, CommandMeta, Subcommand
 from nonebot import on_request, require
 from nonebot.adapters import Bot, Event  # noqa: TC002
 from nonebot.log import logger
 from nonebot.permission import SUPERUSER
 from nonebot.plugin import PluginMetadata, on_message
 from nonebot.rule import Rule
-from nonebot_plugin_alconna import Alconna, MultiVar, on_alconna
+from nonebot_plugin_alconna import Alconna, AlconnaMatches, MultiVar, on_alconna
 
 require("nonebot_plugin_uninfo")
 from nonebot_plugin_uninfo import Uninfo  # noqa: TC002
@@ -159,10 +159,31 @@ async def handle_request(
                 pass
 
 
+async def handle_list_pending() -> None:
+    pending_list = await load_all()
+    pending_list = [r for r in pending_list if r.status == "pending"]
+    if not pending_list:
+        await _apply.finish("暂无待处理请求")
+    lines = []
+    for r in pending_list:
+        kind_label = KIND_LABEL_MAP[r.kind]
+        scope_str = r.scope.replace("QQClient", "QQ")
+        lines.append(
+            f"[{r.id}] {kind_label}"
+            f" — {r.requester_name}({r.requester_id})"
+            f" | {scope_str}"
+            + (f" | 群:{r.group_id}" if r.group_id else "")
+            + (f" | {r.comment}" if r.comment else "")
+        )
+    suffix = "\n回复「同意/拒绝」<id> 或使用 /申请 同意/拒绝 <id>"
+    await _apply.finish("待处理请求:\n" + "\n".join(lines) + suffix)
+
+
 @_apply.handle()
 async def handle_apply(  # noqa: C901, PLR0912
     bot: Bot,
     event: Event,
+    arp: Arparma = AlconnaMatches(),
 ) -> None:
     config = get_friendship_config()
     if not config.enabled:
@@ -171,30 +192,14 @@ async def handle_apply(  # noqa: C901, PLR0912
     if not await SUPERUSER(bot, event):
         await _apply.finish("仅限超级用户使用")
 
-    sub_result = _apply.get_subcommand(event)
-    if sub_result is None:
-        pending_list = await load_all()
-        pending_list = [r for r in pending_list if r.status == "pending"]
-        if not pending_list:
-            await _apply.finish("暂无待处理请求")
-        lines = []
-        for r in pending_list:
-            kind_label = KIND_LABEL_MAP[r.kind]
-            scope_str = r.scope.replace("QQClient", "QQ")
-            lines.append(
-                f"[{r.id}] {kind_label}"
-                f" — {r.requester_name}({r.requester_id})"
-                f" | {scope_str}"
-                + (f" | 群:{r.group_id}" if r.group_id else "")
-                + (f" | {r.comment}" if r.comment else "")
-            )
-        suffix = "\n回复「同意/拒绝」<id> 或使用 /申请 同意/拒绝 <id>"
-        await _apply.finish("待处理请求:\n" + "\n".join(lines) + suffix)
+    matched_sub_name = next(iter(arp.subcommands), None)
+    if matched_sub_name is None:
+        await handle_list_pending()
+        return
 
-    sub_name = sub_result.name
-    args = sub_result.args
+    sub_args = arp.subcommands[matched_sub_name].args
 
-    request_id = args.get("id", "").strip() if isinstance(args, dict) else ""
+    request_id = sub_args.get("id", "").strip()
     if not request_id:
         await _apply.finish("请指定请求 ID，如 /申请 同意 f1")
 
@@ -212,11 +217,11 @@ async def handle_apply(  # noqa: C901, PLR0912
     if target_bot is None:
         await _apply.finish(f"目标 bot {pending.bot_self_id} 不在线")
 
-    if sub_name in ("同意", "approve"):
-        remark = " ".join(args.get("remark", [])) if "remark" in (args or {}) else ""
+    if matched_sub_name in ("同意", "approve"):
+        remark = " ".join(sub_args.get("remark", []))
         result = await provider.approve(target_bot, pending, remark=remark)
-    elif sub_name in ("拒绝", "reject"):
-        reason = " ".join(args.get("reason", [])) if "reason" in (args or {}) else ""
+    elif matched_sub_name in ("拒绝", "reject"):
+        reason = " ".join(sub_args.get("reason", []))
         result = await provider.reject(target_bot, pending, reason=reason)
     else:
         await _apply.finish("未知操作")
@@ -224,7 +229,7 @@ async def handle_apply(  # noqa: C901, PLR0912
     if result.success:
         with suppress(Exception):
             await remove_pending(request_id)
-        await _apply.finish(f"已完成: {sub_name} {request_id}")
+        await _apply.finish(f"已完成: {matched_sub_name} {request_id}")
     else:
         await _apply.finish(f"操作失败: {result.message}")
 
