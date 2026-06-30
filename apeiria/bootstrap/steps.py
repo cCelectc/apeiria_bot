@@ -313,6 +313,7 @@ def step_web() -> None:
         route_access_logs,
     )
     from apeiria.web.routes import access_router, router
+    from apeiria.web.update import router as update_router
 
     driver = nonebot.get_driver()
     raw_app = getattr(driver, "server_app", None) or getattr(driver, "asgi", None)
@@ -330,6 +331,7 @@ def step_web() -> None:
     app.include_router(access_router)
     app.include_router(logs_router)
     app.include_router(router)
+    app.include_router(update_router)
 
     frontend_dir = Path("webui/dist")
 
