@@ -3,8 +3,9 @@ from __future__ import annotations
 import asyncio
 import json
 from pathlib import Path
+from typing import TYPE_CHECKING, Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 
 from apeiria.config.loader import load_config, update_runtime_config
@@ -21,6 +22,9 @@ from apeiria.web.auth import verify_token
 from apeiria.web.plugin_metadata import merge_plugin_metadata
 from apeiria.web.store import get_status, get_store, paginate
 from apeiria.web.tasks import get_task_runner
+
+if TYPE_CHECKING:
+    from apeiria.db.models.access import AccessRule
 
 router = APIRouter(prefix="/api", dependencies=[Depends(verify_token)])
 
@@ -411,3 +415,246 @@ async def api_restart() -> JSONResponse:
         _delayed_restart()
     )
     return JSONResponse(content={"ok": True})
+
+
+@router.get("/plugins/names")
+async def api_plugins_names() -> JSONResponse:
+    import nonebot
+
+    names: list[str] = []
+    seen: set[str] = set()
+    for m in scan_plugins():
+        if m.name not in seen:
+            names.append(m.name)
+            seen.add(m.name)
+    for plugin in nonebot.get_loaded_plugins():
+        if plugin.name not in seen:
+            names.append(plugin.name)
+            seen.add(plugin.name)
+    return JSONResponse(content={"names": sorted(names)})
+
+
+access_router = APIRouter(prefix="/api/access", dependencies=[Depends(verify_token)])
+
+
+def _rule_to_dict(rule: "AccessRule") -> dict:
+    return {
+        "id": rule.id,
+        "subject_type": rule.subject_type,
+        "subject_id": rule.subject_id,
+        "plugin_name": rule.plugin_name,
+        "action": rule.action,
+        "priority": rule.priority,
+    }
+
+
+async def _reload_access() -> None:
+    from apeiria.bootstrap.steps import get_access_control
+
+    await get_access_control().load_snapshot()
+
+
+@access_router.get("/rules")
+async def api_access_rules_list() -> JSONResponse:
+    from sqlalchemy import select
+
+    from apeiria.db import get_db
+    from apeiria.db.models.access import AccessRule
+
+    db = get_db()
+    async with db.gate.read() as session:
+        result = await session.execute(
+            select(AccessRule).order_by(AccessRule.priority.desc())
+        )
+        rules = result.scalars().all()
+    return JSONResponse(content={"rules": [_rule_to_dict(r) for r in rules]})
+
+
+@access_router.post("/rules")
+async def api_access_rules_create(data: dict) -> JSONResponse:
+    from sqlalchemy import func
+
+    from apeiria.db import get_db
+    from apeiria.db.models.access import AccessRule
+
+    subject_type = data.get("subject_type", "")
+    subject_id = data.get("subject_id", "")
+    action = data.get("action", "")
+
+    if subject_type not in ("user", "group"):
+        raise HTTPException(
+            status_code=400, detail="subject_type must be user or group"
+        )
+    if not subject_id:
+        raise HTTPException(status_code=400, detail="subject_id required")
+    if action not in ("allow", "deny"):
+        raise HTTPException(status_code=400, detail="action must be allow or deny")
+
+    db = get_db()
+    priority = data.get("priority")
+    if priority is None:
+        async with db.gate.read() as session:
+            result = await session.execute(func.min(AccessRule.priority))
+            min_val = result.scalar_one_or_none()
+            priority = (min_val - 1) if min_val is not None else 0
+
+    plugin_name = data.get("plugin_name") or None
+    async with db.gate.write() as session:
+        rule = AccessRule(
+            subject_type=subject_type,
+            subject_id=subject_id,
+            plugin_name=plugin_name,
+            action=action,
+            priority=priority,
+        )
+        session.add(rule)
+        await session.commit()
+    await _reload_access()
+    return JSONResponse(
+        content={"ok": True, "rule": _rule_to_dict(rule)}, status_code=201
+    )
+
+
+@access_router.put("/rules/{rule_id}")
+async def api_access_rules_update(rule_id: int, data: dict) -> JSONResponse:
+    from sqlalchemy import select
+
+    from apeiria.db import get_db
+    from apeiria.db.models.access import AccessRule
+
+    db = get_db()
+    async with db.gate.write() as session:
+        result = await session.execute(
+            select(AccessRule).where(AccessRule.id == rule_id)
+        )
+        rule = result.scalar_one_or_none()
+        if rule is None:
+            raise HTTPException(status_code=404, detail="Rule not found")
+
+        for field in (
+            "subject_type",
+            "subject_id",
+            "plugin_name",
+            "action",
+            "priority",
+        ):
+            if field in data:
+                value = data[field]
+                if field == "subject_type" and value not in ("user", "group"):
+                    raise HTTPException(
+                        status_code=400, detail="subject_type must be user or group"
+                    )
+                if field == "action" and value not in ("allow", "deny"):
+                    raise HTTPException(
+                        status_code=400, detail="action must be allow or deny"
+                    )
+                setattr(rule, field, data[field])
+        await session.commit()
+    await _reload_access()
+    return JSONResponse(content={"ok": True, "rule": _rule_to_dict(rule)})
+
+
+@access_router.delete("/rules/{rule_id}")
+async def api_access_rules_delete(rule_id: int) -> JSONResponse:
+    from sqlalchemy import select
+
+    from apeiria.db import get_db
+    from apeiria.db.models.access import AccessRule
+
+    db = get_db()
+    async with db.gate.write() as session:
+        result = await session.execute(
+            select(AccessRule).where(AccessRule.id == rule_id)
+        )
+        rule = result.scalar_one_or_none()
+        if rule is None:
+            raise HTTPException(status_code=404, detail="Rule not found")
+        await session.delete(rule)
+        await session.commit()
+    await _reload_access()
+    return JSONResponse(content={"ok": True})
+
+
+@access_router.post("/rules/reorder")
+async def api_access_rules_reorder(data: dict) -> JSONResponse:
+    from sqlalchemy import select
+
+    from apeiria.db import get_db
+    from apeiria.db.models.access import AccessRule
+
+    ids = data.get("ids", [])
+    if not isinstance(ids, list) or not ids:
+        raise HTTPException(status_code=400, detail="ids must be a non-empty list")
+
+    total = len(ids)
+    db = get_db()
+    async with db.gate.write() as session:
+        for idx, rule_id in enumerate(ids):
+            result = await session.execute(
+                select(AccessRule).where(AccessRule.id == rule_id)
+            )
+            rule = result.scalar_one_or_none()
+            if rule is not None:
+                rule.priority = total - idx
+        await session.commit()
+    await _reload_access()
+    return JSONResponse(content={"ok": True})
+
+
+@access_router.get("/rules/preview")
+async def api_access_rules_preview(
+    subject_type: Annotated[str, Query()],
+    subject_id: Annotated[str, Query()],
+    plugin_name: Annotated[str, Query()] = "",
+) -> JSONResponse:
+    if subject_type == "user":
+        user_id, group_id = subject_id, None
+    elif subject_type == "group":
+        user_id, group_id = "", subject_id
+    else:
+        raise HTTPException(status_code=400, detail="Invalid subject_type")
+
+    from apeiria.bootstrap.steps import get_access_control
+
+    ac = get_access_control()
+    result = ac.evaluate_with_detail(user_id, group_id, plugin_name)
+    return JSONResponse(content=result)
+
+
+@access_router.get("/subjects/search")
+async def api_access_subjects_search(
+    q: Annotated[str, Query()] = "",
+    subject_type_q: Annotated[str, Query(alias="type")] = "user",
+) -> JSONResponse:
+    from sqlalchemy import select
+
+    from apeiria.db import get_db
+    from apeiria.db.models.conversation import Session
+
+    db = get_db()
+    async with db.gate.read() as session:
+        if subject_type_q == "user":
+            result = await session.execute(
+                select(Session.scene_id)
+                .where(
+                    Session.scene_type != "group",
+                    Session.scene_id.like(f"%{q}%"),
+                )
+                .distinct()
+                .limit(20)
+            )
+        elif subject_type_q == "group":
+            result = await session.execute(
+                select(Session.scene_id)
+                .where(
+                    Session.scene_type == "group",
+                    Session.scene_id.like(f"%{q}%"),
+                )
+                .distinct()
+                .limit(20)
+            )
+        else:
+            raise HTTPException(status_code=400, detail="type must be user or group")
+
+        subjects = [{"id": row[0], "type": subject_type_q} for row in result.all()]
+    return JSONResponse(content={"subjects": subjects})

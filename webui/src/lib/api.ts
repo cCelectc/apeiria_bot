@@ -1,6 +1,9 @@
 import router from "@/router";
 import { useAuthStore } from "@/stores/auth";
 import type {
+  AccessPreviewResult,
+  AccessRulesList,
+  AccessSubjectsResult,
   Adapter,
   ConfigContract,
   InstallTaskResponse,
@@ -136,5 +139,35 @@ export const api = {
       sp.set("size", String(params.size ?? 100));
       return request<LogHistory>("GET", `/logs/history?${sp.toString()}`);
     },
+  },
+  access: {
+    rulesList: () => request<AccessRulesList>("GET", "/access/rules"),
+    rulesCreate: (data: {
+      subject_type: string;
+      subject_id: string;
+      plugin_name?: string | null;
+      action: string;
+      priority?: number;
+    }) => request<{ ok: boolean }>("POST", "/access/rules", data),
+    rulesUpdate: (id: number, data: Record<string, unknown>) =>
+      request<{ ok: boolean }>("PUT", `/access/rules/${id}`, data),
+    rulesDelete: (id: number) =>
+      request<{ ok: boolean }>("DELETE", `/access/rules/${id}`),
+    rulesReorder: (ids: number[]) =>
+      request<{ ok: boolean }>("POST", "/access/rules/reorder", { ids }),
+    rulesPreview: (params: {
+      subject_type: string;
+      subject_id: string;
+      plugin_name: string;
+    }) => {
+      const sp = new URLSearchParams(params);
+      return request<AccessPreviewResult>("GET", `/access/rules/preview?${sp.toString()}`);
+    },
+    subjectsSearch: (q: string, type: string) => {
+      const sp = new URLSearchParams({ q, type });
+      return request<AccessSubjectsResult>("GET", `/access/subjects/search?${sp.toString()}`);
+    },
+    pluginsNames: () =>
+      request<{ names: string[] }>("GET", "/plugins/names"),
   },
 };

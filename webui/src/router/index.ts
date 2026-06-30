@@ -13,6 +13,7 @@ const DashboardView = () => import("@/views/DashboardView.vue");
 const PluginsView = () => import("@/views/PluginsView.vue");
 const AdaptersView = () => import("@/views/AdaptersView.vue");
 const StoreView = () => import("@/views/StoreView.vue");
+const AccessView = () => import("@/views/AccessView.vue");
 const SettingsNonebotView = () => import("@/views/SettingsNonebotView.vue");
 const SettingsApeiriaView = () => import("@/views/SettingsApeiriaView.vue");
 const LogsView = () => import("@/views/LogsView.vue");
@@ -36,6 +37,7 @@ const router = createRouter({
         { path: "plugins", name: "plugins", component: PluginsView },
         { path: "adapters", name: "adapters", component: AdaptersView },
         { path: "store", name: "store", component: StoreView },
+        { path: "access", name: "access", component: AccessView },
         { path: "settings", redirect: { name: "settings-nonebot" } },
         {
           path: "settings/nonebot",

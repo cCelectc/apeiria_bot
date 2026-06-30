@@ -302,7 +302,7 @@ def step_web() -> None:
         quiet_asgi_cancel_errors,
         route_access_logs,
     )
-    from apeiria.web.routes import router
+    from apeiria.web.routes import access_router, router
 
     driver = nonebot.get_driver()
     raw_app = getattr(driver, "server_app", None) or getattr(driver, "asgi", None)
@@ -317,6 +317,7 @@ def step_web() -> None:
     quiet_asgi_cancel_errors()
 
     app.include_router(auth_router)
+    app.include_router(access_router)
     app.include_router(logs_router)
     app.include_router(router)
 

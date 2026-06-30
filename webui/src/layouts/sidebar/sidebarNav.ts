@@ -5,6 +5,7 @@ import {
   Puzzle,
   ScrollText,
   Settings,
+  Shield,
   Store,
 } from "@lucide/vue";
 import type { Component } from "vue";
@@ -57,6 +58,7 @@ export const sidebarNav: NavGroup[] = [
   {
     label: "navGroup.system",
     items: [
+      { title: "nav.access", icon: Shield, to: { name: "access" } },
       { title: "nav.logs", icon: ScrollText, to: { name: "logs" } },
       {
         title: "nav.settings",

@@ -210,3 +210,26 @@ export interface WebchatConversation {
   name: string;
   groupId?: string;
 }
+
+export interface AccessRule {
+  id: number;
+  subject_type: "user" | "group";
+  subject_id: string;
+  plugin_name: string | null;
+  action: "allow" | "deny";
+  priority: number;
+}
+
+export interface AccessRulesList {
+  rules: AccessRule[];
+}
+
+export interface AccessPreviewResult {
+  action: "allow" | "deny";
+  matched_rule_id: number | null;
+  matched_rule: AccessRule | null;
+}
+
+export interface AccessSubjectsResult {
+  subjects: { id: string; type: string }[];
+}
