@@ -116,6 +116,13 @@ function canExecuteRow(hash: string): boolean {
   );
 }
 
+function buttonLabel(index: number): string {
+  const behind = preview.value?.commits_behind ?? 0;
+  if (index === 0) return "";
+  if (index <= behind) return t("update.execute");
+  return t("update.rollbackTo");
+}
+
 function stageLabel(s: string): string {
   const map: Record<string, string> = {
     checkout: t("update.checkout"),
@@ -380,7 +387,7 @@ fetchStatus();
                 </thead>
                 <tbody>
                   <tr
-                    v-for="c in preview.commits"
+                    v-for="(c, i) in preview.commits"
                     :key="c.hash"
                     :class="[
                       'border-t transition-colors',
@@ -412,7 +419,7 @@ fetchStatus();
                         :disabled="!canExecuteRow(c.hash)"
                         @click.stop="executeUpdate(c.hash)"
                       >
-                        {{ t("update.execute") }}
+                        {{ buttonLabel(i) }}
                       </Button>
                     </td>
                   </tr>
