@@ -376,7 +376,7 @@ fetchStatus();
             </p>
             <div class="max-h-80 overflow-auto rounded-md border">
               <table class="w-full text-xs">
-                <thead class="sticky top-0 bg-muted/50">
+                <thead class="sticky top-0 bg-muted">
                   <tr class="text-left text-muted-foreground">
                     <th class="px-3 py-2">Commit</th>
                     <th class="px-3 py-2">{{ t("update.commitMessage") }}</th>
