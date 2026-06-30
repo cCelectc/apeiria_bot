@@ -41,6 +41,7 @@ _MAX_BACKOFF_EXP = 10
 _web_cache: list[WebConfig | None] = [None]  # type: ignore[valid-type]
 _login_failures: dict[str, tuple[int, float]] = {}
 _login_lock = asyncio.Lock()
+_setting_cache: dict[str, str | None] = {}
 
 
 def _web_config() -> WebConfig:  # type: ignore[valid-type]
@@ -54,17 +55,30 @@ def _clear_web_cache() -> None:
 
 
 async def _get_setting(key: str) -> str | None:
+    if key in _setting_cache:
+        return _setting_cache[key]
+
     from sqlalchemy import select
 
     from apeiria.db import get_db
     from apeiria.db.models.setting import ApeiriaSetting
 
-    db = get_db()
+    try:
+        db = get_db()
+    except RuntimeError:
+        return None
+
     async with db.gate.read() as session:
         result = await session.execute(
             select(ApeiriaSetting.value).where(ApeiriaSetting.key == key)
         )
-        return result.scalar_one_or_none()
+        value: str | None = result.scalar_one_or_none()
+    _setting_cache[key] = value
+    return value
+
+
+def _clear_setting_cache() -> None:
+    _setting_cache.clear()
 
 
 async def _set_setting(key: str, value: str) -> None:
@@ -83,6 +97,7 @@ async def _set_setting(key: str, value: str) -> None:
             existing.value = value
         else:
             session.add(ApeiriaSetting(key=key, value=value))
+    _setting_cache.pop(key, None)
 
 
 def _run_async(coro: Coroutine[Any, Any, Any]) -> Any:
