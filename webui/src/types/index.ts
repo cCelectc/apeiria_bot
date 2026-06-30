@@ -233,3 +233,24 @@ export interface AccessPreviewResult {
 export interface AccessSubjectsResult {
   subjects: { id: string; type: string }[];
 }
+
+export interface UpdateStatusResponse {
+  branch: string;
+  commit_hash: string;
+  commit_message: string;
+  is_dirty: boolean;
+  dirty_files: string[];
+  available_branches: string[];
+}
+
+export interface UpdatePreviewResponse {
+  branch: string;
+  remote_commit_hash: string;
+  remote_commit_message: string;
+  commits_behind: number;
+}
+
+export interface UpdateEvent {
+  stage: string;
+  line: string;
+}
