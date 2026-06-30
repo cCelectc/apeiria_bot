@@ -36,7 +36,7 @@ async def handle_restart(bot: Bot, event: Event) -> None:
 
     _save_context(bot, event)
     await _restart.send("已计划重启...")
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     loop.call_later(1.5, lambda: asyncio.ensure_future(_do_restart()))
 
 

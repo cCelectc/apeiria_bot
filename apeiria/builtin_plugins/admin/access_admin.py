@@ -21,6 +21,7 @@ _access = on_alconna(
         Args["arg2?", str],
         Args["arg3?", str],
         Args["arg4?", str],
+        Args["arg5?", str],
         meta=CommandMeta(description="管理权限规则"),
     ),
     use_cmd_start=True,
@@ -37,6 +38,7 @@ async def handle_access(  # noqa: PLR0913
     arg2: Match[str],
     arg3: Match[str],
     arg4: Match[str],
+    arg5: Match[str],
 ) -> None:
     owner_error = ensure_owner_message(event)
     if owner_error:
@@ -52,7 +54,13 @@ async def handle_access(  # noqa: PLR0913
             await _access.finish(_USAGE_ADD)
             return
         await _access.finish(
-            await _add_rule(arg1.result, arg2.result, arg3.result, arg4.result)
+            await _add_rule(
+                arg1.result,
+                arg2.result,
+                arg3.result,
+                arg4.result,
+                arg5.result if arg5.available else "0",
+            )
         )
 
     if selected == "remove":
@@ -83,6 +91,7 @@ async def _add_rule(
     subject_type: str,
     subject_id: str,
     plugin_query: str,
+    priority: str = "0",
 ) -> str:
     normalized_effect = effect.strip().lower()
     normalized_type = subject_type.strip().lower()
@@ -90,6 +99,11 @@ async def _add_rule(
         return _USAGE_ADD
     if normalized_type not in {"user", "group"}:
         return _USAGE_ADD
+
+    try:
+        priority_int = int(priority)
+    except (ValueError, TypeError):
+        priority_int = 0
 
     q = plugin_query.strip().lower()
     plugin_name = None if q == "global" else plugin_query.strip()
@@ -100,7 +114,7 @@ async def _add_rule(
             subject_id=subject_id.strip(),
             plugin_name=plugin_name,
             action=normalized_effect,
-            priority=0,
+            priority=priority_int,
         )
         sess.add(rule)
         await sess.flush()

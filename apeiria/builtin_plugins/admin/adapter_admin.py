@@ -85,7 +85,7 @@ async def handle_adapter(
     enabled = selected_action == "enable"
     set_adapter_state(matched.name, enabled)
     action_chinese = "启用" if enabled else "禁用"
-    await _adapter.finish(f"已{action_chinese}适配器: {matched.name}")
+    await _adapter.finish(f"已{action_chinese}适配器: {matched.name}（重启后生效）")
 
 
 def _find_adapter(query: str) -> AdapterManifest | None:

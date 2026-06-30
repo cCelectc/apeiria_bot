@@ -85,7 +85,7 @@ async def handle_plugin(
     enabled = selected_action == "enable"
     set_plugin_state(matched.name, enabled)
     action_chinese = "启用" if enabled else "禁用"
-    await _plugin.finish(f"已{action_chinese}插件: {matched.name}")
+    await _plugin.finish(f"已{action_chinese}插件: {matched.name}（重启后生效）")
 
 
 def _find_plugin(query: str) -> PluginManifest | None:
