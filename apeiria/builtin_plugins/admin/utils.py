@@ -4,8 +4,6 @@ from __future__ import annotations
 import nonebot
 from nonebot.adapters import Event  # noqa: TC002
 
-from apeiria.utils.superuser import is_superuser_id
-
 
 def resolve_plugin_query(
     query: str,
@@ -44,10 +42,13 @@ def resolve_plugin_query(
 
 def is_owner_event(event: Event) -> bool:
     try:
-        user_id = event.get_user_id()
+        user_id = str(event.get_user_id())
     except Exception:  # noqa: BLE001
         return False
-    return is_superuser_id(str(user_id))
+    superusers = nonebot.get_driver().config.superusers
+    return user_id in superusers or any(
+        isinstance(s, str) and s.endswith(f":{user_id}") for s in superusers
+    )
 
 
 def ensure_owner_message(event: Event) -> str | None:

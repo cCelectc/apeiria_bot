@@ -6,6 +6,7 @@ from nonebot import get_driver
 from nonebot.adapters import Bot, Event  # noqa: TC002
 from nonebot.log import logger
 from nonebot.matcher import Matcher  # noqa: TC002
+from nonebot.permission import SUPERUSER
 from nonebot.plugin import PluginMetadata
 from nonebot.plugin.on import on_fullmatch, on_message
 from nonebot.rule import Rule
@@ -19,10 +20,9 @@ from apeiria.plugin.metadata.api import (
     RegisterConfig,
     UiExtra,
 )
-from apeiria.utils.superuser import is_superuser_id
 
 from .config import SelfRevokeConfig, get_self_revoke_config
-from .providers import _adapter_name, _resolve_provider
+from .providers import _resolve_provider
 
 __plugin_meta__ = PluginMetadata(
     name="撤回消息",
@@ -96,14 +96,9 @@ __plugin_meta__ = PluginMetadata(
 )
 
 
-def _is_superuser_event(bot: Bot, event: Event) -> bool:
+async def _is_superuser_event(bot: Bot, event: Event) -> bool:
     with suppress(Exception):
-        user_id = str(event.get_user_id())
-        if is_superuser_id(user_id):
-            return True
-        adapter_prefix = _adapter_name(bot)
-        if adapter_prefix:
-            return is_superuser_id(f"{adapter_prefix}:{user_id}")
+        return await SUPERUSER(bot, event)
     return False
 
 
@@ -164,7 +159,7 @@ async def handle_revoke(  # noqa: C901
     if target is None:
         return
 
-    if config.permission == "superuser" and not _is_superuser_event(bot, event):
+    if config.permission == "superuser" and not await _is_superuser_event(bot, event):
         if config.feedback == "reaction":
             with suppress(Exception):
                 await provider.apply_feedback(bot, event, kind="failure")

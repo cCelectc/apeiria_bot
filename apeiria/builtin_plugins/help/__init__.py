@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 
 from nonebot import require
 from nonebot.adapters import Bot, Event  # noqa: TC002
+from nonebot.permission import SUPERUSER
 from nonebot.plugin import PluginMetadata, inherit_supported_adapters
 from nonebot_plugin_alconna import (
     Alconna,
@@ -26,7 +27,6 @@ from apeiria.plugin.metadata.api import (
     RegisterConfig,
     UiExtra,
 )
-from apeiria.utils.superuser import is_superuser_id
 
 from .commands import _cmd_prefix
 from .config import HelpConfig, get_help_config
@@ -54,13 +54,14 @@ _help = on_alconna(
 
 
 async def _resolve_role(
+    bot: Bot,
     event: Event,
     *,
     config: HelpConfig,
     force_admin: bool,
     force_owner: bool,
 ) -> HelpViewRole:
-    is_owner = is_superuser_id(str(event.get_user_id()))
+    is_owner = await SUPERUSER(bot, event)
 
     if force_owner:
         if not is_owner:
@@ -86,6 +87,7 @@ async def _handle_help(
     config = get_help_config()
     prefix = _cmd_prefix()
     role = await _resolve_role(
+        bot,
         event,
         config=config,
         force_admin=show_admin_flag.available,
@@ -93,7 +95,7 @@ async def _handle_help(
     )
     show_all = (
         role == "owner"
-        and is_superuser_id(str(event.get_user_id()))
+        and await SUPERUSER(bot, event)
         and (config.admin_show_all or show_all_flag.available)
     )
     target_name = _merge_plugin_name(plugin_name)

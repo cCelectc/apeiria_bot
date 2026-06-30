@@ -27,7 +27,7 @@ def _control(rules, *, loaded=True):
 
 
 def _no_superuser(monkeypatch) -> None:
-    monkeypatch.setattr("apeiria.utils.superuser.is_superuser_id", lambda _uid: False)
+    monkeypatch.setattr("apeiria.access.control._is_superuser", lambda _uid: False)
 
 
 # --------------------------------------------------------------------------
@@ -43,7 +43,7 @@ def test_evaluate_not_loaded_allows() -> None:
 
 def test_evaluate_superuser_bypasses_deny(monkeypatch) -> None:
     monkeypatch.setattr(
-        "apeiria.utils.superuser.is_superuser_id", lambda uid: uid == "boss"
+        "apeiria.access.control._is_superuser", lambda uid: uid == "boss"
     )
     ac = _control([_rule("user", "boss", "deny")])
     assert ac.evaluate("boss", None, "p") is True
@@ -146,7 +146,7 @@ def test_check_access_delegates_to_evaluate(monkeypatch) -> None:
 
 
 def test_check_access_superuser_passes(monkeypatch) -> None:
-    monkeypatch.setattr("apeiria.utils.superuser.is_superuser_id", lambda _uid: True)
+    monkeypatch.setattr("apeiria.access.control._is_superuser", lambda _uid: True)
     from apeiria.access import hook
 
     ac = _control([_rule("user", "u1", "deny")])
