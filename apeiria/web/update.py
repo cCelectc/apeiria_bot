@@ -160,6 +160,20 @@ async def update_preview(
                 }
             )
 
+    _, local_hash, _ = await _run_git("rev-parse", "--short", "HEAD")
+    _, local_msg, _ = await _run_git("log", "-1", "--format=%s")
+    _, local_author, _ = await _run_git("log", "-1", "--format=%an")
+    _, local_date, _ = await _run_git("log", "-1", "--format=%aI")
+    commits.insert(
+        0,
+        {
+            "hash": local_hash,
+            "message": local_msg + " (当前)",
+            "author": local_author,
+            "date": local_date,
+        },
+    )
+
     return JSONResponse(
         content={
             "ref": ref,

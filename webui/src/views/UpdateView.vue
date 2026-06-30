@@ -372,8 +372,8 @@ fetchStatus();
               <table class="w-full text-xs">
                 <thead class="sticky top-0 bg-muted/50">
                   <tr class="text-left text-muted-foreground">
-                    <th class="w-10 px-3 py-2" />
-                    <th class="px-3 py-2">{{ t("update.commitHash") }}</th>
+                    <th class="w-12 px-3 py-2">{{ $t("common.confirm") }}</th>
+                    <th class="px-3 py-2">Commit</th>
                     <th class="px-3 py-2">{{ t("update.commitMessage") }}</th>
                     <th class="hidden px-3 py-2 sm:table-cell">{{ t("update.commitAuthor") }}</th>
                     <th class="hidden px-3 py-2 sm:table-cell">{{ t("update.commitDate") }}</th>
@@ -386,6 +386,7 @@ fetchStatus();
                     :class="[
                       'cursor-pointer border-t transition-colors hover:bg-muted/30',
                       selectedCommit === c.hash ? 'bg-primary/10' : '',
+                      isCurrentCommit(c.hash) ? 'bg-emerald-500/5' : '',
                     ]"
                     @click="selectedCommit = c.hash"
                   >
@@ -404,7 +405,7 @@ fetchStatus();
                         />
                       </div>
                     </td>
-                    <td class="px-3 py-2 font-mono">
+                    <td class="whitespace-nowrap px-3 py-2 font-mono">
                       <code>{{ c.hash }}</code>
                       <Badge
                         v-if="isCurrentCommit(c.hash)"
