@@ -109,7 +109,9 @@ def _select_reply(replies: tuple[TriggerReply, ...]) -> str:
     return choices(texts, weights=weights, k=1)[0]
 
 
-def _evaluate(trigger: TriggerInput, entries: tuple[TriggerEntry, ...]) -> str | None:
+def _evaluate(
+    trigger: TriggerInput, entries: tuple[TriggerEntry, ...]
+) -> tuple[str, TriggerEntry] | None:
     for entry in entries:
         if not entry.enabled:
             continue
@@ -133,5 +135,5 @@ def _evaluate(trigger: TriggerInput, entries: tuple[TriggerEntry, ...]) -> str |
         if entry.chance < 1.0 and random() >= entry.chance:
             continue
         reply_template = _select_reply(entry.replies)
-        return _substitute(reply_template, trigger, triggered_text)
+        return _substitute(reply_template, trigger, triggered_text), entry
     return None

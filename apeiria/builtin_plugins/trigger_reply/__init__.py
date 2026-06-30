@@ -8,9 +8,10 @@ from nonebot.log import logger
 from nonebot.matcher import Matcher  # noqa: TC002
 from nonebot.permission import SUPERUSER
 from nonebot.plugin import PluginMetadata
-from nonebot.plugin.on import on_command, on_message
+from nonebot.plugin.on import on_message
 from nonebot.rule import Rule
 from nonebot.typing import T_State  # noqa: TC002
+from nonebot_plugin_alconna import Alconna, CommandMeta, on_alconna
 
 from apeiria.plugin.metadata.api import (
     CommandDeclaration,
@@ -147,25 +148,28 @@ async def _rule_checker(bot: Bot, event: Event, state: T_State) -> bool:
         return False
     if not _fast_check(trigger, entries):
         return False
-    reply = _evaluate(trigger, entries)
-    if reply is None:
+    result = _evaluate(trigger, entries)
+    if result is None:
         if config.debug:
             logger.debug("触发回复跳过: 无匹配规则")
         return False
+    reply, matched_entry = result
     state["_trigger_reply_text"] = reply
+    state["_trigger_reply_entry"] = matched_entry
     return True
 
 
 def _fast_check(  # noqa: C901
     trigger: TriggerInput, entries: tuple[TriggerEntry, ...]
 ) -> bool:
-    """快速预检：收集所有非正则模式的关键词，O(1) 集合查找。"""
+    has_regex = False
     candidates = {trigger.plaintext.lower(), trigger.message_text.lower()}
     for entry in entries:
         if not entry.enabled:
             continue
         for match in entry.matches:
             if match.type == "regex":
+                has_regex = True
                 continue
             pattern = match.pattern or ""
             if not pattern:
@@ -180,18 +184,23 @@ def _fast_check(  # noqa: C901
                     return True
                 if match.type == "fuzzy" and kw in text:
                     return True
-    return False
+    return bool(has_regex)
 
 
 _message = on_message(
     Rule(_rule_checker),
-    priority=get_trigger_reply_config().priority,
+    priority=12,
     block=False,
 )
-_reload = on_command(
-    "重载回复",
+_reload = on_alconna(
+    Alconna(
+        "重载回复",
+        meta=CommandMeta(description="重新加载触发回复规则文件"),
+    ),
     aliases={"tr"},
     permission=SUPERUSER,
+    use_cmd_start=True,
+    priority=5,
     block=True,
 )
 
@@ -199,8 +208,12 @@ _reload = on_command(
 @_message.handle()
 async def handle_trigger_message(matcher: Matcher, state: T_State) -> None:
     reply_text: str = state.get("_trigger_reply_text", "")
-    if reply_text:
-        await matcher.send(reply_text)
+    if not reply_text:
+        return
+    entry = state.get("_trigger_reply_entry")
+    if entry is not None and getattr(entry, "block", False):
+        matcher.stop_propagation()
+    await matcher.send(reply_text)
 
 
 @_reload.handle()

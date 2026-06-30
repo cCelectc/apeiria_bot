@@ -37,7 +37,7 @@ def test_full_match_returns_reply() -> None:
     match = models.TriggerMatch(_type="full", pattern="hello")
     entry = _entry(models, matches=(match,), replies=(models.TriggerReply(text="hi"),))
     trigger = _input(models, message_text="hello", plaintext="hello")
-    assert service._evaluate(trigger, (entry,)) == "hi"
+    assert service._evaluate(trigger, (entry,))[0] == "hi"
 
 
 def test_non_match_returns_none() -> None:
@@ -53,7 +53,7 @@ def test_fuzzy_match() -> None:
     match = models.TriggerMatch(_type="fuzzy", pattern="lo")
     entry = _entry(models, matches=(match,), replies=(models.TriggerReply(text="ok"),))
     trigger = _input(models, message_text="hello", plaintext="hello")
-    assert service._evaluate(trigger, (entry,)) == "ok"
+    assert service._evaluate(trigger, (entry,))[0] == "ok"
 
 
 def test_start_and_end_match() -> None:
@@ -69,8 +69,8 @@ def test_start_and_end_match() -> None:
         replies=(models.TriggerReply(text="e"),),
     )
     trigger = _input(models, message_text="hello", plaintext="hello")
-    assert service._evaluate(trigger, (start,)) == "s"
-    assert service._evaluate(trigger, (end,)) == "e"
+    assert service._evaluate(trigger, (start,))[0] == "s"
+    assert service._evaluate(trigger, (end,))[0] == "e"
 
 
 def test_regex_match() -> None:
@@ -80,7 +80,7 @@ def test_regex_match() -> None:
     )
     entry = _entry(models, matches=(match,), replies=(models.TriggerReply(text="r"),))
     trigger = _input(models, message_text="hello", plaintext="hello")
-    assert service._evaluate(trigger, (entry,)) == "r"
+    assert service._evaluate(trigger, (entry,))[0] == "r"
 
 
 # --------------------------------------------------------------------------
@@ -116,11 +116,11 @@ def test_users_filter() -> None:
         models,
         matches=(match,),
         replies=(models.TriggerReply(text="hi"),),
-        users=frozenset({"qq:u1"}),
+        users=models.IdFilter(mode="white", values=frozenset({"qq:u1"})),
     )
     allowed = _input(models, message_text="hello", plaintext="hello", user_id="u1")
     blocked = _input(models, message_text="hello", plaintext="hello", user_id="u2")
-    assert service._evaluate(allowed, (entry,)) == "hi"
+    assert service._evaluate(allowed, (entry,))[0] == "hi"
     assert service._evaluate(blocked, (entry,)) is None
 
 
@@ -133,15 +133,18 @@ def test_substitute_placeholders() -> None:
         replies=(models.TriggerReply(text="hi {user_id}"),),
     )
     trigger = _input(models, message_text="hello", plaintext="hello", user_id="u1")
-    assert service._evaluate(trigger, (entry,)) == "hi u1"
+    assert service._evaluate(trigger, (entry,))[0] == "hi u1"
 
 
 def test_filter_allows_and_scoped_id() -> None:
-    _, service = _mods()
-    assert service._filter_allows(frozenset(), None) is True
-    assert service._filter_allows(frozenset({"qq:1"}), None) is False
-    assert service._filter_allows(frozenset({"qq:1"}), "qq:1") is True
-    assert service._filter_allows(frozenset({"qq:*"}), "qq:5") is True
+    models, service = _mods()
+    empty = models.IdFilter(mode="white", values=frozenset())
+    assert service._filter_allows(empty, None) is True
+    f1 = models.IdFilter(mode="white", values=frozenset({"qq:1"}))
+    assert service._filter_allows(f1, None) is False
+    assert service._filter_allows(f1, "qq:1") is True
+    fstar = models.IdFilter(mode="white", values=frozenset({"qq:*"}))
+    assert service._filter_allows(fstar, "qq:5") is True
     assert service._scoped_id(None, "x") is None
     assert service._scoped_id("qq", "1") == "qq:1"
 
