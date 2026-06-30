@@ -7,11 +7,17 @@ from nonebot.adapters import Bot, Event  # noqa: TC002
 from nonebot.log import logger
 from nonebot.matcher import Matcher  # noqa: TC002
 from nonebot.permission import SUPERUSER
-from nonebot.plugin import PluginMetadata
+from nonebot.plugin import PluginMetadata, inherit_supported_adapters
 from nonebot.plugin.on import on_message
 from nonebot.rule import Rule
 from nonebot.typing import T_State  # noqa: TC002
-from nonebot_plugin_alconna import Alconna, CommandMeta, on_alconna
+
+require("nonebot_plugin_alconna")
+from nonebot_plugin_alconna import (
+    Alconna,
+    CommandMeta,
+    on_alconna,
+)
 
 from .config import TriggerReplyConfig, get_trigger_reply_config
 from .loader import _ensure_loaded, _refresh_rules
@@ -27,7 +33,7 @@ __plugin_meta__ = PluginMetadata(
     usage="在本插件规则文件中配置 entry、match 与 reply 后自动回复。",
     type="application",
     config=TriggerReplyConfig,
-    supported_adapters=None,
+    supported_adapters=inherit_supported_adapters("nonebot_plugin_alconna"),
 )
 
 

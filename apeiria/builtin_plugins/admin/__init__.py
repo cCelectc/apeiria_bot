@@ -8,6 +8,7 @@ __plugin_meta__ = PluginMetadata(
     description="超级用户管理命令",
     usage="发送 /admin 查看管理命令",
     type="application",
+    homepage="https://github.com/Cccc-owo/apeiria_bot",
     supported_adapters=inherit_supported_adapters("nonebot_plugin_alconna"),
 )
 
