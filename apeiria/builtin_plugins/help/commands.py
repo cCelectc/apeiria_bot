@@ -29,7 +29,7 @@ def _collect_matcher_commands(
 
     for mgroup in matchers.values():
         for matcher in mgroup:
-            plugin_id = getattr(matcher, "plugin_name", None)
+            plugin_id = getattr(matcher, "plugin_id", None)
             if not plugin_id or plugin_id not in plugins:
                 continue
             cmd = _extract_matcher_command(matcher, plugins[plugin_id])

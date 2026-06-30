@@ -14,6 +14,7 @@ from nonebot_plugin_alconna import (
     CommandMeta,
     Match,
     MultiVar,
+    Option,
     on_alconna,
 )
 
@@ -44,6 +45,8 @@ _help = on_alconna(
     Alconna(
         "help",
         Args["plugin_name?", MultiVar(str, "*")],
+        Option("--admin", dest="show_admin_flag"),
+        Option("--all", dest="show_all_flag"),
         meta=CommandMeta(description="查看功能菜单"),
     ),
     aliases={"帮助", "菜单", "功能"},
