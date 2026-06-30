@@ -181,7 +181,7 @@ def test_load_rules_missing_file() -> None:
 
     entries, errors = loader._load_rules(Path("/no/such/file.toml"))
     assert entries == ()
-    assert errors
+    assert errors == []
 
 
 def test_normalize_match_type_aliases() -> None:

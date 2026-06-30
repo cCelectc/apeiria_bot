@@ -7,7 +7,7 @@ def _svc():
     return RepeaterService()
 
 
-def _cfg(*, probability=1.0, cooldown_seconds=0, repeat_threshold=2):
+def _cfg(*, probability=1.0, cooldown_seconds=1, repeat_threshold=2):
     from apeiria.builtin_plugins.repeater.config import RepeaterConfig
 
     return RepeaterConfig(

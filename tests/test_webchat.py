@@ -264,7 +264,11 @@ async def test_bot_send_routes_to_origin_and_persists(monkeypatch) -> None:
     async def fake_append(**kwargs: object) -> None:
         calls.append(kwargs)
 
+    async def fake_ensure(*_args: object, **_kwargs: object) -> None:
+        return None
+
     monkeypatch.setattr(store, "append_message", fake_append)
+    monkeypatch.setattr(store, "ensure_session", fake_ensure)
 
     cm = ConnectionManager()
     ws = _FakeWS()
