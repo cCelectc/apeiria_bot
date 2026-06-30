@@ -241,13 +241,23 @@ export interface UpdateStatusResponse {
   is_dirty: boolean;
   dirty_files: string[];
   available_branches: string[];
+  available_tags: string[];
 }
 
 export interface UpdatePreviewResponse {
-  branch: string;
+  ref: string;
+  type: string;
   remote_commit_hash: string;
   remote_commit_message: string;
   commits_behind: number;
+  commits: GitCommit[];
+}
+
+export interface GitCommit {
+  hash: string;
+  message: string;
+  author: string;
+  date: string;
 }
 
 export interface UpdateEvent {

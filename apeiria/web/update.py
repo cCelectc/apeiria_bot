@@ -5,8 +5,9 @@ import json
 import shutil
 from collections.abc import AsyncIterator
 from pathlib import Path
+from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 from nonebot.log import logger
 
@@ -84,6 +85,9 @@ async def update_status() -> JSONResponse:
     _, branches_output, _ = await _run_git("branch", "-r")
     available_branches = _branch_list(branches_output)
 
+    _, tags_output, _ = await _run_git("tag")
+    available_tags = sorted(t.strip() for t in tags_output.splitlines() if t.strip())
+
     return JSONResponse(
         content={
             "branch": branch,
@@ -92,33 +96,76 @@ async def update_status() -> JSONResponse:
             "is_dirty": is_dirty,
             "dirty_files": dirty_files,
             "available_branches": available_branches,
+            "available_tags": available_tags,
         }
     )
 
 
-@router.get("/preview/{branch}")
-async def update_preview(branch: str) -> JSONResponse:
-    rc, _, stderr = await _run_git("fetch", "origin", branch)
-    if rc != 0:
-        raise HTTPException(status_code=500, detail=f"Fetch 失败: {stderr}")
+@router.get("/preview/{ref}")
+async def update_preview(
+    ref: str,
+    ref_type: Annotated[str, Query(alias="type", pattern="^(branch|tag)$")] = "branch",
+) -> JSONResponse:
+    if ref_type == "tag":
+        rc, _, stderr = await _run_git("fetch", "origin", "--tags")
+        if rc != 0:
+            raise HTTPException(status_code=500, detail=f"Fetch tags 失败: {stderr}")
 
-    remote_ref = f"origin/{branch}"
-    rc, _, stderr = await _run_git("rev-parse", "--short", remote_ref)
-    if rc != 0:
-        raise HTTPException(status_code=404, detail=f"远端不存在分支 '{branch}'")
+        tag_ref = ref
+        rc, _, stderr = await _run_git("rev-parse", "--short", tag_ref)
+        if rc != 0:
+            raise HTTPException(status_code=404, detail=f"标签 '{ref}' 不存在")
 
-    _, remote_hash, _ = await _run_git("rev-parse", "--short", remote_ref)
-    _, remote_msg, _ = await _run_git("log", "-1", "--format=%s", remote_ref)
+        _, remote_hash, _ = await _run_git("rev-parse", "--short", tag_ref)
+        _, remote_msg, _ = await _run_git("log", "-1", "--format=%s", tag_ref)
+        log_ref = tag_ref
+        commits_behind = 0
+    else:
+        rc, _, stderr = await _run_git("fetch", "origin", ref)
+        if rc != 0:
+            raise HTTPException(status_code=500, detail=f"Fetch 失败: {stderr}")
 
-    _, behind_str, _ = await _run_git("rev-list", "--count", f"HEAD..{remote_ref}")
-    commits_behind = int(behind_str) if behind_str else 0
+        remote_ref = f"origin/{ref}"
+        rc, _, stderr = await _run_git("rev-parse", "--short", remote_ref)
+        if rc != 0:
+            raise HTTPException(status_code=404, detail=f"远端不存在分支 '{ref}'")
+
+        _, remote_hash, _ = await _run_git("rev-parse", "--short", remote_ref)
+        _, remote_msg, _ = await _run_git("log", "-1", "--format=%s", remote_ref)
+        log_ref = remote_ref
+
+        _, behind_str, _ = await _run_git("rev-list", "--count", f"HEAD..{remote_ref}")
+        commits_behind = int(behind_str) if behind_str else 0
+
+    _, log_out, _ = await _run_git(
+        "log",
+        log_ref,
+        "--format=%H|%h|%s|%an|%aI",
+        "-n",
+        "20",
+    )
+    commits = []
+    _parts_count = 5
+    for line in log_out.splitlines():
+        parts = line.split("|", 4)
+        if len(parts) == _parts_count:
+            commits.append(
+                {
+                    "hash": parts[1],
+                    "message": parts[2],
+                    "author": parts[3],
+                    "date": parts[4],
+                }
+            )
 
     return JSONResponse(
         content={
-            "branch": branch,
+            "ref": ref,
+            "type": ref_type,
             "remote_commit_hash": remote_hash,
             "remote_commit_message": remote_msg,
             "commits_behind": commits_behind,
+            "commits": commits,
         }
     )
 
@@ -134,7 +181,11 @@ async def _do_rollback(
     logger.info("Rollback complete")
 
 
-async def _execute_update(branch: str) -> AsyncIterator[str]:  # noqa: C901, PLR0912
+async def _execute_update(  # noqa: C901, PLR0911, PLR0912, PLR0915
+    branch: str,
+    commit: str | None = None,
+    ref_type: str = "branch",
+) -> AsyncIterator[str]:
     project_root = Path.cwd()
 
     rc, dirty, _ = await _run_git("status", "--porcelain")
@@ -145,46 +196,71 @@ async def _execute_update(branch: str) -> AsyncIterator[str]:  # noqa: C901, PLR
     _, original_commit, _ = await _run_git("rev-parse", "HEAD")
     _, original_branch, _ = await _run_git("branch", "--show-current")
     logger.info(
-        "Starting update to branch '{}' from {} ({})",
+        "Starting update to {} '{}' commit '{}' from {} ({})",
+        ref_type,
         branch,
+        commit or "HEAD",
         original_branch,
         original_commit[:7],
     )
 
-    yield _sse({"stage": "checkout", "line": f"$ git checkout {branch}"})
-    rc2, out, err = await _run_git("checkout", branch)
-    if rc2 != 0:
-        err_stderr = await _run_git("checkout", "-b", branch, f"origin/{branch}")
-        if err_stderr[0] != 0:
-            yield _sse({"stage": "error", "line": f"Checkout 失败: {err_stderr[2]}"})
+    if ref_type == "tag":
+        yield _sse({"stage": "checkout", "line": "$ git fetch origin --tags"})
+        rc_fetch, _, fetch_err = await _run_git("fetch", "origin", "--tags")
+        if rc_fetch != 0:
+            yield _sse({"stage": "error", "line": f"Fetch tags 失败: {fetch_err}"})
             return
-        out = f"Switched to a new branch '{branch}'"
-    for line in out.splitlines():
-        if line.strip():
-            yield _sse({"stage": "checkout", "line": line})
-    for line in err.splitlines():
-        if line.strip():
-            yield _sse({"stage": "checkout", "line": line})
 
-    yield _sse({"stage": "pull", "line": f"$ git fetch origin {branch}"})
-    rc3, _, fetch_err = await _run_git("fetch", "origin", branch)
-    if rc3 != 0:
-        await _do_rollback(original_branch, original_commit, project_root)
-        yield _sse({"stage": "error", "line": f"Fetch 失败: {fetch_err}"})
-        return
+        target = commit or branch
+        yield _sse({"stage": "checkout", "line": f"$ git checkout {target}"})
+        rc2, out, err = await _run_git("checkout", target)
+        if rc2 != 0:
+            await _do_rollback(original_branch, original_commit, project_root)
+            yield _sse({"stage": "error", "line": f"Checkout 失败: {err}"})
+            return
+        for line in out.splitlines():
+            if line.strip():
+                yield _sse({"stage": "checkout", "line": line})
+        for line in err.splitlines():
+            if line.strip():
+                yield _sse({"stage": "checkout", "line": line})
+    else:
+        yield _sse({"stage": "checkout", "line": f"$ git checkout {branch}"})
+        rc2, out, err = await _run_git("checkout", branch)
+        if rc2 != 0:
+            err_stderr = await _run_git("checkout", "-b", branch, f"origin/{branch}")
+            if err_stderr[0] != 0:
+                msg = f"Checkout 失败: {err_stderr[2]}"
+                yield _sse({"stage": "error", "line": msg})
+                return
+            out = f"Switched to a new branch '{branch}'"
+        for line in out.splitlines():
+            if line.strip():
+                yield _sse({"stage": "checkout", "line": line})
+        for line in err.splitlines():
+            if line.strip():
+                yield _sse({"stage": "checkout", "line": line})
 
-    yield _sse({"stage": "pull", "line": f"$ git reset --hard origin/{branch}"})
-    rc4, reset_out, reset_err = await _run_git("reset", "--hard", f"origin/{branch}")
-    for line in reset_out.splitlines():
-        if line.strip():
-            yield _sse({"stage": "pull", "line": line})
-    for line in reset_err.splitlines():
-        if line.strip():
-            yield _sse({"stage": "pull", "line": line})
-    if rc4 != 0:
-        await _do_rollback(original_branch, original_commit, project_root)
-        yield _sse({"stage": "error", "line": f"Reset 失败: {reset_err}"})
-        return
+        yield _sse({"stage": "pull", "line": f"$ git fetch origin {branch}"})
+        rc3, _, fetch_err = await _run_git("fetch", "origin", branch)
+        if rc3 != 0:
+            await _do_rollback(original_branch, original_commit, project_root)
+            yield _sse({"stage": "error", "line": f"Fetch 失败: {fetch_err}"})
+            return
+
+        target_ref = commit or f"origin/{branch}"
+        yield _sse({"stage": "pull", "line": f"$ git reset --hard {target_ref}"})
+        rc4, reset_out, reset_err = await _run_git("reset", "--hard", target_ref)
+        for line in reset_out.splitlines():
+            if line.strip():
+                yield _sse({"stage": "pull", "line": line})
+        for line in reset_err.splitlines():
+            if line.strip():
+                yield _sse({"stage": "pull", "line": line})
+        if rc4 != 0:
+            await _do_rollback(original_branch, original_commit, project_root)
+            yield _sse({"stage": "error", "line": f"Reset 失败: {reset_err}"})
+            return
 
     uv = shutil.which("uv")
     if uv is None:
@@ -197,7 +273,7 @@ async def _execute_update(branch: str) -> AsyncIterator[str]:  # noqa: C901, PLR
         yield _sse({"stage": "sync", "line": line})
 
     yield _sse({"stage": "done", "line": "更新完成，即将重启..."})
-    logger.success("Git update to '{}' completed. Restarting...", branch)
+    logger.success("Git update to {} '{}' completed. Restarting...", ref_type, branch)
 
     from apeiria.utils.restart import graceful_restart
 
@@ -216,8 +292,16 @@ async def update_execute(request: Request) -> StreamingResponse:
     if not branch or not isinstance(branch, str):
         raise HTTPException(status_code=400, detail="缺少或无效的 'branch' 字段")
 
+    commit = body.get("commit")
+    if commit is not None and not isinstance(commit, str):
+        raise HTTPException(status_code=400, detail="无效的 'commit' 字段")
+
+    ref_type = body.get("type", "branch")
+    if ref_type not in ("branch", "tag"):
+        raise HTTPException(status_code=400, detail="'type' 必须是 'branch' 或 'tag'")
+
     return StreamingResponse(
-        _execute_update(branch),
+        _execute_update(branch, commit=commit, ref_type=ref_type),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",

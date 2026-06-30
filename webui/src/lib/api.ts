@@ -174,9 +174,12 @@ export const api = {
   },
   update: {
     status: () => request<UpdateStatusResponse>("GET", "/update/status"),
-    preview: (branch: string) =>
-      request<UpdatePreviewResponse>("GET", `/update/preview/${branch}`),
-    execute: (branch: string) => {
+    preview: (ref: string, type: string = "branch") =>
+      request<UpdatePreviewResponse>(
+        "GET",
+        `/update/preview/${ref}?type=${type}`,
+      ),
+    execute: (ref: string, commit?: string, type: string = "branch") => {
       const auth = useAuthStore();
       const headers: Record<string, string> = {
         "Content-Type": "application/json",
@@ -185,7 +188,7 @@ export const api = {
       return fetch(`${BASE}/update/execute`, {
         method: "POST",
         headers,
-        body: JSON.stringify({ branch }),
+        body: JSON.stringify({ branch: ref, commit: commit ?? undefined, type }),
       });
     },
   },
