@@ -1,14 +1,22 @@
 from __future__ import annotations
 
 from contextlib import suppress
+from typing import TYPE_CHECKING
 
-from nonebot import get_plugin_config
+import nonebot
+from arclet.alconna import Args, CommandMeta, Subcommand
+from nonebot import on_request, require
 from nonebot.adapters import Bot, Event  # noqa: TC002
 from nonebot.log import logger
-from nonebot.matcher import Matcher  # noqa: TC002
-from nonebot.plugin import PluginMetadata
-from nonebot.plugin.on import on_request
-from pydantic import BaseModel, ConfigDict
+from nonebot.permission import SUPERUSER
+from nonebot.plugin import PluginMetadata, on_message
+from nonebot.rule import Rule
+from nonebot_plugin_alconna import Alconna, MultiVar, on_alconna
+
+require("nonebot_plugin_uninfo")
+
+if TYPE_CHECKING:
+    from nonebot_plugin_uninfo import Uninfo
 
 from apeiria.plugin.metadata.api import (
     ConfigExtra,
@@ -18,110 +26,328 @@ from apeiria.plugin.metadata.api import (
     RegisterConfig,
     UiExtra,
 )
-from apeiria.utils.superuser import get_superuser_set
+from apeiria.utils.session import resolve_superuser_targets
 
+from .config import FriendshipConfig, get_friendship_config
+from .models import PendingRequest, RequestInfo
+from .pending import (
+    add_pending,
+    find_by_notified_msg,
+    get_pending,
+    load_all,
+    remove_pending,
+    update_notified,
+)
+from .providers import get_provider_by_key, resolve_provider
 
-class FriendshipConfig(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    enabled: bool = True
-
+TITLE_MAP = {"friend": "好友申请", "group_add": "加群申请", "group_invite": "入群邀请"}
+KIND_LABEL_MAP = {"friend": "好友", "group_add": "加群", "group_invite": "邀请"}
 
 __plugin_meta__ = PluginMetadata(
-    name="好友请求通知",
-    description="将好友请求和群邀请通知转发给超级用户。",
+    name="好友请求管理",
+    description="监听好友申请/入群申请/群邀请并通知超管，支持同意/拒绝操作。",
     homepage="https://github.com/Cccc-owo/apeiria_bot",
-    usage="收到好友申请或群邀请时自动转发给超级用户。",
+    usage=(
+        "自动转发请求通知给超级用户。\n"
+        "使用 /申请 查看待处理请求列表。\n"
+        "使用 /申请 同意 <id> [备注] 或 /申请 拒绝 <id> [理由] 处理请求。\n"
+        "也可直接回复通知消息发送「同意」或「拒绝」。"
+    ),
     type="application",
     config=FriendshipConfig,
-    supported_adapters=None,
+    supported_adapters={"~onebot.v11", "~satori", "~milky"},
     extra=PluginExtraData(
         author="apeiria",
-        version="0.1.0",
+        version="0.2.0",
         plugin_type=PluginType.NORMAL,
         help=HelpExtra(
             category="基础功能",
-            introduction="把好友申请和群邀请通知转发给超级用户。",
+            introduction=(
+                "自动转发好友申请/入群申请/群邀请给超级用户，"
+                "支持回复同意/拒绝或命令操作。"
+            ),
         ),
-        ui=UiExtra(label="好友请求通知", order=18),
+        ui=UiExtra(label="好友请求管理", order=18),
+        commands=["申请"],
         config=ConfigExtra(
             fields=[
                 RegisterConfig(
                     key="enabled",
                     default=True,
-                    help="是否启用好友请求通知。",
+                    help="是否启用好友请求通知和处理。",
                     type=bool,
                     label="启用",
                     order=10,
                 ),
+                RegisterConfig(
+                    key="notify_superusers",
+                    default=True,
+                    help="是否通知超级用户。",
+                    type=bool,
+                    label="通知超管",
+                    order=20,
+                ),
+                RegisterConfig(
+                    key="auto_approve",
+                    default=False,
+                    help="自动通过白名单用户的请求（尚未实现）。",
+                    type=bool,
+                    label="自动通过",
+                    order=30,
+                ),
             ]
         ),
+        required_plugins=[
+            "nonebot_plugin_alconna",
+            "nonebot_plugin_uninfo",
+            "nonebot_plugin_localstore",
+        ],
     ).to_dict(),
 )
 
-
-def _get_config() -> FriendshipConfig:
-    return get_plugin_config(FriendshipConfig)
-
-
-def _is_onebot_v11_request(bot: Bot, event: Event) -> bool:
-    with suppress(Exception):
-        adapter_name = bot.adapter.get_name().split(maxsplit=1)[0].lower()
-        if adapter_name != "onebotv11":
-            return False
-    with suppress(Exception):
-        return event.get_type() == "request"
-    return False
-
-
 _request = on_request(priority=2, block=False)
+
+_apply = on_alconna(
+    Alconna(
+        "申请",
+        Subcommand(
+            "同意",
+            Args["id", str],
+            Args["remark?", MultiVar(str, "*")],
+            alias=["approve"],
+        ),
+        Subcommand(
+            "拒绝",
+            Args["id", str],
+            Args["reason?", MultiVar(str, "*")],
+            alias=["reject"],
+        ),
+        meta=CommandMeta(description="管理好友/群请求"),
+    ),
+    aliases={"requests"},
+    use_cmd_start=True,
+    priority=2,
+    block=True,
+)
+
+
+async def _reply_rule(bot: Bot, event: Event) -> bool:
+    if not await SUPERUSER(bot, event):
+        return False
+    reply = getattr(event, "reply", None)
+    if reply is None:
+        return False
+    replied_id = str(getattr(reply, "message_id", ""))
+    if not replied_id:
+        return False
+    return await find_by_notified_msg(replied_id) is not None
+
+
+_reply_handler = on_message(
+    Rule(_reply_rule),
+    priority=2,
+    block=True,
+)
 
 
 @_request.handle()
-async def handle_request(bot: Bot, event: Event, matcher: Matcher) -> None:  # noqa: ARG001
-    config = _get_config()
+async def handle_request(
+    bot: Bot,
+    event: Event,
+    session: Uninfo,
+) -> None:
+    config = get_friendship_config()
     if not config.enabled:
         return
 
-    if not _is_onebot_v11_request(bot, event):
+    provider = resolve_provider(bot, event)
+    if provider is None:
         return
 
-    request_type = getattr(event, "request_type", None)
-    user_id = getattr(event, "user_id", None)
-    comment = getattr(event, "comment", "") or ""
-    group_id = getattr(event, "group_id", None)
-    flag = getattr(event, "flag", None)
-    sub_type = getattr(event, "sub_type", None)
+    info = provider.extract(bot, event)
+    if info is None:
+        return
 
-    if request_type == "friend":
-        title = "好友申请"
-        detail = f"用户 {user_id} 申请添加好友"
-        if comment:
-            detail += f"\n留言: {comment}"
-        detail += f"\nflag: {flag}"
-    elif request_type == "group" and sub_type == "invite":
-        title = "入群邀请"
-        detail = f"用户 {user_id} 邀请机器人加入群 {group_id}"
-        detail += f"\nflag: {flag}"
-    elif request_type == "group" and sub_type == "add":
-        title = "加群申请"
-        detail = f"用户 {user_id} 申请加入群 {group_id}"
-        if comment:
-            detail += f"\n留言: {comment}"
-        detail += f"\nflag: {flag}"
+    try:
+        nick = session.user.nick or session.user.name or info.requester_id
+    except Exception:  # noqa: BLE001
+        nick = info.requester_id
+
+    pending = PendingRequest(
+        id="",
+        provider_key=provider.key,
+        bot_self_id=bot.self_id,
+        scope=str(session.scope),
+        raw_flag=info.raw_flag,
+        kind=info.kind,
+        requester_id=info.requester_id,
+        requester_name=nick,
+        comment=info.comment,
+        sub_type=info.sub_type,
+        group_id=info.group_id,
+        group_name=info.group_name,
+    )
+
+    await add_pending(pending)
+    logger.info(
+        "saved pending request {} ({}/{})",
+        pending.id,
+        info.kind,
+        info.requester_id,
+    )
+
+    if config.notify_superusers:
+        targets = resolve_superuser_targets(bot)
+        if not targets:
+            logger.warning("no same-platform superusers to notify for {}", info.kind)
+            return
+
+        title = TITLE_MAP[info.kind]
+        msg = format_notification(info, pending.id, title)
+
+        for target_id in targets:
+            try:
+                await bot.send_private_msg(user_id=int(target_id), message=msg)
+                await update_notified(pending.id, target_id, "")
+            except Exception:  # noqa: BLE001
+                pass
+
+
+@_apply.handle()
+async def handle_apply(  # noqa: C901, PLR0912
+    bot: Bot,
+    event: Event,
+) -> None:
+    config = get_friendship_config()
+    if not config.enabled:
+        await _apply.finish("好友请求管理已禁用")
+
+    if not await SUPERUSER(bot, event):
+        await _apply.finish("仅限超级用户使用")
+
+    sub_result = _apply.get_subcommand(event)
+    if sub_result is None:
+        pending_list = await load_all()
+        pending_list = [r for r in pending_list if r.status == "pending"]
+        if not pending_list:
+            await _apply.finish("暂无待处理请求")
+        lines = []
+        for r in pending_list:
+            kind_label = KIND_LABEL_MAP[r.kind]
+            scope_str = r.scope.replace("QQClient", "QQ")
+            lines.append(
+                f"[{r.id}] {kind_label}"
+                f" — {r.requester_name}({r.requester_id})"
+                f" | {scope_str}"
+                + (f" | 群:{r.group_id}" if r.group_id else "")
+                + (f" | {r.comment}" if r.comment else "")
+            )
+        suffix = "\n回复「同意/拒绝」<id> 或使用 /申请 同意/拒绝 <id>"
+        await _apply.finish("待处理请求:\n" + "\n".join(lines) + suffix)
+
+    sub_name = sub_result.name
+    args = sub_result.args
+
+    request_id = args.get("id", "").strip() if isinstance(args, dict) else ""
+    if not request_id:
+        await _apply.finish("请指定请求 ID，如 /申请 同意 f1")
+
+    pending = await get_pending(request_id)
+    if pending is None:
+        await _apply.finish(f"未找到请求: {request_id}")
+    if pending.status != "pending":
+        await _apply.finish(f"请求 {request_id} 已处理（{pending.status}）")
+
+    provider = get_provider_by_key(pending.provider_key)
+    if provider is None:
+        await _apply.finish(f"不支持的请求来源: {pending.provider_key}")
+
+    target_bot = nonebot.get_bot(pending.bot_self_id)
+    if target_bot is None:
+        await _apply.finish(f"目标 bot {pending.bot_self_id} 不在线")
+
+    if sub_name in ("同意", "approve"):
+        remark = " ".join(args.get("remark", [])) if "remark" in (args or {}) else ""
+        result = await provider.approve(target_bot, pending, remark=remark)
+    elif sub_name in ("拒绝", "reject"):
+        reason = " ".join(args.get("reason", [])) if "reason" in (args or {}) else ""
+        result = await provider.reject(target_bot, pending, reason=reason)
     else:
-        return
+        await _apply.finish("未知操作")
 
-    message = f"【{title}通知】\n{detail}"
-    logger.info("收到{}: {}", title, detail)
-
-    superusers = get_superuser_set()
-    if not superusers:
-        logger.warning("无超级用户配置，无法转发请求通知")
-        return
-
-    for superuser_id in superusers:
+    if result.success:
         with suppress(Exception):
-            await bot.send_private_msg(user_id=int(superuser_id), message=message)
+            await remove_pending(request_id)
+        await _apply.finish(f"已完成: {sub_name} {request_id}")
+    else:
+        await _apply.finish(f"操作失败: {result.message}")
 
 
-__all__ = ["_request", "handle_request"]
+@_reply_handler.handle()
+async def handle_reply_action(
+    bot: Bot,
+    event: Event,
+) -> None:
+    if not await SUPERUSER(bot, event):
+        return
+
+    reply = getattr(event, "reply", None)
+    if reply is None:
+        return
+    replied_msg_id = str(getattr(reply, "message_id", ""))
+    pending = await find_by_notified_msg(replied_msg_id)
+    if pending is None:
+        return
+
+    text = ""
+    with suppress(Exception):
+        text = event.get_plaintext().strip().lower()
+
+    keywords_agree = {"同意", "approve", "yes", "通过", "ok"}
+    keywords_reject = {"拒绝", "reject", "no", "驳回"}
+
+    target_bot = nonebot.get_bot(pending.bot_self_id)
+    if target_bot is None:
+        await _reply_handler.finish("目标 bot 不在线")
+
+    provider = get_provider_by_key(pending.provider_key)
+    if provider is None:
+        await _reply_handler.finish("不支持的请求来源")
+
+    if text in keywords_agree:
+        result = await provider.approve(target_bot, pending)
+    elif text in keywords_reject:
+        result = await provider.reject(target_bot, pending)
+    else:
+        await _reply_handler.finish("回复通知消息「同意」或「拒绝」来处理请求")
+        return
+
+    if result.success:
+        with suppress(Exception):
+            await remove_pending(pending.id)
+        await _reply_handler.finish(
+            f"已{'同意' if text in keywords_agree else '拒绝'} {pending.id}"
+        )
+    else:
+        await _reply_handler.finish(f"操作失败: {result.message}")
+
+
+def format_notification(
+    info: RequestInfo,
+    pending_id: str,
+    title: str,
+) -> str:
+    msg = f"【{title}】\n"
+    msg += f"ID: {pending_id}\n"
+    msg += f"用户: {info.requester_name}({info.requester_id})\n"
+    if info.group_id:
+        group_label = info.group_name or info.group_id
+        msg += f"群: {group_label}\n"
+    if info.comment:
+        msg += f"留言: {info.comment}\n"
+    msg += f"平台: {info.platform}\n"
+    msg += "\n回复本消息「同意」或「拒绝」来处理此请求"
+    return msg
+
+
+__all__ = ["_apply", "_reply_handler", "_request"]
