@@ -5,7 +5,7 @@ WORKDIR /webui
 
 RUN npm install -g pnpm
 
-COPY webui/package.json webui/pnpm-lock.yaml ./
+COPY webui/package.json webui/pnpm-lock.yaml webui/pnpm-workspace.yaml ./
 RUN pnpm install --frozen-lockfile
 
 COPY webui/ ./
