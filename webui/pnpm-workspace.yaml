@@ -1,5 +1,7 @@
 onlyBuiltDependencies:
   - vue-demi
+allowBuilds:
+  vue-demi: true
 minimumReleaseAgeExclude:
   - js-yaml@5.2.0
   - eslint@10.6.0
