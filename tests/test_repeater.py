@@ -45,6 +45,15 @@ def test_probability_zero_never_triggers() -> None:
     assert svc.evaluate("g", "h", "msg", "u2", config=cfg) is None
 
 
+def test_already_triggered_in_round_does_not_repeat() -> None:
+    svc = _svc()
+    cfg = _cfg(probability=1.0, repeat_threshold=2)
+    assert svc.evaluate("g", "h", "msg", "u1", config=cfg) is None
+    assert svc.evaluate("g", "h", "msg", "u2", config=cfg) == "msg"
+    assert svc.evaluate("g", "h", "msg", "u3", config=cfg) is None
+    assert svc.evaluate("g", "h", "msg", "u4", config=cfg) is None
+
+
 def test_cooldown_blocks_repeat() -> None:
     svc = _svc()
     cfg = _cfg(cooldown_seconds=10**9, repeat_threshold=2)
