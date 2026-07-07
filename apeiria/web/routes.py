@@ -270,12 +270,14 @@ async def api_config_schema(section: str) -> JSONResponse:
 
 @router.put("/config/nonebot")
 async def api_config_nonebot(data: dict) -> JSONResponse:
-    immutable = {"driver"}
-    if blocked := immutable & data.keys():
-        raise HTTPException(
-            status_code=422,
-            detail=f"Cannot modify protected config: {', '.join(sorted(blocked))}",
-        )
+    if "driver" in data:
+        current = load_config("data/config.yaml").nonebot.driver
+        if data["driver"] != current:
+            raise HTTPException(
+                status_code=422,
+                detail="Cannot modify protected config: driver",
+            )
+        data.pop("driver")
     _patch_config("nonebot", data)
     return JSONResponse(content={"ok": True})
 
