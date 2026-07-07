@@ -172,3 +172,49 @@ def test_patch_config_replaces_non_dict_section(tmp_path, monkeypatch) -> None:
     _patch_config("nonebot", {"host": "x"})
     raw = yaml.safe_load(cfg.read_text(encoding="utf-8"))
     assert raw["nonebot"] == {"host": "x"}
+
+
+# --------------------------------------------------------------------------
+# api_config_nonebot driver protection
+# --------------------------------------------------------------------------
+
+
+async def test_config_nonebot_driver_unchanged_ok(tmp_path, monkeypatch) -> None:
+    import yaml
+
+    from apeiria.web.routes import api_config_nonebot
+
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "data").mkdir()
+    cfg = tmp_path / "data" / "config.yaml"
+    driver = "~fastapi+~httpx+~websockets"
+    cfg.write_text(
+        yaml.dump({"nonebot": {"driver": driver, "host": "127.0.0.1"}}),
+        encoding="utf-8",
+    )
+
+    resp = await api_config_nonebot({"driver": driver, "host": "0.0.0.0"})
+    assert resp.status_code == 200
+    raw = yaml.safe_load(cfg.read_text(encoding="utf-8"))
+    assert raw["nonebot"]["host"] == "0.0.0.0"
+    assert raw["nonebot"]["driver"] == driver
+
+
+async def test_config_nonebot_driver_changed_blocked(tmp_path, monkeypatch) -> None:
+    import yaml
+    from fastapi import HTTPException
+
+    from apeiria.web.routes import api_config_nonebot
+
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "data").mkdir()
+    cfg = tmp_path / "data" / "config.yaml"
+    cfg.write_text(
+        yaml.dump({"nonebot": {"driver": "~fastapi+~httpx+~websockets"}}),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        await api_config_nonebot({"driver": "~aiohttp"})
+    assert exc.value.status_code == 422
+    assert "driver" in exc.value.detail
