@@ -54,13 +54,16 @@ def _default_venv_site_packages() -> Path | None:
     return None
 
 
-def _top_module_from_record(files: object, dist_name: str) -> str | None:
-    if not files:
+def _top_module_from_record(record_text: str | None, dist_name: str) -> str | None:
+    if not record_text:
         return None
     normalized = _normalize_dist_name(dist_name)
     fallback: str | None = None
-    for file in files:
-        parts = str(file).split("/")
+    for line in record_text.splitlines():
+        entry = line.split(",", 1)[0].strip()
+        if not entry:
+            continue
+        parts = entry.split("/")
         if len(parts) < _MIN_RECORD_PARTS:
             continue
         top = parts[0]
@@ -90,7 +93,7 @@ def _top_module_from_distinfo(dist_name: str, site_packages: Path) -> str | None
                     stripped = line.strip()
                     if stripped:
                         return stripped
-            return _top_module_from_record(dist.files, dist_name)
+            return _top_module_from_record(dist.read_text("RECORD"), dist_name)
     except (md.PackageNotFoundError, OSError):
         return None
     return None

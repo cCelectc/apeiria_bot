@@ -83,3 +83,69 @@ def test_manifest_module_candidate_by_source() -> None:
         source="local",
     )
     assert manifest_module_candidate(local) == "myplugin"
+
+
+def test_resolve_pypi_module_prefers_config_module() -> None:
+    from apeiria.plugin.scanner import resolve_pypi_module
+
+    assert (
+        resolve_pypi_module("nonebot-plugin-genshinuid", config_module="GenshinUID")
+        == "GenshinUID"
+    )
+
+
+def _write_distinfo(
+    site_packages, dist_name: str, *, top_level: str | None, record: str | None
+) -> None:
+    dist_dir = site_packages / f"{dist_name.replace('-', '_')}-1.0.dist-info"
+    dist_dir.mkdir(parents=True)
+    (dist_dir / "METADATA").write_text(
+        f"Metadata-Version: 2.1\nName: {dist_name}\nVersion: 1.0\n",
+        encoding="utf-8",
+    )
+    if top_level is not None:
+        (dist_dir / "top_level.txt").write_text(top_level, encoding="utf-8")
+    if record is not None:
+        (dist_dir / "RECORD").write_text(record, encoding="utf-8")
+
+
+def test_resolve_pypi_module_from_distinfo(tmp_path) -> None:
+    from apeiria.plugin.scanner import resolve_pypi_module
+
+    _write_distinfo(tmp_path, "demo-pkg", top_level="RealModule\n", record=None)
+    assert (
+        resolve_pypi_module("demo-pkg>=1.0", venv_site_packages=tmp_path)
+        == "RealModule"
+    )
+
+
+def test_resolve_pypi_module_fallback(tmp_path) -> None:
+    from apeiria.plugin.scanner import resolve_pypi_module
+
+    assert (
+        resolve_pypi_module("nonebot-plugin-status", venv_site_packages=tmp_path)
+        == "nonebot_plugin_status"
+    )
+
+
+def test_resolve_pypi_module_distinfo_empty_toplevel(tmp_path) -> None:
+    from apeiria.plugin.scanner import resolve_pypi_module
+
+    record = (
+        "GenshinUID/__init__.py,sha256=abc,100\n"
+        "GenshinUID/client.py,sha256=def,200\n"
+        "nonebot_plugin_genshinuid-1.0.dist-info/METADATA,,\n"
+        "nonebot_plugin_genshinuid-1.0.dist-info/RECORD,,\n"
+    )
+    _write_distinfo(
+        tmp_path,
+        "nonebot-plugin-genshinuid",
+        top_level="",
+        record=record,
+    )
+    assert (
+        resolve_pypi_module(
+            "nonebot-plugin-genshinuid>=5.0.0", venv_site_packages=tmp_path
+        )
+        == "GenshinUID"
+    )
