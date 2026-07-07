@@ -218,3 +218,30 @@ async def test_config_nonebot_driver_changed_blocked(tmp_path, monkeypatch) -> N
         await api_config_nonebot({"driver": "~aiohttp"})
     assert exc.value.status_code == 422
     assert "driver" in exc.value.detail
+
+
+# --------------------------------------------------------------------------
+# _scanned_name_to_module
+# --------------------------------------------------------------------------
+
+
+def test_scanned_name_to_module_maps_display_name(tmp_path, monkeypatch) -> None:
+    import yaml
+
+    from apeiria.web.routes import _scanned_name_to_module
+
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / ".apeiria").mkdir()
+    (tmp_path / ".apeiria" / "plugins.yaml").write_text(
+        yaml.dump(
+            {
+                "dirs": [],
+                "packages": {"链接分享解析 Alconna 版": "nonebot-plugin-parser"},
+                "states": {},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    assert _scanned_name_to_module("链接分享解析 Alconna 版") == "nonebot_plugin_parser"
+    assert _scanned_name_to_module("不存在的插件") is None

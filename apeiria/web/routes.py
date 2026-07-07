@@ -39,6 +39,15 @@ def _write_yaml(raw: dict) -> None:
     )
 
 
+def _scanned_name_to_module(name: str) -> str | None:
+    from apeiria.plugin.scanner import manifest_module_candidate, scan_plugins
+
+    for manifest in scan_plugins():
+        if manifest.name == name:
+            return manifest_module_candidate(manifest)
+    return None
+
+
 @router.get("/plugins/list")
 async def api_plugins_list() -> JSONResponse:
     import nonebot
@@ -136,6 +145,11 @@ async def api_plugins_state(data: dict) -> JSONResponse:
 @router.get("/plugins/{name}/config")
 async def api_plugin_config(name: str) -> JSONResponse:
     contract = resolve_config_namespace_contract(name)
+
+    if contract.source == "none" and not contract.fields:
+        module = _scanned_name_to_module(name)
+        if module is not None and module != name:
+            contract = resolve_config_namespace_contract(module)
 
     if contract.source == "none" and not contract.fields:
         raise HTTPException(status_code=404, detail="No config for this plugin")
