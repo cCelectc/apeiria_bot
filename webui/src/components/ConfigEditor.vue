@@ -1,14 +1,17 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
 import { dump, load } from "js-yaml";
+import { useI18n } from "vue-i18n";
 import { toast } from "vue-sonner";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { deepEqual } from "@/lib/configDiff";
+import { deepEqual, topLevelChangedKeys } from "@/lib/configDiff";
 import type { ConfigContract, FieldNode } from "@/types";
 import FormRenderer from "./FormRenderer.vue";
 import MonacoEditor from "./MonacoEditor.vue";
 import UnsavedChangesDialog from "./UnsavedChangesDialog.vue";
+
+const { t } = useI18n();
 
 const props = defineProps<{
   schema: ConfigContract;
@@ -88,10 +91,10 @@ function switchMode(newMode: "form" | "code") {
         data.value = parsed as Record<string, unknown>;
         mode.value = "form";
       } else {
-        toast.error("YAML 内容必须是映射对象");
+        toast.error(t("config.yamlMapError"));
       }
     } catch (e) {
-      toast.error(`YAML 语法错误: ${(e as Error).message}`);
+      toast.error(`${t("config.yamlError")}: ${(e as Error).message}`);
     }
   }
 }
@@ -133,12 +136,12 @@ async function doSave(): Promise<boolean> {
     try {
       const parsed = load(yamlRaw.value);
       if (typeof parsed !== "object" || parsed === null) {
-        toast.error("YAML 内容必须是映射对象");
+        toast.error(t("config.yamlMapError"));
         return false;
       }
       submitData = parsed as Record<string, unknown>;
     } catch (e) {
-      toast.error(`YAML 解析失败: ${(e as Error).message}`);
+      toast.error(`${t("config.yamlParseError")}: ${(e as Error).message}`);
       return false;
     }
   } else {
@@ -147,14 +150,29 @@ async function doSave(): Promise<boolean> {
 
   saving.value = true;
   try {
-    await props.saveMutation(submitData);
-    toast.success("配置已保存");
+    let payload: Record<string, unknown> = submitData;
+    if (props.section === "nonebot") {
+      payload = topLevelChangedKeys(
+        baseline.value,
+        submitData,
+        props.schema.fields,
+      );
+      if (Object.keys(payload).length === 0) {
+        toast.success(t("config.saved"));
+        data.value = clone(submitData);
+        baseline.value = clone(submitData);
+        emit("update:modelValue", submitData);
+        return true;
+      }
+    }
+    await props.saveMutation(payload);
+    toast.success(t("config.saved"));
     data.value = clone(submitData);
     baseline.value = clone(submitData);
     emit("update:modelValue", submitData);
     return true;
   } catch (e) {
-    toast.error(`保存失败: ${(e as Error).message}`);
+    toast.error(`${t("config.saveFailed")}: ${(e as Error).message}`);
     return false;
   } finally {
     saving.value = false;

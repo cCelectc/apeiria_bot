@@ -91,6 +91,22 @@ export function flattenDiff(
   return out;
 }
 
+export function topLevelChangedKeys(
+  baseline: Record<string, unknown>,
+  current: Record<string, unknown>,
+  fields: FieldNode[],
+): Record<string, unknown> {
+  const immutable = new Set(fields.filter((f) => f.immutable).map((f) => f.key));
+  const result: Record<string, unknown> = {};
+  for (const key of Object.keys(current)) {
+    if (immutable.has(key)) continue;
+    if (!deepEqual(baseline[key], current[key])) {
+      result[key] = current[key];
+    }
+  }
+  return result;
+}
+
 export type LineDiffKind = "same" | "add" | "del";
 
 export interface LineDiffEntry {
