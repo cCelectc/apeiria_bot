@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 import type { FieldNode } from "@/types";
-import { deepEqual, flattenDiff, lineDiff } from "../configDiff";
+import {
+  deepEqual,
+  flattenDiff,
+  lineDiff,
+  topLevelChangedKeys,
+} from "../configDiff";
 
 describe("deepEqual", () => {
   it("ignores object key order", () => {
@@ -75,5 +80,40 @@ describe("lineDiff", () => {
       { kind: "same", text: "a" },
       { kind: "add", text: "b" },
     ]);
+  });
+});
+
+const driverField = {
+  kind: "primitive",
+  key: "driver",
+  label: "驱动",
+  description: "",
+  type: "str",
+  default: "",
+  required: false,
+  secret: false,
+  order: 0,
+  immutable: true,
+} as unknown as FieldNode;
+
+describe("topLevelChangedKeys", () => {
+  it("returns only changed non-immutable keys", () => {
+    const baseline = { driver: "d", host: "127.0.0.1", port: 8080 };
+    const current = { driver: "d", host: "0.0.0.0", port: 8080 };
+    expect(
+      topLevelChangedKeys(baseline, current, [driverField, portField]),
+    ).toEqual({ host: "0.0.0.0" });
+  });
+  it("excludes immutable keys even when changed", () => {
+    const baseline = { driver: "d", host: "127.0.0.1" };
+    const current = { driver: "changed", host: "127.0.0.1" };
+    const result = topLevelChangedKeys(baseline, current, [driverField]);
+    expect(result).not.toHaveProperty("driver");
+    expect(result).toEqual({});
+  });
+  it("returns empty object when nothing changed", () => {
+    const baseline = { driver: "d", host: "127.0.0.1" };
+    const current = { driver: "d", host: "127.0.0.1" };
+    expect(topLevelChangedKeys(baseline, current, [driverField])).toEqual({});
   });
 });
