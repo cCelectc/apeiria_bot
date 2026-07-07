@@ -85,7 +85,7 @@ export const api = {
     config: (name: string) =>
       request<ConfigContract & { values: Record<string, unknown> }>(
         "GET",
-        `/plugins/${name}/config`,
+        `/plugins/${encodeURIComponent(name)}/config`,
       ),
   },
   adapters: {
@@ -99,7 +99,7 @@ export const api = {
     config: (name: string) =>
       request<ConfigContract & { values: Record<string, unknown> }>(
         "GET",
-        `/adapters/${name}/config`,
+        `/adapters/${encodeURIComponent(name)}/config`,
       ),
   },
   config: {
