@@ -50,10 +50,19 @@ _relay = on_alconna(
 )
 
 
+def _prune_rates(now: float, window: float) -> None:
+    for uid, history in list(_rates.items()):
+        while history and now - history[0] > window:
+            history.popleft()
+        if not history:
+            del _rates[uid]
+
+
 def _rate_check(user_id: str, count: int, window: float) -> bool:
     if count <= 0:
         return True
     now = monotonic()
+    _prune_rates(now, window)
     history = _rates.get(user_id)
     if history is None:
         history = deque[float]()
