@@ -182,3 +182,48 @@ def test_build_menu_data_hides_builtin_for_normal_user() -> None:
     data = _build_menu_data(plugins, prefix="/", config=config, is_superuser=False)
     assert len(data["groups"]) == 1
     assert data["groups"][0]["label"] == "功能"
+
+
+def test_apply_admin_filter_superuser_passthrough() -> None:
+    from apeiria.builtin_plugins.help.models import HelpCommandItem
+    from apeiria.builtin_plugins.help.probe import _apply_admin_filter
+
+    cmds = [
+        HelpCommandItem(name="admin", admin_only=True),
+        HelpCommandItem(name="normal"),
+    ]
+    result = _apply_admin_filter(cmds, is_superuser=True)
+    assert result == cmds
+    assert any(c.admin_only for c in result)
+
+
+def test_apply_admin_filter_hides_admin_for_normal() -> None:
+    from apeiria.builtin_plugins.help.models import HelpCommandItem
+    from apeiria.builtin_plugins.help.probe import _apply_admin_filter
+
+    cmds = [
+        HelpCommandItem(name="admin", admin_only=True),
+        HelpCommandItem(name="normal"),
+    ]
+    result = _apply_admin_filter(cmds, is_superuser=False)
+    assert result is not None
+    assert len(result) == 1
+    assert result[0].name == "normal"
+    assert not any(c.admin_only for c in result)
+
+
+def test_apply_admin_filter_all_admin_returns_none() -> None:
+    from apeiria.builtin_plugins.help.models import HelpCommandItem
+    from apeiria.builtin_plugins.help.probe import _apply_admin_filter
+
+    cmds = [
+        HelpCommandItem(name="a", admin_only=True),
+        HelpCommandItem(name="b", admin_only=True),
+    ]
+    assert _apply_admin_filter(cmds, is_superuser=False) is None
+
+
+def test_apply_admin_filter_empty_returns_empty() -> None:
+    from apeiria.builtin_plugins.help.probe import _apply_admin_filter
+
+    assert _apply_admin_filter([], is_superuser=False) == []
