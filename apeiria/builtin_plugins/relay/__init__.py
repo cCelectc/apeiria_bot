@@ -4,7 +4,7 @@ from collections import deque
 from contextlib import suppress
 from time import monotonic
 
-from arclet.alconna import Args, CommandMeta
+from arclet.alconna import AllParam, Args, CommandMeta
 from nonebot import require
 from nonebot.adapters import Bot  # noqa: TC002
 from nonebot.log import logger
@@ -12,7 +12,6 @@ from nonebot.plugin import PluginMetadata, inherit_supported_adapters
 from nonebot_plugin_alconna import (
     Alconna,
     Match,
-    MultiVar,
     Target,
     UniMessage,
     on_alconna,
@@ -42,7 +41,7 @@ _rates: dict[str, deque[float]] = {}
 _relay = on_alconna(
     Alconna(
         "传话",
-        Args["message", MultiVar(str, "*")],
+        Args["message?", AllParam],
         meta=CommandMeta(description="向指定目标发送单向消息"),
     ),
     use_cmd_start=True,
@@ -99,14 +98,11 @@ def _build_source_line(session: Uninfo) -> str:
 async def handle_relay(
     bot: Bot,
     session: Uninfo,
-    message: Match[tuple[str, ...]],
+    message: Match[UniMessage],
 ) -> None:
     config = get_relay_config()
 
-    if not message.available:
-        await _relay.finish("请在 /传话 后写上要留言的内容。")
-        return
-    body = " ".join(message.result).strip()
+    body = message.result.strip() if message.available else UniMessage()
     if not body:
         await _relay.finish("请在 /传话 后写上要留言的内容。")
         return
@@ -147,10 +143,11 @@ async def handle_relay(
         await UniMessage.text(full_msg).send(
             target=Target(id=target_id, private=True, scope=target_scope)
         )
-        await _relay.finish("已发送留言。")
     except Exception as exc:  # noqa: BLE001
         logger.warning("relay delivery failed: {}", exc)
         await _relay.finish("留言发送失败，请稍后再试。")
+    else:
+        await _relay.finish("已发送留言。")
 
 
 __all__ = ["_relay", "handle_relay"]
