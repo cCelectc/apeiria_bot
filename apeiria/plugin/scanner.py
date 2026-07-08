@@ -115,6 +115,26 @@ def resolve_pypi_module(
     return requirement_to_module(requirement)
 
 
+def read_installed_version(requirement: str) -> str | None:
+    import importlib.metadata as md
+
+    dist_name = _requirement_base_name(requirement)
+    site_packages = _default_venv_site_packages()
+    if site_packages is None:
+        return None
+    normalized = _normalize_dist_name(dist_name)
+    try:
+        for dist in md.distributions(path=[str(site_packages)]):
+            meta_name = dist.metadata["Name"] if dist.metadata else None
+            if meta_name is None:
+                continue
+            if _normalize_dist_name(meta_name) == normalized:
+                return dist.version
+    except (md.PackageNotFoundError, OSError):
+        return None
+    return None
+
+
 def manifest_module_candidate(manifest: PluginManifest) -> str:
     if manifest.source == "pypi":
         return resolve_pypi_module(manifest.path_or_module, manifest.config_module)
