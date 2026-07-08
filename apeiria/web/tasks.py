@@ -22,11 +22,14 @@ class TaskRunner:
         module_name: str | None = None,
         uninstall: bool = False,
         keep_config: bool = False,
+        update: bool = False,
     ) -> str:
         task_id = uuid.uuid4().hex
         queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
         self._queues[task_id] = queue
-        if uninstall:
+        if update:
+            coro = self._do_update(queue, kind, name, pkg_requirement)
+        elif uninstall:
             coro = self._do_uninstall(queue, kind, name, keep_config=keep_config)
         else:
             coro = self._do_install(queue, kind, name, pkg_requirement, module_name)
@@ -211,6 +214,57 @@ class TaskRunner:
                 "ok": True,
                 "name": name,
                 "message": f"{name} 卸载完成",
+            }
+        )
+
+    async def _do_update(
+        self,
+        queue: asyncio.Queue[dict[str, Any]],
+        kind: str,
+        name: str,
+        pkg_requirement: str,
+    ) -> None:
+        uv = shutil.which("uv")
+        if uv is None:
+            await queue.put({"type": "error", "ok": False, "message": "uv not found"})
+            return
+
+        await self._emit(queue, "output", f"> uv add {pkg_requirement}")
+        rc = await self._run_subprocess(queue, uv, "add", pkg_requirement)
+        if rc != 0:
+            await queue.put(
+                {"type": "error", "ok": False, "message": f"uv add 返回码: {rc}"}
+            )
+            return
+
+        if kind == "plugin":
+            from apeiria.env.sync import sync_apeiria_env
+            from apeiria.plugin.manager import _read_plugins_yaml, _write_plugins_yaml
+
+            data = _read_plugins_yaml()
+            data.setdefault("packages", {})[name] = pkg_requirement
+            _write_plugins_yaml(data)
+            await self._emit(queue, "output", "> uv sync")
+            sync_apeiria_env()
+        elif kind == "adapter":
+            from apeiria.env.sync import sync_apeiria_env
+            from apeiria.plugin.adapter_manager import (
+                _read_adapters_yaml,
+                _write_adapters_yaml,
+            )
+
+            data = _read_adapters_yaml()
+            data.setdefault("packages", {})[name] = pkg_requirement
+            _write_adapters_yaml(data)
+            await self._emit(queue, "output", "> uv sync")
+            sync_apeiria_env()
+
+        await queue.put(
+            {
+                "type": "done",
+                "ok": True,
+                "name": name,
+                "message": f"{name} 更新完成",
             }
         )
 
