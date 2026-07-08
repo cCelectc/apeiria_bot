@@ -199,6 +199,19 @@ def _extract_rule_commands(rule: Any) -> list[str]:
     return result
 
 
+def _apply_admin_filter(
+    commands: list[HelpCommandItem],
+    *,
+    is_superuser: bool,
+) -> list[HelpCommandItem] | None:
+    if is_superuser:
+        return commands
+    visible = [c for c in commands if not c.admin_only]
+    if commands and not visible:
+        return None
+    return visible
+
+
 def discover_plugins(
     config: HelpConfig,
     *,
@@ -231,6 +244,10 @@ def discover_plugins(
         icon_url = _find_icon(plugin)
         commands = probe_commands(plugin)
 
+        filtered = _apply_admin_filter(commands, is_superuser=is_superuser)
+        if filtered is None:
+            continue
+
         result.append(
             HelpPluginItem(
                 plugin_id=plugin.id_,
@@ -241,7 +258,7 @@ def discover_plugins(
                 plugin_type=getattr(meta, "type", "application") or "application",
                 source=source,
                 icon_url=icon_url,
-                commands=commands,
+                commands=filtered,
             )
         )
 
