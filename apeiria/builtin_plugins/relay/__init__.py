@@ -94,6 +94,18 @@ def _build_source_line(session: Uninfo) -> str:
     return f"来自用户 {user_display}"
 
 
+async def _deliver_to_targets(content: UniMessage, targets: list[Target]) -> bool:
+    any_success = False
+    for target in targets:
+        try:
+            await content.send(target=target)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("relay delivery failed: {}", exc)
+        else:
+            any_success = True
+    return any_success
+
+
 @_relay.handle()
 async def handle_relay(
     bot: Bot,
@@ -114,40 +126,33 @@ async def handle_relay(
         await _relay.finish("传话太快了，请稍后再试。")
         return
 
-    target_scope: str | None = None
-    target_id: str | None = None
-
+    targets: list[Target]
     if config.target:
         parsed = _parse_target(config.target)
         if parsed is None:
             await _relay.finish("目标配置格式有误，格式应为 scope:id。")
             return
         target_scope, target_id = parsed
+        targets = [Target(id=target_id, private=True, scope=target_scope)]
     else:
-        targets = resolve_superuser_targets(bot)
-        if not targets:
+        superusers = resolve_superuser_targets(bot)
+        if not superusers:
             await _relay.finish("无可用目标，请检查超管配置。")
             return
-        target_id = targets[0]
-        target_scope = str(session.scope)
+        scope = str(session.scope)
+        targets = [Target(id=uid, private=True, scope=scope) for uid in superusers]
 
     source_line = _build_source_line(session)
     prefix = config.message_prefix
-    full_msg = f"{source_line} 留言:\n{body}"
+    content = UniMessage.text(f"{source_line} 留言:\n") + body
     if prefix:
-        full_msg = f"{prefix}\n\n{full_msg}"
+        content = UniMessage.text(f"{prefix}\n\n") + content
 
-    _rate_push(user_id)
-
-    try:
-        await UniMessage.text(full_msg).send(
-            target=Target(id=target_id, private=True, scope=target_scope)
-        )
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("relay delivery failed: {}", exc)
-        await _relay.finish("留言发送失败，请稍后再试。")
-    else:
+    if await _deliver_to_targets(content, targets):
+        _rate_push(user_id)
         await _relay.finish("已发送留言。")
+    else:
+        await _relay.finish("留言发送失败，请稍后再试。")
 
 
 __all__ = ["_relay", "handle_relay"]
