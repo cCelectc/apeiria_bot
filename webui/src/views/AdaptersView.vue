@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { reactive, ref, computed } from "vue";
+import { reactive, ref, computed, watch } from "vue";
 import { useI18n } from "vue-i18n";
-import { Plus, Settings2, Trash2, X } from "@lucide/vue";
+import { ArrowUpCircle, Plus, RefreshCw, Settings2, Trash2, X } from "@lucide/vue";
 import { toast } from "vue-sonner";
 import ConfigEditor from "@/components/ConfigEditor.vue";
 import ErrorState from "@/components/ErrorState.vue";
@@ -20,6 +20,13 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import {
   Table,
@@ -33,15 +40,25 @@ import {
   useAdapterConfigQuery,
   useAdapterMutations,
   useAdaptersQuery,
+  useAdapterVersionsQuery,
   useSaveAdapterConfig,
 } from "@/composables/useAdapters";
+import type { UpdateInfo } from "@/types";
 import { usePendingChanges } from "@/composables/usePendingChanges";
 
 const { t } = useI18n();
 const { pendingChanges, markChanged, clearChanges } = usePendingChanges();
 const { data, isLoading, isError, error, refetch } = useAdaptersQuery();
 void isLoading;
-const { install, uninstall, setState } = useAdapterMutations();
+const { install, uninstall, setState, update, checkUpdates } = useAdapterMutations();
+
+const updates = ref<Record<string, UpdateInfo>>({});
+const updateOpen = ref(false);
+const updateTarget = ref("");
+const selectedVersion = ref("");
+const { data: versionsData, isFetching: versionsLoading } = useAdapterVersionsQuery(
+  computed(() => (updateOpen.value ? updateTarget.value : "")),
+);
 
 const installOpen = ref(false);
 const installForm = reactive({ name: "", pkg: "", module_name: "" });
@@ -116,6 +133,48 @@ function onProgressClose() {
   refetch();
 }
 
+function checkUpdatesFn() {
+  checkUpdates.mutate(undefined, {
+    onSuccess: (res) => {
+      updates.value = res.updates;
+      const n = Object.values(res.updates).filter((u) => u.update_available).length;
+      toast.success(n ? t("adapters.checkDone") : t("adapters.allLatest"));
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+}
+
+function openUpdate(name: string) {
+  updateTarget.value = name;
+  selectedVersion.value = "";
+  updateOpen.value = true;
+}
+
+watch(
+  () => versionsData.value,
+  (v) => {
+    if (v && !selectedVersion.value) {
+      selectedVersion.value =
+        updates.value[updateTarget.value]?.latest ?? v.versions[0] ?? "";
+    }
+  },
+);
+
+function submitUpdate() {
+  update.mutate(
+    { name: updateTarget.value, version: selectedVersion.value || undefined },
+    {
+      onSuccess: (taskId: string) => {
+        updateOpen.value = false;
+        progressTitle.value = `更新适配器: ${updateTarget.value}`;
+        progressTaskId.value = taskId;
+        progressOpen.value = true;
+      },
+      onError: (e: Error) => toast.error(e.message),
+    },
+  );
+}
+
 function toggle(name: string, enabled: boolean) {
   if (!enabled) {
     askConfirm(t("confirm.disableMessage", { name }), () => {
@@ -162,6 +221,17 @@ function confirmUninstall() {
       :subtitle="$t('adapters.subtitle')"
     >
       <template #actions>
+        <Button
+          variant="outline"
+          :disabled="checkUpdates.isPending.value"
+          @click="checkUpdatesFn"
+        >
+          <RefreshCw
+            class="size-4"
+            :class="{ 'animate-spin': checkUpdates.isPending.value }"
+          />
+          {{ $t("adapters.checkUpdates") }}
+        </Button>
         <Button @click="installOpen = true">
           <Plus class="size-4" />
           {{ $t("adapters.installAdapter") }}
@@ -216,7 +286,15 @@ function confirmUninstall() {
           </TableRow>
           <TableRow v-for="a in data?.adapters ?? []" :key="a.name">
             <TableCell>
-              <div class="font-medium">{{ a.name }}</div>
+              <div class="flex items-center gap-2">
+                <span class="font-medium">{{ a.name }}</span>
+                <Badge
+                  v-if="updates[a.name]?.update_available"
+                  variant="default"
+                >
+                  {{ $t("adapters.updateAvailable") }} → {{ updates[a.name].latest }}
+                </Badge>
+              </div>
             </TableCell>
             <TableCell class="font-mono text-xs text-muted-foreground">
               {{ a.module_name }}
@@ -239,6 +317,19 @@ function confirmUninstall() {
                   @click="openConfig(a.name)"
                 >
                   <Settings2 class="size-4" aria-hidden="true" />
+                </Button>
+                <Button
+                  v-if="a.source === 'pypi'"
+                  variant="ghost"
+                  size="icon"
+                  :aria-label="`更新 ${a.name}`"
+                  @click="openUpdate(a.name)"
+                >
+                  <ArrowUpCircle
+                    class="size-4"
+                    :class="{ 'text-primary': updates[a.name]?.update_available }"
+                    aria-hidden="true"
+                  />
                 </Button>
                 <Button
                   v-if="a.source !== 'builtin'"
@@ -394,5 +485,47 @@ function confirmUninstall() {
       :title="progressTitle"
       @close="onProgressClose"
     />
+
+    <Dialog v-model:open="updateOpen">
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{{ $t("adapters.updateTitle") }}</DialogTitle>
+          <DialogDescription>
+            {{ $t("adapters.updateDesc", { name: updateTarget }) }}
+          </DialogDescription>
+        </DialogHeader>
+        <div class="space-y-2 py-2">
+          <Label>{{ $t("adapters.version") }}</Label>
+          <p v-if="versionsLoading" class="text-sm text-muted-foreground">
+            {{ $t("adapters.loadingVersions") }}
+          </p>
+          <Select v-else v-model="selectedVersion">
+            <SelectTrigger>
+              <SelectValue :placeholder="$t('adapters.selectVersion')" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem
+                v-for="v in versionsData?.versions ?? []"
+                :key="v"
+                :value="v"
+              >
+                {{ v }}
+              </SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" @click="updateOpen = false">
+            {{ $t("common.cancel") }}
+          </Button>
+          <Button
+            :disabled="!selectedVersion || update.isPending.value"
+            @click="submitUpdate"
+          >
+            {{ $t("adapters.doUpdate") }}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   </div>
 </template>
