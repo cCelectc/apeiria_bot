@@ -16,6 +16,15 @@ export function useAdapterConfigQuery(name: MaybeRefOrGetter<string>) {
   });
 }
 
+export function useAdapterVersionsQuery(name: MaybeRefOrGetter<string>) {
+  return useQuery({
+    queryKey: computed(() => ["adapter-versions", toValue(name)]),
+    queryFn: () => api.adapters.versions(toValue(name)),
+    enabled: computed(() => Boolean(toValue(name))),
+    retry: false,
+  });
+}
+
 export function useSaveAdapterConfig() {
   const qc = useQueryClient();
   return useMutation({
@@ -41,5 +50,11 @@ export function useAdapterMutations() {
       onSuccess: invalidate,
     }),
     setState: useMutation({ mutationFn: api.adapters.setState, onSuccess: invalidate }),
+    update: useMutation({
+      mutationFn: (vars: { name: string; version?: string }) =>
+        api.adapters.update(vars).then((r) => r.task_id),
+      onSuccess: invalidate,
+    }),
+    checkUpdates: useMutation({ mutationFn: () => api.adapters.checkUpdates() }),
   };
 }

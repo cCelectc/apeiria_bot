@@ -16,6 +16,15 @@ export function usePluginConfigQuery(name: MaybeRefOrGetter<string>) {
   });
 }
 
+export function usePluginVersionsQuery(name: MaybeRefOrGetter<string>) {
+  return useQuery({
+    queryKey: computed(() => ["plugin-versions", toValue(name)]),
+    queryFn: () => api.plugins.versions(toValue(name)),
+    enabled: computed(() => Boolean(toValue(name))),
+    retry: false,
+  });
+}
+
 export function useSavePluginConfig() {
   const qc = useQueryClient();
   return useMutation({
@@ -41,5 +50,11 @@ export function usePluginMutations() {
       onSuccess: invalidate,
     }),
     setState: useMutation({ mutationFn: api.plugins.setState, onSuccess: invalidate }),
+    update: useMutation({
+      mutationFn: (vars: { name: string; version?: string }) =>
+        api.plugins.update(vars).then((r) => r.task_id),
+      onSuccess: invalidate,
+    }),
+    checkUpdates: useMutation({ mutationFn: () => api.plugins.checkUpdates() }),
   };
 }
