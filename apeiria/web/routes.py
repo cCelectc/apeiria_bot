@@ -102,6 +102,7 @@ async def api_plugins_list() -> JSONResponse:
                 "supported_adapters": meta.get("supported_adapters"),
                 "can_disable": False,
                 "can_uninstall": False,
+                "installed_version": None,
                 "depends_on": sorted(dep_graph_obj.graph.get(plugin.name, set())),
                 "depended_by": sorted(dep_graph_obj.reverse.get(plugin.name, set())),
             }
@@ -161,12 +162,19 @@ async def api_plugin_config(name: str) -> JSONResponse:
 
 @router.get("/adapters/list")
 async def api_adapters_list() -> JSONResponse:
+    from apeiria.plugin.adapter_manager import _read_adapters_yaml
+    from apeiria.plugin.scanner import read_installed_version
+
+    pkgs = _read_adapters_yaml().get("packages") or {}
     items = [
         {
             "name": a.name,
             "source": a.source,
             "enabled": a.enabled,
             "module_name": a.module_name,
+            "installed_version": read_installed_version(pkgs[a.name])
+            if a.source == "pypi" and a.name in pkgs
+            else None,
         }
         for a in scan_adapters()
     ]

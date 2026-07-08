@@ -2,7 +2,10 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from apeiria.plugin.scanner import manifest_module_candidate
+from apeiria.plugin.scanner import (
+    manifest_module_candidate,
+    read_installed_version,
+)
 
 if TYPE_CHECKING:
     from apeiria.plugin.scanner import PluginManifest
@@ -42,6 +45,9 @@ def merge_plugin_metadata(
                 "supported_adapters": meta.get("supported_adapters"),
                 "can_disable": True,
                 "can_uninstall": manifest.source in ("local", "pypi"),
+                "installed_version": read_installed_version(manifest.path_or_module)
+                if manifest.source == "pypi"
+                else None,
                 "depends_on": sorted(dep_graph.get(name, set())) if dep_graph else [],
                 "depended_by": sorted(dep_reverse.get(name, set()))
                 if dep_reverse
