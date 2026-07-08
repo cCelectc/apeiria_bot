@@ -63,17 +63,11 @@ def _rate_check(user_id: str, count: int, window: float) -> bool:
         return True
     now = monotonic()
     _prune_rates(now, window)
-    history = _rates.get(user_id)
-    if history is None:
-        history = deque[float]()
-        _rates[user_id] = history
-    while history and now - history[0] > window:
-        history.popleft()
-    return len(history) < count
+    return len(_rates.get(user_id, ())) < count
 
 
 def _rate_push(user_id: str) -> None:
-    _rates.setdefault(user_id, deque[float]()).append(monotonic())
+    _rates.setdefault(user_id, deque()).append(monotonic())
 
 
 def _parse_target(value: str) -> tuple[str, str] | None:
