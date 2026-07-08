@@ -12,6 +12,7 @@ export interface Plugin {
   supported_adapters: string[] | null;
   can_disable: boolean;
   can_uninstall: boolean;
+  installed_version: string | null;
   depends_on: string[];
   depended_by: string[];
 }
@@ -21,6 +22,21 @@ export interface Adapter {
   source: string;
   enabled: boolean;
   module_name: string;
+  installed_version: string | null;
+}
+
+export interface PluginVersions {
+  versions: string[];
+}
+
+export interface UpdateInfo {
+  installed: string | null;
+  latest: string | null;
+  update_available: boolean;
+}
+
+export interface CheckUpdatesResult {
+  updates: Record<string, UpdateInfo>;
 }
 
 export interface ConfigContract {

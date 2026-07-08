@@ -5,11 +5,13 @@ import type {
   AccessRulesList,
   AccessSubjectsResult,
   Adapter,
+  CheckUpdatesResult,
   ConfigContract,
   InstallTaskResponse,
   LogHistory,
   LoginResponse,
   Plugin,
+  PluginVersions,
   StatusInfo,
   StoreSearchResult,
   UpdatePreviewResponse,
@@ -87,6 +89,15 @@ export const api = {
         "GET",
         `/plugins/${encodeURIComponent(name)}/config`,
       ),
+    versions: (name: string) =>
+      request<PluginVersions>(
+        "GET",
+        `/plugins/${encodeURIComponent(name)}/versions`,
+      ),
+    checkUpdates: () =>
+      request<CheckUpdatesResult>("POST", "/plugins/check-updates"),
+    update: (data: { name: string; version?: string }) =>
+      request<InstallTaskResponse>("POST", "/plugins/update", data),
   },
   adapters: {
     list: () => request<{ adapters: Adapter[] }>("GET", "/adapters/list"),
@@ -101,6 +112,15 @@ export const api = {
         "GET",
         `/adapters/${encodeURIComponent(name)}/config`,
       ),
+    versions: (name: string) =>
+      request<PluginVersions>(
+        "GET",
+        `/adapters/${encodeURIComponent(name)}/versions`,
+      ),
+    checkUpdates: () =>
+      request<CheckUpdatesResult>("POST", "/adapters/check-updates"),
+    update: (data: { name: string; version?: string }) =>
+      request<InstallTaskResponse>("POST", "/adapters/update", data),
   },
   config: {
     get: () => request<Record<string, unknown>>("GET", "/config"),
