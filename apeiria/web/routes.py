@@ -16,8 +16,13 @@ from apeiria.plugin.adapter_manager import (
     set_adapter_state,
 )
 from apeiria.plugin.adapter_scanner import scan_adapters
-from apeiria.plugin.manager import set_plugin_state
-from apeiria.plugin.scanner import scan_plugins
+from apeiria.plugin.manager import _read_plugins_yaml, set_plugin_state
+from apeiria.plugin.scanner import (
+    _requirement_base_name,
+    read_installed_version,
+    scan_plugins,
+)
+from apeiria.web import pypi
 from apeiria.web.auth import verify_token
 from apeiria.web.plugin_metadata import merge_plugin_metadata
 from apeiria.web.store import get_status, get_store, paginate
@@ -158,6 +163,55 @@ async def api_plugin_config(name: str) -> JSONResponse:
     app = load_config("data/config.yaml")
     values = app.plugins.get(name, {})
     return JSONResponse(content={**contract.to_dict(), "values": values})
+
+
+@router.get("/plugins/{name}/versions")
+async def api_plugin_versions(name: str) -> JSONResponse:
+    pkgs = _read_plugins_yaml().get("packages") or {}
+    if name not in pkgs:
+        raise HTTPException(status_code=404, detail="非 PyPI 插件，无可选版本")
+    base = _requirement_base_name(pkgs[name])
+    versions = await pypi.fetch_versions(base)
+    if versions is None:
+        raise HTTPException(status_code=404, detail="PyPI 上未找到该包")
+    return JSONResponse(content={"versions": versions})
+
+
+@router.post("/plugins/check-updates")
+async def api_plugins_check_updates() -> JSONResponse:
+    pkgs = _read_plugins_yaml().get("packages") or {}
+    names = list(pkgs)
+    bases = [_requirement_base_name(pkgs[n]) for n in names]
+    installed = [read_installed_version(pkgs[n]) for n in names]
+    latests = await asyncio.gather(*(pypi.fetch_latest(b) for b in bases))
+    updates = {
+        n: {
+            "installed": inst,
+            "latest": latest,
+            "update_available": pypi.is_newer(inst, latest),
+        }
+        for n, inst, latest in zip(names, installed, latests, strict=True)
+    }
+    return JSONResponse(content={"updates": updates})
+
+
+@router.post("/plugins/update")
+async def api_plugins_update(data: dict) -> JSONResponse:
+    name = data.get("name", "")
+    pkgs = _read_plugins_yaml().get("packages") or {}
+    if name not in pkgs:
+        raise HTTPException(status_code=400, detail="插件未安装或非 PyPI 来源")
+    base = _requirement_base_name(pkgs[name])
+    version = data.get("version")
+    if version:
+        target = f"{base}=={version}"
+    else:
+        latest = await pypi.fetch_latest(base)
+        if latest is None:
+            raise HTTPException(status_code=400, detail="无法获取最新版本")
+        target = f"{base}=={latest}"
+    task_id = await get_task_runner().start("plugin", name, target, update=True)
+    return JSONResponse(content={"task_id": task_id})
 
 
 @router.get("/adapters/list")
