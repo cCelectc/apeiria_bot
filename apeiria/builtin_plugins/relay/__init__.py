@@ -16,6 +16,7 @@ from nonebot_plugin_alconna import (
     UniMessage,
     on_alconna,
 )
+from nonebot_plugin_alconna.uniseg import Reply
 
 require("nonebot_plugin_uninfo")
 from nonebot_plugin_uninfo import Uninfo  # noqa: TC002
@@ -117,7 +118,7 @@ async def handle_relay(
 ) -> None:
     config = get_relay_config()
 
-    body = message.result.strip() if message.available else UniMessage()
+    body = message.result.exclude(Reply).strip() if message.available else UniMessage()
     if not body:
         await _relay.finish("请在 /传话 后写上要留言的内容。")
         return
