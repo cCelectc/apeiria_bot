@@ -158,6 +158,8 @@ export default {
     checkDone: "检查完成",
     allLatest: "全部已是最新",
     loadingVersions: "加载版本中...",
+    currentVersion: "当前版本",
+    unknownVersion: "未知",
   },
   adapters: {
     title: "适配器管理",
@@ -189,6 +191,8 @@ export default {
     checkDone: "检查完成",
     allLatest: "全部已是最新",
     loadingVersions: "加载版本中...",
+    currentVersion: "当前版本",
+    unknownVersion: "未知",
   },
   store: {
     title: "商店",

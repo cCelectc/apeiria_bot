@@ -72,6 +72,11 @@ const selectedVersion = ref("");
 const { data: versionsData, isFetching: versionsLoading } = usePluginVersionsQuery(
   computed(() => (updateOpen.value ? updateTarget.value : "")),
 );
+const updateCurrentVersion = computed(
+  () =>
+    data.value?.plugins.find((p) => p.name === updateTarget.value)
+      ?.installed_version ?? "",
+);
 
 const installOpen = ref(false);
 const installForm = reactive({ name: "", pkg: "" });
@@ -376,19 +381,35 @@ function confirmUninstall() {
                 >
                   <Settings2 class="size-4" aria-hidden="true" />
                 </Button>
-                <Button
+                <TooltipProvider
                   v-if="p.source === 'pypi'"
-                  variant="ghost"
-                  size="icon"
-                  :aria-label="`更新 ${p.name}`"
-                  @click="openUpdate(p.name)"
+                  :delay-duration="200"
                 >
-                  <ArrowUpCircle
-                    class="size-4"
-                    :class="{ 'text-primary': updates[p.name]?.update_available }"
-                    aria-hidden="true"
-                  />
-                </Button>
+                  <Tooltip>
+                    <TooltipTrigger as-child>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        :aria-label="`更新 ${p.name}`"
+                        @click="openUpdate(p.name)"
+                      >
+                        <ArrowUpCircle
+                          class="size-4"
+                          :class="{
+                            'text-primary': updates[p.name]?.update_available,
+                          }"
+                          aria-hidden="true"
+                        />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>
+                        {{ $t("plugins.currentVersion") }}:
+                        {{ p.installed_version || $t("plugins.unknownVersion") }}
+                      </p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
                 <Button
                   v-if="p.can_uninstall"
                   variant="ghost"
@@ -554,6 +575,10 @@ function confirmUninstall() {
           </DialogDescription>
         </DialogHeader>
         <div class="space-y-2 py-2">
+          <p class="text-sm text-muted-foreground">
+            {{ $t("plugins.currentVersion") }}:
+            {{ updateCurrentVersion || $t("plugins.unknownVersion") }}
+          </p>
           <Label>{{ $t("plugins.version") }}</Label>
           <p v-if="versionsLoading" class="text-sm text-muted-foreground">
             {{ $t("plugins.loadingVersions") }}

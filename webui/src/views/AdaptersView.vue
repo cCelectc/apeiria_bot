@@ -37,6 +37,12 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
   useAdapterConfigQuery,
   useAdapterMutations,
   useAdaptersQuery,
@@ -58,6 +64,11 @@ const updateTarget = ref("");
 const selectedVersion = ref("");
 const { data: versionsData, isFetching: versionsLoading } = useAdapterVersionsQuery(
   computed(() => (updateOpen.value ? updateTarget.value : "")),
+);
+const updateCurrentVersion = computed(
+  () =>
+    data.value?.adapters.find((a) => a.name === updateTarget.value)
+      ?.installed_version ?? "",
 );
 
 const installOpen = ref(false);
@@ -318,19 +329,35 @@ function confirmUninstall() {
                 >
                   <Settings2 class="size-4" aria-hidden="true" />
                 </Button>
-                <Button
+                <TooltipProvider
                   v-if="a.source === 'pypi'"
-                  variant="ghost"
-                  size="icon"
-                  :aria-label="`更新 ${a.name}`"
-                  @click="openUpdate(a.name)"
+                  :delay-duration="200"
                 >
-                  <ArrowUpCircle
-                    class="size-4"
-                    :class="{ 'text-primary': updates[a.name]?.update_available }"
-                    aria-hidden="true"
-                  />
-                </Button>
+                  <Tooltip>
+                    <TooltipTrigger as-child>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        :aria-label="`更新 ${a.name}`"
+                        @click="openUpdate(a.name)"
+                      >
+                        <ArrowUpCircle
+                          class="size-4"
+                          :class="{
+                            'text-primary': updates[a.name]?.update_available,
+                          }"
+                          aria-hidden="true"
+                        />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>
+                        {{ $t("adapters.currentVersion") }}:
+                        {{ a.installed_version || $t("adapters.unknownVersion") }}
+                      </p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
                 <Button
                   v-if="a.source !== 'builtin'"
                   variant="ghost"
@@ -495,6 +522,10 @@ function confirmUninstall() {
           </DialogDescription>
         </DialogHeader>
         <div class="space-y-2 py-2">
+          <p class="text-sm text-muted-foreground">
+            {{ $t("adapters.currentVersion") }}:
+            {{ updateCurrentVersion || $t("adapters.unknownVersion") }}
+          </p>
           <Label>{{ $t("adapters.version") }}</Label>
           <p v-if="versionsLoading" class="text-sm text-muted-foreground">
             {{ $t("adapters.loadingVersions") }}
